@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
 import { apiBlast, LiveBadge, ApiResult } from "../lib/api.js";
@@ -133,7 +134,7 @@ export default function Graph() {
           <div style={{ minHeight: 200, display: "grid", placeItems: "center" }}>
             <div className="frame" style={{ border: "1px dashed var(--line-strong)", borderRadius: "var(--r)", padding: "34px 40px", textAlign: "center", color: "var(--faint)", fontSize: 13.5, maxWidth: 440 }}>
               No dependency graph yet.<br />
-              <span className="dim">Configure your estate in <a href="#/onboarding">Onboarding</a>, then run a scan. The graph renders systems → certificates → infrastructure → applications → libraries → algorithms from the real CBOM.</span>
+              <span className="dim">Configure your estate in <Link to="/onboarding">Onboarding</Link>, then run a scan. The graph renders systems → certificates → infrastructure → applications → libraries → algorithms from the real CBOM.</span>
             </div>
           </div>
         ) : (
@@ -209,7 +210,7 @@ export default function Graph() {
               <div className="kpi"><span className="k">nodes in blast radius</span><span className="v">{blast.size}</span></div>
               <div className="kpi"><span className="k">upstream (ancestors)</span><span className="v">{upline.size}</span></div>
               {busy && <LiveBadge source="live" label="QUERYING ENGINE…" />}
-              <a href="#/whatif" className="btn sm" style={{ alignSelf: "flex-start" }}>Run migration analysis →</a>
+              <Link to="/what-if" className="btn sm" style={{ alignSelf: "flex-start" }}>Run migration analysis →</Link>
             </div>
           ) : (
             <div className="dim" style={{ fontSize: 13.5 }}>Impact analysis appears once a node is selected.</div>

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiComplianceEvidence, apiComplianceRetention } from "../lib/api";
@@ -69,13 +70,13 @@ export default function Compliance() {
           >
             Export Compliance Evidence
           </AuthenticatedDownload>
-          <a
-            href="#/evidence"
+          <Link
+            to="/evidence"
             className="btn primary"
             style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Audit Evidence Lake
-          </a>
+          </Link>
         </div>
       </div>
 

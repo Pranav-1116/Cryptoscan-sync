@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useState } from "react";
 import { Panel, Badge, PageHead, Table } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
@@ -157,10 +158,10 @@ export default function LiveEnvironment() {
             head={["asset kind", "count"]}
             rows={Object.entries(graph.by_kind ?? {}).map(([k, v]) => [<span key={k} className="mono">{k}</span>, v])}
           />
-          <a className="mono" href="#/graph" style={{ fontSize: 12, display: "inline-block", marginTop: 10 }}>open full dependency graph →</a>
+          <Link className="mono" to="/graph" style={{ fontSize: 12, display: "inline-block", marginTop: 10 }}>open full dependency graph →</Link>
           {!hasData && (
             <div className="dim" style={{ fontSize: 12.5, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-              Hierarchy populates from onboarding scope and discovery. Configure your estate in <a href="#/onboarding">Onboarding</a>, then run an integrated scan.
+              Hierarchy populates from onboarding scope and discovery. Configure your estate in <Link to="/onboarding">Onboarding</Link>, then run an integrated scan.
             </div>
           )}
         </Panel>

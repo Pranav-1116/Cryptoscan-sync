@@ -3,17 +3,71 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
+from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from db.models.drift_event import DriftEvent
 from db.repositories.base_repository import BaseRepository
+from db.tenancy import current_tenant
 
 
 class DriftRepository(BaseRepository[DriftEvent]):
     def __init__(self, session: Session):
         super().__init__(DriftEvent, session)
+
+    def record_scan_change(
+        self, *, baseline_id: str, scan_id: str, change, tenant_id: str | None
+    ) -> bool:
+        """Persist a scan comparison once; retries must not reopen dispositions.
+
+        The primary key is stable for this baseline, scan and concrete change.
+        This is also a uniqueness backstop for two workers racing to process
+        the same scan (one transaction will fail, rather than duplicate rows).
+        """
+        def finding(fp):
+            if fp is None:
+                return None
+            return {
+                "evidence_id": fp.evidence_id,
+                "algorithm": fp.algorithm, "key_size": fp.key_size,
+                "mode": fp.mode, "purpose": fp.purpose,
+                "file_path": fp.file_path, "line_number": fp.line_number,
+            }
+
+        details = {
+            "change_type": change.change_type,
+            "reason": change.reason,
+            "algorithm": change.affected_algorithm,
+            "baseline_finding": finding(change.baseline_fingerprint),
+            "current_finding": finding(change.current_fingerprint),
+        }
+        return self.record_event_once(
+            baseline_id=baseline_id, scan_id=scan_id, tenant_id=tenant_id,
+            drift_type=change.change_type, severity=change.severity, details=details,
+        )
+
+    def record_event_once(
+        self, *, baseline_id: str, scan_id: str, tenant_id: str | None,
+        drift_type: str, severity: str, details: dict,
+    ) -> bool:
+        identity = json.dumps(
+            [tenant_id, baseline_id, scan_id, drift_type, details],
+            sort_keys=True, separators=(",", ":"),
+        )
+        event_id = str(uuid5(NAMESPACE_URL, f"cryptoscan/drift/{identity}"))
+        if self.get_by_id(event_id) is not None:
+            return False
+        self.session.add(DriftEvent(
+            id=event_id, tenant_id=tenant_id, baseline_id=baseline_id,
+            current_scan_id=scan_id, detected_at=datetime.now(timezone.utc),
+            drift_type=drift_type, severity=severity,
+            drift_details=details, resolution_status="OPEN",
+        ))
+        self.session.flush()
+        return True
 
     def list_events(
         self,
@@ -63,7 +117,7 @@ class DriftRepository(BaseRepository[DriftEvent]):
         leave the resolution untouched. Notes, when given, append to the
         resolution notes (the workflow's existing notes field)."""
         row = self.get_by_id(drift_id)
-        if row is None:
+        if row is None or (current_tenant() is not None and row.tenant_id != current_tenant()):
             return None
         row.acknowledged_at = datetime.now(timezone.utc)
         row.acknowledged_by = user
@@ -259,12 +313,12 @@ class DriftRepository(BaseRepository[DriftEvent]):
     def _close(
         self, drift_id: str, user: str, notes: str | None, status: str
     ) -> DriftEvent | None:
-        return self.update(
-            drift_id,
-            {
-                "resolution_status": status,
-                "resolved_by": user,
-                "resolved_at": datetime.now(timezone.utc),
-                "resolution_notes": notes,
-            },
-        )
+        row = self.get_by_id(drift_id)
+        if row is None or (current_tenant() is not None and row.tenant_id != current_tenant()):
+            return None
+        row.resolution_status = status
+        row.resolved_by = user
+        row.resolved_at = datetime.now(timezone.utc)
+        row.resolution_notes = notes
+        self.session.flush()
+        return row

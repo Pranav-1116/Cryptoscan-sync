@@ -1,19 +1,29 @@
 /* Routing + shell: the app boots offline, redirects / to the command center,
  * unknown routes fall back, and the sidebar links point at real routes. */
 import { describe, expect, it } from "vitest";
-import { act, cleanup as cleanupShell, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { act, cleanup as cleanupShell, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { I18nProvider } from "./i18n/I18n";
 import { RealtimeProvider } from "./lib/realtime";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 
+function RouteProbe() {
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+  return <div>
+    <output data-testid="location">{pathname + search}</output>
+    <button onClick={() => navigate(-1)}>Go back</button>
+    <button onClick={() => navigate(1)}>Go forward</button>
+  </div>;
+}
+
 function shell(route: string) {
   return render(
     <I18nProvider><RealtimeProvider>
       <MemoryRouter initialEntries={[route]}>
-        <Layout><div data-testid="page">page body</div></Layout>
+        <Layout><div data-testid="page">page body<RouteProbe /></div></Layout>
       </MemoryRouter>
     </RealtimeProvider></I18nProvider>,
   );
@@ -35,17 +45,49 @@ describe("app shell", () => {
     expect(external.every((h) => !h.includes("/api/"))).toBe(true);
   });
 
-  it("keeps six primary sections and the 32-slot navigation contract", async () => {
+  it("exposes the real threat-intelligence workspaces across six sections", async () => {
     await act(async () => { shell("/command-center"); });
     const nav = document.querySelector(".primary-nav");
     expect(nav).toBeInTheDocument();
     expect(nav?.querySelectorAll(":scope > .nav-label")).toHaveLength(6);
     const links = Array.from(nav?.querySelectorAll("a.nav") || []);
     const hrefs = links.map((link) => link.getAttribute("href") || "");
-    expect(links).toHaveLength(32);
-    expect(new Set(hrefs).size).toBe(31);
+    expect(links).toHaveLength(38);
+    expect(new Set(hrefs).size).toBe(37);
     expect(hrefs.filter((href) => href === "/security-center")).toHaveLength(2);
+    for (const path of ["/crypto", "/cbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/priorities", "/migration", "/live-scanners"]) {
+      expect(hrefs).toContain(path);
+    }
     expect(hrefs).not.toContain("/vendor-due-diligence");
+    expect(hrefs).not.toContain("/audit-merkle");
+    expect(hrefs.every((href) => href.startsWith("/") && !href.startsWith("/#"))).toBe(true);
+  });
+
+  it("exposes global search as a keyboard-focusable button", async () => {
+    await act(async () => { shell("/command-center"); });
+    const search = screen.getByRole("button", { name: "Open global search" });
+    search.focus();
+    expect(document.activeElement).toBe(search);
+    fireEvent.click(search);
+    expect(screen.getByRole("textbox", { name: "Search cryptographic assets" })).toHaveFocus();
+  });
+
+  it("supports keyboard navigation, browser history, and a direct workspace entry", async () => {
+    await act(async () => { shell("/findings"); });
+    expect(screen.getByTestId("location")).toHaveTextContent("/findings");
+    const inventory = document.querySelector<HTMLAnchorElement>('.primary-nav a[href="/cbom"]');
+    expect(inventory).toBeInTheDocument();
+    inventory?.focus();
+    expect(document.activeElement).toBe(inventory);
+    fireEvent.keyDown(inventory!, { key: "Enter" });
+    // jsdom does not synthesize anchor activation on keydown; a native click
+    // exercises the same router link used by keyboard activation in browsers.
+    fireEvent.click(inventory!);
+    expect(screen.getByTestId("location")).toHaveTextContent("/cbom");
+    fireEvent.click(screen.getByRole("button", { name: "Go back" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/findings");
+    fireEvent.click(screen.getByRole("button", { name: "Go forward" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/cbom");
   });
 
   it("keeps public auth pages focused on live account operations", async () => {

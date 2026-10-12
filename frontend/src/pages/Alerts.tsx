@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useMemo, useState } from "react";
 import { Badge, PageHead, Table, Panel, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
@@ -18,79 +19,79 @@ const GUIDANCE: Record<string, { why: string; recommend: string; remediate: stri
     why: "A crypto library classified DISALLOWED (EOL/banned) is loaded by a running process. Known-broken or unpatched crypto is in the active attack surface.",
     recommend: "Replace the disallowed library with a supported version/fork before any protocol change; track it on the PQC queue if it also lacks post-quantum agility.",
     remediate: ["Identify every process/package loading the library (CBOM dependencies).", "Upgrade or swap to an approved build; rebuild and redeploy the affected service.", "Re-run the runtime scanner to confirm the library no longer appears."],
-    verifyLink: "#/evidence",
+    verifyLink: "/evidence",
   },
   DEPRECATED_LIBRARY: {
     why: "A crypto library marked DEPRECATED/RESTRICTED is near or past end-of-life and may stop receiving security fixes.",
     recommend: "Schedule an upgrade to a supported version; review migration windows with the service owner.",
     remediate: ["Confirm the installed version against the CBOM.", "Upgrade the package across affected processes.", "Rescan to verify the new version is classified ALLOWED."],
-    verifyLink: "#/cbom",
+    verifyLink: "/cbom",
   },
   UNMANAGED_LIBRARY: {
     why: "A crypto library's version cannot be resolved (bundled/venv/static), so its posture cannot be classified — an unknown, never assumed safe.",
     recommend: "Manually identify the provenance and version; add it to the managed inventory or replace with a managed package.",
     remediate: ["Locate the bundled/static copy on disk or in the image.", "Record its origin/version or replace it with a managed dependency.", "Rescan so it classifies to a known verdict."],
-    verifyLink: "#/libraries",
+    verifyLink: "/libraries",
   },
   RISK_PROCESS: {
     why: "A running process is linked against a weak/EOL crypto library, exposing that service's TLS and key operations.",
     recommend: "Patch the process's crypto dependency and restart the service; prioritise externally-reachable processes.",
     remediate: ["Map the process to its service/owner.", "Update the weak library the process loads.", "Restart and rescan; confirm the process leaves the RISK set."],
-    verifyLink: "#/runtime",
+    verifyLink: "/runtime",
   },
   WEAK_TLS: {
     why: "The endpoint negotiates a weak TLS version or disallowed cipher suite, weakening confidentiality/integrity of the channel.",
     recommend: "Enforce modern TLS (1.2+/1.3) with GCM/ChaCha20 and ECDHE; remove legacy cipher/protocol support.",
     remediate: ["Update the endpoint TLS configuration to the approved cipher policy.", "Disable SSLv3/TLS1.0/1.1 and CBC/RC4/3DES suites.", "Rescan the network target to confirm only strong suites are offered."],
-    verifyLink: "#/network",
+    verifyLink: "/network",
   },
   CBC_CIPHER: {
     why: "CBC-mode ciphers are accepted, which without constant-time hardening is susceptible to Lucky13-style timing attacks.",
     recommend: "Restrict negotiated suites to AEAD (GCM/ChaCha20-Poly1305) on TLS 1.2+.",
     remediate: ["Remove CBC cipher suites from the server policy.", "Prefer TLS 1.3 where possible.", "Rescan to confirm CBC is no longer offered."],
-    verifyLink: "#/network",
+    verifyLink: "/network",
   },
   CHAIN_INVALID: {
     why: "The served certificate chain failed validation (missing/intermediate mismatch, untrusted root, or name mismatch), so clients cannot establish trust.",
     recommend: "Install the complete, correct chain and verify against the trust store before expiry-driven renewal.",
     remediate: ["Re-issue or re-install the full certificate chain (leaf + intermediates).", "Confirm the CN/SAN matches the endpoint and the root is trusted.", "Rescan to confirm chain validation passes."],
-    verifyLink: "#/certificates",
+    verifyLink: "/certificates",
   },
   CERT_EXPIRED: {
     why: "A certificate in service is past its notAfter date; TLS handshakes to that endpoint will fail or require insecure overrides.",
     recommend: "Renew/re-issue immediately from the certificate inventory; rotate the serving key.",
     remediate: ["Request/issue a replacement certificate.", "Deploy it to the endpoint and reload the service.", "Rescan to confirm the new cert is valid and not expired."],
-    verifyLink: "#/certificates",
+    verifyLink: "/certificates",
   },
   CERT_EXPIRING: {
     why: "A certificate is within the expiry warning window; without renewal it will lapse and cause an outage.",
     recommend: "Schedule renewal ahead of the SLA tier; automate renewal where supported.",
     remediate: ["Raise/route a renewal ticket to the certificate owner.", "Renew and deploy before expiry.", "Confirm the new expiry on rescan."],
-    verifyLink: "#/certificates",
+    verifyLink: "/certificates",
   },
   WEAK_SIGNATURE: {
     why: "A certificate is signed with a deprecated hash (MD5/SHA-1), which does not provide collision resistance and is untrusted by modern clients.",
     recommend: "Re-issue using SHA-256 or stronger; add the issuing CA to the remediation queue.",
     remediate: ["Re-issue the certificate with a SHA-256 (or stronger) signature.", "Replace it on the endpoint.", "Rescan to confirm the signature algorithm is strong."],
-    verifyLink: "#/certificates",
+    verifyLink: "/certificates",
   },
   TPM_ABSENT: {
     why: "No TPM was detected on the host, so there is no hardware root of trust for measured boot, sealed key storage, or attestation.",
     recommend: "Enable/verify TPM in firmware (or provision a vTPM/HSM) for hosts handling key material.",
     remediate: ["Check BIOS/UEFI for a disabled TPM and enable it.", "Where physical TPM is absent, provision a vTPM or HSM.", "Rescan hardware to confirm a TPM is reported."],
-    verifyLink: "#/hardware",
+    verifyLink: "/hardware",
   },
   STATIC_FINDINGS: {
     why: "A static source/container/universal scan reported high-confidence cryptographic findings in the codebase or image.",
     recommend: "Triage each finding in the code-rule results; remediate weak primitives at the call site.",
     remediate: ["Open the scan detail for file/line evidence.", "Replace weak primitive usage with the approved API.", "Re-run the static scan to clear the finding."],
-    verifyLink: "#/crypto-assurance",
+    verifyLink: "/crypto-assurance",
   },
   SCANNER_ERROR: {
     why: "A scanner failed to complete, so that domain's coverage is missing — an observability gap, not a clean result.",
     recommend: "Fix the scanner/target configuration (credentials in vault, reachable target) and rerun to restore coverage.",
     remediate: ["Read the scanner error detail.", "Correct target/credential/permission issues.", "Re-run the live scan and confirm the scanner reports ok."],
-    verifyLink: "#/live-scanners",
+    verifyLink: "/live-scanners",
   },
 };
 
@@ -99,7 +100,7 @@ function guidanceFor(kind: string) {
     why: "This finding was raised by a deterministic scanner rule. Open the evidence record for the exact observation that triggered it.",
     recommend: "Review the linked evidence and apply the domain's approved remediation pattern.",
     remediate: ["Inspect the evidence for this finding.", "Apply the relevant approved control.", "Rescan to verify the condition is cleared."],
-    verifyLink: "#/evidence",
+    verifyLink: "/evidence",
   };
 }
 
@@ -262,9 +263,9 @@ function FindingDetail({ finding, onClose }: { finding: AlertRow; onClose: () =>
             <li className="mono" style={{ wordBreak: "break-word" }}>{finding.detail}</li>
             {finding.asset && <li className="mono">asset: {finding.asset}</li>}
           </ul>
-          <a href="#/evidence" className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 8 }}>
+          <Link to="/evidence" className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 8 }}>
             open hash-chained evidence chain →
-          </a>
+          </Link>
         </section>
 
         <section className="fd-sec">
@@ -274,9 +275,9 @@ function FindingDetail({ finding, onClose }: { finding: AlertRow; onClose: () =>
             <li>Trace the asset/library in the CBOM dependency graph and blast-radius view.</li>
             <li>Confirm affected processes/services from the runtime inventory.</li>
           </ul>
-          <a href="#/graph" className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 8 }}>
+          <Link to="/graph" className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 8 }}>
             open dependency graph / blast radius →
-          </a>
+          </Link>
         </section>
 
         <section className="fd-sec">
@@ -298,9 +299,9 @@ function FindingDetail({ finding, onClose }: { finding: AlertRow; onClose: () =>
           <h4><span className="fd-num">6</span> Verification</h4>
           <p>After remediation, re-run the relevant scanner and confirm the finding no longer appears. The
              result is sealed into the hash-chained evidence lake for audit.</p>
-          <a href={g.verifyLink} className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 4 }}>
+          <Link to={g.verifyLink} className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 4 }}>
             go to the relevant surface to rescan and verify →
-          </a>
+          </Link>
         </section>
       </div>
     </Drawer>

@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { Panel, Badge, Bar, Ring, PageHead } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh, RealtimeChip } from "../lib/realtime.js";
@@ -59,11 +60,11 @@ export default function Executive() {
 
   type Priority = { tone: "red" | "amber" | "cyan"; label: string; n: number; to: string };
   const allPriorities: Priority[] = [
-    { tone: "red", label: "Quantum-vulnerable crypto components", n: quantumVuln, to: "#/pqc" },
-    { tone: "red", label: "Open critical/high drift", n: critHigh, to: "#/drift" },
-    { tone: "amber", label: "Crypto changes since baseline", n: driftChangeCount, to: "#/crypto-changes" },
-    { tone: "amber", label: "Critical + high alerts", n: Number(alerts.CRITICAL ?? 0) + Number(alerts.HIGH ?? 0), to: "#/alerts" },
-    { tone: "cyan", label: "Assets with no CBOM / coverage gap", n: Number(coverage.unknown_crypto ?? 0), to: "#/cbom" },
+    { tone: "red", label: "Quantum-vulnerable crypto components", n: quantumVuln, to: "/pqc" },
+    { tone: "red", label: "Open critical/high drift", n: critHigh, to: "/drift" },
+    { tone: "amber", label: "Crypto changes since baseline", n: driftChangeCount, to: "/crypto-changes" },
+    { tone: "amber", label: "Critical + high alerts", n: Number(alerts.CRITICAL ?? 0) + Number(alerts.HIGH ?? 0), to: "/alerts" },
+    { tone: "cyan", label: "Assets with no CBOM / coverage gap", n: Number(coverage.unknown_crypto ?? 0), to: "/cbom" },
   ];
   const priorities: Priority[] = allPriorities.filter((p) => p.n > 0).sort((a, b) => b.n - a.n);
 
@@ -132,13 +133,13 @@ export default function Executive() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {priorities.map((p) => (
-                <a key={p.label} href={p.to} className="scan-row" style={{ textDecoration: "none" }}>
+                <Link key={p.label} to={p.to} className="scan-row" style={{ textDecoration: "none" }}>
                   <div className="s-ico">
                     <Badge tone={p.tone}>{p.tone === "red" ? <IconTrendUp size={ICON_SM} /> : p.tone === "amber" ? <IconTrendFlat size={ICON_SM} /> : <IconTrendDown size={ICON_SM} />}</Badge>
                   </div>
                   <div className="s-meta"><div className="s-name">{p.label}</div></div>
                   <div className="s-right"><span className="s-elapsed" style={{ fontSize: 16, fontWeight: 700, color: `var(--${p.tone})` }}>{p.n}</span></div>
-                </a>
+                </Link>
               ))}
             </div>
           )}

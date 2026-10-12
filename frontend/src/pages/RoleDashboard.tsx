@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 /* Role-scoped home dashboards (feature 24). Deterministic per-role landing
    surfaces built from LIVE platform APIs (no demo data): CISO, security analyst,
    and OT engineer. Each persona sees only the tiles relevant to its job; data
@@ -121,7 +122,7 @@ export default function RoleDashboard() {
           <p style={{ color: "var(--faint)", fontSize: 12, marginTop: 14 }}>
             Passive OT decoders flag cleartext engineering access (S7 download, BACnet WriteProperty,
             CIP ForwardOpen, OPC-UA security-mode None) from observed spans only. Upload a capture in
-            the <a href="#/resilience" style={{ color: "var(--blue)" }}>Resilience console</a>.
+            the <Link to="/resilience" style={{ color: "var(--blue)" }}>Resilience console</Link>.
           </p>
         </>
       )}

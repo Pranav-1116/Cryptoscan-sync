@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React from "react";
 import { Badge, PageHead, Panel, Table } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
@@ -110,7 +111,7 @@ export default function Migration() {
         </Panel>
         <Panel title="Plan summary" sub="engine output">
           <p className="dim" style={{ fontSize: 13, marginTop: 0 }}>{data.summary ?? "No migration plan yet."}</p>
-          <p className="dim" style={{ fontSize: 12.5 }}>Run a <a href="#/whatif">what-if analysis</a> on a target algorithm; waves populate as vulnerable sites are discovered.</p>
+          <p className="dim" style={{ fontSize: 12.5 }}>Run a <Link to="/what-if">what-if analysis</Link> on a target algorithm; waves populate as vulnerable sites are discovered.</p>
         </Panel>
       </div>
 

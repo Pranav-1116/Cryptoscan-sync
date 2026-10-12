@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useApi, LiveBadge } from "../lib/apiUi.jsx";
@@ -117,7 +118,7 @@ export default function Cloud() {
             {live
               ? "No cloud accounts connected yet — register one in Onboarding (read-only; credentials are vault references)."
               : "Backend offline — cloud accounts unavailable."}
-            <br /><a href="#/onboarding" className="mono" style={{ fontSize: 12 }}>go to onboarding →</a>
+            <br /><Link to="/onboarding" className="mono" style={{ fontSize: 12 }}>go to onboarding →</Link>
           </div>
         </Panel>
       ) : showTable ? (

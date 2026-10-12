@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiLogin, isBackendLive } from "../lib/api.js";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 import { BrandMark, ICON_MD, IconClose, IconOk } from "../components/icons";
+import { DecryptText } from "../lib/motion";
 
 function BrandPanel() {
   const { t } = useI18n();
@@ -17,6 +18,7 @@ function BrandPanel() {
         </span>
       </div>
       <div className="auth-hero">
+        <DecryptText text={t("app.title")} className="auth-cue" />
         <h2>{t("login.heroTitle")}</h2>
         <p>{t("app.tagline")}</p>
       </div>

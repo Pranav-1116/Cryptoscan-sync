@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer, Code } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
@@ -47,7 +48,7 @@ function CertDrawer({ cert, onClose }: { cert: CertRow; onClose: () => void }) {
         </div>
       </Panel>
       <Panel title="Evidence" sub="linked artifacts" frame className="mt">
-        <a href="#/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</a>
+        <Link to="/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</Link>
       </Panel>
     </Drawer>
   );

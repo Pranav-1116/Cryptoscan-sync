@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiCbomCatalog, apiCbomCoverage } from "../lib/api";
@@ -130,13 +131,13 @@ export default function Cbom() {
           >
             Export CycloneDX 1.5 JSON
           </AuthenticatedDownload>
-          <a
-            href="#/graph"
+          <Link
+            to="/dependency-graph"
             className="btn primary"
             style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             View Dependency Graph
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -296,12 +297,12 @@ export default function Cbom() {
                           </div>
 
                           <div style={{ display: "flex", gap: "10px", marginTop: "14px", justifyContent: "flex-end" }}>
-                            <a href="#/whatif" className="btn sm primary" style={{ textDecoration: "none" }}>
+                            <Link to="/what-if" className="btn sm primary" style={{ textDecoration: "none" }}>
                               Run PQC Migration Simulation
-                            </a>
-                            <a href="#/evidence" className="btn sm outline" style={{ textDecoration: "none" }}>
+                            </Link>
+                            <Link to="/evidence" className="btn sm outline" style={{ textDecoration: "none" }}>
                               Inspect WORM Evidence Hash
-                            </a>
+                            </Link>
                           </div>
                         </td>
                       </tr>
@@ -318,9 +319,9 @@ export default function Cbom() {
                     <div style={{ fontSize: "13px", maxWidth: "480px", margin: "0 auto 16px" }}>
                       {coverage?.message || "Register systems, then initiate network, host, or container discovery scans."}
                     </div>
-                    <a href="#/scanners" className="btn primary" style={{ textDecoration: "none" }}>
+                    <Link to="/scanners" className="btn primary" style={{ textDecoration: "none" }}>
                       Launch Discovery Scan
-                    </a>
+                    </Link>
                   </td>
                 </tr>
               )}

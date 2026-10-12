@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
@@ -48,7 +49,7 @@ export default function PqcMap() {
         ) : (
           <div className="dim" style={{ fontSize: 13.5 }}>
             No inventory yet. Run discovery and a scan; the map derives vulnerable families and migration
-            waves from the live CBOM. Use the <a href="#/whatif">what-if simulator</a> for a specific current → target transition.
+            waves from the live CBOM. Use the <Link to="/what-if">what-if simulator</Link> for a specific current → target transition.
           </div>
         )}
         {data.summary && <p className="dim" style={{ fontSize: 12.5, marginTop: 10 }}>{data.summary}</p>}
@@ -92,8 +93,8 @@ export default function PqcMap() {
 
       <Panel title="Actions" className="mt">
         <div className="row">
-          <a href="#/whatif" className="btn sm">Run what-if</a>
-          <a href="#/migration" className="btn sm">Open migration planner</a>
+          <Link to="/what-if" className="btn sm">Run what-if</Link>
+          <Link to="/migration" className="btn sm">Open migration planner</Link>
         </div>
       </Panel>
     </>

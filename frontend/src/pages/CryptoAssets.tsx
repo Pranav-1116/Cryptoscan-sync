@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, Drawer, PageHead } from "../components/ui.jsx";
 import { useApi, LiveBadge } from "../lib/apiUi.jsx";
@@ -114,7 +115,7 @@ function DetailDrawer({ alg, onClose }: { alg: AlgorithmEntry; onClose: () => vo
           Observed usage and confidence are linked from live scans/CBOM — run a universal source scan and check the
           dependency graph for where this algorithm appears.
         </span>
-        <br /><a href="#/cbom" className="mono" style={{ fontSize: 12 }}>open CBOM →</a>
+        <br /><Link to="/cbom" className="mono" style={{ fontSize: 12 }}>open CBOM →</Link>
       </Panel>
     </Drawer>
   );

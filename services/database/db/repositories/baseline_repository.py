@@ -9,17 +9,26 @@ from sqlalchemy.orm import Session
 
 from db.models.baseline import Baseline
 from db.repositories.base_repository import BaseRepository
+from db.tenancy import current_tenant
+
+
+_UNSET = object()
 
 
 class BaselineRepository(BaseRepository[Baseline]):
     def __init__(self, session: Session):
         super().__init__(Baseline, session)
 
-    def get_active(self, system_identifier: str) -> Baseline | None:
+    def get_active(self, system_identifier: str, *, tenant_id: str | None | object = _UNSET) -> Baseline | None:
+        # The ORM tenant guard makes legacy platform rows visible to tenants;
+        # those rows are not their approved trust anchor. Workers have no
+        # ambient tenant scope, so they pass the current scan's owner explicitly.
+        owner = current_tenant() if tenant_id is _UNSET else tenant_id
         stmt = (
             select(Baseline)
             .where(
                 Baseline.system_identifier == system_identifier,
+                Baseline.tenant_id == owner,
                 Baseline.status == "ACTIVE",
             )
             .limit(1)
@@ -42,7 +51,9 @@ class BaselineRepository(BaseRepository[Baseline]):
         row = self.get_by_id(baseline_id)
         if row is None or row.status != "PROPOSED":
             return None
-        existing = self.get_active(row.system_identifier)
+        if current_tenant() is not None and row.tenant_id != current_tenant():
+            return None  # visible legacy platform rows are not tenant-owned approvals
+        existing = self.get_active(row.system_identifier, tenant_id=row.tenant_id)
         if existing is not None and existing.id != row.id:
             existing.status = "SUPERSEDED"
         row.status = "ACTIVE"

@@ -1255,8 +1255,12 @@ class PipelineRunner:
 
         from db.models.baseline import Baseline
         from db.models.evidence_record import EvidenceRecord
+        from db.models.scan import Scan
 
         if not ctx.scan_id or not ctx.target_repo:
+            return
+        scan = session.execute(select(Scan).where(Scan.id == ctx.scan_id)).scalar_one_or_none()
+        if scan is None or scan.target_location != ctx.target_repo:
             return
         # a pending proposal for the same system replaces itself instead of
         # piling up: the newest clean scan is the better candidate
@@ -1264,6 +1268,7 @@ class PipelineRunner:
             session.execute(
                 select(Baseline).where(
                     Baseline.system_identifier == ctx.target_repo,
+                    Baseline.tenant_id == scan.tenant_id,
                     Baseline.status == "PROPOSED",
                 )
             )
@@ -1286,6 +1291,8 @@ class PipelineRunner:
             for event in inventory_events
             if str(event.get("severity") or "").upper() in {"CRITICAL", "HIGH"}
         ]
+        if any(old.approved_scan_id == ctx.scan_id for old in pending):
+            return  # retry of the same scan is not a new proposal
         if fail_rows or severe_drift:
             logger.info(
                 "baseline_proposal_not_clean",
@@ -1300,6 +1307,7 @@ class PipelineRunner:
         proposal = Baseline(
             system_identifier=ctx.target_repo,
             environment="default",
+            tenant_id=scan.tenant_id,
             approved_scan_id=ctx.scan_id,
             approved_by="system:clean-scan-proposal",
             approved_at=now,
@@ -1336,9 +1344,10 @@ class PipelineRunner:
     def _drift(self, ctx: PipelineContext, session) -> None:
         from sqlalchemy import select
 
-        from db.models.drift_event import DriftEvent
         from db.models.evidence_record import EvidenceRecord
+        from db.models.scan import Scan
         from db.repositories.baseline_repository import BaselineRepository
+        from db.repositories.drift_repository import DriftRepository
         from drift.core.detector import DriftDetector
 
         # Key-inventory drift needs no approved baseline (previous export of the same drop is the reference).
@@ -1350,10 +1359,19 @@ class PipelineRunner:
         except Exception:
             logger.debug("inventory_drift_skipped", exc_info=True)
 
+        scan = session.execute(select(Scan).where(Scan.id == ctx.scan_id)).scalar_one_or_none()
+        if scan is None or scan.target_location != ctx.target_repo:
+            raise ValueError("Current drift scan is missing or has a different target")
+
+        def comparison_status(value: str) -> None:
+            ctx.scan_meta["baseline_comparison"] = value
+            scan.statistics = {**(scan.statistics or {}), "baseline_comparison": value}
+
         baseline_repo = BaselineRepository(session)
-        baseline = baseline_repo.get_active(ctx.target_repo)
+        baseline = baseline_repo.get_active(ctx.target_repo, tenant_id=scan.tenant_id)
         if baseline is None:
             logger.info("no_baseline_skip_drift", extra={"target": ctx.target_repo})
+            comparison_status("NO_APPROVED_BASELINE")
             ctx.drift_events = inventory_events
             # Report 31 §2.9 / 88 GAP-011 (round 23): with no approved
             # baseline, a *clean* scan proposes one — it never activates it.
@@ -1367,10 +1385,29 @@ class PipelineRunner:
                 logger.debug("baseline_proposal_skipped", exc_info=True)
             return
 
+        approved_scan = session.execute(
+            select(Scan).where(Scan.id == baseline.approved_scan_id)
+        ).scalar_one_or_none()
+        if (approved_scan is None or approved_scan.status != "COMPLETED"
+                or approved_scan.target_location != scan.target_location
+                or approved_scan.tenant_id != scan.tenant_id):
+            comparison_status("BASELINE_UNAVAILABLE")
+            ctx.drift_events = inventory_events
+            logger.warning("baseline_scan_unavailable", extra={"baseline_id": baseline.id})
+            return
+        comparison_status("COMPARED")
+        drift_repo = DriftRepository(session)
+
         def as_findings(scan_id: str) -> list[dict]:
-            rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id, EvidenceRecord.deleted_at.is_(None))).scalars())
+            rows = list(session.execute(
+                select(EvidenceRecord).where(
+                    EvidenceRecord.scan_id == scan_id, EvidenceRecord.deleted_at.is_(None)
+                ).order_by(EvidenceRecord.file_path, EvidenceRecord.line_number,
+                           EvidenceRecord.algorithm, EvidenceRecord.id)
+            ).scalars())
             return [
                 {
+                    "evidence_id": r.id,
                     "algorithm": r.algorithm,
                     "key_size": r.key_size,
                     "mode": r.mode,
@@ -1390,33 +1427,20 @@ class PipelineRunner:
             baseline_scan_id=baseline.approved_scan_id,
             current_scan_id=ctx.scan_id or "",
         )
-        now = datetime.now(timezone.utc)
         events = []
         for change in detection.changes:
-            details = {
-                "change_type": change.change_type,
-                "reason": change.reason,
-                "algorithm": change.affected_algorithm,
-            }
-            session.add(
-                DriftEvent(
-                    baseline_id=baseline.id,
-                    current_scan_id=ctx.scan_id or "",
-                    detected_at=now,
-                    drift_type=change.change_type,
-                    severity=change.severity,
-                    drift_details=details,
-                    resolution_status="OPEN",
+            if drift_repo.record_scan_change(
+                baseline_id=baseline.id, scan_id=scan.id,
+                change=change, tenant_id=scan.tenant_id,
+            ):
+                events.append(
+                    {
+                        "drift_type": change.change_type,
+                        "severity": change.severity,
+                        "reason": change.reason,
+                        "algorithm": change.affected_algorithm,
+                    }
                 )
-            )
-            events.append(
-                {
-                    "drift_type": change.change_type,
-                    "severity": change.severity,
-                    "reason": change.reason,
-                    "algorithm": change.affected_algorithm,
-                }
-            )
 
         # Configuration drift (Drift v2.0): first-class CONFIG_* events from
         # crypto *settings* in deploy/config files, compared against the same
@@ -1456,28 +1480,23 @@ class PipelineRunner:
             for change in detect_config_drift(baseline_facts, current_facts).changes:
                 details = dict(change.to_event_dict())
                 details["change_type"] = change.change_type
-                session.add(
-                    DriftEvent(
-                        baseline_id=baseline.id,
-                        current_scan_id=ctx.scan_id or "",
-                        detected_at=now,
-                        drift_type=change.change_type,
-                        severity=change.severity,
-                        drift_details=details,
-                        resolution_status="OPEN",
+                if drift_repo.record_event_once(
+                    baseline_id=baseline.id, scan_id=scan.id,
+                    tenant_id=scan.tenant_id, drift_type=change.change_type,
+                    severity=change.severity, details=details,
+                ):
+                    events.append(
+                        {
+                            "drift_type": change.change_type,
+                            "severity": change.severity,
+                            "reason": change.reason,
+                            "algorithm": change.algorithm,
+                            "config_key": change.config_key,
+                        }
                     )
-                )
-                events.append(
-                    {
-                        "drift_type": change.change_type,
-                        "severity": change.severity,
-                        "reason": change.reason,
-                        "algorithm": change.algorithm,
-                        "config_key": change.config_key,
-                    }
-                )
         except Exception:
-            logger.debug("config_drift_skipped", exc_info=True)
+            comparison_status("PARTIAL_CONFIG_UNAVAILABLE")
+            logger.warning("config_drift_skipped", exc_info=True)
 
         ctx.drift_events = inventory_events + events
         session.flush()

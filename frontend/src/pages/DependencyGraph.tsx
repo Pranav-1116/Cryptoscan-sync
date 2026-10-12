@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiGraph, apiGraphStats, apiGraphBlastRadius } from "../lib/api";
@@ -89,13 +90,13 @@ export default function DependencyGraph() {
           >
             Export Graph JSON
           </AuthenticatedDownload>
-          <a
-            href="#/scanners"
+          <Link
+            to="/scanners"
             className="btn primary"
             style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Discover Topology
-          </a>
+          </Link>
         </div>
       </div>
 
@@ -195,9 +196,9 @@ export default function DependencyGraph() {
                 <p style={{ margin: "0 0 14px", fontSize: "12.5px" }}>
                   Register backend systems and complete network discovery to populate dependency links.
                 </p>
-                <a href="#/scanners" className="btn sm primary" style={{ textDecoration: "none" }}>
+                <Link to="/scanners" className="btn sm primary" style={{ textDecoration: "none" }}>
                   Launch Scanners
-                </a>
+                </Link>
               </div>
             )}
           </div>
@@ -280,9 +281,9 @@ export default function DependencyGraph() {
               )}
 
               <div style={{ marginTop: "12px" }}>
-                <a href="#/whatif" className="btn sm primary" style={{ textDecoration: "none", display: "block", textAlign: "center" }}>
-                  Simulate Node Outage in Digital Twin
-                </a>
+                <Link to="/what-if" className="btn sm primary" style={{ textDecoration: "none", display: "block", textAlign: "center" }}>
+                  Explore What-If Migration
+                </Link>
               </div>
             </div>
           ) : (

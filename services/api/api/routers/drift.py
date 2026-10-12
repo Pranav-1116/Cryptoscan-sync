@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -26,18 +27,25 @@ class AckBody(BaseModel):
 
 
 def _to_response(row, remediation_task_ids: list[str] | None = None) -> DriftEventResponse:
+    def utc_iso(value):
+        if value is None:
+            return None
+        # SQLite drops timezone information; stored naive values follow UTC.
+        return value.replace(tzinfo=timezone.utc).isoformat() if value.tzinfo is None else value.isoformat()
+
     return DriftEventResponse(
         drift_id=row.id,
         current_scan_id=row.current_scan_id,
         baseline_id=row.baseline_id,
         drift_type=row.drift_type,
         severity=row.severity,
-        detected_at=row.detected_at.isoformat() if row.detected_at else None,
+        detected_at=utc_iso(row.detected_at),
         resolution_status=row.resolution_status,
         drift_details=row.drift_details,
-        acknowledged_at=row.acknowledged_at.isoformat() if getattr(row, "acknowledged_at", None) else None,
+        acknowledged_at=utc_iso(getattr(row, "acknowledged_at", None)),
         acknowledged_by=getattr(row, "acknowledged_by", None),
         resolved_by=row.resolved_by,
+        resolved_at=utc_iso(getattr(row, "resolved_at", None)),
         resolution_notes=row.resolution_notes,
         remediation_task_ids=remediation_task_ids or [],
     )
@@ -228,7 +236,6 @@ def acknowledge(
     task_ids: list[str] = []
     if body is not None and body.create_remediation_tasks:
         task_ids = _create_drift_remediation_tasks(db, row, user, body.task_owner)
-        db.commit()
     _audit(db, user, "drift.acknowledge", drift_id, body)
     return _to_response(row, remediation_task_ids=task_ids)
 

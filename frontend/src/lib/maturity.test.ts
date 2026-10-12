@@ -9,9 +9,17 @@ import layoutTsx from "../components/Layout.tsx?raw";
 const routes = new Set(Array.from(appTsx.matchAll(/path="\/([a-z0-9-]+)"/g), (m: RegExpMatchArray) => m[1]));
 
 describe("capability maturity", () => {
-  it("classifies every route App.tsx serves", () => {
-    const missing = [...routes].filter((r) => !(r in CAPABILITIES_JSON));
+  it("classifies every page route; aliases redirect to classified destinations", () => {
+    const redirects = Array.from(appTsx.matchAll(/<Route path="\/([a-z0-9-]+)" element={<Navigate to="\/([a-z0-9-]+)" replace \/>} \/>/g));
+    const aliases = new Map(redirects.map((m) => [m[1], m[2]]));
+    expect([...aliases.entries()]).toEqual([
+      ["audit", "security-center"],
+      ["remediation", "priorities"],
+      ["techbom", "live-asset-intelligence"],
+    ]);
+    const missing = [...routes].filter((r) => !(r in CAPABILITIES_JSON) && !aliases.has(r));
     expect(missing).toEqual([]);
+    expect([...aliases.values()].every((destination) => destination in CAPABILITIES_JSON)).toBe(true);
   });
 
   it("does not classify routes that do not exist", () => {
@@ -38,5 +46,20 @@ describe("capability maturity", () => {
     const linked = Array.from(layoutTsx.matchAll(/(?:to=|to: )"\/([a-z0-9-]+)"/g), (m: RegExpMatchArray) => m[1]);
     const broken = linked.filter((r) => !routes.has(r));
     expect(broken).toEqual([]);
+  });
+
+  it("keeps visible page CTAs on BrowserRouter paths, never hash-only destinations", () => {
+    const pages = import.meta.glob("../pages/*.tsx", { query: "?raw", import: "default", eager: true });
+    const components = import.meta.glob("../components/*.tsx", { query: "?raw", import: "default", eager: true });
+    for (const [filename, source] of Object.entries({ ...pages, ...components })) {
+      if (filename.endsWith(".test.tsx")) continue;
+      const text = String(source);
+      expect(text, filename).not.toContain('"#/');
+      expect(text, filename).not.toContain("'#/");
+      const targets = [...text.matchAll(/\b(?:to|verifyLink)[:=]\s*"(\/[a-z0-9-]+)"/g)].map((m) => m[1]);
+      const anchors = [...text.matchAll(/<(?:a|Link)\b[^>]*\bhref="(\/[a-z0-9-]+)"/g)].map((m) => m[1]);
+      const broken = [...targets, ...anchors].filter((path) => !routes.has(path.slice(1)));
+      expect(broken, filename).toEqual([]);
+    }
   });
 });

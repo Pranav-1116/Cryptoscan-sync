@@ -13,8 +13,6 @@ export interface ApiResult<T = unknown> {
   head?: string;
 }
 
-let backendLive: boolean | null = null;
-let checked = false;
 const TOKEN_KEY = "zelinx_token";
 
 export function getToken(): string | null {
@@ -57,18 +55,34 @@ export function setToken(token: string | null): void {
 }
 
 export async function isBackendLive(): Promise<boolean> {
-  if (backendLive !== null) return backendLive;
-  if (!checked) {
-    checked = true;
-    try {
-      const resp = await tenantFetch("/api/v1/platform/scope", { signal: AbortSignal.timeout(2500) });
-      // 200 = fully live · 401 = live but needs a token — both prove reachability
-      backendLive = resp.status < 500;
-    } catch {
-      backendLive = false;
+  try {
+    // Recheck on each call: a previous success or outage may no longer describe
+    // the current auth/tenant session or the backend's availability.
+    const resp = await tenantFetch("/api/v1/platform/scope", { signal: AbortSignal.timeout(2500) });
+    const contentType = resp.headers.get("content-type")?.split(";")[0].trim().toLowerCase() || "";
+    const isJson = contentType === "application/json"
+      || (contentType.startsWith("application/") && contentType.endsWith("+json"));
+    if (resp.status === 200 && isJson) {
+      const body: unknown = await resp.json();
+      return !!body && typeof body === "object" && !Array.isArray(body)
+        && "platform" in body && body.platform === "CryptoScan"
+        && "schema_version" in body && typeof body.schema_version === "number"
+        && "covered_areas" in body && Array.isArray(body.covered_areas)
+        && "non_goals" in body && Array.isArray(body.non_goals);
     }
-  }
-  return backendLive === true;
+    if (resp.status === 401 || resp.status === 403) {
+      if (isJson) {
+        const body: unknown = await resp.json();
+        return !!body && typeof body === "object" && !Array.isArray(body)
+          && "detail" in body && typeof body.detail === "string" && body.detail.length > 0;
+      }
+      // Some auth gateways send a header-only challenge instead of FastAPI's
+      // JSON detail. Never accept an HTML error page, even with a challenge.
+      const challenge = resp.headers.get("www-authenticate") || "";
+      return contentType !== "text/html" && /^(Bearer|ApiKey)(?:\s|$)/i.test(challenge);
+    }
+  } catch { /* no transport, invalid JSON, or an aborted probe */ }
+  return false;
 }
 
 // Active tenant (multi-tenant SaaS): set after login/signup, switchable in
@@ -2220,7 +2234,7 @@ export const apiAuditList = (params: { page?: number; page_size?: number; actor?
   const qs = q.toString();
   return call(`/api/v1/auth/audit${qs ? `?${qs}` : ""}`);
 };
-export interface AuditChainStatus { status: string; checked: number; entry_count: number; chain_head?: string | null; break_at_sequence?: number | null; reason?: string | null; }
+export interface AuditChainStatus { status: string; checked: number; entry_count: number; chain_head?: string | null; break_at_sequence?: number | null; reason?: string | null; mode?: "full" | "incremental"; full_verified_at?: string | null; }
 export const apiAuditVerify = (): Promise<ApiResult<AuditChainStatus>> => call("/api/v1/auth/audit/verify");
 
 /* Control-plane observability: queue / fleet / credential / db / redis health. */
@@ -3790,8 +3804,19 @@ export type CascadeReport = {
   truncated?: Record<string, number>;
 };
 export type ScanSummaryRow = { scan_id: string; status: string; target_location: string; scan_end?: string | null; statistics?: Record<string, any> | null };
-export const apiScansRecent = (pageSize = 20): Promise<ApiResult<{ scans: ScanSummaryRow[]; total_count: number }>> =>
-  call(`/api/v1/scans?page=1&page_size=${pageSize}`);
+export interface ScanListPage { scans: ScanSummaryRow[]; total_count: number; page: number; page_size: number }
+export const apiScansPage = (page = 1, pageSize = 20): Promise<ApiResult<ScanListPage>> =>
+  call(`/api/v1/scans?page=${page}&page_size=${pageSize}`);
+export const apiScansRecent = (pageSize = 20): Promise<ApiResult<ScanListPage>> => apiScansPage(1, pageSize);
+/** Verifies persisted content, ordering, and manifest for one scan; not a per-finding verdict. */
+export interface ScanVerification {
+  scan_id: string; records: number; result: "PASS" | "FAIL" | "EMPTY" | "UNVERIFIABLE";
+  chain_intact: boolean; content_intact: boolean; hash_format_valid: boolean;
+  manifest_intact: boolean; manifest_hash: string | null; errors: string[];
+  verified_by?: string; content_hasher?: string;
+}
+export const apiVerifyStoredScan = (scanId: string): Promise<ApiResult<ScanVerification>> =>
+  call(`/api/v1/scans/${encodeURIComponent(scanId)}/verify`);
 export const apiScanCascade = (scanId: string, system?: string): Promise<ApiResult<CascadeReport>> =>
   call(`/api/v1/scans/${encodeURIComponent(scanId)}/cascade${system ? `?system=${encodeURIComponent(system)}` : ""}`);
 export type KeyReconciliation = {

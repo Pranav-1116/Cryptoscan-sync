@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 /* EnterpriseAdminDrawer — right-hand administration drawer for the console
  * shell.
  *
@@ -61,7 +62,7 @@ function SecurityCenterTab() {
           <span className="dot" /> backend offline — posture unavailable
         </div>
         <p className="dim" style={{ fontSize: 12 }}>
-          Open the <a href="#/security-center" style={{ color: "var(--cyan)" }}>Security Center</a> for the full console.
+          Open the <Link to="/security-center" style={{ color: "var(--cyan)" }}>Security Center</Link> for the full console.
         </p>
       </div>
     );
@@ -85,7 +86,7 @@ function SecurityCenterTab() {
       <Row k="Credentials" v={`${posture.credentials_active} active / ${posture.credentials_total}`} />
       <p className="dim" style={{ fontSize: 11, marginTop: 10 }}>
         Score is computed deterministically by the control plane. Full view:
-        <a href="#/security-center" style={{ color: "var(--cyan)" }}> Security Center</a>
+        <Link to="/security-center" style={{ color: "var(--cyan)" }}> Security Center</Link>
       </p>
     </div>
   );

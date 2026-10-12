@@ -146,6 +146,10 @@ function RoutedPages() {
       <Route path="/" element={<Navigate to="/command-center" replace />} />
       <Route path="/banking-regulatory" element={<BankingRegulatory />} />
       <Route path="/accuracy" element={<Accuracy />} />
+      {/* Legacy bookmarks resolve inside the authenticated shell, without duplicating pages. */}
+      <Route path="/audit" element={<Navigate to="/security-center" replace />} />
+      <Route path="/remediation" element={<Navigate to="/priorities" replace />} />
+      <Route path="/techbom" element={<Navigate to="/live-asset-intelligence" replace />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/agility" element={<Agility />} />
       <Route path="/alerts" element={<Alerts />} />

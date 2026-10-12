@@ -3,6 +3,7 @@
  * an empty estate that is still real reference data. No local/demo index. */
 
 import React, { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { apiAlgorithmCatalog } from "../lib/api.js";
 import { IconCrypto, ICON_SM, type Icon } from "./icons";
 
@@ -14,6 +15,13 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
   const [groups, setGroups] = useState<Group[]>([]);
   const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const resultsTo = `/search-results?q=${encodeURIComponent(q.trim())}`;
+  const openResults = () => {
+    if (!q.trim()) return;
+    navigate(resultsTo);
+    onClose();
+  };
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -33,7 +41,7 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
         const rows = (res.data?.algorithms ?? []) as any[];
         const items: Item[] = rows.slice(0, 6).map((a) => ({
           name: `${a.name ?? a.algorithm ?? a.id}${a.family ? ` · ${a.family}` : ""}`,
-          to: "#/catalog",
+          to: "/catalog",
           meta: a.status ?? a.quantum_status ?? "",
         }));
         setGroups(items.length ? [{ label: "Algorithms", icon: IconCrypto, items }] : []);
@@ -53,6 +61,8 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
           placeholder="Search: algorithm (RSA, AES, ML-KEM) · library · protocol · hardware · certificate · asset"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") openResults(); }}
+          aria-label="Search cryptographic assets"
         />
         {q.trim() && !searching && total === 0 ? (
           <div className="empty">no matches for “{q}” — run a scan to make findings/assets searchable</div>
@@ -64,16 +74,17 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
               <div className="group" key={g.label}>
                 <div className="glabel ico-row"><g.icon className="ico" size={ICON_SM} /><span>{g.label} · {g.items.length}</span></div>
                 {g.items.map((it, i) => (
-                  <a className="gitem" key={`${it.name}-${i}`} href={it.to} onClick={onClose}>
+                  <Link className="gitem" key={`${it.name}-${i}`} to={it.to} onClick={onClose}>
                     <span>{it.name}</span>
                     <span className="meta">{it.meta}</span>
-                  </a>
+                  </Link>
                 ))}
               </div>
             ))}
           </div>
         )}
-        <div className="hint">esc to close · searches the live algorithm catalog; findings and assets appear after a real scan</div>
+        {q.trim() && <Link to={resultsTo} onClick={onClose} className="gitem">View all results for “{q.trim()}” →</Link>}
+        <div className="hint">enter for all results · esc to close · quick matches from the live algorithm catalog</div>
       </div>
     </div>
   );

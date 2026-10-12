@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useState } from "react";
 import { authService } from "../lib/authService";
 import { Button } from "../components/ui";
@@ -158,9 +159,9 @@ export default function ResetPassword() {
             <p style={{ fontSize: "13px", color: "var(--dim)", margin: "0 0 20px" }}>
               Your password has been changed successfully. For your security, please sign in again.
             </p>
-            <a href="#/login" className="btn primary" style={{ textDecoration: "none", display: "block", textAlign: "center", height: "40px", lineHeight: "24px" }}>
+            <Link to="/login" className="btn primary" style={{ textDecoration: "none", display: "block", textAlign: "center", height: "40px", lineHeight: "24px" }}>
               Sign in
-            </a>
+            </Link>
           </div>
         )}
       </div>

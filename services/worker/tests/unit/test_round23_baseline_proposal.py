@@ -130,7 +130,7 @@ def test_proposal_is_idempotent_per_scan():
     _seed_scan(session, scan_id="scan-1")
     _propose(session, _ctx(scan_id="scan-1"))
     _propose(session, _ctx(scan_id="scan-1"))
-    # same scan proposing twice replaces, not duplicates
+    # A retry of the same scan leaves the original proposal and audit lineage intact.
     rows = session.query(Baseline).all()
-    assert len(rows) == 2  # old superseded + newest proposed
-    assert sum(1 for r in rows if r.status == "PROPOSED") == 1
+    assert len(rows) == 1
+    assert rows[0].status == "PROPOSED"

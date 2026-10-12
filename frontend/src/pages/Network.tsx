@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
@@ -336,7 +337,7 @@ export default function Network() {
             {detail.certs.length ? detail.certs.map((cc) => <Badge key={cc} tone="cyan">{cc}</Badge>) : <span className="faint" style={{ fontSize: 13 }}>none observed</span>}
           </Panel>
           <Panel title="Evidence" sub="linked artifacts" frame className="mt">
-            <a href="#/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</a>
+            <Link to="/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</Link>
           </Panel>
         </Drawer>
       )}

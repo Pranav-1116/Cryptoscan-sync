@@ -1,98 +1,26 @@
-"""Pipeline stage: compare the current scan to the approved baseline."""
+"""Standalone adapter for the worker's approved-baseline comparison stage.
+
+The production runner owns the comparison, proposal and idempotent persistence
+rules; invoking this adapter must not use a second, diverging implementation.
+"""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 
-from worker.pipeline.pipeline_runner import PipelineContext
+from worker.pipeline.pipeline_runner import PipelineContext, PipelineRunner
 
 logger = logging.getLogger(__name__)
 
 
 def execute(ctx: PipelineContext, session) -> PipelineContext:
-    from sqlalchemy import select
+    PipelineRunner.__new__(PipelineRunner)._drift(ctx, session)
+    _publish_drift_events(ctx.drift_events, ctx)
+    return ctx
 
-    from db.models.drift_event import DriftEvent
-    from db.models.evidence_record import EvidenceRecord
-    from db.repositories.baseline_repository import BaselineRepository
-    from drift.core.detector import DriftDetector
 
-    inventory_events: list[dict] = []
-    try:
-        from worker.pipeline.inventory_drift import detect_inventory_drift
-
-        inventory_events = detect_inventory_drift(session, ctx.scan_id or "")
-    except Exception:
-        logger.debug("inventory_drift_skipped", exc_info=True)
-
-    baseline = BaselineRepository(session).get_active(ctx.target_repo)
-    if baseline is None:
-        logger.info("no_baseline_skip_drift", extra={"target": ctx.target_repo})
-        ctx.drift_events = inventory_events
-        _publish_drift_events(inventory_events, ctx)
-        return ctx
-
-    def as_findings(scan_id: str) -> list[dict]:
-        rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id, EvidenceRecord.deleted_at.is_(None))).scalars())
-        return [
-            {
-                "algorithm": r.algorithm,
-                "key_size": r.key_size,
-                "mode": r.mode,
-                "purpose": r.purpose,
-                "file_path": r.file_path,
-                "line_number": r.line_number,
-                "compliance_status": r.compliance_status,
-                "is_hardcoded_key": r.is_hardcoded_key,
-            }
-            for r in rows
-        ]
-
-    detection = DriftDetector().detect_drift(
-        baseline_findings=as_findings(baseline.approved_scan_id),
-        current_findings=as_findings(ctx.scan_id or ""),
-        baseline_scan_id=baseline.approved_scan_id,
-        current_scan_id=ctx.scan_id or "",
-    )
-    now = datetime.now(timezone.utc)
-    events = []
-    for change in detection.changes:
-        details = {
-            "change_type": change.change_type,
-            "reason": change.reason,
-            "algorithm": change.affected_algorithm,
-        }
-        session.add(
-            DriftEvent(
-                baseline_id=baseline.id,
-                current_scan_id=ctx.scan_id or "",
-                detected_at=now,
-                drift_type=change.change_type,
-                severity=change.severity,
-                drift_details=details,
-                resolution_status="OPEN",
-            )
-        )
-        events.append(
-            {
-                "drift_type": change.change_type,
-                "severity": change.severity,
-                "reason": change.reason,
-                "algorithm": change.affected_algorithm,
-            }
-        )
-    events = inventory_events + events
-    ctx.drift_events = events
-    session.flush()
-    _publish_drift_events(events, ctx)
-
-def _publish_drift_events(events: list[dict], ctx: "PipelineContext") -> None:
-    """Realtime: newly detected drift goes straight to the SSE stream.
-
-    Same guarded pattern as pipeline_runner — a standalone worker process has
-    no bus, so this is a no-op there and polling covers it.
-    """
+def _publish_drift_events(events: list[dict], ctx: PipelineContext) -> None:
+    """Publish newly detected events; polling remains the standalone fallback."""
     if not events:
         return
     try:
@@ -112,14 +40,9 @@ def _publish_drift_events(events: list[dict], ctx: "PipelineContext") -> None:
                 },
                 source="drift",
             )
-    except Exception as _handler_exc:  # noqa: BLE001 — standalone worker: polling covers it
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
-        pass
+    except Exception as exc:  # noqa: BLE001 — standalone worker: polling covers it
+        logger.warning("exception_suppressed", extra={"error_type": type(exc).__name__})
     logger.info("stage_drift_done", extra={"events": len(events)})
-    return ctx
 
 
 class StageDrift:

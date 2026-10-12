@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { mockFetch, offlineFetch } from "../test/setup";
 import {
   activeTenantId, apiLogin, apiScope, getRoles, getToken, getUserName,
-  setActiveTenantId, setToken, setUserName, syncSession,
+  isBackendLive, setActiveTenantId, setToken, setUserName, syncSession,
 } from "./api";
 
 describe("api bridge — offline contract", () => {
@@ -28,6 +28,68 @@ describe("api bridge — offline contract", () => {
     const result = await apiScope();
     expect(result.source).toBe("live");
     expect(result.data).toEqual({ does: ["scan"], does_not: ["malware"] });
+  });
+});
+
+describe("backend reachability — scope response truth", () => {
+  const scope = { platform: "CryptoScan", schema_version: 2, covered_areas: [], non_goals: [] };
+  const route = "/api/v1/platform/scope";
+  const response = (body: string, status: number, headers: Record<string, string>) =>
+    new Response(body, { status, headers });
+
+  it("rejects Vite's HTML SPA fallback even when it answers 200", async () => {
+    mockFetch({ [route]: response("<!doctype html><html></html>", 200, { "Content-Type": "text/html" }) });
+    expect(await isBackendLive()).toBe(false);
+  });
+
+  it("accepts only a scope-shaped JSON 200, not arbitrary JSON or malformed JSON", async () => {
+    mockFetch({ [route]: scope });
+    expect(await isBackendLive()).toBe(true);
+    mockFetch({ [route]: { detail: "proxy ready" } });
+    expect(await isBackendLive()).toBe(false);
+    mockFetch({ [route]: { platform: "CryptoScan", schema_version: 2 } });
+    expect(await isBackendLive()).toBe(false);
+    mockFetch({ [route]: response("not json", 200, { "Content-Type": "application/json" }) });
+    expect(await isBackendLive()).toBe(false);
+  });
+
+  it.each([401, 403])("recognizes a real JSON %i auth response, but not HTML", async (status) => {
+    mockFetch({ [route]: response(JSON.stringify({ detail: "Authentication required" }), status, { "Content-Type": "application/json" }) });
+    expect(await isBackendLive()).toBe(true);
+    mockFetch({ [route]: response("<html>upstream error</html>", status, { "Content-Type": "text/html" }) });
+    expect(await isBackendLive()).toBe(false);
+  });
+
+  it("recognizes a Bearer challenge without JSON, not a proxy's Basic challenge", async () => {
+    mockFetch({ [route]: response("", 401, { "WWW-Authenticate": "Bearer" }) });
+    expect(await isBackendLive()).toBe(true);
+    mockFetch({ [route]: response("", 401, { "WWW-Authenticate": "Basic realm=proxy" }) });
+    expect(await isBackendLive()).toBe(false);
+    mockFetch({ [route]: response("<html>proxy</html>", 401, { "Content-Type": "text/html", "WWW-Authenticate": "Bearer" }) });
+    expect(await isBackendLive()).toBe(false);
+  });
+
+  it("rejects 404, 5xx and network failures", async () => {
+    mockFetch({}, 404);
+    expect(await isBackendLive()).toBe(false);
+    mockFetch({ [route]: response(JSON.stringify(scope), 502, { "Content-Type": "application/json" }) });
+    expect(await isBackendLive()).toBe(false);
+    offlineFetch();
+    expect(await isBackendLive()).toBe(false);
+  });
+
+  it("retries after a failure and rechecks after success with current auth and tenant", async () => {
+    offlineFetch();
+    expect(await isBackendLive()).toBe(false);
+    const fetchSpy = mockFetch({ [route]: scope });
+    expect(await isBackendLive()).toBe(true);
+    setToken("new-session");
+    setActiveTenantId("new-tenant");
+    const nextFetch = mockFetch({ [route]: response("<html>offline</html>", 200, { "Content-Type": "text/html" }) });
+    expect(await isBackendLive()).toBe(false);
+    const [, init] = nextFetch.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toMatchObject({ Authorization: "Bearer new-session", "X-Tenant-ID": "new-tenant" });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });
 

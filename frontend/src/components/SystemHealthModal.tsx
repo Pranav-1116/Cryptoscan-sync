@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 /* SystemHealthModal — quick platform health panel for the header.
  *
  * Data is real: it probes /healthz and the live ops SLO endpoint via the
@@ -100,7 +101,7 @@ export default function SystemHealthModal({
         </div>
 
         <p className="dim" style={{ fontSize: 11, marginTop: "12px" }}>
-          Live detail: <a href="#/system-health" onClick={onClose} style={{ color: "var(--cyan)" }}>System Health page</a>
+          Live detail: <Link to="/system-health" onClick={onClose} style={{ color: "var(--cyan)" }}>System Health page</Link>
         </p>
       </div>
     </div>

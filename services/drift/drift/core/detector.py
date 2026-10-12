@@ -47,6 +47,7 @@ class CryptoFingerprint:
     purpose: str
     file_path: str
     line_number: int
+    evidence_id: Optional[str] = None  # provenance only, not part of cross-scan identity
 
     def to_signature(self) -> str:
         return (
@@ -381,6 +382,7 @@ class DriftDetector:
                         purpose=finding.get("purpose", "UNKNOWN"),
                         file_path=finding.get("file_path", ""),
                         line_number=finding.get("line_number", 0),
+                        evidence_id=finding.get("evidence_id"),
                     )
                 )
             except Exception as exc:

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiTechBomLive, apiBankingRoadmap, apiBankingHndl } from "../lib/api";
@@ -64,13 +65,13 @@ export default function Pqc() {
           >
             Export IR 8547 Roadmap
           </AuthenticatedDownload>
-          <a
-            href="#/cbom"
+          <Link
+            to="/cbom"
             className="btn primary"
             style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Filter CBOM
-          </a>
+          </Link>
         </div>
       </div>
 

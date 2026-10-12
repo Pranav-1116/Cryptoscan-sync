@@ -36,7 +36,6 @@ const PRIMARY_SECTIONS: NavSection[] = [
     title: "Overview",
     items: [
       { to: "/command-center", label: "Dashboard", icon: ChartLineUp },
-      { to: "/live-asset-intelligence", label: "Live Asset Intelligence", icon: Pulse },
       { to: "/live-stream", label: "Activity", icon: Pulse },
     ],
   },
@@ -44,6 +43,7 @@ const PRIMARY_SECTIONS: NavSection[] = [
     title: "Discovery",
     items: [
       { to: "/scanners", label: "Scan", icon: Scan },
+      { to: "/live-scanners", label: "Live Scanners", icon: Pulse },
       { to: "/assets", label: "Assets", icon: Cube },
       { to: "/network", label: "Network", icon: GlobeHemisphereWest },
       { to: "/cloud", label: "Cloud", icon: Cloud },
@@ -56,11 +56,15 @@ const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Intelligence",
     items: [
-      { to: "/cbom", label: "CBOM", icon: Atom },
+      { to: "/crypto", label: "Cryptography", icon: Key },
+      { to: "/cbom", label: "Crypto Inventory (CBOM)", icon: Atom },
+      { to: "/crypto-assets", label: "Algorithm Catalog", icon: Key },
+      { to: "/live-asset-intelligence", label: "Technology BOM", icon: Stack },
       { to: "/hbom", label: "HBOM", icon: HardDrives },
       { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest },
-      { to: "/graph", label: "Dependency Graph", icon: Graph },
-      { to: "/crypto-assets", label: "Crypto Inventory", icon: Key },
+      { to: "/dependency-graph", label: "Dependencies", icon: Graph },
+      { to: "/graph", label: "Graph Explorer", icon: Graph },
+      { to: "/findings", label: "Findings", icon: ListChecks },
       { to: "/pqc", label: "PQC Readiness", icon: ShieldCheck },
       { to: "/agility", label: "Crypto Agility", icon: SlidersHorizontal },
       { to: "/drift", label: "Crypto Drift", icon: Pulse },
@@ -74,6 +78,8 @@ const PRIMARY_SECTIONS: NavSection[] = [
       { to: "/compliance", label: "Compliance", icon: ListChecks },
       { to: "/evidence", label: "Evidence", icon: FileText },
       { to: "/security-center", label: "Audit Log", icon: ListChecks },
+      { to: "/priorities", label: "Remediation Priorities", icon: ListChecks },
+      { to: "/migration", label: "Migration", icon: ShieldCheck },
     ],
   },
   {
@@ -389,15 +395,17 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             </span>
           )}
 
-          <div
+          <button
+            type="button"
             className="searchbox"
+            aria-label="Open global search"
             onClick={() => setShowSearch(true)}
-            style={{ borderRadius: "var(--r)", background: "var(--panel)", display: "flex", alignItems: "center", gap: "10px", padding: "6px 14px", cursor: "pointer", border: "1px solid var(--line)" }}
+            style={{ borderRadius: "var(--r)", background: "var(--panel)", display: "flex", alignItems: "center", gap: "10px", padding: "6px 14px", cursor: "pointer", border: "1px solid var(--line)", font: "inherit", textAlign: "left" }}
           >
             <IconSearch className="ico" size={ICON_MD} color="var(--accent)" />
             <span style={{ fontSize: "12.5px" }}>Search cryptographic assets...</span>
             <span style={{ marginLeft: "auto", fontSize: "10px", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "1px 6px", fontFamily: "var(--mono)" }}>⌘K</span>
-          </div>
+          </button>
 
           
           {/* Section 52: Multi-Level Info Switcher */}

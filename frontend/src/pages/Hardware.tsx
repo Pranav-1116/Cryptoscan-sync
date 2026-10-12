@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Tabs, Drawer } from "../components/ui.jsx";
 import KeyReconciliationPanel from "../components/KeyReconciliationPanel";
@@ -216,7 +217,7 @@ export default function Hardware() {
               : <span className="faint" style={{ fontSize: 13 }}>no capabilities reported</span>}
           </Panel>
           <Panel title="Evidence" sub="linked attestation artifacts" frame className="mt">
-            <a href="#/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</a>
+            <Link to="/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</Link>
           </Panel>
         </Drawer>
       )}

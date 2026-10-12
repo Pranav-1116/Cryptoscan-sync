@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
@@ -57,7 +58,7 @@ export default function Organization() {
       {!loading && !data.organization && (
         <Panel title="No organization onboarded" sub="the hierarchy is built from real onboarding data">
           <p className="dim" style={{ fontSize: 13, marginTop: 0 }}>
-            Create your organization, environments and authorized scope in <a href="#/onboarding">Onboarding</a>.
+            Create your organization, environments and authorized scope in <Link to="/onboarding">Onboarding</Link>.
             Regions and business units are derived from the environments you declare — nothing is fabricated.
           </p>
         </Panel>
