@@ -3,6 +3,7 @@ cross-domain correlation, verification, monitor plan."""
 
 from __future__ import annotations
 
+from cloud_scanner.core.scanner import CloudScanner
 from universal_platform.assets import ASSET_TYPES, normalize_asset
 from universal_platform.discovery import UniversalDiscoveryEngine
 
@@ -72,6 +73,60 @@ def test_discover_runs_all_domains_and_correlates():
                   if r["from"] == "payments.internal"]
     assert cert_links, "certificate must be linked to its consumers"
     assert report["verified"]["crypto:payments.internal"] is True
+
+
+def test_real_cloud_scanner_report_maps_identified_findings(tmp_path):
+    (tmp_path / "main.tf").write_text(
+        'resource "aws_kms_key" "payments" { customer_master_key_spec = "RSA_2048" }\n'
+        'resource "aws_s3_bucket" "logs" { bucket = "logs" }\n'
+    )
+    cloud_report = CloudScanner(live=False).scan_filesystem(tmp_path)
+    assert cloud_report["resources"] == 2
+    assert isinstance(cloud_report["resources"], int)
+    assert all(f["metadata"]["resource"] and f["source"]["file_path"] for f in cloud_report["findings"])
+
+    report = UniversalDiscoveryEngine().run({"cloud": cloud_report})
+    assert report["asset_count"] == 2
+    assets = {a["identity"]: a for a in report["assets"]}
+    assert set(assets) == {"aws_kms_key.payments", "aws_s3_bucket.logs"}
+    assert all(a["asset_type"] == "cloud_resource" and a["domain"] == "cloud" for a in assets.values())
+    assert all(a["sources"] and a["evidence"] for a in assets.values())
+    assert assets["aws_kms_key.payments"]["attributes"]["provider"] == "AWS"
+    assert assets["aws_kms_key.payments"]["evidence"][0]["source"]["file_path"] == str(tmp_path / "main.tf")
+    assert report["partial_coverage"] == {}
+
+
+def test_cloud_legacy_asset_and_resource_lists_still_work():
+    for key in ("assets", "resources"):
+        report = UniversalDiscoveryEngine().run({"cloud": {key: [
+            {"asset_type": "cloud_resource", "identity": "aws-resource-1", "sources": ["legacy"]},
+        ]}})
+        assert report["asset_count"] == 1
+        assert report["assets"][0]["identity"] == "aws-resource-1"
+
+
+def test_cloud_scalar_count_and_unidentified_findings_are_partial_not_assets():
+    engine = UniversalDiscoveryEngine()
+    summary = engine.run({"cloud": {"resources": 3}})
+    assert summary["asset_count"] == 0
+    assert summary["sources_run"] == ["cloud"]
+    assert summary["partial_coverage"]["cloud"]["status"] == "PARTIAL"
+    assert engine.run({"cloud": {"resources": 0, "findings": []}})["partial_coverage"] == {}
+
+    unknown = engine.run({"cloud": {
+        "resources": 4,
+        "findings": [
+            {"algorithm": "AES", "metadata": {"cloud_provider": "AWS"},
+             "source": {"type": "AWS_KMS_KEY", "file_path": "aws://region/kms/key"}},
+            {"metadata": {"resource": "UNKNOWN"},
+             "source": {"type": "AWS_KMS_KEY", "file_path": "aws://region/kms/unknown"}},
+            {"metadata": {"resource": "key-without-source"}, "source": {}},
+            {"metadata": {"resource": "key-unknown-type"},
+             "source": {"type": "UNKNOWN", "file_path": "aws://region/kms/key"}},
+        ],
+    }})
+    assert unknown["asset_count"] == 0
+    assert unknown["partial_coverage"]["cloud"]["status"] == "PARTIAL"
 
 
 def test_verify_marks_unknown_types_suspect():

@@ -48,6 +48,7 @@ class UniversalDiscoveryEngine:
         self.assets: dict[str, PlatformAsset] = {}
         self.relationships: list[dict[str, Any]] = []
         self.sources_run: list[str] = []
+        self.partial_coverage: dict[str, dict[str, Any]] = {}
         self.monitor_plan: list[dict[str, Any]] = []
         self.verified: dict[str, bool] = {}
 
@@ -61,8 +62,46 @@ class UniversalDiscoveryEngine:
         return [normalize_asset(dict(row)) for row in rows]
 
     def _from_cloud(self, report: Any) -> list[PlatformAsset]:
-        rows = report.get("assets") or report.get("resources") or []
-        return [normalize_asset(dict(row)) for row in rows]
+        # Legacy callers provide asset rows; CloudScanner instead returns a scalar
+        # ``resources`` count and evidence-shaped ``findings``.
+        assets = report.get("assets")
+        resources = report.get("resources")
+        rows = assets if isinstance(assets, list) and assets else resources
+        if isinstance(rows, list):
+            return [normalize_asset(dict(row)) for row in rows if isinstance(row, dict)]
+
+        findings = report.get("findings")
+        findings = findings if isinstance(findings, list) else []
+        mapped: list[PlatformAsset] = []
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            metadata = finding.get("metadata")
+            source = finding.get("source")
+            if not isinstance(metadata, dict) or not isinstance(source, dict):
+                continue
+            identity = metadata.get("resource")
+            resource_type = source.get("type")
+            location = source.get("file_path")
+            if not all(isinstance(value, str) and value.strip() for value in (identity, resource_type, location)):
+                continue
+            if identity.strip().lower() in {"unknown", "none", "null"} or resource_type.strip().upper() == "UNKNOWN":
+                continue
+            mapped.append(normalize_asset({
+                "asset_type": "cloud_resource", "identity": identity.strip(),
+                "provider": metadata.get("cloud_provider"),
+                "resource_type": resource_type, "file_path": location,
+                "algorithm": finding.get("algorithm"),
+                "compliance_issue": finding.get("compliance_issue"),
+                "sources": [f"cloud:{metadata.get('scan_method') or 'finding'}"],
+                "evidence": [{"finding_id": finding.get("finding_id"), "source": source}],
+            }))
+        reported = resources if isinstance(resources, int) and not isinstance(resources, bool) else len(findings)
+        if reported != len(mapped) or len(findings) != len(mapped):
+            self.partial_coverage["cloud"] = {
+                "status": "PARTIAL", "reported_findings": reported, "mapped_findings": len(mapped),
+            }
+        return mapped
 
     def _from_vendor(self, report: Any) -> list[PlatformAsset]:
         rows = report.get("assets") or report.get("products") or report.get("vendors") or []
@@ -117,6 +156,7 @@ class UniversalDiscoveryEngine:
         self.assets = {}
         self.relationships = []
         self.sources_run = []
+        self.partial_coverage = {}
         for domain, report in (domains or {}).items():
             if report in (None, {}):
                 continue
@@ -259,6 +299,7 @@ class UniversalDiscoveryEngine:
             "relationships": self.relationships,
             "relationship_count": len(self.relationships),
             "sources_run": self.sources_run,
+            "partial_coverage": self.partial_coverage,
             "verified": {f"{k[0]}:{k[1]}": v for k, v in self.verified.items()},
             "monitor_plan": self.monitor_plan,
             "generated_at": datetime.now(timezone.utc).isoformat(),
