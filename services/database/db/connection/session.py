@@ -39,10 +39,9 @@ def configure_session(engine=None) -> None:
 def init_db(engine=None) -> None:
     """Prepare sessions and verify the runtime database contract.
 
-    Development and test environments may build a local database from
-    metadata. Production is migration-owned: application processes never
-    mutate a live schema with ``create_all`` and instead verify that the
-    dedicated Alembic job reached the repository head.
+    Only an unstamped SQLite development/test database may be built from
+    metadata. Stamped databases are migration-owned; a behind or unreadable
+    migration state fails before any schema reconciliation.
     """
     from db.models import (  # noqa: F401 — register models
         api_key,
@@ -87,14 +86,12 @@ def init_db(engine=None) -> None:
     _wait_for_database(engine)
     if _is_production():
         _assert_migrations_current(engine)
+        managed_by = "alembic"
     else:
-        try:
-            from db.connection.schema_ensure import ensure_schema_extensions
+        from db.connection.schema_ensure import ensure_schema_extensions
 
-            ensure_schema_extensions(engine)
-        except Exception:
-            logger.debug("schema_extensions_skipped", exc_info=True)
-    logger.info("database_schema_ready", extra={"managed_by": "alembic" if _is_production() else "metadata"})
+        managed_by = "metadata" if ensure_schema_extensions(engine) else "alembic"
+    logger.info("database_schema_ready", extra={"managed_by": managed_by})
 
 
 def _is_production() -> bool:
@@ -138,6 +135,25 @@ def _assert_migrations_current(engine) -> None:
             "Production database migrations are not at the repository head; "
             "run alembic upgrade head before starting API or worker processes"
         )
+
+
+def _allow_metadata_bootstrap(engine) -> bool:
+    """Only an unstamped SQLite development/test database may use model DDL."""
+    if _is_production():
+        raise RuntimeError("Production schema changes require alembic upgrade head")
+    status = migration_status(engine)
+    if status["status"] == "current":
+        return False  # Alembic owns this schema; do not create future indexes.
+    if status["status"] == "missing" and engine.dialect.name == "sqlite":
+        return True
+    raise RuntimeError(
+        f"Database migration status is {status['status']} "
+        f"(applied: {status['applied']}, repository heads: {status['heads']}). "
+        "Set DATABASE_URL for this database and run "
+        "alembic -c services/database/migrations/alembic.ini upgrade head "
+        "from the repository root before starting API or workers. "
+        "Metadata bootstrap is only allowed for unstamped SQLite development/test databases."
+    )
 
 
 def _wait_for_database(engine) -> None:
