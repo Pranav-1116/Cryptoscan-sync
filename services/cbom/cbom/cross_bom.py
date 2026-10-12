@@ -1,25 +1,11 @@
-"""Cross-BOM linking and conflict detection (advanced/46, round 36).
+"""Cross-BOM associations and observed-value comparison (advanced/46).
 
-Report 46's finding: five BOMs, zero shared identifiers, no linking, no
-conflict detection. The TechBOM materializer (one inventory snapshot →
-SBOM/CBOM/HBOM/vendor layers) fixed the shared-data-model half. This
-module is the linking half: a canonical identity for every component —
-across the CBOM generator, the TechBOM layers, the NBOM and the VBOM —
-plus two honest questions over that identity:
-
-* where does this thing appear? (links: identity in ≥2 BOMs, with each
-  BOM's own ref so a human can jump to it)
-* do the BOMs agree about it? (conflicts: same identity, same field,
-  different non-empty values — e.g. TechBOM says the key is 2048 bits
-  and the CBOM generator row for the same algorithm says 1024)
-
-Identity is deliberately conservative: only fields that mean the same
-thing in every BOM participate (algorithm names uppercased and
-whitespace-collapsed, component names lowercased). Anything that cannot
-be canonically identified stays unlinked — reported as counts, never
-inferred. The single-generator merge (three generators → one) remains
-the open rearchitecture this report records; this layer links their
-outputs without touching them.
+A canonical key groups comparable components, not necessarily the same
+physical asset: crypto keys group by algorithm, for example. Each observed
+field retains its BOM and component ref. Variation among rows in one BOM is
+reported separately from disagreements between unambiguous BOM values.
+Only supplied documents are indexed; this module does not infer missing
+inventory or merge the independent generators.
 """
 
 from __future__ import annotations
@@ -37,29 +23,49 @@ def _norm_algorithm(value: Any) -> str:
 
 
 def canonical_identity(component: Mapping[str, Any]) -> dict[str, str] | None:
-    """Canonical identity for one component, or None when unidentifiable."""
+    """Canonical grouping key, not a physical asset ID; None if unavailable."""
     ctype = _norm_name(component.get("type")).lower()
     name = _norm_name(component.get("name"))
     if ctype in ("cryptographic-asset", "crypto"):
-        # TechBOM crypto rows carry `algorithm`, not `name`; CBOM
-        # generator rows carry both. Either names the asset.
+        # The NBOM also emits cryptographic-asset rows for certificates,
+        # cipher suites and tunnels; their names are NOT algorithm evidence.
         algorithm = _norm_algorithm(
             component.get("algorithm")
-            or _dig(component, ("cryptoProperties", "algorithmProperties", "algorithm"))
-            or name)
+            or _dig(component, ("cryptoProperties", "algorithmProperties", "algorithm")))
         if not algorithm:
             return None
-    else:
+    elif ctype == "hardware":
+        # TechBOM hardware rows have a model and asset reference, not a name.
+        model = _norm_name(component.get("model"))
+        hw_id = _norm_name(component.get("hardware_id") or component.get("serial_reference"))
+        if not model and not hw_id:
+            return None
+    elif ctype == "device":
+        # HBOM CycloneDX emits asset_id as a property, not a top-level field.
+        hw_id = _norm_name(next((p.get("value") for p in (component.get("properties") or [])
+                                 if isinstance(p, Mapping) and p.get("name") == "asset_id"), None))
+        if hw_id:
+            return {"kind": "hardware", "identity": f"hardware:{hw_id.lower()}",
+                    "label": hw_id}
+        network_kind = next((p.get("value") for p in (component.get("properties") or [])
+                             if isinstance(p, Mapping) and p.get("name") == "cryptoscan:kind"), None)
+        if network_kind == "endpoint" and name:
+            return {"kind": "endpoint", "identity": f"endpoint:{name.lower()}",
+                    "label": name}
         if not name:
             return None
+    elif not name:
+        return None
     if ctype in ("cryptographic-asset", "crypto"):
-        # identity is the ALGORITHM only — key size/mode/purpose are
-        # comparable attributes (disagreements become conflicts, not
-        # silently-separate identities)
+        # This associates uses of an algorithm; it cannot establish that
+        # two observations describe the same key, device, or deployment.
         return {"kind": "crypto", "identity": f"crypto:{algorithm}",
                 "label": algorithm}
 
-    if ctype == "vendor":
+    if ctype == "vendor" or (ctype == "service" and any(
+            isinstance(p, Mapping) and p.get("name") == "cryptoscan:vendor-id"
+            for p in (component.get("properties") or []))):
+        # An empty-inventory VBOM vendor is serialized as a CycloneDX service.
         return {"kind": "vendor", "identity": f"vendor:{name.lower()}",
                 "label": name}
 
@@ -68,17 +74,17 @@ def canonical_identity(component: Mapping[str, Any]) -> dict[str, str] | None:
                 "label": name}
 
     if ctype == "hardware":
-        model = _norm_name(component.get("model"))
-        hw_id = _norm_name(component.get("hardware_id") or component.get("serial_reference"))
-        if model or hw_id:
-            return {"kind": "hardware",
-                    "identity": f"hardware:{(model or hw_id).lower()}",
-                    "label": model or hw_id}
-        return None
+        # A model groups many devices; prefer the source's reference when present.
+        return {"kind": "hardware",
+                "identity": f"hardware:{(hw_id or model).lower()}",
+                "label": hw_id or model}
 
-    # NBOM-style network component: name is usually host:port
-    if ctype in ("network", "endpoint", "device"):
+    # NBOM listener and device names are separate namespaces.
+    if ctype in ("network", "endpoint"):
         return {"kind": "endpoint", "identity": f"endpoint:{name.lower()}",
+                "label": name}
+    if ctype == "device":
+        return {"kind": "network-device", "identity": f"network-device:{name.lower()}",
                 "label": name}
 
     return None
@@ -163,6 +169,42 @@ def index_bom(bom_kind: str, document: Mapping[str, Any]) -> list[dict[str, Any]
     return rows
 
 
+def compare_members(members: list[dict[str, Any]]) -> tuple[list[dict[str, Any]],
+                                                           list[dict[str, Any]]]:
+    """Compare per-component observations without collapsing rows within a BOM.
+
+    A field is a cross-BOM disagreement only if each reporting BOM has one
+    unambiguous value and those values differ. Mixed values within a BOM
+    remain visible as variation, not an assertion that distinct assets clash.
+    """
+    fields: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for member in members:
+        for field, value in member["values"].items():
+            fields.setdefault(field, {}).setdefault(member["bom"], []).append({
+                "bom": member["bom"], "ref": member["ref"], "value": value,
+            })
+
+    conflicts: list[dict[str, Any]] = []
+    variations: list[dict[str, Any]] = []
+    for field, by_bom in sorted(fields.items()):
+        distinct_by_bom = {bom: {row["value"] for row in rows}
+                           for bom, rows in by_bom.items()}
+        for bom, distinct in sorted(distinct_by_bom.items()):
+            if len(distinct) > 1:
+                variations.append({
+                    "field": field, "bom": bom,
+                    "values": sorted(by_bom[bom], key=lambda row: (row["value"], row["ref"] or "")),
+                })
+        if len(by_bom) > 1 and all(len(values) == 1 for values in distinct_by_bom.values()) \
+                and len(set.union(*distinct_by_bom.values())) > 1:
+            conflicts.append({
+                "field": field,
+                "values": sorted((row for rows in by_bom.values() for row in rows),
+                                 key=lambda row: (row["bom"], row["ref"] or "", row["value"])),
+            })
+    return conflicts, variations
+
+
 def cross_boms(boms: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     """Links + conflicts across every indexed BOM. Pure, no DB."""
     rows: list[dict[str, Any]] = []
@@ -175,32 +217,25 @@ def cross_boms(boms: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
 
     links: list[dict[str, Any]] = []
     conflicts: list[dict[str, Any]] = []
+    variations: list[dict[str, Any]] = []
     for identity, members in sorted(by_identity.items()):
         boms_present = sorted({m["bom"] for m in members})
+        field_conflicts, field_variations = compare_members(members)
+        conflicts.extend({"identity": identity, **entry} for entry in field_conflicts)
+        variations.extend({"identity": identity, **entry} for entry in field_variations)
         if len(boms_present) < 2:
             continue
         links.append({
             "identity": identity,
             "kind": members[0]["kind"],
             "label": members[0]["label"],
+            "relationship": ("algorithm_association" if members[0]["kind"] == "crypto"
+                             else "attribute_association"),
+            "asset_identity_confirmed": False,
             "present_in": [
                 {"bom": m["bom"], "ref": m["ref"]} for m in members],
             "bom_count": len(boms_present),
         })
-        # conflict: same identity, same comparable field, disagreeing values
-        fields: dict[str, dict[str, str]] = {}
-        for member in members:
-            for field, value in member["values"].items():
-                fields.setdefault(field, {})[member["bom"]] = value
-        for field, values in sorted(fields.items()):
-            distinct = set(values.values())
-            if len(distinct) > 1:
-                conflicts.append({
-                    "identity": identity,
-                    "field": field,
-                    "values": [{"bom": bom, "value": value}
-                               for bom, value in sorted(values.items())],
-                })
 
     return {
         "model": "cross-bom/linking-v1",
@@ -210,7 +245,9 @@ def cross_boms(boms: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
         "links": links,
         "conflict_count": len(conflicts),
         "conflicts": conflicts,
-        "note": "identities are canonical (algorithm/name-normalized) and "
-                "conservative; anything not canonically identifiable stays "
-                "unlinked. The single-generator merge remains open (46).",
+        "variation_count": len(variations),
+        "variations": variations,
+        "note": "Canonical keys associate matching algorithms/names, not confirmed "
+                "physical assets. Mixed values within one BOM are variations, "
+                "not cross-BOM conflicts. The single-generator merge remains open (46).",
     }

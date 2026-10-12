@@ -7,6 +7,13 @@ from fastapi.testclient import TestClient
 
 from api.config.settings import get_settings
 from cbom.bom_query import query_boms
+from cbom.cross_bom import cross_boms, index_bom
+from cbom.generator import CbomGenerator
+from cbom.nbom import build_nbom
+from cbom.technology_bom import materialize_technology_bom
+from universal_vendor.hardware.hbom import HbomGenerator
+from universal_vendor.hardware.models import HardwareObservation
+from vendor_intel.vbom import VbomGenerator
 
 
 def _boms():
@@ -35,6 +42,117 @@ def _boms():
              "risk_level": "HIGH"},
         ]},
     }
+
+
+def test_nbom_certificate_and_suite_names_are_not_algorithm_links():
+    nbom = build_nbom([{
+        "host": "example.test", "port": 443, "tls_version": "TLS 1.3",
+        "cipher_suite": "TLS_AES_256_GCM_SHA384",
+        "certificate": {"subject": "AES", "issuer": "Example CA"},
+    }])
+    indexed = index_bom("nbom", nbom)
+    assert not any(row["kind"] == "crypto" for row in indexed)
+    assert any(row["identity"] == "endpoint:example.test:443" for row in indexed)
+    cbom = CbomGenerator().from_records([{"id": "c1", "algorithm": "AES"}])
+    assert cross_boms({"cbom": cbom, "nbom": nbom})["linked_identities"] == 0
+
+
+def test_techbom_hardware_rows_without_names_remain_indexable():
+    techbom = materialize_technology_bom({
+        "hardware": [{"id": "h1", "asset_id": "board-001", "model": "X100"}],
+    })
+    hardware = [row for row in index_bom("techbom", techbom)
+                if row["kind"] == "hardware"]
+    assert len(hardware) == 1
+    assert hardware[0]["ref"] == "hw:board-001"
+    assert hardware[0]["identity"] == "hardware:board-001"
+    hbom = HbomGenerator()
+    hbom.add(HardwareObservation(asset_id="board-001", manufacturer="Acme", model="X100"))
+    result = cross_boms({"hbom": hbom.to_cyclonedx(), "techbom": techbom})
+    assert result["linked_identities"] == 1
+    assert {(m["bom"], m["ref"]) for m in result["links"][0]["present_in"]} == {
+        ("hbom", "hw:board-001"), ("techbom", "hw:board-001")}
+    assert result["links"][0]["asset_identity_confirmed"] is False
+
+
+def test_vbom_empty_inventory_service_is_vendor_not_application():
+    vbom = VbomGenerator()
+    vbom.add_vendor({"id": "v1", "name": "Acme"})
+    techbom = materialize_technology_bom({"vendors": [{"name": "Acme"}]})
+    result = cross_boms({"vbom": vbom.to_cyclonedx(), "techbom": techbom})
+    assert [(link["identity"], link["kind"]) for link in result["links"]] == [
+        ("vendor:acme", "vendor")]
+
+
+def test_generated_aes_variation_is_not_cross_bom_disagreement():
+    # Both generators consume inventory-shaped records; bom-refs are distinct.
+    # AES is an algorithm association, not proof of the same key or device.
+    cbom = CbomGenerator().from_records([
+        {"id": "c128", "algorithm": "AES", "key_size": 128},
+        {"id": "c256", "algorithm": "AES", "key_size": 256},
+    ])
+    techbom = materialize_technology_bom({
+        "crypto": [{"id": "t256", "algorithm": "AES", "key_size": 256}],
+    })
+    boms = {"cbom": cbom, "techbom": techbom}
+    result = cross_boms(boms)
+    link = result["links"][0]
+    assert link["identity"] == "crypto:AES"
+    assert link["relationship"] == "algorithm_association"
+    assert link["asset_identity_confirmed"] is False
+    assert {(m["bom"], m["ref"]) for m in link["present_in"]} == {
+        ("cbom", "c128"), ("cbom", "c256"), ("techbom", "crypto:t256:")}
+    assert result["conflicts"] == []
+    assert result["conflict_count"] == 0
+    assert result["variations"] == [{
+        "identity": "crypto:AES", "field": "key size", "bom": "cbom",
+        "values": [
+            {"bom": "cbom", "ref": "c128", "value": "128"},
+            {"bom": "cbom", "ref": "c256", "value": "256"},
+        ],
+    }]
+
+    dossier = query_boms(boms, identity="crypto:AES")["matches"][0]
+    assert dossier["relationship"] == "algorithm_association"
+    assert dossier["asset_identity_confirmed"] is False
+    assert dossier["conflicts"] == []
+    assert dossier["variations"] == result["variations"]
+    assert query_boms(boms, conflicts_only=True)["matches"] == []
+
+
+def test_unambiguous_cross_bom_disagreement_keeps_each_ref():
+    cbom = CbomGenerator().from_records([
+        {"id": "c1", "algorithm": "AES", "key_size": 128},
+        {"id": "c2", "algorithm": "AES", "key_size": 128},
+    ])
+    techbom = materialize_technology_bom({
+        "crypto": [{"id": "t256", "algorithm": "AES", "key_size": 256}],
+    })
+    boms = {"cbom": cbom, "techbom": techbom}
+    assert cross_boms(boms)["variations"] == []
+    conflicts = cross_boms(boms)["conflicts"]
+    assert conflicts == [{
+        "identity": "crypto:AES", "field": "key size",
+        "values": [
+            {"bom": "cbom", "ref": "c1", "value": "128"},
+            {"bom": "cbom", "ref": "c2", "value": "128"},
+            {"bom": "techbom", "ref": "crypto:t256:", "value": "256"},
+        ],
+    }]
+    assert query_boms(boms, conflicts_only=True)["matches"][0]["conflicts"] == [
+        {k: v for k, v in conflicts[0].items() if k != "identity"}
+    ]
+
+
+def test_single_bom_variation_is_visible_without_a_link_or_conflict():
+    cbom = CbomGenerator().from_records([
+        {"id": "c128", "algorithm": "AES", "key_size": 128},
+        {"id": "c256", "algorithm": "AES", "key_size": 256},
+    ])
+    result = query_boms({"cbom": cbom})
+    assert result["matches"][0]["linked"] is False
+    assert result["matches"][0]["conflicts"] == []
+    assert result["matches"][0]["variations"][0]["field"] == "key size"
 
 
 def test_query_by_identity_returns_the_full_dossier():
@@ -166,4 +284,39 @@ def test_query_endpoint_over_live_inventory(sqlite_app):
     r = client.get("/api/v1/cbom/query", headers=admin,
                    params={"kind": "crypto", "unlinked_only": "true"})
     assert r.status_code == 200
-    assert r.json()["identities_matching"] == 0  # RSA is linked
+    assert r.json()["identities_matching"] == 0  # RSA is associated across BOMs
+
+
+def test_live_endpoints_distinguish_inventory_variation(sqlite_app):
+    client, db_url = sqlite_app
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import db.models  # noqa: F401
+    from db.models.crypto_asset import CryptoAsset
+
+    eng = create_engine(db_url)
+    session = sessionmaker(bind=eng)()
+    session.add_all([
+        CryptoAsset(algorithm="AES", key_size=128, file_path="a.py", line_number=1),
+        CryptoAsset(algorithm="AES", key_size=256, file_path="b.py", line_number=2),
+    ])
+    session.commit()
+    session.close()
+    eng.dispose()
+
+    admin = _login(client)
+    links = client.get("/api/v1/cbom/cross-links", headers=admin)
+    assert links.status_code == 200, links.text
+    assert links.json()["conflict_count"] == 0
+    assert links.json()["variation_count"] == 2  # CBOM and TechBOM each saw both assets
+    assert links.json()["links"][0]["relationship"] == "algorithm_association"
+
+    query = client.get("/api/v1/cbom/query", headers=admin,
+                       params={"identity": "crypto:AES"})
+    assert query.status_code == 200, query.text
+    dossier = query.json()["matches"][0]
+    assert dossier["conflicts"] == []
+    assert {row["value"] for variation in dossier["variations"]
+            for row in variation["values"]} == {"128", "256"}
+    assert {variation["bom"] for variation in dossier["variations"]} == {"cbom", "techbom"}

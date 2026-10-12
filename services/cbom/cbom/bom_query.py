@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from typing import Any, Mapping
 
-from cbom.cross_bom import _iter_components, canonical_identity, _comparable_values
+from cbom.cross_bom import compare_members, index_bom
 
 
 def _norm(value: Any) -> str:
@@ -31,20 +31,7 @@ def _compact(value: Any) -> str:
 def _index(boms: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for bom_kind, document in boms.items():
-        for component in _iter_components(document or {}):
-            if not isinstance(component, Mapping):
-                continue
-            ident = canonical_identity(component)
-            if ident is None:
-                continue
-            rows.append({
-                "bom": bom_kind,
-                "kind": ident["kind"],
-                "identity": ident["identity"],
-                "label": ident["label"],
-                "ref": str(component.get("bom-ref") or "").strip() or None,
-                "values": _comparable_values(component),
-            })
+        rows.extend(index_bom(bom_kind, document or {}))
     return rows
 
 
@@ -99,17 +86,8 @@ def query_boms(
         if unlinked_only and linked:
             continue
 
-        # per-identity conflicts (same field, disagreeing non-empty values)
-        fields: dict[str, dict[str, str]] = {}
-        for member in members:
-            for field, value in member["values"].items():
-                fields.setdefault(field, {})[member["bom"]] = value
-        conflicts = [
-            {"field": field,
-             "values": [{"bom": b, "value": v} for b, v in sorted(values.items())]}
-            for field, values in sorted(fields.items())
-            if len(set(values.values())) > 1
-        ]
+        conflicts, variations = compare_members(members)
+        variations = [{"identity": ident, **entry} for entry in variations]
 
         if conflicts_only and not conflicts:
             continue
@@ -121,9 +99,13 @@ def query_boms(
             "boms": boms_present,
             "bom_count": len(boms_present),
             "linked": linked,
+            "relationship": ("algorithm_association" if members[0]["kind"] == "crypto"
+                             else "attribute_association"),
+            "asset_identity_confirmed": False,
             "present_in": [{"bom": m["bom"], "ref": m["ref"],
                             "values": m["values"]} for m in members],
             "conflicts": conflicts,
+            "variations": variations,
         })
 
     response: dict[str, Any] = {
@@ -142,9 +124,10 @@ def query_boms(
         "identities_matching": len(matches),
         "matches": matches,
         "conflict_count": sum(len(m["conflicts"]) for m in matches),
-        "note": "identities are the canonical ones from cross_bom (round "
-                "36); unlinked identities exist in exactly one BOM — a "
-                "coverage gap, not an error",
+        "variation_count": sum(len(m["variations"]) for m in matches),
+        "note": "Canonical keys associate matching algorithms/names, not confirmed "
+                "physical assets. Unlinked identities exist in exactly one BOM; "
+                "mixed values within one BOM are variations, not conflicts.",
     }
     if unknown_bom:
         response["identities_matching"] = 0

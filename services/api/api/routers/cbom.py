@@ -300,9 +300,10 @@ def cbom_cross_links(
     """Cross-BOM links + conflicts over the live inventory (46, round 36).
 
     Builds the CBOM (generator), the TechBOM (materialized layers) and
-    the VBOM from the same database, then links components by canonical
-    identity and reports disagreements. The single-generator merge stays
-    open; this surface links the generators' outputs as they are.
+    the VBOM from the same database, then associates components by canonical
+    grouping key (e.g. algorithm, not a proven physical asset ID). Reports
+    intra-BOM variation separately from unambiguous cross-BOM disagreements.
+    The single-generator merge stays open.
     """
     from cbom.cross_bom import cross_boms
 
@@ -315,12 +316,12 @@ def cbom_cross_links(
 @router.get("/query")
 def cbom_query(
     identity: str | None = Query(None, description="Canonical identity, e.g. crypto:RSA-2048"),
-    kind: str | None = Query(None, description="Component kind: crypto, vendor, application, hardware, endpoint"),
+    kind: str | None = Query(None, description="Component kind: crypto, vendor, application, hardware, endpoint, network-device"),
     bom: str | None = Query(None, description="Restrict to one BOM: cbom, techbom, vbom"),
     algorithm: str | None = Query(None, description="Crypto components by algorithm (case-insensitive)"),
     linked_only: bool = Query(False, description="Only identities present in 2+ BOMs"),
     unlinked_only: bool = Query(False, description="Only identities present in exactly 1 BOM (coverage gaps)"),
-    conflicts_only: bool = Query(False, description="Only disagreeing fields"),
+    conflicts_only: bool = Query(False, description="Only unambiguous cross-BOM value disagreements"),
     limit: int = Query(2000, ge=1, le=5000),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
@@ -330,8 +331,9 @@ def cbom_query(
     One question, answered across the CBOM generator output, the TechBOM
     layers and the VBOM: where does an identity appear (with each BOM's
     own ref), what do the BOMs say about it, where do they disagree, and
-    which identities exist in only one BOM. Identities are the same
-    canonical ones /cbom/cross-links links by.
+    which grouping keys exist in only one BOM. Matching an algorithm is an
+    association, not proof of a shared physical asset. Variation within a BOM
+    is separate from unambiguous cross-BOM disagreement.
     """
     from cbom.bom_query import query_boms
 
