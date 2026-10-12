@@ -25,6 +25,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from db.models.base import Base
+from db.models.scan import Scan
 from db.models.scan_job import ScanJob
 
 
@@ -45,6 +46,30 @@ def shared_db(tmp_path, monkeypatch):
     monkeypatch.setattr(session_module, "SessionLocal", Factory, raising=False)
     yield Factory
     engine.dispose()
+
+
+@pytest.fixture
+def postgres_db(monkeypatch):
+    """Fresh isolated database; skip rather than substituting SQLite."""
+    from db.testing import drop_engine, estate_engine
+
+    engine = estate_engine("postgresql")
+    if engine is None:
+        pytest.skip("no PostgreSQL test server available")
+    # If telemetry ever waits on the pipeline's job-row lock, fail promptly.
+    # This database was created by estate_engine, never the configured live DB.
+    url = engine.url
+    engine.dispose()
+    engine = create_engine(url, connect_args={"options": "-c lock_timeout=1000"})
+    try:
+        Base.metadata.create_all(engine)
+        factory = sessionmaker(bind=engine)
+        import db.connection.session as session_module
+
+        monkeypatch.setattr(session_module, "SessionLocal", factory, raising=False)
+        yield factory
+    finally:
+        drop_engine(engine)
 
 
 def _queued_job(factory) -> str:
@@ -82,6 +107,34 @@ def test_running_status_is_visible_from_another_connection(shared_db):
     assert job.started_at is not None, "started_at never set, so elapsed time is unknowable"
     reader.close()
     pipeline_session.rollback()
+    pipeline_session.close()
+
+
+def test_running_stage_updates_preserve_initial_started_at(shared_db, monkeypatch):
+    """Elapsed time starts with the first RUNNING transition, not the last stage."""
+    from db.repositories import job_repository
+
+    job_id = _queued_job(shared_db)
+    started = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    later = datetime(2026, 1, 2, tzinfo=timezone.utc)
+    times = iter((started, later, later))
+
+    class Clock:
+        @staticmethod
+        def now(_timezone):
+            return next(times)
+
+    monkeypatch.setattr(job_repository, "datetime", Clock)
+    pipeline_session = shared_db()
+    runner = _runner()
+    for stage in ("clone", "scan", "gate"):
+        runner._set_job_status(
+            pipeline_session, job_id, "RUNNING", progress={"current_stage": stage},
+        )
+        with shared_db() as reader:
+            job = reader.get(ScanJob, job_id)
+            assert job.started_at.replace(tzinfo=timezone.utc) == started
+            assert job.progress["current_stage"] == stage
     pipeline_session.close()
 
 
@@ -173,7 +226,7 @@ def test_status_is_not_lost_when_a_second_writer_is_blocked(shared_db):
     pipeline_session.close()
 
 
-def test_falls_back_to_the_caller_session_for_an_uncommitted_job(shared_db):
+def test_falls_back_to_the_caller_session_for_an_uncommitted_job(shared_db, monkeypatch):
     """In-process callers create the job in their own open transaction.
 
     A fresh connection cannot see that row, so the update must fall back to
@@ -191,8 +244,111 @@ def test_falls_back_to_the_caller_session_for_an_uncommitted_job(shared_db):
     ))
     pipeline_session.flush()   # visible only inside this transaction
 
-    _runner()._set_job_status(pipeline_session, job_id, "RUNNING")
+    runner = _runner()
+    runner._set_job_status(pipeline_session, job_id, "RUNNING")
+    assert job_id in pipeline_session.info["deferred_job_ids"]
 
-    assert pipeline_session.query(ScanJob).filter_by(id=job_id).one().status == "RUNNING"
+    import db.connection.session as session_module
+
+    def no_second_connection():
+        raise AssertionError("uncommitted job retried on a new connection")
+
+    monkeypatch.setattr(session_module, "SessionLocal", no_second_connection)
+    runner._set_job_status(pipeline_session, job_id, "RUNNING", progress={"current_stage": "scan"})
+    job = pipeline_session.query(ScanJob).filter_by(id=job_id).one()
+    assert job.status == "RUNNING"
+    assert job.progress["current_stage"] == "scan"
     pipeline_session.rollback()
     pipeline_session.close()
+
+
+def test_postgres_stage_progress_does_not_lock_the_job_row(postgres_db):
+    """A flushed scan/evidence transaction must not block live job telemetry."""
+    from worker.pipeline.pipeline_runner import PipelineContext
+
+    job_id = _queued_job(postgres_db)
+    scan_id = str(uuid.uuid4())
+    pipeline_session = postgres_db()
+    pipeline_session.add(Scan(
+        id=scan_id, scan_start=datetime.now(timezone.utc),
+        target_location="local:///tmp/example", status="RUNNING",
+    ))
+    pipeline_session.flush()  # scan exists only in this open transaction
+    ctx = PipelineContext(
+        job_id=job_id, target_repo="local:///tmp/example", target_branch="main",
+        triggered_by="test", workspace_dir="/tmp", scan_id=scan_id,
+        scan_persisted=True,
+    )
+    runner = _runner()
+    try:
+        for stage in ("normalize", "policy", "gate"):
+            runner._advance(pipeline_session, ctx, stage)
+            with postgres_db() as reader:
+                job = reader.get(ScanJob, job_id)
+                assert job.status == "RUNNING"
+                assert job.progress["current_stage"] == stage
+                assert job.scan_id is None
+                assert "scan_id" not in job.progress
+                assert reader.get(Scan, scan_id) is None
+        pipeline_session.commit()
+        ctx.scan_committed = True
+        runner._advance(pipeline_session, ctx, "alert", status="COMPLETED")
+        with postgres_db() as reader:
+            job = reader.get(ScanJob, job_id)
+            assert job.status == "COMPLETED"
+            assert job.scan_id == scan_id
+            assert reader.get(Scan, scan_id) is not None
+    finally:
+        pipeline_session.rollback()
+        pipeline_session.close()
+
+
+def test_uncommitted_job_links_scan_after_caller_commit(shared_db):
+    """In-process jobs cannot be seen by telemetry until the caller commits."""
+    from worker.pipeline.pipeline_runner import PipelineContext
+
+    job_id, scan_id = str(uuid.uuid4()), str(uuid.uuid4())
+    pipeline_session = shared_db()
+    pipeline_session.add(ScanJob(
+        id=job_id, target_repo="local:///tmp/example", target_branch="main",
+        triggered_by="test", status="QUEUED",
+    ))
+    pipeline_session.add(Scan(
+        id=scan_id, scan_start=datetime.now(timezone.utc),
+        target_location="local:///tmp/example", status="COMPLETED",
+    ))
+    pipeline_session.flush()
+    ctx = PipelineContext(
+        job_id=job_id, target_repo="local:///tmp/example", target_branch="main",
+        triggered_by="test", workspace_dir="/tmp", scan_id=scan_id,
+    )
+    runner = _runner()
+    runner._advance(pipeline_session, ctx, "load")
+    runner._advance(pipeline_session, ctx, "alert", status="COMPLETED", defer_to_session=True)
+    assert pipeline_session.get(ScanJob, job_id).scan_id is None
+    runner._link_scan_after_commit(pipeline_session, job_id, scan_id)
+    pipeline_session.commit()
+    with shared_db() as reader:
+        job = reader.get(ScanJob, job_id)
+        assert job.status == "COMPLETED"
+        assert job.scan_id == scan_id
+    pipeline_session.close()
+
+
+def test_failure_does_not_expose_sql_in_job_status(shared_db, tmp_path):
+    from unittest.mock import patch
+    from worker.pipeline.pipeline_runner import PipelineRunner
+
+    job_id = _queued_job(shared_db)
+    raw_error = "[SQL: SELECT secret FROM users] [parameters: ('super-secret',)]"
+    runner = _runner()
+    with patch.object(PipelineRunner, "_clone", side_effect=RuntimeError(raw_error)), \
+            patch.object(PipelineRunner, "_post_github"):
+        with pytest.raises(RuntimeError, match="Pipeline failed at stage init") as raised:
+            runner.run(job_id=job_id, target_repo="local:///tmp/example", workspace=tmp_path)
+    assert raw_error not in str(raised.value)
+    with shared_db() as reader:
+        job = reader.get(ScanJob, job_id)
+        assert job.status == "FAILED"
+        assert job.error_message == "Pipeline failed at stage init"
+        assert raw_error not in str(job.progress)

@@ -103,7 +103,9 @@ class JobRepository(BaseRepository[ScanJob]):
 
         values: dict = {"status": status, "version": (current.version or 0) + 1}
         now = datetime.now(timezone.utc)
-        if status == "RUNNING":
+        if status == "RUNNING" and current.started_at is None:
+            # Stage progress reports are RUNNING -> RUNNING transitions; keep
+            # the original start time so elapsed duration remains meaningful.
             values["started_at"] = now
         if status in self.TERMINAL_STATUSES:
             values["completed_at"] = now

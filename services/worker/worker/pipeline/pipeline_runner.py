@@ -72,6 +72,7 @@ class PipelineContext:
             self.scan_meta["trace_id"] = self.trace_id
     system_id: str | None = None
     scan_persisted: bool = False
+    scan_committed: bool = False
 
     def update(self, **kwargs) -> "PipelineContext":
         for key, value in kwargs.items():
@@ -266,34 +267,41 @@ class PipelineRunner:
             self._alert(ctx)
             if owns_session:
                 session.commit()
-            else:
-                session.flush()
-            self._advance(session, ctx, "alert", status="COMPLETED")
-            self._post_github(ctx, "success", f"Scan completed ({len(ctx.findings)} findings)")
-            if owns_session:
+                ctx.scan_committed = True
+                self._advance(session, ctx, "alert", status="COMPLETED")
                 session.commit()
+            else:
+                # The caller owns this transaction. Keep the terminal status
+                # atomic with its scan, then link the FK only after it commits.
+                session.flush()
+                self._advance(session, ctx, "alert", status="COMPLETED", defer_to_session=True)
+                self._link_scan_after_commit(session, ctx.job_id, ctx.scan_id)
+            self._post_github(ctx, "success", f"Scan completed ({len(ctx.findings)} findings)")
             return ctx.scan_id
         except Exception as exc:
             logger.exception("pipeline_failed", extra={"job_id": job_id, "stage": stage})
-            self._stamp_coverage_failed(ctx, str(exc))
+            # Job status, progress logs and coverage are API-visible. Preserve
+            # the full exception in worker logs, not its SQL/parameters there.
+            public_error = f"Pipeline failed at stage {stage}"
+            self._stamp_coverage_failed(ctx, public_error)
             if owns_session:
                 session.rollback()
             try:
-                self._advance(session, ctx, stage, status="FAILED", message=str(exc))
-                self._post_github(ctx, "failure", f"Pipeline failed at {stage}")
+                self._advance(session, ctx, stage, status="FAILED", message=public_error)
+                self._post_github(ctx, "failure", public_error)
                 if owns_session:
                     session.commit()
             except Exception:
                 if owns_session:
                     session.rollback()
-            raise RuntimeError(f"Pipeline failed at stage {stage}: {exc}") from exc
+            raise RuntimeError(public_error) from exc
         finally:
             if owns_session:
                 session.close()
             if settings.CLEANUP_WORKSPACE and workspace is None and workspace_dir is None:
                 self.workspaces.cleanup(workspace_path)
 
-    def _set_job_status(self, session, job_id: str, status: str, **kwargs) -> None:
+    def _set_job_status(self, session, job_id: str, status: str, *, defer_to_session: bool = False, **kwargs) -> None:
         """Publish job status/progress so it is visible WHILE the job runs.
 
         BaseRepository.update only flushes, and run() commits its own session
@@ -308,22 +316,22 @@ class PipelineRunner:
         also commit the half-built scan and evidence rows it is carrying, and
         the evidence load is deliberately atomic.
 
-        So status, progress and error_message travel on their own short-lived
-        session and commit immediately: they are operational telemetry about
-        the job, not part of the scan's data transaction. scan_id is the one
-        exception. It is a foreign key to scans.id, so it cannot be written
-        before the scan row commits and stays on the pipeline's transaction.
+        So RUNNING status and progress travel on their own short-lived
+        session and commit immediately. Never write scan_id through the
+        pipeline session during RUNNING: that locks the job row against all
+        later telemetry updates until the scan transaction commits. A final
+        scan_id is sent only after the scan commits (or linked after the
+        caller's transaction commits when the session is caller-owned).
         """
         from db.repositories.job_repository import JobRepository
 
-        scan_id = kwargs.pop("scan_id", None)
-        if scan_id is not None:
-            # FK-bound: must land in the same transaction as the scan row.
-            try:
-                JobRepository(session).update(job_id, {"scan_id": scan_id})
-            except Exception:
-                logger.warning("job_scan_id_update_failed",
-                               extra={"job_id": job_id, "scan_id": scan_id})
+        if defer_to_session or job_id in session.info.get("deferred_job_ids", set()):
+            # Caller-owned transactions cannot publish a completed scan until
+            # their caller commits. A prior fallback has already written this
+            # row in the pipeline transaction; trying telemetry again would
+            # wait on our own row lock (or SQLite's sole writer lock).
+            JobRepository(session).update_status(job_id, status, **kwargs)
+            return
 
         from db.connection.session import SessionLocal
 
@@ -340,7 +348,8 @@ class PipelineRunner:
                 # visibility case must keep working, and a genuine conflict
                 # is refused again there, harmlessly.
                 telemetry.rollback()
-                JobRepository(session).update_status(job_id, status, **kwargs)
+                if JobRepository(session).update_status(job_id, status, **kwargs) is not None:
+                    session.info.setdefault("deferred_job_ids", set()).add(job_id)
             else:
                 telemetry.commit()
         except Exception:
@@ -359,7 +368,8 @@ class PipelineRunner:
             # backend with concurrent writers the fast path above wins and
             # progress is live.
             try:
-                JobRepository(session).update_status(job_id, status, **kwargs)
+                if JobRepository(session).update_status(job_id, status, **kwargs) is not None:
+                    session.info.setdefault("deferred_job_ids", set()).add(job_id)
                 logger.debug("job_status_deferred_to_pipeline_session",
                              extra={"job_id": job_id, "status": status})
             except Exception:
@@ -372,6 +382,31 @@ class PipelineRunner:
             if telemetry is not None:
                 telemetry.close()
 
+    @staticmethod
+    def _link_scan_after_commit(session, job_id: str, scan_id: str) -> None:
+        """Link a caller-owned scan only after its transaction makes the FK valid."""
+        from sqlalchemy import event
+        from sqlalchemy.orm import Session
+        from db.models.scan_job import ScanJob
+
+        bind = session.get_bind()
+
+        def link(_session) -> None:
+            try:
+                with Session(bind=bind) as telemetry:
+                    # Do not resurrect/relink a job another worker has failed
+                    # or already linked after the caller's commit.
+                    telemetry.query(ScanJob).filter(
+                        ScanJob.id == job_id,
+                        ScanJob.status == "COMPLETED",
+                        ScanJob.scan_id.is_(None),
+                    ).update({"scan_id": scan_id, "version": ScanJob.version + 1}, synchronize_session=False)
+                    telemetry.commit()
+            except Exception:
+                logger.warning("job_scan_id_update_failed", extra={"job_id": job_id, "scan_id": scan_id}, exc_info=True)
+
+        event.listen(session, "after_commit", link, once=True)
+
     def _advance(
         self,
         session,
@@ -381,6 +416,7 @@ class PipelineRunner:
         status: str = "RUNNING",
         message: str = "",
         extra: dict[str, Any] | None = None,
+        defer_to_session: bool = False,
     ) -> None:
         from worker.pipeline.progress import build_progress, utcnow
 
@@ -395,13 +431,16 @@ class PipelineRunner:
             entry["extra"] = extra
         ctx.logs.append(entry)
         self._publish_event(ctx, stage, status, message, extra)
-        progress = build_progress(current_stage=stage, status=status, logs=ctx.logs, extra={"scan_id": ctx.scan_id})
+        progress = build_progress(
+            current_stage=stage, status=status, logs=ctx.logs,
+            extra={"scan_id": ctx.scan_id} if ctx.scan_committed else None,
+        )
         kwargs: dict[str, Any] = {"progress": progress}
-        if ctx.scan_id and ctx.scan_persisted:
+        if status == "COMPLETED" and ctx.scan_committed:
             kwargs["scan_id"] = ctx.scan_id
         if status == "FAILED" and message:
             kwargs["error_message"] = message
-        self._set_job_status(session, ctx.job_id, status, **kwargs)
+        self._set_job_status(session, ctx.job_id, status, defer_to_session=defer_to_session, **kwargs)
 
     def _publish_event(
         self,
@@ -428,7 +467,7 @@ class PipelineRunner:
                 event_type,
                 {
                     "job_id": ctx.job_id,
-                    "scan_id": ctx.scan_id,
+                    "scan_id": ctx.scan_id if ctx.scan_committed else None,
                     "stage": stage,
                     "status": status,
                     "message": message or stage,
