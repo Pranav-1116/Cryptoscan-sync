@@ -89,13 +89,17 @@ def iter_config_files(root: Path):
             yield path
 
 
-def scan_config_tree(root_path: Path | str, repo_root: Path | str | None = None) -> list[RawFinding]:
+def scan_config_tree(
+    root_path: Path | str, repo_root: Path | str | None = None, *, skip_paths: set[Path] | None = None,
+) -> list[RawFinding]:
     root = Path(root_path)
     repo = Path(repo_root) if repo_root else root
     if not root.exists():
         return []
     findings: list[RawFinding] = []
     for path in iter_config_files(root):
+        if skip_paths is not None and path in skip_paths:
+            continue
         findings.extend(parse_config_file(path, repo))
     return findings
 

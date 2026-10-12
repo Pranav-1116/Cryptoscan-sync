@@ -128,6 +128,7 @@ class Scanner:
         source_files = list(self.file_discovery.discover(path))
         findings: list[RawFinding] = []
         parse_errors: list[dict] = []
+        scanned_paths: set[Path] = set()
 
         git_ctx = None
         if git_meta:
@@ -147,6 +148,7 @@ class Scanner:
                 logger.warning("parse_error", extra={"file": str(source_file), "error": error})
                 parse_errors.append({"file": str(source_file), "error": error})
                 continue
+            scanned_paths.add(source_file)
             if git_ctx:
                 for finding in file_findings:
                     finding.git_context = git_ctx
@@ -158,7 +160,9 @@ class Scanner:
         try:
             from scanner.parsers.config_crypto_parser import scan_config_tree
 
-            config_findings = scan_config_tree(path, repo_root=path)
+            # The tree pass is a fallback for config paths discovery missed; files already
+            # dispatched by scan_file (including named configs and AT-TLS) must not be parsed twice.
+            config_findings = scan_config_tree(path, repo_root=path, skip_paths=scanned_paths)
             if git_ctx:
                 for finding in config_findings:
                     finding.git_context = git_ctx

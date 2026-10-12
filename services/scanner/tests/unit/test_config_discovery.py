@@ -3,6 +3,7 @@ from pathlib import Path
 
 from scanner.core.file_discovery import FileDiscovery, is_named_config_file
 from scanner.core.scanner import Scanner
+from scanner.registry.language_scanners import scan_file
 
 
 def test_named_config_files_recognised():
@@ -32,6 +33,69 @@ def test_scanner_reports_config_crypto(tmp_path: Path):
     assert "TLS-CERT-NONE" in algos
     assert "JWT" in algos
     assert {"3DES", "AES", "HMAC", "MD5"} <= algos
+
+
+def test_config_tree_does_not_duplicate_discovered_file(tmp_path: Path):
+    config = tmp_path / "site.conf"
+    config.write_text("ssl_protocols TLSv1;\n")
+    expected = scan_file(config, tmp_path)
+    assert len(expected) == 1
+
+    result = Scanner().scan(tmp_path)
+    assert [(f.source.file_path, f.source.line_number, f.crypto.algorithm) for f in result.findings] == [
+        ("site.conf", 1, "TLS1.0")
+    ]
+    assert result.statistics.files_scanned == 1
+    assert result.statistics.total_findings == 1
+    assert result.statistics.high_confidence + result.statistics.medium_confidence + result.statistics.low_confidence == 1
+    assert result.statistics.files_with_crypto == 1
+
+
+def test_named_configs_keep_first_pass_findings(tmp_path: Path):
+    dockerfile = tmp_path / "Dockerfile"
+    dockerfile.write_text("ssl_protocols TLSv1;\n")
+    sshd = tmp_path / "sshd_config"
+    sshd.write_text("Ciphers 3des-cbc\n")
+    expected = {p.name: scan_file(p, tmp_path) for p in (dockerfile, sshd)}
+    assert all(expected.values())
+
+    result = Scanner().scan(tmp_path)
+    assert result.statistics.files_scanned == 2
+    assert result.statistics.total_findings == sum(map(len, expected.values()))
+    for name, first_pass in expected.items():
+        assert [(f.source.line_number, f.crypto.algorithm, f.scanner_id) for f in result.findings
+                if f.source.file_path == name] == [
+            (f.source.line_number, f.crypto.algorithm, f.scanner_id) for f in first_pass
+        ]
+
+
+def test_attls_config_keeps_special_pass_without_config_duplicates(tmp_path: Path):
+    policy = tmp_path / "TTLS.conf"
+    policy.write_text("TTLSRule MQ\n{\n  V3CipherSuites TLS_RSA_WITH_3DES_EDE_CBC_SHA\n}\n")
+    expected = scan_file(policy, tmp_path)
+    assert {"TLS", "3DES", "RSA", "SHA-1"} <= {f.crypto.algorithm for f in expected}
+
+    result = Scanner().scan(tmp_path)
+    assert [(f.source.line_number, f.crypto.algorithm, f.scanner_id) for f in result.findings] == [
+        (f.source.line_number, f.crypto.algorithm, f.scanner_id) for f in expected
+    ]
+    assert result.statistics.total_findings == len(expected)
+
+
+def test_config_tree_fallback_and_regular_source(tmp_path: Path):
+    config = tmp_path / "undiscovered.yml"
+    config.write_text("ssl_protocols TLSv1.2;\n")
+    source = tmp_path / "app.py"
+    source.write_text("import hashlib\nhashlib.md5(b'payload')\n")
+    scanner = Scanner()
+    scanner.file_discovery = FileDiscovery(extensions=(".py",))
+    result = scanner.scan(tmp_path)
+
+    assert result.statistics.files_scanned == 1
+    assert result.statistics.total_findings == 2
+    assert {(f.source.file_path, f.crypto.algorithm) for f in result.findings} == {
+        ("undiscovered.yml", "TLS1.2"), ("app.py", "MD5")
+    }
 
 
 def test_templated_nginx_config_is_scanned_and_lines_are_exact(tmp_path):
