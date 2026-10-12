@@ -17,6 +17,7 @@ from sqlalchemy.pool import StaticPool
 from api.dependencies import get_current_user, get_db_session
 from api.main import create_app
 from db.connection.session import Base
+from db.models.hardware_live import HardwareAsset
 from db.models.network_scan_run import NetworkScanRun
 
 API = "/api/v1/cbom/nbom"
@@ -142,3 +143,63 @@ def test_migration_priority_ranks_the_shared_certificate_first(ctx):
     top = client.get(API, headers=AUTH).json()["summary"]["migration_priority"][0]
     assert top["worst_severity"] == "critical"
     assert top["affected_count"] >= 2
+
+
+def test_cross_bom_empty_estate_reports_missing_sources(ctx):
+    client, _ = ctx
+    for path in ("/api/v1/cbom/cross-links", "/api/v1/cbom/query"):
+        response = client.get(path, headers=AUTH)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["live"] is True and body["limit"] == 2000
+        assert body["coverage"]["nbom"] == {
+            "status": "absent", "source": "network_scan_runs.result.probes",
+            "endpoints": 0, "components": 0,
+        }
+        assert body["coverage"]["hbom"]["status"] == "absent"
+        assert body["coverage"]["hbom"]["independent_generator"] is False
+        assert "nbom" not in body["boms"] and "hbom" not in body["boms"]
+        assert {"cbom", "techbom", "vbom"} <= set(body["boms"])
+        assert body.get("links", body.get("matches")) == []
+
+
+def test_cross_bom_uses_persisted_network_and_hardware_inventory(ctx):
+    client, session = ctx
+    _seed(session, WEAK_PROBE)
+    session.add(HardwareAsset(asset_id="edge-hsm-01", manufacturer="Example", model="HSM-1",
+                              device_type="hsm", risk_level="HIGH"))
+    session.commit()
+
+    links_response = client.get("/api/v1/cbom/cross-links", headers=AUTH)
+    assert links_response.status_code == 200, links_response.text
+    links = links_response.json()
+    assert links["coverage"]["nbom"]["status"] == "present"
+    assert links["coverage"]["nbom"]["endpoints"] == 1
+    assert links["coverage"]["hbom"]["status"] == "present"
+    assert links["coverage"]["hbom"]["source"] == "technology-bom.layers.hbom (hardware_assets)"
+    assert {"nbom", "hbom"} <= set(links["boms"])
+    hw = next(link for link in links["links"] if link["identity"] == "hardware:edge-hsm-01")
+    assert {part["bom"] for part in hw["present_in"]} == {"hbom", "techbom"}
+    assert hw["relationship"] == "attribute_association"
+    assert hw["asset_identity_confirmed"] is False
+
+    nbom_response = client.get("/api/v1/cbom/query", params={"bom": "nbom", "kind": "endpoint"},
+                               headers=AUTH)
+    assert nbom_response.status_code == 200, nbom_response.text
+    nbom = nbom_response.json()
+    assert nbom["identities_matching"] == 1
+    endpoint = nbom["matches"][0]
+    assert endpoint["identity"] == "endpoint:api.bank.ae:443"
+    assert endpoint["present_in"][0]["ref"].startswith("endpoint:")
+    assert endpoint["boms"] == ["nbom"]
+    assert endpoint["asset_identity_confirmed"] is False
+    assert endpoint["linked"] is False
+
+    hbom_response = client.get("/api/v1/cbom/query", params={"bom": "hbom", "kind": "hardware"},
+                               headers=AUTH)
+    assert hbom_response.status_code == 200, hbom_response.text
+    hardware = hbom_response.json()["matches"]
+    assert len(hardware) == 1
+    assert hardware[0]["identity"] == "hardware:edge-hsm-01"
+    assert hardware[0]["boms"] == ["hbom", "techbom"]
+    assert hardware[0]["asset_identity_confirmed"] is False

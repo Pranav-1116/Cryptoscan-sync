@@ -267,28 +267,65 @@ def cbom_catalog(
     }
 
 
-def _live_bom_documents(db: Session, *, limit: int = 2000) -> dict:
-    """Build the live CBOM / TechBOM / VBOM from the same inventory read.
+def _live_bom_documents(db: Session, *, limit: int = 2000) -> tuple[dict, dict]:
+    """Build cross-BOM documents and source coverage from tenant-scoped rows.
 
-    Shared by the cross-BOM surfaces (round 36 links, round 37 query
-    layer) so they can never disagree about what they linked.
+    HBOM is the TechBOM hardware projection, not an independent generator.
+    NBOM comes from the same stored probes as GET /cbom/nbom. A missing
+    source is reported in coverage, not represented by a fabricated BOM.
     """
     from api.routers.techbom import _environment_of, _gather_inventory
+    from cbom.nbom import build_nbom
     from cbom.technology_bom import materialize_technology_bom
     from vendor_intel.vbom import build_vbom
 
     inv = _gather_inventory(db, limit=limit)
-    cbom_doc = CbomGenerator().from_records(inv.get("crypto") or [],
-                                            name="estate")
+    cbom_doc = CbomGenerator().from_records(inv.get("crypto") or [], name="estate")
     techbom_doc = materialize_technology_bom(
         inv, environment=_environment_of(db), state_version=0)
+    boms = {"cbom": cbom_doc, "techbom": techbom_doc}
+    coverage = {
+        "cbom": {"status": "present" if inv["crypto"] else "absent",
+                 "source": "crypto_assets", "components": len(cbom_doc.get("components") or [])},
+        "techbom": {"status": "present" if techbom_doc["total_components"] else "absent",
+                    "source": "technology-bom inventory", "components": techbom_doc["total_components"]},
+    }
+
+    hardware = techbom_doc["layers"]["hbom"]
+    coverage["hbom"] = {
+        "status": "present" if hardware["count"] else "absent",
+        "source": "technology-bom.layers.hbom (hardware_assets)",
+        "components": hardware["count"], "independent_generator": False,
+    }
+    if hardware["count"]:
+        boms["hbom"] = hardware
+
+    # Do not materialize an empty NBOM: its absence means no stored probes,
+    # not a successfully surveyed network with no components.
+    network = _gather_network_inventory(db, limit=limit)
+    coverage["nbom"] = {
+        "status": "present" if network["endpoints"] else "absent",
+        "source": "network_scan_runs.result.probes", "endpoints": len(network["endpoints"]),
+    }
+    if network["endpoints"]:
+        boms["nbom"] = build_nbom(network["endpoints"], estate="network-estate")
+        coverage["nbom"]["components"] = len(boms["nbom"]["components"])
+    else:
+        coverage["nbom"]["components"] = 0
+
     try:
         vbom_doc = build_vbom(db).to_cyclonedx()
-    except Exception as _handler_exc:  # pragma: no cover - vendor tables empty
+    except Exception as exc:  # an unavailable source must not become an empty BOM
         logger.info("cross_links_vbom_unavailable",
-                    extra={"error_type": type(_handler_exc).__name__})
-        vbom_doc = {}
-    return {"cbom": cbom_doc, "techbom": techbom_doc, "vbom": vbom_doc}
+                    extra={"error_type": type(exc).__name__})
+        coverage["vbom"] = {"status": "unavailable", "source": "vendor_intel.vbom",
+                            "components": 0}
+    else:
+        boms["vbom"] = vbom_doc
+        count = len(vbom_doc.get("components") or [])
+        coverage["vbom"] = {"status": "present" if count else "absent",
+                            "source": "vendor_intel.vbom", "components": count}
+    return boms, coverage
 
 
 @router.get("/cross-links")
@@ -299,25 +336,22 @@ def cbom_cross_links(
 ):
     """Cross-BOM links + conflicts over the live inventory (46, round 36).
 
-    Builds the CBOM (generator), the TechBOM (materialized layers) and
-    the VBOM from the same database, then associates components by canonical
-    grouping key (e.g. algorithm, not a proven physical asset ID). Reports
-    intra-BOM variation separately from unambiguous cross-BOM disagreements.
-    The single-generator merge stays open.
+    Associates available inventory projections by canonical grouping key,
+    never by an inferred physical asset ID. HBOM is the TechBOM hardware
+    projection; NBOM is built from persisted network probes.
     """
     from cbom.cross_bom import cross_boms
 
-    return cross_boms(_live_bom_documents(db, limit=limit)) | {
-        "live": True,
-        "limit": limit,
-    }
+    boms, coverage = _live_bom_documents(db, limit=limit)
+    return cross_boms(boms) | {"live": True, "limit": limit, "coverage": coverage}
+
 
 
 @router.get("/query")
 def cbom_query(
     identity: str | None = Query(None, description="Canonical identity, e.g. crypto:RSA-2048"),
     kind: str | None = Query(None, description="Component kind: crypto, vendor, application, hardware, endpoint, network-device"),
-    bom: str | None = Query(None, description="Restrict to one BOM: cbom, techbom, vbom"),
+    bom: str | None = Query(None, description="Restrict to one available BOM: cbom, techbom, vbom, hbom, nbom"),
     algorithm: str | None = Query(None, description="Crypto components by algorithm (case-insensitive)"),
     linked_only: bool = Query(False, description="Only identities present in 2+ BOMs"),
     unlinked_only: bool = Query(False, description="Only identities present in exactly 1 BOM (coverage gaps)"),
@@ -328,21 +362,18 @@ def cbom_query(
 ):
     """Unified query over every BOM (46 unified query layer, round 37).
 
-    One question, answered across the CBOM generator output, the TechBOM
-    layers and the VBOM: where does an identity appear (with each BOM's
-    own ref), what do the BOMs say about it, where do they disagree, and
-    which grouping keys exist in only one BOM. Matching an algorithm is an
-    association, not proof of a shared physical asset. Variation within a BOM
-    is separate from unambiguous cross-BOM disagreement.
+    Searches the available CBOM, TechBOM, VBOM, HBOM projection and NBOM.
+    Canonical grouping keys are associations, not physical asset identity;
+    coverage names missing sources and the HBOM's shared provenance.
     """
     from cbom.bom_query import query_boms
 
+    boms, coverage = _live_bom_documents(db, limit=limit)
     return query_boms(
-        _live_bom_documents(db, limit=limit),
-        identity=identity, kind=kind, bom=bom, algorithm=algorithm,
+        boms, identity=identity, kind=kind, bom=bom, algorithm=algorithm,
         linked_only=linked_only, unlinked_only=unlinked_only,
         conflicts_only=conflicts_only,
-    ) | {"live": True, "limit": limit}
+    ) | {"live": True, "limit": limit, "coverage": coverage}
 
 
 @router.get("/coverage")
