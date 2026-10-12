@@ -213,18 +213,10 @@ def assess_public_key(algorithm: Any, bits: Any) -> list[dict[str, Any]]:
 
 def _component(kind: str, name: str, ref: str, props: Mapping[str, Any],
                findings: list[dict[str, Any]]) -> dict[str, Any]:
-    """A CycloneDX component. Properties carry the network facts verbatim."""
-    return {
-        "type": "cryptographic-asset" if kind in ("cipher-suite", "certificate", "tunnel") else "device",
-        "bom-ref": ref,
-        "name": name,
-        "properties": (
-            [{"name": "cryptoscan:kind", "value": kind}]
-            + [{"name": f"cryptoscan:{k}", "value": str(v)}
-               for k, v in sorted(props.items()) if v is not None]
-        ),
-        "cryptoscan:findings": findings,
-    }
+    # round 38: construction lives in the component registry
+    from cbom.component_registry import cyclonedx_component
+
+    return cyclonedx_component(kind, name, ref, props, findings)
 
 
 def build_nbom(

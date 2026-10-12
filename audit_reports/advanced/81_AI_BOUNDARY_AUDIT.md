@@ -419,3 +419,23 @@ tracing, exactly the open deployment item below. Together with the
 round-35 egress guard the deterministic services now have both the
 application-layer and (deployable) kernel-layer halves in the repo.
 Tests: `services/api/tests/unit/test_seccomp_profile.py`.
+
+## Round 38 addendum (2026-10-12) — eBPF execve runtime half BUILT
+
+Round 36 shipped the seccomp artifact and stated the honest gap: the
+runtime proof that AI agents cannot exec outside their boundary needs
+eBPF. Delivered: `deploy/ebpf/execve_trace.py` — a bcc kprobe program
+on `sys_execve`/`execveat` feeding `api/security/ai_boundary.py`'s
+classifier (ALLOWED / VIOLATION / UNKNOWN; AI programs matched by
+name patterns `*-llm`, `*-llm-*`, `*_llm_*` and Python `-m` module
+imports including AI SDKs; argv parsed NUL-separated). The loader has
+a `--dry-run` mode that needs no kernel and prints its resolved policy
+and program bytes; ImportError (no bcc) exits 3, missing capabilities
+exits 4 — it never pretends to be enforcing. `enforce_stream` yields
+`ai-boundary/exec-enforcement-v1` reports: violations carry pid +
+full argv, unknown programs are listed for operator review, never
+silent. Honest classification: the classifier, argv parsing, report
+shape and loader plumbing are unit-tested (8 tests, including a real
+subprocess dry-run); attaching the kprobe and observing live execve
+events is the deployment half (kernel + CAP_BPF + bcc). Tests:
+`services/api/tests/unit/test_ai_boundary_exec.py`.

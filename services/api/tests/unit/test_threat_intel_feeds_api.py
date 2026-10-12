@@ -33,6 +33,19 @@ def sqlite_app(monkeypatch, tmp_path):
         yield client
 
 
+class _Response:
+    """Minimal stand-in for the fetch() result sync_feed expects."""
+
+    def __init__(self, status_code=200, body=None):
+        self.status_code = status_code
+        self._body = body
+
+    def json(self):
+        if self._body is None:
+            raise ValueError("no json")
+        return self._body
+
+
 def _login(client):
     r = client.post("/api/v1/auth/login",
                     json={"username": "admin", "password": "cryptoscan"})
@@ -149,3 +162,78 @@ def test_sync_bad_feed_only_persists_nothing_from_it(sqlite_app, monkeypatch):
     assert body["created"] == 0 and body["feeds_ok"] == 0
     r = client.get("/api/v1/threat-intel/advisories", headers=admin)
     assert r.json()["count"] == 0
+
+
+# ── this deployment AS a feed (round 38) ─────────────────────────────
+
+
+def _seed_advisories(client):
+    """Admin-direct import through the public API surface."""
+    admin = _login(client)
+    r = client.post("/api/v1/threat-intel/advisories/import", headers=admin,
+                    json={"advisories": [{
+                        "advisory_id": "SITE-2026-001", "source": "central-site",
+                        "advisory_type": "DEPRECATION", "algorithm": "SHA-1",
+                        "severity": "HIGH",
+                        "title": "SHA-1 signatures rejected from 2027",
+                        "published_at": "2026-09-01T00:00:00Z",
+                    }]})
+    assert r.status_code == 200, r.text
+
+
+def test_feed_endpoint_serves_a_bundle_sync_feeds_can_consume(sqlite_app, monkeypatch):
+    """Round trip: issuing instance -> GET /feed -> consumer's sync_feed."""
+    from vendor_intel.threat_intel import sync_feed
+
+    client = sqlite_app
+    _seed_advisories(client)
+
+    # no secret configured: the endpoint says so instead of serving unsigned
+    r = client.get("/api/v1/threat-intel/feed")
+    assert r.status_code == 503
+    assert "THREAT_INTEL_FEED_SECRET" in r.json()["detail"]
+
+    monkeypatch.setenv("THREAT_INTEL_FEED_SECRET", "shared-feed-secret-1")
+    monkeypatch.setenv("THREAT_INTEL_FEED_TOKEN", "pull-token-1")
+    get_settings.cache_clear()
+    r = client.get("/api/v1/threat-intel/feed")
+    assert r.status_code == 401  # token required now
+
+    r = client.get("/api/v1/threat-intel/feed", params={"token": "pull-token-1"})
+    assert r.status_code == 200, r.text
+    bundle = r.json()
+    assert bundle["package"]["format"] == "zelnx-threat-intel/v1"
+    assert len(bundle["package"]["advisories"]) == 1
+
+    # the consumer half of the loop: fetch -> verify -> entries
+    result = sync_feed("https://central.example/api/v1/threat-intel/feed",
+                       secret="shared-feed-secret-1",
+                       fetch=lambda url, timeout: _Response(body=bundle))
+    assert result["ok"] is True, result
+    assert result["entries"][0]["advisory_id"] == "SITE-2026-001"
+
+
+def test_feed_endpoint_tamper_evidence_and_empty(sqlite_app, monkeypatch):
+    from vendor_intel.threat_intel import sync_feed
+
+    client = sqlite_app
+    monkeypatch.setenv("THREAT_INTEL_FEED_SECRET", "shared-feed-secret-1")
+    monkeypatch.setenv("THREAT_INTEL_FEED_TOKEN", "")
+    get_settings.cache_clear()
+
+    # empty table -> a valid EMPTY bundle, not an error
+    r = client.get("/api/v1/threat-intel/feed")
+    assert r.status_code == 200
+    bundle = r.json()
+    assert bundle["package"]["advisories"] == []
+    result = sync_feed("https://x", secret="shared-feed-secret-1",
+                       fetch=lambda url, timeout: _Response(body=bundle))
+    assert result == {"ok": True, "entries": []}
+
+    # a tampered bundle is rejected whole by the consumer
+    _seed_advisories(client)
+    bundle = client.get("/api/v1/threat-intel/feed").json()
+    bundle["package"]["advisories"][0]["severity"] = "CRITICAL"
+    result = sync_feed("https://x", secret="shared-feed-secret-1",
+                       fetch=lambda url, timeout: _Response(body=bundle))
+    assert result["ok"] is False and "rejected" in result["error"]

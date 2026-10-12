@@ -222,6 +222,23 @@ def fact_store(
     }
 
 
+@router.get("/reconciliation")
+def fact_asset_reconciliation(
+    user: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Drift between the fused asset write path and the fact store (51).
+
+    The 51 rearchitecture's prerequisite measurement: identities present
+    on both sides, field disagreements (key size / purpose / mode), and
+    identities that exist on only one side. Read-only — it judges
+    nothing, it measures. A single-writer cutover needs this at zero.
+    """
+    from db.repositories.fact_repository import FactRepository
+
+    return FactRepository(db).reconcile_with_assets()
+
+
 @router.post("/rebuild")
 def rebuild_fact_store(
     file_prefix: str | None = Query(None, description="Rebuild only files under this prefix"),

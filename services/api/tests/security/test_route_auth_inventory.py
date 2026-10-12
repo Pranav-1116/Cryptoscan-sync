@@ -180,6 +180,15 @@ def _authless_app():
     return app
 
 
+def test_threat_intel_feed_is_exempt_from_the_session_gate():
+    """A pulling deployment's sync_feeds carries no session: the feed
+    token (when configured) and the HMAC bundle signature are the
+    credentials. Removing the exemption breaks machine-to-machine
+    feed distribution (round 38)."""
+    assert any(p.rstrip("/") == "/api/v1/threat-intel/feed"
+               for p in UNPROTECTED_PREFIXES)
+
+
 def test_retention_requires_authentication():
     """/compliance/retention used to answer anonymous readers with the
     caller-partitioned retention clock (2026-10 audit finding)."""

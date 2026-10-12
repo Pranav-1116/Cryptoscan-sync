@@ -218,3 +218,22 @@ class FactRepository:
                 if path and stamp is not None:
                     latest[(tenant_id, str(path))] = stamp
         return latest
+
+    def reconcile_with_assets(self) -> dict:
+        """Drift report between crypto_assets and the fact store (51)."""
+        from db.fact_projection import reconcile_assets_with_facts
+        from db.models.crypto_asset import CryptoAsset
+
+        assets = [
+            {"algorithm": a.algorithm, "purpose": a.purpose,
+             "file_path": a.file_path, "key_size": a.key_size,
+             "mode": a.mode}
+            for a in self.session.execute(select(CryptoAsset)).scalars()
+        ]
+        facts = [
+            {"algorithm": f.algorithm, "purpose": f.purpose,
+             "file_path": f.file_path, "key_size": f.key_size,
+             "mode": f.mode}
+            for f in self.session.execute(select(CryptographicFact)).scalars()
+        ]
+        return reconcile_assets_with_facts(assets, facts)

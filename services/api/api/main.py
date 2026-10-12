@@ -47,6 +47,7 @@ from api.routers import (
     business,
     business_context,
     site_security,
+    chatops,
     facts,
     topology,
     threat_intel,
@@ -418,6 +419,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     prefix = "/api/v1"
     app.include_router(auth.router, prefix=prefix)
     app.include_router(site_security.router, prefix=prefix)
+    app.include_router(chatops.router, prefix=prefix)
     app.include_router(facts.router, prefix=prefix)
     app.include_router(topology.router, prefix=prefix)
     app.include_router(threat_intel.router, prefix=prefix)

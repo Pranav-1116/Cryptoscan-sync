@@ -410,3 +410,24 @@ surfaces cannot disagree about what they linked. REMAINS OPEN,
 unchanged: the single-generator merge — three generators still exist;
 this layer queries their outputs as they are. Tests:
 `services/cbom/tests/test_bom_query.py`.
+
+## Round 38 addendum (2026-10-12) — single-generator merge DONE
+
+The rearchitecture's final code-scoped step is closed: one registry,
+`services/cbom/cbom/component_registry.py`, now owns every component
+shape. `app_component` / `crypto_layer_component` /
+`hardware_component` / `vendor_component` carry the TechBOM layer
+builders, `cbom_crypto_component` is the CBOM generator's crypto
+component (confidence scores included), `cyclonedx_component` is NBOM's
+CycloneDX device/tunnel component. The three generators —
+`CbomGenerator`, `materialize_technology_bom`, `build_nbom` — are
+assemblers that construct through the registry; their private helpers
+delegate and the module-private names the moved bodies referenced
+(`_CONFIDENCE_SCORES`) are aliased in the registry. The existing 278
+cbom tests are the registry's contract tests (they pin the output
+shapes verbatim), and `tests/test_component_registry.py` adds the
+single-source pin: the same input row must produce identical output
+through the generator path, the TechBOM layer path, and the registry
+directly — a future edit that re-introduces per-generator construction
+fails there first. With round 37's query layer, 46's code scope is
+complete: one construction core, three assemblers, one query surface.

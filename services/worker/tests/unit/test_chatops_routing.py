@@ -122,3 +122,44 @@ def test_no_secret_still_sends_unsigned():
     assert outcome == {"chatops": "sent"}
     _, _, headers = recorder.calls[0]
     assert headers == {}
+
+
+# ── severity -> channel routing (round 38) ───────────────────────────
+
+
+def test_route_chatops_channel_first_match_wins():
+    from worker.monitor.alerting import route_chatops_channel
+
+    routes = "CRITICAL=#soc-critical,HIGH=#soc-high,ANY=#soc-crypto"
+    assert route_chatops_channel(severity="CRITICAL", routes=routes) == "#soc-critical"
+    assert route_chatops_channel(severity="HIGH", routes=routes) == "#soc-high"
+    assert route_chatops_channel(severity="LOW", routes=routes) == "#soc-crypto"
+    assert route_chatops_channel(severity="critical", routes=routes) == "#soc-critical"
+    # no rules -> default channel; no default -> no channel key
+    assert route_chatops_channel(severity="HIGH", routes="",
+                                 default_channel="#ops") == "#ops"
+    assert route_chatops_channel(severity="HIGH", routes="") == ""
+
+
+def test_route_chatops_channel_tolerates_malformed_rules():
+    from worker.monitor.alerting import route_chatops_channel
+
+    assert route_chatops_channel(severity="HIGH", routes=",,HIGH=#x,=") == "#x"
+    assert route_chatops_channel(severity="HIGH", routes="no-separator") == ""
+
+
+def test_dispatch_routes_by_severity():
+    recorder = _Recorder()
+    router = AlertRouter(
+        settings=_Settings(ALERT_CHATOPS_URL="https://chat.example/hooks/x",
+                           ALERT_CHATOPS_SECRET="chatops-secret-0123456789",
+                           ALERT_CHATOPS_ROUTES="CRITICAL=#soc-critical"),
+        post=recorder)
+    router.dispatch("bank-gateway", "KEY_ROTATION_OVERDUE",
+                    {"severity": "CRITICAL"})
+    _, body, _ = recorder.calls[0]
+    assert body["channel"] == "#soc-critical"
+    router.dispatch("bank-gateway", "WEAK_TLS_VERSION",
+                    {"severity": "MEDIUM"})
+    _, body, _ = recorder.calls[1]
+    assert "channel" not in body  # no matching rule, no default

@@ -51,73 +51,14 @@ def empty_inventory() -> dict[str, Any]:
 # Component normalization (one truth -> per-layer views)
 # --------------------------------------------------------------------------- #
 
-def _app_component(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "type": "application",
-        "name": row.get("name") or row.get("id") or "unknown",
-        "version": row.get("version") or row.get("tag") or "unknown",
-        "supplier": row.get("supplier") or row.get("owner") or "",
-        "asset": row.get("asset") or row.get("name") or "",
-        "environment": row.get("environment") or "",
-        "criticality": row.get("criticality") or "",
-        "bom-ref": f"app:{row.get('id') or row.get('name') or 'unknown'}",
-    }
-
-
-def _crypto_component(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "type": "crypto",
-        "algorithm": (row.get("algorithm") or "").upper(),
-        "key_type": row.get("key_type") or "",
-        "key_size": row.get("key_size"),
-        "purpose": row.get("purpose") or "",
-        "mode": row.get("mode") or "",
-        "library": row.get("library") or "",
-        "asset": row.get("asset") or row.get("host") or "",
-        "application": row.get("application") or "",
-        "location": row.get("file_path") or row.get("location") or "",
-        "pqc_status": row.get("pqc_status") or "",
-        "quantum_status": row.get("quantum_status") or "",
-        "confidence": row.get("confidence") or "LOW",
-        "first_seen": row.get("first_seen"),
-        "last_seen": row.get("last_seen"),
-        "bom-ref": f"crypto:{row.get('id') or (row.get('algorithm') or '')}:{row.get('asset') or ''}",
-    }
-
-
-def _hardware_component(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "type": "hardware",
-        "manufacturer": row.get("manufacturer") or "",
-        "model": row.get("model") or "",
-        "device_type": row.get("device_type") or "other",
-        "hardware_id": row.get("asset_id") or row.get("serial_reference") or row.get("id") or "",
-        "serial_reference": row.get("serial_reference") or "",
-        "firmware_version": (row.get("firmware") or {}).get("version") if isinstance(row.get("firmware"), dict) else row.get("firmware_version") or "",
-        "security_module": row.get("security_module") or (
-            "hsm" if row.get("hsm") else ("tpm" if row.get("tpm") else "")
-        ),
-        "asset": row.get("asset") or row.get("asset_id") or "",
-        "last_seen": row.get("last_seen"),
-        "risk_level": row.get("risk_level") or "",
-        "bom-ref": f"hw:{row.get('asset_id') or row.get('id') or 'unknown'}",
-    }
-
-
-def _vendor_component(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "type": "vendor",
-        "name": row.get("name") or row.get("vendor") or "",
-        "product": row.get("product") or "",
-        "model": row.get("model") or "",
-        "version": row.get("version") or "",
-        "assets": row.get("assets") or [],
-        "lifecycle": row.get("lifecycle") or "",
-        "risk_level": row.get("risk_level") or "",
-        "crypto_capability": row.get("crypto_capability") or "",
-        "bom-ref": f"vendor:{row.get('name') or row.get('vendor') or 'unknown'}",
-    }
-
+# round 38: component construction lives in the single registry — this
+# module is now an assembler over it (report 46's three-generators merge)
+from cbom.component_registry import (
+    app_component as _app_component,
+    crypto_layer_component as _crypto_component,
+    hardware_component as _hardware_component,
+    vendor_component as _vendor_component,
+)
 
 _LAYER_BUILDERS = {
     "sbom": ("applications", _app_component),

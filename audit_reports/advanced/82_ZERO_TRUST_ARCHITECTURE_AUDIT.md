@@ -496,3 +496,23 @@ the process. mTLS client-certificate enforcement, service identity
 (SPIFFE/SPIRE), mesh, and TDE remain the infrastructure decisions this
 report records. Tests:
 `services/api/tests/unit/test_tls_posture.py`.
+
+## Round 38 addendum (2026-10-12) — mTLS enforcement BUILT
+
+`api/security/mtls.py` builds the server TLS context for the
+management plane: `verify_mode=CERT_REQUIRED` by construction (a CA
+bundle is mandatory), floor TLS 1.2 (default 1.3), and every failure
+mode is fail-loud — missing files, unparseable material, or a bad
+`min_version` raise `MtlsError`, never a silent plaintext fallback.
+`scripts/serve_mtls.py` launches uvicorn over that context and exits 2
+if asked to serve without cert/key material. `build_mtls_context` is
+proven by real handshakes, not config inspection: the test fixture
+generates a CA (with BasicConstraints ca=True), a server cert, a
+client cert, and a rogue CA; a client from the rogue CA and a
+no-certificate client are both rejected (TLS 1.3 defers some
+rejections to first read — the tests assert SSLError or empty read,
+never application bytes), while the site-CA client reads the
+application payload. Honest classification: the context builder,
+launcher and handshake semantics are fully tested; Vault and TDE
+remain infrastructure (deployment halves, unchanged). Tests:
+`services/api/tests/unit/test_mtls_enforcement.py`.

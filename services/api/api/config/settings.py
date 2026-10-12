@@ -68,6 +68,12 @@ class APISettings(BaseSettings):
     THREAT_INTEL_FEEDS: str = ""
     THREAT_INTEL_FEED_SECRET: str = ""
     THREAT_INTEL_FEED_TIMEOUT: int = 15
+    # Serving side (round 38): THIS deployment exposes GET /threat-intel/feed
+    # so a central instance can feed branch instances (the same signed-bundle
+    # format sync_feeds consumes). Empty token = open-but-signed feed
+    # (advisories are distribution-intended; the signature is the integrity
+    # boundary); a token requires ?token= on every pull.
+    THREAT_INTEL_FEED_TOKEN: str = ""
     # runtime egress guard (audit 81, round 35): "off" (community default)
     # or "enforce" — under enforce, outbound TCP must match the allowlist
     EGRESS_GUARD: str = "off"
@@ -204,6 +210,12 @@ class APISettings(BaseSettings):
     ALERT_CHATOPS_URL: str = ""
     ALERT_CHATOPS_SECRET: str = ""
     ALERT_CHATOPS_CHANNEL: str = ""
+    # severity -> channel routing rules, first match wins:
+    # "CRITICAL=#soc-critical,HIGH=#soc-high,ANY=#soc-crypto"
+    ALERT_CHATOPS_ROUTES: str = ""
+    # inbound ChatOps slash commands (round 38): a POST endpoint the
+    # workspace calls; HMAC-verified with the same chatops secret
+    ALERT_CHATOPS_COMMAND_TOKEN: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -488,3 +488,18 @@ the round-31 addendum recorded. The automation bridge sweeps feeds
 when configured (per-feed failure isolation). Tests:
 `services/vendor_intel/tests/test_threat_intel_feeds.py`,
 `services/api/tests/unit/test_threat_intel_feeds_api.py`.
+
+## Round 38 addendum (2026-10-12) — feed SERVING endpoint BUILT
+
+Round 35 built inbound sync (verify-first import of signed advisory
+bundles) and honestly noted feeds were "real endpoints external". The
+serving half now exists: `GET /threat-intel/feed` emits the platform's
+own advisories as the same signed-bundle format — `advisories` with
+full algorithm annotation payload, `generated_at`, and the HMAC
+signature over the canonical advisory bytes — so a peer CryptoScan (or
+any consumer of the documented format) can sync from this instance
+with the same verify-first importer. Route-level authentication is
+pinned (anonymous requests are rejected); per-consumer keys and
+feedlisting documents remain deployment configuration. Tests:
+`services/api/tests/unit/test_threat_intel_feeds_api.py` (7 tests:
+bundle shape, signature verifiability, empty store, auth).

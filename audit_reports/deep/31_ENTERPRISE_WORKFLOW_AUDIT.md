@@ -646,3 +646,22 @@ ChatOps outage never blocks CEF/webhook/email delivery, and an
 unconfigured sink is an honest skip. The workspace/webhook itself
 remains an external system, as this report's classification records.
 Tests: `services/worker/tests/unit/test_chatops_routing.py`.
+
+## Round 38 addendum (2026-10-12) — ChatOps inbound routing BUILT
+
+Round 37 shipped the outbound half (signed alerts to Slack/Mattermost
+webhooks). The inbound half is now real: `POST /api/v1/chatops/command`
+accepts a chat message (JSON or Slack-compatible form payload), and
+the command router (`api/routers/chatops.py`) recognises status,
+inventory, certificate, finding and help requests as read-only
+queries. Authentication is the same HMAC convention as the alert
+signer: `X-CryptoScan-Signature: sha256=<hex>` over the RAW request
+body with `ALERT_CHATOPS_SECRET` (unconfigured secret < 8 bytes → 503,
+never unsigned acceptance); an optional bearer token is compared in
+constant time; malformed commands get actionable usage text back in
+chat shape. Honest classification: the router, signature check and
+command surface are tested (4 tests, including the exact-bytes signing
+contract — clients must sign the bytes they send); the chat platform
+itself (Slack app, slash-command registration) stays external
+configuration. Tests:
+`services/api/tests/unit/test_chatops_commands.py`.

@@ -53,6 +53,16 @@ UNPROTECTED_PREFIXES = (
     # Without this exemption the session gate 401'd every production
     # billing callback — found by the 2026-10 route-auth inventory.
     "/api/v1/saas/billing/webhook",
+    # Threat-intel feed serving (round 38): machine-consumed by another
+    # deployment's sync_feeds, which sends no session. The credential is
+    # the feed token (THREAT_INTEL_FEED_TOKEN, required when set) and the
+    # HMAC bundle signature — the integrity boundary either way. Same
+    # shape as the billing webhook exemption.
+    "/api/v1/threat-intel/feed",
+    # ChatOps slash commands (round 38): the workspace calls this with
+    # no session; the HMAC signature (+ optional token) IS the credential
+    # — verified in the route, same shape as the feed exemption.
+    "/api/v1/chatops/command",
 )
 
 # Static assets are served under hashed filenames, so these DO match as bare

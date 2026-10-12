@@ -55,6 +55,30 @@ _CHATOPS_COLORS = {
 }
 
 
+def route_chatops_channel(*, severity: str, routes: str,
+                          default_channel: str = "") -> str:
+    """Severity -> channel routing (``ALERT_CHATOPS_ROUTES``).
+
+    ``routes`` is ``"CRITICAL=#soc-critical,HIGH=#soc-high"`` — the
+    first rule whose severity equals the alert's (case-insensitive)
+    wins; no matching rule falls back to the default channel. A rule
+    with severity ``ANY`` matches everything (useful as a last rule).
+    """
+    level = str(severity or "").strip().upper()
+    for rule in str(routes or "").split(","):
+        rule = rule.strip()
+        if not rule:
+            continue
+        name, sep, channel = rule.partition("=")
+        name = name.strip().upper()
+        channel = channel.strip()
+        if not sep or not channel:
+            continue
+        if name == level or name == "ANY":
+            return channel
+    return default_channel or ""
+
+
 def format_chatops(*, target: str, issue: str, payload: dict | None = None,
                    channel: str = "") -> dict:
     """One Slack/Mattermost-compatible alert body (both parse this shape).
@@ -117,9 +141,14 @@ class AlertRouter:
         chatops_url = getattr(self.settings, "ALERT_CHATOPS_URL", "") or ""
         if chatops_url:
             try:
+                severity = str((payload or {}).get("severity") or "HIGH")
+                channel = route_chatops_channel(
+                    severity=severity,
+                    routes=getattr(self.settings, "ALERT_CHATOPS_ROUTES", "") or "",
+                    default_channel=getattr(self.settings, "ALERT_CHATOPS_CHANNEL", "") or "")
                 body = format_chatops(
                     target=target, issue=issue, payload=payload,
-                    channel=getattr(self.settings, "ALERT_CHATOPS_CHANNEL", "") or "")
+                    channel=channel)
                 body["generated_at"] = datetime.now(timezone.utc).isoformat()
                 chatops_secret = (getattr(self.settings, "ALERT_CHATOPS_SECRET", "")
                                   or getattr(self.settings, "ALERT_WEBHOOK_SECRET", "") or "")

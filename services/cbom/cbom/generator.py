@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from typing import Any
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-from cbom.mappers.oid_lookup import lookup_oid
-from cbom.mappers.primitive_mapper import map_primitive
+# round 38: oid/primitive mapping moved with construction into the
+# component registry
 
 #: recorded observation confidence -> CycloneDX evidence-method confidence.
 #: Unrecorded confidence keeps the historical source-analysis default (0.9);
@@ -480,6 +480,10 @@ class CbomGenerator:
         return cleaned
 
     def _component(self, record: Any) -> dict[str, Any]:
+        # round 38: construction lives in the component registry (the
+        # 46 single-generator merge) — the generator is an assembler
+        from cbom.component_registry import cbom_crypto_component
+
         if hasattr(record, "to_dict"):
             data = record.to_dict()
         elif isinstance(record, dict):
@@ -497,74 +501,8 @@ class CbomGenerator:
                 "chain_hash": getattr(record, "chain_hash", None),
                 "compliance_status": getattr(record, "compliance_status", None),
                 "normalized_crypto": getattr(record, "normalized_crypto", None),
+                "confidence": getattr(record, "confidence", None),
+                "system_name": getattr(record, "system_name", None),
+                "system_id": getattr(record, "system_id", None),
             }
-        normalized = data.get("normalized_crypto") or {}
-        algorithm = str(data.get("algorithm") or normalized.get("standard_name") or "UNKNOWN")
-        primitive = normalized.get("algorithm_family") or map_primitive(algorithm, data.get("purpose"))
-        oid = lookup_oid(algorithm)
-        # Evidence confidence (report 08 P1#6): the recorded confidence of
-        # the observation, not a hardcoded 0.9. Unrecorded stays at the
-        # source-analysis default — never fabricated upward.
-        recorded = str(data.get("confidence") or "").upper()
-        method_confidence = _CONFIDENCE_SCORES.get(recorded, 0.9)
-        component: dict[str, Any] = {
-            "type": normalized.get("cbom_component_type") or "cryptographic-asset",
-            "name": normalized.get("standard_name") or data.get("algorithm") or "UNKNOWN",
-            "bom-ref": data.get("id") or data.get("evidence_id") or data.get("finding_id"),
-            "cryptoProperties": {
-                "assetType": "algorithm",
-                "oid": oid,
-                "algorithmProperties": {
-                    "primitive": primitive,
-                    "algorithm": data.get("algorithm"),
-                    "mode": data.get("mode"),
-                    "padding": data.get("padding"),
-                    "parameterSetIdentifier": str(data.get("key_size")) if data.get("key_size") else None,
-                },
-                "nistDesignation": normalized.get("nist_designation"),
-                "quantumVulnerable": normalized.get("quantum_vulnerable"),
-            },
-            "evidence": {
-                "identity": [
-                    {
-                        "field": "bom-ref",
-                        "confidence": 1,
-                        "methods": [
-                            {
-                                "technique": "source-code-analysis",
-                                "confidence": method_confidence,
-                                "value": f"{data.get('file_path')}:{data.get('line_number')}",
-                            }
-                        ],
-                    }
-                ],
-                "occurrences": [
-                    {
-                        "location": data.get("file_path"),
-                        "line": data.get("line_number"),
-                    }
-                ],
-                "file": data.get("file_path"),
-                "line": data.get("line_number"),
-                "content_hash": data.get("content_hash"),
-                "chain_hash": data.get("chain_hash"),
-                "compliance_status": data.get("compliance_status"),
-            },
-        }
-        # report 08 P2#7: the discovery location in standard
-        # externalReferences form (complements the custom properties)
-        location = data.get("file_path")
-        if location:
-            component["externalReferences"] = [
-                {"type": "other", "url": f"file://{location}"}
-            ]
-        properties: list[dict[str, Any]] = []
-        if data.get("system_name"):
-            properties.append({"name": "cryptoscan:system", "value": str(data["system_name"])})
-        if data.get("system_id"):
-            properties.append({"name": "cryptoscan:system_id", "value": str(data["system_id"])})
-        if recorded:
-            properties.append({"name": "cryptoscan:confidence", "value": recorded})
-        if properties:
-            component["properties"] = properties
-        return component
+        return cbom_crypto_component(data)

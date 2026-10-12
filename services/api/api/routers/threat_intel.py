@@ -204,6 +204,52 @@ def build_bundle(body: AdvisoryBuildBundle, admin: str = Depends(require_admin))
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@router.get("/feed")
+def serve_feed(
+    algorithm: str | None = Query(None, description="Serve only advisories for one algorithm"),
+    severity: str | None = Query(None, description="Serve only advisories of one severity"),
+    token: str | None = Query(None, description="Access token when THREAT_INTEL_FEED_TOKEN is set"),
+    db: Session = Depends(get_db_session),
+):
+    """THIS deployment as a threat-intel feed (round 38).
+
+    Serves the current advisory table as a signed
+    ``zelnx-threat-intel/v1`` bundle — exactly what another
+    deployment's ``sync_feeds`` consumes, so a central CryptoScan
+    instance can feed its branches through the same verified path used
+    for external feeds. Gated by ``THREAT_INTEL_FEED_TOKEN`` when
+    configured (pass it as ``?token=``); the bundle signature is the
+    integrity boundary either way. Requires the feed signing secret.
+    """
+    from api.config.settings import get_settings
+
+    settings = get_settings()
+    expected_token = (settings.THREAT_INTEL_FEED_TOKEN or "").strip()
+    if expected_token and token != expected_token:
+        raise HTTPException(status_code=401, detail="invalid feed token")
+    secret = (settings.THREAT_INTEL_FEED_SECRET or "").strip()
+    if len(secret.encode()) < 8:
+        raise HTTPException(
+            status_code=503,
+            detail="feed serving not configured: THREAT_INTEL_FEED_SECRET "
+                   "must be set (min 8 bytes) on the issuing instance")
+
+    stmt = select(AlgorithmAdvisory).order_by(AlgorithmAdvisory.algorithm,
+                                              AlgorithmAdvisory.advisory_id)
+    if algorithm:
+        stmt = stmt.where(AlgorithmAdvisory.algorithm == algorithm)
+    if severity:
+        stmt = stmt.where(AlgorithmAdvisory.severity == severity.upper())
+    rows = list(db.execute(stmt.limit(500)).scalars())
+    entries = [_row_dict(row) for row in rows]
+    try:
+        return build_advisory_bundle(
+            entries, secret=secret,
+            bundle_id=f"feed-{len(entries)}")
+    except AdvisoryError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.get("/advisories")
 def list_advisories(
     algorithm: str | None = Query(None),

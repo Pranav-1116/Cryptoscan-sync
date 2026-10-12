@@ -14,7 +14,7 @@ evidence rows).
 
 from __future__ import annotations
 
-from typing import Any, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 
 def fact_key(row: Mapping[str, Any]) -> tuple:
@@ -52,3 +52,92 @@ def scanner_id(row: Mapping[str, Any]) -> Optional[str]:
         value = finding.get("scanner_id") or (finding.get("metadata") or {}).get("scanner_id")
         return str(value) if value else None
     return None
+
+
+def asset_fact_key(asset: Mapping[str, Any]) -> tuple:
+    """The fact identity of one crypto_assets row (same tuple space as
+    ``fact_key`` — "" normalisation, never None).
+
+    crypto_assets is the fused write path (report 51); the fact store is
+    the evidence-derived projection. Mapping an asset onto the fact
+    identity space is what makes the two comparable at all — the
+    prerequisite for any future single-writer cutover.
+    """
+    return (
+        str(asset.get("algorithm") or "").strip(),
+        str(asset.get("purpose") or ""),
+        str(asset.get("file_path") or ""),
+        asset.get("key_size") if asset.get("key_size") is not None else "",
+        str(asset.get("mode") or ""),
+    )
+
+
+def reconcile_assets_with_facts(
+    assets: Iterable[Mapping[str, Any]],
+    facts: Iterable[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Measure drift between the fused asset write path and the fact store.
+
+    Pure. Both sides are indexed by the coarse drift key (algorithm,
+    file_path); the parameter fields (key size / purpose / mode) are then
+    compared across sides. Identities on only one side are reported
+    separately. It does NOT judge which side is right — evidence is the
+    truth per the 51 rearchitecture; this makes the divergence visible
+    and countable, which is what the single-writer cutover needs.
+    """
+    def _drift_key(row: Mapping[str, Any]) -> tuple:
+        return (str(row.get("algorithm") or "").strip(),
+                str(row.get("file_path") or ""))
+
+    asset_by_key: dict[tuple, list] = {}
+    for asset in assets or ():
+        asset_by_key.setdefault(_drift_key(asset), []).append(asset)
+    fact_by_key: dict[tuple, list] = {}
+    for fact in facts or ():
+        fact_by_key.setdefault(_drift_key(fact), []).append(fact)
+
+    def _params(rows: list) -> dict[str, set]:
+        out: dict[str, set] = {}
+        for row in rows:
+            for field in ("key_size", "purpose", "mode"):
+                value = row.get(field)
+                out.setdefault(field, set()).add(
+                    "" if value is None else str(value))
+        return out
+
+    matched = 0
+    disagreements: list[dict[str, Any]] = []
+    for key in sorted(set(asset_by_key) & set(fact_by_key), key=str):
+        matched += 1
+        left, right = _params(asset_by_key[key]), _params(fact_by_key[key])
+        fields = {}
+        for field in ("key_size", "purpose", "mode"):
+            if left[field] != right[field]:
+                def _clean(values):
+                    return sorted(v if v else None for v in values)
+
+                fields[field] = {"asset": _clean(left[field]),
+                                 "fact": _clean(right[field])}
+        if fields:
+            disagreements.append({
+                "algorithm": key[0], "file_path": key[1], "fields": fields})
+
+    def _labels(keys) -> list[str]:
+        return sorted(f"{algorithm}@{path}" for algorithm, path in keys)
+
+    assets_only = _labels(set(asset_by_key) - set(fact_by_key))
+    facts_only = _labels(set(fact_by_key) - set(asset_by_key))
+    return {
+        "model": "asset-fact/reconciliation-v1",
+        "assets_indexed": len(asset_by_key),
+        "facts_indexed": len(fact_by_key),
+        "identities_matched": matched,
+        "field_disagreements": disagreements,
+        "disagreement_count": len(disagreements),
+        "assets_without_facts": assets_only,
+        "facts_without_assets": facts_only,
+        "in_sync": not disagreements and not assets_only and not facts_only,
+        "note": "drift between the fused crypto_assets write path and the "
+                "evidence-derived fact store; the 51 single-writer "
+                "rearchitecture needs this at zero before cutover",
+    }
