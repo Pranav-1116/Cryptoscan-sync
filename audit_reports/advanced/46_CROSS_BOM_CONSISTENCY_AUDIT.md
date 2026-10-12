@@ -378,3 +378,19 @@ no longer open.
   inventory via the real vendor-CBOM endpoint, then read both formats).
 - Cross-BOM identifier coherence (P0#2/#4, unified queries, unified
   versioning) REMAINS OPEN, architecture-scoped, as round 26 recorded.
+
+## Round 36 addendum (2026-10-12) — cross-BOM linking + conflict detection BUILT
+
+Three of this report's ❌ rows now have their linking half:
+`cbom/cross_bom.py` gives every component a canonical identity
+(crypto: uppercased algorithm — key size/mode/purpose deliberately stay
+*comparable attributes*, so a disagreement becomes a conflict instead of
+two silently-separate identities; vendor/application/hardware/endpoint
+name-normalized), `cross_boms()` links identities present in ≥2 BOMs
+with each BOM's own ref for traceability, and reports conflicts (same
+identity, same field, different non-empty values). `GET /cbom/cross-
+links` builds the generator CBOM, the TechBOM layers and the VBOM from
+the same live inventory and links them as they are. Still open,
+unchanged: the single-generator merge (three generators → one) and a
+unified query layer — the rearchitecture this report scoped at 6-8
+weeks. Tests: `services/cbom/tests/test_cross_bom.py`.

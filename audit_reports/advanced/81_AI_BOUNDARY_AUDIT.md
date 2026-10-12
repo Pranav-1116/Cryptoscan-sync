@@ -401,3 +401,21 @@ endpoints. seccomp/capability-drop and eBPF execve tracing stay
 deployment-scoped exactly as below — the guard is the in-code floor,
 not a replacement for kernel-level confinement. Tests:
 `services/api/tests/unit/test_egress_guard.py`.
+
+## Round 36 addendum (2026-10-12) — seccomp profile SHIPPED (deployment artifact, validated)
+
+The kernel-confinement half of P0#1 now exists as a reviewed artifact:
+`deploy/seccomp/deterministic-services.json` (OCI/Docker default-seccomp
+format, fail-closed `SCMP_ACT_ERRNO` default) plus
+`api/security/seccomp.py`, a validator that pins the contract in the
+test suite: 52 escape/attack primitives (bpf, mount family, ptrace,
+keyctl, module loading, namespace escapes, process injection, perf
+events…) must resolve to ERRNO, the Python/uvicorn runtime-essential
+set must be allowed, and conflicting rules are rejected. The honest
+limit is stated in the profile's own report: `execve` stays allowed
+because the container runtime needs it to start the entrypoint —
+proving no AI binary is *invoked* at runtime remains eBPF execve
+tracing, exactly the open deployment item below. Together with the
+round-35 egress guard the deterministic services now have both the
+application-layer and (deployable) kernel-layer halves in the repo.
+Tests: `services/api/tests/unit/test_seccomp_profile.py`.

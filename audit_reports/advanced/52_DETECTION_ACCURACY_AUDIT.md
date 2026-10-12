@@ -576,3 +576,21 @@ detector reports added to the benchmark run. Misses stay scanner-level
 and the surface is deliberately separate from the production proxy
 scorecards (audit 49). Binary control-flow analysis (P0#3) remains open,
 product-scoped, unchanged.
+
+## Round 36 addendum (2026-10-12) — full-table binary fingerprints BUILT (P0#3 slice)
+
+The stripped-binary case now has a code-scoped answer:
+`universal_crypto/binary_tables.py` scans the whole file for complete
+crypto tables — AES S-box and inverse, OpenSSL-style Te0/Td0 T-tables
+(both byte orders; entries generated from the FIPS-197 algebra, not
+copied), SHA-2 K/IV words, Keccak round constants, zlib/Castagnoli CRC
+tables, NIST curve domain parameters (P-256/P-384/P-521, verified
+against the local cryptography library's group orders), the Ed25519
+order and the Curve25519 prime. Hits carry the table label and file
+offset and enter §7 as a new `TABLE_FINGERPRINT` evidence level
+(0.95 — below a known-implementation signature, above any prefix hit);
+`CONFIRMED_IMPLEMENTATION` follows. A binary with no symbols and no
+strings but an embedded S-box is now detected. angr/Ghidra
+control-flow analysis remains the open external-tooling item,
+unchanged. Tests:
+`services/universal_crypto/tests/test_binary_tables.py`.

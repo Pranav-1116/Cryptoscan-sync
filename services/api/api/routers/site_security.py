@@ -75,6 +75,28 @@ def secrets_status_view(admin: str = Depends(require_admin)):
     return secret_status()
 
 
+# ── serving-TLS posture (deployment set, round 36) ───────────────────
+
+
+@router.get("/security/tls/posture")
+def tls_posture_view(admin: str = Depends(require_admin)):
+    """Inspect the configured serving certificate and trust bundle.
+
+    Never returns key material — only posture checks and certificate
+    metadata. mTLS enforcement and TDE stay deployment-scoped; an
+    unconfigured app boundary is reported as such (reverse-proxy
+    termination is legitimate and invisible from inside the process).
+    """
+    from api.config.settings import get_settings
+    from api.security.tls_posture import inspect_tls_posture
+
+    settings = get_settings()
+    return inspect_tls_posture(
+        settings.TLS_CERT_FILE, settings.TLS_KEY_FILE, settings.TLS_CA_BUNDLE,
+        min_version=settings.TLS_MIN_VERSION,
+    )
+
+
 # ── zero-trust PDP (advanced/82) ─────────────────────────────────────
 
 

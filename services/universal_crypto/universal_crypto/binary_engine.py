@@ -34,6 +34,10 @@ LEVEL_WEIGHT = {
     "SYMBOL_MATCH": 0.7,
     "IMPORT_MATCH": 0.8,
     "CONSTANT_MATCH": 0.9,
+    # round 36 (advanced/52): a full crypto table (S-box, T-table, SHA K
+    # words, curve parameters) found at a specific offset — one notch
+    # below a known-implementation signature, and above any prefix hit
+    "TABLE_FINGERPRINT": 0.95,
     "FINGERPRINT": 1.0,
 }
 
@@ -122,6 +126,7 @@ class BinaryArtifact:
         imports: Optional[Iterable[str]] = None,
         strings: Optional[Iterable[str]] = None,
         constants: Optional[Iterable[bytes]] = None,
+        tables: Optional[Iterable[dict[str, Any]]] = None,
     ) -> None:
         self.format = format
         self.path = path
@@ -129,6 +134,8 @@ class BinaryArtifact:
         self.imports = list(imports or [])
         self.strings = list(strings or [])
         self.constants = list(constants or [])
+        # round 36: full-table fingerprint hits (binary_tables.scan_tables)
+        self.tables = list(tables or [])
 
     def all_names(self) -> list[str]:
         return self.symbols + self.imports + self.strings
@@ -175,6 +182,12 @@ class BinaryCryptoDetector:
         for alg, constant in CRYPTO_CONSTANTS.items():
             if constant in (artifact.constants or []):
                 _add(alg, "CONSTANT_MATCH", f"algorithm constant table ({constant[:8]!r})")
+
+        # 2.5 full-table fingerprints (round 36, advanced/52): a complete
+        #     crypto table anywhere in the file — the stripped-binary case
+        for hit in artifact.tables or []:
+            _add(hit["algorithm"], "TABLE_FINGERPRINT",
+                 f"{hit['table']} at offset {hit['offset']}")
 
         # 3. TLS handshake bytes (FINGERPRINT)
         for tls_bytes in _TLS_BYTES:
@@ -225,6 +238,17 @@ class BinaryParser:
     """Parse binaries into BinaryArtifacts (deterministic, stdlib-only)."""
 
     def parse(self, data: bytes, path: str = "") -> BinaryArtifact:
+        artifact = self._parse_format(data, path)
+        try:
+            from universal_crypto.binary_tables import scan_tables
+
+            artifact.tables = scan_tables(data)
+        except Exception as _handler_exc:  # pragma: no cover - registry bug guard
+            logger.debug("binary_table_scan_failed",
+                         extra={"error_type": type(_handler_exc).__name__})
+        return artifact
+
+    def _parse_format(self, data: bytes, path: str = "") -> BinaryArtifact:
         if data[:4] == b"dex\n":
             return self._parse_dex(data, path)
         if data[:4] in _PYTHON_BYTECODE_MAGICS:

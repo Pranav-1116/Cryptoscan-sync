@@ -162,6 +162,13 @@ class APISettings(BaseSettings):
     # explicit bearer token in production; metrics are not public health data.
     METRICS_TOKEN: str = ""
     TRUSTED_HOSTS: list[str] = Field(default_factory=lambda: ["*"])
+    # serving TLS at the app boundary (round 36, deployment set): when
+    # set, both must be valid at boot (reverse-proxy termination stays a
+    # legitimate unconfigured shape — the TLS posture surface says so)
+    TLS_CERT_FILE: str = ""
+    TLS_KEY_FILE: str = ""
+    TLS_CA_BUNDLE: str = ""
+    TLS_MIN_VERSION: str = "1.2"
 
     GITHUB_WEBHOOK_SECRET: str = "dev-webhook-secret-change-me-32chars!!"
     # Secrets consumed by separate routers/processes stay in the typed model so
@@ -275,6 +282,14 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
     neo4j_password = (settings.NEO4J_PASSWORD or "").strip()
     if len(neo4j_password) < 24 or neo4j_password.lower() in WEAK_PASSWORDS:
         errors.append("NEO4J_PASSWORD must be a unique value of at least 24 characters")
+    # Serving TLS (round 36): when configured at the app boundary it must
+    # be valid — parse, key pairing, not expired. Unconfigured stays legal
+    # (reverse-proxy termination is a deployment shape we cannot see).
+    from api.security.tls_posture import production_tls_gate
+
+    tls_error = production_tls_gate()
+    if tls_error:
+        errors.append(tls_error)
     if errors:
         raise RuntimeError("production configuration rejected: " + "; ".join(errors))
 

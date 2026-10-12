@@ -267,6 +267,43 @@ def cbom_catalog(
     }
 
 
+@router.get("/cross-links")
+def cbom_cross_links(
+    limit: int = Query(2000, ge=1, le=5000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Cross-BOM links + conflicts over the live inventory (46, round 36).
+
+    Builds the CBOM (generator), the TechBOM (materialized layers) and
+    the VBOM from the same database, then links components by canonical
+    identity and reports disagreements. The single-generator merge stays
+    open; this surface links the generators' outputs as they are.
+    """
+    from api.routers.techbom import _gather_inventory, _environment_of
+    from cbom.cross_bom import cross_boms
+    from cbom.technology_bom import materialize_technology_bom
+    from vendor_intel.vbom import build_vbom
+
+    inv = _gather_inventory(db, limit=limit)
+    cbom_doc = CbomGenerator().from_records(inv.get("crypto") or [],
+                                            name="estate")
+    techbom_doc = materialize_technology_bom(
+        inv, environment=_environment_of(db), state_version=0)
+    try:
+        vbom_doc = build_vbom(db).to_cyclonedx()
+    except Exception as _handler_exc:  # pragma: no cover - vendor tables empty
+        logger.info("cross_links_vbom_unavailable",
+                    extra={"error_type": type(_handler_exc).__name__})
+        vbom_doc = {}
+
+    return cross_boms({"cbom": cbom_doc, "techbom": techbom_doc,
+                       "vbom": vbom_doc}) | {
+        "live": True,
+        "limit": limit,
+    }
+
+
 @router.get("/coverage")
 def cbom_coverage(
     user: str = Depends(get_current_user),

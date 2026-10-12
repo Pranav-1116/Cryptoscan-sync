@@ -478,3 +478,21 @@ The "Orchestration ❌ No policy-as-code" line has an in-platform answer:
 - STILL deployment-scoped, unchanged: SPIFFE/SPIRE workload identity,
   Calico/Cilium segmentation, service mesh, at-rest TLS — the
   infrastructure half of the report.
+
+## Round 36 addendum (2026-10-12) — serving-TLS posture BUILT (deployment set slice)
+
+The code-verifiable half of the mTLS/TLS deployment item shipped:
+`api/security/tls_posture.py` inspects the configured serving
+certificate (`TLS_CERT_FILE`/`TLS_KEY_FILE`) and trust bundle
+(`TLS_CA_BUNDLE`) — parses, key-pairing match, expiry buckets, key
+strength floor, signature algorithm, self-signed warning, SANs — and
+`GET /security/tls/posture` (admin) surfaces it, never returning key
+material. Production boot rule: configured TLS must be VALID at boot
+(`production_tls_gate` wired into `validate_runtime_settings` — a
+deployment with a broken or expired serving certificate fails fast).
+An unconfigured app boundary is reported honestly as UNCONFIGURED:
+reverse-proxy termination is a legitimate shape invisible from inside
+the process. mTLS client-certificate enforcement, service identity
+(SPIFFE/SPIRE), mesh, and TDE remain the infrastructure decisions this
+report records. Tests:
+`services/api/tests/unit/test_tls_posture.py`.
