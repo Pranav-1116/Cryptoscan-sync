@@ -190,6 +190,58 @@ def test_adjacent_source_sentinel_is_not_committed_to_evidence(db_session, tmp_p
     assert verify_stored_scan(scan, rows)["result"] == "PASS"
 
 
+def test_legacy_loader_rejects_unhashed_integrity_source_text(db_session):
+    """The record integrity sidecar must not store uncommitted source text."""
+    from evidence.core.pipeline import EvidencePipeline
+    from db.models.evidence_record import EvidenceRecord as StoredEvidenceRecord
+
+    sentinel = "NON_SECRET_INTEGRITY_SOURCE_SENTINEL_1357"
+    scan_id = str(uuid.uuid4())
+    record = EvidencePipeline(scan_id).process_findings([_make_finding()])[0].to_dict()
+    record["integrity"]["source_text"] = sentinel
+
+    with pytest.raises(ValueError, match="unsupported integrity metadata"):
+        EvidenceLoader(db_session).load(
+            scan_meta={"target_location": "synthetic://fixture"},
+            evidence_records=[record], scan_id=scan_id,
+        )
+    db_session.rollback()
+    assert db_session.query(StoredEvidenceRecord).count() == 0
+
+
+def test_verified_loader_rejects_unhashed_provenance_source_text(db_session, valid_scan_data):
+    """A valid hash chain does not authenticate the independent provenance JSON."""
+    from db.models.evidence_record import EvidenceRecord as StoredEvidenceRecord
+
+    sentinel = "NON_SECRET_PROVENANCE_SOURCE_SENTINEL_9753"
+    scan_id = valid_scan_data["scan_id"]
+    records = _build_evidence_records([_make_finding()], scan_id)
+    records[0]["provenance"]["source_text"] = sentinel
+    result = EvidenceLoader(db_session).load_from_data(
+        scan_id=scan_id, scan_data=valid_scan_data,
+        evidence_records=records, scan_session_id=scan_id,
+    )
+
+    assert not result.success
+    assert "unsupported provenance metadata" in (result.error or "")
+    db_session.rollback()
+    assert db_session.query(StoredEvidenceRecord).count() == 0
+
+
+def test_verified_loader_rejects_uncommitted_scanner_identity(db_session, valid_scan_data):
+    """Even an allowed provenance key cannot claim an unhashed detector identity."""
+    scan_id = valid_scan_data["scan_id"]
+    records = _build_evidence_records([_make_finding()], scan_id)
+    records[0]["provenance"]["scanner_id"] = "NON_SECRET_SCANNER_ID_SENTINEL_8642"
+
+    result = EvidenceLoader(db_session).load_from_data(
+        scan_id=scan_id, scan_data=valid_scan_data,
+        evidence_records=records, scan_session_id=scan_id,
+    )
+    assert not result.success
+    assert "unsupported provenance metadata" in (result.error or "")
+
+
 @pytest.fixture
 def valid_scan_data() -> dict:
     """Valid scan metadata dict."""

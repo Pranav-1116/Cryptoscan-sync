@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from db.loader.bulk_inserter import BulkInserter
 from db.loader.post_load_verifier import PostLoadResult, PostLoadVerifier
 from db.loader.pre_load_verifier import PreLoadVerification, verify_records_detailed
+from db.loader.provenance import checked_provenance
 from db.models.evidence_record import EvidenceRecord
 from db.models.scan import Scan
 from db.models.verification_log import VerificationLog
@@ -259,7 +260,7 @@ class EvidenceLoader:
                     class_name=source.get("class_name") or rec.get("class_name"),
                     method_name=source.get("method_name") or rec.get("method_name"),
                     finding_data=finding,
-                    provenance=rec.get("provenance") or rec.get("integrity"),
+                    provenance=checked_provenance(rec, finding),
                 )
             )
         self.session.add_all(rows)

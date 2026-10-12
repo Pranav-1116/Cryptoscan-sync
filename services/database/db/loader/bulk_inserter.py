@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from db.models.evidence_record import EvidenceRecord
 from db.models.scan import Scan
+from db.loader.provenance import checked_provenance
 from shared_models.safe_finding import safe_finding
 
 logger = logging.getLogger(__name__)
@@ -143,7 +144,7 @@ class BulkInserter:
             "class_name": source.get("class_name") or rec.get("class_name"),
             "method_name": source.get("method_name") or rec.get("method_name"),
             "finding_data": finding,
-            "provenance": rec.get("provenance") or rec.get("integrity"),
+            "provenance": checked_provenance(rec, finding),
         }
 
     def _insert_evidence_pg(self, scan: Scan, records: list[dict[str, Any]]) -> int:
