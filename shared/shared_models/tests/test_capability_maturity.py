@@ -16,12 +16,38 @@ MATURITY_TS = ROOT / "frontend" / "src" / "lib" / "maturity.ts"
 
 
 def _routes_in_app() -> set[str]:
-    return set(re.findall(r'path="/([a-z0-9-]+)"', APP_TSX.read_text("utf-8")))
+    """Served console routes — redirect aliases excluded (no surface of their own)."""
+    text = APP_TSX.read_text("utf-8")
+    routes = set()
+    for match in re.finditer(r'<Route path="/([a-z0-9-]+)" element=\{([^}]*)', text):
+        slug, element = match.groups()
+        if element.strip().startswith("<Navigate"):
+            continue  # legacy-bookmark alias: it renders nothing, its target carries the tier
+        routes.add(slug)
+    return routes
+
+
+def _redirect_aliases_in_app() -> dict[str, str]:
+    """Legacy path -> redirect target, for the alias-target pin below."""
+    aliases: dict[str, str] = {}
+    for match in re.finditer(
+            r'<Route path="/([a-z0-9-]+)" element=\{<Navigate to="/([a-z0-9-]+)"',
+            APP_TSX.read_text("utf-8")):
+        aliases[match.group(1)] = match.group(2)
+    return aliases
 
 
 def test_every_console_route_has_a_tier():
     missing = sorted(_routes_in_app() - set(CAPABILITIES))
     assert missing == [], f"routes with no maturity tier (defaults to preview, but say so): {missing}"
+
+
+def test_every_redirect_alias_targets_a_tiered_route():
+    aliases = _redirect_aliases_in_app()
+    assert aliases, "expected the legacy-bookmark aliases to exist in App.tsx"
+    dangling = sorted(
+        target for target in aliases.values() if target not in CAPABILITIES)
+    assert dangling == [], f"redirect aliases pointing at un-tiered routes: {dangling}"
 
 
 def test_every_tier_entry_names_a_real_route():

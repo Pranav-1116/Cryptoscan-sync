@@ -41,6 +41,12 @@ def lifecycle_db(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("SECRET_KEY", "crypto-drift-test-" + "z" * 24)
     get_settings.cache_clear()
+    # The tenant guard is what stamps scoped approvals and forbids mutating a
+    # written tenant_id; this suite must not depend on some other test having
+    # installed it first (install is global and idempotent).
+    from db.tenancy import install_tenant_guard
+
+    install_tenant_guard()
     engine = create_engine(
         "sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False},
         poolclass=StaticPool,
@@ -194,10 +200,15 @@ def test_tenant_baseline_provenance_and_unavailable_reference(lifecycle_db):
         assert db.query(DriftEvent).count() == 0
         # A same-tenant but invalid reference must also not yield an all-clear.
         seed_scan(db, "b-base", BASELINE, tenant_id="tenant-b")
-        b = BaselineRepository(db).approve(
-            system_identifier=TARGET, scan_id="b-base", approved_by="aud",
-        )
-        b.tenant_id = "tenant-b"  # worker's unscoped session represents this owner
+        # A tenant operator approves their own baseline: the scope stamps the
+        # new row tenant-b (tenant_id is immutable once written, and an
+        # unscoped approve would supersede tenant-a's ACTIVE baseline).
+        from db.tenancy import tenant_scope
+
+        with tenant_scope("tenant-b"):
+            BaselineRepository(db).approve(
+                system_identifier=TARGET, scan_id="b-base", approved_by="aud",
+            )
         db.get(Scan, "b-base").status = "FAILED"
         db.commit()
         result = compare(db, "b-current")
