@@ -140,6 +140,47 @@ r30 additions: prioritized remediation queue (`/api/v1/priority` +
 `/priorities` page, gap A8 closed) and RFC 7515 JWS signatures on all export
 manifests (gap A2 closed).
 
+### Addendum — rounds 41–48 (2026-10-13)
+
+The round-29 scores above were measured at the round-29 commit and are **not
+re-measured here**; this addendum records what closed since, so no reader
+mistakes a closed gap for an open one (or vice versa). Full per-round detail:
+[`../audit_reports/00_ROUND_STATUS.md`](../audit_reports/00_ROUND_STATUS.md).
+
+Closed or materially advanced since round 29:
+
+- **Full-chain demonstration** (r41): the authoritative chain — scan → evidence
+  hash chain → load → normalize → policy → facts → graph → drift → gate →
+  CBOM, twice more with the operator loop (approved baseline → drift → task →
+  resolve → rescan → condition-level VERIFIED) — now runs in one integration
+  test with read-back through the authenticated API.
+- **Per-record evidence verification** (r42): `GET /findings/{id}/verify`
+  recomputes content/chain/format verdicts per record with the same core as
+  the scan sweep.
+- **Graph edge provenance** (r43): every edge carries OBSERVED / DECLARED /
+  SCANNER_DERIVED / INFERRED (visibly UNATTRIBUTED when unknown); blast
+  radius reports which provenance it followed.
+- **Durable per-run jobs for specialized scanners** (r44): cloud/container/
+  network/OT runs leave tenant-bound `ScanJob` rows with admission decisions
+  and content-free coverage, readable at `GET /jobs/{id}`.
+- **Execution-time safety gate** (r46): the worker re-derives admission at
+  dequeue — emergency stop, policy tightening, exclusions or source-root
+  changes after enqueue refuse the job before any collector runs; control-plane
+  read failures fail closed.
+- **Content-addressed CBOM snapshots** (r45, UI r48): pinned renderings served
+  verbatim with integrity self-checks; pipeline BOMs are durable; the CBOM page
+  pins and inspects them.
+- **Compliance requirements register** (r47): requirement → exact evidence /
+  gaps / expiry / reviewer sign-off, over pinned integrity-checked evidence
+  packs and persisted, re-verified JWS attestations; unmapped frameworks stay
+  visibly unevaluated.
+
+Still open (unchanged from §5 unless noted): the §5 gaps table stands; §4.1's
+hostile-repository sandbox, §4.2's historical snippet disposition (operator
+decision), §4.6's field calibration against held-out corpora, and §6's
+production qualification all remain open by design — they need infrastructure,
+credentials or customer data this repository cannot self-certify.
+
 ## 6. Verification
 
 - Backend test lane: all service suites green at the r29 commit (see

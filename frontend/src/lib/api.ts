@@ -4004,6 +4004,18 @@ export interface ScanListPage { scans: ScanSummaryRow[]; total_count: number; pa
 export const apiScansPage = (page = 1, pageSize = 20): Promise<ApiResult<ScanListPage>> =>
   call(`/api/v1/scans?page=${page}&page_size=${pageSize}`);
 export const apiScansRecent = (pageSize = 20): Promise<ApiResult<ScanListPage>> => apiScansPage(1, pageSize);
+
+/* Pinned CBOM snapshots (§4.4, round 45): one content-addressed rendering
+ * per pin, served verbatim with an integrity self-check. The live CBOM
+ * routes regenerate from current evidence; a snapshot does not. */
+export const apiCbomScanSnapshots = (scanId: string): Promise<ApiResult<any>> =>
+  call(`/api/v1/cbom/scan/${encodeURIComponent(scanId)}/snapshots`);
+
+export const apiCbomPinSnapshot = (scanId: string, signed: boolean): Promise<ApiResult<any>> =>
+  call(`/api/v1/cbom/scan/${encodeURIComponent(scanId)}/snapshot?signed=${signed}`, { method: "POST" });
+
+export const apiCbomSnapshot = (snapshotId: string): Promise<ApiResult<any>> =>
+  call(`/api/v1/cbom/snapshots/${encodeURIComponent(snapshotId)}`);
 /** Verifies persisted content, ordering, and manifest for one scan; not a per-finding verdict. */
 export interface ScanVerification {
   scan_id: string; records: number; result: "PASS" | "FAIL" | "EMPTY" | "UNVERIFIABLE";

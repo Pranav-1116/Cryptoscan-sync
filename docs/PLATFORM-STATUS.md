@@ -24,6 +24,22 @@ real infrastructure or credentials.
 > and [soak-evidence/](soak-evidence/README.md) for what was found and fixed). The
 > paragraphs below record earlier measurements and dated implementation updates.
 
+> **Current documentation state (2026-10-13, rounds 41–48):** **91 migrations**
+> (0001–0091), **88 frontend page components**, and the full local backend suite at
+> **7,421 passed / 31 skipped** (SQLite lane, per-round gate before push) plus a
+> **259-test** Vitest frontend suite with clean `tsc --noEmit`. The regenerated API
+> reference reports **815 paths / 901 operations** across 98 tagged groups. Rounds
+> 41–48 delivered: the full-chain end-to-end demonstration (one run, three pipeline
+> passes, operator loop with condition-level VERIFIED closure), per-record evidence
+> verification, explainable-risk and priorities→owned-task surfaces, graph edge
+> provenance classes, durable per-run job records for the specialized scanners,
+> worker-side execution-time admission re-validation (emergency stop/policy/source
+> roots refuse a dequeued job), content-addressed CBOM snapshots (API + pipeline +
+> UI), and the compliance requirements register (requirement → exact evidence /
+> gaps / expiry / reviewer sign-off over pinned, integrity-checked evidence packs).
+> Per-round ledger: [`audit_reports/00_ROUND_STATUS.md`](../audit_reports/00_ROUND_STATUS.md).
+> The paragraphs below record earlier measurements and dated implementation updates.
+
 Measured at the release HEAD (`v1.0.0` + supervisory portal + telecom scanner + ops layer + enterprise readiness, 2026-09-11):
 **583 OpenAPI paths** (measured from the live schema), **56 ordered database migrations** (0001–0056),
 **64 frontend pages**, **9 RBAC roles** (superadmin, ciso, security_analyst,

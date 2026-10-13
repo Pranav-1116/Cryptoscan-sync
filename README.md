@@ -2,7 +2,7 @@
 
 Production cryptographic inventory and compliance platform — **Full End-to-End Product**.
 
-**Current Stats (2026-09-19, verified):** 51 services (~276k lines of Python, 2,239 files), 325 API router modules (85 registered in `api.main`), 57 alembic migrations with schema-parity tests, 71 frontend pages with lazy-loaded routes, 498 test files. Deterministic policy — no AI in the decision path.
+**Current Stats (2026-10-13, measured):** 51 services (~373k lines of Python), 101 API router modules, **815 API paths / 901 operations** (regenerated reference: `docs/api-reference/rest-api.md`), 91 alembic migrations with schema-parity tests, 88 frontend page components with lazy-loaded routes, 756 backend test files (full local suite: 7,421 passed / 31 skipped) plus a 259-test Vitest frontend suite. Deterministic policy — no AI in the decision path.
 
 **Real-Time System:** WebSocket hub per topic /ws/{topic} plus global /ws/global; SSE /events/{topic} and /events/global; in-process event bus (publish/subscribe/recent) with a DB tailer that federates cross-process monitor events; live dashboard at /live/dashboard with history replay and auto-reconnect. Deterministic and auditable.
 
@@ -56,7 +56,7 @@ Nozomi, SAST), see
 
 | Capability | Where |
 |---|---|
-| **CI** — lint + 23 test suites + E2E seed smoke + polyglot detection matrix + Postgres migration up/down + Docker builds | `.github/workflows/` |
+| **CI** — active `ci.yml`: ruff + backend unit tests (core services), frontend typecheck + build (Vitest runs locally per change, not yet in CI), production config guard, PostgreSQL parity. Named scanner/migration/docker workflows are staged in `.github/workflows-pending/` (three zero-byte placeholders remain active-side) | `.github/workflows/`, `.github/workflows-pending/` |
 | **Multi-user auth** — `users` / `user_sessions` / `audit_log` tables, roles (`admin`/`auditor`/`viewer`), persistent lockout, server-side token revocation, admin user management (`GET/POST/PATCH /api/v1/auth/users`), audit trail (`GET /api/v1/auth/audit`) | `services/api/api/security/`, `services/database/db/models/user.py`, migration `0019` |
 | **RBAC** — scan trigger + baseline approve + drift ack/resolve require auditor/admin; reads need any role | `api/dependencies.py` (`require_roles`) |
 | **Concurrent worker** — `MAX_CONCURRENT_JOBS` thread pool with backpressure and graceful drain | `services/worker/worker/core/pool.py` |

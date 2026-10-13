@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-10:
-**744 paths, 824 operations** across 91 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-13:
+**815 paths, 901 operations** across 98 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -86,6 +86,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/assets` | List Assets |
+| `GET` | `/api/v1/assets/libraries/identity` | Library Identities |
 | `GET` | `/api/v1/assets/{asset_id}` | Get Asset |
 
 ## audit-export
@@ -105,7 +106,12 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/auth/audit` | List Audit |
 | `GET` | `/api/v1/auth/audit/export` | Export Audit |
+| `GET` | `/api/v1/auth/audit/timeline` | Unified Timeline |
 | `GET` | `/api/v1/auth/audit/verify` | Verify Audit |
+| `GET` | `/api/v1/auth/custom-roles` | List Custom Roles |
+| `POST` | `/api/v1/auth/custom-roles` | Create Custom Role |
+| `PUT` | `/api/v1/auth/custom-roles/{name}` | Update Custom Role |
+| `DELETE` | `/api/v1/auth/custom-roles/{name}` | Delete Custom Role |
 | `POST` | `/api/v1/auth/login` | Login |
 | `POST` | `/api/v1/auth/login/mfa` | Login Mfa |
 | `POST` | `/api/v1/auth/logout` | Logout |
@@ -197,6 +203,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/baselines` | List Baselines |
 | `POST` | `/api/v1/baselines/approve` | Approve |
+| `GET` | `/api/v1/baselines/proposed` | List Proposed Baselines |
+| `POST` | `/api/v1/baselines/{baseline_id}/approve-proposed` | Approve Proposed Baseline |
+| `DELETE` | `/api/v1/baselines/{baseline_id}/proposal` | Dismiss Proposed Baseline |
 
 ## billing
 
@@ -210,6 +219,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
+| `GET` | `/api/v1/business/impact/by-algorithm` | Business Impact By Algorithm |
 | `GET` | `/api/v1/business/owners` | List Owners |
 | `POST` | `/api/v1/business/owners` | Create Owner |
 | `GET` | `/api/v1/business/processes` | List Processes |
@@ -219,7 +229,13 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/migrations` | Create Migration |
 | `POST` | `/api/v1/migrations/from-scan` | Create Migration From Scan |
 | `PATCH` | `/api/v1/migrations/tasks/{task_id}` | Update Migration Task |
+| `POST` | `/api/v1/migrations/tasks/{task_id}/complete` | Complete Migration Task |
+| `POST` | `/api/v1/migrations/tasks/{task_id}/rollback` | Rollback Migration Task |
+| `POST` | `/api/v1/migrations/tasks/{task_id}/start` | Start Migration Task |
 | `PATCH` | `/api/v1/migrations/{project_id}` | Update Migration |
+| `POST` | `/api/v1/migrations/{project_id}/dependencies/auto` | Auto Derive Task Dependencies |
+| `POST` | `/api/v1/migrations/{project_id}/execute/advance` | Advance Ready Tasks |
+| `GET` | `/api/v1/migrations/{project_id}/execution-plan` | Migration Execution Plan |
 | `GET` | `/api/v1/migrations/{project_id}/export/github-issues` | Export Github Issues |
 | `GET` | `/api/v1/migrations/{project_id}/forecast` | Migration Forecast |
 | `GET` | `/api/v1/migrations/{project_id}/milestones` | List Milestones |
@@ -228,6 +244,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/migrations/{project_id}/sync` | Sync Migration |
 | `GET` | `/api/v1/migrations/{project_id}/tasks` | List Migration Tasks |
 | `POST` | `/api/v1/migrations/{project_id}/tasks` | Add Migration Task |
+| `POST` | `/api/v1/migrations/{project_id}/tasks/{task_id}/dependencies` | Link Task Dependency |
+| `GET` | `/api/v1/vendor-bom` | Vendor Bom |
 | `GET` | `/api/v1/vendor-risks` | Vendor Risks |
 | `GET` | `/api/v1/vendors` | List Vendors |
 | `POST` | `/api/v1/vendors` | Create Vendor |
@@ -236,6 +254,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/vendors/{vendor_id}/api-scan` | Vendor Api Scan |
 | `POST` | `/api/v1/vendors/{vendor_id}/cbom` | Post Vendor Cbom |
 | `POST` | `/api/v1/vendors/{vendor_id}/docs` | Post Vendor Docs |
+| `POST` | `/api/v1/vendors/{vendor_id}/ownership` | Assign Vendor Ownership |
 | `GET` | `/api/v1/vendors/{vendor_id}/profile` | Get Vendor Profile |
 | `PUT` | `/api/v1/vendors/{vendor_id}/profile` | Put Vendor Profile |
 | `DELETE` | `/api/v1/vendors/{vendor_id}/profile` | Expire Vendor Profile |
@@ -246,6 +265,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/vendors/{vendor_id}/questionnaire` | Get Questionnaire |
 | `POST` | `/api/v1/vendors/{vendor_id}/questionnaire` | Post Questionnaire |
 | `GET` | `/api/v1/vendors/{vendor_id}/risk` | Vendor Risk |
+| `GET` | `/api/v1/vendors/{vendor_id}/vbom` | Vendor Vbom |
 
 ## business-context
 
@@ -265,16 +285,22 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/cbom/assess` | Cbom Assess |
 | `GET` | `/api/v1/cbom/assess/portfolio` | Cbom Assess Portfolio |
 | `GET` | `/api/v1/cbom/coverage` | Cbom Coverage |
+| `GET` | `/api/v1/cbom/cross-links` | Cbom Cross Links |
 | `POST` | `/api/v1/cbom/custom` | Cbom Custom |
 | `POST` | `/api/v1/cbom/diff` | Cbom Diff |
+| `GET` | `/api/v1/cbom/evidence/{content_hash}` | Cbom Components For Evidence Hash |
 | `POST` | `/api/v1/cbom/ingest` | Cbom Ingest |
 | `GET` | `/api/v1/cbom/nbom` | Nbom Live |
 | `POST` | `/api/v1/cbom/nbom` | Nbom Build |
 | `POST` | `/api/v1/cbom/nbom/cascade` | Nbom Cascade |
 | `GET` | `/api/v1/cbom/portfolio` | Cbom Portfolio |
+| `GET` | `/api/v1/cbom/query` | Cbom Query |
 | `POST` | `/api/v1/cbom/scan-uncovered` | Cbom Scan Uncovered |
 | `GET` | `/api/v1/cbom/scan/{scan_id}` | Cbom For Scan |
+| `POST` | `/api/v1/cbom/scan/{scan_id}/snapshot` | Create Scan Snapshot |
+| `GET` | `/api/v1/cbom/scan/{scan_id}/snapshots` | List Scan Snapshots |
 | `GET` | `/api/v1/cbom/search` | Cbom Search |
+| `GET` | `/api/v1/cbom/snapshots/{snapshot_id}` | Get Cbom Snapshot |
 | `GET` | `/api/v1/cbom/system/{system_id}` | Cbom For System |
 | `POST` | `/api/v1/cbom/validate` | Cbom Validate |
 | `POST` | `/api/v1/cbom/verify` | Cbom Verify |
@@ -283,11 +309,19 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
+| `POST` | `/api/v1/certificates/ct-entries` | Ingest Ct Log Entries |
 | `POST` | `/api/v1/certificates/lifecycle/csr` | Lifecycle Csr |
 | `POST` | `/api/v1/certificates/lifecycle/issue` | Lifecycle Issue |
 | `GET` | `/api/v1/certificates/lifecycle/renewal-queue` | Renewal Queue |
+| `POST` | `/api/v1/certificates/{fingerprint}/ownership` | Assign Certificate Ownership |
 | `POST` | `/api/v1/certificates/{fingerprint}/renew` | Lifecycle Renew |
 | `POST` | `/api/v1/certificates/{fingerprint}/revoke` | Lifecycle Revoke |
+
+## chatops
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/chatops/command` | Chatops Command |
 
 ## cloud
 
@@ -315,11 +349,16 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
+| `GET` | `/api/v1/compliance/attestations` | List Attestations |
 | `POST` | `/api/v1/compliance/attestations` | Create Attestation |
 | `POST` | `/api/v1/compliance/attestations/verify` | Verify Attestation |
 | `GET` | `/api/v1/compliance/audit/evidence` | Audit Evidence |
 | `GET` | `/api/v1/compliance/audit/retention` | Audit Retention |
 | `GET` | `/api/v1/compliance/evidence` | Evidence |
+| `GET` | `/api/v1/compliance/evidence/packs` | List Packs |
+| `POST` | `/api/v1/compliance/evidence/packs` | Snapshot Evidence |
+| `GET` | `/api/v1/compliance/evidence/packs/{pack_id}` | Get Pack |
+| `GET` | `/api/v1/compliance/requirements` | Requirements |
 | `GET` | `/api/v1/compliance/retention` | Retention Policy |
 
 ## connectors
@@ -497,6 +536,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/drift` | List Drift |
 | `GET` | `/api/v1/drift/digest` | Drift Digest |
+| `POST` | `/api/v1/drift/evaluate-verification` | Evaluate Verification |
+| `GET` | `/api/v1/drift/sla` | Drift Sla |
 | `POST` | `/api/v1/drift/{drift_id}/acknowledge` | Acknowledge |
 | `POST` | `/api/v1/drift/{drift_id}/false-positive` | False Positive |
 | `GET` | `/api/v1/drift/{drift_id}/remediation-tasks` | Drift Remediation Tasks |
@@ -546,6 +587,14 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/events/stats` | Event Stats |
 | `GET` | `/api/v1/events/stream` | Stream Events |
 
+## evidence-disposition
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/evidence/disposition` | Record Disposition |
+| `GET` | `/api/v1/evidence/disposition/inventory` | Disposition Inventory |
+| `GET` | `/api/v1/evidence/disposition/{scan_id}` | Scan Dispositions |
+
 ## exceptions
 
 | Method | Path | Summary |
@@ -576,15 +625,29 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/exposure/paths` | Exposure Paths |
 
+## facts
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/facts/code-graph` | Code Fact Graph |
+| `GET` | `/api/v1/facts/crypto` | Crypto Facts |
+| `POST` | `/api/v1/facts/rebuild` | Rebuild Fact Store |
+| `GET` | `/api/v1/facts/reconciliation` | Fact Asset Reconciliation |
+| `GET` | `/api/v1/facts/store` | Fact Store |
+
 ## findings
 
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/findings` | List All Findings |
 | `GET` | `/api/v1/findings/conflicts` | Finding Conflicts |
+| `GET` | `/api/v1/findings/corroboration` | Finding Corroboration |
+| `GET` | `/api/v1/findings/detectors/labeled-calibration` | Labeled Detector Calibration |
+| `GET` | `/api/v1/findings/detectors/scorecards` | Detector Scorecards |
 | `GET` | `/api/v1/findings/{evidence_id}` | Get Finding |
 | `POST` | `/api/v1/findings/{evidence_id}/restore` | Restore Finding |
 | `POST` | `/api/v1/findings/{evidence_id}/soft-delete` | Soft Delete Finding |
+| `GET` | `/api/v1/findings/{evidence_id}/verify` | Verify Finding |
 | `GET` | `/api/v1/scans/{scan_id}/findings` | List Findings |
 
 ## governance
@@ -657,6 +720,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/hardware/edge/sync` | Edge Sync |
 | `POST` | `/api/v1/hardware/events` | Ingest Event |
 | `POST` | `/api/v1/hardware/events/batch` | Ingest Events Batch |
+| `GET` | `/api/v1/hardware/hbom` | Hbom Document |
 | `GET` | `/api/v1/hardware/hbom/versions` | Hbom Versions |
 | `POST` | `/api/v1/hardware/heartbeats` | Ingest Heartbeat |
 | `GET` | `/api/v1/hardware/incidents` | Incidents |
@@ -708,6 +772,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/inventory/assets` | List Inventory |
 | `POST` | `/api/v1/inventory/assets/{asset_id}/lifecycle` | Transition Asset Lifecycle |
+| `GET` | `/api/v1/inventory/assets/{asset_id}/lifecycle/timeline` | Asset Lifecycle Timeline |
+| `POST` | `/api/v1/inventory/assets/{asset_id}/ownership` | Assign Asset Ownership |
 | `GET` | `/api/v1/inventory/summary` | Inventory Summary |
 
 ## inventory-cloud
@@ -786,6 +852,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/certificates` | List Certificates |
+| `GET` | `/api/v1/certificates/composite` | List Composite Certificates |
 | `GET` | `/api/v1/certificates/expiry-calendar` | Certificate Expiry Calendar |
 | `GET` | `/api/v1/certificates/{cert_id}` | Get Certificate |
 | `POST` | `/api/v1/certificates/{cert_id}/revocation` | Check Revocation |
@@ -940,6 +1007,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/policy/rules` | List Rules |
+| `GET` | `/api/v1/policy/rules/conflicts` | Rule Conflicts |
+| `GET` | `/api/v1/policy/rules/coverage` | Rule Test Coverage Surface |
 | `PUT` | `/api/v1/policy/rules/{rule_id}/override` | Set Rule Override |
 | `DELETE` | `/api/v1/policy/rules/{rule_id}/override` | Clear Rule Override |
 
@@ -948,6 +1017,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/priority` | Remediation Priority |
+| `POST` | `/api/v1/priority/{ref_id}/tasks` | Create Tasks From Priority |
 
 ## quantum
 
@@ -1082,6 +1152,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/scans` | List Scans |
 | `GET` | `/api/v1/scans/{scan_id}` | Get Scan |
 | `GET` | `/api/v1/scans/{scan_id}/cascade` | Get Scan Cascade |
+| `GET` | `/api/v1/scans/{scan_id}/coverage` | Get Scan Coverage |
 | `GET` | `/api/v1/scans/{scan_id}/key-reconciliation` | Get Key Reconciliation |
 | `POST` | `/api/v1/scans/{scan_id}/retry` | Retry Scan |
 
@@ -1139,6 +1210,17 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/security/profiles` | List Scan Profiles |
 | `POST` | `/api/v1/security/profiles/resolve` | Resolve Scan Profile |
 
+## site-security
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/license/status` | License Status View |
+| `POST` | `/api/v1/license/trial` | Issue Trial License |
+| `GET` | `/api/v1/security/secrets/status` | Secrets Status View |
+| `GET` | `/api/v1/security/tls/posture` | Tls Posture View |
+| `POST` | `/api/v1/security/zero-trust/evaluate` | Zero Trust Evaluate |
+| `GET` | `/api/v1/security/zero-trust/policies` | Zero Trust Policies |
+
 ## sla
 
 | Method | Path | Summary |
@@ -1185,6 +1267,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/systems` | List Systems |
 | `POST` | `/api/v1/systems` | Create System |
+| `GET` | `/api/v1/systems/business-units/{business_unit}/grants` | List Bu Grants |
+| `POST` | `/api/v1/systems/business-units/{business_unit}/grants` | Add Bu Grant |
+| `DELETE` | `/api/v1/systems/business-units/{business_unit}/grants/{subject}` | Revoke Bu Grant |
 | `POST` | `/api/v1/systems/import` | Import Systems |
 | `GET` | `/api/v1/systems/{system_id}` | Get System |
 | `PATCH` | `/api/v1/systems/{system_id}` | Update System |
@@ -1255,11 +1340,38 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/telecom/targets` | Telecom Target Add |
 | `DELETE` | `/api/v1/telecom/targets/{nf_id}` | Telecom Target Delete |
 
+## threat-intel
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/threat-intel/advisories` | List Advisories |
+| `POST` | `/api/v1/threat-intel/advisories/bundle` | Build Bundle |
+| `POST` | `/api/v1/threat-intel/advisories/import` | Import Advisories |
+| `POST` | `/api/v1/threat-intel/advisories/sync` | Sync Advisory Feeds |
+| `GET` | `/api/v1/threat-intel/algorithms/{algorithm}` | Algorithm Advisories |
+| `GET` | `/api/v1/threat-intel/assets/{asset_id}` | Asset Advisories |
+| `GET` | `/api/v1/threat-intel/feed` | Serve Feed |
+| `GET` | `/api/v1/threat-intel/feeds` | List Feeds |
+
+## topology
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/network/topology` | Get Topology |
+| `POST` | `/api/v1/network/topology` | Declare Topology |
+| `GET` | `/api/v1/network/topology/paths` | Topology Paths |
+
 ## trigger
 
 | Method | Path | Summary |
 |---|---|---|
 | `POST` | `/api/v1/scans/trigger` | Trigger Manual Scan |
+
+## trust-model
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/trust-model` | Trust Model |
 
 ## ungrouped
 

@@ -1,7 +1,14 @@
 import { Link } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 import { Badge } from "../components/ui";
-import { apiCbomQuery, apiCbomCoverage } from "../lib/api";
+import {
+  apiCbomCoverage,
+  apiCbomPinSnapshot,
+  apiCbomQuery,
+  apiCbomScanSnapshots,
+  apiCbomSnapshot,
+  apiScansRecent,
+} from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
 import { ICON_SM, IconCaretDown, IconCaretRight } from "../components/icons";
@@ -32,6 +39,72 @@ export default function Cbom() {
   const [coverage, setCoverage] = useState<any>(null);
   const [components, setComponents] = useState<CbomItem[]>([]);
   const [queryNote, setQueryNote] = useState<string>("");
+
+  // pinned snapshots (§4.4): one scan's pinned, content-addressed CBOM
+  // renderings — the live query above regenerates; these do not
+  const [scans, setScans] = useState<{ scan_id: string; status: string; target_location: string }[]>([]);
+  const [selectedScan, setSelectedScan] = useState<string>("");
+  const [snapshots, setSnapshots] = useState<any[]>([]);
+  const [snapshotsNote, setSnapshotsNote] = useState<string>("");
+  const [snapshotsLoaded, setSnapshotsLoaded] = useState(false);
+  const [signOnPin, setSignOnPin] = useState(false);
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinResult, setPinResult] = useState<string | null>(null);
+  const [openSnapshot, setOpenSnapshot] = useState<any>(null);
+
+  async function loadSnapshots(scanId: string) {
+    const res = await apiCbomScanSnapshots(scanId);
+    if (res.source === "live" && res.data) {
+      setSnapshots(Array.isArray(res.data.snapshots) ? res.data.snapshots : []);
+      setSnapshotsNote(typeof res.data.note === "string" ? res.data.note : "");
+      setSnapshotsLoaded(true);
+    } else {
+      setSnapshots([]);
+      setSnapshotsNote("");
+      setSnapshotsLoaded(false);
+    }
+    setOpenSnapshot(null);
+  }
+
+  useEffect(() => {
+    let alive = true;
+    async function loadScanChoices() {
+      const res = await apiScansRecent(20);
+      if (!alive) return;
+      if (res.source === "live" && res.data && Array.isArray(res.data.scans)) {
+        setScans(res.data.scans);
+      }
+    }
+    loadScanChoices();
+    return () => { alive = false; };
+  }, []);
+
+  async function pinSnapshot() {
+    if (!selectedScan) return;
+    setPinBusy(true);
+    setPinResult(null);
+    const res = await apiCbomPinSnapshot(selectedScan, signOnPin);
+    setPinBusy(false);
+    if (res.source === "live" && res.data) {
+      setPinResult(res.data.note || (res.data.created ? "Snapshot pinned." : "Returned the existing pin."));
+      await loadSnapshots(selectedScan);
+    } else {
+      setPinResult("Pin failed — the snapshot was not created.");
+    }
+  }
+
+  async function viewSnapshot(id: string) {
+    if (openSnapshot?.snapshot_id === id) {
+      setOpenSnapshot(null);
+      return;
+    }
+    const res = await apiCbomSnapshot(id);
+    if (res.source === "live" && res.data) {
+      setOpenSnapshot(res.data);
+    } else {
+      setOpenSnapshot({ snapshot_id: id, integrity: "UNAVAILABLE", integrity_note: "Snapshot could not be loaded." });
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -352,6 +425,147 @@ export default function Cbom() {
         {queryNote && !loading && (
           <div style={{ fontSize: "11.5px", color: "var(--faint)", marginTop: "12px" }}>
             {queryNote}
+          </div>
+        )}
+      </div>
+
+      {/* Pinned snapshots — §4.4: the live query above regenerates from
+          current evidence; a pinned snapshot freezes ONE content-addressed
+          rendering tied to the exact scan and serves it verbatim. */}
+      <div className="panel" style={{ padding: "20px", marginTop: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "8px" }}>
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Pinned Snapshots</h3>
+            <p style={{ margin: 0, fontSize: "12px", color: "var(--dim)" }}>
+              A pinned snapshot freezes one rendering of a scan's CBOM — content-addressed (SHA-256), served verbatim, traceable to the exact scan and its evidence.
+              The live routes regenerate from current evidence and may differ.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+            <select
+              aria-label="Scan"
+              value={selectedScan}
+              onChange={(e) => {
+                setSelectedScan(e.target.value);
+                setPinResult(null);
+                if (e.target.value) void loadSnapshots(e.target.value);
+                else { setSnapshots([]); setSnapshotsLoaded(false); }
+              }}
+              style={{ fontSize: 12.5, padding: "6px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--text)", maxWidth: 320 }}
+            >
+              <option value="">{scans.length ? "Select a scan…" : "No scans available"}</option>
+              {scans.map((s) => (
+                <option key={s.scan_id} value={s.scan_id}>
+                  {s.scan_id.slice(0, 8)}… · {s.target_location || s.status}
+                </option>
+              ))}
+            </select>
+            <label style={{ fontSize: 12, color: "var(--dim)", display: "flex", gap: 4, alignItems: "center" }}>
+              <input type="checkbox" checked={signOnPin} onChange={(e) => setSignOnPin(e.target.checked)} />
+              sign on pin
+            </label>
+            <button
+              className="btn outline"
+              onClick={() => void pinSnapshot()}
+              disabled={!selectedScan || pinBusy}
+              style={{ fontSize: 12, padding: "7px 14px", borderRadius: "var(--r)" }}
+            >
+              {pinBusy ? "Pinning…" : "Pin Snapshot"}
+            </button>
+          </div>
+        </div>
+
+        {pinResult && (
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--cyan)" }}>{pinResult}</p>
+        )}
+
+        {!selectedScan && (
+          <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--dim)" }}>
+            Select a scan to pin or inspect its snapshots.
+          </p>
+        )}
+        {selectedScan && !snapshotsLoaded && (
+          <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--dim)" }}>
+            Snapshots unavailable for this scan — nothing is pinned or shown.
+          </p>
+        )}
+        {selectedScan && snapshotsLoaded && snapshots.length === 0 && (
+          <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--dim)" }}>
+            No snapshots pinned for this scan yet — pinning freezes the current rendering for export and audit.
+          </p>
+        )}
+
+        {snapshots.length > 0 && (
+          <div style={{ overflowX: "auto", marginTop: "12px" }}>
+            <table className="tbl" style={{ width: "100%" }}>
+              <thead>
+                <tr>
+                  <th>Content Hash</th>
+                  <th>Signed</th>
+                  <th>Generator</th>
+                  <th>Components</th>
+                  <th>Pinned At</th>
+                  <th>Pinned By</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshots.map((s: any) => (
+                  <React.Fragment key={s.snapshot_id}>
+                    <tr>
+                      <td>
+                        <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{String(s.content_hash || "").slice(0, 16)}…</span>
+                      </td>
+                      <td>
+                        <Badge variant={s.signed && s.signed !== "none" ? "success" : "neutral"}>
+                          {String(s.signed || "none").toUpperCase()}
+                        </Badge>
+                      </td>
+                      <td><span style={{ fontSize: 12 }}>{s.generator || "—"}</span></td>
+                      <td><span style={{ fontSize: 12 }}>{s.component_count ?? "—"}</span></td>
+                      <td><span style={{ fontSize: 12, color: "var(--dim)" }}>{s.snapshotted_at ? new Date(s.snapshotted_at).toLocaleString() : "—"}</span></td>
+                      <td><span style={{ fontSize: 12 }}>{s.created_by || "—"}</span></td>
+                      <td>
+                        <button
+                          className="btn sm"
+                          onClick={() => void viewSnapshot(s.snapshot_id)}
+                          style={{ fontSize: 11.5, padding: "4px 10px" }}
+                        >
+                          {openSnapshot?.snapshot_id === s.snapshot_id ? "Hide" : "Verify & View"}
+                        </button>
+                      </td>
+                    </tr>
+                    {openSnapshot?.snapshot_id === s.snapshot_id && (
+                      <tr>
+                        <td colSpan={7} style={{ background: "var(--bg-2)" }}>
+                          <div style={{ padding: "10px 4px", display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12.5, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                              <Badge variant={openSnapshot.integrity === "OK" ? "success" : openSnapshot.integrity === "MISMATCH" ? "danger" : "neutral"}>
+                                INTEGRITY {String(openSnapshot.integrity || "UNKNOWN").toUpperCase()}
+                              </Badge>
+                              <span style={{ color: "var(--dim)" }}>{openSnapshot.integrity_note}</span>
+                            </div>
+                            <div style={{ fontSize: 12, color: "var(--dim)" }}>
+                              Served verbatim — never regenerated. Verify the scan's evidence chain:{" "}
+                              <span style={{ fontFamily: "var(--mono)" }}>{openSnapshot.scan_verify_path}</span>
+                            </div>
+                            <details>
+                              <summary style={{ fontSize: 12, cursor: "pointer", color: "var(--cyan)" }}>Pinned document ({Array.isArray(openSnapshot.payload?.components) ? openSnapshot.payload.components.length : "?"} components)</summary>
+                              <pre style={{ fontSize: 11, maxHeight: 320, overflow: "auto", fontFamily: "var(--mono)", color: "var(--text)" }}>
+                                {JSON.stringify(openSnapshot.payload, null, 2)}
+                              </pre>
+                            </details>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+            {snapshotsNote && (
+              <div style={{ fontSize: "11.5px", color: "var(--faint)", marginTop: "10px" }}>{snapshotsNote}</div>
+            )}
           </div>
         )}
       </div>
