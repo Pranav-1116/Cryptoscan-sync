@@ -3,7 +3,7 @@
 **Current as of:** 2026-10-04 UTC
 **State snapshot commit:** `fa92881` (branch `arena/01a106c8-cryproscan`, draft PR #23)
 **Decision owner:** [`PRODUCTION-READINESS.md`](../PRODUCTION-READINESS.md) → `docs/readiness-evidence/bank-readiness.{json,md}`
-**Companion docs:** [`NEXT-STEPS.md`](NEXT-STEPS.md) (detector accuracy loop) · [`ops/production-checklist.md`](ops/production-checklist.md) · [`operations/production-qualification-runbook.md`](operations/production-qualification-runbook.md)
+**Companion docs:** [`NEXT-STEPS.md`](NEXT-STEPS.md) (detector accuracy loop) · [`ops/production-checklist.md`](ops/production-checklist.md) · [`production-qualification-runbook.md`](production-qualification-runbook.md)
 
 This is the end-to-end plan for everything that remains between the current
 state and an unattended production approval. It is ordered by dependency, not
