@@ -94,17 +94,56 @@ describe("scanner workflow truth", () => {
   });
 
   it("labels unsupported scanner selections and prevents a different scan from being queued", async () => {
-    // cloud and container left this list in r44: both now run behind the
-    // durable per-run job contract (see the tests below)
+    // cloud and container left this list in r44 (durable per-run job
+    // contract); source left in r46 (execution-time safety gate at the
+    // worker) — see the tests below
     const fetchSpy = mockFetch({ [startPath]: { run_id: "run-1" } });
     renderWithProviders(<Scanners />);
     await act(async () => {});
-    for (const label of ["Source Repository AST", "Hardware & HSM Fleet", "Certificates & CT Logs"]) {
+    for (const label of ["Hardware & HSM Fleet", "Certificates & CT Logs"]) {
       fireEvent.click(screen.getByRole("button", { name: new RegExp(label) }));
       expect(screen.getByRole("button", { name: "Configure Target →" })).toBeDisabled();
       expect(screen.getAllByText(/Unavailable: /).length).toBeGreaterThanOrEqual(1);
     }
     expect(fetchSpy.mock.calls.filter(([path]) => [networkPath, startPath].includes(String(path)))).toHaveLength(0);
+  });
+
+  it("queues a source scan with a job id and tracks it through the durable job record", async () => {
+    const fetchSpy = mockFetch({
+      "/api/v1/scans/trigger": { job_id: "job-src-1", status: "QUEUED", message: "Scan queued. Poll /api/v1/jobs/job-src-1 for status." },
+      "/api/v1/jobs/job-src-1": { job_id: "job-src-1", status: "COMPLETED", job_type: "MANUAL" },
+    });
+    renderWithProviders(<Scanners />);
+    fireEvent.click(screen.getByRole("button", { name: /Source Repository AST/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Target →" }));
+    fireEvent.change(screen.getByLabelText(/Repository URL/), { target: { value: "/workspace/project" } });
+    fireEvent.change(screen.getByLabelText("Branch"), { target: { value: "release" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue Source Scan" }));
+    const post = fetchSpy.mock.calls.find(([path]) => String(path) === "/api/v1/scans/trigger");
+    expect(post).toBeTruthy();
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ repo_url: "/workspace/project", branch: "release" });
+    // 202 + job id → poll this run's own record, not a shared listing
+    expect(await screen.findByRole("heading", { name: "Source Scan Queued" })).toBeInTheDocument();
+    expect(await waitFor(() => fetchSpy.mock.calls.some(([path]) => String(path) === "/api/v1/jobs/job-src-1")));
+    expect(await screen.findByRole("heading", { name: "Source Scan Complete" })).toBeInTheDocument();
+    expect(screen.getByText(/Run ID:/)).toHaveTextContent("job-src-1");
+  });
+
+  it("reports an execution-gate refusal from the job record verbatim", async () => {
+    mockFetch({
+      "/api/v1/scans/trigger": { job_id: "job-src-2", status: "QUEUED" },
+      "/api/v1/jobs/job-src-2": {
+        job_id: "job-src-2", status: "FAILED",
+        error_message: "execution gate: safe-scan policy refuses execution: emergency stop is engaged — all scanning halted",
+      },
+    });
+    renderWithProviders(<Scanners />);
+    fireEvent.click(screen.getByRole("button", { name: /Source Repository AST/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Target →" }));
+    fireEvent.change(screen.getByLabelText(/Repository URL/), { target: { value: "/workspace/project" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue Source Scan" }));
+    expect(await screen.findByRole("heading", { name: "Request Failed" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("execution gate: safe-scan policy refuses execution: emergency stop is engaged");
   });
 
   it("runs a cloud scan behind its durable job record and shows the run's own coverage", async () => {

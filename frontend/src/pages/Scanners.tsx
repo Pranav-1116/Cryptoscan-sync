@@ -10,7 +10,7 @@ type Mode = "passive" | "active" | "registration";
 const targets: { id: ScanTarget; label: string; desc: string; icon: Icon; available: boolean; reason?: string }[] = [
   { id: "Network", label: "Network Scanner", desc: "Authorized active CIDR sweep and TLS endpoint probes", icon: IconNetwork, available: true },
   { id: "Cloud", label: "Cloud KMS Scanner", desc: "IaC tree inspection with a durable per-run record (admission + coverage)", icon: IconCloud, available: true },
-  { id: "Source Repository", label: "Source Repository AST", desc: "Source crypto analysis", icon: IconCode, available: false, reason: "The source job trigger does not enforce the declared application scope at execution." },
+  { id: "Source Repository", label: "Source Repository AST", desc: "Queued source scan with a durable job record and an execution-time safety gate", icon: IconCode, available: true },
   { id: "Container", label: "Container Registry", desc: "Image/filesystem crypto inventory with a durable per-run record", icon: IconContainer, available: true },
   { id: "Hardware", label: "Hardware & HSM Fleet", desc: "Hardware inventory", icon: IconHardware, available: false, reason: "No scoped, per-run hardware job contract is available here." },
   { id: "Certificate", label: "Certificates & CT Logs", desc: "Certificate inventory", icon: IconCertificate, available: false, reason: "No scoped, per-run certificate job contract is available here." },
@@ -51,6 +51,7 @@ export default function Scanners() {
   const [step, setStep] = useState<"select" | "configure" | "running">("select");
   const [selectedTarget, setSelectedTarget] = useState<ScanTarget>("Network");
   const [targetInput, setTargetInput] = useState("");
+  const [branchInput, setBranchInput] = useState("main");
   const [mode, setMode] = useState<Mode>("passive");
   const [activeAuthorized, setActiveAuthorized] = useState(false);
   const [scanJobId, setScanJobId] = useState<string | null>(null);
@@ -236,6 +237,31 @@ export default function Scanners() {
         const result = body as { hosts_checked?: unknown; endpoints: unknown[] };
         setResultNote(`Sweep finished${typeof result.hosts_checked === "number" ? `: ${result.hosts_checked} host(s) checked` : ""}; ${result.endpoints.length} open service endpoint(s) returned.`);
         setScanStatus("completed");
+      } else if (selectedTarget === "Source Repository") {
+        // Queued source scan: 202 + job_id, then this run's own /jobs/{id}
+        // record. The worker's execution gate re-checks the safe-scan policy
+        // and source-root containment at dequeue time.
+        const res = await tenantFetch("/api/v1/scans/trigger", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ repo_url: targetInput.trim(), branch: branchInput.trim() || "main" }),
+          signal: AbortSignal.timeout(30000),
+        });
+        if (!sameSession()) return;
+        const body = await readResponse(res);
+        if (!sameSession()) return;
+        if (!res.ok) { requestRefused = true; throw responseError(res, body); }
+        const jobId = body && typeof body === "object" ? (body as { job_id?: unknown }).job_id : null;
+        if (typeof jobId !== "string" || !jobId) {
+          setScanStatus("unknown");
+          setErrorMsg("Trigger accepted without a job ID; outcome unknown.");
+          return;
+        }
+        setTrackedSession({ token, tenant });
+        setPollKind("job");
+        setScanJobId(jobId);
+        const acceptedStatus = runStatus((body as { status?: unknown }).status);
+        setScanStatus(acceptedStatus === "queued" || acceptedStatus === "running" ? acceptedStatus : "verifying");
       } else if (selectedTarget === "Cloud" || selectedTarget === "Container") {
         // Synchronous specialized scan, now with a durable run identity:
         // the server returns job_id and GET /jobs/{id} carries status,
@@ -359,7 +385,51 @@ export default function Scanners() {
           </div>
 
           <div className="panel" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px", marginBottom: "24px" }}>
-            {selectedTarget === "Cloud" || selectedTarget === "Container" ? <>
+            {selectedTarget === "Source Repository" ? <>
+            <div>
+              <label htmlFor="repo-url" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
+                Repository URL (local target must sit inside declared source roots)
+              </label>
+              <input id="repo-url" placeholder="/workspace/project or https://github.com/org/repo"
+                type="text"
+                value={targetInput}
+                onChange={(e) => setTargetInput(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--r)",
+                  padding: "8px 12px",
+                  color: "var(--text)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "13px"
+                }}
+              />
+              <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "6px" }}>
+                The job is queued behind the central admission, and the worker re-checks the safe-scan policy and source-root containment again at execution — an emergency stop engaged after queuing still prevents the scan. Poll /jobs/{"{id}"} for this run's own status.
+              </div>
+            </div>
+            <div>
+              <label htmlFor="repo-branch" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
+                Branch
+              </label>
+              <input id="repo-branch" placeholder="main"
+                type="text"
+                value={branchInput}
+                onChange={(e) => setBranchInput(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--r)",
+                  padding: "8px 12px",
+                  color: "var(--text)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+            </> : selectedTarget === "Cloud" || selectedTarget === "Container" ? <>
             <div>
               <label htmlFor="scan-path" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
                 {selectedTarget === "Cloud" ? "IaC tree path (inside declared source roots)" : "Container filesystem path (inside declared source roots)"}
@@ -445,12 +515,13 @@ export default function Scanners() {
             <button
               onClick={handleStartScan}
               disabled={(selectedTarget === "Network" && (mode !== "active" || !activeAuthorized || !targetInput.trim()))
-                || ((selectedTarget === "Cloud" || selectedTarget === "Container") && !targetInput.trim())}
+                || ((selectedTarget === "Cloud" || selectedTarget === "Container" || selectedTarget === "Source Repository") && !targetInput.trim())}
               className="btn primary"
             >
               {selectedTarget === "Network" ? "Start Authorized Sweep"
                 : selectedTarget === "Cloud" ? "Start Cloud Scan"
                 : selectedTarget === "Container" ? "Start Container Scan"
+                : selectedTarget === "Source Repository" ? "Queue Source Scan"
                 : "Register Authorized Scope"}
             </button>
           </div>
@@ -466,13 +537,14 @@ export default function Scanners() {
             {scanStatus === "completed" ? (selectedTarget === "Network" ? "Network Sweep Complete"
               : selectedTarget === "Cloud" ? "Cloud Scan Complete"
               : selectedTarget === "Container" ? "Container Scan Complete"
+              : selectedTarget === "Source Repository" ? "Source Scan Complete"
               : "Scope Registration Complete")
               : scanStatus === "failed" ? "Request Failed" : scanStatus === "cancelled" ? "Run Cancelled"
-                : scanStatus === "unknown" ? "Outcome Unknown" : scanStatus === "verifying" ? "Checking Run Status" : scanStatus === "queued" ? "Discovery Run Queued" : "Scan Running"}
+                : scanStatus === "unknown" ? "Outcome Unknown" : scanStatus === "verifying" ? "Checking Run Status" : scanStatus === "queued" ? (selectedTarget === "Source Repository" ? "Source Scan Queued" : "Discovery Run Queued") : "Scan Running"}
           </h2>
           <p role="status" style={{ color: "var(--dim)", fontSize: "14px", margin: "0 0 20px" }}>
             {scanJobId && <>Run ID: <code style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{scanJobId}</code> · </>}
-            Target: <code>{selectedTarget === "Network" || selectedTarget === "Cloud" || selectedTarget === "Container" ? targetInput : "authorized onboarding scope"}</code> · Status: {scanStatus}
+            Target: <code>{selectedTarget === "Network" || selectedTarget === "Cloud" || selectedTarget === "Container" || selectedTarget === "Source Repository" ? targetInput : "authorized onboarding scope"}</code> · Status: {scanStatus}
           </p>
 
           {scanStatus === "completed" && resultNote && (
