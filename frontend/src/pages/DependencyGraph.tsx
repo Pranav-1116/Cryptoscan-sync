@@ -131,10 +131,16 @@ export default function DependencyGraph() {
             Graph Backend Engine
           </div>
           <div style={{ fontSize: "20px", fontWeight: 700, margin: "7px 0" }}>
-            {loading ? "..." : (graphData.backend === "memory" ? "Deterministic Memory Engine" : "Neo4j Cluster")}
+            {loading
+              ? "..."
+              : graphData.backend === "memory"
+                ? "Deterministic Memory Engine"
+                : graphData.backend
+                  ? `Neo4j (${graphData.backend})`
+                  : "Not reported"}
           </div>
-          <div style={{ fontSize: "12px", color: "var(--green)" }}>
-            Fail-closed BFS traversal ready
+          <div style={{ fontSize: "12px", color: loading || graphData.backend ? "var(--green)" : "var(--dim)" }}>
+            {loading || graphData.backend ? "Fail-closed BFS traversal ready" : "Backend not reported by the API"}
           </div>
         </div>
       </div>
@@ -248,26 +254,34 @@ export default function DependencyGraph() {
                     <div style={{ padding: "10px", background: "var(--bg-2)", borderRadius: "var(--r)" }}>
                       <div style={{ fontSize: "11px", color: "var(--dim)" }}>Impacted Systems</div>
                       <div style={{ fontSize: "20px", fontWeight: 700, color: "var(--red)" }}>
-                        {blastRadius.affected_systems?.length ?? 0}
+                        {blastRadius.systems?.length ?? 0}
                       </div>
                     </div>
                     <div style={{ padding: "10px", background: "var(--bg-2)", borderRadius: "var(--r)" }}>
                       <div style={{ fontSize: "11px", color: "var(--dim)" }}>Max Traversal Depth</div>
                       <div style={{ fontSize: "20px", fontWeight: 700 }}>
-                        {blastRadius.hops || 2} hops
+                        {(blastRadius.systems || []).length > 0
+                          ? `${Math.max(...(blastRadius.systems || []).map((s: any) => s.hops ?? 0))} hops`
+                          : "0 hops"}
                       </div>
                     </div>
                   </div>
 
-                  {blastRadius.affected_systems && blastRadius.affected_systems.length > 0 && (
+                  {blastRadius.owning_systems && blastRadius.owning_systems.length > 0 && (
+                    <div style={{ fontSize: "11px", color: "var(--dim)" }}>
+                      Shared across {blastRadius.owning_systems.length} owning system{blastRadius.owning_systems.length === 1 ? "" : "s"} (asset start).
+                    </div>
+                  )}
+
+                  {blastRadius.systems && blastRadius.systems.length > 0 && (
                     <div>
                       <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px", color: "var(--faint)" }}>
                         Downstream Dependents:
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                        {blastRadius.affected_systems.map((s: string, idx: number) => (
+                        {blastRadius.systems.map((s: any, idx: number) => (
                           <div key={idx} style={{ fontSize: "12px", padding: "6px 8px", background: "var(--bg-2)", borderRadius: "var(--r)" }}>
-                            ↳ {s}
+                            ↳ {s.name || s.id} <span style={{ color: "var(--dim)" }}>· {s.hops} hop{s.hops === 1 ? "" : "s"}</span>
                           </div>
                         ))}
                       </div>
@@ -276,7 +290,7 @@ export default function DependencyGraph() {
                 </div>
               ) : (
                 <div style={{ padding: "14px", background: "var(--bg-2)", borderRadius: "var(--r)", fontSize: "12.5px", color: "var(--dim)" }}>
-                  No downstream dependencies detected for this node at 2-hop radius.
+                  Blast radius unavailable for this node — no traversal result was returned, so nothing is claimed.
                 </div>
               )}
 

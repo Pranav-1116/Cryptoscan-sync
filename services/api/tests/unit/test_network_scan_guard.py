@@ -63,6 +63,16 @@ def fake_scanner(monkeypatch):
             return {"results": [], "certificates": [], "usages": []}
 
     monkeypatch.setattr("api.routers.network_scans.NetworkTlsScanner", _Fake)
+    # These tests exercise SSRF refusal and tenant quota metering, not the
+    # central admission decision (pinned elsewhere by
+    # test_direct_scanner_admission.py / test_scan_admission.py): pin the
+    # admission seams to "nothing blocks, empty queue" so an unrelated
+    # control-plane table absence cannot fail these paths closed.
+    from api.security import scan_admission as admission
+
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
     return probed
 
 

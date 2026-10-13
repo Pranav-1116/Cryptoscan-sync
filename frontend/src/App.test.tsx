@@ -69,7 +69,7 @@ describe("app shell", () => {
     search.focus();
     expect(document.activeElement).toBe(search);
     fireEvent.click(search);
-    expect(screen.getByRole("textbox", { name: "Search cryptographic assets" })).toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Search the algorithm catalog" })).toHaveFocus();
   });
 
   it("supports keyboard navigation, browser history, and a direct workspace entry", async () => {

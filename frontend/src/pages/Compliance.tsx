@@ -1,51 +1,94 @@
 import { Link } from "react-router-dom";
 import React, { useEffect, useState } from "react";
-import { Badge, Button } from "../components/ui";
+import { Badge } from "../components/ui";
 import { apiComplianceEvidence, apiComplianceRetention } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
+/* Compliance truth rules (product vision §4.3, P0 trust gap):
+ * - No controls returned is NOT a 100% score — it is "not evaluated".
+ * - A missing retention policy is NOT "7 years" — it is "not configured".
+ * - "unknown" is a status of its own, distinct from FAIL.
+ * - The evidence engine evaluates SOC-2-style platform controls; framework
+ *   buttons filter by an explicit mapping and say plainly when a framework
+ *   has no mapped controls, instead of implying all five are evaluated. */
+
+const STANDARD_CONTROL_KEYS: Record<string, RegExp[]> = {
+  "SOC2": [
+    /^access\./, /^config\./, /^audit\./, /^deploy\./, /^protection\./, /^retention\./,
+  ],
+  // The evidence engine has no control mapping for these frameworks yet.
+  // Selecting them must show "nothing evaluated", never the SOC-2 rows.
+  "PCI-DSS": [], "NIST": [], "DORA": [], "FIPS": [],
+};
+
+type EvidenceState =
+  | { phase: "loading" }
+  | { phase: "live"; controls: any[] }
+  | { phase: "offline" };
+
 export default function Compliance() {
-  const [loading, setLoading] = useState(true);
-  const [evidenceData, setEvidenceData] = useState<any>(null);
+  const [evidence, setEvidence] = useState<EvidenceState>({ phase: "loading" });
   const [retentionData, setRetentionData] = useState<any>(null);
-  const [selectedStandard, setSelectedStandard] = useState("PCI-DSS");
+  const [retentionLive, setRetentionLive] = useState(false);
+  const [selectedStandard, setSelectedStandard] = useState("SOC2");
 
   useEffect(() => {
     let alive = true;
     async function loadCompliance() {
-      setLoading(true);
+      setEvidence({ phase: "loading" });
       try {
         const [evRes, retRes] = await Promise.all([
           apiComplianceEvidence(),
           apiComplianceRetention(),
         ]);
-        if (alive) {
-          if (evRes.source === "live" && evRes.data) setEvidenceData(evRes.data);
-          if (retRes.source === "live" && retRes.data) setRetentionData(retRes.data);
+        if (!alive) return;
+        if (evRes.source === "live" && evRes.data) {
+          const controls = Array.isArray(evRes.data.controls) ? evRes.data.controls : [];
+          setEvidence({ phase: "live", controls });
+        } else {
+          setEvidence({ phase: "offline" });
+        }
+        if (retRes.source === "live" && retRes.data) {
+          setRetentionData(retRes.data);
+          setRetentionLive(true);
+        } else {
+          setRetentionLive(false);
         }
       } catch (err) {
         console.error("Failed to load compliance evidence:", err);
-      } finally {
-        if (alive) setLoading(false);
+        if (alive) setEvidence({ phase: "offline" });
       }
     }
     loadCompliance();
     return () => { alive = false; };
   }, []);
 
-  const controls = evidenceData?.controls || [];
-  const passCount = controls.filter((c: any) => c.status === "pass").length;
-  const failCount = controls.filter((c: any) => c.status === "fail").length;
-  const totalCount = controls.length;
-  const complianceScore = totalCount > 0 ? Math.round((passCount / totalCount) * 100) : 100;
+  const allControls = evidence.phase === "live" ? evidence.controls : [];
+  const passCount = allControls.filter((c: any) => c.status === "pass").length;
+  const failCount = allControls.filter((c: any) => c.status === "fail").length;
+  const unknownCount = allControls.filter(
+    (c: any) => c.status !== "pass" && c.status !== "fail").length;
+  const totalCount = allControls.length;
+  // No denominator -> no percentage. Empty is "not evaluated", never 100%.
+  const evaluated = totalCount > 0 && evidence.phase === "live";
+  const complianceScore = evaluated ? Math.round((passCount / totalCount) * 100) : null;
+
+  const patterns = STANDARD_CONTROL_KEYS[selectedStandard] ?? [];
+  const controls = patterns.length
+    ? allControls.filter((c: any) => patterns.some((p) => p.test(String(c.control ?? ""))))
+    : [];
+  const standardMapped = patterns.length > 0;
 
   const standards = [
-    { id: "PCI-DSS", name: "PCI-DSS v4.0.1", tag: "Payment Systems" },
-    { id: "NIST", name: "NIST SP 800-131A / IR 8547", tag: "Quantum Transition" },
-    { id: "DORA", name: "DORA (EU 2022/2554)", tag: "Operational Resilience" },
-    { id: "FIPS", name: "FIPS 140-3", tag: "Module Validation" },
-    { id: "SOC2", name: "SOC 2 Type II (CC6.1)", tag: "Transmission Security" },
+    { id: "SOC2", name: "SOC 2 Type II (CC-series)", tag: "Platform controls" },
+    { id: "PCI-DSS", name: "PCI-DSS v4.0.1", tag: "Not mapped" },
+    { id: "NIST", name: "NIST SP 800-131A / IR 8547", tag: "Not mapped" },
+    { id: "DORA", name: "DORA (EU 2022/2554)", tag: "Not mapped" },
+    { id: "FIPS", name: "FIPS 140-3", tag: "Not mapped" },
   ];
+
+  const retentionYears = retentionLive ? retentionData?.policy?.audit_log_years : undefined;
+  const mappedFrameworks = Object.values(STANDARD_CONTROL_KEYS).filter((p) => p.length > 0).length;
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -57,7 +100,7 @@ export default function Compliance() {
           </div>
           <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Continuous Regulatory Compliance</h1>
           <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
-            Deterministic policy verification. Every compliance status is backed by authoritative platform observations and immutable WORM logs.
+            Deterministic policy verification over platform controls. Framework certifications are external; this page reports what the engine has actually evaluated.
           </p>
         </div>
 
@@ -80,17 +123,28 @@ export default function Compliance() {
         </div>
       </div>
 
+      {evidence.phase === "offline" && (
+        <div className="panel" style={{ padding: "14px 18px", marginBottom: "18px", borderColor: "var(--amber)" }}>
+          <span style={{ color: "var(--amber)", fontWeight: 600 }}>Compliance evidence is unavailable.</span>{" "}
+          <span style={{ color: "var(--dim)", fontSize: "13px" }}>
+            Nothing below is evaluated — no score is shown while the evidence source is unreachable.
+          </span>
+        </div>
+      )}
+
       {/* Top 4 Metric Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px", marginBottom: "24px" }}>
         <div className="panel" style={{ padding: "18px" }}>
           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Compliance Posture Score
           </div>
-          <div style={{ fontSize: "28px", fontWeight: 700, color: complianceScore >= 90 ? "var(--green)" : "var(--amber)", margin: "4px 0" }}>
-            {loading ? "..." : `${complianceScore}%`}
+          <div style={{ fontSize: "28px", fontWeight: 700, color: complianceScore === null ? "var(--dim)" : complianceScore >= 90 ? "var(--green)" : "var(--amber)", margin: "4px 0" }}>
+            {evidence.phase === "loading" ? "..." : complianceScore === null ? "—" : `${complianceScore}%`}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            {passCount} passing out of {totalCount} evaluated controls
+            {evaluated
+              ? `${passCount} passing out of ${totalCount} evaluated controls`
+              : "Not evaluated — the engine returned no controls"}
           </div>
         </div>
 
@@ -98,11 +152,15 @@ export default function Compliance() {
           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             Active Violations
           </div>
-          <div style={{ fontSize: "28px", fontWeight: 700, color: failCount > 0 ? "var(--red)" : "var(--green)", margin: "4px 0" }}>
-            {loading ? "..." : failCount}
+          <div style={{ fontSize: "28px", fontWeight: 700, color: failCount > 0 ? "var(--red)" : evaluated ? "var(--green)" : "var(--dim)", margin: "4px 0" }}>
+            {evidence.phase === "loading" ? "..." : evaluated ? failCount : "—"}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Requiring immediate remediation
+            {evaluated
+              ? unknownCount > 0
+                ? `${failCount} failed · ${unknownCount} not evaluable (unknown)`
+                : "Requiring immediate remediation"
+              : "No evaluation — no violation claim"}
           </div>
         </div>
 
@@ -111,32 +169,39 @@ export default function Compliance() {
             WORM Retention Policy
           </div>
           <div style={{ fontSize: "24px", fontWeight: 700, margin: "6px 0" }}>
-            {loading ? "..." : `${retentionData?.policy?.audit_log_years ?? 7} Years`}
+            {evidence.phase === "loading"
+              ? "..."
+              : retentionYears !== undefined && retentionYears !== null
+                ? `${retentionYears} Years`
+                : "Not configured"}
           </div>
-          <div style={{ fontSize: "12px", color: "var(--green)" }}>
-            Immutable append-only lock
+          <div style={{ fontSize: "12px", color: retentionYears != null ? "var(--green)" : "var(--dim)" }}>
+            {retentionYears != null
+              ? "Configured platform policy (enforcement is per-write)"
+              : "No configured value is claimed — the default is not enforcement"}
           </div>
         </div>
 
         <div className="panel" style={{ padding: "18px" }}>
           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Supervisory Alignment
+            Framework Coverage
           </div>
           <div style={{ fontSize: "20px", fontWeight: 700, margin: "7px 0", color: "var(--cyan)" }}>
-            Harmonized
+            {mappedFrameworks} of {Object.keys(STANDARD_CONTROL_KEYS).length} mapped
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Cross-regulatory mapping
+            Platform-control engine covers SOC 2-style checks; other mappings are not implemented
           </div>
         </div>
       </div>
 
-      {/* Standards Selection */}
+      {/* Standards Selection — an explicit, honest filter */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
         {standards.map((s) => (
           <button
             key={s.id}
             onClick={() => setSelectedStandard(s.id)}
+            title={s.tag}
             style={{
               padding: "8px 16px",
               borderRadius: "var(--r)",
@@ -145,7 +210,8 @@ export default function Compliance() {
               color: selectedStandard === s.id ? "var(--on-accent)" : "var(--text)",
               fontWeight: selectedStandard === s.id ? 700 : 500,
               fontSize: "12.5px",
-              cursor: "pointer"
+              cursor: "pointer",
+              opacity: s.tag === "Not mapped" ? 0.7 : 1,
             }}
           >
             {s.name}
@@ -157,7 +223,7 @@ export default function Compliance() {
       <div className="panel" style={{ padding: "20px" }}>
         <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Deterministic Control Verifications</h3>
         <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
-          Evaluated controls backed by live configuration telemetry and signed scanner artifacts.
+          Evaluated controls from live platform state. Selecting a framework filters to its mapped controls.
         </p>
 
         <div style={{ overflowX: "auto" }}>
@@ -179,8 +245,8 @@ export default function Compliance() {
                     </span>
                   </td>
                   <td>
-                    <Badge variant={c.status === "pass" ? "success" : "danger"}>
-                      {c.status.toUpperCase()}
+                    <Badge variant={c.status === "pass" ? "success" : c.status === "fail" ? "danger" : "neutral"}>
+                      {String(c.status ?? "unknown").toUpperCase()}
                     </Badge>
                   </td>
                   <td>
@@ -196,10 +262,19 @@ export default function Compliance() {
                 </tr>
               ))}
 
-              {controls.length === 0 && !loading && (
+              {evidence.phase === "live" && standardMapped && controls.length === 0 && (
                 <tr>
                   <td colSpan={4} style={{ textAlign: "center", padding: "36px", color: "var(--dim)" }}>
-                    No policy evidence registered yet. Configure compliance frameworks in Settings.
+                    No policy evidence registered for this framework yet. Run a scan or configure compliance frameworks.
+                  </td>
+                </tr>
+              )}
+
+              {evidence.phase === "live" && !standardMapped && (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: "center", padding: "36px", color: "var(--dim)" }}>
+                    The evidence engine has no control mapping for this framework — nothing has been evaluated against it.
+                    This is not a pass and not a fail.
                   </td>
                 </tr>
               )}

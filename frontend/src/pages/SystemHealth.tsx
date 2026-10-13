@@ -68,10 +68,10 @@ export default function SystemHealth() {
                 <div>
                   <div style={{ fontWeight: 600, fontSize: "13px" }}>{s.name}</div>
                   <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>
-                    Latency: {s.latencyMs}ms · {s.details || "Authoritative heartbeat active"}
+                    Latency: {s.latencyMs === null ? "not measured" : `${s.latencyMs}ms`} · {s.details || "No independent probe"}
                   </div>
                 </div>
-                <Badge tone={s.status === "Operational" ? "green" : "red"}>{s.status}</Badge>
+                <Badge tone={s.status === "Operational" ? "green" : s.status === "Degraded" ? "amber" : s.status === "Offline" ? "red" : "neutral"}>{s.status}</Badge>
               </div>
             ))}
           </div>
@@ -100,7 +100,7 @@ export default function SystemHealth() {
                     State: {scn.lastObservation} · Discovered: {scn.assetsDiscovered} assets
                   </div>
                 </div>
-                <Badge tone={scn.status === "Healthy" ? "green" : "red"}>{scn.status}</Badge>
+                <Badge tone={scn.status === "Healthy" ? "green" : scn.status === "On demand" ? "neutral" : "red"}>{scn.status}</Badge>
               </div>
             ))}
           </div>

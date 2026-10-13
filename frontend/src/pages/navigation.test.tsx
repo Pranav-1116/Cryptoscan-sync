@@ -49,7 +49,7 @@ describe("primary workspace CTAs", () => {
 
   it("opens full search results on Enter with an encoded query", async () => {
     await act(async () => { mount(<SearchOverlay onClose={() => {}} />, "/command-center"); });
-    const input = screen.getByRole("textbox", { name: "Search cryptographic assets" });
+    const input = screen.getByRole("textbox", { name: "Search the algorithm catalog" });
     fireEvent.change(input, { target: { value: "RSA 2048" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByTestId("location")).toHaveTextContent("/search-results?q=RSA%202048");

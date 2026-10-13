@@ -180,6 +180,11 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
             setSelected(scan.scan_id);
           }} style={{ display: "block", width: "100%", textAlign: "left", background: selected === scan.scan_id ? "var(--bg-2)" : "transparent", border: "1px solid var(--line)", color: "var(--text)", borderRadius: "var(--r)", padding: 12, marginBottom: 8, cursor: "pointer", overflowWrap: "anywhere" }}>
             <strong>{scan.scan_id}</strong><br /><span style={{ color: "var(--dim)", fontSize: 12 }}>{field(scan.status)} · {field(scan.target_location)}</span>
+            {Array.isArray(scan.statistics?.optional_stage_failures) && scan.statistics.optional_stage_failures.length > 0 && (
+              <span style={{ display: "block", marginTop: 4, fontSize: 12, color: "var(--amber)" }}>
+                {scan.statistics.optional_stage_failures.length} optional stage{scan.statistics.optional_stage_failures.length === 1 ? "" : "s"} failed — observation incomplete
+              </span>
+            )}
           </button>)}
           {scanTotal !== null && <p style={{ color: "var(--dim)", fontSize: 12 }}>Loaded {scans.length} of {scanTotal} scans</p>}
           {scanTotal !== null && scans.length < scanTotal && <Button onClick={() => void moreScans()} disabled={scanPaging}>{scanPaging ? "Loading…" : "Load more scans"}</Button>}

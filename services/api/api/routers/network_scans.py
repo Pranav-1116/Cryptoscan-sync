@@ -12,6 +12,7 @@ from api.dependencies import (
     get_db_session,
     get_tenant_context,
 )
+from api.security.scan_admission import admit_scan
 from api.security.target_validation import (
     TargetValidationError,
     validate_probe_targets,
@@ -59,6 +60,12 @@ def trigger_network_scan(
         validate_probe_targets(body.hosts, label="network_scan.hosts")
     except TargetValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    # Product vision §4.1 (P0): SSRF choke point + quota were already here;
+    # the missing half was the central safe-scan policy itself. A live TLS
+    # probe is an active collector, so it needs the same admission decision
+    # as queued jobs — emergency stop, queue depth, safe-scan policy and
+    # explicit active-probing authorization. Refusal means no scan ran.
+    admit_scan(active_probing_requested=True)
     if ctx.tenant_id:
         from db.repositories.tenant_repository import TenantRepository
 

@@ -403,7 +403,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             style={{ borderRadius: "var(--r)", background: "var(--panel)", display: "flex", alignItems: "center", gap: "10px", padding: "6px 14px", cursor: "pointer", border: "1px solid var(--line)", font: "inherit", textAlign: "left" }}
           >
             <IconSearch className="ico" size={ICON_MD} color="var(--accent)" />
-            <span style={{ fontSize: "12.5px" }}>Search cryptographic assets...</span>
+            <span style={{ fontSize: "12.5px" }}>Search the catalog...</span>
             <span style={{ marginLeft: "auto", fontSize: "10px", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "1px 6px", fontFamily: "var(--mono)" }}>⌘K</span>
           </button>
 

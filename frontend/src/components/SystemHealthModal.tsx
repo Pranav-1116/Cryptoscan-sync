@@ -15,6 +15,7 @@ import { IconClose, IconHealth, ICON_MD, ICON_LG } from "./icons";
 function statusColor(s: string): string {
   if (s === "Operational" || s === "Healthy") return "var(--green)";
   if (s === "Degraded" || s === "Paused") return "var(--amber)";
+  if (s === "Not measured" || s === "On demand") return "var(--dim)";
   return "var(--red)";
 }
 
@@ -76,7 +77,7 @@ export default function SystemHealthModal({
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor(s.status), flexShrink: 0 }} />
               <span style={{ fontWeight: 600, flex: 1 }}>{s.name}</span>
               <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)" }}>
-                {s.status === "Offline" ? "—" : `${s.latencyMs} ms`}
+                {s.latencyMs === null || s.status === "Offline" ? "—" : `${s.latencyMs} ms`}
               </span>
               <span style={{ fontSize: 11, color: statusColor(s.status), width: 92, textAlign: "right" }}>{s.status}</span>
             </div>

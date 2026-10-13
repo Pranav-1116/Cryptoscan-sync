@@ -58,14 +58,14 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
       <div className="box" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
-          placeholder="Search: algorithm (RSA, AES, ML-KEM) · library · protocol · hardware · certificate · asset"
+          placeholder="Search the algorithm catalog (RSA, AES, ML-KEM)…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") openResults(); }}
-          aria-label="Search cryptographic assets"
+          aria-label="Search the algorithm catalog"
         />
         {q.trim() && !searching && total === 0 ? (
-          <div className="empty">no matches for “{q}” — run a scan to make findings/assets searchable</div>
+          <div className="empty">no algorithm-catalog matches for “{q}” — full search also covers protocols, hardware and scan findings</div>
         ) : searching ? (
           <div className="empty">searching live catalog…</div>
         ) : (
@@ -84,7 +84,7 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
           </div>
         )}
         {q.trim() && <Link to={resultsTo} onClick={onClose} className="gitem">View all results for “{q.trim()}” →</Link>}
-        <div className="hint">enter for all results · esc to close · quick matches from the live algorithm catalog</div>
+        <div className="hint">quick matches: algorithm catalog only · enter opens full search (algorithms, protocols, hardware, findings) · esc to close</div>
       </div>
     </div>
   );

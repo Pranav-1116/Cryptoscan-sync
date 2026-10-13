@@ -10,6 +10,11 @@ from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
 from api.routers.container import _persist
+from api.security.scan_admission import admit_scan
+from api.security.target_validation import (
+    TargetValidationError,
+    validate_source_target,
+)
 from container_scanner.core.scanner import ContainerScanner
 from container_scanner.image.puller import ImagePullError
 from db.models.container_scan import ContainerScan
@@ -35,12 +40,26 @@ def trigger_container_scan(
 ):
     if not (body.path or body.image or body.archive):
         raise HTTPException(status_code=422, detail="path, image, or archive is required")
+    # Product vision §4.1 (P0): the same central admission as queued jobs
+    # (emergency stop, queue depth, safe-scan policy) and the same source-
+    # root containment for filesystem targets — a request-selected path or
+    # archive outside the declared roots is refused before any scan. A
+    # registry image reference is not a filesystem path; it goes through
+    # the puller, and admission still applies to the run itself.
+    try:
+        bounded_path = (validate_source_target(body.path, label="container_scan.path")
+                        if body.path else None)
+        bounded_archive = (validate_source_target(body.archive, label="container_scan.archive")
+                           if body.archive else None)
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    decision = admit_scan()
     scanner = ContainerScanner(live_cve=body.live_cve)
     try:
-        if body.archive or body.image:
-            result = scanner.scan(image=body.image, archive=body.archive, scan_id=body.scan_id)
+        if bounded_archive or body.image:
+            result = scanner.scan(image=body.image, archive=bounded_archive, scan_id=body.scan_id)
         else:
-            target = Path(body.path or "")
+            target = Path(bounded_path or "")
             if not target.exists():
                 raise HTTPException(status_code=404, detail="Container filesystem not found")
             result = scanner.scan_filesystem(target, scan_id=body.scan_id)
@@ -51,7 +70,7 @@ def trigger_container_scan(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     row = _persist(db, result)
-    return {"id": row.id, **result}
+    return {"id": row.id, "admission": decision, **result}
 
 
 @router.get("")

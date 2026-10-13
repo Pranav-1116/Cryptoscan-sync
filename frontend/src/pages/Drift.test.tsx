@@ -102,6 +102,7 @@ describe("drift feed and disposition truth", () => {
     await act(async () => finish(event("evt-1", { resolution_status: "ACKNOWLEDGED", acknowledged_at: "2026-01-02T05:00:00Z", acknowledged_by: "auditor" })));
     expect(await screen.findByRole("status")).toHaveTextContent("This does not resolve or verify remediation");
     expect(screen.getByText(/Disposition:/).parentElement).toHaveTextContent("ACKNOWLEDGED");
+    expect(screen.getByText(/Disposition:/).parentElement).toHaveTextContent("analyst triage — neither resolves nor verifies remediation");
   });
 
   it("does not mark rejected actions successful and labels resolution as administrative, never verified", async () => {

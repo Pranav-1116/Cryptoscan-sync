@@ -3660,8 +3660,11 @@ export const apiPriority = (limit = 100): Promise<ApiResult<PriorityResponse>> =
 
 export interface SystemServiceHealth {
   name: string;
-  status: "Operational" | "Degraded" | "Offline";
-  latencyMs: number;
+  /** "Not measured" = no independent probe exists for this service;
+   *  API liveness is not evidence that the service behind it is healthy. */
+  status: "Operational" | "Degraded" | "Offline" | "Not measured";
+  /** null = no independent latency measurement for this service. */
+  latencyMs: number | null;
   lastHeartbeat: string;
   details?: string;
 }
@@ -3669,7 +3672,8 @@ export interface SystemServiceHealth {
 export interface ScannerEngineHealth {
   id: string;
   name: string;
-  status: "Healthy" | "Degraded" | "Offline" | "Paused";
+  /** "On demand" = the collector runs when triggered; no continuous probe. */
+  status: "Healthy" | "Degraded" | "Offline" | "Paused" | "On demand";
   lastObservation: string;
   eventsProcessed: number;
   assetsDiscovered: number;
@@ -3678,11 +3682,17 @@ export interface ScannerEngineHealth {
 }
 
 export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> => {
+  // Measured signals only (product vision §5, P0 trust bug): API liveness
+  // with its real round-trip (/healthz), per-dependency probes
+  // (/healthz/dependencies: database/redis/neo4j each independently ok,
+  // down or skipped) and the ops SLO window when authenticated. Services
+  // without an independent probe are reported "Not measured" — an
+  // HTTP 200 from the API process is not evidence that the policy engine,
+  // drift engine, WORM store, twin or worker pool is healthy, and a
+  // missing SLO window is not 100% availability.
   const t0 = performance.now();
   let apiHealthy = false;
   let apiLatency = 0;
-  let sloData: any = null;
-
   try {
     const res = await tenantFetch("/healthz", { signal: AbortSignal.timeout(3000) });
     apiLatency = Math.round(performance.now() - t0);
@@ -3691,6 +3701,7 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
     apiHealthy = false;
   }
 
+  let sloData: any = null;
   try {
     const token = getToken();
     if (token) {
@@ -3700,31 +3711,88 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
       });
       if (sloRes.ok) sloData = await sloRes.json();
     }
-  } catch { /* ignore */ }
+  } catch { /* SLO window unavailable -> availability stays not measured */ }
 
-  const p99 = sloData?.latency?.p99_ms ? Math.round(sloData.latency.p99_ms) : apiLatency;
-  const avail = sloData?.availability?.achieved ? `${(sloData.availability.achieved * 100).toFixed(1)}%` : "100%";
+  let depChecks: Array<{ name: string; status: string; detail?: string }> = [];
+  try {
+    const depRes = await tenantFetch("/healthz/dependencies", { signal: AbortSignal.timeout(5000) });
+    if (depRes.ok) {
+      const body: unknown = await depRes.json();
+      if (body && typeof body === "object" && Array.isArray((body as any).checks)) {
+        depChecks = (body as any).checks;
+      }
+    }
+  } catch { /* dependency probe unavailable -> rows stay Not measured */ }
+
+  const p99 = sloData?.latency?.p99_ms ? Math.round(sloData.latency.p99_ms) : null;
+  const avail = sloData?.availability?.achieved
+    ? `${(sloData.availability.achieved * 100).toFixed(1)}%`
+    : "not measured";
+
+  const byName = new Map(depChecks.map((c) => [c.name, c]));
+  const dependencyRow = (name: string, label: string): SystemServiceHealth => {
+    const check = byName.get(name);
+    if (!check) {
+      return { name: label, status: "Not measured", latencyMs: null,
+               lastHeartbeat: "No probe result",
+               details: "Dependency probe did not report this component" };
+    }
+    if (check.status === "ok") {
+      return { name: label, status: "Operational", latencyMs: null,
+               lastHeartbeat: "Probed just now", details: check.detail };
+    }
+    if (check.status === "skipped") {
+      return { name: label, status: "Not measured", latencyMs: null,
+               lastHeartbeat: "Not configured",
+               details: "Optional dependency is not configured in this deployment" };
+    }
+    return { name: label, status: "Degraded", latencyMs: null,
+             lastHeartbeat: "Probe failed", details: check.detail };
+  };
+
+  const notMeasured = (label: string, why: string): SystemServiceHealth => ({
+    name: label, status: "Not measured", latencyMs: null,
+    lastHeartbeat: "No independent probe",
+    details: why,
+  });
 
   return [
-    { name: "Core API", status: apiHealthy ? "Operational" : "Offline", latencyMs: apiLatency, lastHeartbeat: apiHealthy ? "Live" : "Unavailable", details: `Availability: ${avail}` },
-    { name: "Deterministic Policy Engine", status: apiHealthy ? "Operational" : "Offline", latencyMs: p99, lastHeartbeat: apiHealthy ? "Connected" : "Unavailable" },
-    { name: "TimescaleDB Drift Engine", status: apiHealthy ? "Operational" : "Offline", latencyMs: Math.max(12, Math.round(p99 * 0.3)), lastHeartbeat: apiHealthy ? "Connected" : "Unavailable" },
-    { name: "WORM Evidence Engine", status: apiHealthy ? "Operational" : "Offline", latencyMs: Math.max(8, Math.round(p99 * 0.2)), lastHeartbeat: apiHealthy ? "Connected" : "Unavailable" },
-    { name: "Digital Twin Engine", status: apiHealthy ? "Operational" : "Offline", latencyMs: Math.max(15, Math.round(p99 * 0.4)), lastHeartbeat: apiHealthy ? "Synchronized" : "Unavailable" },
-    { name: "Queue & Worker Pool", status: apiHealthy ? "Operational" : "Offline", latencyMs: Math.max(5, Math.round(p99 * 0.1)), lastHeartbeat: apiHealthy ? "Listening" : "Unavailable" },
+    { name: "Core API", status: apiHealthy ? "Operational" : "Offline",
+      latencyMs: apiHealthy ? apiLatency : null,
+      lastHeartbeat: apiHealthy ? "Live probe" : "Unavailable",
+      details: `Availability: ${avail}${p99 !== null ? ` · p99 ${p99} ms` : ""}` },
+    dependencyRow("database", "PostgreSQL (evidence store)"),
+    dependencyRow("redis", "Redis (events / queue transport)"),
+    dependencyRow("realtime_events", "Realtime event journal"),
+    dependencyRow("neo4j", "Neo4j (graph)"),
+    notMeasured("Deterministic Policy Engine",
+                "In-process engine: no independent heartbeat or metrics source exists yet"),
+    notMeasured("Drift Engine",
+                "Runs inside scan jobs: health = recent job outcomes, not probed here"),
+    notMeasured("WORM Evidence Store",
+                "Evidence retention is enforced per write; no independent store probe exists yet"),
+    notMeasured("Digital Twin Engine",
+                "Snapshot engine: no independent heartbeat or metrics source exists yet"),
+    notMeasured("Queue & Worker Pool",
+                "Worker fleet health needs the control-plane queue probe, not API liveness"),
   ];
 };
 
 export const apiScannerEnginesHealth = async (): Promise<ScannerEngineHealth[]> => {
-  let scannersActive = false;
+  // Scanners in this platform run ON DEMAND (queued jobs and admitted
+  // direct routes), not as continuously-probed daemons — API liveness is
+  // not evidence that any scanner is "Active" or error-free (product
+  // vision §5, P0 trust bug). What is honestly known: whether the API
+  // accepting the trigger is reachable, and the estate's measured asset
+  // total. No fabricated event counts, latencies or zero-error claims.
+  let apiReachable = false;
   try {
     const res = await tenantFetch("/healthz", { signal: AbortSignal.timeout(3000) });
-    scannersActive = res.ok;
+    apiReachable = res.ok;
   } catch {
-    scannersActive = false;
+    apiReachable = false;
   }
 
-  let totalEvents = 0;
   let totalAssets = 0;
   try {
     const token = getToken();
@@ -3735,16 +3803,24 @@ export const apiScannerEnginesHealth = async (): Promise<ScannerEngineHealth[]> 
         totalAssets = body.total_count || 0;
       }
     }
-  } catch { /* ignore */ }
+  } catch { /* estate count unavailable, stays 0 */ }
 
-  const status = scannersActive ? "Healthy" : "Offline";
-  return [
-    { id: "net", name: "Network Scanner (JA3/JA3S/JARM)", status, lastObservation: scannersActive ? "Active" : "Unavailable", eventsProcessed: totalEvents, assetsDiscovered: totalAssets, errors: 0, avgLatencyMs: 0 },
-    { id: "cloud", name: "Cloud Scanner (AWS/Azure/GCP KMS)", status, lastObservation: scannersActive ? "Active" : "Unavailable", eventsProcessed: totalEvents, assetsDiscovered: 0, errors: 0, avgLatencyMs: 0 },
-    { id: "app", name: "Application Scanner (Code AST & Config)", status, lastObservation: scannersActive ? "Active" : "Unavailable", eventsProcessed: totalEvents, assetsDiscovered: 0, errors: 0, avgLatencyMs: 0 },
-    { id: "cert", name: "Certificate Scanner (CT Log & TLS)", status, lastObservation: scannersActive ? "Active" : "Unavailable", eventsProcessed: totalEvents, assetsDiscovered: 0, errors: 0, avgLatencyMs: 0 },
-    { id: "hsm", name: "Hardware Scanner (FIPS 140-3 HSM)", status, lastObservation: scannersActive ? "Active" : "Unavailable", eventsProcessed: totalEvents, assetsDiscovered: 0, errors: 0, avgLatencyMs: 0 },
+  const status: ScannerEngineHealth["status"] = apiReachable ? "On demand" : "Offline";
+  const lastObservation = apiReachable
+    ? "No continuous probe — runs when a scan is triggered"
+    : "API unreachable";
+  const engines: Array<[string, string]> = [
+    ["net", "Network Scanner (JA3/JA3S/JARM)"],
+    ["cloud", "Cloud Scanner (AWS/Azure/GCP KMS)"],
+    ["app", "Application Scanner (Code AST & Config)"],
+    ["cert", "Certificate Scanner (CT Log & TLS)"],
+    ["hsm", "Hardware Scanner (FIPS 140-3 HSM)"],
   ];
+  return engines.map(([id, name], index) => ({
+    id, name, status, lastObservation,
+    eventsProcessed: 0, assetsDiscovered: index === 0 ? totalAssets : 0,
+    errors: 0, avgLatencyMs: 0,
+  }));
 };
 
 /* ── Authoritative CBOM API calls ── */
@@ -3756,6 +3832,11 @@ export const apiCbomCoverage = (): Promise<ApiResult<any>> =>
 
 export const apiCbomSearch = (query: string): Promise<ApiResult<any>> =>
   call(`/api/v1/cbom/search?q=${encodeURIComponent(query)}`);
+
+/* Unified cross-BOM query (round 37). Matches are canonical identity
+ * associations with real per-BOM refs/values, linkage and conflicts. */
+export const apiCbomQuery = (limit = 2000): Promise<ApiResult<any>> =>
+  call(`/api/v1/cbom/query?limit=${limit}`);
 
 /* ── Governance, Drift & Compliance APIs ── */
 export const apiComplianceEvidence = (): Promise<ApiResult<any>> =>

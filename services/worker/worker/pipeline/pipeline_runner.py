@@ -264,7 +264,7 @@ class PipelineRunner:
             self._stamp_coverage(ctx, session, status="CURRENT")
             stage = "alert"
             self._advance(session, ctx, "alert")
-            self._alert(ctx)
+            self._alert(ctx, session)
             if owns_session:
                 session.commit()
                 ctx.scan_committed = True
@@ -582,6 +582,40 @@ class PipelineRunner:
         self._ot_findings(ctx)
         logger.info("stage_scan_done", extra={"findings": len(ctx.findings)})
 
+    def _note_optional_failure(self, ctx: PipelineContext, stage: str, detail: str,
+                               session=None) -> None:
+        """§4.8 (round 39): a COMPLETED scan must disclose soft-failed
+        optional derived/provider stages instead of implying complete
+        observation.
+
+        Pre-load notes ride ``ctx.scan_meta["statistics"]`` into the Scan
+        row via the evidence loader; once the row exists (``session``
+        given) they are merged into its statistics directly. Never raises:
+        a disclosure failure must not fail the scan.
+        """
+        try:
+            entry = {"stage": stage, "outcome": "failed", "detail": detail}
+            stats = ctx.scan_meta.setdefault("statistics", {})
+            rows = stats.setdefault("optional_stage_failures", [])
+            if entry not in rows:
+                rows.append(entry)
+            if session is not None and ctx.scan_id and ctx.scan_persisted:
+                from sqlalchemy import select
+
+                from db.models.scan import Scan
+
+                scan = session.execute(
+                    select(Scan).where(Scan.id == ctx.scan_id)
+                ).scalar_one_or_none()
+                if scan is not None:
+                    scan_stats = {**(scan.statistics or {})}
+                    scan_rows = scan_stats.setdefault("optional_stage_failures", [])
+                    if entry not in scan_rows:
+                        scan_rows.append(entry)
+                    scan.statistics = scan_stats
+        except Exception:
+            logger.debug("optional_stage_note_failed", exc_info=True)
+
     def _ot_findings(self, ctx: PipelineContext) -> None:
         try:
             from worker.pipeline.stage_ot_scan import execute as ot_scan
@@ -590,6 +624,8 @@ class PipelineRunner:
                 "exception_suppressed",
                 extra={"error_type": type(_handler_exc).__name__},
             )
+            self._note_optional_failure(ctx, "ot_collector",
+                                        f"OT collector unavailable ({type(_handler_exc).__name__})")
             return
         ot_scan(ctx, session=None)
 
@@ -601,6 +637,8 @@ class PipelineRunner:
                 "exception_suppressed",
                 extra={"error_type": type(_handler_exc).__name__},
             )
+            self._note_optional_failure(ctx, "cloud_collector",
+                                        f"Cloud collector unavailable ({type(_handler_exc).__name__})")
             return
         cloud_scan(ctx)
 
@@ -612,6 +650,8 @@ class PipelineRunner:
                 "exception_suppressed",
                 extra={"error_type": type(_handler_exc).__name__},
             )
+            self._note_optional_failure(ctx, "network_collector",
+                                        f"Network collector unavailable ({type(_handler_exc).__name__})")
             return
         network_scan(ctx)
         try:
@@ -620,6 +660,7 @@ class PipelineRunner:
             cert_inventory(ctx)
         except Exception:
             logger.debug("cert_inventory_skipped", exc_info=True)
+            self._note_optional_failure(ctx, "cert_inventory", "Certificate inventory stage failed")
 
     def _container(self, ctx: PipelineContext) -> None:
         root = Path(ctx.repo_path)
@@ -644,6 +685,7 @@ class PipelineRunner:
             from container_scanner.core.scanner import ContainerScanner
         except Exception:
             logger.debug("container_scanner_unavailable")
+            self._note_optional_failure(ctx, "container_scanner", "Container scanner unavailable")
             return
         result = ContainerScanner(live_cve=False).scan_filesystem(root, scan_id=ctx.scan_id)
         ctx.container_result = result
@@ -710,6 +752,8 @@ class PipelineRunner:
                     VulnerabilityRepository(session).replace_for_scan(scan.id, result["vulnerabilities"])
             except Exception:
                 logger.debug("container_scan_persist_skipped", exc_info=True)
+                self._note_optional_failure(ctx, "container_persist",
+                                            "Container scan result could not be persisted", session=session)
         if ctx.tls_result and ctx.tls_result.get("certificates"):
             try:
                 from db.repositories.certificate_repository import CertificateRepository
@@ -729,6 +773,8 @@ class PipelineRunner:
                         )
             except Exception:
                 logger.debug("certificate_persist_skipped", exc_info=True)
+                self._note_optional_failure(ctx, "certificate_persist",
+                                            "Certificate observations could not be persisted", session=session)
         inv_certs = inventory_certificates(ctx.findings or [])
         if inv_certs:
             try:
@@ -740,6 +786,8 @@ class PipelineRunner:
                 logger.info("inventory_certificates_persisted", extra={"count": len(inv_certs)})
             except Exception:
                 logger.debug("inventory_certificate_persist_skipped", exc_info=True)
+                self._note_optional_failure(ctx, "inventory_certificate_persist",
+                                            "Inventory certificates could not be persisted", session=session)
         if ctx.ot_result and (ctx.ot_result.get("devices") or ctx.ot_result.get("findings")):
             try:
                 from db.repositories.maturity_repository import MaturityRepository
@@ -754,6 +802,8 @@ class PipelineRunner:
                     repo.add_ot_finding(id_by_ip.get(ip), finding)
             except Exception:
                 logger.debug("ot_persist_skipped", exc_info=True)
+                self._note_optional_failure(ctx, "ot_persist",
+                                            "OT device/finding observations could not be persisted", session=session)
         session.flush()
         logger.info("stage_load_done", extra={"scan_id": scan.id})
 
@@ -1358,6 +1408,8 @@ class PipelineRunner:
             inventory_events = detect_inventory_drift(session, ctx.scan_id or "")
         except Exception:
             logger.debug("inventory_drift_skipped", exc_info=True)
+            self._note_optional_failure(ctx, "inventory_drift",
+                                        "Key-inventory drift comparison failed", session=session)
 
         scan = session.execute(select(Scan).where(Scan.id == ctx.scan_id)).scalar_one_or_none()
         if scan is None or scan.target_location != ctx.target_repo:
@@ -1383,6 +1435,8 @@ class PipelineRunner:
                 self._propose_baseline_if_clean(ctx, session, baseline_repo, inventory_events)
             except Exception:
                 logger.debug("baseline_proposal_skipped", exc_info=True)
+                self._note_optional_failure(ctx, "baseline_proposal",
+                                            "Clean-scan baseline proposal failed", session=session)
             return
 
         approved_scan = session.execute(
@@ -1557,7 +1611,7 @@ class PipelineRunner:
         self._post_github(ctx, gh_state, gate["summary"][:140], context="cryptoscan/drift-gate")
         logger.info("stage_gate_done", extra={"decision": gate["decision"]})
 
-    def _alert(self, ctx: PipelineContext) -> None:
+    def _alert(self, ctx: PipelineContext, session=None) -> None:
         quantum = ctx.scan_meta.get("quantum") or {}
         mosca_verdict = (quantum.get("mosca") or {}).get("verdict")
         if quantum.get("overall_hndl_risk") == "CRITICAL" or mosca_verdict in {"ALREADY_LATE", "AT_RISK"}:
@@ -1581,9 +1635,13 @@ class PipelineRunner:
                     EmailAlerter().send_drift_alert(ctx.target_repo, critical)
                 except Exception:
                     logger.exception("email_alert_failed")
+                    self._note_optional_failure(ctx, "email_alert",
+                                                "Drift email alert could not be sent", session=session)
         try:
             from business_context.alerts.stakeholder import notify_stakeholders
 
             notify_stakeholders(ctx.findings)
         except Exception:
             logger.debug("stakeholder_alert_skipped", exc_info=True)
+            self._note_optional_failure(ctx, "stakeholder_alert",
+                                        "Stakeholder notification failed", session=session)

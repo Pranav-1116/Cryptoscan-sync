@@ -173,3 +173,37 @@ describe("Evidence workflow", () => {
     expect(fetchSpy.mock.calls.filter(([path]) => String(path).startsWith("/api/v1/auth/audit?")).length).toBe(2);
   });
 });
+
+describe("Evidence — completed scans disclose failed optional stages (§4.8)", () => {
+  it("marks a COMPLETED scan whose optional stages failed as observation-incomplete", async () => {
+    mockFetch({
+      [scanPath]: { scans: [
+        { scan_id: "scan-partial", status: "COMPLETED", target_location: "source-repo",
+          statistics: { total_findings: 2, optional_stage_failures: [
+            { stage: "inventory_drift", outcome: "failed", detail: "Key-inventory drift comparison failed" },
+            { stage: "email_alert", outcome: "failed", detail: "Drift email alert could not be sent" },
+          ] } },
+        { scan_id: "scan-clean", status: "COMPLETED", target_location: "source-repo", statistics: { total_findings: 5 } },
+      ], total_count: 2, page: 1, page_size: 20 },
+      [findingsPath]: findings([]),
+    });
+    renderWithProviders(<Evidence />);
+    const partial = await screen.findByRole("button", { name: /scan-partial/ });
+    expect(within(partial).getByText(/2 optional stages failed — observation incomplete/)).toBeInTheDocument();
+    const clean = screen.getByRole("button", { name: /scan-clean/ });
+    expect(within(clean).queryByText(/optional stage/)).toBeNull();
+  });
+
+  it("claims no failure marker when statistics are absent or malformed", async () => {
+    mockFetch({
+      [scanPath]: { scans: [
+        { scan_id: "scan-nostats", status: "COMPLETED", target_location: "source-repo" },
+        { scan_id: "scan-badstats", status: "COMPLETED", target_location: "source-repo", statistics: { optional_stage_failures: "yes" } },
+      ], total_count: 2, page: 1, page_size: 20 },
+      [findingsPath]: findings([]),
+    });
+    renderWithProviders(<Evidence />);
+    await screen.findByRole("button", { name: /scan-nostats/ });
+    expect(screen.queryByText(/optional stage/)).toBeNull();
+  });
+});
