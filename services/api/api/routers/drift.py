@@ -47,6 +47,9 @@ def _to_response(row, remediation_task_ids: list[str] | None = None) -> DriftEve
         resolved_by=row.resolved_by,
         resolved_at=utc_iso(getattr(row, "resolved_at", None)),
         resolution_notes=row.resolution_notes,
+        verification_status=getattr(row, "verification_status", None),
+        verified_by_scan_id=getattr(row, "verified_by_scan_id", None),
+        verified_at=utc_iso(getattr(row, "verified_at", None)),
         remediation_task_ids=remediation_task_ids or [],
     )
 
@@ -272,6 +275,85 @@ def drift_remediation_tasks(
     from api.routers.remediation import _task_out
 
     return {"drift_id": drift_id, "tasks": [_task_out(t, verifications.latest_for_task(t.id)) for t in tasks]}
+
+
+class VerifyRemediationBody(BaseModel):
+    scan_id: str
+
+
+@router.post("/evaluate-verification")
+def evaluate_verification(
+    body: VerifyRemediationBody,
+    user: str = Depends(require_auditor),
+    repo: DriftRepository = Depends(get_drift_repository),
+    db=Depends(get_db_session),
+):
+    """§4.7 (round 40): condition-level verification from rescan evidence.
+
+    Evaluates every administratively RESOLVED drift event on the same
+    target against this scan's evidence. The computation is
+    deterministic; the operator cannot choose the verdict. Only
+    evidence-backed outcomes are stamped on the events (VERIFIED,
+    CONDITION_PRESENT); UNCOVERED and NOT_CHECKABLE are reported here
+    but recorded nowhere — no verdict is claimed when the rescan did not
+    observe the affected file.
+    """
+    from sqlalchemy import select
+
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.scan import Scan
+
+    scan = db.execute(select(Scan).where(Scan.id == body.scan_id)).scalar_one_or_none()
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    rows = db.execute(
+        select(EvidenceRecord).where(
+            EvidenceRecord.scan_id == scan.id,
+            EvidenceRecord.deleted_at.is_(None),
+        )
+    ).scalars().all()
+    evidence = [
+        {"algorithm": r.algorithm, "key_size": r.key_size, "file_path": r.file_path}
+        for r in rows
+    ]
+
+    verdicts = repo.verify_resolved_against_scan(
+        scan=scan, evidence_rows=evidence, scan_end=scan.scan_end)
+    stamped = [v for v in verdicts if v.get("verification_status") in ("VERIFIED", "CONDITION_PRESENT")]
+    try:
+        from db.repositories.user_repository import UserRepository
+
+        UserRepository(db).audit(
+            user, "drift.evaluate_verification",
+            target_type="scan", target_id=scan.id,
+            detail={"verdicts": len(verdicts), "stamped": len(stamped)},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("verification_audit_failed", extra={"scan_id": scan.id})
+        raise HTTPException(status_code=503, detail="verification audit failed; verdicts not recorded")
+
+    counts: dict[str, int] = {}
+    for v in verdicts:
+        counts[v["verification_status"]] = counts.get(v["verification_status"], 0) + 1
+    return {
+        "model": "drift/condition-verification-v1",
+        "scan_id": scan.id,
+        "target_location": scan.target_location,
+        "verdicts": verdicts,
+        "counts": counts,
+        "notes": [
+            "RESOLVED stays an administrative state; this computation adds "
+            "what a later scan's evidence says about the condition.",
+            "UNCOVERED means the rescan produced no evidence for the "
+            "affected file — a vanished path is not proof of remediation "
+            "and is not stamped.",
+            "NOT_CHECKABLE events carry no current-finding signature; "
+            "nothing is inferred from its absence.",
+        ],
+    }
 
 
 @router.post("/{drift_id}/resolve", response_model=DriftEventResponse)

@@ -10,8 +10,16 @@ import io
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response
 
-from api.dependencies import get_current_user, get_evidence_repository, get_scan_repository
+from api.dependencies import (
+    get_current_user,
+    get_db_session,
+    get_evidence_repository,
+    get_scan_repository,
+)
+from api.routers.evidence_disposition import export_refused_reason
 from api.security.evidence_projection import project_finding, public_evidence_row
+from sqlalchemy.orm import Session
+
 from db.repositories.evidence_repository import EvidenceRepository
 from db.repositories.scan_repository import ScanRepository
 from evidence.hashing.content_hasher import ContentHasher
@@ -24,12 +32,18 @@ router = APIRouter(tags=["export"])
 def export_scan(
     scan_id: str,
     user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
+    # §4.2 (round 40): an operator disposition can quarantine a scan's
+    # exports until a re-issued chain exists. Refuse, citing the decision.
+    refused = export_refused_reason(db, scan_id)
+    if refused:
+        raise HTTPException(status_code=409, detail=refused)
     rows = evidence.get_all_for_scan(scan_id)
     payload = {
         "scan": {
@@ -52,12 +66,16 @@ def export_scan(
 def export_scan_csv(
     scan_id: str,
     user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
+    refused = export_refused_reason(db, scan_id)
+    if refused:
+        raise HTTPException(status_code=409, detail=refused)
     rows = evidence.get_all_for_scan(scan_id)
     buffer = io.StringIO()
     writer = csv.DictWriter(

@@ -35,6 +35,14 @@ class DriftEvent(BaseModel, TenantScoped):
     resolved_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # §4.7 (round 40): condition-level verification, computed from a LATER
+    # scan's evidence — never set by hand, never a substitute for RESOLVED.
+    # VERIFIED = the rescan observed the file and the condition is gone;
+    # CONDITION_PRESENT = the administrative closure closed nothing.
+    # NULL = not (yet) verified by any rescan.
+    verification_status: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    verified_by_scan_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    verified_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     @property
     def drift_id(self) -> str:

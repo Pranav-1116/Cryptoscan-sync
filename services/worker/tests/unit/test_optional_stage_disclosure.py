@@ -105,11 +105,12 @@ def test_every_soft_skip_site_is_paired_with_a_disclosure_note():
         "baseline_proposal_skipped",
         "email_alert_failed",
         "stakeholder_alert_skipped",
+        "drift_verification_skipped",
     ]
     for marker in soft_skip_markers:
         assert marker in src, f"soft-skip site {marker} disappeared"
-    # 13 soft-skip call sites + the helper definition itself
-    assert src.count("_note_optional_failure(") == 14, (
+    # 14 soft-skip call sites + the helper definition itself
+    assert src.count("_note_optional_failure(") == 15, (
         "every soft-skip site must disclose via _note_optional_failure"
     )
 

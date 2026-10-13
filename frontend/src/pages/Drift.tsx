@@ -20,6 +20,9 @@ type DriftEvent = {
   resolved_at: string | null;
   resolved_by: string | null;
   resolution_notes: string | null;
+  verification_status?: string | null;
+  verified_by_scan_id?: string | null;
+  verified_at?: string | null;
   remediation_task_ids?: string[];
 };
 type ScanComparison = { scan_id: string; status: string; scan_end?: string | null; statistics?: { baseline_comparison?: string } | null };
@@ -306,6 +309,12 @@ export default function Drift() {
             <div><div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase" }}>Current scan finding</div><div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 12 }}>{finding(selectedEvent.drift_details?.current_finding)}</div></div>
             <div style={{ fontSize: 12 }}>Reason: {text(selectedEvent.drift_details?.reason) || "Not supplied by this drift event"}</div>
             <div style={{ fontSize: 12 }}>Disposition: <strong>{selectedEvent.resolution_status || "Unavailable"}</strong>{selectedEvent.resolution_status === "RESOLVED" && " · administrative closure, not remediation VERIFIED"}{selectedEvent.resolution_status === "ACKNOWLEDGED" && " · analyst triage — neither resolves nor verifies remediation"}</div>
+            {selectedEvent.verification_status === "VERIFIED" && (
+              <div style={{ fontSize: 12, color: "var(--green)" }}>Condition verified by rescan {selectedEvent.verified_by_scan_id || "unknown scan"} at {timestamp(selectedEvent.verified_at)} — the rescan observed the affected file and the condition is gone.</div>
+            )}
+            {selectedEvent.verification_status === "CONDITION_PRESENT" && (
+              <div style={{ fontSize: 12, color: "var(--red)" }}>Condition still present in rescan {selectedEvent.verified_by_scan_id || "unknown scan"} evidence — the administrative closure closed nothing.</div>
+            )}
             {selectedEvent.acknowledged_at && <div style={{ fontSize: 12 }}>Acknowledged {timestamp(selectedEvent.acknowledged_at)} by {selectedEvent.acknowledged_by || "unknown actor"}</div>}
             {selectedEvent.resolved_at && <div style={{ fontSize: 12 }}>Closed {timestamp(selectedEvent.resolved_at)} by {selectedEvent.resolved_by || "unknown actor"}</div>}
             {selectedEvent.resolution_notes && <div style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>Notes: {selectedEvent.resolution_notes}</div>}

@@ -21,6 +21,7 @@ from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.models.crypto_library_fingerprint import CryptoLibraryFingerprint
 from db.models.drift_event import DriftEvent
 from db.models.evidence_record import EvidenceRecord
+from db.models.evidence_disposition import EvidenceDisposition
 from db.models.gate_evaluation import GateEvaluation
 from db.models.migration_project import MigrationMilestone, MigrationProject, MigrationTask
 from db.models.report_snapshot import ReportSchedule, ReportSnapshot
@@ -75,6 +76,7 @@ __all__ = [
     "CryptoAssetEvidence",
     "CryptoLibraryFingerprint",
     "DriftEvent",
+    "EvidenceDisposition",
     "EvidenceRecord",
     "GateEvaluation",
     "ExceptionReview",

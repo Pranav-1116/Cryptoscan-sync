@@ -163,3 +163,44 @@ describe("drift feed and disposition truth", () => {
     expect(screen.queryByText("tenant-a-event")).toBeNull();
   });
 });
+
+describe("Drift — condition-level verification display (§4.7)", () => {
+  it("shows evidence-backed VERIFIED separately from the administrative RESOLVED caveat", async () => {
+    mockFetch({
+      [driftPath]: list([event("evt-verified", {
+        resolution_status: "RESOLVED", resolved_at: "2026-01-02T05:00:00Z", resolved_by: "admin",
+        verification_status: "VERIFIED", verified_by_scan_id: "scan-2", verified_at: "2026-01-03T05:00:00Z",
+      })]),
+      [scansPath]: scans("COMPARED"),
+    });
+    renderWithProviders(<Drift />);
+    expect(await screen.findByText(/Condition verified by rescan scan-2/)).toBeInTheDocument();
+    expect(screen.getByText(/the rescan observed the affected file and the condition is gone/)).toBeInTheDocument();
+    // the administrative caveat stays — verification supplements, never replaces it
+    expect(screen.getByText(/administrative closure, not remediation VERIFIED/)).toBeInTheDocument();
+  });
+
+  it("says the closure closed nothing when the rescan still sees the condition", async () => {
+    mockFetch({
+      [driftPath]: list([event("evt-present", {
+        resolution_status: "RESOLVED", resolved_at: "2026-01-02T05:00:00Z", resolved_by: "admin",
+        verification_status: "CONDITION_PRESENT", verified_by_scan_id: "scan-2", verified_at: "2026-01-03T05:00:00Z",
+      })]),
+      [scansPath]: scans("COMPARED"),
+    });
+    renderWithProviders(<Drift />);
+    expect(await screen.findByText(/Condition still present in rescan scan-2 evidence/)).toBeInTheDocument();
+    expect(screen.getByText(/the administrative closure closed nothing/)).toBeInTheDocument();
+  });
+
+  it("claims no verification line when none is recorded", async () => {
+    mockFetch({
+      [driftPath]: list([event("evt-unverified", { resolution_status: "RESOLVED", resolved_at: "2026-01-02T05:00:00Z", resolved_by: "admin" })]),
+      [scansPath]: scans("COMPARED"),
+    });
+    renderWithProviders(<Drift />);
+    await screen.findByText(/Disposition:/);
+    expect(screen.queryByText(/Condition verified by rescan/)).toBeNull();
+    expect(screen.queryByText(/Condition still present/)).toBeNull();
+  });
+});

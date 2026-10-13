@@ -112,6 +112,83 @@ class DriftRepository(BaseRepository[DriftEvent]):
             counts[str(severity)] = int(count)
         return counts
 
+    def verify_resolved_against_scan(
+        self, *, scan, evidence_rows: list[dict], scan_end: datetime | None = None,
+    ) -> list[dict]:
+        """§4.7 (round 40): condition-level verification of RESOLVED events.
+
+        Evaluates every administratively resolved drift event on the same
+        target (same tenant, resolution predating ``scan_end``) against the
+        later scan's evidence, using the pure evaluator in
+        ``drift.core.verification``. Only evidence-backed verdicts are
+        stamped: VERIFIED and CONDITION_PRESENT. UNCOVERED and NOT_CHECKABLE
+        are returned for the caller to report but leave the stored state
+        untouched — no verdict is recorded when the rescan did not observe
+        the affected file.
+        """
+        from drift.core.verification import (
+            CONDITION_PRESENT,
+            VERIFIED,
+            evaluate_condition_verification,
+        )
+
+        end = scan_end or scan.scan_end or datetime.now(timezone.utc)
+        stmt = (
+            select(DriftEvent)
+            .where(
+                DriftEvent.resolution_status == "RESOLVED",
+                DriftEvent.resolved_at.isnot(None),
+                DriftEvent.resolved_at < end,
+            )
+            .order_by(DriftEvent.detected_at)
+            .limit(500)
+        )
+        rows = list(self.session.execute(stmt).scalars().all())
+        # same-target filter in Python: the event's scan shares the target
+        # location with the verifying scan (tenant guard already applied).
+        def _target(scan_id: str) -> str | None:
+            if not scan_id:
+                return None
+            from db.models.scan import Scan as ScanRow
+
+            other = self.session.execute(
+                select(ScanRow).where(ScanRow.id == scan_id)
+            ).scalar_one_or_none()
+            return getattr(other, "target_location", None) if other else None
+
+        wanted = scan.target_location
+        # Tenant-exact match (NULL-safe, explicit — the worker pipeline may
+        # run outside ORM tenant scope, so do not rely on the global guard):
+        # another tenant's identical target string must never be verified
+        # by this scan.
+        scan_tenant = getattr(scan, "tenant_id", None)
+        candidates = [
+            r for r in rows
+            if _target(r.current_scan_id) == wanted
+            and (r.tenant_id or None) == (scan_tenant or None)
+        ]
+
+        events = [
+            {"drift_id": r.id, "drift_details": r.drift_details or {}}
+            for r in candidates
+        ]
+        verdicts = evaluate_condition_verification(events, evidence_rows)
+        by_id = {r.id: r for r in candidates}
+        stamped = 0
+        for verdict in verdicts:
+            row = by_id.get(verdict.get("drift_id"))
+            if row is None:
+                continue
+            status = verdict.get("verification_status")
+            if status in (VERIFIED, CONDITION_PRESENT):
+                row.verification_status = status
+                row.verified_by_scan_id = scan.id
+                row.verified_at = datetime.now(timezone.utc)
+                stamped += 1
+        if stamped:
+            self.session.flush()
+        return verdicts
+
     def acknowledge(self, drift_id: str, user: str, notes: str | None = None) -> DriftEvent | None:
         """Acknowledge ≠ resolve (report 31 §5): stamp the acknowledgment,
         leave the resolution untouched. Notes, when given, append to the

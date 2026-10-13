@@ -19,6 +19,11 @@ class DriftEventResponse(BaseModel):
     resolved_by: Optional[str] = None
     resolved_at: Optional[str] = None
     resolution_notes: Optional[str] = None
+    # §4.7: evidence-backed condition verification from a later scan;
+    # distinct from the administrative resolution fields above.
+    verification_status: Optional[str] = None
+    verified_by_scan_id: Optional[str] = None
+    verified_at: Optional[str] = None
     # populated when acknowledgement auto-opened remediation tasks (audit 03);
     # empty otherwise, so older clients see an additive field, not a break.
     remediation_task_ids: list[str] = []

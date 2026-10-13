@@ -252,6 +252,18 @@ class PipelineRunner:
             stage = "drift"
             self._advance(session, ctx, "drift")
             self._drift(ctx, session)
+            # §4.7 (round 40): condition-level verification of previously
+            # RESOLVED drift events against THIS scan's evidence. Runs after
+            # the drift stage regardless of its internal early returns, and
+            # is fail-soft: an outage is disclosed, never fatal.
+            try:
+                self._verify_resolved_conditions(ctx, session)
+            except Exception:
+                logger.debug("drift_verification_skipped", exc_info=True)
+                self._note_optional_failure(
+                    ctx, "drift_verification",
+                    "Condition-level verification of resolved drift events failed",
+                    session=session)
             stage = "quantum"
             self._advance(session, ctx, "quantum")
             self._quantum(ctx, session)
@@ -1390,6 +1402,44 @@ class PipelineRunner:
             extra={"scan_id": ctx.scan_id, "target": ctx.target_repo,
                    "baseline_id": proposal.id},
         )
+
+    def _verify_resolved_conditions(self, ctx: PipelineContext, session) -> None:
+        """§4.7 (round 40): rescan-based verification of RESOLVED drift events.
+
+        Delegates to DriftRepository.verify_resolved_against_scan so the
+        worker and the API endpoint cannot disagree. Bounded and fail-soft
+        by contract of its caller.
+        """
+        from sqlalchemy import select
+
+        from db.models.evidence_record import EvidenceRecord
+        from db.models.scan import Scan
+        from db.repositories.drift_repository import DriftRepository
+
+        scan = session.execute(
+            select(Scan).where(Scan.id == ctx.scan_id)
+        ).scalar_one_or_none()
+        if scan is None:
+            return  # nothing persisted to verify against yet
+        rows = session.execute(
+            select(EvidenceRecord).where(
+                EvidenceRecord.scan_id == scan.id,
+                EvidenceRecord.deleted_at.is_(None),
+            )
+        ).scalars().all()
+        evidence = [
+            {"algorithm": r.algorithm, "key_size": r.key_size, "file_path": r.file_path}
+            for r in rows
+        ]
+        verdicts = DriftRepository(session).verify_resolved_against_scan(
+            scan=scan, evidence_rows=evidence, scan_end=scan.scan_end)
+        stamped = sum(1 for v in verdicts
+                      if v.get("verification_status") in ("VERIFIED", "CONDITION_PRESENT"))
+        if verdicts:
+            logger.info(
+                "drift_condition_verification_done",
+                extra={"scan_id": scan.id, "verdicts": len(verdicts), "stamped": stamped},
+            )
 
     def _drift(self, ctx: PipelineContext, session) -> None:
         from sqlalchemy import select
