@@ -20,20 +20,30 @@ What this module provides:
   on Linux and gVisor-style sandboxes; **RLIMIT_CPU is NOT enforced under
   gVisor** (found in-round: a child can burn CPU past its rlimit with
   utime frozen at 0), which is exactly why the wall-clock file timeout
-  above exists and must stay the primary bound.
+  above exists and must stay the primary bound. Since round 51 the same
+  initializer also installs the seccomp syscall guard
+  (:mod:`scanner.core.seccomp_guard`): a denylist filter (kernel attack
+  surface + network egress, ``EPERM``-on-match) so a hostile file cannot
+  drive module loading, mount/namespace games, ptrace/bpf/perf, or open
+  network connections from inside the scanner child. Env-tunable
+  (``CRYPTOSCAN_SANDBOX_SECCOMP`` / ``CRYPTOSCAN_SANDBOX_NET_EGRESS``),
+  refuses loudly instead of half-installing, and reports (never raises)
+  when the platform cannot install it — x86_64 only, where the syscall
+  table is verified against the kernel headers.
 * :func:`run_in_sandbox` — run one callable in a forked child under the same
   bounds with a wall-clock timeout; used to VERIFY containment (tests) and
   available for isolated one-off analysis.
 
-Honest scope: these are process-level bounds, **not** a container. They
-bound wall-clock time per file, address space and file size for scanner
-children; they do not block network egress, syscalls or filesystem reads
-outside the scan root (source-root containment is enforced at admission —
-§4.1 — and full seccomp/container isolation remains open; see
-``deploy/seccomp/`` for the staged policy). ``RLIMIT_AS`` counts the child's
-whole address space, including mappings inherited from the parent at fork
-time, so the default is generous and every limit is env-tunable (``0``
-disables that limit).
+Honest scope: rlimits + the seccomp guard bound *processes*, not a
+container. They bound wall-clock time per file, address space, file size,
+kernel attack surface and new-socket creation for scanner children; the
+guard cannot block ``write()`` to a file descriptor inherited from the
+worker (fd hygiene / network namespace remain open), and full container
+isolation is still the operator-side staged profile in
+``deploy/seccomp/``. Source-root containment is enforced at admission
+(§4.1). ``RLIMIT_AS`` counts the child's whole address space, including
+mappings inherited from the parent at fork time, so the default is
+generous and every limit is env-tunable (``0`` disables that limit).
 """
 
 from __future__ import annotations
@@ -136,13 +146,23 @@ def per_file_timeout(seconds: float | None = None) -> Iterator[None]:
             pass
 
 
-def apply_child_limits(limits: dict[str, int | None] | None = None, *, install_signals: bool = True) -> dict[str, int]:
-    """Install rlimit bounds in the current (child) process. Returns applied.
+def apply_child_limits(
+    limits: dict[str, int | None] | None = None,
+    *,
+    install_signals: bool = True,
+    install_seccomp: bool | None = None,
+) -> dict[str, Any]:
+    """Install rlimit bounds (and the seccomp guard) in the current (child)
+    process. Returns what was applied, including the guard's report under
+    ``"seccomp"``.
 
     Never raises: a limit that cannot be set on this platform is skipped —
     the scan still runs, without that particular bound. SIGXCPU/SIGXFSZ are
     converted to :class:`SandboxLimitExceeded` so ``_scan_one``'s per-file
-    ``except`` records the limit instead of the child dying silently.
+    ``except`` records the limit instead of the child dying silently. The
+    seccomp guard follows the same report-not-raise contract
+    (``install_seccomp=False`` skips it; ``None`` lets the environment
+    configuration decide).
     """
     import resource
 
@@ -161,10 +181,15 @@ def apply_child_limits(limits: dict[str, int | None] | None = None, *, install_s
         except (OSError, ValueError):  # pragma: no cover - platform-dependent
             pass
 
-    applied: dict[str, int] = {}
+    applied: dict[str, Any] = {}
     _set(resource.RLIMIT_AS, spec.get("address_space_mb"), "address_space_bytes", 1024 * 1024)
     _set(resource.RLIMIT_CPU, spec.get("cpu_seconds"), "cpu_seconds")
     _set(resource.RLIMIT_FSIZE, spec.get("file_size_mb"), "file_size_bytes", 1024 * 1024)
+
+    if install_seccomp is not False:
+        from scanner.core.seccomp_guard import install_seccomp_guard
+
+        applied["seccomp"] = install_seccomp_guard()
 
     if install_signals and applied:
 
@@ -185,6 +210,7 @@ def run_in_sandbox(
     *,
     limits: dict[str, int | None] | None = None,
     timeout_s: float | None = None,
+    install_seccomp: bool | None = None,
 ) -> tuple[Any, str | None]:
     """Run ``fn(*args)`` in a forked child under sandbox bounds.
 
@@ -192,6 +218,8 @@ def run_in_sandbox(
     names what happened — a raised exception (``MemoryError``,
     ``SandboxLimitExceeded``) or a wall-clock timeout (child terminated).
     The parent process is never taken down by the hostile callable.
+    ``install_seccomp`` controls the syscall guard in the child (default:
+    environment configuration, i.e. on where supported).
     """
     ctx = mp.get_context("fork" if hasattr(os, "fork") else "spawn")
     parent_conn, child_conn = ctx.Pipe(False)
@@ -199,7 +227,7 @@ def run_in_sandbox(
     def _child() -> None:
         kind, payload = "err", "sandbox child failed before running"
         try:
-            apply_child_limits(limits)
+            apply_child_limits(limits, install_seccomp=install_seccomp)
             payload = fn(*args)
             kind = "ok"
         except BaseException as exc:  # noqa: BLE001 — report, never crash the parent
