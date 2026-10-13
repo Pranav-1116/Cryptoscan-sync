@@ -3941,6 +3941,25 @@ export const apiComplianceEvidence = (): Promise<ApiResult<any>> =>
 export const apiComplianceRetention = (): Promise<ApiResult<any>> =>
   call("/api/v1/compliance/retention");
 
+/* Requirements register (§4.3): requirement → evidence / gaps / expiry /
+ * reviewer sign-off, evaluated against the latest PINNED evidence pack. */
+export const apiComplianceRequirements = (): Promise<ApiResult<any>> =>
+  call("/api/v1/compliance/requirements");
+
+export const apiCompliancePinEvidence = (): Promise<ApiResult<any>> =>
+  call("/api/v1/compliance/evidence/packs", { method: "POST" });
+
+export const apiComplianceSignOff = (
+  scope: string,
+  signedBy: string,
+  packSha256: string,
+): Promise<ApiResult<any>> =>
+  call("/api/v1/compliance/attestations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope, signed_by: signedBy, pack_sha256: packSha256 }),
+  });
+
 export const apiDriftEvents = (page = 1, pageSize = 50): Promise<ApiResult<any>> =>
   call(`/api/v1/drift?page=${page}&page_size=${pageSize}`);
 

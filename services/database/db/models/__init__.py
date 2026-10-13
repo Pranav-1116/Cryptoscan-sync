@@ -22,6 +22,7 @@ from db.models.crypto_library_fingerprint import CryptoLibraryFingerprint
 from db.models.drift_event import DriftEvent
 from db.models.evidence_record import EvidenceRecord
 from db.models.cbom_snapshot import CbomSnapshot
+from db.models.compliance_record import ComplianceAttestation, ComplianceEvidencePack
 from db.models.evidence_disposition import EvidenceDisposition
 from db.models.gate_evaluation import GateEvaluation
 from db.models.migration_project import MigrationMilestone, MigrationProject, MigrationTask
@@ -181,6 +182,7 @@ from db.models.p2 import (  # noqa: E402,F401
     PluginPackage,
 )
 from db.models.ot_maintenance import OtMaintenanceWindow  # noqa: E402,F401
+
 # SaaS tenancy (db.models.tenant): the Tenant class is intentionally NOT
 # re-exported — control_plane.Tenant (data residency) already owns that name
 # in this namespace; importing the module registers all four tables.

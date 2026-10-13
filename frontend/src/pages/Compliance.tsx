@@ -1,7 +1,13 @@
 import { Link } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 import { Badge } from "../components/ui";
-import { apiComplianceEvidence, apiComplianceRetention } from "../lib/api";
+import {
+  apiComplianceEvidence,
+  apiCompliancePinEvidence,
+  apiComplianceRequirements,
+  apiComplianceRetention,
+  apiComplianceSignOff,
+} from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
 /* Compliance truth rules (product vision §4.3, P0 trust gap):
@@ -31,6 +37,21 @@ export default function Compliance() {
   const [retentionData, setRetentionData] = useState<any>(null);
   const [retentionLive, setRetentionLive] = useState(false);
   const [selectedStandard, setSelectedStandard] = useState("SOC2");
+  // requirements register (§4.3): evaluated against the latest PINNED pack
+  const [register, setRegister] = useState<any>(null);
+  const [registerLive, setRegisterLive] = useState(false);
+  const [reviewer, setReviewer] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function loadRegister() {
+    const res = await apiComplianceRequirements();
+    if (res.source === "live" && res.data) {
+      setRegister(res.data);
+      setRegisterLive(true);
+    } else {
+      setRegisterLive(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
@@ -58,10 +79,27 @@ export default function Compliance() {
         console.error("Failed to load compliance evidence:", err);
         if (alive) setEvidence({ phase: "offline" });
       }
+      loadRegister();
     }
     loadCompliance();
     return () => { alive = false; };
   }, []);
+
+  async function pinEvidence() {
+    setBusy("pin");
+    const res = await apiCompliancePinEvidence();
+    setBusy(null);
+    if (res.source === "live") await loadRegister();
+  }
+
+  async function signOff(scope: string) {
+    const sha = register?.pack?.pack_sha256;
+    if (!sha || !reviewer.trim()) return;
+    setBusy(scope);
+    const res = await apiComplianceSignOff(scope, reviewer.trim(), sha);
+    setBusy(null);
+    if (res.source === "live") await loadRegister();
+  }
 
   const allControls = evidence.phase === "live" ? evidence.controls : [];
   const passCount = allControls.filter((c: any) => c.status === "pass").length;
@@ -281,6 +319,156 @@ export default function Compliance() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Requirements Register — requirement → evidence / gap / expiry / sign-off */}
+      <div className="panel" style={{ padding: "20px", marginTop: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "8px" }}>
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Requirements Register</h3>
+            <p style={{ margin: 0, fontSize: "12px", color: "var(--dim)" }}>
+              Each requirement mapped to its exact evidence, its gap, its expiry against its own freshness window, and reviewer sign-off over the pinned evidence pack.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              value={reviewer}
+              onChange={(e) => setReviewer(e.target.value)}
+              placeholder="reviewer name (for sign-off)"
+              aria-label="Reviewer name"
+              style={{ fontSize: 12.5, padding: "6px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--text)" }}
+            />
+            <button
+              className="btn outline"
+              onClick={() => void pinEvidence()}
+              disabled={busy === "pin"}
+              style={{ fontSize: 12, padding: "7px 14px", borderRadius: "var(--r)" }}
+            >
+              {busy === "pin" ? "Pinning…" : "Pin Current Evidence"}
+            </button>
+          </div>
+        </div>
+
+        {!registerLive && (
+          <p style={{ margin: "10px 0 0", fontSize: 12.5, color: "var(--amber)" }}>
+            Requirements register unavailable — nothing below is evaluated.
+          </p>
+        )}
+
+        {registerLive && register && (
+          <>
+            {register.pack ? (
+              <p style={{ margin: "6px 0 4px", fontSize: 12, color: "var(--dim)" }}>
+                Pinned pack <span style={{ fontFamily: "var(--mono)" }}>{String(register.pack.pack_sha256).slice(0, 12)}…</span>
+                {" · "}collected {register.pack.generated_at ? new Date(register.pack.generated_at).toLocaleString() : "—"}
+                {" · "}integrity {String(register.pack.integrity)}
+              </p>
+            ) : (
+              <p style={{ margin: "6px 0 4px", fontSize: 12.5, color: "var(--amber)" }}>
+                No evidence pack has been pinned — requirements are not evaluated. Use “Pin Current Evidence” to snapshot the live controls first.
+              </p>
+            )}
+            <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--dim)" }}>
+              <strong style={{ color: "var(--text)" }}>
+                {register.summary?.closed ?? 0} of {register.summary?.denominator ?? register.requirements?.length ?? 0} requirements closed
+              </strong>{" "}
+              (evidenced + fresh + signed where required)
+            </p>
+
+            <div style={{ overflowX: "auto" }}>
+              <table className="tbl" style={{ width: "100%" }}>
+                <thead>
+                  <tr>
+                    <th>Requirement</th>
+                    <th>Standing</th>
+                    <th>Evidence</th>
+                    <th>Gap</th>
+                    <th>Expiry</th>
+                    <th>Sign-off</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(register.requirements ?? []).map((r: any) => {
+                    const standingTone: Record<string, string> = {
+                      evidenced: "success", gap: "danger",
+                      expired: "warning", missing_evidence: "warning", awaiting_sign_off: "warning",
+                      no_evidence: "neutral", unevaluated: "neutral", not_evaluable: "neutral",
+                    };
+                    const expiry = r.expiry?.state;
+                    const expiryText =
+                      expiry === "fresh"
+                        ? `Fresh · ${r.expiry.age_days ?? 0}d old (window ${r.freshness_days}d)`
+                        : expiry === "expired"
+                          ? `EXPIRED — older than the ${r.freshness_days}d window`
+                          : expiry === "unknown"
+                            ? "Unknown collection time"
+                            : expiry === "not_applicable"
+                              ? "No automated evidence"
+                              : "—";
+                    const so = r.sign_off ?? {};
+                    return (
+                      <tr key={r.requirement}>
+                        <td>
+                          <div style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 600, color: "var(--cyan)" }}>{r.requirement}</div>
+                          <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{r.title}</div>
+                        </td>
+                        <td>
+                          <Badge variant={standingTone[r.standing] ?? "neutral"}>
+                            {String(r.standing ?? "unknown").replace(/_/g, " ").toUpperCase()}
+                          </Badge>
+                        </td>
+                        <td>
+                          {(r.evidence_controls ?? []).length === 0 ? (
+                            <span style={{ fontSize: 12, color: "var(--dim)" }}>No automated evidence mapped</span>
+                          ) : (
+                            (r.evidence_controls ?? []).map((c: any) => (
+                              <div key={c.control} style={{ fontSize: 11.5, fontFamily: "var(--mono)" }}>
+                                {c.control}{" "}
+                                <Badge variant={c.status === "pass" ? "success" : c.status === "fail" ? "danger" : "neutral"}>
+                                  {String(c.status ?? "unknown").toUpperCase()}
+                                </Badge>
+                              </div>
+                            ))
+                          )}
+                        </td>
+                        <td>
+                          <span style={{ fontSize: 11.5, color: "var(--dim)", maxWidth: 320, display: "inline-block" }}>{r.gap}</span>
+                        </td>
+                        <td>
+                          <span style={{ fontSize: 12, color: expiry === "expired" ? "var(--amber)" : "var(--dim)" }}>{expiryText}</span>
+                        </td>
+                        <td>
+                          {so.state === "not_required" ? (
+                            <span style={{ fontSize: 12, color: "var(--dim)" }}>—</span>
+                          ) : so.state === "signed" ? (
+                            <span style={{ fontSize: 12, color: "var(--green)" }}>
+                              ✓ signed by {so.records?.find((rec: any) => rec.jws_valid)?.signed_by ?? "reviewer"}
+                              {so.records?.some((rec: any) => !rec.jws_valid) && (
+                                <span style={{ color: "var(--amber)" }}> (a signature did not verify)</span>
+                              )}
+                            </span>
+                          ) : so.state === "invalid" ? (
+                            <span style={{ fontSize: 12, color: "var(--amber)" }}>Signature did not verify</span>
+                          ) : (
+                            <button
+                              className="btn sm"
+                              onClick={() => void signOff(r.sign_off_scope)}
+                              disabled={!register?.pack || !reviewer.trim() || busy === r.sign_off_scope}
+                              title={reviewer.trim() ? "Sign off this requirement over the pinned pack" : "Enter a reviewer name above first"}
+                              style={{ fontSize: 11.5, padding: "4px 10px" }}
+                            >
+                              {busy === r.sign_off_scope ? "Signing…" : "Sign off"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
