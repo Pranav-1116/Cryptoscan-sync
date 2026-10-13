@@ -94,14 +94,70 @@ describe("scanner workflow truth", () => {
   });
 
   it("labels unsupported scanner selections and prevents a different scan from being queued", async () => {
+    // cloud and container left this list in r44: both now run behind the
+    // durable per-run job contract (see the tests below)
     const fetchSpy = mockFetch({ [startPath]: { run_id: "run-1" } });
     renderWithProviders(<Scanners />);
     await act(async () => {});
-    for (const label of ["Cloud KMS Scanner", "Source Repository AST", "Container Registry", "Hardware & HSM Fleet", "Certificates & CT Logs"]) {
+    for (const label of ["Source Repository AST", "Hardware & HSM Fleet", "Certificates & CT Logs"]) {
       fireEvent.click(screen.getByRole("button", { name: new RegExp(label) }));
       expect(screen.getByRole("button", { name: "Configure Target →" })).toBeDisabled();
+      expect(screen.getAllByText(/Unavailable: /).length).toBeGreaterThanOrEqual(1);
     }
     expect(fetchSpy.mock.calls.filter(([path]) => [networkPath, startPath].includes(String(path)))).toHaveLength(0);
+  });
+
+  it("runs a cloud scan behind its durable job record and shows the run's own coverage", async () => {
+    const fetchSpy = mockFetch({
+      "/api/v1/cloud-scans": { job_id: "job-cloud-1", resources: 2, findings: [], admission: { mode: "standard" } },
+      "/api/v1/jobs/job-cloud-1": {
+        job_id: "job-cloud-1", status: "COMPLETED", job_type: "CLOUD_SCAN",
+        progress: { execution: "synchronous", coverage: { resources: 2, findings_count: 0 } },
+      },
+    });
+    renderWithProviders(<Scanners />);
+    fireEvent.click(screen.getByRole("button", { name: /Cloud KMS Scanner/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Target →" }));
+    fireEvent.change(screen.getByLabelText(/IaC tree path/), { target: { value: "/workspace/infra" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start Cloud Scan" }));
+    // the POST must carry the configured path
+    const post = fetchSpy.mock.calls.find(([path]) => String(path) === "/api/v1/cloud-scans");
+    expect(post).toBeTruthy();
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ path: "/workspace/infra", live: false });
+    // a 200 response is not the status record: verify against GET /jobs/{id}
+    expect(await screen.findByRole("heading", { name: "Checking Run Status" })).toBeInTheDocument();
+    expect(await waitFor(() => fetchSpy.mock.calls.some(([path]) => String(path) === "/api/v1/jobs/job-cloud-1")));
+    expect(await screen.findByRole("heading", { name: "Cloud Scan Complete" })).toBeInTheDocument();
+    expect(screen.getByText(/Run ID:/)).toHaveTextContent("job-cloud-1");
+    expect(screen.getByText(/Coverage: resources: 2 · findings count: 0/)).toBeInTheDocument();
+    expect(screen.getByText(/full findings live in the scanner's own surfaces/)).toBeInTheDocument();
+  });
+
+  it("runs a container scan and reports the run's recorded failure reason verbatim", async () => {
+    mockFetch({
+      "/api/v1/container-scans": json({ detail: "Container filesystem not found" }, 404),
+    });
+    renderWithProviders(<Scanners />);
+    fireEvent.click(screen.getByRole("button", { name: /Container Registry/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Target →" }));
+    fireEvent.change(screen.getByLabelText(/Container filesystem path/), { target: { value: "/workspace/missing" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start Container Scan" }));
+    expect(await screen.findByRole("heading", { name: "Request Failed" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Container filesystem not found (HTTP 404)");
+  });
+
+  it("does not accept a job status record that identifies a different run", async () => {
+    mockFetch({
+      "/api/v1/cloud-scans": { job_id: "job-cloud-2", resources: 0 },
+      "/api/v1/jobs/job-cloud-2": { job_id: "some-other-run", status: "COMPLETED" },
+    });
+    renderWithProviders(<Scanners />);
+    fireEvent.click(screen.getByRole("button", { name: /Cloud KMS Scanner/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Target →" }));
+    fireEvent.change(screen.getByLabelText(/IaC tree path/), { target: { value: "/workspace/infra" } });
+    fireEvent.click(screen.getByRole("button", { name: "Start Cloud Scan" }));
+    expect(await screen.findByRole("heading", { name: "Outcome Unknown" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("did not identify the requested run");
   });
 
   it("does not claim a failed onboarding precondition or an accepted run without ID completed", async () => {

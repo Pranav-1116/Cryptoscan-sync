@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import TenantContext, get_current_user, get_db_session, get_tenant_context
 from api.security.scan_admission import admit_scan
+from api.security.scan_runs import DurableScanRun, coverage_from_result
 from api.security.target_validation import (
     TargetValidationError,
     validate_source_target,
@@ -23,7 +24,11 @@ class OtScanRequest(BaseModel):
 
 
 @router.post("/scan")
-def scan_ot(body: OtScanRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+def scan_ot(
+    body: OtScanRequest,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(get_db_session),
+):
     """Passive OT/ICS observation over a bounded path.
 
     Product vision §4.1 (P0): the OT collector passes the same central
@@ -41,21 +46,28 @@ def scan_ot(body: OtScanRequest, user: str = Depends(get_current_user), db: Sess
     except TargetValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     decision = admit_scan(is_ot_trusted=True, active_probing_requested=False)
-    result = OtPassiveScanner().scan_filesystem(target)
-    try:
-        repo = MaturityRepository(db)
-        id_by_ip = {}
-        for device in result.get("devices") or []:
-            row = repo.upsert_ot_device(device)
-            id_by_ip[device.get("ip_address")] = row.id
-        for finding in result.get("findings") or []:
-            ip = (finding.get("device") or {}).get("ip_address")
-            repo.add_ot_finding(id_by_ip.get(ip), finding)
-    except Exception:
-        result = dict(result)
-        result["persisted"] = False
+    with DurableScanRun(db, job_type="OT_SCAN", target=body.path,
+                        user=ctx.username, admission=decision,
+                        tenant_id=ctx.tenant_id,
+                        metadata={"passive": True}) as run:
+        result = OtPassiveScanner().scan_filesystem(target)
+        try:
+            repo = MaturityRepository(db)
+            id_by_ip = {}
+            for device in result.get("devices") or []:
+                row = repo.upsert_ot_device(device)
+                id_by_ip[device.get("ip_address")] = row.id
+            for finding in result.get("findings") or []:
+                ip = (finding.get("device") or {}).get("ip_address")
+                repo.add_ot_finding(id_by_ip.get(ip), finding)
+        except Exception:
+            result = dict(result)
+            result["persisted"] = False
+        run.succeed(coverage=coverage_from_result(result))
     if isinstance(result, dict):
+        result = dict(result)
         result["admission"] = decision
+        result["job_id"] = run.job_id
     return result
 
 

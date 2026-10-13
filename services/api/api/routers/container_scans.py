@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import TenantContext, get_current_user, get_db_session, get_tenant_context
 from api.routers.container import _persist
 from api.security.scan_admission import admit_scan
+from api.security.scan_runs import DurableScanRun, coverage_from_result
 from api.security.target_validation import (
     TargetValidationError,
     validate_source_target,
@@ -35,7 +36,7 @@ class ContainerScanRequest(BaseModel):
 @router.post("/scan")
 def trigger_container_scan(
     body: ContainerScanRequest,
-    user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db_session),
 ):
     if not (body.path or body.image or body.archive):
@@ -54,23 +55,29 @@ def trigger_container_scan(
     except TargetValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     decision = admit_scan()
-    scanner = ContainerScanner(live_cve=body.live_cve)
-    try:
-        if bounded_archive or body.image:
-            result = scanner.scan(image=body.image, archive=bounded_archive, scan_id=body.scan_id)
-        else:
-            target = Path(bounded_path or "")
-            if not target.exists():
-                raise HTTPException(status_code=404, detail="Container filesystem not found")
-            result = scanner.scan_filesystem(target, scan_id=body.scan_id)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except ImagePullError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    row = _persist(db, result)
-    return {"id": row.id, "admission": decision, **result}
+    run_target = body.image or body.archive or body.path or ""
+    with DurableScanRun(db, job_type="CONTAINER_SCAN", target=run_target,
+                        user=ctx.username, admission=decision,
+                        tenant_id=ctx.tenant_id,
+                        metadata={"image": body.image, "live_cve": body.live_cve}) as run:
+        scanner = ContainerScanner(live_cve=body.live_cve)
+        try:
+            if bounded_archive or body.image:
+                result = scanner.scan(image=body.image, archive=bounded_archive, scan_id=body.scan_id)
+            else:
+                target = Path(bounded_path or "")
+                if not target.exists():
+                    raise HTTPException(status_code=404, detail="Container filesystem not found")
+                result = scanner.scan_filesystem(target, scan_id=body.scan_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ImagePullError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        row = _persist(db, result)
+        run.succeed(coverage=coverage_from_result(result))
+    return {"id": row.id, "job_id": run.job_id, "admission": decision, **result}
 
 
 @router.get("")

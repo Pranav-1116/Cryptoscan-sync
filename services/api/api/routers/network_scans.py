@@ -13,6 +13,7 @@ from api.dependencies import (
     get_tenant_context,
 )
 from api.security.scan_admission import admit_scan
+from api.security.scan_runs import DurableScanRun, coverage_from_result
 from api.security.target_validation import (
     TargetValidationError,
     validate_probe_targets,
@@ -80,24 +81,32 @@ def trigger_network_scan(
             raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
         t_repo.record_usage(ctx.tenant_id, "scan_run", len(body.hosts),
                             detail="manual network scan")
-    result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
-        body.hosts,
-        sni=body.sni,
-        starttls=body.starttls,
-        scan_versions=body.scan_versions,
-        scan_ciphers=body.scan_ciphers,
-        check_renegotiation=body.check_renegotiation,
-        check_chain_sent=body.check_chain_sent,
-        live_revocation=body.live_revocation,
-    )
-    repo = CertificateRepository(db)
-    usages = MaturityRepository(db)
-    for cert in result.get("certificates") or []:
-        if cert.get("fingerprint_sha256"):
-            repo.upsert(cert)
-    for usage in result.get("usages") or []:
-        if usage.get("fingerprint_sha256") and usage.get("location"):
-            usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
+    with DurableScanRun(db, job_type="NETWORK_SCAN",
+                        target=",".join(body.hosts)[:2000],
+                        user=ctx.username,
+                        tenant_id=ctx.tenant_id,
+                        metadata={"hosts": len(body.hosts), "live": True}) as run:
+        result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
+            body.hosts,
+            sni=body.sni,
+            starttls=body.starttls,
+            scan_versions=body.scan_versions,
+            scan_ciphers=body.scan_ciphers,
+            check_renegotiation=body.check_renegotiation,
+            check_chain_sent=body.check_chain_sent,
+            live_revocation=body.live_revocation,
+        )
+        repo = CertificateRepository(db)
+        usages = MaturityRepository(db)
+        for cert in result.get("certificates") or []:
+            if cert.get("fingerprint_sha256"):
+                repo.upsert(cert)
+        for usage in result.get("usages") or []:
+            if usage.get("fingerprint_sha256") and usage.get("location"):
+                usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
+        run.succeed(coverage=coverage_from_result(result))
+    result = dict(result)
+    result["job_id"] = run.job_id
     return result
 
 

@@ -9,9 +9,9 @@ type Mode = "passive" | "active" | "registration";
 
 const targets: { id: ScanTarget; label: string; desc: string; icon: Icon; available: boolean; reason?: string }[] = [
   { id: "Network", label: "Network Scanner", desc: "Authorized active CIDR sweep and TLS endpoint probes", icon: IconNetwork, available: true },
-  { id: "Cloud", label: "Cloud KMS Scanner", desc: "Cloud account inspection", icon: IconCloud, available: false, reason: "No scoped, per-run cloud job contract is available here." },
+  { id: "Cloud", label: "Cloud KMS Scanner", desc: "IaC tree inspection with a durable per-run record (admission + coverage)", icon: IconCloud, available: true },
   { id: "Source Repository", label: "Source Repository AST", desc: "Source crypto analysis", icon: IconCode, available: false, reason: "The source job trigger does not enforce the declared application scope at execution." },
-  { id: "Container", label: "Container Registry", desc: "Container crypto inventory", icon: IconContainer, available: false, reason: "No scoped, per-run container job contract is available here." },
+  { id: "Container", label: "Container Registry", desc: "Image/filesystem crypto inventory with a durable per-run record", icon: IconContainer, available: true },
   { id: "Hardware", label: "Hardware & HSM Fleet", desc: "Hardware inventory", icon: IconHardware, available: false, reason: "No scoped, per-run hardware job contract is available here." },
   { id: "Certificate", label: "Certificates & CT Logs", desc: "Certificate inventory", icon: IconCertificate, available: false, reason: "No scoped, per-run certificate job contract is available here." },
   { id: "Full Estate", label: "Register Authorized Scope", desc: "Register onboarding targets and compute an inventory estimate; does not execute scanner jobs", icon: IconEstate, available: true },
@@ -54,6 +54,7 @@ export default function Scanners() {
   const [mode, setMode] = useState<Mode>("passive");
   const [activeAuthorized, setActiveAuthorized] = useState(false);
   const [scanJobId, setScanJobId] = useState<string | null>(null);
+  const [pollKind, setPollKind] = useState<"discovery" | "job" | null>(null);
   const [scanStatus, setScanStatus] = useState<ScanStatus>("queued");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [resultNote, setResultNote] = useState<string | null>(null);
@@ -69,6 +70,7 @@ export default function Scanners() {
       generation.current += 1;
       submitting.current = false;
       setScanJobId(null);
+      setPollKind(null);
       setTrackedSession(null);
       setResultNote(null);
       if (hadRequest) {
@@ -91,9 +93,10 @@ export default function Scanners() {
     };
   }, []);
 
-  // Discovery is the only ID-bearing scoped workflow this page can poll. The
-  // live-scan runner returns only {status:"started"}, not a run ID, and its
-  // status is a shared latest-cycle snapshot: it cannot identify this request.
+  // ID-bearing scoped workflows this page can poll: onboarding discovery
+  // runs and the durable job records the specialized scanners leave behind
+  // (GET /jobs/{id} — status, admission decision, bounded coverage). A shared
+  // latest-cycle listing can never identify this request, so it is not used.
   useEffect(() => {
     if (!scanJobId || !trackedSession) return;
     let stopped = false;
@@ -104,7 +107,10 @@ export default function Scanners() {
     const poll = async () => {
       if (!current()) return;
       try {
-        const res = await tenantFetch(`/api/v1/onboarding/discovery/${encodeURIComponent(scanJobId)}`, {
+        const path = pollKind === "job"
+          ? `/api/v1/jobs/${encodeURIComponent(scanJobId)}`
+          : `/api/v1/onboarding/discovery/${encodeURIComponent(scanJobId)}`;
+        const res = await tenantFetch(path, {
           signal: AbortSignal.timeout(10000),
         });
         if (!current()) return;
@@ -117,7 +123,41 @@ export default function Scanners() {
             return;
           }
           setErrorMsg(`${responseError(res, body).message}. Status unavailable; retrying.`);
-        } else if (!body || typeof body !== "object" || (body as { id?: unknown }).id !== scanJobId) {
+        } else if (!body || typeof body !== "object") {
+          setScanStatus("unknown");
+          setErrorMsg("Run status did not identify the requested run. Tracking stopped; outcome unknown.");
+          return;
+        } else if (pollKind === "job") {
+          if ((body as { job_id?: unknown }).job_id !== scanJobId) {
+            setScanStatus("unknown");
+            setErrorMsg("Run status did not identify the requested run. Tracking stopped; outcome unknown.");
+            return;
+          }
+          const record = body as {
+            status?: unknown; error_message?: unknown;
+            progress?: { coverage?: Record<string, unknown>; admission?: { mode?: unknown } };
+          };
+          const status = runStatus(record.status);
+          if (!status) {
+            setScanStatus("unknown");
+            setErrorMsg(`Unsupported run status: ${String(record.status ?? "missing")}. Outcome unknown.`);
+            return;
+          }
+          setScanStatus(status);
+          setErrorMsg(null);
+          if (status === "completed") {
+            const cov = record.progress?.coverage;
+            const covLine = cov && typeof cov === "object" && Object.keys(cov).length > 0
+              ? Object.entries(cov).map(([k, v]) => `${k.replace(/_/g, " ")}: ${String(v)}`).join(" · ")
+              : "no counts recorded";
+            setResultNote(`Durable run completed. Coverage: ${covLine}. Counts summarize the scan result; the full findings live in the scanner's own surfaces.`);
+            return;
+          }
+          if (status === "failed" || status === "cancelled") {
+            setErrorMsg(typeof record.error_message === "string" && record.error_message ? record.error_message : `Run ${status}.`);
+            return;
+          }
+        } else if ((body as { id?: unknown }).id !== scanJobId) {
           setScanStatus("unknown");
           setErrorMsg("Run status did not identify the requested run. Tracking stopped; outcome unknown.");
           return;
@@ -149,13 +189,14 @@ export default function Scanners() {
     };
     void poll();
     return () => { stopped = true; if (timer) clearTimeout(timer); };
-  }, [scanJobId, trackedSession]);
+  }, [scanJobId, trackedSession, pollKind]);
 
   const selected = targets.find((t) => t.id === selectedTarget)!;
   const reset = () => {
     generation.current += 1;
     submitting.current = false;
     setScanJobId(null);
+    setPollKind(null);
     setTrackedSession(null);
     setScanStatus("queued");
     setErrorMsg(null);
@@ -195,6 +236,36 @@ export default function Scanners() {
         const result = body as { hosts_checked?: unknown; endpoints: unknown[] };
         setResultNote(`Sweep finished${typeof result.hosts_checked === "number" ? `: ${result.hosts_checked} host(s) checked` : ""}; ${result.endpoints.length} open service endpoint(s) returned.`);
         setScanStatus("completed");
+      } else if (selectedTarget === "Cloud" || selectedTarget === "Container") {
+        // Synchronous specialized scan, now with a durable run identity:
+        // the server returns job_id and GET /jobs/{id} carries status,
+        // the admission decision and bounded coverage for THIS run.
+        const endpoint = selectedTarget === "Cloud" ? "/api/v1/cloud-scans" : "/api/v1/container-scans";
+        const payload = selectedTarget === "Cloud"
+          ? { path: targetInput.trim(), live: false }
+          : { path: targetInput.trim(), live_cve: false };
+        const res = await tenantFetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(120000),
+        });
+        if (!sameSession()) return;
+        const body = await readResponse(res);
+        if (!sameSession()) return;
+        if (!res.ok) { requestRefused = true; throw responseError(res, body); }
+        const jobId = body && typeof body === "object" ? (body as { job_id?: unknown }).job_id : null;
+        if (typeof jobId !== "string" || !jobId) {
+          setScanStatus("unknown");
+          setErrorMsg("Scan response did not identify a durable run; outcome unknown.");
+          return;
+        }
+        setTrackedSession({ token, tenant });
+        setPollKind("job");
+        setScanJobId(jobId);
+        // A 200 response is not the status record: poll the job before
+        // displaying completion, same rule as discovery runs.
+        setScanStatus("verifying");
       } else {
         // Onboarding registers ALL declared targets. It has no target/mode
         // parameters; never route a specialized selection to this endpoint.
@@ -212,6 +283,7 @@ export default function Scanners() {
           return;
         }
         setTrackedSession({ token, tenant });
+        setPollKind("discovery");
         setScanJobId(runId);
         const acceptedStatus = runStatus((body as { status?: unknown }).status);
         setScanStatus(acceptedStatus === "queued" || acceptedStatus === "running" ? acceptedStatus : "verifying");
@@ -287,7 +359,31 @@ export default function Scanners() {
           </div>
 
           <div className="panel" style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "16px", marginBottom: "24px" }}>
-            {selectedTarget === "Network" ? <>
+            {selectedTarget === "Cloud" || selectedTarget === "Container" ? <>
+            <div>
+              <label htmlFor="scan-path" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
+                {selectedTarget === "Cloud" ? "IaC tree path (inside declared source roots)" : "Container filesystem path (inside declared source roots)"}
+              </label>
+              <input id="scan-path" placeholder="/workspace/infra"
+                type="text"
+                value={targetInput}
+                onChange={(e) => setTargetInput(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--r)",
+                  padding: "8px 12px",
+                  color: "var(--text)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "13px"
+                }}
+              />
+              <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "6px" }}>
+                The server refuses any path outside the declared source roots before scanning. This run leaves a durable job record — status, the admission decision and bounded coverage — under its run ID{selectedTarget === "Cloud" ? ". Live provider reads are not requested here (IaC tree analysis only)." : ". Live CVE enrichment is off for this run."}
+              </div>
+            </div>
+            </> : selectedTarget === "Network" ? <>
             <div>
               <label htmlFor="network-cidr" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
                 Authorized network IP / CIDR
@@ -346,8 +442,16 @@ export default function Scanners() {
             <button onClick={() => setStep("select")} className="btn outline">
               ← Back
             </button>
-            <button onClick={handleStartScan} disabled={selectedTarget === "Network" && (mode !== "active" || !activeAuthorized || !targetInput.trim())} className="btn primary">
-              {selectedTarget === "Network" ? "Start Authorized Sweep" : "Register Authorized Scope"}
+            <button
+              onClick={handleStartScan}
+              disabled={(selectedTarget === "Network" && (mode !== "active" || !activeAuthorized || !targetInput.trim()))
+                || ((selectedTarget === "Cloud" || selectedTarget === "Container") && !targetInput.trim())}
+              className="btn primary"
+            >
+              {selectedTarget === "Network" ? "Start Authorized Sweep"
+                : selectedTarget === "Cloud" ? "Start Cloud Scan"
+                : selectedTarget === "Container" ? "Start Container Scan"
+                : "Register Authorized Scope"}
             </button>
           </div>
         </div>
@@ -359,13 +463,16 @@ export default function Scanners() {
             {scanStatus === "completed" ? <IconPass size={ICON_LG} /> : <IconTarget size={ICON_LG} />}
           </div>
           <h2 style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 8px" }}>
-            {scanStatus === "completed" ? (selectedTarget === "Network" ? "Network Sweep Complete" : "Scope Registration Complete")
+            {scanStatus === "completed" ? (selectedTarget === "Network" ? "Network Sweep Complete"
+              : selectedTarget === "Cloud" ? "Cloud Scan Complete"
+              : selectedTarget === "Container" ? "Container Scan Complete"
+              : "Scope Registration Complete")
               : scanStatus === "failed" ? "Request Failed" : scanStatus === "cancelled" ? "Run Cancelled"
                 : scanStatus === "unknown" ? "Outcome Unknown" : scanStatus === "verifying" ? "Checking Run Status" : scanStatus === "queued" ? "Discovery Run Queued" : "Scan Running"}
           </h2>
           <p role="status" style={{ color: "var(--dim)", fontSize: "14px", margin: "0 0 20px" }}>
             {scanJobId && <>Run ID: <code style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{scanJobId}</code> · </>}
-            Target: <code>{selectedTarget === "Network" ? targetInput : "authorized onboarding scope"}</code> · Status: {scanStatus}
+            Target: <code>{selectedTarget === "Network" || selectedTarget === "Cloud" || selectedTarget === "Container" ? targetInput : "authorized onboarding scope"}</code> · Status: {scanStatus}
           </p>
 
           {scanStatus === "completed" && resultNote && (
