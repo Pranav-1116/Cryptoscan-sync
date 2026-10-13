@@ -1,17 +1,48 @@
-"""Extract Docker-save and OCI image archives into a merged rootfs."""
+"""Extract Docker-save and OCI image archives into a merged rootfs.
+
+Hostile-input hardening (§4.1): operator-supplied archives are untrusted
+input. Extraction is BOUNDED (member count, per-member bytes, total bytes)
+and FAIL-CLOSED — a member that tries to escape the extraction root, a
+symlink pointing outside it, a device/FIFO member or an archive that exceeds
+a resource limit refuses the WHOLE archive. The previous behavior (skip the
+unsafe member, keep extracting) could silently produce a partial rootfs that
+was then scanned as if complete.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import tarfile
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
 from container_scanner.image.layer_merger import merge_layers
 
 logger = logging.getLogger(__name__)
+
+
+class HostileArchiveError(ValueError):
+    """The archive violates extraction safety rules or resource bounds.
+
+    Raised instead of extracting a partial rootfs: the caller reports a
+    refused scan, never a silently-incomplete one.
+    """
+
+
+#: pre-check on the archive file itself before any member is read
+MAX_ARCHIVE_BYTES = 32 * 1024**3
+
+
+@dataclass(frozen=True)
+class ExtractionLimits:
+    """Resource bounds for one extraction (defense against archive bombs)."""
+
+    max_members: int = 20_000
+    max_member_bytes: int = 8 * 1024**3
+    max_total_bytes: int = 16 * 1024**3
 
 
 @dataclass
@@ -34,16 +65,25 @@ class ExtractedImage:
         }
 
 
-def extract_image_archive(archive: str | Path, dest: str | Path) -> ExtractedImage:
+def extract_image_archive(
+    archive: str | Path,
+    dest: str | Path,
+    *,
+    limits: ExtractionLimits | None = None,
+) -> ExtractedImage:
     """
     Unpack a `docker save` tarball or an OCI image layout archive.
 
-    Layers are applied bottom-to-top with Docker whiteout semantics.
-    Path-traversal members are skipped.
+    Layers are applied bottom-to-top with Docker whiteout semantics. A
+    hostile archive (path traversal, escaping symlinks, special files,
+    member/size flood) is refused whole with :class:`HostileArchiveError`.
     """
     archive_path = Path(archive)
     if not archive_path.is_file():
         raise FileNotFoundError(f"image archive not found: {archive_path}")
+    archive_bytes = archive_path.stat().st_size
+    if archive_bytes > MAX_ARCHIVE_BYTES:
+        raise HostileArchiveError(f"archive is {archive_bytes} bytes (limit {MAX_ARCHIVE_BYTES})")
 
     work = Path(dest)
     work.mkdir(parents=True, exist_ok=True)
@@ -54,7 +94,7 @@ def extract_image_archive(archive: str | Path, dest: str | Path) -> ExtractedIma
     layers_dir.mkdir(exist_ok=True)
 
     with tarfile.open(archive_path, mode="r:*") as handle:
-        _safe_extract(handle, unpacked)
+        _safe_extract(handle, unpacked, limits=limits)
 
     manifest_path = unpacked / "manifest.json"
     index_path = unpacked / "index.json"
@@ -65,9 +105,7 @@ def extract_image_archive(archive: str | Path, dest: str | Path) -> ExtractedIma
     raise ValueError(f"{archive_path} is not a docker-save or OCI image archive")
 
 
-def _extract_docker_save(
-    unpacked: Path, layers_dir: Path, rootfs: Path, archive_path: Path
-) -> ExtractedImage:
+def _extract_docker_save(unpacked: Path, layers_dir: Path, rootfs: Path, archive_path: Path) -> ExtractedImage:
     manifests = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
     if not isinstance(manifests, list) or not manifests:
         raise ValueError("docker-save manifest.json is empty")
@@ -106,9 +144,7 @@ def _extract_docker_save(
     )
 
 
-def _extract_oci_layout(
-    unpacked: Path, layers_dir: Path, rootfs: Path, archive_path: Path
-) -> ExtractedImage:
+def _extract_oci_layout(unpacked: Path, layers_dir: Path, rootfs: Path, archive_path: Path) -> ExtractedImage:
     index = json.loads((unpacked / "index.json").read_text(encoding="utf-8"))
     manifests = index.get("manifests") or []
     if not manifests:
@@ -175,23 +211,105 @@ def _public_config(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _safe_extract(handle: tarfile.TarFile, dest: Path) -> None:
+def _confined(dest: Path, name: str, *, what: str = "member") -> Path:
+    """Normalize a member name to a path strictly under ``dest``.
+
+    Absolute names and any ``..`` component refuse the archive. The final
+    ``resolve()`` also follows symlinks created by EARLIER members of the
+    same archive, so a write through a planted link cannot land outside the
+    extraction root.
+    """
+    parts = PurePosixPath(name).parts
+    if name.startswith("/") or ".." in parts:
+        raise HostileArchiveError(f"unsafe {what} path: {name!r}")
+    rel = Path(*parts) if parts else Path(".")
+    target = dest / rel
+    try:
+        target.resolve().relative_to(dest)
+    except (ValueError, OSError):
+        raise HostileArchiveError(f"{what} resolves outside the extraction root: {name!r}") from None
+    # a path whose PARENT components pass through a symlink (planted by an
+    # earlier member) is an escape vector — refuse instead of writing through
+    for parent in rel.parents:
+        if (dest / parent).is_symlink():
+            raise HostileArchiveError(f"{what} writes through a symlinked directory: {name!r}")
+    return target
+
+
+def _safe_extract(handle: tarfile.TarFile, dest: Path, *, limits: ExtractionLimits | None = None) -> None:
+    """Bounded, fail-closed extraction of one tar stream.
+
+    Refuses (never skips) anything hostile: traversal, escaping symlinks,
+    device/FIFO members, member floods and size bombs. Byte caps are enforced
+    while STREAMING member content, so a compressed bomb is stopped mid-write
+    instead of after filling the disk.
+    """
+    limits = limits or ExtractionLimits()
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
     dest = dest.resolve()
-    for member in handle.getmembers():
-        name = member.name.lstrip("/")
-        if not name or name.startswith("..") or "/../" in f"/{name}/":
-            logger.warning("skipping_unsafe_tar_member", extra={"name": member.name})
+
+    members = handle.getmembers()
+    if len(members) > limits.max_members:
+        raise HostileArchiveError(f"archive has {len(members)} members (limit {limits.max_members})")
+
+    total = 0
+    for member in members:
+        target = _confined(dest, member.name)
+        if member.isdir():
+            target.mkdir(parents=True, exist_ok=True)
             continue
-        target = (dest / name).resolve()
-        try:
-            target.relative_to(dest)
-        except ValueError:
-            logger.warning("skipping_tar_slip", extra={"name": member.name})
+        if member.issym():
+            # image-root-absolute link targets (e.g. "/usr/bin") are the
+            # docker convention; they are re-anchored inside the root.
+            link = member.linkname.lstrip("/")
+            if ".." in PurePosixPath(link).parts:
+                raise HostileArchiveError(
+                    f"symlink escapes the extraction root: {member.name!r} -> {member.linkname!r}"
+                )
+            if target.exists() or target.is_symlink():
+                target.unlink()
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.symlink(link, target)
             continue
-        try:
-            handle.extract(member, dest, set_attrs=False)
-        except TypeError:
-            handle.extract(member, dest)
+        if member.islnk():
+            link_target = _confined(dest, member.linkname, what="hardlink target")
+            if not link_target.exists():
+                raise HostileArchiveError(f"hardlink to missing member: {member.name!r} -> {member.linkname!r}")
+            if target.exists() or target.is_symlink():
+                target.unlink()
+            os.link(link_target, target)
+            continue
+        if not member.isfile():
+            raise HostileArchiveError(f"refusing special member: {member.name!r} (type {member.type!r})")
+        if member.size > limits.max_member_bytes:
+            raise HostileArchiveError(
+                f"member exceeds per-member limit: {member.name!r} ({member.size} bytes > {limits.max_member_bytes})"
+            )
+        total += member.size
+        if total > limits.max_total_bytes:
+            raise HostileArchiveError(
+                f"archive exceeds total extraction limit ({limits.max_total_bytes} bytes) at {member.name!r}"
+            )
+        src = handle.extractfile(member)
+        if src is None:  # pragma: no cover - member listed but unreadable
+            raise HostileArchiveError(f"cannot read member: {member.name!r}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        written = 0
+        with open(target, "wb") as out:
+            while True:
+                chunk = src.read(1024 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > limits.max_member_bytes:  # header lied about size
+                    raise HostileArchiveError(f"member wrote beyond its declared size: {member.name!r}")
+                out.write(chunk)
+        if member.mode:
+            try:
+                os.chmod(target, member.mode & 0o777)
+            except OSError:  # pragma: no cover - mode is best-effort
+                pass
 
 
 def iter_layer_paths(root: Path) -> Iterable[Path]:

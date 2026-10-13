@@ -26,10 +26,18 @@ logger = logging.getLogger(__name__)
 
 def _scan_one(args: tuple[Path, Path]) -> tuple[Path, list[RawFinding], Optional[str]]:
     source_file, root = args
+    from scanner.core.sandbox import per_file_timeout
+
     try:
-        return source_file, scan_file(source_file, root), None
+        # §4.1: one hostile file gets a bounded wall-clock budget — a runaway
+        # detector fails THIS file (recorded as a parse error), not the scan
+        with per_file_timeout():
+            return source_file, scan_file(source_file, root), None
     except Exception as exc:  # noqa: BLE001 — one bad file must not sink the scan
-        return source_file, [], str(exc)
+        # always name the exception type — str(MemoryError()) is empty, and
+        # an anonymous parse error is useless diagnostics (and would hide a
+        # sandbox refusal as a blank string)
+        return source_file, [], (type(exc).__name__ + (f": {exc}" if str(exc) else ""))
 
 
 def scan_processes() -> int:
@@ -56,9 +64,15 @@ def _scan_files(source_files: list[Path], root: Path) -> Iterator[tuple[Path, li
         return
     import multiprocessing as mp
 
+    # §4.1 hostile-input bounds: pool children run under rlimits (CPU /
+    # address space / file size, env-tunable) so a hostile file fails itself
+    # instead of consuming unbounded worker resources. Process-level bounds,
+    # not a container — see scanner/core/sandbox.py for the honest scope.
+    from scanner.core.sandbox import apply_child_limits
+
     ctx = mp.get_context("fork" if hasattr(os, "fork") else "spawn")
     chunk = max(8, len(source_files) // (n * 16))
-    with ctx.Pool(processes=n) as pool:
+    with ctx.Pool(processes=n, initializer=apply_child_limits) as pool:
         for item in pool.imap_unordered(_scan_one, [(f, root) for f in source_files], chunksize=chunk):
             yield item
 
@@ -192,8 +206,13 @@ class Scanner:
             try:
                 from scanner.analysis.cascade import analyse_cascade, is_manifest
 
-                manifests = [p for p in path.rglob("*") if p.is_file() and is_manifest(p)
-                             and not any(part in _CASCADE_SKIP_DIRS for part in p.relative_to(path).parts)]
+                manifests = [
+                    p
+                    for p in path.rglob("*")
+                    if p.is_file()
+                    and is_manifest(p)
+                    and not any(part in _CASCADE_SKIP_DIRS for part in p.relative_to(path).parts)
+                ]
                 cascade = analyse_cascade(findings, source_files + manifests, path)
             except Exception as exc:
                 logger.warning("cascade_analysis_failed", extra={"error": str(exc)})
