@@ -6,6 +6,14 @@ import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
 
+from graph_engine.core.edge_provenance import (
+    PROVENANCE_DECLARED,
+    PROVENANCE_SCANNER_DERIVED,
+    edge_meta_payload,
+    normalize_provenance,
+    provenance_counts,
+)
+
 # Word-boundary tokens: kept for backward compatibility (token-level matching).
 # New code must use shared_models.quantum_classify.is_shor_vulnerable — the
 # registry-backed single classifier (better: JOSE/TLS-suite/curve aware).
@@ -37,13 +45,28 @@ class GraphEngine:
             props = {k: v for k, v in node.items() if k not in {"id", "group", "kind", "label"}}
             engine.add_node(node_id, kind=str(node.get("kind") or node.get("group") or "Node"), **props)
         for edge in vis.get("edges") or []:
-            engine.add_edge(str(edge.get("from") or ""), str(edge.get("to") or ""), str(edge.get("label") or "RELATED"))
+            engine.add_edge(
+                str(edge.get("from") or ""),
+                str(edge.get("to") or ""),
+                str(edge.get("label") or "RELATED"),
+                provenance=edge.get("provenance"),
+                source=edge.get("source"),
+                observed_at=edge.get("observed_at"),
+                confidence=edge.get("confidence"),
+                evidence_ref=edge.get("evidence_ref"),
+            )
         return engine
 
     def __init__(self) -> None:
         self.nodes: dict[str, dict[str, Any]] = {}
         self.out: dict[str, list[tuple[str, str]]] = defaultdict(list)
         self.incoming: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        # §4.5 (round 43): per-edge provenance — where the edge came from.
+        # Keyed (src, dst, relation); traversal tuples stay untouched so every
+        # existing query keeps working. An edge added without a provenance is
+        # UNATTRIBUTED and is exported as such — it never silently becomes a
+        # "known dependency".
+        self.edge_meta: dict[tuple[str, str, str], dict[str, Any]] = {}
 
     def add_node(self, node_id: str, *, kind: str, **props: Any) -> None:
         current = self.nodes.get(node_id, {"id": node_id, "kind": kind})
@@ -52,11 +75,35 @@ class GraphEngine:
         current["id"] = node_id
         self.nodes[node_id] = current
 
-    def add_edge(self, src: str, dst: str, relation: str = "CALLS") -> None:
+    def add_edge(
+        self,
+        src: str,
+        dst: str,
+        relation: str = "CALLS",
+        *,
+        provenance: str | None = None,
+        source: str | None = None,
+        observed_at: Any = None,
+        confidence: Any = None,
+        evidence_ref: Any = None,
+    ) -> None:
         if (dst, relation) not in self.out[src]:
             self.out[src].append((dst, relation))
         if (src, relation) not in self.incoming[dst]:
             self.incoming[dst].append((src, relation))
+        key = (src, dst, relation)
+        meta = self.edge_meta.get(key) or {}
+        if provenance is not None:
+            meta["provenance"] = normalize_provenance(provenance)
+        for name, value in (("source", source), ("observed_at", observed_at),
+                            ("confidence", confidence), ("evidence_ref", evidence_ref)):
+            if value is not None:
+                meta[name] = value
+        self.edge_meta[key] = meta
+
+    def edge_provenance(self, src: str, dst: str, relation: str) -> str:
+        """Provenance class of one edge (UNATTRIBUTED when never stated)."""
+        return normalize_provenance((self.edge_meta.get((src, dst, relation)) or {}).get("provenance"))
 
     def build(
         self,
@@ -92,7 +139,8 @@ class GraphEngine:
             )
             for scope in system.get("compliance_scopes") or []:
                 self.add_node(f"scope:{scope}", kind="ComplianceScope", name=scope, standard_name=scope)
-                self.add_edge(f"system:{sid}", f"scope:{scope}", "MUST_COMPLY_WITH")
+                self.add_edge(f"system:{sid}", f"scope:{scope}", "MUST_COMPLY_WITH",
+                              provenance=PROVENANCE_DECLARED, source="system compliance_scopes")
         for asset in assets:
             aid = str(asset.get("id") or asset.get("asset_id"))
             self.add_node(
@@ -105,12 +153,17 @@ class GraphEngine:
             )
             system_id = asset.get("system_id")
             if system_id:
-                self.add_edge(f"system:{system_id}", f"asset:{aid}", "USES")
+                self.add_edge(f"system:{system_id}", f"asset:{aid}", "USES",
+                              provenance=PROVENANCE_SCANNER_DERIVED,
+                              source="crypto_asset inventory (evidence-chained)")
         for edge in edges:
             parent = edge.get("parent_id") or edge.get("from")
             child = edge.get("child_id") or edge.get("to")
             if parent and child:
-                self.add_edge(f"system:{parent}", f"system:{child}", edge.get("relation") or "CALLS")
+                self.add_edge(f"system:{parent}", f"system:{child}", edge.get("relation") or "CALLS",
+                              provenance=edge.get("provenance") or PROVENANCE_DECLARED,
+                              source=edge.get("source") or "system_dependencies (operator-declared)",
+                              observed_at=edge.get("observed_at"))
         for process in processes:
             pid = str(process.get("id") or process.get("process_id") or process.get("name"))
             self.add_node(
@@ -121,17 +174,20 @@ class GraphEngine:
                 customer_count=int(process.get("customer_count") or 0),
             )
             for system_id in process.get("system_ids") or []:
-                self.add_edge(f"system:{system_id}", f"process:{pid}", "SUPPORTS")
+                self.add_edge(f"system:{system_id}", f"process:{pid}", "SUPPORTS",
+                              provenance=PROVENANCE_DECLARED, source="system_business_process mapping")
         for owner in owners:
             oid = str(owner.get("id") or owner.get("email") or owner.get("name"))
             self.add_node(f"owner:{oid}", kind="BusinessOwner", name=owner.get("name"), email=owner.get("email"))
             for system_id in owner.get("system_ids") or []:
-                self.add_edge(f"system:{system_id}", f"owner:{oid}", "OWNED_BY")
+                self.add_edge(f"system:{system_id}", f"owner:{oid}", "OWNED_BY",
+                              provenance=PROVENANCE_DECLARED, source="system owner mapping")
         for vendor in vendors:
             vid = str(vendor.get("id") or vendor.get("name"))
             self.add_node(f"vendor:{vid}", kind="Vendor", name=vendor.get("name"), criticality=vendor.get("criticality"))
             for system_id in vendor.get("system_ids") or []:
-                self.add_edge(f"system:{system_id}", f"vendor:{vid}", "DEPENDS_ON_VENDOR")
+                self.add_edge(f"system:{system_id}", f"vendor:{vid}", "DEPENDS_ON_VENDOR",
+                              provenance=PROVENANCE_DECLARED, source="vendor dependency mapping")
         for cert in certificates:
             cid = str(cert.get("id") or cert.get("fingerprint_sha256") or cert.get("subject"))
             self.add_node(
@@ -142,7 +198,8 @@ class GraphEngine:
                 expiry_status=cert.get("expiry_status"),
             )
             for system_id in cert.get("system_ids") or []:
-                self.add_edge(f"system:{system_id}", f"cert:{cid}", "SECURED_BY")
+                self.add_edge(f"system:{system_id}", f"cert:{cid}", "SECURED_BY",
+                              provenance=PROVENANCE_SCANNER_DERIVED, source="certificate inventory")
         for resource in cloud_resources:
             rid = str(resource.get("id") or resource.get("resource_id") or resource.get("account_identifier") or "")
             if not rid:
@@ -154,7 +211,8 @@ class GraphEngine:
                 cloud_provider=resource.get("cloud_provider"),
             )
             for system_id in resource.get("system_ids") or []:
-                self.add_edge(f"system:{system_id}", f"cloud:{rid}", "DEPLOYED_ON")
+                self.add_edge(f"system:{system_id}", f"cloud:{rid}", "DEPLOYED_ON",
+                              provenance=PROVENANCE_DECLARED, source="cloud resource mapping")
         for resource in network_resources:
             rid = str(resource.get("id") or resource.get("endpoint") or resource.get("resource_id") or "")
             if not rid:
@@ -167,7 +225,8 @@ class GraphEngine:
                 resource_type=resource.get("resource_type") or "TLS_ENDPOINT",
             )
             for system_id in resource.get("system_ids") or []:
-                self.add_edge(f"system:{system_id}", f"network:{rid}", "CONNECTS_TO")
+                self.add_edge(f"system:{system_id}", f"network:{rid}", "CONNECTS_TO",
+                              provenance=PROVENANCE_SCANNER_DERIVED, source="network probes")
         # Declared network topology (advanced/58 P0#1–2, round 31): DNS/CDN/
         # WAF/LB hops as first-class nodes with the declared chain edges and
         # honest TERMINATES_AT/HOSTS system links. Every node carries
@@ -191,11 +250,13 @@ class GraphEngine:
                 )
                 for system_id in node.get("system_ids") or []:
                     relation = (node.get("system_relation") or "TERMINATES_AT")
-                    self.add_edge(f"edge:{name}", f"system:{system_id}", relation)
+                    self.add_edge(f"edge:{name}", f"system:{system_id}", relation,
+                                  provenance=PROVENANCE_DECLARED, source="network_topology (declared)")
             for edge in topology.get("edges") or []:
                 src, dst = str(edge.get("from") or ""), str(edge.get("to") or "")
                 if src in node_by_name and dst in node_by_name:
-                    self.add_edge(f"edge:{src}", f"edge:{dst}", edge.get("relation") or "ROUTES_TO")
+                    self.add_edge(f"edge:{src}", f"edge:{dst}", edge.get("relation") or "ROUTES_TO",
+                                  provenance=PROVENANCE_DECLARED, source="network_topology (declared)")
         for image in container_images:
             cid = str(image.get("id") or image.get("target") or "")
             if not cid:
@@ -210,7 +271,8 @@ class GraphEngine:
                 vuln_count=image.get("vuln_count"),
             )
             for system_id in image.get("system_ids") or []:
-                self.add_edge(f"system:{system_id}", f"container:{cid}", "RUNS")
+                self.add_edge(f"system:{system_id}", f"container:{cid}", "RUNS",
+                              provenance=PROVENANCE_SCANNER_DERIVED, source="container image inventory")
         return self
 
     def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
@@ -222,6 +284,7 @@ class GraphEngine:
             start = users[0] if users else start
         seen: dict[str, int] = {start: 0}
         queue = deque([start])
+        followed: list[dict[str, Any]] = []
         while queue:
             node = queue.popleft()
             depth = seen[node]
@@ -231,6 +294,8 @@ class GraphEngine:
                 if nxt not in seen:
                     seen[nxt] = depth + 1
                     queue.append(nxt)
+                    followed.append({"from": node, "to": nxt, "label": _rel,
+                                     "provenance": self.edge_provenance(node, nxt, _rel)})
         systems = []
         for node_id, depth in seen.items():
             node = self.nodes.get(node_id) or {}
@@ -250,6 +315,9 @@ class GraphEngine:
             "hops": hops,
             "nodes_visited": len(seen),
             "backend": self.backend,
+            # §4.5: what kinds of edges produced this impact — a declared
+            # mapping is an operator statement, not observed traffic.
+            "provenance_counts": provenance_counts(followed),
         }
 
     def business_impact(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
@@ -414,6 +482,7 @@ class GraphEngine:
             start = users[0] if users else start
         seen: dict[str, int] = {start: 0}
         queue = deque([start])
+        followed: list[dict[str, Any]] = []
         while queue:
             node = queue.popleft()
             depth = seen[node]
@@ -423,6 +492,8 @@ class GraphEngine:
                 if prev not in seen:
                     seen[prev] = depth + 1
                     queue.append(prev)
+                    followed.append({"from": prev, "to": node, "label": _rel,
+                                     "provenance": self.edge_provenance(prev, node, _rel)})
         systems = []
         for node_id, depth in seen.items():
             node = self.nodes.get(node_id) or {}
@@ -442,6 +513,7 @@ class GraphEngine:
             "hops": hops,
             "nodes_visited": len(seen),
             "backend": self.backend,
+            "provenance_counts": provenance_counts(followed),
         }
 
     def shortest_path(self, start_id: str, target_id: str, *, direction: str = "downstream") -> dict[str, Any]:
@@ -603,7 +675,9 @@ class GraphEngine:
         edges = []
         for src, items in self.out.items():
             for dst, rel in items:
-                edges.append({"from": src, "to": dst, "label": rel})
+                edge = {"from": src, "to": dst, "label": rel}
+                edge.update(edge_meta_payload(self.edge_meta.get((src, dst, rel))))
+                edges.append(edge)
         return {"nodes": nodes, "edges": edges, "backend": self.backend}
 
     def _resolve(self, raw: str) -> str | None:

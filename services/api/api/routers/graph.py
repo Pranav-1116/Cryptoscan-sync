@@ -120,7 +120,12 @@ def _edge_evidence(
     out = {
         "type": label,
         "confidence": confidence,
-        "source": "crypto_discovery" if label == "USES" else "inventory",
+        # r43/§4.5: the engine's provenance class + source win when present
+        # (DECLARED system dependency vs SCANNER_DERIVED inventory link); the
+        # coarse subsystem heuristic is only a fallback for backends that
+        # predate provenance.
+        "provenance": edge.get("provenance") or "UNATTRIBUTED",
+        "source": edge.get("source") or ("crypto_discovery" if label == "USES" else "inventory"),
         "evidence": evidence,
         "first_seen": asset_row.created_at.isoformat() if asset_row is not None and asset_row.created_at else None,
         "last_seen": asset_row.updated_at.isoformat() if asset_row is not None and asset_row.updated_at else None,
@@ -165,6 +170,7 @@ def _to_graphml(vis: dict[str, Any]) -> str:
         '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">',
         '  <key id="d0" for="node" attr.name="kind" attr.type="string"/>',
         '  <key id="d1" for="edge" attr.name="relation" attr.type="string"/>',
+        '  <key id="d3" for="edge" attr.name="provenance" attr.type="string"/>',
         '  <key id="d2" for="node" attr.name="label" attr.type="string"/>',
         '  <graph id="cryptoscan-graph" edgedefault="directed">',
     ]
@@ -180,7 +186,8 @@ def _to_graphml(vis: dict[str, Any]) -> str:
         lines.append(
             f'    <edge id="e{index}" source="{_xml_escape(edge.get("from"))}" '
             f'target="{_xml_escape(edge.get("to"))}">'
-            f'<data key="d1">{_xml_escape(edge.get("label") or "CALLS")}</data></edge>'
+            f'<data key="d1">{_xml_escape(edge.get("label") or "CALLS")}</data>'
+            f'<data key="d3">{_xml_escape(edge.get("provenance") or "UNATTRIBUTED")}</data></edge>'
         )
     lines += ["  </graph>", "</graphml>", ""]
     return "\n".join(lines)
@@ -196,6 +203,9 @@ def _to_gexf(vis: dict[str, Any]) -> str:
         '    <attributes class="node">',
         '      <attribute id="kind" title="kind" type="string"/>',
         "    </attributes>",
+        '    <attributes class="edge">',
+        '      <attribute id="provenance" title="provenance" type="string"/>',
+        "    </attributes>",
         "    <nodes>",
     ]
     for node in nodes:
@@ -210,7 +220,9 @@ def _to_gexf(vis: dict[str, Any]) -> str:
     for index, edge in enumerate(edges):
         lines.append(
             f'      <edge id="e{index}" source="{_xml_escape(edge.get("from"))}" '
-            f'target="{_xml_escape(edge.get("to"))}" label="{_xml_escape(edge.get("label") or "CALLS")}"/>'
+            f'target="{_xml_escape(edge.get("to"))}" label="{_xml_escape(edge.get("label") or "CALLS")}">'
+            f'<attvalues><attvalue for="provenance" value="{_xml_escape(edge.get("provenance") or "UNATTRIBUTED")}"/>'
+            f"</attvalues></edge>"
         )
     lines += ["    </edges>", "  </graph>", "</gexf>", ""]
     return "\n".join(lines)

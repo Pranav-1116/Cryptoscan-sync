@@ -98,7 +98,9 @@ UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (a:CryptoAsset {asset_id: row.asset_id, tenant_id: row.tenant_id})
 MERGE (s)-[r:USES]->(a)
-SET r.usage_type = row.usage_type
+SET r.usage_type = row.usage_type,
+    r.provenance = row.provenance,
+    r.source = row.source
 """
 
 MERGE_CALLS = """
@@ -108,7 +110,10 @@ MATCH (a:System {system_id: row.parent_id, tenant_id: row.tenant_id})
 MATCH (b:System {system_id: row.child_id, tenant_id: row.tenant_id})
 MERGE (a)-[rel:CALLS]->(b)
 SET rel.protocol = row.protocol,
-    rel.frequency = row.frequency
+    rel.frequency = row.frequency,
+    rel.provenance = row.provenance,
+    rel.source = row.source,
+    rel.observed_at = row.observed_at
 """
 
 MERGE_SUPPORTS = """
@@ -116,7 +121,9 @@ MERGE_SUPPORTS = """
 UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (p:BusinessProcess {process_id: row.process_id, tenant_id: row.tenant_id})
-MERGE (s)-[:SUPPORTS]->(p)
+MERGE (s)-[r:SUPPORTS]->(p)
+SET r.provenance = 'DECLARED',
+    r.source = 'system_business_process mapping'
 """
 
 MERGE_OWNED_BY = """
@@ -124,7 +131,9 @@ MERGE_OWNED_BY = """
 UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (o:BusinessOwner {owner_id: row.owner_id, tenant_id: row.tenant_id})
-MERGE (s)-[:OWNED_BY]->(o)
+MERGE (s)-[r:OWNED_BY]->(o)
+SET r.provenance = 'DECLARED',
+    r.source = 'system owner mapping'
 """
 
 MERGE_COMPLY = """
@@ -132,7 +141,9 @@ MERGE_COMPLY = """
 UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (c:ComplianceScope {standard_name: row.standard_name, tenant_id: row.tenant_id})
-MERGE (s)-[:MUST_COMPLY_WITH]->(c)
+MERGE (s)-[r:MUST_COMPLY_WITH]->(c)
+SET r.provenance = 'DECLARED',
+    r.source = 'system compliance_scopes'
 """
 
 MERGE_VENDOR_EDGE = """
@@ -141,7 +152,9 @@ UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (v:Vendor {vendor_id: row.vendor_id, tenant_id: row.tenant_id})
 MERGE (s)-[r:DEPENDS_ON_VENDOR]->(v)
-SET r.dependency_type = row.dependency_type
+SET r.dependency_type = row.dependency_type,
+    r.provenance = 'DECLARED',
+    r.source = 'vendor dependency mapping'
 """
 
 MERGE_SECURED_BY = """
@@ -150,7 +163,9 @@ UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (c:Certificate {cert_id: row.cert_id, tenant_id: row.tenant_id})
 MERGE (s)-[r:SECURED_BY]->(c)
-SET r.endpoint = row.endpoint
+SET r.endpoint = row.endpoint,
+    r.provenance = 'SCANNER_DERIVED',
+    r.source = 'certificate inventory'
 """
 
 MERGE_DEPLOYED_ON = """
@@ -158,7 +173,9 @@ MERGE_DEPLOYED_ON = """
 UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (c:CloudResource {resource_id: row.resource_id, tenant_id: row.tenant_id})
-MERGE (s)-[:DEPLOYED_ON]->(c)
+MERGE (s)-[r:DEPLOYED_ON]->(c)
+SET r.provenance = 'DECLARED',
+    r.source = 'cloud resource mapping'
 """
 
 # Ghost-node pruning (report 03/09 — MERGE-only sync never removed deleted
@@ -189,7 +206,9 @@ MERGE_CONNECTS_TO = """
 UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (n:NetworkResource {network_id: row.network_id, tenant_id: row.tenant_id})
-MERGE (s)-[:CONNECTS_TO]->(n)
+MERGE (s)-[r:CONNECTS_TO]->(n)
+SET r.provenance = 'SCANNER_DERIVED',
+    r.source = 'network probes'
 """
 
 
@@ -210,5 +229,7 @@ MERGE_RUNS = """
 UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (c:ContainerImage {container_id: row.container_id, tenant_id: row.tenant_id})
-MERGE (s)-[:RUNS]->(c)
+MERGE (s)-[r:RUNS]->(c)
+SET r.provenance = 'SCANNER_DERIVED',
+    r.source = 'container image inventory'
 """

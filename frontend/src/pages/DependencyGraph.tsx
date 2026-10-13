@@ -62,6 +62,20 @@ export default function DependencyGraph() {
   const nodes = graphData.nodes || [];
   const edges = graphData.edges || [];
 
+  // §4.5 (r43): an edge count alone implies every line is an observed
+  // relationship. The provenance breakdown says which are operator
+  // declarations, which are scanner-derived from evidence, and which have
+  // unknown origin — computed from the API's per-edge provenance field.
+  const edgeProvenance: Record<string, number> = {};
+  for (const e of edges as Array<Record<string, unknown>>) {
+    const key = String(e?.provenance || "UNATTRIBUTED").toUpperCase();
+    edgeProvenance[key] = (edgeProvenance[key] || 0) + 1;
+  }
+  const provenanceSummary = Object.entries(edgeProvenance)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `${v} ${k.toLowerCase().replace(/_/g, "-")}`)
+    .join(" · ");
+
   const filteredNodes = nodes.filter((n: any) =>
     (n.label || n.id || "").toLowerCase().includes(search.toLowerCase()) ||
     (n.kind || "").toLowerCase().includes(search.toLowerCase())
@@ -116,13 +130,16 @@ export default function DependencyGraph() {
 
         <div className="panel" style={{ padding: "16px" }}>
           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Observed Edges
+            Edges by Provenance
           </div>
           <div style={{ fontSize: "26px", fontWeight: 700, color: "var(--cyan)", margin: "4px 0" }}>
             {loading ? "..." : (graphStats?.edges ?? edges.length)}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            mTLS calls, imports, key bindings
+            {loading ? "…" : (provenanceSummary || "no edges yet")}
+          </div>
+          <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>
+            declared = operator statement · scanner-derived = from scan evidence · unattributed = origin unknown
           </div>
         </div>
 
@@ -266,6 +283,17 @@ export default function DependencyGraph() {
                       </div>
                     </div>
                   </div>
+
+                  {blastRadius.provenance_counts && (
+                    <div style={{ fontSize: "11px", color: "var(--dim)", lineHeight: 1.5 }}>
+                      Path edges:{" "}
+                      {Object.entries(blastRadius.provenance_counts as Record<string, number>)
+                        .filter(([, v]) => Number(v) > 0)
+                        .map(([k, v]) => `${Number(v)} ${String(k).toLowerCase().replace(/_/g, "-")}`)
+                        .join(" · ") || "none"}
+                      {" "}— declared edges are operator statements, not observed traffic.
+                    </div>
+                  )}
 
                   {blastRadius.owning_systems && blastRadius.owning_systems.length > 0 && (
                     <div style={{ fontSize: "11px", color: "var(--dim)" }}>

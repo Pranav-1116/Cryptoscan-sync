@@ -423,7 +423,17 @@ class Neo4jGraphStore:
                 label = rel.get("type") if hasattr(rel, "get") else getattr(rel, "type", None)
                 if label is None and isinstance(rel, dict):
                     label = rel.get("label")
-                edges.append({"from": node["id"], "to": other["id"], "label": label or "RELATED"})
+                edge = {"from": node["id"], "to": other["id"], "label": label or "RELATED"}
+                # §4.5 (round 43): relationship properties written at MERGE
+                # time (provenance class + source) survive the export instead
+                # of collapsing to a bare relation label.
+                for prop in ("provenance", "source", "observed_at"):
+                    value = rel.get(prop) if hasattr(rel, "get") else getattr(rel, prop, None)
+                    if value is None and isinstance(rel, dict):
+                        value = rel.get(prop)
+                    if value is not None:
+                        edge[prop] = value
+                edges.append(edge)
                 nodes[other["id"]] = other
         return {"nodes": list(nodes.values()), "edges": edges, "backend": self.backend}
 

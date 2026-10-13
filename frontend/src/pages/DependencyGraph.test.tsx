@@ -90,6 +90,64 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     expect(screen.getByText("0 hops")).toBeTruthy();
   });
 
+  it("breaks the edge count down by provenance instead of implying all edges are observed", async () => {
+    mockFetch({
+      "/api/v1/graph": {
+        nodes: [
+          { id: "system:payments", label: "payments", kind: "system" },
+          { id: "system:billing", label: "billing", kind: "system" },
+          { id: "asset:ca-1", label: "RSA-2048", kind: "asset" },
+        ],
+        edges: [
+          { from: "system:payments", to: "system:billing", label: "CALLS", provenance: "DECLARED" },
+          { from: "system:payments", to: "asset:ca-1", label: "USES", provenance: "SCANNER_DERIVED" },
+        ],
+        backend: "memory",
+      },
+      "/api/v1/graph/stats": { nodes: 3, edges: 2 },
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(document.body.textContent).toContain("1 declared · 1 scanner-derived"));
+    expect(
+      screen.getByText(/declared = operator statement · scanner-derived = from scan evidence · unattributed = origin unknown/),
+    ).toBeTruthy();
+  });
+
+  it("labels edges with no provenance as unattributed, never as observed", async () => {
+    mockFetch({
+      "/api/v1/graph": graph(), // legacy fixture: edges without provenance
+      "/api/v1/graph/stats": { nodes: 2, edges: 1 },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Edges by Provenance")).toBeTruthy());
+    expect(screen.getByText("1 unattributed")).toBeTruthy();
+    expect(screen.queryByText(/\bobserved edges\b/i)).toBeNull();
+  });
+
+  it("discloses the provenance of the edges the blast radius traversed", async () => {
+    mockFetch({
+      "/api/v1/graph": graph(),
+      "/api/v1/graph/stats": { nodes: 2, edges: 1 },
+      "/api/v1/graph/blast-radius": {
+        start: "system:payments",
+        systems: [{ id: "billing", name: "billing", hops: 1 }],
+        hops: 1,
+        nodes_visited: 2,
+        backend: "memory",
+        provenance_counts: {
+          OBSERVED: 0, DECLARED: 2, SCANNER_DERIVED: 1, INFERRED: 0, UNATTRIBUTED: 0,
+        },
+      },
+    });
+    renderPage();
+    await clickNode("payments");
+    await waitFor(() =>
+      expect(document.body.textContent).toContain("Path edges: 2 declared · 1 scanner-derived"));
+    expect(document.body.textContent).toContain(
+      "declared edges are operator statements, not observed traffic");
+  });
+
   it("a failed traversal says unavailable rather than 'no dependencies detected'", async () => {
     mockFetch({
       "/api/v1/graph": graph(),

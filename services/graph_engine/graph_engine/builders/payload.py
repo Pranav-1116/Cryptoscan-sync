@@ -77,7 +77,13 @@ def uses_rows(assets: Iterable[dict[str, Any]], systems: Iterable[dict[str, Any]
     for asset in asset_rows(assets):
         system_id = asset.get("system_id") or by_asset.get(asset["asset_id"])
         if system_id:
-            rows.append({"system_id": str(system_id), "asset_id": asset["asset_id"], "usage_type": "DISCOVERED", **_tenant(asset)})
+            # §4.5 (round 43): USES edges come from the evidence-chained
+            # crypto-asset inventory — scanner-derived, never "observed calls".
+            rows.append({"system_id": str(system_id), "asset_id": asset["asset_id"],
+                         "usage_type": "DISCOVERED",
+                         "provenance": "SCANNER_DERIVED",
+                         "source": "crypto_asset inventory (evidence-chained)",
+                         **_tenant(asset)})
     return rows
 
 
@@ -87,12 +93,17 @@ def call_rows(edges: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         parent = edge.get("parent_id") or edge.get("from") or edge.get("source")
         child = edge.get("child_id") or edge.get("to") or edge.get("destination")
         if parent and child:
+            # System dependency rows are operator DECLARATIONS; an explicit
+            # provenance on the edge dict (e.g. OBSERVED traffic import) wins.
             rows.append(
                 {
                     "parent_id": str(parent),
                     "child_id": str(child),
                     "protocol": edge.get("protocol") or edge.get("relation") or "CALLS",
                     "frequency": edge.get("frequency"),
+                    "provenance": edge.get("provenance") or "DECLARED",
+                    "source": edge.get("source") or "system_dependencies (operator-declared)",
+                    "observed_at": edge.get("observed_at"),
                     **_tenant(edge),
                 }
             )
