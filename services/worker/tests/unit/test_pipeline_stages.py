@@ -47,6 +47,58 @@ def test_cbom_stage_writes_file(tmp_path):
     assert ctx.scan_meta.get("cbom_path")
 
 
+def test_cbom_stage_pins_a_durable_snapshot(tmp_path, monkeypatch):
+    """Round 45 (§4.4): the pipeline's BOM must outlive its ephemeral
+    workspace — the stage pins a content-addressed CbomSnapshot row with
+    generator='pipeline', and the pinned document's clock anchors to the
+    scan (identical re-runs collapse to one row, never re-pinned)."""
+    import db.models  # noqa: F401 — register tables
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from db.connection.session import Base
+    import db.connection.session as connection
+    from db.models.cbom_snapshot import CbomSnapshot
+    from db.models.scan import Scan
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(connection, "SessionLocal", factory)
+    session = factory()
+    from datetime import datetime, timezone
+
+    session.add(Scan(id="s1", status="COMPLETED", target_type="LOCAL_DIRECTORY",
+                     target_location="local://test-fixture",
+                     scan_start=datetime(2026, 10, 13, tzinfo=timezone.utc),
+                     scan_end=datetime(2026, 10, 13, tzinfo=timezone.utc)))
+    session.commit()
+
+    ctx = _ctx(tmp_path)
+    ctx.findings = [
+        {"id": "e1", "algorithm": "AES", "mode": "GCM",
+         "file_path": "a.py", "line_number": 1},
+    ]
+    cbom(ctx)
+    assert ctx.scan_meta.get("cbom_snapshot_id"), "stage must pin the snapshot id"
+    rows = session.query(CbomSnapshot).all()
+    assert len(rows) == 1
+    assert rows[0].generator == "pipeline"
+    assert rows[0].scan_id == "s1"
+    assert rows[0].component_count == 1
+    assert rows[0].created_by == "pipeline:j1"
+
+    # re-running the same stage over the same evidence must NOT add a row
+    ctx2 = _ctx(tmp_path)
+    ctx2.findings = [dict(ctx.findings[0])]
+    cbom(ctx2)
+    assert session.query(CbomSnapshot).count() == 1, "content-addressed: identical pin collapses"
+    session.close()
+    engine.dispose()
+
+
 def test_cloud_and_tls_stages(tmp_path):
     (tmp_path / "main.tf").write_text('resource "aws_s3_bucket" "x" { bucket = "x" }\n')
     (tmp_path / "ingress.yaml").write_text(

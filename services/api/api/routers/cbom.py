@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 
@@ -16,7 +17,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, get_job_repository
+from api.dependencies import get_current_user, get_db_session, get_job_repository, require_auditor
 from api.schemas.cbom_schemas import (
     CbomRef,
     CustomCbomRequest,
@@ -33,6 +34,7 @@ from cbom.inventory import (
     summarize_records,
     validate_document,
 )
+from db.models.cbom_snapshot import CbomSnapshot, normalize_for_snapshot
 from db.models.scan import Scan
 from db.repositories.asset_repository import AssetRepository
 from db.repositories.evidence_repository import EvidenceRepository
@@ -67,10 +69,23 @@ def _server_keyring() -> dict[str, str]:
 
 
 def _render(bom: dict, fmt: str, signed: bool | str):
+    bom = _apply_signature(bom, signed, fmt=fmt)
     generator = CbomGenerator()
-    # "jsf" selects the CycloneDX-spec standard enveloped signature
-    # (top-level ``signature`` field, report 08 P2#6); True keeps the
-    # legacy JWS-in-metadata-property form for backward compatibility.
+    if fmt == "xml":
+        return Response(content=generator.to_xml(bom), media_type="application/xml")
+    return JSONResponse(bom)
+
+
+def _apply_signature(bom: dict, signed: bool | str, *, fmt: str = "json") -> dict:
+    """Sign the document in place-form (returns the mutated dict).
+
+    "jsf" selects the CycloneDX-spec standard enveloped signature
+    (top-level ``signature`` field, report 08 P2#6); True keeps the
+    legacy JWS-in-metadata-property form for backward compatibility.
+    Shared by the live render path and snapshot creation so a pinned
+    snapshot carries the same signature a live export would.
+    """
+    generator = CbomGenerator()
     standard = isinstance(signed, str) and signed.lower() == "jsf"
     if signed:
         from api.config.settings import get_settings
@@ -127,9 +142,7 @@ def _render(bom: dict, fmt: str, signed: bool | str):
                 bom = generator.sign_standard(bom, secret, alg="HS256", key_id=key_id)
             else:
                 bom = generator.sign(bom, secret, key_id=key_id)
-    if fmt == "xml":
-        return Response(content=generator.to_xml(bom), media_type="application/xml")
-    return JSONResponse(bom)
+    return bom
 
 
 def _iso(value: Any) -> str | None:
@@ -833,14 +846,10 @@ def cbom_components_for_evidence_hash(
     }
 
 
-@router.get("/scan/{scan_id}")
-def cbom_for_scan(
-    scan_id: str,
-    fmt: str = Query("json"),
-    signed: bool | str = False,
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
+def _scan_bom(db: Session, scan_id: str) -> tuple[Scan, dict]:
+    """The deterministic scan-CBOM rendering shared by the live route and
+    snapshot creation — one construction path, so a pinned snapshot is the
+    same document a live export would render from the same evidence."""
     scan, rows = _records_for_scan(db, scan_id)
     # Observed cascade edges — the same real graph the export renders
     # (provider files, business systems, wave properties), instead of the
@@ -871,7 +880,145 @@ def cbom_for_scan(
                      .setdefault("component", {}))
         component.setdefault("type", "application")
         component["bom-ref"] = f"root:{scan.id}"
+    return scan, bom
+
+
+@router.get("/scan/{scan_id}")
+def cbom_for_scan(
+    scan_id: str,
+    fmt: str = Query("json"),
+    signed: bool | str = False,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    scan, bom = _scan_bom(db, scan_id)
     return _render(bom, fmt, signed)
+
+
+def _snapshot_signature_form(signed: bool | str) -> str:
+    if not signed:
+        return "none"
+    if isinstance(signed, str) and signed.lower() == "jsf":
+        return "jsf"
+    return "jws"
+
+
+def _snapshot_out(row: CbomSnapshot) -> dict:
+    out = row.to_dict()
+    out["snapshot_id"] = row.id
+    out["verify_path"] = f"/api/v1/cbom/snapshots/{row.id}"
+    return out
+
+
+@router.post("/scan/{scan_id}/snapshot")
+def create_scan_snapshot(
+    scan_id: str,
+    signed: bool | str = False,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Freeze ONE deterministic rendering of the scan's CBOM (§4.4, round 45).
+
+    The live route regenerates from current evidence on every call; a
+    snapshot pins the exact document, content-addressed by SHA-256 over
+    its serialization. Identical renderings collapse to one row (idempotent).
+    The scan_id keeps the chain snapshot → scan → evidence → hash chain.
+    """
+    scan, bom = _scan_bom(db, scan_id)
+    bom = _apply_signature(bom, signed, fmt="json")
+    # anchor the wall-clock to the scan: identical (scan, evidence, signature)
+    # must hash identically or content addressing is meaningless
+    scan_time = scan.scan_end or scan.created_at
+    bom = normalize_for_snapshot(
+        bom, scan_timestamp_iso=scan_time.isoformat() if scan_time else None)
+    document = CbomGenerator().to_json(bom)
+    content_hash = hashlib.sha256(document.encode("utf-8")).hexdigest()
+    existing = (
+        db.query(CbomSnapshot)
+        .filter(CbomSnapshot.scan_id == scan.id,
+                CbomSnapshot.content_hash == content_hash)
+        .one_or_none()
+    )
+    if existing is not None:
+        out = _snapshot_out(existing)
+        out["created"] = False
+        out["note"] = ("An identical rendering is already pinned for this scan "
+                       "(content-addressed); the existing snapshot is returned.")
+        return out
+    row = CbomSnapshot(
+        scan_id=scan.id,
+        content_hash=content_hash,
+        format="json",
+        signed=_snapshot_signature_form(signed),
+        generator="api",
+        payload=bom,
+        component_count=len(bom.get("components") or []),
+        created_by=user,
+        snapshotted_at=datetime.now(timezone.utc),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    out = _snapshot_out(row)
+    out["created"] = True
+    out["note"] = ("Snapshot pinned. GET the verify_path for the exact stored "
+                   "document — it is served verbatim, never regenerated.")
+    return out
+
+
+@router.get("/scan/{scan_id}/snapshots")
+def list_scan_snapshots(
+    scan_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every pinned snapshot for one scan, newest first."""
+    scan = filtered_get(db, Scan, scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    rows = (
+        db.query(CbomSnapshot)
+        .filter(CbomSnapshot.scan_id == scan.id)
+        .order_by(CbomSnapshot.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    return {
+        "scan_id": scan.id,
+        "snapshots": [_snapshot_out(r) for r in rows],
+        "count": len(rows),
+        "note": ("Each snapshot is a pinned rendering; the live route "
+                 "regenerates from current evidence and may differ."),
+    }
+
+
+@router.get("/snapshots/{snapshot_id}")
+def get_cbom_snapshot(
+    snapshot_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Serve the EXACT persisted snapshot document — verbatim, never
+    regenerated — with an integrity self-check (recomputed hash over the
+    stored payload must equal the pinned content_hash)."""
+    row = filtered_get(db, CbomSnapshot, snapshot_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    recomputed = hashlib.sha256(
+        CbomGenerator().to_json(row.payload).encode("utf-8")
+    ).hexdigest()
+    integrity_ok = recomputed == row.content_hash
+    out = _snapshot_out(row)
+    out["integrity"] = "OK" if integrity_ok else "MISMATCH"
+    out["integrity_note"] = (
+        "SHA-256 over the stored payload matches the pinned content hash."
+        if integrity_ok else
+        "Stored payload does NOT match its pinned content hash — the "
+        "document was mutated after pinning. Do not trust it."
+    )
+    out["payload"] = row.payload
+    out["scan_verify_path"] = f"/api/v1/scans/{row.scan_id}/verify"
+    return out
 
 
 @router.get("/system/{system_id}")
