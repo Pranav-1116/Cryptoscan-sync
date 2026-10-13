@@ -53,7 +53,8 @@ def _seed_risk_system(session):
     session.add(System(
         id="sys-risk", name="payments-risk", environment="prod", criticality="TIER-1",
         cloud_provider="AWS", scan_target="https://github.com/org/payments.git",
-        last_scan_id="scan-risk",
+        last_scan_id="scan-risk", owner="payments-team",
+        technical_owner="alice", security_owner="bob",
     ))
     session.add(System(id="sys-empty", name="empty-system", last_scan_id=None))
     for i, (alg, status, conf) in enumerate(
@@ -107,6 +108,13 @@ async def test_system_risk_derives_all_eight_factors(risk_client):
     assert data["evidence_count"] == 2
     assert data["open_drift_events"] == 1
     assert data["vulnerability_count"] == 1
+    # accountability travels with the decomposition (round 42, §4.6)
+    assert data["owner"] == "payments-team"
+    assert data["technical_owner"] == "alice"
+    assert data["security_owner"] == "bob"
+    # unassigned owners are honest nulls, not invented names
+    empty = (await risk_client.get("/api/v1/risk/systems/sys-empty")).json()
+    assert empty["owner"] is None
     # raw derivation signals are exposed — the decomposition is self-describing
     assert data["signals"]["fail_ratio"] == 0.5
     assert data["signals"]["unknown_algorithms"] == 0

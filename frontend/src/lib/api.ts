@@ -3655,6 +3655,102 @@ export interface PriorityResponse {
 export const apiPriority = (limit = 100): Promise<ApiResult<PriorityResponse>> =>
   call(`/api/v1/priority?limit=${limit}`);
 
+/* Priority item → owned remediation task(s) (r42, §4.7). Drift-sourced items
+   open tasks against their FAIL/WARN evidence; runtime-sourced items get an
+   honest 422 — tasks require an evidence_id from the chain. Bespoke fetch
+   (not call()) so the backend's refusal detail reaches the user verbatim. */
+export interface PriorityTaskCreateResult {
+  ref_id: string;
+  source: "drift" | "runtime";
+  owner: string | null;
+  created: number;
+  task_ids: string[];
+  message: string;
+}
+export type PriorityTaskActionResult =
+  | { ok: true; data: PriorityTaskCreateResult }
+  | { ok: false; status: number; detail: string };
+export async function apiPriorityCreateTasks(
+  refId: string,
+  owner?: string,
+): Promise<PriorityTaskActionResult> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const tenant = activeTenantId();
+    if (tenant) headers["X-Tenant-ID"] = tenant;
+    const resp = await tenantFetch(`/api/v1/priority/${encodeURIComponent(refId)}/tasks`, {
+      method: "POST",
+      signal: AbortSignal.timeout(8000),
+      headers,
+      credentials: "include",
+      body: JSON.stringify(owner ? { owner } : {}),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return { ok: false, status: resp.status, detail: String(body.detail || `HTTP ${resp.status}`) };
+    }
+    return { ok: true, data: body as PriorityTaskCreateResult };
+  } catch (e) {
+    return { ok: false, status: 0, detail: String(e) };
+  }
+}
+
+
+/* ── Per-system unified risk, explained (r42, §4.6) ────────────────────── */
+
+export interface RiskFactorDetail {
+  level: number;
+  points: number;
+  weight: number;
+}
+export interface SystemRiskSignals {
+  evidence_rows: number;
+  fail_rows: number;
+  fail_ratio: number;
+  quantum_weighted_ratio: number;
+  unknown_algorithms: number;
+  open_drift_events: number;
+  worst_open_drift_severity: string | null;
+  worst_cve_severity: string | null;
+  outgoing_dependencies: number;
+  environment: string | null;
+  criticality: string | null;
+  cloud_provider: string | null;
+}
+export interface SystemRiskAssessment {
+  score: number;
+  level: string;
+  system_id: string;
+  system_name: string;
+  owner: string | null;
+  technical_owner: string | null;
+  security_owner: string | null;
+  scan_id: string | null;
+  evidence_count: number;
+  levels: Record<string, number>;
+  signals: SystemRiskSignals;
+  open_drift_events: number;
+  vulnerability_count: number;
+  factors: Record<string, RiskFactorDetail>;
+  weights: Record<string, number>;
+  weights_source: string;
+  calculation_version: string;
+}
+export interface SystemsRiskResponse {
+  systems: SystemRiskAssessment[];
+  count: number;
+  total_systems: number;
+  estate: { score: number; level: string; by_level: Record<string, number> };
+  weights: Record<string, number>;
+  weights_source: string;
+  calculation_version: string;
+  factors: string[];
+}
+export const apiRiskSystems = (limit = 200): Promise<ApiResult<SystemsRiskResponse>> =>
+  call(`/api/v1/risk/systems?limit=${limit}`);
+
 
 /* ── 24/7 Continuous Monitoring & System Health Endpoints ── */
 

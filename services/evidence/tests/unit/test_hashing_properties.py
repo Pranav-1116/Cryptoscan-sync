@@ -21,6 +21,10 @@ from evidence.hashing.chain_hasher import ChainHasher
 from evidence.hashing.content_hasher import ContentHasher
 
 MAX_EXAMPLES = 50
+# deadline=None: recursive canonical serialization can exceed Hypothesis's 200ms
+# per-example deadline when the full suite is under load, which fails the run
+# spuriously. The properties themselves are seed-independent (verified over
+# 20k examples); only the timing guard is disabled.
 
 # JSON-shaped data: nested dicts/lists over text, ints, bools, None
 json_values = st.recursive(
@@ -39,7 +43,7 @@ findings = st.dictionaries(
 hex64 = st.text(alphabet="0123456789abcdef", min_size=64, max_size=64)
 
 
-@settings(max_examples=MAX_EXAMPLES)
+@settings(max_examples=MAX_EXAMPLES, deadline=None)
 @given(data=findings)
 def test_serialize_is_deterministic_and_round_trips(data):
     import json
@@ -54,14 +58,14 @@ def test_serialize_is_deterministic_and_round_trips(data):
     assert json.loads(CanonicalSerializer.serialize_to_bytes(data)) == CanonicalSerializer._clean_data(data)
 
 
-@settings(max_examples=MAX_EXAMPLES)
+@settings(max_examples=MAX_EXAMPLES, deadline=None)
 @given(data=findings)
 def test_key_order_never_changes_the_serialization(data):
     shuffled = dict(reversed(list(data.items())))
     assert CanonicalSerializer.serialize(data) == CanonicalSerializer.serialize(shuffled)
 
 
-@settings(max_examples=MAX_EXAMPLES)
+@settings(max_examples=MAX_EXAMPLES, deadline=None)
 @given(data=findings)
 def test_content_hash_stable_and_wellformed(data):
     h1 = ContentHasher.compute_hash(data)
@@ -73,7 +77,7 @@ def test_content_hash_stable_and_wellformed(data):
     assert ContentHasher.verify_hash(data, h1.replace(h1[0], "0" if h1[0] != "0" else "1", 1)) is False
 
 
-@settings(max_examples=MAX_EXAMPLES)
+@settings(max_examples=MAX_EXAMPLES, deadline=None)
 @given(data=findings, evidence_id=st.uuids(), created_at=st.text(max_size=8))
 def test_runtime_fields_are_excluded_from_digests(data, evidence_id, created_at):
     base = ContentHasher.compute_hash(data)
@@ -87,7 +91,7 @@ def test_runtime_fields_are_excluded_from_digests(data, evidence_id, created_at)
     assert ContentHasher.compute_hash(decorated) == base
 
 
-@settings(max_examples=MAX_EXAMPLES)
+@settings(max_examples=MAX_EXAMPLES, deadline=None)
 @given(hashes=st.lists(hex64, min_size=1, max_size=8), session=st.text(min_size=1, max_size=16))
 def test_chain_verifies_untampered_and_detects_any_mutation(hashes, session):
     chain = ChainHasher.compute_chain(hashes, session)
@@ -117,7 +121,7 @@ def test_chain_verifies_untampered_and_detects_any_mutation(hashes, session):
     assert ChainHasher.verify_chain(hashes + [hashes[0]], chain, session) is False
 
 
-@settings(max_examples=MAX_EXAMPLES)
+@settings(max_examples=MAX_EXAMPLES, deadline=None)
 @given(hashes=st.lists(hex64, min_size=1, max_size=8), session=st.text(min_size=1, max_size=16))
 def test_verify_single_agrees_with_the_chain(hashes, session):
     chain = ChainHasher.compute_chain(hashes, session)
@@ -128,7 +132,7 @@ def test_verify_single_agrees_with_the_chain(hashes, session):
         assert ChainHasher.verify_single(hashes[i], bad, previous, session if i == 0 else None) is False
 
 
-@settings(max_examples=MAX_EXAMPLES)
+@settings(max_examples=MAX_EXAMPLES, deadline=None)
 @given(data=findings, session=st.text(min_size=1, max_size=16))
 def test_end_to_end_content_then_chain_round_trip(data, session):
     """ContentHasher + ChainHasher compose: same findings -> same chain, always."""

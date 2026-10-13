@@ -1,7 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { Badge, Bar, Kpi, PageHead, Panel, Table } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
-import { apiPriority, PriorityResponse, RankedItem } from "../lib/api.js";
+import {
+  apiPriority,
+  apiPriorityCreateTasks,
+  PriorityResponse,
+  PriorityTaskActionResult,
+  RankedItem,
+} from "../lib/api.js";
 
 /* Priorities — the deterministic remediation work queue (GET /api/v1/priority).
    Every row is a real OPEN drift event or runtime finding folded through the
@@ -13,6 +19,63 @@ import { apiPriority, PriorityResponse, RankedItem } from "../lib/api.js";
 const SEV_TONE: Record<string, string> = {
   CRITICAL: "bad", HIGH: "warn", ALERT: "warn", MEDIUM: "warn", LOW: "ok",
 };
+
+/* §4.7: turn a ranked item into an owned remediation task. Drift items open
+   tasks against their FAIL/WARN evidence (a task always points at evidence,
+   never at a rank); runtime items are refused honestly by the API — the
+   refusal text is shown verbatim, never papered over. */
+function TaskAction({ item }: { item: RankedItem }) {
+  const [owner, setOwner] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<PriorityTaskActionResult | null>(null);
+
+  const open = async () => {
+    if (!item.ref_id) return;
+    setBusy(true);
+    setResult(null);
+    setResult(await apiPriorityCreateTasks(item.ref_id, owner.trim() || undefined));
+    setBusy(false);
+  };
+
+  if (!item.ref_id) {
+    return <p className="sub" style={{ fontSize: 12 }}>No backing record id — cannot open a task.</p>;
+  }
+  return (
+    <div style={{ margin: "12px 0 4px", padding: 12, border: "1px solid var(--border, #233)" }}>
+      <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <strong style={{ fontSize: 13 }}>Act on this: </strong>
+        <input
+          value={owner}
+          onChange={(e) => setOwner(e.target.value)}
+          placeholder="owner (optional)"
+          style={{ fontSize: 13, padding: "4px 8px" }}
+        />
+        <button className="btn sm" onClick={() => void open()} disabled={busy}>
+          {busy ? "Opening…" : "Open remediation task(s)"}
+        </button>
+        {item.source === "runtime" && (
+          <span className="dim" style={{ fontSize: 12 }}>
+            runtime findings have no evidence record — expect an honest refusal
+          </span>
+        )}
+      </div>
+      {result && (result.ok ? (
+        <p style={{ fontSize: 13, marginTop: 8 }}>
+          <Badge tone={result.data.created > 0 ? "ok" : "warn"}>{result.data.created} task(s)</Badge>{" "}
+          {result.data.message}
+          {result.data.task_ids.length > 0 && (
+            <span className="mono dim" style={{ fontSize: 11 }}> {result.data.task_ids.join(", ")}</span>
+          )}
+        </p>
+      ) : (
+        <p style={{ fontSize: 13, marginTop: 8, color: result.status === 422 ? "var(--amber)" : "var(--red)" }}>
+          {result.status === 422 ? "Refused (honest): " : `Failed (HTTP ${result.status || "network"}): `}
+          {result.detail}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 function Detail({ item, onClose }: { item: RankedItem; onClose: () => void }) {
   return (
@@ -48,6 +111,7 @@ function Detail({ item, onClose }: { item: RankedItem; onClose: () => void }) {
           </ol>
         </>
       )}
+      <TaskAction item={item} />
     </Panel>
   );
 }

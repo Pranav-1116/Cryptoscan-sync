@@ -16,10 +16,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_auditor
 
 router = APIRouter(prefix="/priority", tags=["priority"])
 
@@ -42,6 +42,79 @@ class PriorityResponse(BaseModel):
     ranked: list[RankedItem]
     counts_by_severity: dict[str, int]
     coverage: dict
+
+
+class PriorityTaskCreateRequest(BaseModel):
+    """Owner for the task(s) opened from a ranked item. Optional: tasks
+    start PROPOSED unassigned, exactly like manual and drift-auto tasks."""
+    owner: str | None = None
+
+
+@router.post("/{ref_id}/tasks")
+def create_tasks_from_priority(
+    ref_id: str,
+    body: PriorityTaskCreateRequest | None = None,
+    user: str = Depends(require_auditor),
+    db=Depends(get_db_session),
+):
+    """Turn one ranked item into owned remediation task(s).
+
+    Drift-sourced items reuse the drift auto-open path: tasks are opened
+    from the FAIL/WARN evidence records in the drift's current scan (max 10,
+    filtered to the drift's algorithm when known). A remediation task always
+    points at an evidence record — never at a rank number — so the chain of
+    custody from priority queue to verifiable fix stays intact.
+
+    Runtime-sourced items are refused honestly (422): a runtime finding is
+    an observation without an evidence record, and remediation tasks require
+    one for later verification. The path forward is to re-scan the host so
+    the finding becomes chain-verified evidence.
+    """
+    from api.routers.drift import _create_drift_remediation_tasks
+    from db.models.drift_event import DriftEvent
+    from db.models.runtime_finding import RuntimeFinding
+    from db.tenancy import filtered_get
+
+    request = body or PriorityTaskCreateRequest()
+
+    drift = filtered_get(db, DriftEvent, ref_id)
+    if drift is not None:
+        task_ids = _create_drift_remediation_tasks(db, drift, user, request.owner)
+        return {
+            "ref_id": ref_id,
+            "source": "drift",
+            "owner": request.owner,
+            "created": len(task_ids),
+            "task_ids": task_ids,
+            "message": (
+                f"{len(task_ids)} remediation task(s) opened from drift event "
+                f"{ref_id} (status PROPOSED, source=drift)."
+                if task_ids
+                else (
+                    f"No task opened: drift event {ref_id} has no FAIL/WARN "
+                    "evidence records in its current scan to remediate. "
+                    "Tasks are only opened against evidence, never at a rank."
+                )
+            ),
+        }
+
+    runtime = filtered_get(db, RuntimeFinding, ref_id)
+    if runtime is not None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Runtime findings cannot open remediation tasks: a task "
+                "requires an evidence_id from the hash chain for later "
+                "verification, and runtime findings are observations without "
+                "one. Re-scan the host to produce chain-verified evidence, "
+                "then create the task from the finding."
+            ),
+        )
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"Priority item {ref_id} not found (expected a drift event id or runtime finding id).",
+    )
 
 
 @router.get("", response_model=PriorityResponse)

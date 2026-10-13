@@ -233,6 +233,11 @@ def _system_assessment(db: Session, system: Any) -> dict[str, Any]:
     assessment.update({
         "system_id": str(system.id),
         "system_name": system.name,
+        # accountability alongside the decomposition: who changes it, who
+        # accepts the risk (report 55). Honest nulls when unassigned.
+        "owner": system.owner,
+        "technical_owner": system.technical_owner,
+        "security_owner": system.security_owner,
         "scan_id": scan_id,
         "evidence_count": len(evidence_rows),
         "levels": levels,

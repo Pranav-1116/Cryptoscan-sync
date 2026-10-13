@@ -19,6 +19,8 @@ from api.dependencies import (
 )
 from api.schemas.finding_schemas import FindingListResponse, FindingResponse
 from api.security.evidence_projection import project_finding
+from db.models.evidence_record import EvidenceRecord
+from db.models.scan import Scan
 from db.repositories.evidence_repository import EvidenceRepository
 
 router = APIRouter(tags=["findings"])
@@ -372,6 +374,49 @@ def get_finding(
     if row is None:
         raise HTTPException(status_code=404, detail="Finding not found")
     return _to_response(row, include_raw=True)
+
+
+@router.get("/findings/{evidence_id}/verify")
+def verify_finding(
+    evidence_id: str,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """§4.2 (round 42): per-record evidence verification.
+
+    A scan-level PASS is not a per-record verdict. This recomputes ONE
+    record's content hash and chain linkage against its own commitments
+    (and its predecessor's), using the same verifier the scan-level
+    endpoint uses — the two surfaces cannot disagree. Honest scope: it
+    proves storage has not diverged from the commitment, not that the
+    observation itself was true.
+    """
+    from evidence.verification.stored_scan import verify_stored_record
+
+    row = db.execute(
+        select(EvidenceRecord).where(EvidenceRecord.id == evidence_id)
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    scan = db.execute(select(Scan).where(Scan.id == row.scan_id)).scalar_one_or_none()
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Owning scan not found")
+    predecessor = None
+    if row.chain_position and row.chain_position > 0:
+        predecessor = db.execute(
+            select(EvidenceRecord).where(
+                EvidenceRecord.scan_id == row.scan_id,
+                EvidenceRecord.chain_position == row.chain_position - 1,
+            )
+        ).scalar_one_or_none()
+    verdict = verify_stored_record(
+        row, previous_record=predecessor,
+        expected_position=row.chain_position, scan_id=scan.id)
+    return verdict | {
+        "verified_by": user,
+        "scan_status": scan.status,
+        "scan_verify_path": f"/api/v1/scans/{scan.id}/verify",
+    }
 
 
 class SoftDeleteRequest(BaseModel):
