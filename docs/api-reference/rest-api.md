@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-13:
-**815 paths, 901 operations** across 98 tagged groups.
+**821 paths, 907 operations** across 100 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -460,6 +460,14 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/crypto-assurance/tls-audit` | Tls Audit |
 | `POST` | `/api/v1/crypto-assurance/trust-store` | Trust Store |
 
+## ct-scans
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/ct-scans` | Trigger Ct Scan |
+| `POST` | `/api/v1/ct-scans/` | Trigger Ct Scan |
+| `POST` | `/api/v1/ct-scans/scan` | Trigger Ct Scan |
+
 ## data-lake
 
 | Method | Path | Summary |
@@ -741,6 +749,14 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/healthz/schema` | Healthz Schema |
 | `GET` | `/api/v1/meta` | Meta |
 | `GET` | `/api/v1/readyz` | Readyz |
+
+## hsm-scans
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/hsm-scans` | Trigger Hsm Scan |
+| `POST` | `/api/v1/hsm-scans/` | Trigger Hsm Scan |
+| `POST` | `/api/v1/hsm-scans/scan` | Trigger Hsm Scan |
 
 ## intelligence
 

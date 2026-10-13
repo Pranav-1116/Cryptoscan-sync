@@ -12,8 +12,8 @@ const targets: { id: ScanTarget; label: string; desc: string; icon: Icon; availa
   { id: "Cloud", label: "Cloud KMS Scanner", desc: "IaC tree inspection with a durable per-run record (admission + coverage)", icon: IconCloud, available: true },
   { id: "Source Repository", label: "Source Repository AST", desc: "Queued source scan with a durable job record and an execution-time safety gate", icon: IconCode, available: true },
   { id: "Container", label: "Container Registry", desc: "Image/filesystem crypto inventory with a durable per-run record", icon: IconContainer, available: true },
-  { id: "Hardware", label: "Hardware & HSM Fleet", desc: "Hardware inventory", icon: IconHardware, available: false, reason: "No scoped, per-run hardware job contract is available here." },
-  { id: "Certificate", label: "Certificates & CT Logs", desc: "Certificate inventory", icon: IconCertificate, available: false, reason: "No scoped, per-run certificate job contract is available here." },
+  { id: "Hardware", label: "Hardware & HSM Fleet", desc: "HSM/KMS key-residence check with a durable per-run record (admission + coverage)", icon: IconHardware, available: true },
+  { id: "Certificate", label: "Certificates & CT Logs", desc: "CT-log monitoring for rogue/new certificates with a durable per-run record", icon: IconCertificate, available: true },
   { id: "Full Estate", label: "Register Authorized Scope", desc: "Register onboarding targets and compute an inventory estimate; does not execute scanner jobs", icon: IconEstate, available: true },
 ];
 
@@ -52,6 +52,8 @@ export default function Scanners() {
   const [selectedTarget, setSelectedTarget] = useState<ScanTarget>("Network");
   const [targetInput, setTargetInput] = useState("");
   const [branchInput, setBranchInput] = useState("main");
+  const [providerInput, setProviderInput] = useState("aws_kms");
+  const [keyRefInput, setKeyRefInput] = useState("");
   const [mode, setMode] = useState<Mode>("passive");
   const [activeAuthorized, setActiveAuthorized] = useState(false);
   const [scanJobId, setScanJobId] = useState<string | null>(null);
@@ -262,14 +264,23 @@ export default function Scanners() {
         setScanJobId(jobId);
         const acceptedStatus = runStatus((body as { status?: unknown }).status);
         setScanStatus(acceptedStatus === "queued" || acceptedStatus === "running" ? acceptedStatus : "verifying");
-      } else if (selectedTarget === "Cloud" || selectedTarget === "Container") {
+      } else if (selectedTarget === "Cloud" || selectedTarget === "Container"
+        || selectedTarget === "Hardware" || selectedTarget === "Certificate") {
         // Synchronous specialized scan, now with a durable run identity:
         // the server returns job_id and GET /jobs/{id} carries status,
         // the admission decision and bounded coverage for THIS run.
-        const endpoint = selectedTarget === "Cloud" ? "/api/v1/cloud-scans" : "/api/v1/container-scans";
+        const endpoint = selectedTarget === "Cloud" ? "/api/v1/cloud-scans"
+          : selectedTarget === "Container" ? "/api/v1/container-scans"
+          : selectedTarget === "Hardware" ? "/api/v1/hsm-scans"
+          : "/api/v1/ct-scans";
         const payload = selectedTarget === "Cloud"
           ? { path: targetInput.trim(), live: false }
-          : { path: targetInput.trim(), live_cve: false };
+          : selectedTarget === "Container"
+            ? { path: targetInput.trim(), live_cve: false }
+            : selectedTarget === "Hardware"
+              // submitted mode: attests collector-reported key attributes
+              ? { keys: [{ key_ref: keyRefInput.trim(), provider: providerInput.trim() }], live: false }
+              : { domains: targetInput.split(",").map((d) => d.trim()).filter(Boolean) };
         const res = await tenantFetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -453,6 +464,74 @@ export default function Scanners() {
                 The server refuses any path outside the declared source roots before scanning. This run leaves a durable job record — status, the admission decision and bounded coverage — under its run ID{selectedTarget === "Cloud" ? ". Live provider reads are not requested here (IaC tree analysis only)." : ". Live CVE enrichment is off for this run."}
               </div>
             </div>
+            </> : selectedTarget === "Hardware" ? <>
+            <div>
+              <label htmlFor="hsm-provider" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
+                Provider
+              </label>
+              <input id="hsm-provider" placeholder="aws_kms"
+                type="text"
+                value={providerInput}
+                onChange={(e) => setProviderInput(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--r)",
+                  padding: "8px 12px",
+                  color: "var(--text)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "13px"
+                }}
+              />
+            </div>
+            <div>
+              <label htmlFor="hsm-key-ref" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
+                Key reference
+              </label>
+              <input id="hsm-key-ref" placeholder="arn:aws:kms:us-east-1:…:key/…"
+                type="text"
+                value={keyRefInput}
+                onChange={(e) => setKeyRefInput(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--r)",
+                  padding: "8px 12px",
+                  color: "var(--text)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "13px"
+                }}
+              />
+              <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "6px" }}>
+                Runs in SUBMITTED mode — it attests the attributes a collector reported for the key (connectivity, HSM origin, non-exportable sign challenge). Live provider verification requires CRYPTOSCAN_HSM_LIVE and credentials on the API instance. This run leaves a durable job record — status, the admission decision and bounded coverage — under its run ID.
+              </div>
+            </div>
+            </> : selectedTarget === "Certificate" ? <>
+            <div>
+              <label htmlFor="ct-domains" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
+                Monitored domains (comma-separated)
+              </label>
+              <input id="ct-domains" placeholder="api.example.com, internal.example.org"
+                type="text"
+                value={targetInput}
+                onChange={(e) => setTargetInput(e.target.value)}
+                style={{
+                  width: "100%",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "var(--r)",
+                  padding: "8px 12px",
+                  color: "var(--text)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "13px"
+                }}
+              />
+              <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "6px" }}>
+                Polls public CT logs for the monitored domains and flags NEW (not in the known inventory) and ROGUE (issuer not on the approved list) certificates. The CT fetch is an outbound network read, admitted through the same safe-scan policy as every scan; a domain that cannot be checked is reported as an error, never folded into a green summary. This run leaves a durable job record under its run ID.
+              </div>
+            </div>
             </> : selectedTarget === "Network" ? <>
             <div>
               <label htmlFor="network-cidr" style={{ display: "block", fontSize: "12.5px", fontWeight: 600, marginBottom: "6px" }}>
@@ -515,13 +594,16 @@ export default function Scanners() {
             <button
               onClick={handleStartScan}
               disabled={(selectedTarget === "Network" && (mode !== "active" || !activeAuthorized || !targetInput.trim()))
-                || ((selectedTarget === "Cloud" || selectedTarget === "Container" || selectedTarget === "Source Repository") && !targetInput.trim())}
+                || ((selectedTarget === "Cloud" || selectedTarget === "Container" || selectedTarget === "Source Repository" || selectedTarget === "Certificate") && !targetInput.trim())
+                || (selectedTarget === "Hardware" && !keyRefInput.trim())}
               className="btn primary"
             >
               {selectedTarget === "Network" ? "Start Authorized Sweep"
                 : selectedTarget === "Cloud" ? "Start Cloud Scan"
                 : selectedTarget === "Container" ? "Start Container Scan"
                 : selectedTarget === "Source Repository" ? "Queue Source Scan"
+                : selectedTarget === "Hardware" ? "Run HSM Key Check"
+                : selectedTarget === "Certificate" ? "Run CT Monitor"
                 : "Register Authorized Scope"}
             </button>
           </div>
@@ -538,13 +620,15 @@ export default function Scanners() {
               : selectedTarget === "Cloud" ? "Cloud Scan Complete"
               : selectedTarget === "Container" ? "Container Scan Complete"
               : selectedTarget === "Source Repository" ? "Source Scan Complete"
+              : selectedTarget === "Hardware" ? "HSM Key Check Complete"
+              : selectedTarget === "Certificate" ? "CT Monitor Complete"
               : "Scope Registration Complete")
               : scanStatus === "failed" ? "Request Failed" : scanStatus === "cancelled" ? "Run Cancelled"
                 : scanStatus === "unknown" ? "Outcome Unknown" : scanStatus === "verifying" ? "Checking Run Status" : scanStatus === "queued" ? (selectedTarget === "Source Repository" ? "Source Scan Queued" : "Discovery Run Queued") : "Scan Running"}
           </h2>
           <p role="status" style={{ color: "var(--dim)", fontSize: "14px", margin: "0 0 20px" }}>
             {scanJobId && <>Run ID: <code style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{scanJobId}</code> · </>}
-            Target: <code>{selectedTarget === "Network" || selectedTarget === "Cloud" || selectedTarget === "Container" || selectedTarget === "Source Repository" ? targetInput : "authorized onboarding scope"}</code> · Status: {scanStatus}
+            Target: <code>{selectedTarget === "Hardware" ? `${providerInput}:${keyRefInput}` : selectedTarget === "Network" || selectedTarget === "Cloud" || selectedTarget === "Container" || selectedTarget === "Source Repository" || selectedTarget === "Certificate" ? targetInput : "authorized onboarding scope"}</code> · Status: {scanStatus}
           </p>
 
           {scanStatus === "completed" && resultNote && (

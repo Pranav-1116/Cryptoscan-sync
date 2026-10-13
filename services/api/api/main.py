@@ -59,6 +59,7 @@ from api.routers import (
     container,
     container_scans,
     crypto,
+    ct_scans,
     drift,
     estate,
     events,
@@ -72,6 +73,7 @@ from api.routers import (
     graph,
     hardware,
     health,
+    hsm_scans,
     intelligence,
     jobs,
     live_scan,
@@ -457,6 +459,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(cbom.router, prefix=prefix)
     app.include_router(container.router, prefix=prefix)
     app.include_router(container_scans.router, prefix=prefix)
+    app.include_router(hsm_scans.router, prefix=prefix)
+    app.include_router(ct_scans.router, prefix=prefix)
     app.include_router(vulns.router, prefix=prefix)
     app.include_router(vulnerability.router, prefix=prefix)
     app.include_router(policy.router, prefix=prefix)

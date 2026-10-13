@@ -15,6 +15,7 @@ Modules:
 - cloud_scans: Cloud-scan job listing and trigger aliases
 - container: On-demand container / image / archive scans
 - container_scans: Spec-named container scan endpoints (`/container-scans`)
+- ct_scans: Spec-named certificate-transparency scan endpoints (`/ct-scans`)
 - drift: Drift events
 - estate: Estate coverage campaigns. One CLOUD job per account, not per resource
 - events: Real-time SSE event stream + recent/history fallback
@@ -24,6 +25,7 @@ Modules:
 - findings: Findings endpoints
 - graph: Dependency graph and blast-radius APIs (Neo4j when configured)
 - health
+- hsm_scans: Spec-named HSM/KMS key-residence scan endpoints (`/hsm-scans`)
 - intelligence: Evidence packs, CI gate, agility, work-orders, materials, CRA/NIST zip
 - jobs: Job status, listing, and logs
 - metrics: Prometheus metrics endpoint (text exposition format, no external client lib)

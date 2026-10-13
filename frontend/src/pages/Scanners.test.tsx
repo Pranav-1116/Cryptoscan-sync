@@ -93,19 +93,56 @@ describe("scanner workflow truth", () => {
     expect(fetchSpy.mock.calls.filter(([path]) => String(path) === networkPath)).toHaveLength(1);
   });
 
-  it("labels unsupported scanner selections and prevents a different scan from being queued", async () => {
-    // cloud and container left this list in r44 (durable per-run job
-    // contract); source left in r46 (execution-time safety gate at the
-    // worker) — see the tests below
+  it("every scanner card is available behind the durable per-run job contract", async () => {
+    // cloud/container left the unsupported list in r44, source in r46
+    // (execution gate), hardware + certificate in r50 (durable job
+    // contracts) — no mode is left honestly-disabled
     const fetchSpy = mockFetch({ [startPath]: { run_id: "run-1" } });
     renderWithProviders(<Scanners />);
     await act(async () => {});
-    for (const label of ["Hardware & HSM Fleet", "Certificates & CT Logs"]) {
-      fireEvent.click(screen.getByRole("button", { name: new RegExp(label) }));
-      expect(screen.getByRole("button", { name: "Configure Target →" })).toBeDisabled();
-      expect(screen.getAllByText(/Unavailable: /).length).toBeGreaterThanOrEqual(1);
-    }
+    expect(screen.queryAllByText(/Unavailable: /)).toHaveLength(0);
     expect(fetchSpy.mock.calls.filter(([path]) => [networkPath, startPath].includes(String(path)))).toHaveLength(0);
+  });
+
+  it("runs an HSM key check with a durable job id and tracks it to completion", async () => {
+    const fetchSpy = mockFetch({
+      "/api/v1/hsm-scans": { job_id: "job-hsm-1", summary: { hardware_backed: 1, total: 1 } },
+      "/api/v1/jobs/job-hsm-1": {
+        job_id: "job-hsm-1", status: "COMPLETED", job_type: "HSM_KEY_CHECK",
+        progress: { coverage: { hardware_backed: 1, software_keys: 0, total: 1 } },
+      },
+    });
+    renderWithProviders(<Scanners />);
+    fireEvent.click(screen.getByRole("button", { name: /Hardware & HSM Fleet/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Target →" }));
+    fireEvent.change(screen.getByLabelText(/Key reference/), { target: { value: "arn:aws:kms:us-east-1:1:key/abc" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run HSM Key Check" }));
+    const post = fetchSpy.mock.calls.find(([path, init]) => String(path) === "/api/v1/hsm-scans" && init?.method === "POST");
+    expect(post).toBeTruthy();
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+      keys: [{ key_ref: "arn:aws:kms:us-east-1:1:key/abc", provider: "aws_kms" }],
+      live: false, // SUBMITTED mode — the UI never claims live verification
+    });
+    expect(await screen.findByRole("heading", { name: "HSM Key Check Complete" })).toBeInTheDocument();
+    expect(screen.getByText(/hardware backed: 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Run ID:/)).toHaveTextContent("job-hsm-1");
+  });
+
+  it("runs a CT monitor scan and reports per-domain errors verbatim", async () => {
+    mockFetch({
+      "/api/v1/ct-scans": { job_id: "job-ct-1", summary: { domains: 1, errors: 1 } },
+      "/api/v1/jobs/job-ct-1": {
+        job_id: "job-ct-1", status: "FAILED", job_type: "CT_MONITOR",
+        error_message: "CT source unavailable for broken.example",
+      },
+    });
+    renderWithProviders(<Scanners />);
+    fireEvent.click(screen.getByRole("button", { name: /Certificates & CT Logs/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Configure Target →" }));
+    fireEvent.change(screen.getByLabelText(/Monitored domains/), { target: { value: "api.example.com, broken.example" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run CT Monitor" }));
+    expect(await screen.findByRole("heading", { name: "Request Failed" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("CT source unavailable for broken.example");
   });
 
   it("queues a source scan with a job id and tracks it through the durable job record", async () => {
