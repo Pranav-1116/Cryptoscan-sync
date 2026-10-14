@@ -173,7 +173,16 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   });
   const navRef = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<string>(() => {
-    try { return localStorage.getItem("zelnx-theme") || "dark"; } catch { return "dark"; }
+    try {
+      const stored = localStorage.getItem("zelnx-theme");
+      if (stored) return stored;
+    } catch { /* ignore */ }
+    // §5 (round 66): first visit honors the OS preference instead of
+    // assuming dark — an operator whose floor runs light shouldn't have
+    // to find the toggle. An explicit choice (localStorage) always wins.
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-color-scheme: light)").matches) return "light";
+    return "dark";
   });
 
   useEffect(() => {
@@ -251,6 +260,9 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
       dir={dir}
       data-sidebar-collapsed={isCollapsed ? "true" : "false"}
     >
+      {/* §5 (round 66): the first focusable element on every page — keyboard
+          users otherwise tab through 39 nav links before reaching content. */}
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       <motion.aside className="sidebar" layout="position" aria-label="Primary navigation">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 8px 16px" }}>
           <Link to="/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 17, letterSpacing: "0.02em", textDecoration: "none" }}>
@@ -325,6 +337,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
                   className={`nav ${active ? "active" : ""}`}
                   title={isCollapsed ? item.label : undefined}
                   aria-label={isCollapsed ? item.label : undefined}
+                  aria-current={active ? "page" : undefined}
                 >
                   <span className="nav-icon" aria-hidden="true">
                     <item.icon size={18} weight={active ? "fill" : "regular"} />
@@ -359,7 +372,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
         </div>
       </motion.aside>
 
-      <main className="main">
+      <main className="main" id="main-content" tabIndex={-1}>
         <div className="livehead">
           {(() => {
             const conn = ticker.conn ?? (ticker.connected ? "live" : "offline");
