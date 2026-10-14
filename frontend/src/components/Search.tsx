@@ -84,7 +84,7 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
           </div>
         )}
         {q.trim() && <Link to={resultsTo} onClick={onClose} className="gitem">View all results for “{q.trim()}” →</Link>}
-        <div className="hint">quick matches: algorithm catalog only · enter opens full search (algorithms, protocols, hardware, findings) · esc to close</div>
+        <div className="hint">quick matches: algorithm catalog only · enter opens full search (observed assets — server-side, algorithms, protocols, hardware, findings) · esc to close</div>
       </div>
     </div>
   );

@@ -1050,6 +1050,12 @@ export interface CatalogResult<T> {
   families?: string[];
 }
 
+/* §5 (round 62): SERVER-side asset search — the term is matched in the
+ * database across the whole estate (asset id, identity spine, algorithm,
+ * file location), not only the rows a page has loaded. */
+export const apiAssetsSearch = (q: string, pageSize = 25): Promise<ApiResult<any>> =>
+  call(`/api/v1/assets?q=${encodeURIComponent(q)}&page_size=${pageSize}`);
+
 export const apiAlgorithmCatalog = (params?: { family?: string; status?: string; q?: string }): Promise<ApiResult<CatalogResult<AlgorithmEntry> & { algorithms: AlgorithmEntry[] }>> => {
   const qs = new URLSearchParams();
   if (params?.family) qs.set("family", params.family);
@@ -4016,6 +4022,18 @@ export const apiCbomPinSnapshot = (scanId: string, signed: boolean): Promise<Api
 
 export const apiCbomSnapshot = (snapshotId: string): Promise<ApiResult<any>> =>
   call(`/api/v1/cbom/snapshots/${encodeURIComponent(snapshotId)}`);
+
+/* §4.4/§5 (round 62): diff two pinned snapshots. key_by=asset_key (default)
+ * joins components by the identity spine — stable across re-scans — so the
+ * diff shows ESTATE drift, not per-scan evidence churn; key_by=bom_ref is
+ * the exact per-scan evidence identity (same-scan mutations visible). */
+export const apiCbomSnapshotDiff = (
+  snapshotId: string,
+  againstId: string,
+  keyBy: "asset_key" | "bom_ref" = "asset_key",
+): Promise<ApiResult<any>> =>
+  call(`/api/v1/cbom/snapshots/${encodeURIComponent(snapshotId)}/diff`
+       + `?against=${encodeURIComponent(againstId)}&key_by=${keyBy}`);
 /** Verifies persisted content, ordering, and manifest for one scan; not a per-finding verdict. */
 export interface ScanVerification {
   scan_id: string; records: number; result: "PASS" | "FAIL" | "EMPTY" | "UNVERIFIABLE";

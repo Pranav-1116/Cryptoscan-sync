@@ -214,3 +214,120 @@ describe("Cbom — pinned snapshots", () => {
     expect(screen.getByText(/Do not trust it/)).toBeTruthy();
   });
 });
+
+/* ── Two-pin comparison (§5, round 62): repeated-scan snapshot
+ * comparability as a product workflow — diff a newer pin against the
+ * previous pin of the same scan, spine-keyed by default (estate drift,
+ * not evidence churn). ── */
+
+const diffResponse = (over: Record<string, unknown> = {}) => ({
+  target: { snapshot_id: "snap-2", scan_id: "scan-snap-9", content_hash: "b".repeat(64) },
+  baseline: { snapshot_id: "snap-1", scan_id: "scan-snap-9", content_hash: "a".repeat(64) },
+  diff: {
+    identical: false,
+    components: {
+      key_by: "asset_key",
+      added: [{ key: "spine:k2", "bom-ref": "ev-9", name: "ML-KEM-768", type: "cryptographic-asset" }],
+      removed: [{ key: "spine:k1", "bom-ref": "ev-3", name: "3DES", type: "cryptographic-asset" }],
+      changed: [{
+        key: "spine:k3", "bom-ref": "ev-1",
+        changes: [{ path: "evidence.compliance_status", before: "PASS", after: "FAIL" }],
+      }],
+      unchanged: 4,
+    },
+    metadata_changes: [],
+    summary: { baseline_components: 6, target_components: 6, added: 1, removed: 1, changed: 1, unchanged: 4 },
+  },
+  note: "Computed from the two pinned payloads (never stored). 'added' = present in the target snapshot only.",
+  ...over,
+});
+
+describe("Cbom — two-pin comparison", () => {
+  const twoPins = [
+    snapshotRow({ snapshot_id: "snap-2", content_hash: "b".repeat(64), snapshotted_at: "2026-10-14T00:00:00Z" }),
+    snapshotRow({ snapshot_id: "snap-1" }),
+  ];
+
+  function setupDiff(handler: (url: string) => unknown) {
+    return mockFetch({
+      "/api/v1/cbom/query": queryResponse([]),
+      "/api/v1/cbom/coverage": coverage,
+      "/api/v1/scans": { scans: [{ scan_id: "scan-snap-9", status: "COMPLETED", target_location: "payments" }], total_count: 1 },
+      "/api/v1/cbom/scan/scan-snap-9/snapshots": { scan_id: "scan-snap-9", snapshots: twoPins, count: 2, note: "" },
+      "/api/v1/cbom/snapshots/snap-2/diff": (url: string) => handler(url),
+    });
+  }
+
+  it("diffs a newer pin against the previous pin, spine-keyed by default", async () => {
+    let calledWith = "";
+    setupDiff((url) => {
+      calledWith = url;
+      return diffResponse();
+    });
+    renderPage();
+    fireEvent.change(await screen.findByLabelText("Scan"), { target: { value: "scan-snap-9" } });
+    await waitFor(() => expect(screen.getByText("Diff vs Prev Pin")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Diff vs Prev Pin" }));
+    await waitFor(() => expect(screen.getByText("PIN COMPARISON")).toBeTruthy());
+    // the request: target snap-2 against the previous pin snap-1, spine keying
+    expect(calledWith).toContain("/api/v1/cbom/snapshots/snap-2/diff");
+    expect(calledWith).toContain("against=snap-1");
+    expect(calledWith).toContain("key_by=asset_key");
+    // estate drift rendered honestly: added, removed, changed, unchanged
+    expect(screen.getByText("+1 added")).toBeTruthy();
+    expect(screen.getByText("−1 removed")).toBeTruthy();
+    expect(screen.getByText("1 changed")).toBeTruthy();
+    expect(screen.getByText("4 unchanged")).toBeTruthy();
+    expect(screen.getByText("ML-KEM-768")).toBeTruthy(); // the added fact
+    expect(screen.getByText("3DES")).toBeTruthy(); // the removed fact
+    expect(screen.getByText(/Added \(in the newer pin only\)/)).toBeTruthy();
+    expect(screen.getByText(/Removed \(in the baseline only\)/)).toBeTruthy();
+    expect(screen.getByText("evidence.compliance_status")).toBeTruthy();
+    expect(screen.getByText(/identity spine — same crypto fact across scans/)).toBeTruthy();
+  });
+
+  it("switches to exact per-scan evidence keying on request", async () => {
+    let calls: string[] = [];
+    setupDiff((url) => {
+      calls.push(url);
+      return diffResponse({ diff: { ...diffResponse().diff, components: { ...diffResponse().diff.components, key_by: "bom_ref" } } });
+    });
+    renderPage();
+    fireEvent.change(await screen.findByLabelText("Scan"), { target: { value: "scan-snap-9" } });
+    await waitFor(() => expect(screen.getByText("Diff vs Prev Pin")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Diff vs Prev Pin" }));
+    await waitFor(() => expect(screen.getByText("PIN COMPARISON")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "bom_ref" }));
+    await waitFor(() => expect(calls.some((c) => c.includes("key_by=bom_ref"))).toBeTruthy());
+    expect(screen.getByText(/per-scan evidence ids — every re-scan mints new rows/)).toBeTruthy();
+  });
+
+  it("renders the identical state without inventing drift", async () => {
+    const identical = diffResponse({
+      diff: { identical: true, components: { key_by: "asset_key", added: [], removed: [], changed: [], unchanged: 6 }, metadata_changes: [], summary: { baseline_components: 6, target_components: 6, added: 0, removed: 0, changed: 0, unchanged: 6 } },
+    });
+    setupDiff(() => identical);
+    renderPage();
+    fireEvent.change(await screen.findByLabelText("Scan"), { target: { value: "scan-snap-9" } });
+    await waitFor(() => expect(screen.getByText("Diff vs Prev Pin")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Diff vs Prev Pin" }));
+    await waitFor(() => expect(screen.getByText("IDENTICAL")).toBeTruthy());
+    expect(screen.queryByText("+1 added")).toBeNull(); // no invented drift
+    expect(screen.getByText("6 unchanged")).toBeTruthy();
+  });
+
+  it("offers no comparison with a single pin — honestly", async () => {
+    mockFetch({
+      "/api/v1/cbom/query": queryResponse([]),
+      "/api/v1/cbom/coverage": coverage,
+      "/api/v1/scans": { scans: [{ scan_id: "scan-snap-9", status: "COMPLETED", target_location: "payments" }], total_count: 1 },
+      "/api/v1/cbom/scan/scan-snap-9/snapshots": { scan_id: "scan-snap-9", snapshots: [snapshotRow()], count: 1, note: "" },
+    });
+    renderPage();
+    fireEvent.change(await screen.findByLabelText("Scan"), { target: { value: "scan-snap-9" } });
+    await waitFor(() => expect(screen.getByText("aaaaaaaaaaaaaaaa…")).toBeTruthy());
+    expect(screen.queryByText("Diff vs Prev Pin")).toBeNull();
+  });
+});

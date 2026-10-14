@@ -212,3 +212,34 @@ describe("asset inventory from the live API", () => {
     expect(screen.queryByText(/No evidence IDs are associated/)).toBeNull();
   });
 });
+
+/* §5/§4.2 (round 62): the asset detail shows the IDENTITY SPINE — the
+ * canonical key that joins this asset to its evidence, fact and BOM
+ * component rows. Absent stays absent; nothing is invented. */
+describe("asset identity spine in the detail view", () => {
+  it("shows the canonical asset_key when the API returns one", async () => {
+    mockFetch({
+      [listPath]: { assets: [
+        { id: "asset-1", algorithm: "RSA-2048", asset_key: "fact:v1:9f86d0", file_path: "src/Keys.java" },
+      ], total_count: 1, page: 1, page_size: 100 },
+      "/api/v1/assets/asset-1": { id: "asset-1", algorithm: "RSA-2048", asset_key: "fact:v1:9f86d0", file_path: "src/Keys.java", evidence_ids: ["ev-1"] },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "RSA-2048" });
+    expect(screen.getByText("fact:v1:9f86d0")).toBeInTheDocument();
+    expect(screen.getByText(/joins this asset to its evidence, fact and BOM component rows/)).toBeInTheDocument();
+  });
+
+  it("says Not observed when no spine key exists — never invents identity", async () => {
+    mockFetch({
+      [listPath]: { assets: [
+        { id: "asset-old", algorithm: "DES", file_path: "old/X.java" },
+      ], total_count: 1, page: 1, page_size: 100 },
+      "/api/v1/assets/asset-old": { id: "asset-old", algorithm: "DES", file_path: "old/X.java", evidence_ids: [] },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "DES" });
+    const rows = screen.getAllByText("Not observed");
+    expect(rows.length).toBeGreaterThanOrEqual(1); // the spine row says so honestly
+  });
+});

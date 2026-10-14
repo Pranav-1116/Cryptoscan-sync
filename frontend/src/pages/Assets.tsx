@@ -8,6 +8,7 @@ import { IconEstate } from "../components/icons";
 // adds evidence_ids. Neither endpoint provides a PQC verdict or dependencies.
 interface AssetApiRow {
   id: string;
+  asset_key?: string | null;
   algorithm?: string | null;
   key_size?: number | null;
   file_path?: string | null;
@@ -32,6 +33,7 @@ interface AssetRecord {
   updatedAt: string | null;
   firstObserved: string | null;
   lastObserved: string | null;
+  assetKey: string | null;
   evidenceIds: string[];
 }
 
@@ -58,6 +60,7 @@ function assetRecord(value: unknown): AssetRecord | null {
     updatedAt: observed(row.updated_at),
     firstObserved: observed(extra?.first_seen_at),
     lastObserved: observed(extra?.last_seen_at),
+    assetKey: observed(row.asset_key),
     evidenceIds: Array.isArray(row.evidence_ids) ? row.evidence_ids.filter((item): item is string => !!observed(item)) : [],
   };
 }
@@ -416,6 +419,15 @@ export default function Assets() {
                         <div>
                           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>First / last observed</div>
                           <div style={{ marginTop: "2px" }}>{displayedAsset.firstObserved ?? "Not observed"} / {displayedAsset.lastObserved ?? "Not observed"}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Asset identity (spine)</div>
+                          <div style={{ marginTop: "2px", overflowWrap: "anywhere", fontFamily: "var(--mono)", fontSize: 11.5 }}>
+                            {displayedAsset.assetKey ?? "Not observed"}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 2 }}>
+                            Canonical identity — joins this asset to its evidence, fact and BOM component rows.
+                          </div>
                         </div>
                         <div>
                           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Evidence</div>

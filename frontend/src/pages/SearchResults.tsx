@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Panel, PageHead } from "../components/ui.jsx";
-import { apiAlgorithmCatalog, apiProtocolCatalog, apiHardwareCatalog, apiRuntimeFindings } from "../lib/api.js";
-import { IconCrypto, IconNetwork, IconHardware, IconWarn, ICON_MD, type Icon } from "../components/icons";
+import { apiAlgorithmCatalog, apiProtocolCatalog, apiHardwareCatalog, apiRuntimeFindings, apiAssetsSearch } from "../lib/api.js";
+import { IconCrypto, IconNetwork, IconHardware, IconWarn, IconEstate, ICON_MD, type Icon } from "../components/icons";
 
 /* Full search results page — queries the LIVE catalogs and the runtime
    findings store. There is no local/demo index: with an empty estate the
@@ -36,13 +36,26 @@ export default function SearchResults() {
     setLoading(true);
     (async () => {
       const term = q.trim();
-      const [alg, proto, hw, find] = await Promise.all([
+      const [alg, proto, hw, find, assets] = await Promise.all([
         apiAlgorithmCatalog({ q: term }),
         apiProtocolCatalog(),
         apiHardwareCatalog(),
         apiRuntimeFindings(100),
+        apiAssetsSearch(term),
       ]);
       const out: Group[] = [];
+      // §5 (round 62): real asset search — SERVER-side, across the whole
+      // estate (asset id, identity spine, algorithm, file location), not a
+      // client-side filter of loaded rows. Reference-catalog matches below
+      // are reference data; these are OBSERVED inventory.
+      const assetRows = ((assets.data as any)?.assets ?? []) as any[];
+      const assetTotal = Number((assets.data as any)?.total_count ?? assetRows.length) || assetRows.length;
+      if (assetRows.length) {
+        out.push({ label: `Assets (estate, ${assetTotal} match${assetTotal === 1 ? "" : "es"})`, icon: IconEstate, items: assetRows.slice(0, 25).map((a: any) => ({
+          name: `${a.algorithm ?? "UNKNOWN"}${a.file_path ? ` · ${String(a.file_path).split("/").pop()}` : ""}`,
+          to: "/assets", meta: a.lifecycle_state ?? "",
+        })) });
+      }
       const algRows = (alg.data?.algorithms ?? []) as any[];
       if (algRows.length) {
         out.push({ label: "Algorithms", icon: IconCrypto, items: algRows.slice(0, 25).map((a) => ({

@@ -7,6 +7,7 @@ import {
   apiCbomQuery,
   apiCbomScanSnapshots,
   apiCbomSnapshot,
+  apiCbomSnapshotDiff,
   apiScansRecent,
 } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
@@ -51,6 +52,15 @@ export default function Cbom() {
   const [pinBusy, setPinBusy] = useState(false);
   const [pinResult, setPinResult] = useState<string | null>(null);
   const [openSnapshot, setOpenSnapshot] = useState<any>(null);
+  // §5 (round 62): two-pin comparison — the repeated-scan comparability
+  // product workflow. "asset_key" joins by the identity spine (estate
+  // drift, evidence churn ignored); "bom_ref" is exact per-scan evidence
+  // identity (same-scan mutations visible).
+  const [diffFor, setDiffFor] = useState<string | null>(null);
+  const [diffAgainst, setDiffAgainst] = useState<string | null>(null);
+  const [diffData, setDiffData] = useState<any>(null);
+  const [diffKeyBy, setDiffKeyBy] = useState<"asset_key" | "bom_ref">("asset_key");
+  const [diffBusy, setDiffBusy] = useState(false);
 
   async function loadSnapshots(scanId: string) {
     const res = await apiCbomScanSnapshots(scanId);
@@ -64,6 +74,9 @@ export default function Cbom() {
       setSnapshotsLoaded(false);
     }
     setOpenSnapshot(null);
+    setDiffFor(null);
+    setDiffAgainst(null);
+    setDiffData(null);
   }
 
   useEffect(() => {
@@ -90,6 +103,22 @@ export default function Cbom() {
       await loadSnapshots(selectedScan);
     } else {
       setPinResult("Pin failed — the snapshot was not created.");
+    }
+  }
+
+  async function loadDiff(targetId: string, againstId: string, keyBy: "asset_key" | "bom_ref") {
+    setDiffBusy(true);
+    try {
+      const res = await apiCbomSnapshotDiff(targetId, againstId, keyBy);
+      setDiffFor(targetId);
+      setDiffAgainst(againstId);
+      if (res.source === "live" && res.data) {
+        setDiffData(res.data);
+      } else {
+        setDiffData({ error: "Diff unavailable — the comparison could not be computed." });
+      }
+    } finally {
+      setDiffBusy(false);
     }
   }
 
@@ -510,7 +539,7 @@ export default function Cbom() {
                 </tr>
               </thead>
               <tbody>
-                {snapshots.map((s: any) => (
+                {snapshots.map((s: any, index: number) => (
                   <React.Fragment key={s.snapshot_id}>
                     <tr>
                       <td>
@@ -526,15 +555,129 @@ export default function Cbom() {
                       <td><span style={{ fontSize: 12, color: "var(--dim)" }}>{s.snapshotted_at ? new Date(s.snapshotted_at).toLocaleString() : "—"}</span></td>
                       <td><span style={{ fontSize: 12 }}>{s.created_by || "—"}</span></td>
                       <td>
-                        <button
-                          className="btn sm"
-                          onClick={() => void viewSnapshot(s.snapshot_id)}
-                          style={{ fontSize: 11.5, padding: "4px 10px" }}
-                        >
-                          {openSnapshot?.snapshot_id === s.snapshot_id ? "Hide" : "Verify & View"}
-                        </button>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            className="btn sm"
+                            onClick={() => void viewSnapshot(s.snapshot_id)}
+                            style={{ fontSize: 11.5, padding: "4px 10px" }}
+                          >
+                            {openSnapshot?.snapshot_id === s.snapshot_id ? "Hide" : "Verify & View"}
+                          </button>
+                          {snapshots.length > 1 && index < snapshots.length - 1 && (
+                            <button
+                              className="btn sm outline"
+                              disabled={diffBusy}
+                              onClick={() => {
+                                if (diffFor === s.snapshot_id) {
+                                  setDiffFor(null);
+                                  setDiffData(null);
+                                } else {
+                                  void loadDiff(s.snapshot_id, snapshots[index + 1].snapshot_id, diffKeyBy);
+                                }
+                              }}
+                              style={{ fontSize: 11.5, padding: "4px 10px" }}
+                              title={"Compare this pin against the previous (older) pin of the same scan — computed from the two pinned payloads, never stored."}
+                            >
+                              {diffFor === s.snapshot_id ? "Hide Diff" : "Diff vs Prev Pin"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
+                    {diffFor === s.snapshot_id && diffData && (
+                      <tr>
+                        <td colSpan={7} style={{ background: "var(--bg-2)", borderTop: "1px dashed var(--line)" }}>
+                          <div style={{ padding: "10px 4px", display: "grid", gap: 8 }}>
+                            <div style={{ fontSize: 12.5, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                              <strong style={{ fontSize: 12 }}>PIN COMPARISON</strong>
+                              {diffData.error ? (
+                                <span style={{ color: "var(--red)" }}>{diffData.error}</span>
+                              ) : (
+                                <>
+                                  <Badge variant={(diffData.diff?.components?.added?.length || 0) > 0 ? "success" : "neutral"}>
+                                    +{diffData.diff?.components?.added?.length ?? 0} added
+                                  </Badge>
+                                  <Badge variant={(diffData.diff?.components?.removed?.length || 0) > 0 ? "danger" : "neutral"}>
+                                    −{diffData.diff?.components?.removed?.length ?? 0} removed
+                                  </Badge>
+                                  <Badge variant={(diffData.diff?.components?.changed?.length || 0) > 0 ? "warn" : "neutral"}>
+                                    {diffData.diff?.components?.changed?.length ?? 0} changed
+                                  </Badge>
+                                  <Badge variant="neutral">
+                                    {diffData.diff?.components?.unchanged ?? 0} unchanged
+                                  </Badge>
+                                  {diffData.diff?.identical && <Badge variant="success">IDENTICAL</Badge>}
+                                  <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+                                    {(["asset_key", "bom_ref"] as const).map((mode) => (
+                                      <button
+                                        key={mode}
+                                        className={`btn sm ${diffKeyBy === mode ? "" : "outline"}`}
+                                        disabled={diffBusy}
+                                        onClick={() => {
+                                          setDiffKeyBy(mode);
+                                          if (diffAgainst) void loadDiff(s.snapshot_id, diffAgainst, mode);
+                                        }}
+                                        style={{ fontSize: 11, padding: "3px 8px" }}
+                                        title={mode === "asset_key"
+                                          ? "Join components by the identity spine — stable across re-scans; evidence churn is not estate drift."
+                                          : "Exact per-scan evidence identity — same-scan mutations visible, cross-scan shows full evidence turnover."}
+                                      >
+                                        {mode}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                            {!diffData.error && (
+                              <div style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                                Target {String(diffData.target?.snapshot_id || s.snapshot_id).slice(0, 10)}… vs baseline {String(diffData.baseline?.snapshot_id || diffAgainst || "").slice(0, 10)}… · keyed by <span style={{ fontFamily: "var(--mono)" }}>{diffData.diff?.components?.key_by || diffKeyBy}</span>
+                                {diffKeyBy === "asset_key" ? " (identity spine — same crypto fact across scans is one row; observation-position churn ignored)" : " (per-scan evidence ids — every re-scan mints new rows by design)"}
+                                {" "}· computed from the two pinned payloads, never stored.
+                              </div>
+                            )}
+                            {!diffData.error && (diffData.diff?.components?.added?.length > 0 || diffData.diff?.components?.removed?.length > 0) && (
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 8 }}>
+                                <div>
+                                  <div style={{ fontSize: 11.5, color: "var(--dim)", marginBottom: 4 }}>Added (in the newer pin only)</div>
+                                  {(diffData.diff?.components?.added || []).map((c: any) => (
+                                    <div key={c.key || c["bom-ref"]} style={{ fontSize: 12 }}>
+                                      <span style={{ color: "var(--green)" }}>+</span> {c.name || c["bom-ref"]} <span style={{ color: "var(--faint)", fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(c["bom-ref"] || "").slice(0, 12)}…</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div>
+                                  <div style={{ fontSize: 11.5, color: "var(--dim)", marginBottom: 4 }}>Removed (in the baseline only)</div>
+                                  {(diffData.diff?.components?.removed || []).map((c: any) => (
+                                    <div key={c.key || c["bom-ref"]} style={{ fontSize: 12 }}>
+                                      <span style={{ color: "var(--red)" }}>−</span> {c.name || c["bom-ref"]} <span style={{ color: "var(--faint)", fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(c["bom-ref"] || "").slice(0, 12)}…</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {!diffData.error && (diffData.diff?.components?.changed?.length > 0) && (
+                              <div>
+                                <div style={{ fontSize: 11.5, color: "var(--dim)", marginBottom: 4 }}>Changed on surviving components</div>
+                                {(diffData.diff?.components?.changed || []).map((c: any) => (
+                                  <div key={c.key || c["bom-ref"]} style={{ fontSize: 12, marginBottom: 4 }}>
+                                    <strong>{c["bom-ref"]}</strong>
+                                    <ul style={{ margin: "2px 0 0 18px", padding: 0 }}>
+                                      {(c.changes || []).map((ch: any) => (
+                                        <li key={ch.path} style={{ fontSize: 11.5 }}>
+                                          <span style={{ fontFamily: "var(--mono)" }}>{ch.path}</span>:{" "}
+                                          <span style={{ color: "var(--red)" }}>{String(ch.before)}</span> → <span style={{ color: "var(--green)" }}>{String(ch.after)}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     {openSnapshot?.snapshot_id === s.snapshot_id && (
                       <tr>
                         <td colSpan={7} style={{ background: "var(--bg-2)" }}>

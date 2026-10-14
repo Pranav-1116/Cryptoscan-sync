@@ -20,6 +20,7 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         self,
         *,
         algorithm: str | None = None,
+        q: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[list[CryptoAsset], int]:
@@ -28,6 +29,21 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         if algorithm:
             stmt = stmt.where(CryptoAsset.algorithm == algorithm)
             count_stmt = count_stmt.where(CryptoAsset.algorithm == algorithm)
+        if q:
+            # §5 (round 62): SERVER-side search — the term is matched in the
+            # database across the whole estate (not only the loaded page),
+            # over the fields an operator actually searches: asset id,
+            # identity spine, algorithm, file location.
+            needle = f"%{q.strip()}%"
+            from sqlalchemy import or_
+            condition = or_(
+                CryptoAsset.id == q.strip(),
+                CryptoAsset.asset_key.ilike(needle),
+                CryptoAsset.algorithm.ilike(needle),
+                CryptoAsset.file_path.ilike(needle),
+            )
+            stmt = stmt.where(condition)
+            count_stmt = count_stmt.where(condition)
         total = int(self.session.execute(count_stmt).scalar_one())
         stmt = stmt.order_by(CryptoAsset.algorithm, CryptoAsset.file_path).offset((page - 1) * page_size).limit(page_size)
         return list(self.session.execute(stmt).scalars().all()), total

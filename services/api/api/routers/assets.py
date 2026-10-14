@@ -14,12 +14,16 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 @router.get("")
 def list_assets(
     algorithm: str | None = None,
+    q: str | None = Query(None, max_length=200,
+                          description="Server-side search across the whole estate: asset id, "
+                                      "identity spine key, algorithm, file location"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    rows, total = AssetRepository(db).list_assets(algorithm=algorithm, page=page, page_size=page_size)
+    rows, total = AssetRepository(db).list_assets(
+        algorithm=algorithm, q=q, page=page, page_size=page_size)
     return {
         "assets": [row.to_dict() for row in rows],
         "total_count": total,
