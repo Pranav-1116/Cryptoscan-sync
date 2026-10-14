@@ -22,6 +22,7 @@ from sqlalchemy import desc
 
 from api.dependencies import get_current_user, get_db_session
 from db.models.compliance_record import ComplianceAttestation, ComplianceEvidencePack
+from db.tenancy import filtered_get
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
@@ -212,7 +213,10 @@ def list_packs(user: str = Depends(_require_admin), db=Depends(get_db_session)):
 def get_pack(pack_id: str, user: str = Depends(_require_admin), db=Depends(get_db_session)):
     """Serve the pinned pack VERBATIM — never regenerated — with an
     integrity self-check (recomputed content address vs the pinned hash)."""
-    row = db.get(ComplianceEvidencePack, pack_id)
+    # filtered_get, not db.get: a plain PK lookup bypasses the tenant
+    # SELECT criteria (the ORM event hook only filters SELECT statements),
+    # so a tenant-scoped pack could be read cross-tenant by id.
+    row = filtered_get(db, ComplianceEvidencePack, pack_id)
     if row is None:
         raise HTTPException(status_code=404, detail="no evidence pack with this id")
     integrity = _pack_integrity(row)

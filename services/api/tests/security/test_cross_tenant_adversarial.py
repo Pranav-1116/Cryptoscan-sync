@@ -80,6 +80,64 @@ def _client(db_session) -> TestClient:
     return TestClient(app)
 
 
+# --------------------------------------------------------------------- #
+# compliance evidence packs: a pinned pack is tenant-scoped by id
+# --------------------------------------------------------------------- #
+
+
+def _admin_client(db_session) -> TestClient:
+    """The pack endpoints require the admin role (compliance._require_admin)."""
+    from api.config.settings import get_settings
+    from api.dependencies import get_current_user, get_db_session
+    from api.main import create_app
+
+    get_settings.cache_clear()
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: "admin"
+    app.dependency_overrides[get_db_session] = lambda: (yield db_session)
+    return TestClient(app)
+
+
+def _seed_pack(session, tenant_id: str):
+    from db.models.compliance_record import ComplianceEvidencePack
+
+    payload = {"summary": {"closed": 1}, "controls": []}
+    digest = hashlib.sha256(str(payload).encode()).hexdigest()
+    row = ComplianceEvidencePack(
+        pack_sha256=digest, payload=payload, summary=payload["summary"],
+        generated_at=datetime.now(timezone.utc), collected_by="admin",
+        tenant_id=tenant_id,
+    )
+    session.add(row)
+    session.commit()
+    return row
+
+
+def test_compliance_pack_by_id_stays_inside_the_tenant(db_session):
+    """GET /compliance/evidence/packs/{id} used a plain ``db.get()`` — the
+    ORM tenant guard filters SELECT statements, and the PK lookup shortcut
+    bypasses it, so a bank-B admin who guessed bank-A's pack id could read
+    its pinned evidence pack. ``filtered_get`` routes the lookup through
+    the criteria (engineering-gate tenant-isolation audit, round 67)."""
+    row = _seed_pack(db_session, BANK_A)
+    client = _admin_client(db_session)
+
+    # the owning tenant reads its pack (integrity aside — reachability is
+    # what this test pins; tamper detection is covered elsewhere)
+    with client, tenant_scope(BANK_A):
+        mine = client.get(f"/api/v1/compliance/evidence/packs/{row.id}",
+                          headers={"Authorization": "Bearer t"})
+    assert mine.status_code == 200, mine.text
+    assert mine.json()["pack_id"] == row.id
+
+    # another tenant gets absence (404) — never the pack, and never a 403
+    # that would confirm the id exists
+    with client, tenant_scope(BANK_B):
+        theirs = client.get(f"/api/v1/compliance/evidence/packs/{row.id}",
+                            headers={"Authorization": "Bearer t"})
+    assert theirs.status_code == 404, theirs.text
+
+
 class RecordingDriver:
     """A healthy Neo4j driver that records every Bolt statement."""
 

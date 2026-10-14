@@ -162,11 +162,22 @@ Global search now covers observed assets: the overlay is labeled algorithm-catal
 
 **Local progress:** production Compose overlays now validate with only nginx host ports; API/frontend, PostgreSQL, Redis and worker have run in the local development stack. Targeted migration rollback and PostgreSQL fact-identity tests passed earlier; real local scans persisted evidence/facts and earlier stored chains verified PASS. A current frontend typecheck/Vitest run passed 209 tests. These are scoped checks, not a production build/start of every artifact in its final topology.
 
+**Round 67 (2026-10-14) production-qualification audit:** the engineering
+gate was re-run at the current HEAD. Its one in-repo fixable failure — a
+tenant-isolation violation where `GET /compliance/evidence/packs/{id}` used a
+plain PK lookup (`db.get`) that bypasses the ORM tenant filter, letting any
+admin read another tenant's pinned evidence pack by id — was fixed with
+`filtered_get` and pinned by an adversarial cross-tenant test (owner 200,
+other tenant 404). The tenant-isolation audit now reports **114 scoped
+tables, 0 violations**. What still fails is exactly the externally-blocked
+set: branch protection (GitHub App token, 403 — re-verified today), image
+digests (registry unreachable), and the customer-sample SKIPs.
+
 **Missing qualification and release controls**
 
-1. Full local backend gate is green: rounds 41–54 run the complete service+shared suite before each push (round 54: **7,468 passed / 31 skipped**, plus frontend Vitest 261 + `tsc --noEmit`). These are local SQLite-lane gates; they do not replace target-environment qualification, and the PostgreSQL parity lane runs in CI only.
+1. Full local backend gate is green: rounds 41–67 run the complete service+shared suite before each push (round 67: **7,541 passed / 34 skipped**, plus frontend Vitest 297 + `tsc --noEmit`). These are local SQLite-lane gates; they do not replace target-environment qualification, and the PostgreSQL parity lane runs in CI only.
 2. Active `.github/workflows/ci.yml` runs only a subset of backend services, frontend typecheck/build **without Vitest**, and PostgreSQL parity. Named scanner, migration and image-build workflows are tracked as zero-byte files while staged copies under `.github/workflows-pending/` are inactive (`.github/workflows/ci.yml:48-122,158-197`; `.github/workflows-pending/README.md:1-14`). Enforced branch protection, secret scanning, reproducible digest-pinned images and release provenance require workflow/admin access and proof.
-3. Real target-environment cloud, Neo4j, container, HSM and external IdP/connector burn-ins, held-out customer accuracy corpora, hostile-repository sandbox tests, independent pen test, multi-day target-scale soak, DR/RPO/RTO and signed closure are outstanding. The October 4 readiness gate is FAIL, with engineering FAIL and HSM/closure/external categories SKIP (`PRODUCTION-READINESS.md:39-77`).
+3. Real target-environment cloud, Neo4j, container, HSM and external IdP/connector burn-ins, held-out customer accuracy corpora, hostile-repository sandbox tests, independent pen test, multi-day target-scale soak, DR/RPO/RTO and signed closure are outstanding. The readiness gate re-run of 2026-10-14 is FAIL, with engineering FAIL (only the credential-blocked branch-protection and registry-blocked digest checks) and HSM/closure/external categories SKIP (`PRODUCTION-READINESS.md`, `docs/readiness-evidence/bank-readiness.json`).
 4. Checked-in operational policies, questionnaire answers and old product maturity labels are not external certifications. No SOC 2/ISO/FIPS/PCI approval, paid customer adoption or bank-specific authorization may be inferred from local fixtures.
 
 **Production acceptance is BLOCKED** until a clean immutable revision, full tests, real operator-authorized sources, measured data accuracy, security assessment and the target deployment's evidence all pass. A supervised pilot/pre-production recommendation in `PRODUCTION-READINESS.md:100-126` is narrower than a general bank production claim.

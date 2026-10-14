@@ -5,6 +5,15 @@ from worker.core.job_executor import JobExecutor
 
 
 def test_executor_routes_cloud_jobs_without_clone(monkeypatch):
+    # These two tests pin ROUTING, not the gate: stub the policy read the
+    # execution-gate tests own (test_execution_gate.py does the same).
+    # Without this the tests only passed when some earlier file in the same
+    # process had bound SessionLocal — alone, the unbound session made the
+    # gate fail closed and the refusal path crash on the same unbound
+    # session (order-dependent, surfaced by an xdist reshuffle in round 67).
+    import worker.core.execution_gate as _gate
+
+    monkeypatch.setattr(_gate, "_matching_policy", lambda: {"mode": "standard"})
     called = {}
 
     def fake_cloud(job):
@@ -24,6 +33,9 @@ def test_executor_routes_cloud_jobs_without_clone(monkeypatch):
 
 
 def test_executor_keeps_git_pipeline(monkeypatch):
+    import worker.core.execution_gate as _gate
+
+    monkeypatch.setattr(_gate, "_matching_policy", lambda: {"mode": "standard"})
     called = {}
 
     class Runner:

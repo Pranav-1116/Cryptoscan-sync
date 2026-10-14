@@ -125,6 +125,21 @@ session can close):
    and `target_topology_load_soak` (P1-2) artifact kinds once a continuity
    plan approval and evidence owner sign them.
 
+**2026-10-14 re-verification.** Blockers 1 and 2 were re-attempted with the
+current automation credential and remain hard-blocked: the session token is a
+GitHub App installation token (empty `X-OAuth-Scopes`) that reports
+`admin: true` on this repository but cannot push workflow files (rejected:
+*"without `workflows` permission"*) or set branch protection (403
+*Resource not accessible by integration*). In the same session the
+engineering gate was re-run at the current HEAD: its one in-repo fixable
+failure — a tenant-isolation violation where
+`GET /compliance/evidence/packs/{id}` bypassed the ORM tenant filter with a
+plain PK lookup — was fixed (`filtered_get`) and pinned by an adversarial
+cross-tenant test; the audit now reports 114 scoped tables, 0 violations.
+The refreshed evidence is in `docs/readiness-evidence/engineering-gate.json`
+and `bank-readiness.json`; the verdict stays an honest FAIL on the two
+credential/registry-blocked checks.
+
 For the end-to-end plan from this state to production sign-off — every
 remaining phase with owners, commands and acceptance criteria — see
 [`docs/PRODUCTION-ROADMAP.md`](docs/PRODUCTION-ROADMAP.md).

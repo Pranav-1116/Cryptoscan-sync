@@ -243,7 +243,7 @@ The unified gate (`scripts/bank_readiness.py`) currently records:
 | compliance | **PASS** | `readiness-evidence/compliance-burn-2026-10-04.md` — 11/11 over live HTTP |
 | documentation | **PASS** | 309 Markdown files, consistency-checked |
 | operational_policy | **PASS** | structural findings = 0 |
-| engineering | **FAIL** | immutable image digests unresolved (registry unreachable from the qualification sandbox), branch-protection API 403 for the automation credential, no customer corpora |
+| engineering | **FAIL** | re-audited 2026-10-14 at `3dc4830`+working tree: tenant-isolation audit now **PASS** (114 scoped tables, 0 violations — the last in-repo fixable finding, a PK-lookup bypass on `GET /compliance/evidence/packs/{id}`, was fixed in round 67 with an adversarial cross-tenant test); remaining failures are purely external: branch-protection API 403 (re-verified 2026-10-14), immutable image digests (registry unreachable from the qualification sandbox), no customer corpora |
 | hsm / readiness_closure / external_attestations | **SKIP** | provider/customer-controlled evidence; a source session cannot produce these |
 
 Honest assessment that follows from this state:
@@ -254,7 +254,8 @@ Honest assessment that follows from this state:
 - **Strict gate (unattended production): 6/10 categories PASS (~60 %).** The
   remaining four are exactly the external-evidence categories.
 - **Shared multi-tenant SaaS: ~78 %.** Tenant isolation is hardened
-  (94 tenant-scoped tables, graph-engine gate, adversarial suite), but a
+  (114 tenant-scoped tables with a zero-violation audit at round 67,
+  graph-engine gate, adversarial suite), but a
   multi-day multi-tenant soak, an external security assessment and per-tenant
   capacity evidence are still required before that number can honestly move.
 
@@ -285,6 +286,17 @@ unblocks the release pipeline.
 
 The qualification session of 2026-10-04 proved the code and evidence; these
 two items failed only on token scope and must be done by someone with rights:
+
+> **Re-verified 2026-10-14 — both items are still blocked by the same
+> credential.** The session token is a GitHub App installation token
+> (`X-OAuth-Scopes` empty) that reports `admin: true` on this repository but
+> still cannot exercise either right: the workflow-file push probe (moving
+> `secret-scan.yml` into `.github/workflows/` and pushing) was rejected with
+> *"refusing to allow a GitHub App to create or update workflow … without
+> `workflows` permission"*, and the branch-protection PUT below returned
+> `403 Resource not accessible by integration`. The probe commit was rolled
+> back; the staged files remain intact in `.github/workflows-pending/`.
+> Do not retry either with this credential.
 
 1. **Publish the release CI workflow.** `.github/workflows/docker-build.yml`
    is **0 bytes on `main`**, along with `db-migration.yml` and

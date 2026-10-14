@@ -1,23 +1,23 @@
 {
   "schema": "cryptoscan.engineering-gate/1",
-  "captured_at": "2026-10-04T14:08:48.798182+00:00",
+  "captured_at": "2026-10-14T18:59:56.590285+00:00",
   "checks": [
     {
       "check": "exception inventory",
       "status": "PASS",
-      "detail": "0 unresolved production handlers; 0 unresolved test/harness handlers; inventory=1",
+      "detail": "0 unresolved production handlers; 0 unresolved test/harness handlers; inventory=5",
       "findings": [],
       "nonproduction_findings": [],
       "unresolved": 0,
       "production_unresolved": 0,
       "test_harness_unresolved": 0,
-      "allowlisted": 1,
+      "allowlisted": 5,
       "allowlist": "/home/user/CryproScan/config/exception-allowlist.json"
     },
     {
       "check": "X-API-Key route coverage",
       "status": "PASS",
-      "detail": "decorated routes=750; auth-covered-or-exempt=750; uncovered=0",
+      "detail": "decorated routes=885; auth-covered-or-exempt=885; uncovered=0",
       "findings": []
     },
     {
@@ -29,7 +29,7 @@
     {
       "check": "tenant isolation audit",
       "status": "PASS",
-      "detail": "94 scoped tables; 12 justified platform-scope tables; 1 platform_scope() sites; violations=0",
+      "detail": "114 scoped tables; 12 justified platform-scope tables; 1 platform_scope() sites; violations=0",
       "violations": []
     },
     {

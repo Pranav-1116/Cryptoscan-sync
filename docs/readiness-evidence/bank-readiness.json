@@ -1,17 +1,17 @@
 {
   "schema": "cryptoscan.bank-readiness/1",
-  "captured_at": "2026-10-04T14:08:49.835030+00:00",
+  "captured_at": "2026-10-14T18:59:56.964162+00:00",
   "repository": {
-    "commit": "e44568e3bb92b1982754ce4d44b2d810765df41c",
+    "commit": "3dc4830a7d49e12ba3d58794f3da54605d176274",
     "branch": "arena/01a106c8-cryproscan",
     "dirty": true
   },
   "artifact_generation_state": {
-    "commit": "e44568e3bb92b1982754ce4d44b2d810765df41c",
+    "commit": "3dc4830a7d49e12ba3d58794f3da54605d176274",
     "branch": "arena/01a106c8-cryproscan",
     "dirty": true
   },
-  "command": "/home/user/CryproScan/.venv/bin/python scripts/bank_readiness.py --run-engineering --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-10-04.json --integrations docs/readiness-evidence/burn-in-2026-10-04.json --compliance docs/readiness-evidence/compliance-burn-2026-10-04.md --load-soak docs/readiness-evidence/load-test-2026-10-04.json",
+  "command": "/home/user/.venv/bin/python scripts/bank_readiness.py --run-engineering --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-10-04.json --integrations docs/readiness-evidence/burn-in-2026-10-04.json --compliance docs/readiness-evidence/compliance-burn-2026-10-04.md --load-soak docs/readiness-evidence/load-test-2026-10-04.json",
   "environment": {
     "environment": "unset",
     "ci": false
@@ -32,9 +32,9 @@
     {
       "category": "engineering",
       "status": "FAIL",
-      "detail": "artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=80cf6f05dc82ebb36a02c6bc41638e076326bdd85989e491228d16a23c5a12fc",
+      "detail": "artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=00b0929f1f8b99eba952fe82663a53a6aae0a5da4c02a8ff665696a06c076a6d",
       "artifact": "/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json",
-      "artifact_sha256": "80cf6f05dc82ebb36a02c6bc41638e076326bdd85989e491228d16a23c5a12fc",
+      "artifact_sha256": "00b0929f1f8b99eba952fe82663a53a6aae0a5da4c02a8ff665696a06c076a6d",
       "observed_statuses": [
         "FAIL",
         "PASS",
@@ -89,8 +89,8 @@
     {
       "category": "documentation",
       "status": "PASS",
-      "detail": "checked 309 Markdown files and required readiness documents",
-      "checked_files": 309,
+      "detail": "checked 391 Markdown files and required readiness documents",
+      "checked_files": 391,
       "ignored_directories": [
         ".git",
         ".mypy_cache",
