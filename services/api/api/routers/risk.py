@@ -268,6 +268,48 @@ def system_unified_risk(
     return _system_assessment(db, system)
 
 
+@router.get("/systems/{system_id}/explain")
+def explain_system_unified_risk(
+    system_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The explainability chain behind one system's risk verdict (§4.6).
+
+    Every verdict answers, from persisted state only: what assets are
+    affected (identity-spine keyed), where the evidence lives (verify
+    paths), why controls fail (the STORED per-rule verdicts the worker
+    recorded — not a re-evaluation), who owns the business impact, which
+    factors are DECLARED versus OBSERVED, and why a PQC wave is
+    recommended (the real wave assignment, per site). Coverage
+    limitations are listed, never absorbed.
+    """
+    from api.risk_explain import (
+        accountability,
+        assemble_explanation,
+        pqc_rationale,
+    )
+
+    system = SystemRepository(db).get_by_id(system_id)
+    if system is None:
+        raise HTTPException(status_code=404, detail="System not found")
+    assessment = _system_assessment(db, system)
+    scan_id = assessment.get("scan_id")
+    evidence_rows = (
+        EvidenceRepository(db).get_all_for_scan(scan_id, include_deleted=False)
+        if scan_id else []
+    )
+    assets = SystemRepository(db).assets_for(system.id)
+    return assemble_explanation(
+        system=system,
+        assessment=assessment,
+        evidence_rows=evidence_rows,
+        assets=assets,
+        accountability_block=accountability(db, system),
+        pqc_block=pqc_rationale(system, assets),
+    )
+
+
 @router.get("/systems")
 def systems_unified_risk(
     limit: int = Query(200, ge=1, le=500),
