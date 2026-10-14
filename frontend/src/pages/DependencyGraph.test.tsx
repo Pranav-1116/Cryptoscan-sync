@@ -159,3 +159,50 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     expect(screen.queryByText(/No downstream dependencies detected/)).toBeNull();
   });
 });
+
+describe("DependencyGraph — asset-inventory deep link (round 64)", () => {
+  it("?asset= runs the asset-start blast radius with owning systems and honest linkage labels", async () => {
+    mockFetch({
+      "/api/v1/graph": graph(),
+      "/api/v1/graph/stats": { nodes: 2, edges: 1 },
+      "/api/v1/graph/blast-radius": {
+        start: "asset-77",
+        start_kind: "asset",
+        owning_systems: ["sys-payments", "sys-billing"],
+        systems: [{ id: "checkout", name: "checkout", hops: 2 }],
+        hops: 5,
+        nodes_visited: 3,
+        backend: "memory",
+      },
+    });
+    render(
+      <MemoryRouter initialEntries={["/dependency-graph?asset=asset-77"]}>
+        <DependencyGraph />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/loaded from an inventory cross-link/)).toBeTruthy();
+    expect(screen.getAllByText(/shared across 2 owning system\(s\)/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Impacted Systems")).toBeTruthy();
+    expect(screen.getByText(/· 2 hops/)).toBeTruthy();
+    // the system-start walk stays available: the topology list still works
+    await clickNode("payments");
+    await waitFor(() => expect(screen.queryByText(/loaded from an inventory cross-link/)).toBeNull());
+  });
+
+  it("?asset= with no system links says unknown, never zero impact", async () => {
+    mockFetch(
+      {
+        "/api/v1/graph": graph(),
+        "/api/v1/graph/stats": { nodes: 2, edges: 1 },
+      },
+      404,
+    );
+    render(
+      <MemoryRouter initialEntries={["/dependency-graph?asset=asset-lonely"]}>
+        <DependencyGraph />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/this asset is not linked to any system/)).toBeTruthy();
+    expect(screen.getByText(/Blast radius is unknown, not zero/)).toBeTruthy();
+  });
+});

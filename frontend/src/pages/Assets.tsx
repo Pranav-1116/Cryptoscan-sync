@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Badge, Tabs } from "../components/ui";
 import { Link } from "react-router-dom";
-import { tenantFetch } from "../lib/api";
+import { apiFactStore, apiGraphBlastRadiusFromAsset, FactStoreRow, tenantFetch } from "../lib/api";
 import { IconEstate } from "../components/icons";
 
 // GET /api/v1/assets serializes CryptoAsset columns; only GET /assets/{id}
@@ -10,6 +10,8 @@ interface AssetApiRow {
   id: string;
   asset_key?: string | null;
   algorithm?: string | null;
+  purpose?: string | null;
+  mode?: string | null;
   key_size?: number | null;
   file_path?: string | null;
   owner?: string | null;
@@ -24,6 +26,8 @@ interface AssetRecord {
   id: string;
   name: string;
   algorithm: string | null;
+  purpose: string | null;
+  mode: string | null;
   keySize: number | null;
   protocol: string | null;
   sourcePath: string | null;
@@ -51,6 +55,8 @@ function assetRecord(value: unknown): AssetRecord | null {
     id,
     name: algorithm || id,
     algorithm,
+    purpose: observed(row.purpose),
+    mode: observed(row.mode),
     keySize: typeof row.key_size === "number" && Number.isFinite(row.key_size) && row.key_size > 0 ? row.key_size : null,
     protocol: observed(extra?.protocol),
     sourcePath: observed(row.file_path),
@@ -69,6 +75,22 @@ function requestError(status: number, subject: string): string {
   if (status === 401) return `Authentication required to view ${subject}. Sign in and try again.`;
   if (status === 403) return `Access denied to ${subject} for this account or tenant.`;
   return `Unable to load ${subject} (HTTP ${status}).`;
+}
+
+/* §4.2 identity spine (round 64): the same five identity fields (missing →
+ * "") are the same crypto fact — the canonical join from a crypto asset to
+ * its fact row. Prefer the stored key when the asset row carries one;
+ * pre-spine rows fall back to the field tuple, which the spine derives
+ * from. Either way this is an exact join, never a similarity match. */
+function spineJoin(fact: FactStoreRow, asset: AssetRecord): boolean {
+  if (asset.assetKey) return fact.asset_key === asset.assetKey;
+  const f = fact.fact;
+  const norm = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+  return norm(f.algorithm) === norm(asset.algorithm)
+    && norm(f.purpose) === norm(asset.purpose)
+    && norm(f.file_path) === norm(asset.sourcePath)
+    && norm(f.key_size) === norm(asset.keySize)
+    && norm(f.mode) === norm(asset.mode);
 }
 
 const PAGE_SIZE = 100;
@@ -102,7 +124,15 @@ export default function Assets() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const tabNames = ["Overview", "Evidence", "Dependencies", "Usage", "History", "Policy", "PQC"];
+  const tabNames = ["Overview", "Evidence", "Facts", "Dependencies", "Usage", "History", "Policy", "PQC"];
+  /* §5 (round 64): the fact behind the selected asset (joined on the
+   * identity spine) and its graph blast radius — loaded on demand per tab. */
+  const [fact, setFact] = useState<{ forId: string; row: FactStoreRow | null; candidates: number } | null>(null);
+  const [factLoading, setFactLoading] = useState(false);
+  const [factError, setFactError] = useState<string | null>(null);
+  const [blast, setBlast] = useState<{ forId: string; data: { owning_systems?: string[]; systems?: Array<{ id: string; name?: string; hops: number }>; nodes_visited?: number; backend?: string } | null; unlinked: boolean } | null>(null);
+  const [blastLoading, setBlastLoading] = useState(false);
+  const [blastError, setBlastError] = useState<string | null>(null);
 
   useEffect(() => {
     const resetForScope = () => {
@@ -120,6 +150,12 @@ export default function Assets() {
       setNextPage(null);
       setPageLoading(false);
       setLoading(true);
+      setFact(null);
+      setFactLoading(false);
+      setFactError(null);
+      setBlast(null);
+      setBlastLoading(false);
+      setBlastError(null);
       setRefreshKey((key) => key + 1);
     };
     window.addEventListener("zelinx:tenant", resetForScope);
@@ -254,6 +290,61 @@ export default function Assets() {
     fetchDetail();
     return () => { cancelled = true; };
   }, [selectedId]);
+
+  /* The fact behind this asset (Facts tab): queried server-side by
+   * algorithm + file prefix (bounded), then joined on the identity spine
+   * — never a whole-estate client-side scan. */
+  useEffect(() => {
+    if (activeTab !== 2 || !selectedId) return;
+    const asset = assetsList.find((row) => row.id === selectedId);
+    if (!asset || !asset.algorithm || !asset.sourcePath || fact?.forId === asset.id) return;
+    let cancelled = false;
+    setFactLoading(true);
+    setFactError(null);
+    apiFactStore({ algorithm: asset.algorithm, file_prefix: asset.sourcePath, limit: 50 })
+      .then((res) => {
+        if (cancelled) return;
+        setFactLoading(false);
+        if (res.source !== "live" || !res.data) {
+          const status = /^HTTP (\d+)$/.exec(res.error || "");
+          setFactError(status
+            ? requestError(Number(status[1]), "the fact store")
+            : "The fact store is offline or unreachable.");
+          return;
+        }
+        const rows = Array.isArray(res.data.facts) ? res.data.facts : [];
+        const joined = rows.filter((row) => spineJoin(row, asset));
+        setFact({ forId: asset.id, row: joined.length ? joined[0] : null, candidates: rows.length });
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, selectedId, assetsList, fact?.forId]);
+
+  /* The graph view of this asset (Dependencies tab): the real blast-radius
+   * endpoint fans out from every system linked to the asset. HTTP 404 is
+   * the endpoint's "no system links this asset" answer — an honest
+   * unknown, never rendered as a zero-impact verdict. */
+  useEffect(() => {
+    if (activeTab !== 3 || !selectedId || blast?.forId === selectedId) return;
+    let cancelled = false;
+    setBlastLoading(true);
+    setBlastError(null);
+    apiGraphBlastRadiusFromAsset(selectedId, 5)
+      .then((res) => {
+        if (cancelled) return;
+        setBlastLoading(false);
+        if (res.source === "live" && res.data) {
+          setBlast({ forId: selectedId, data: res.data, unlinked: false });
+        } else if (res.error === "HTTP 404") {
+          setBlast({ forId: selectedId, data: null, unlinked: true });
+        } else {
+          const status = /^HTTP (\d+)$/.exec(res.error || "");
+          setBlastError(status
+            ? requestError(Number(status[1]), "the dependency graph")
+            : "The dependency graph is offline or unreachable.");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, selectedId, blast?.forId]);
 
   const selectedAsset = assetsList.find((asset) => asset.id === selectedId) ?? null;
   const displayedAsset = detail?.id === selectedId ? detail : selectedAsset;
@@ -446,12 +537,110 @@ export default function Assets() {
                   )}
 
                   {activeTab === 2 && (
-                    <div style={{ fontSize: "13px", color: "var(--dim)" }}>
-                      Dependencies are not provided by this asset endpoint. No dependency relationship is verified here.
+                    <div style={{ fontSize: "13px" }}>
+                      {!displayedAsset.algorithm || !displayedAsset.sourcePath ? (
+                        <p role="note" style={{ color: "var(--dim)" }}>
+                          The fact join needs this asset's algorithm and source path; at least one is not observed on this row. No fact is inferred.
+                        </p>
+                      ) : factLoading ? (
+                        <p role="status">Querying the fact store by algorithm and file prefix...</p>
+                      ) : factError ? (
+                        <p role="alert">{factError}</p>
+                      ) : fact?.forId === displayedAsset.id ? (
+                        fact.row ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                            <p style={{ margin: 0 }}>
+                              Identity join: <code style={{ fontFamily: "var(--mono)", color: "var(--cyan)", overflowWrap: "anywhere" }}>{fact.row.asset_key ?? "key not derived"}</code>
+                              {" "}— the same canonical spine key on the asset row and the fact row. This is the fact behind this asset.
+                            </p>
+                            <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", display: "flex", flexDirection: "column", gap: "6px" }}>
+                              <div style={{ fontFamily: "var(--mono)" }}>
+                                {fact.row.fact.algorithm}{fact.row.fact.purpose ? ` · ${fact.row.fact.purpose}` : ""}{fact.row.fact.mode ? ` · ${fact.row.fact.mode}` : ""}{fact.row.fact.key_size != null ? ` · ${fact.row.fact.key_size} bits` : ""}
+                              </div>
+                              <div>
+                                Observed {fact.row.observation_count} time(s)
+                                {fact.row.first_seen ? ` · first ${fact.row.first_seen}` : ""}
+                                {fact.row.last_seen ? ` · last ${fact.row.last_seen}` : ""}
+                              </div>
+                              <div>Scanners: {(fact.row.scanners || []).join(", ") || "none recorded"} · Confidences: {(fact.row.confidences || []).join(", ") || "none recorded"}</div>
+                              <div>Hardcoded-key observations: {fact.row.hardcoded_key_observations ?? 0}</div>
+                              <div>
+                                Evidence behind this fact: {fact.row.evidence_count ?? (fact.row.evidence_ids || []).length} row(s)
+                                {fact.row.evidence_truncated ? " (inline list truncated — the count is exact)" : ""} — integrity not verified here.
+                              </div>
+                              <div>
+                                Store freshness: {fact.row.fresh === false
+                                  ? "stale — evidence activity is newer than the last store rebuild; the live projection (GET /facts/crypto) is the always-correct reference"
+                                  : "current (the rebuild covers the newest evidence activity for this file)"}
+                              </div>
+                            </div>
+                            <p style={{ margin: 0, fontSize: "11.5px", color: "var(--faint)" }}>
+                              Served from the materialised fact store — queried server-side by algorithm + file prefix, matched on the identity spine. The store is derived and rebuildable; it is a projection of evidence, not a second truth.
+                            </p>
+                          </div>
+                        ) : (
+                          <p role="note" style={{ color: "var(--dim)" }}>
+                            No fact row in the store matches this asset's identity ({fact.candidates} candidate row(s) in this file + algorithm). The store materialises facts from evidence — a missing row means the store has not observed this identity tuple, not that the asset was judged fact-free.
+                          </p>
+                        )
+                      ) : (
+                        <p style={{ color: "var(--dim)" }}>The fact join loads when this tab is active.</p>
+                      )}
                     </div>
                   )}
 
-                  {activeTab >= 3 && (
+                  {activeTab === 3 && (
+                    <div style={{ fontSize: "13px" }}>
+                      {blastLoading ? (
+                        <p role="status">Traversing the dependency graph from this asset (asset start)...</p>
+                      ) : blastError ? (
+                        <p role="alert">{blastError}</p>
+                      ) : blast?.forId === displayedAsset.id && blast.unlinked ? (
+                        <p role="note" style={{ color: "var(--dim)" }}>
+                          This asset is not linked to any system — no SystemAsset rows reference it, so the graph walk has no start. Blast radius is unknown, not zero: system links are declared or adopted relationships (Dependency Graph → Edge Manager), never inferred from co-location.
+                        </p>
+                      ) : blast?.forId === displayedAsset.id && blast.data ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                          <p style={{ margin: 0 }}>
+                            Asset start — the walk fans out from every system that uses this asset.
+                            {" "}SystemAsset links are declared or adopted relationships, not observed traffic.
+                          </p>
+                          <div>
+                            Owning system(s): {(blast.data.owning_systems || []).join(", ") || "none reported"}
+                          </div>
+                          <div>
+                            Downstream dependents: {(blast.data.systems || []).length} · {blast.data.nodes_visited ?? (blast.data.systems || []).length} node(s) visited
+                            {(blast.data.systems || []).length > 0 ? ` · max ${Math.max(...(blast.data.systems || []).map((s) => s.hops ?? 0))} hop(s)` : ""}
+                          </div>
+                          {(blast.data.systems || []).length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                              {(blast.data.systems || []).map((s) => (
+                                <div key={s.id} style={{ fontSize: "12px", padding: "6px 8px", background: "var(--bg-2)", borderRadius: "var(--r)" }}>
+                                  ↳ {s.name || s.id} <span style={{ color: "var(--dim)" }}>· {s.hops} hop{s.hops === 1 ? "" : "s"}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ fontSize: "11.5px", color: "var(--faint)" }}>
+                            Engine: {blast.data.backend === "memory" ? "deterministic in-process engine" : blast.data.backend || "not reported"} · exact BFS traversal, no inferred edges.
+                          </div>
+                          <div>
+                            <Link
+                              to={`/dependency-graph?asset=${encodeURIComponent(displayedAsset.id)}`}
+                              className="btn outline"
+                              style={{ textDecoration: "none", fontSize: "12px", padding: "6px 12px", borderRadius: "var(--r)" }}
+                            >
+                              Open in Dependency Graph
+                            </Link>
+                          </div>
+                        </div>
+                      ) : (
+                        <p style={{ color: "var(--dim)" }}>Blast radius loads when this tab is active.</p>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab >= 4 && (
                     <div style={{ fontSize: "13px", color: "var(--dim)", padding: "12px 0" }}>
                       No {tabNames[activeTab].toLowerCase()} verdict is provided by this asset endpoint.
                     </div>

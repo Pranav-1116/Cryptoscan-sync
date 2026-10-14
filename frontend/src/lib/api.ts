@@ -4392,3 +4392,48 @@ export const apiGraphBlastRadiusFromAsset = (
   hops = 5,
 ): Promise<ApiResult<BlastRadiusResult & { start_kind?: string; owning_systems?: string[] }>> =>
   call(`/api/v1/graph/blast-radius?asset_id=${encodeURIComponent(assetId)}&hops=${hops}`);
+
+/* Fact store read (§5, round 64): the materialised fact projection over
+ * evidence. Every row carries the §4.2 identity spine (asset_key) — the
+ * canonical join from a crypto asset to its fact row. The store is
+ * derived and rebuildable; GET /facts/crypto remains the live reference. */
+export interface FactStoreRow {
+  tenant_id?: string | null;
+  asset_key?: string | null;
+  fact: {
+    algorithm: string | null;
+    purpose?: string | null;
+    file_path?: string | null;
+    key_size?: number | null;
+    mode?: string | null;
+  };
+  observation_count: number;
+  first_seen?: string | null;
+  last_seen?: string | null;
+  scanners?: string[];
+  confidences?: string[];
+  hardcoded_key_observations?: number;
+  evidence_ids?: string[];
+  evidence_count?: number;
+  evidence_truncated?: boolean;
+  fresh?: boolean;
+}
+export interface FactStoreResponse {
+  model: string;
+  freshness?: string;
+  stale_rows?: number;
+  facts: FactStoreRow[];
+  facts_returned: number;
+  facts_matching: number;
+  truncated?: boolean;
+}
+export const apiFactStore = (params: {
+  algorithm?: string; file_prefix?: string; limit?: number;
+} = {}): Promise<ApiResult<FactStoreResponse>> => {
+  const q = new URLSearchParams();
+  if (params.algorithm) q.set("algorithm", params.algorithm);
+  if (params.file_prefix) q.set("file_prefix", params.file_prefix);
+  if (params.limit) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return call(`/api/v1/facts/store${qs ? `?${qs}` : ""}`);
+};

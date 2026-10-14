@@ -219,6 +219,53 @@ def test_platform_and_tenant_fact_equivalence_and_scope(sqlite_app):
         assert len({node["id"] for node in graph["nodes"]}) == graph["node_count"]
 
 
+def test_fact_rows_join_to_assets_on_the_identity_spine(sqlite_app):
+    """§5 (round 64): the fact behind a crypto asset is found BY KEY —
+    GET /assets/{id} and the fact read paths carry the same canonical
+    spine string for the same observation tuple. This is the join the
+    asset detail's fact cross-link follows; a tuple that differs in any
+    identity field must NOT join."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import db.models  # noqa: F401
+    from db.models.crypto_asset import CryptoAsset
+    from shared_models.asset_identity import crypto_asset_key
+
+    client, db_url = sqlite_app
+    _seed(db_url)
+    admin = _login(client)
+    _rebuild(client, admin)
+
+    spine = crypto_asset_key("RSA-2048", "ENCRYPTION",
+                             "src/pay/Keys.java", None, None)
+    other = crypto_asset_key("RSA-2048", "ENCRYPTION",
+                             "src/pay/Keys.java", 2048, None)
+    assert spine != other  # key_size is identity: None ≠ 2048
+
+    eng = create_engine(db_url)
+    session = sessionmaker(bind=eng)()
+    session.add(CryptoAsset(algorithm="RSA-2048", purpose="ENCRYPTION",
+                            key_size=None, mode=None,
+                            file_path="src/pay/Keys.java", asset_key=spine))
+    session.commit()
+    asset_id = session.query(CryptoAsset).one().id
+    session.close()
+    eng.dispose()
+
+    detail = client.get(f"/api/v1/assets/{asset_id}", headers=admin).json()
+    assert detail["asset_key"] == spine
+
+    for path in ("/api/v1/facts/store?algorithm=RSA-2048",
+                 "/api/v1/facts/crypto?algorithm=RSA-2048"):
+        body = client.get(path, headers=admin).json()
+        matching = [f for f in body["facts"]
+                    if f["fact"]["file_path"] == "src/pay/Keys.java"]
+        assert len(matching) == 1
+        # the asset's spine key finds exactly its own fact row
+        assert matching[0]["asset_key"] == detail["asset_key"]
+
+
 def test_store_requires_auth(sqlite_app):
     client, _ = sqlite_app
     assert client.get("/api/v1/facts/store").status_code == 401

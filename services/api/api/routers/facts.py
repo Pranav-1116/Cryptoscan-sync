@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_admin
+from shared_models.asset_identity import crypto_asset_key
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +181,12 @@ def fact_store(
         evidence_ids = sorted(str(i) for i in (row.evidence_ids or []))
         facts.append({
             "tenant_id": row.tenant_id,
+            # §4.2 identity spine — the same canonical key the live
+            # projection derives, so store rows and projected rows stay
+            # interchangeable AND joinable to crypto_assets.asset_key.
+            "asset_key": crypto_asset_key(row.algorithm, row.purpose,
+                                          row.file_path, row.key_size,
+                                          row.mode),
             "fact": {
                 "algorithm": row.algorithm,
                 "purpose": row.purpose or None,

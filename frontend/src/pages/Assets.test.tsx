@@ -27,8 +27,10 @@ describe("asset inventory from the live API", () => {
     expect(screen.queryByRole("link", { name: /Evidence/i })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Evidence" }));
     expect(await screen.findByText("No evidence IDs are associated with this asset in the detail response. Integrity not verified.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Facts" }));
+    expect(screen.getByText(/The fact join needs this asset's algorithm and source path/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Dependencies" }));
-    expect(screen.getByText(/Dependencies are not provided by this asset endpoint/)).toBeInTheDocument();
+    expect(await screen.findByText(/not linked to any system/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Policy" }));
     expect(screen.getByText("No policy verdict is provided by this asset endpoint.")).toBeInTheDocument();
   });
@@ -241,5 +243,75 @@ describe("asset identity spine in the detail view", () => {
     await screen.findByRole("heading", { name: "DES" });
     const rows = screen.getAllByText("Not observed");
     expect(rows.length).toBeGreaterThanOrEqual(1); // the spine row says so honestly
+  });
+});
+
+describe("asset detail → fact and graph cross-links (round 64)", () => {
+  const spine = "fact:v1:9a8b7c";
+  const aesAsset = {
+    id: "asset-aes", algorithm: "AES-256", purpose: "ENCRYPTION", mode: "GCM",
+    key_size: 256, file_path: "src/pay/Cipher.java", asset_key: spine,
+    owner: "Payments", lifecycle_state: "ACTIVE",
+  };
+  const factRow = {
+    asset_key: spine,
+    fact: { algorithm: "AES-256", purpose: "ENCRYPTION", file_path: "src/pay/Cipher.java", key_size: 256, mode: "GCM" },
+    observation_count: 3, first_seen: "2026-09-01T00:00:00Z", last_seen: "2026-10-05T00:00:00Z",
+    scanners: ["ast-scanner", "regex-scanner"], confidences: ["HIGH"],
+    hardcoded_key_observations: 0,
+    evidence_ids: ["ev-1", "ev-2", "ev-3"], evidence_count: 3, evidence_truncated: false,
+    fresh: true,
+  };
+
+  it("joins the asset to its fact row on the identity spine", async () => {
+    mockFetch({
+      [listPath]: { assets: [aesAsset], total_count: 1, page: 1, page_size: 100 },
+      "/api/v1/assets/asset-aes": { ...aesAsset, evidence_ids: ["ev-1"] },
+      "/api/v1/facts/store": { model: "fact-store/read-v1", freshness: "current", facts: [factRow], facts_returned: 1, facts_matching: 1 },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "AES-256" });
+    fireEvent.click(screen.getByRole("tab", { name: "Facts" }));
+    expect(await screen.findByText(/the same canonical spine key on the asset row and the fact row/)).toBeInTheDocument();
+    expect(screen.getByText(spine)).toBeInTheDocument();
+    expect(screen.getByText(/Observed 3 time\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Evidence behind this fact: 3 row\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/integrity not verified here/)).toBeInTheDocument();
+    expect(screen.getByText(/current \(the rebuild covers/)).toBeInTheDocument();
+  });
+
+  it("says honestly when no fact row matches the identity — no fabricated fact", async () => {
+    const stranger = { ...factRow, asset_key: "fact:v1:other", fact: { ...factRow.fact, key_size: 128 } };
+    mockFetch({
+      [listPath]: { assets: [aesAsset], total_count: 1, page: 1, page_size: 100 },
+      "/api/v1/assets/asset-aes": { ...aesAsset, evidence_ids: [] },
+      "/api/v1/facts/store": { model: "fact-store/read-v1", facts: [stranger], facts_returned: 1, facts_matching: 1 },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "AES-256" });
+    fireEvent.click(screen.getByRole("tab", { name: "Facts" }));
+    expect(await screen.findByText(/No fact row in the store matches this asset's identity/)).toBeInTheDocument();
+    expect(screen.getByText(/\(1 candidate row/)).toBeInTheDocument();
+  });
+
+  it("walks the real blast radius from the asset and deep-links into the graph view", async () => {
+    mockFetch({
+      [listPath]: { assets: [aesAsset], total_count: 1, page: 1, page_size: 100 },
+      "/api/v1/assets/asset-aes": { ...aesAsset, evidence_ids: ["ev-1"] },
+      "/api/v1/graph/blast-radius": {
+        start: "asset-aes", start_kind: "asset", owning_systems: ["sys-payments"],
+        systems: [{ id: "sys-batch", name: "Batch Settlement", hops: 2 }],
+        hops: 5, nodes_visited: 2, backend: "memory",
+      },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "AES-256" });
+    fireEvent.click(screen.getByRole("tab", { name: "Dependencies" }));
+    expect(await screen.findByText(/Owning system\(s\): sys-payments/)).toBeInTheDocument();
+    expect(screen.getByText(/Batch Settlement/)).toBeInTheDocument();
+    expect(screen.getByText(/· 2 hops/)).toBeInTheDocument();
+    expect(screen.getByText(/declared or adopted relationships, not observed traffic/)).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Open in Dependency Graph" });
+    expect(link).toHaveAttribute("href", "/dependency-graph?asset=asset-aes");
   });
 });

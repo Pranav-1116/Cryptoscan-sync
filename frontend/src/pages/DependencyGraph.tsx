@@ -1,7 +1,7 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
-import { apiGraph, apiGraphStats, apiGraphBlastRadius } from "../lib/api";
+import { apiGraph, apiGraphStats, apiGraphBlastRadius, apiGraphBlastRadiusFromAsset } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import CodeCascadePanel from "../components/CodeCascadePanel";
 import UnifiedCascadePanel from "../components/UnifiedCascadePanel";
@@ -15,6 +15,26 @@ export default function DependencyGraph() {
   const [blastRadius, setBlastRadius] = useState<any>(null);
   const [calculatingBlast, setCalculatingBlast] = useState(false);
   const [search, setSearch] = useState("");
+  /* §5 (round 64): /dependency-graph?asset=<id> deep-links from the asset
+   * inventory — the blast panel starts from that crypto asset instead of
+   * waiting for a node click. */
+  const [searchParams] = useSearchParams();
+  const assetParam = searchParams.get("asset");
+
+  useEffect(() => {
+    if (!assetParam) return;
+    let alive = true;
+    setSelectedNode({ id: assetParam, kind: "asset", label: `Crypto asset ${assetParam}` });
+    setCalculatingBlast(true);
+    apiGraphBlastRadiusFromAsset(assetParam, 5).then((res) => {
+      if (!alive) return;
+      // 404 = the endpoint's "asset not linked to any system" answer —
+      // rendered below as the honest unknown, never as zero impact.
+      setBlastRadius(res.source === "live" && res.data ? res.data : null);
+      setCalculatingBlast(false);
+    });
+    return () => { alive = false; };
+  }, [assetParam]);
 
   useEffect(() => {
     let alive = true;
@@ -236,6 +256,14 @@ export default function DependencyGraph() {
 
           {selectedNode ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              {selectedNode.kind === "asset" && (
+                <div style={{ fontSize: "12px", color: "var(--dim)", lineHeight: 1.5 }}>
+                  Asset start — loaded from an inventory cross-link. The walk fans out from every system that
+                  uses this crypto asset (declared or adopted SystemAsset links, not observed traffic).{" "}
+                  <Link to="/assets" style={{ color: "var(--cyan)" }}>Back to the asset inventory</Link>
+                  {blastRadius?.owning_systems?.length ? ` · shared across ${blastRadius.owning_systems.length} owning system(s)` : ""}
+                </div>
+              )}
               <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
                 <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Selected Asset</div>
                 <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--cyan)", margin: "3px 0" }}>{selectedNode.label || selectedNode.id}</div>
@@ -318,7 +346,9 @@ export default function DependencyGraph() {
                 </div>
               ) : (
                 <div style={{ padding: "14px", background: "var(--bg-2)", borderRadius: "var(--r)", fontSize: "12.5px", color: "var(--dim)" }}>
-                  Blast radius unavailable for this node — no traversal result was returned, so nothing is claimed.
+                  {selectedNode.kind === "asset"
+                    ? "No traversal result — this asset is not linked to any system (no SystemAsset rows), or the graph is unavailable. Blast radius is unknown, not zero; nothing is claimed."
+                    : "Blast radius unavailable for this node — no traversal result was returned, so nothing is claimed."}
                 </div>
               )}
 

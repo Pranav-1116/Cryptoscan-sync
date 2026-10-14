@@ -21,6 +21,12 @@ MAX_EVIDENCE_REFS = 50
 # and this live projection share ONE definition of what a fact is
 from db.fact_projection import fact_key  # noqa: F401 — re-exported truth
 
+# §4.2 identity spine (round 57): every projected fact carries the same
+# canonical durable key as the evidence row, the crypto_assets row and the
+# BOM component of the same observation — the join the asset inventory
+# cross-links on. Derived, never stored twice.
+from shared_models.asset_identity import crypto_asset_key
+
 
 def _scanner_id(row: Mapping[str, Any]) -> str:
     finding = row.get("finding_data")
@@ -58,6 +64,8 @@ def project_facts(
         evidence_ids = sorted(str(m.get("id")) for m in members)
         facts.append({
             "tenant_id": tenant_id,
+            "asset_key": crypto_asset_key(algorithm, purpose, file_path,
+                                          key_size, mode),
             "fact": {
                 "algorithm": algorithm,
                 "purpose": purpose or None,

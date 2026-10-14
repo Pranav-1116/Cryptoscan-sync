@@ -71,6 +71,26 @@ def test_fact_key_and_truncation_and_summary():
     assert summary["facts_by_algorithm"] == {"RSA": 1}
 
 
+def test_projected_facts_carry_the_identity_spine_key():
+    """§4.2 (round 64): every projected fact exposes the canonical
+    asset_key derived from its identity tuple — the same string the
+    crypto_assets row and BOM component of the observation carry."""
+    from shared_models.asset_identity import crypto_asset_key
+
+    rows = [
+        _row("AES-256", "src/pay/Cipher.java", key_size=256, mode="GCM"),
+        _row("AES-256", "src/pay/Cipher.java", key_size=128, mode="GCM"),
+    ]
+    facts = project_facts(rows)
+    assert len(facts) == 2
+    for fact in facts:
+        f = fact["fact"]
+        assert fact["asset_key"] == crypto_asset_key(
+            f["algorithm"], f["purpose"], f["file_path"], f["key_size"], f["mode"])
+    # parameters are identity: different key size → different spine key
+    assert facts[0]["asset_key"] != facts[1]["asset_key"]
+
+
 # ── API end to end ───────────────────────────────────────────────────
 
 
