@@ -1152,9 +1152,6 @@ def nbom_cascade(body: NbomRequest, ref: str = Query(..., description="bom-ref t
 # Statuses that mean the probe never completed a handshake. Same set the
 # telecom classifier uses: an endpoint we could not reach is unknown, and must
 # not be inventoried as though we had observed it to be healthy.
-_NBOM_UNREACHABLE = {"DNS_FAILED", "TIMEOUT", "PORT_CLOSED", "CONNECT_ERROR", ""}
-
-
 def _gather_network_inventory(db: Session, *, limit: int = 2000) -> dict[str, list[dict]]:
     """Build NBOM inputs from real rows: network scan probes + certificates.
 
@@ -1165,10 +1162,13 @@ def _gather_network_inventory(db: Session, *, limit: int = 2000) -> dict[str, li
     than re-declared by hand.
 
     Newest run wins per endpoint, so a re-scan supersedes rather than
-    duplicates.
+    duplicates. The probe→endpoint mapping itself lives in
+    ``cbom.nbom.probe_to_endpoint`` (round 53) so the API, the cross-BOM
+    query and the offline probe script share ONE contract.
     """
     from sqlalchemy import desc, select as _select
 
+    from cbom.nbom import probe_to_endpoint
     from db.models.network_scan_run import NetworkScanRun
 
     runs = db.execute(
@@ -1181,31 +1181,7 @@ def _gather_network_inventory(db: Session, *, limit: int = 2000) -> dict[str, li
             raw = str(probe.get("endpoint") or "").strip()
             if not raw or raw in endpoints:
                 continue  # first sighting is the newest run
-            host, _, port = raw.rpartition(":")
-            if not host:
-                host, port = raw, ""
-            chain = probe.get("certificates") or []
-            leaf = chain[0] if chain else {}
-            status = str(probe.get("status") or "").upper()
-            endpoints[raw] = {
-                "host": host,
-                "port": int(port) if str(port).isdigit() else port,
-                "protocol": probe.get("starttls") or "tls",
-                "tls_version": probe.get("tls_version"),
-                "cipher_suite": probe.get("cipher_suite"),
-                "observed": status not in _NBOM_UNREACHABLE,
-                "service": probe.get("alpn"),
-                "certificate": {
-                    "subject": leaf.get("subject"),
-                    "issuer": leaf.get("issuer"),
-                    "serial_number": leaf.get("serial_number"),
-                    "public_key_algorithm": leaf.get("public_key_algorithm"),
-                    "public_key_size": leaf.get("public_key_size"),
-                    "not_after": str(leaf.get("not_after") or "") or None,
-                    "is_self_signed": leaf.get("is_self_signed"),
-                    "expiry_status": leaf.get("expiry_status"),
-                } if leaf else None,
-            }
+            endpoints[raw] = probe_to_endpoint(probe)
     return {"endpoints": list(endpoints.values())}
 
 

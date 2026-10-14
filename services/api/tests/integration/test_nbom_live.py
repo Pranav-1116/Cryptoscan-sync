@@ -203,3 +203,47 @@ def test_cross_bom_uses_persisted_network_and_hardware_inventory(ctx):
     assert hardware[0]["identity"] == "hardware:edge-hsm-01"
     assert hardware[0]["boms"] == ["hbom", "techbom"]
     assert hardware[0]["asset_identity_confirmed"] is False
+
+
+def test_nbom_carries_negotiated_crypto_from_real_probe_shape(ctx):
+    """Round 53 contract fix: the REAL prober nests the negotiated facts
+    under ``crypto`` (and starttls under ``metadata``) — an earlier
+    mapping read them top-level only, so a live scan's NBOM silently
+    lost tls_version/cipher_suite/alpn. Seeded rows with the raw prober's
+    exact shape must now produce an endpoint component that carries the
+    negotiated protocol and suite."""
+    c, session = ctx
+    raw_probe_shape = {
+        "endpoint": "api.bank.qa:443",
+        "status": "OK",
+        "crypto": {
+            "tls_version": "TLSv1.3",
+            "cipher_suite": "TLS_AES_256_GCM_SHA384",
+            "alpn": "h2",
+        },
+        "metadata": {"starttls": None},
+        "certificates": [{
+            "subject": "CN=api.bank.qa", "issuer": "CN=Bank QA CA",
+            "serial_number": "9f", "public_key_algorithm": "ECDSA",
+            "public_key_size": 256, "is_self_signed": False,
+        }],
+    }
+    session.add(NetworkScanRun(target_kind="hosts", verdict="OK",
+                               result={"probes": [raw_probe_shape]}))
+    session.commit()
+
+    body = c.get(API, headers=AUTH).json()
+    assert body["source"] == "live"
+    endpoint_component = next(
+        comp for comp in body["nbom"]["components"]
+        if comp["bom-ref"].startswith("endpoint:")
+    )
+    props = {p["name"]: p["value"] for p in endpoint_component["properties"]}
+    assert props["cryptoscan:tls_version"] == "TLSv1.3"
+    assert props["cryptoscan:service"] == "h2"
+    # the negotiated suite is its own first-class component, not an
+    # endpoint property (pinned below)
+    suites = [comp for comp in body["nbom"]["components"]
+              if comp["bom-ref"].startswith("suite:")]
+    assert any("TLS_AES_256_GCM_SHA384" in (comp.get("name") or "") for comp in suites), \
+        "the negotiated suite must appear as a component from the raw prober shape"

@@ -210,6 +210,65 @@ def assess_public_key(algorithm: Any, bits: Any) -> list[dict[str, Any]]:
 
 # -------------------------------------------------------------- building
 
+#: Probe statuses that mean the crypto on this endpoint WAS observed: a
+#: successfully negotiated handshake. Everything else — DNS failure, closed
+#: port, timeout, a refused STARTTLS upgrade, a failed handshake
+#: (``TLS_ERROR``), a server that demanded a client certificate
+#: (``MTLS_REQUIRED``) — leaves the cryptography UNKNOWN, and an unknown
+#: endpoint is excluded from every verdict, never scored as healthy and
+#: never scored as plaintext (round 53 fix: a failed handshake used to
+#: fabricate a critical "no transport encryption" finding).
+OBSERVED_OK_STATUSES = {"OK", "TLS_OK"}
+
+
+def probe_to_endpoint(probe: Mapping[str, Any]) -> dict[str, Any]:
+    """Map ONE network-scanner probe finding to a ``build_nbom`` endpoint.
+
+    This is the single mapping used by the API (``GET /cbom/nbom``), the
+    cross-BOM query and the offline probe script — one contract, not
+    three near-copies. ``observed`` is True only for a successfully
+    negotiated handshake, so a refused, timed-out or FAILED-handshake
+    endpoint is inventoried but never contributes to a verdict — unknown,
+    never healthy, never "plaintext".
+
+    Reads BOTH shapes honestly (round 53 contract fix): the raw prober
+    nests the negotiated protocol facts under ``crypto`` /
+    ``metadata.starttls`` (``network_scanner.probing.active_prober``),
+    while some stored rows carry them top-level. A real stored scan used
+    to lose ``tls_version``/``cipher_suite``/``alpn`` silently — the BOM
+    rendered the endpoint without its negotiated cryptography.
+    """
+    raw = str(probe.get("endpoint") or "").strip()
+    if not raw:
+        return {}
+    host, _, port = raw.rpartition(":")
+    if not host:
+        host, port = raw, ""
+    chain = probe.get("certificates") or []
+    leaf = chain[0] if chain else {}
+    status = str(probe.get("status") or "").strip().upper()
+    crypto = probe.get("crypto") or {}
+    metadata = probe.get("metadata") or {}
+    return {
+        "host": host,
+        "port": int(port) if str(port).isdigit() else port,
+        "protocol": probe.get("starttls") or metadata.get("starttls") or "tls",
+        "tls_version": probe.get("tls_version") or crypto.get("tls_version"),
+        "cipher_suite": probe.get("cipher_suite") or crypto.get("cipher_suite"),
+        "observed": status in OBSERVED_OK_STATUSES,
+        "service": probe.get("alpn") or crypto.get("alpn"),
+        "certificate": {
+            "subject": leaf.get("subject"),
+            "issuer": leaf.get("issuer"),
+            "serial_number": leaf.get("serial_number"),
+            "public_key_algorithm": leaf.get("public_key_algorithm"),
+            "public_key_size": leaf.get("public_key_size"),
+            "not_after": str(leaf.get("not_after") or "") or None,
+            "is_self_signed": leaf.get("is_self_signed"),
+            "expiry_status": leaf.get("expiry_status"),
+        } if leaf else None,
+    }
+
 
 def _component(kind: str, name: str, ref: str, props: Mapping[str, Any],
                findings: list[dict[str, Any]]) -> dict[str, Any]:
