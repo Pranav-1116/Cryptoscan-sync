@@ -67,6 +67,7 @@ export const CAPABILITIES_JSON = {
   "priorities": "beta",
   "protocols": "beta",
   "register": "beta",
+  "remediation": "beta",
   "reports": "ga",
   "reset-password": "ga",
   "resilience": "beta",

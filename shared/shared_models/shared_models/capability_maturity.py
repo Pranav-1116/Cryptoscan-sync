@@ -109,6 +109,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "cmdb": {"tier": "beta", "area": "Discovery", "why": "CMDB import/resolution; ServiceNow mapping is field-tested with one schema."},
     "catalog": {"tier": "beta", "area": "Discovery", "why": "Hardware/vendor catalog browse."},
     "priorities": {"tier": "beta", "area": "Intelligence", "why": "Deterministic prioritisation over findings + business context."},
+    "remediation": {"tier": "beta", "area": "Intelligence", "why": "Owned task lifecycle with machine verification against rescan evidence; new surface over the full task API."},
     "risk": {"tier": "beta", "area": "Intelligence", "why": "Risk roll-up; weights documented but not yet regulator-validated."},
     "executive": {"tier": "beta", "area": "Overview", "why": "Executive summary over the same stats; presentation layer."},
     "notifications": {"tier": "beta", "area": "Administration", "why": "In-app notifications + SMTP; channels beyond email are connectors."},

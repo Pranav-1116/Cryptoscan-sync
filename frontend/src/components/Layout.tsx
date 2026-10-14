@@ -78,6 +78,7 @@ const PRIMARY_SECTIONS: NavSection[] = [
       { to: "/compliance", label: "Compliance", icon: ListChecks },
       { to: "/evidence", label: "Evidence", icon: FileText },
       { to: "/security-center", label: "Audit Log", icon: ListChecks },
+      { to: "/remediation", label: "Remediation Tasks", icon: ListChecks },
       { to: "/priorities", label: "Remediation Priorities", icon: ListChecks },
       { to: "/migration", label: "Migration", icon: ShieldCheck },
     ],

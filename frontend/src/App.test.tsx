@@ -52,10 +52,10 @@ describe("app shell", () => {
     expect(nav?.querySelectorAll(":scope > .nav-label")).toHaveLength(6);
     const links = Array.from(nav?.querySelectorAll("a.nav") || []);
     const hrefs = links.map((link) => link.getAttribute("href") || "");
-    expect(links).toHaveLength(38);
-    expect(new Set(hrefs).size).toBe(37);
+    expect(links).toHaveLength(39);
+    expect(new Set(hrefs).size).toBe(38);
     expect(hrefs.filter((href) => href === "/security-center")).toHaveLength(2);
-    for (const path of ["/crypto", "/cbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/priorities", "/migration", "/live-scanners"]) {
+    for (const path of ["/crypto", "/cbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/remediation", "/priorities", "/migration", "/live-scanners"]) {
       expect(hrefs).toContain(path);
     }
     expect(hrefs).not.toContain("/vendor-due-diligence");

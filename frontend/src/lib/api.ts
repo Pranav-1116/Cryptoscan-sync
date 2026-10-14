@@ -3661,6 +3661,54 @@ export interface PriorityResponse {
 export const apiPriority = (limit = 100): Promise<ApiResult<PriorityResponse>> =>
   call(`/api/v1/priority?limit=${limit}`);
 
+/* Remediation task lifecycle (§5, round 63): real tasks with owner,
+ * status, rescan and verification — COMPLETED is a declared state;
+ * VERIFIED means machine-verified against rescan evidence. */
+export interface RemediationVerificationSummary {
+  id: string; result: string; reason: string | null;
+  rescan_id: string | null; verified_by: string; verified_at: string | null;
+}
+export interface RemediationTask {
+  id: string; evidence_id: string; scan_id: string; rule_id: string;
+  category?: string | null; priority?: string | null; replace_with?: string | null;
+  original_finding: Record<string, any>;
+  target_location?: string | null;
+  status: string; owner?: string | null; notes?: string | null;
+  created_by: string; source: string; source_ref?: string | null;
+  completed_at?: string | null; completed_by?: string | null;
+  latest_verification?: RemediationVerificationSummary;
+}
+export interface RemediationTaskList {
+  tasks: RemediationTask[]; total: number; page: number; page_size: number;
+}
+export const apiRemediationTasks = (params: {
+  status?: string; owner?: string; page?: number; page_size?: number;
+} = {}): Promise<ApiResult<RemediationTaskList>> => {
+  const q = new URLSearchParams();
+  if (params.status) q.set("status", params.status);
+  if (params.owner) q.set("owner", params.owner);
+  if (params.page) q.set("page", String(params.page));
+  if (params.page_size) q.set("page_size", String(params.page_size));
+  const qs = q.toString();
+  return call(`/api/v1/remediation/tasks${qs ? `?${qs}` : ""}`);
+};
+export const apiRemediationAccept = (taskId: string): Promise<ApiResult<RemediationTask>> =>
+  call(`/api/v1/remediation/tasks/${encodeURIComponent(taskId)}/accept`, { method: "POST" });
+export const apiRemediationComplete = (
+  taskId: string, rescanId: string, notes?: string,
+): Promise<ApiResult<RemediationTask>> =>
+  call(`/api/v1/remediation/tasks/${encodeURIComponent(taskId)}/complete`, {
+    method: "POST",
+    body: JSON.stringify({ rescan_id: rescanId || null, notes: notes || null }),
+  });
+export const apiRemediationVerify = (
+  taskId: string, rescanId?: string,
+): Promise<ApiResult<RemediationTask>> =>
+  call(`/api/v1/remediation/tasks/${encodeURIComponent(taskId)}/verify`, {
+    method: "POST",
+    body: JSON.stringify({ rescan_id: rescanId || null }),
+  });
+
 /* Priority item → owned remediation task(s) (r42, §4.7). Drift-sourced items
    open tasks against their FAIL/WARN evidence; runtime-sourced items get an
    honest 422 — tasks require an evidence_id from the chain. Bespoke fetch

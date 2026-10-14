@@ -14,7 +14,6 @@ describe("capability maturity", () => {
     const aliases = new Map(redirects.map((m) => [m[1], m[2]]));
     expect([...aliases.entries()]).toEqual([
       ["audit", "security-center"],
-      ["remediation", "priorities"],
       ["techbom", "live-asset-intelligence"],
     ]);
     const missing = [...routes].filter((r) => !(r in CAPABILITIES_JSON) && !aliases.has(r));

@@ -18,10 +18,10 @@ role-guarded actions.
 | Tier | Meaning | Surfaces |
 |---|---|---|
 | **GA** | Production-supported. Deterministic core, broad tests, in the burn-in. | 33 |
-| **Beta** | Real code and real data; thinner test coverage or short deployment history. | 31 |
+| **Beta** | Real code and real data; thinner test coverage or short deployment history. | 32 |
 | **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 10 |
 
-Total: 74 surfaces.
+Total: 75 surfaces.
 
 ## GA (33)
 
@@ -47,7 +47,7 @@ Total: 74 surfaces.
 | `/compliance` | Governance | Requirement-by-requirement reports from policy evidence, 6 templates. |
 | `/evidence` | Governance | SHA-256 content/chain/manifest hashes, audit packs, verify endpoint. |
 | `/security-policy` | Governance | YAML policy packs (BASELINE/PCI/NIST 131A/CNSA 2.0/FIPS/HIPAA), 82 tests, no AI. |
-| `/cbom` | Intelligence | Shared Technology BOM (SBOM/CBOM/HBOM/VBOM), snapshots and signed exports; binary scans additionally expose static NBOM and vulnerability sidecars through Applications. |
+| `/cbom` | Intelligence | Shared Technology BOM (SBOM/CBOM/HBOM/VBOM), snapshots and signed exports; system CBOMs carry real estate dependency edges (SystemAsset + SystemDependency, both directions) and scan CBOMs carry the scanner's observed cascade (providers, waves); the unified cross-BOM cascade answers 'what breaks if X changes' across code, network, system graph, process, hardware, vendor and library layers over the digital-twin snapshot, with persisted run history, run-to-run diffs across every layer, migration-wave grouping, point-in-time replay over captured twin snapshots, and watched targets that alert when the blast radius changes; the Dependency Graph page manages edges and runs cascades in the UI; binary scans additionally expose static NBOM and vulnerability sidecars through Applications. |
 | `/crypto` | Intelligence | Algorithm registry + normalized crypto view (114 normalization tests). |
 | `/crypto-assets` | Intelligence | Crypto inventory from the normalized findings table. |
 | `/drift` | Intelligence | Baseline approval + drift events + CI gate; 15 test files. |
@@ -61,7 +61,7 @@ Total: 74 surfaces.
 | `/live-stream` | Overview | SSE event stream with Last-Event-ID resume and Redis federation. |
 | `/search-results` | Overview | Cross-inventory search. |
 
-## Beta (31)
+## Beta (32)
 
 | Route | Area | Why this tier |
 |---|---|---|
@@ -88,11 +88,12 @@ Total: 74 surfaces.
 | `/crypto-changes` | Intelligence | Change timeline from drift + scan history. |
 | `/dependency-graph` | Intelligence | Same graph engine as /graph. |
 | `/digital-twin` | Intelligence | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
-| `/graph` | Intelligence | Neo4j dependency graph is optional at runtime; 3.2k LOC, 9 test files. |
+| `/graph` | Intelligence | Neo4j dependency graph is optional at runtime (in-process engine is the fallback and the tenant-isolated path); 3.2k+ LOC. Edge management API with provenance (source/created_by/confidence/last_verified), discovered-edge adoption (scanner cascade + graph snapshots → operator approval), declared crypto↔hardware and vendor-of-vendor linkage, and asset-level blast radius (shared asset → union over every using system) are live with tenant-scoped tests; scale evidence on real Neo4j estates is still open. |
 | `/hbom` | Intelligence | Hardware BOM view over the Technology BOM; depends on hardware scan coverage. |
 | `/migration` | Intelligence | Scan → project → tasks → velocity forecast; forecast model is simple. |
 | `/priorities` | Intelligence | Deterministic prioritisation over findings + business context. |
 | `/protocols` | Intelligence | Protocol posture view from network scans. |
+| `/remediation` | Intelligence | Owned task lifecycle with machine verification against rescan evidence; new surface over the full task API. |
 | `/risk` | Intelligence | Risk roll-up; weights documented but not yet regulator-validated. |
 | `/executive` | Overview | Executive summary over the same stats; presentation layer. |
 | `/role-dashboard` | Overview | Per-role landing view. |

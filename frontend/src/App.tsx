@@ -60,6 +60,7 @@ const PlatformP2 = lazy(() => import("./pages/PlatformP2"));
 const Pqc = lazy(() => import("./pages/Pqc"));
 const PqcMap = lazy(() => import("./pages/PqcMap"));
 const Priorities = lazy(() => import("./pages/Priorities"));
+const Remediation = lazy(() => import("./pages/Remediation"));
 const Protocols = lazy(() => import("./pages/Protocols"));
 const Register = lazy(() => import("./pages/Register"));
 const Reports = lazy(() => import("./pages/Reports"));
@@ -148,7 +149,7 @@ function RoutedPages() {
       <Route path="/accuracy" element={<Accuracy />} />
       {/* Legacy bookmarks resolve inside the authenticated shell, without duplicating pages. */}
       <Route path="/audit" element={<Navigate to="/security-center" replace />} />
-      <Route path="/remediation" element={<Navigate to="/priorities" replace />} />
+      <Route path="/remediation" element={<Remediation />} />
       <Route path="/techbom" element={<Navigate to="/live-asset-intelligence" replace />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="/agility" element={<Agility />} />
