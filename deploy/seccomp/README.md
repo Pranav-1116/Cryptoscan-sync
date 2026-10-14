@@ -39,10 +39,13 @@ Verified scope and known limits:
   (multiprocessing socketpairs, `/dev/log`), pipes and files are
   preserved, and descriptors opened *after* the sweep remain — the
   container boundary is still the authoritative fix.
-- The syscall-number table is **x86_64 only**, verified against the
-  kernel's `asm/unistd_64.h` (a unit test re-verifies it where the header
-  exists). Other architectures report `unsupported` and run without this
-  guard — an unverified table could block the wrong syscall.
+- The syscall-number tables are **x86_64 and aarch64 (arm64)**, verified
+  against the kernel's `asm/unistd_64.h` and the asm-generic numbering
+  arm64 actually uses (`asm-generic/unistd.h`; unit tests re-verify both
+  where the headers exist). The denylist is a name-level policy —
+  identical across arches minus the seven x86_64-legacy syscalls with no
+  arm64 number. Other architectures still report `unsupported` and run
+  without this guard — an unverified table could block the wrong syscall.
 - Empirical tests (`services/scanner/tests/unit/test_seccomp_guard.py`)
   run every install inside forked children: a named syscall returns
   `EPERM` after the install, sockets are refused while file reads and

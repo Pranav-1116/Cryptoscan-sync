@@ -18,11 +18,14 @@ Design, deliberately conservative and honest about scope:
   surfaces as a visible per-file error rather than a dead child.
 * **Raw BPF via ``prctl``** — no libseccomp dependency; the filter is a
   hand-built ``sock_fprog`` (arch gate → nr compare chain → RET).
-* **x86_64 only.** The syscall-number table below was verified against
-  ``/usr/include/x86_64-linux-gnu/asm/unistd_64.h`` (and a unit test
-  re-verifies it against the header when present). Shipping an unverified
-  aarch64 table would risk blocking the *wrong* syscall, so other
-  architectures report ``unsupported`` and run without this guard.
+* **x86_64 and aarch64 (arm64).** The x86_64 table was verified against
+  ``/usr/include/x86_64-linux-gnu/asm/unistd_64.h`` and the aarch64 table
+  against the kernel's asm-generic numbering
+  (``/usr/include/asm-generic/unistd.h`` — arm64 has no private table);
+  unit tests re-verify both against the headers when present. The name
+  policy is identical across arches minus the seven x86_64-legacy
+  syscalls that do not exist on arm64. Other architectures report
+  ``unsupported`` and run without this guard.
 * **Fail-open with a loud report**, matching :mod:`scanner.core.sandbox`:
   if the filter cannot install (platform, kernel refusal, config error),
   the scan proceeds under the rlimit/wall-clock bounds and the returned
@@ -57,8 +60,13 @@ import platform
 from typing import Any, Sequence
 
 __all__ = [
+    "AARCH64_ABSENT_SYSCALLS",
+    "AUDIT_ARCH_AARCH64",
     "KERNEL_ATTACK_SYSCALLS",
+    "KERNEL_ATTACK_SYSCALLS_AARCH64",
     "NET_EGRESS_SYSCALLS",
+    "NET_EGRESS_SYSCALLS_AARCH64",
+    "SYSCALL_TABLES",
     "build_filter_program",
     "close_inherited_network_sockets",
     "current_seccomp_state",
@@ -69,6 +77,7 @@ __all__ = [
 # --- kernel/BPF constants (x86_64 Linux, UAPI headers) -----------------
 
 AUDIT_ARCH_X86_64 = 0xC000003E  # __AUDIT_ARCH_64BIT|LE | EM_X86_64
+AUDIT_ARCH_AARCH64 = 0xC00000B7  # __AUDIT_ARCH_64BIT|LE | EM_AARCH64 (183)
 PR_SET_NO_NEW_PRIVS = 38
 PR_SET_SECCOMP = 22
 SECCOMP_MODE_FILTER = 2
@@ -84,7 +93,21 @@ SOL_SOCKET = 1
 SO_DOMAIN = 39  # returns the socket's address family as an int
 AF_UNIX = 1
 
-_SUPPORTED_MACHINE = "x86_64"
+#: machine() values → (audit arch, kernel-attack table, net-egress table).
+#: aarch64/arm64 use the kernel's asm-generic syscall table (arm64 has no
+#: private numbering); the 7 x86_64-legacy policy names that do not exist
+#: there (create_module, get_kernel_syms, query_module, uselib, iopl,
+#: ioperm, _sysctl) are simply absent — a syscall with no number cannot
+#: be invoked, so nothing is lost by omitting them.
+SYSCALL_TABLES: dict[str, tuple[int, dict[str, int], dict[str, int]]] = {}
+
+
+def _supported_machine(machine: str) -> str | None:
+    if machine == "x86_64":
+        return "x86_64"
+    if machine in {"aarch64", "arm64"}:
+        return "aarch64"
+    return None
 
 # --- syscall tables (verified against asm/unistd_64.h; see test) --------
 # Kernel attack surface: loading code, mount/namespace games, ptrace /
@@ -169,6 +192,87 @@ NET_EGRESS_SYSCALLS: dict[str, int] = {
     "sendto": 44,
     "shutdown": 48,
     "socket": 41,
+}
+
+# --- aarch64 (arm64) tables — the kernel's asm-generic numbering, which
+# is what arm64 actually uses; verified against
+# /usr/include/asm-generic/unistd.h (see the unit test). The NAME policy
+# is identical to x86_64 minus the 7 legacy syscalls that do not exist
+# on arm64 — a missing syscall needs no number and cannot be called.
+KERNEL_ATTACK_SYSCALLS_AARCH64: dict[str, int] = {
+    "acct": 89,
+    "add_key": 217,
+    "adjtimex": 171,
+    "bpf": 280,
+    "clock_adjtime": 266,
+    "clock_settime": 112,
+    "delete_module": 106,
+    "fanotify_init": 262,
+    "fanotify_mark": 263,
+    "finit_module": 273,
+    "fsconfig": 431,
+    "fsmount": 432,
+    "fsopen": 430,
+    "fspick": 433,
+    "init_module": 105,
+    "io_uring_enter": 426,
+    "io_uring_register": 427,
+    "io_uring_setup": 425,
+    "kcmp": 272,
+    "kexec_file_load": 294,
+    "kexec_load": 104,
+    "keyctl": 219,
+    "lookup_dcookie": 18,
+    "memfd_secret": 447,
+    "mount": 40,
+    "mount_setattr": 442,
+    "move_mount": 429,
+    "nfsservctl": 42,
+    "open_by_handle_at": 265,
+    "open_tree": 428,
+    "perf_event_open": 241,
+    "personality": 92,
+    "pivot_root": 41,
+    "process_vm_readv": 270,
+    "process_vm_writev": 271,
+    "ptrace": 117,
+    "quotactl": 60,
+    "reboot": 142,
+    "request_key": 218,
+    "setns": 268,
+    "settimeofday": 170,
+    "swapoff": 225,
+    "swapon": 224,
+    "syslog": 116,
+    "umount2": 39,
+    "unshare": 97,
+    "userfaultfd": 282,
+    "vhangup": 58,
+}
+
+NET_EGRESS_SYSCALLS_AARCH64: dict[str, int] = {
+    "accept": 202,
+    "accept4": 242,
+    "bind": 200,
+    "connect": 203,
+    "listen": 201,
+    "recvmmsg": 243,
+    "recvfrom": 207,
+    "recvmsg": 212,
+    "sendmmsg": 269,
+    "sendmsg": 211,
+    "sendto": 206,
+    "shutdown": 210,
+    "socket": 198,
+}
+
+SYSCALL_TABLES["x86_64"] = (AUDIT_ARCH_X86_64, KERNEL_ATTACK_SYSCALLS, NET_EGRESS_SYSCALLS)
+SYSCALL_TABLES["aarch64"] = (AUDIT_ARCH_AARCH64, KERNEL_ATTACK_SYSCALLS_AARCH64, NET_EGRESS_SYSCALLS_AARCH64)
+
+#: x86_64-only legacy policy names with no arm64 counterpart
+AARCH64_ABSENT_SYSCALLS = {
+    "create_module", "get_kernel_syms", "query_module",
+    "uselib", "iopl", "ioperm", "_sysctl",
 }
 
 
@@ -330,16 +434,19 @@ def install_seccomp_guard(
     if state["seccomp"] is None:
         return {"installed": False, "reason": "/proc/self/status unavailable — cannot verify or install"}
 
-    if platform.machine() != _SUPPORTED_MACHINE:
+    arch_key = _supported_machine(platform.machine())
+    if arch_key is None:
         return {
             "installed": False,
-            "reason": f"unsupported architecture {platform.machine()!r} — verified syscall table exists for x86_64 only",
+            "reason": (f"unsupported architecture {platform.machine()!r} — verified "
+                       f"syscall tables exist for: {', '.join(sorted(SYSCALL_TABLES))}"),
         }
+    audit_arch, kernel_attack_table, net_egress_table = SYSCALL_TABLES[arch_key]
 
-    tables: dict[str, int] = dict(KERNEL_ATTACK_SYSCALLS)
+    tables: dict[str, int] = dict(kernel_attack_table)
     want_net = config["net_egress"] if include_net_egress is None else include_net_egress
     if want_net:
-        tables.update(NET_EGRESS_SYSCALLS)
+        tables.update(net_egress_table)
     for name, nr in extra_blocked:
         if not isinstance(nr, int) or not 0 <= nr <= 511:
             return {
@@ -350,7 +457,7 @@ def install_seccomp_guard(
         tables[name] = tables[name]  # explicit membership (kept for clarity)
 
     blocked_names = sorted(tables)
-    program = build_filter_program([tables[name] for name in blocked_names])
+    program = build_filter_program([tables[name] for name in blocked_names], arch=audit_arch)
 
     class _SockFprog(ctypes.Structure):
         _fields_ = [("len", ctypes.c_uint16), ("filter", ctypes.POINTER(_SockFilter))]
@@ -371,6 +478,7 @@ def install_seccomp_guard(
     return {
         "installed": True,
         "mode": "denylist+EPERM",
+        "arch": arch_key,
         "blocked_count": len(blocked_names),
         "net_egress_blocked": want_net,
         "blocked": blocked_names,

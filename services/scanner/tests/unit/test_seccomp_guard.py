@@ -407,3 +407,68 @@ def test_pool_children_close_inherited_sockets(monkeypatch):
     assert out["inet_fds_left"] == 0
     assert out["read"] is True
     client.close(); server.close()
+
+
+# ------------------------------------------------- aarch64 table (round 61)
+_GENERIC_HEADER = "/usr/include/asm-generic/unistd.h"  # arm64's actual numbering
+
+
+def test_aarch64_tables_match_the_kernel_generic_header():
+    """Every shipped aarch64 number is the kernel's own asm-generic __NR_*
+    value — arm64 has no private syscall table, so this header IS the
+    arm64 numbering (the same standard the x86_64 table is held to)."""
+    if not os.path.exists(_GENERIC_HEADER):
+        pytest.skip("asm-generic unistd header not available for verification")
+    header: dict[str, int] = {}
+    with open(_GENERIC_HEADER) as fh:
+        for line in fh:
+            parts = line.split()
+            if (len(parts) == 3 and parts[0] == "#define"
+                    and parts[1].startswith("__NR_") and parts[2].isdigit()):
+                # the generic header also aliases names (__NR_fcntl __NR3264_fcntl)
+                header[parts[1][len("__NR_"):]] = int(parts[2])
+    from scanner.core.seccomp_guard import (
+        KERNEL_ATTACK_SYSCALLS_AARCH64,
+        NET_EGRESS_SYSCALLS_AARCH64,
+    )
+    checked = {**KERNEL_ATTACK_SYSCALLS_AARCH64, **NET_EGRESS_SYSCALLS_AARCH64}
+    wrong = {name: (nr, header.get(name)) for name, nr in checked.items() if header.get(name) != nr}
+    assert not wrong, f"aarch64 numbers diverge from {_GENERIC_HEADER}: {wrong}"
+
+
+def test_aarch64_policy_is_x86_64_policy_minus_the_absent():
+    """The denylist is a NAME-level policy: identical across arches except
+    the documented x86_64-legacy syscalls that have no arm64 number."""
+    from scanner.core.seccomp_guard import (
+        AARCH64_ABSENT_SYSCALLS,
+        KERNEL_ATTACK_SYSCALLS,
+        KERNEL_ATTACK_SYSCALLS_AARCH64,
+        NET_EGRESS_SYSCALLS,
+        NET_EGRESS_SYSCALLS_AARCH64,
+    )
+    assert set(KERNEL_ATTACK_SYSCALLS) - set(KERNEL_ATTACK_SYSCALLS_AARCH64) == AARCH64_ABSENT_SYSCALLS
+    assert set(NET_EGRESS_SYSCALLS) - set(NET_EGRESS_SYSCALLS_AARCH64) == set()
+    assert set(KERNEL_ATTACK_SYSCALLS_AARCH64) <= set(KERNEL_ATTACK_SYSCALLS) | set()
+    assert set(NET_EGRESS_SYSCALLS_AARCH64) == set(NET_EGRESS_SYSCALLS)
+    assert not (AARCH64_ABSENT_SYSCALLS & set(KERNEL_ATTACK_SYSCALLS_AARCH64))
+
+
+def test_filter_program_gates_on_the_arm64_audit_arch():
+    """The BPF arch gate must carry AUDIT_ARCH_AARCH64 on arm64 — an
+    x86_64 gate would deny every arm64 syscall as foreign."""
+    from scanner.core.seccomp_guard import AUDIT_ARCH_AARCH64
+    program = build_filter_program([280], arch=AUDIT_ARCH_AARCH64)
+    assert program[1].k == AUDIT_ARCH_AARCH64
+    assert program[1].jt == 1  # native arm64 -> continue to the nr chain
+    assert program[2].k == SECCOMP_RET_ERRNO | 1  # everything else: EPERM
+
+
+def test_unsupported_architecture_is_refused_not_faked(monkeypatch):
+    """A machine with no verified table reports unsupported — never a
+    guessed table, never a silently skipped guard."""
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_SECCOMP", raising=False)
+    monkeypatch.setattr(platform, "machine", lambda: "riscv64")
+    report = install_seccomp_guard()
+    assert report["installed"] is False
+    assert "unsupported architecture" in report["reason"]
+    assert "x86_64" in report["reason"] and "aarch64" in report["reason"]
