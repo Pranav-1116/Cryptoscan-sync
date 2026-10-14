@@ -70,6 +70,16 @@ _ALIASES: dict[str, str] = {
 _UPPER_RE = re.compile(r"[a-z]")
 
 
+#: §4.3 cross-scanner equivalence (round 55): underscore compound
+#: spellings that carry BOTH size and mode ("AES_128_GCM" from binary /
+#: config scanners) pattern-matched only partially — algorithm became
+#: "AES-GCM" while the hyphen twin "AES-128-GCM" matched fully. Map the
+#: whole family to the hyphen form before matching.
+_COMPOUND_UNDERSCORE_RE = re.compile(
+    r"^(AES|RSA|DES|DESEDE|3DES|CAMELLIA|ARIA|SM4)_(\d{2,4})_([A-Z]{3})$"
+)
+
+
 def canonicalize(raw: str) -> str:
     """The canonical spelling for a raw algorithm string, or the input
     unchanged when no alias applies. Never raises, never guesses."""
@@ -80,6 +90,9 @@ def canonicalize(raw: str) -> str:
     mapped = _ALIASES.get(upper)
     if mapped is not None:
         return mapped
+    compound = _COMPOUND_UNDERSCORE_RE.match(upper)
+    if compound:
+        return f"{compound.group(1)}-{compound.group(2)}-{compound.group(3)}"
     if _UPPER_RE.search(stripped):
         return upper  # lowercase variant of a canonical spelling
     return stripped

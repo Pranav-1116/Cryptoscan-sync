@@ -19,6 +19,32 @@ from normalization.matchers.alias_canonicalizer import canonicalize
 from normalization.matchers.fallback_handler import FallbackHandler
 from normalization.matchers.pattern_matcher import PatternMatcher
 from normalization.core.registry_bridge import resolve_key_size
+
+#: §4.3 cross-scanner equivalence (round 55): families whose sized
+#: convention is ALGORITHM-SIZE. A scanner that reports the bare family
+#: plus a measured size (network prober: "RSA" + 2048) must land on the
+#: same standard name as the sized spelling ("RSA-2048"), not stay "RSA".
+_SIZED_FAMILIES = {"AES", "RSA", "DSA", "DH", "DES", "DESEDE", "3DES"}
+
+
+def _standard_name_from_size(output: dict) -> None:
+    """Rebuild a bare standard name once the key size is resolved.
+
+    Only fires when the matched rule left standard_name equal to the bare
+    algorithm (no richer convention like "SHA-256" or "P-256" to preserve)
+    and the family uses the ALGORITHM-SIZE convention.
+    """
+    algorithm = output.get("algorithm")
+    if (
+        algorithm in _SIZED_FAMILIES
+        and output.get("standard_name") in (None, "", algorithm)
+        and output.get("key_size") is not None
+    ):
+        name = f"{algorithm}-{int(output['key_size'])}"
+        mode = output.get("mode")
+        if mode and str(mode).upper() not in str(algorithm).upper():
+            name = f"{name}-{str(mode).upper()}"
+        output["standard_name"] = name
 from normalization.models.normalization_rule import NormalizationRule
 from normalization.models.normalized_crypto import NormalizedCrypto
 from normalization.rules.rule_registry import RuleRegistry
@@ -140,6 +166,15 @@ class NormalizationProcessor:
             normalized.key_size = resolve_key_size(
                 normalized.key_size, match_input, key_size
             )
+            if (
+                normalized.algorithm in _SIZED_FAMILIES
+                and normalized.standard_name in (None, "", normalized.algorithm)
+                and normalized.key_size is not None
+            ):
+                _name = f"{normalized.algorithm}-{int(normalized.key_size)}"
+                if normalized.mode and str(normalized.mode).upper() not in str(normalized.algorithm).upper():
+                    _name = f"{_name}-{str(normalized.mode).upper()}"
+                normalized.standard_name = _name
             if mode is not None and not normalized.mode:
                 normalized.mode = str(mode).upper()
             if padding is not None and not normalized.padding:
@@ -155,6 +190,7 @@ class NormalizationProcessor:
             output["key_size"] = resolve_key_size(
                 output.get("key_size"), match_input, key_size
             )
+            _standard_name_from_size(output)
             if mode is not None and not output.get("mode"):
                 output["mode"] = str(mode).upper()
             if padding is not None and not output.get("padding"):
