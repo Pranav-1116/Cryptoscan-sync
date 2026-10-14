@@ -25,6 +25,7 @@ from api.schemas.cbom_schemas import (
     IngestCbomRequest,
 )
 from cbom.generator import CbomGenerator
+from cbom.snapshot_diff import diff_snapshots
 from cbom.builders.dependency_builder import build_estate_dependencies
 from cbom.inventory import (
     bom_system_name,
@@ -1019,6 +1020,54 @@ def get_cbom_snapshot(
     out["payload"] = row.payload
     out["scan_verify_path"] = f"/api/v1/scans/{row.scan_id}/verify"
     return out
+
+
+@router.get("/snapshots/{snapshot_id}/diff")
+def diff_cbom_snapshot(
+    snapshot_id: str,
+    against: str = Query(..., description="snapshot_id of the baseline to diff against"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Compare two pinned snapshots (§4.4, round 56).
+
+    ``GET /snapshots/{id}/diff?against={baseline}`` answers the operator's
+    question after a re-scan: what changed between the two pins — added
+    components (new crypto), removed components (retired findings) and
+    field-level drift on survivors (key size, mode, compliance verdict,
+    confidence). The diff is computed from the two content-addressed
+    payloads on every call, never stored; its trustworthiness is the
+    pins'. Same-scan pairs show evidence drift; cross-scan pairs show
+    estate drift — both are valid comparisons of the documents.
+    """
+    target = filtered_get(db, CbomSnapshot, snapshot_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    baseline = filtered_get(db, CbomSnapshot, against)
+    if baseline is None:
+        raise HTTPException(status_code=404, detail="Baseline snapshot not found")
+    result = diff_snapshots(baseline.payload, target.payload)
+    return {
+        "target": {
+            "snapshot_id": target.id,
+            "scan_id": target.scan_id,
+            "content_hash": target.content_hash,
+            "snapshotted_at": target.snapshotted_at.isoformat() if target.snapshotted_at else None,
+            "verify_path": f"/api/v1/cbom/snapshots/{target.id}",
+        },
+        "baseline": {
+            "snapshot_id": baseline.id,
+            "scan_id": baseline.scan_id,
+            "content_hash": baseline.content_hash,
+            "snapshotted_at": baseline.snapshotted_at.isoformat() if baseline.snapshotted_at else None,
+            "verify_path": f"/api/v1/cbom/snapshots/{baseline.id}",
+        },
+        "diff": result,
+        "note": (
+            "Computed from the two pinned payloads (never stored). "
+            "'added' = present in the target snapshot only."
+        ),
+    }
 
 
 @router.get("/system/{system_id}")

@@ -173,3 +173,81 @@ async def test_unknown_snapshot_is_404():
         r = await c.get("/api/v1/cbom/snapshots/does-not-exist")
     assert r.status_code == 404
     engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_diff_reports_added_removed_and_drifted_components():
+    """§4.4 round 56: pin → evidence changes → re-pin → the operator can
+    ask exactly what changed between the two pins."""
+    app, session, engine = _make_app()
+    _seed(session)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        first = (await c.post("/api/v1/cbom/scan/scan-snap-1/snapshot")).json()
+        # drift the estate: ev-0 fails re-evaluation, ev-1 retires, one new finding
+        ev0 = session.query(EvidenceRecord).filter_by(id="ev-scan-snap-1-0").one()
+        ev0.compliance_status = "FAIL"
+        session.query(EvidenceRecord).filter_by(id="ev-scan-snap-1-1").delete()
+        session.add(EvidenceRecord(
+            id="ev-scan-snap-1-2", scan_id="scan-snap-1", algorithm="ML-KEM-768",
+            compliance_status="PASS", file_path="src/PQC.java", line_number=7,
+            purpose="KEY_ENCAPSULATION", content_hash="p" * 64, chain_hash="q" * 64,
+            chain_position=2, confidence="HIGH", finding_data={},
+        ))
+        session.commit()
+        second = (await c.post("/api/v1/cbom/scan/scan-snap-1/snapshot")).json()
+        assert second["created"] is True, "drifted evidence must pin a NEW snapshot"
+
+        diff = await c.get(f"/api/v1/cbom/snapshots/{second['snapshot_id']}/diff"
+                           f"?against={first['snapshot_id']}")
+        assert diff.status_code == 200, diff.text
+        body = diff.json()
+        assert body["target"]["snapshot_id"] == second["snapshot_id"]
+        assert body["baseline"]["snapshot_id"] == first["snapshot_id"]
+        d = body["diff"]
+        assert d["identical"] is False
+        assert [a["bom-ref"] for a in d["components"]["added"]] == ["ev-scan-snap-1-2"]
+        assert [r["bom-ref"] for r in d["components"]["removed"]] == ["ev-scan-snap-1-1"]
+        changed = d["components"]["changed"]
+        assert [c["bom-ref"] for c in changed] == ["ev-scan-snap-1-0"]
+        drift = {c["path"]: c for c in changed[0]["changes"]}
+        assert drift["evidence.compliance_status"]["before"] == "PASS"
+        assert drift["evidence.compliance_status"]["after"] == "FAIL"
+        assert d["summary"] == {
+            "baseline_components": 2, "target_components": 2,
+            "added": 1, "removed": 1, "changed": 1, "unchanged": 0}
+        assert "never stored" in body["note"]
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_diffed_against_itself_is_identical():
+    app, session, engine = _make_app()
+    _seed(session)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        pinned = (await c.post("/api/v1/cbom/scan/scan-snap-1/snapshot")).json()
+        diff = await c.get(f"/api/v1/cbom/snapshots/{pinned['snapshot_id']}/diff"
+                           f"?against={pinned['snapshot_id']}")
+    assert diff.status_code == 200
+    body = diff.json()
+    assert body["diff"]["identical"] is True
+    assert body["diff"]["summary"]["added"] == 0
+    assert body["diff"]["components"]["changed"] == []
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_diff_requires_a_baseline_and_404s_on_unknown_ids():
+    app, session, engine = _make_app()
+    _seed(session)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        pinned = (await c.post("/api/v1/cbom/scan/scan-snap-1/snapshot")).json()
+        missing_param = await c.get(
+            f"/api/v1/cbom/snapshots/{pinned['snapshot_id']}/diff")
+        assert missing_param.status_code == 422, "against is required, no default baseline"
+        unknown_baseline = await c.get(
+            f"/api/v1/cbom/snapshots/{pinned['snapshot_id']}/diff?against=nope")
+        assert unknown_baseline.status_code == 404
+        unknown_target = await c.get(
+            f"/api/v1/cbom/snapshots/nope/diff?against={pinned['snapshot_id']}")
+        assert unknown_target.status_code == 404
+    engine.dispose()
