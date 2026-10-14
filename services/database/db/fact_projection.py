@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Mapping, Optional
 
+from shared_models.asset_identity import crypto_asset_key_from_row
+
 
 def fact_key(row: Mapping[str, Any]) -> tuple:
     """Fact identity: (algorithm, purpose, file_path, key_size, mode)."""
@@ -127,11 +129,22 @@ def reconcile_assets_with_facts(
 
     assets_only = _labels(set(asset_by_key) - set(fact_by_key))
     facts_only = _labels(set(fact_by_key) - set(asset_by_key))
+    # §4.2 spine (round 57): asset rows claiming the same canonical
+    # identity — the fork the single-writer cutover must disposition.
+    # Visible, not judged: a fork may be legitimate history.
+    spine_counts: dict[str, int] = {}
+    for asset in assets or ():
+        key = crypto_asset_key_from_row(asset)
+        if key:
+            spine_counts[key] = spine_counts.get(key, 0) + 1
+    duplicate_asset_keys = {k: n for k, n in spine_counts.items() if n > 1}
     return {
         "model": "asset-fact/reconciliation-v1",
         "assets_indexed": len(asset_by_key),
         "facts_indexed": len(fact_by_key),
         "identities_matched": matched,
+        "duplicate_asset_keys": duplicate_asset_keys,
+        "duplicate_asset_key_count": len(duplicate_asset_keys),
         "field_disagreements": disagreements,
         "disagreement_count": len(disagreements),
         "assets_without_facts": assets_only,

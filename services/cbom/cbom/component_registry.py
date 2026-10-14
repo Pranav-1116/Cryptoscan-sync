@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from shared_models.asset_identity import crypto_asset_key_from_row
+
 from cbom.mappers.oid_lookup import lookup_oid
 from cbom.mappers.primitive_mapper import map_primitive
 
@@ -180,6 +182,12 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
             {"type": "other", "url": f"file://{location}"}
         ]
     properties: list[dict[str, Any]] = []
+    # §4.2 identity spine (round 57): the same canonical key as the
+    # crypto_assets row and the fact row — a BOM component joins back to
+    # the write side without inventing identity.
+    spine_key = crypto_asset_key_from_row(data)
+    if spine_key and data.get("algorithm"):
+        properties.append({"name": "cryptoscan:asset_key", "value": spine_key})
     if data.get("system_name"):
         properties.append({"name": "cryptoscan:system", "value": str(data["system_name"])})
     if data.get("system_id"):

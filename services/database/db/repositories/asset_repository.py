@@ -5,6 +5,8 @@ from __future__ import annotations
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from shared_models.asset_identity import crypto_asset_key_from_row
+
 from db.models.crypto_asset import CryptoAsset
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.repositories.base_repository import BaseRepository
@@ -96,6 +98,7 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                     purpose=item.get("purpose"),
                     mode=item.get("mode"),
                     key_size=item.get("key_size"),
+                    asset_key=crypto_asset_key_from_row(item) or None,
                     file_path=item.get("file_path") or "unknown",
                     line_number=int(item.get("line_number") or 0),
                     source_language=item.get("source_language"),
@@ -113,6 +116,11 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                 )
                 self.session.add(row)
             else:
+                # repair the spine on legacy rows touched by a refresh:
+                # pre-0092 rows converge to the canonical key on contact
+                expected_key = crypto_asset_key_from_row(item)
+                if row.asset_key != expected_key:
+                    row.asset_key = expected_key
                 row.confidence = item.get("confidence") or row.confidence
                 row.occurrence_count = int(item.get("occurrence_count") or row.occurrence_count)
                 row.scanner_ids = item.get("scanner_ids") or row.scanner_ids
@@ -169,6 +177,7 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                 algorithm=asset["algorithm"],
                 purpose=asset.get("purpose"),
                 key_size=asset.get("key_size"),
+                asset_key=crypto_asset_key_from_row(asset) or None,
                 file_path=asset["file_path"],
                 line_number=0,
                 source_language=asset.get("source_language") or "cloud-kms",
@@ -179,6 +188,7 @@ class AssetRepository(BaseRepository[CryptoAsset]):
             self.session.flush()
             return row, True
         existing.algorithm = asset["algorithm"]
+        existing.asset_key = crypto_asset_key_from_row(asset) or None
         existing.key_size = asset.get("key_size")
         existing.purpose = asset.get("purpose")
         existing.source_language = asset.get("source_language") or "cloud-kms"

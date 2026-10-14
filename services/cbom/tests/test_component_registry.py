@@ -66,3 +66,30 @@ def test_layer_builders_cover_every_kind():
         inventory["hardware"][0])
     assert state["layers"]["vendor"]["components"][0] == vendor_component(
         inventory["vendors"][0])
+
+
+def test_crypto_component_carries_the_identity_spine():
+    """§4.2 round 57: the BOM component carries the same canonical
+    asset_key as the crypto_assets row and the fact row — the exported
+    document joins back to the write side without inventing identity."""
+    row = _crypto_row()
+    component = cbom_crypto_component(row)
+    props = {p["name"]: p["value"] for p in component["properties"]}
+    from shared_models.asset_identity import crypto_asset_key_from_row
+    assert props["cryptoscan:asset_key"] == crypto_asset_key_from_row(row)
+
+    # the spine is shape-independent: an evidence row of the SAME crypto
+    # fact yields the SAME key on its BOM component
+    evidence_shaped = dict(row)
+    evidence_shaped.pop("id")
+    evidence_shaped["line_number"] = 77  # lines are not identity
+    evidence_shaped["content_hash"] = "c" * 64
+    assert (cbom_crypto_component(evidence_shaped)["properties"][
+        [p["name"] for p in cbom_crypto_component(evidence_shaped)["properties"]].index(
+            "cryptoscan:asset_key")]["value"] == props["cryptoscan:asset_key"])
+
+
+def test_component_without_locator_makes_no_identity_claim():
+    component = cbom_crypto_component({"algorithm": "RSA", "key_size": 2048})
+    names = [p["name"] for p in (component.get("properties") or [])]
+    assert "cryptoscan:asset_key" not in names

@@ -26,6 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+from shared_models.asset_identity import crypto_asset_key_from_row
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -318,6 +320,13 @@ def banking_mainframe_ingest(
                 algorithm=a["algorithm"],
                 purpose=(a.get("purpose") or "signature"),
                 key_size=a.get("key_size"),
+                asset_key=crypto_asset_key_from_row({
+                    "algorithm": a["algorithm"],
+                    "purpose": a.get("purpose") or "signature",
+                    "file_path": a["file_path"],
+                    "key_size": a.get("key_size"),
+                    "mode": a.get("mode"),
+                }),
                 file_path=a["file_path"],
                 line_number=0,
                 source_language=a["source_language"],

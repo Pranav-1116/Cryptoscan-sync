@@ -22,6 +22,11 @@ class CryptoAsset(BaseModel, TenantScoped):
     mode: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     key_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    # §4.2 identity spine (round 57): the ONE canonical durable identity —
+    # shared/shared_models/asset_identity.py — same string for the evidence
+    # row, the fact row and the BOM component of this asset. Nullable only
+    # for pre-0092 rows until the backfill/maintenance path converges them.
+    asset_key: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     line_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     source_language: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     confidence: Mapped[str] = mapped_column(String(20), nullable=False, default="LOW")
