@@ -191,3 +191,55 @@ def test_failed_handshake_is_unknown_not_plaintext():
     # a negotiated handshake is the only observed status
     assert probe_to_endpoint({"endpoint": "ok.example.com:443", "status": "OK"})["observed"] is True
     assert OBSERVED_OK_STATUSES == {"OK", "TLS_OK"}
+
+
+def test_bank_sandbox_testpack_loads_and_is_verified():
+    """The operator test pack: every target web-verified with its own
+    status, parseable endpoints, no silent schema drift."""
+    import pathlib
+    import sys
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts"))
+    from tls_cbom_probe import bank_sandbox_targets
+
+    pack_path = pathlib.Path(__file__).resolve().parents[3] / "deploy" / "bank-sandbox-testpack.json"
+    targets = bank_sandbox_targets(str(pack_path))
+    assert len(targets) >= 12, "the verified pack covers the researched portals"
+    statuses = {t["verified_status"] for t in targets}
+    assert all(s for s in statuses), "every target carries an explicit verification status"
+    for t in targets:
+        host, _, port = t["endpoint"].rpartition(":")
+        assert host and port == "443", t["endpoint"]
+        assert t["portal"].startswith("https://"), t["portal"]
+    # the honest statuses we researched are represented
+    assert "verified-live-today" in statuses
+    assert any("unverified" in s for s in statuses), "unverified items must be flagged, not laundered"
+
+
+def test_bank_sandbox_testpack_refuses_malformed_packs():
+    """A kind-mismatched or incomplete pack must be refused — never
+    partially probed (a wrong host must not be probed by accident)."""
+    import json
+    import pathlib
+    import sys
+    import tempfile
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "scripts"))
+    from tls_cbom_probe import bank_sandbox_targets
+
+    with tempfile.TemporaryDirectory() as tmp:
+        bad_kind = pathlib.Path(tmp) / "wrong-kind.json"
+        bad_kind.write_text(json.dumps(
+            {"kind": "something-else", "targets": [{"endpoint": "evil.example:443"}]}))
+        with pytest.raises(ValueError):
+            bank_sandbox_targets(str(bad_kind))
+
+        incomplete = pathlib.Path(tmp) / "incomplete.json"
+        incomplete.write_text(json.dumps({
+            "kind": "cryptoscan-bank-sandbox-testpack",
+            "targets": [{"id": "x", "provider": "y", "portal": "https://y",
+                          "endpoint": "y:443", "auth_for_api_calls": "z",
+                          "verified": "v", "verified_status": ""}],  # empty status
+        }))
+        with pytest.raises(ValueError):
+            bank_sandbox_targets(str(incomplete))
