@@ -135,6 +135,7 @@ from db.models.payment_crypto import (  # noqa: E402,F401
     PaymentTransactionVolume,
 )
 from db.models.api_key import ApiKey  # noqa: E402,F401
+from db.models.api_key_quota_window import ApiKeyQuotaWindow  # noqa: E402,F401
 from db.models.app_setting import AppSetting  # noqa: E402,F401
 from db.models.onboarding import (  # noqa: E402,F401
     Connector,

@@ -20,6 +20,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
+from typing import Protocol
 from enum import Enum
 
 API_PREFIX = "/api/v1"
@@ -128,6 +129,22 @@ def path_in_scope(path: str, scopes) -> bool:
     return False
 
 
+class QuotaBackend(Protocol):
+    """The quota contract ``authorize`` enforces.
+
+    Structural: the in-process ``FixedWindowQuota`` satisfies it, and so
+    does any durable implementation (§4.8 — the multi-replica fix counts
+    in ONE shared place instead of one dict per process).
+    """
+
+    def check_and_consume(self, key_id: str, limit: int, *,
+                          now: float | None = None) -> tuple[bool, int, float]:
+        ...  # (allowed, remaining, reset_at_epoch)
+
+    def reset(self, key_id: str | None = None) -> None:
+        ...
+
+
 def method_allowed(method: str, methods) -> bool:
     allowed = {m.upper() for m in (methods or [])}
     if not allowed:
@@ -191,7 +208,7 @@ def authorize(
     method: str,
     path: str,
     policy: KeyPolicy,
-    quota: FixedWindowQuota | None = None,
+    quota: QuotaBackend | None = None,
     now: float | None = None,
 ) -> Authorization:
     """Evaluate scope -> method -> quota in order. Fail-closed and deterministic."""

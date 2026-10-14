@@ -187,11 +187,17 @@ def _authorize_key_policy(request, row, session) -> None:
         logger.warning("api_key_policy_unavailable_nonproduction", exc_info=True)
         return
     policy = KeyPolicy.from_row(row)
+    # §4.8 (round 59): the durable, replica-shared quota counter — one
+    # (key, window) row in the DB instead of a per-process dict, so a
+    # "60/min" key is 60/min across every replica, not 60 per process.
+    from api.quota import DbQuotaWindow
+
     result = authorize(
         key_id=row.id,
         method=request.method,
         path=request.url.path,
         policy=policy,
+        quota=DbQuotaWindow(session),
     )
     if result.allowed:
         # best-effort usage accounting (no extra DB write on the hot path beyond
