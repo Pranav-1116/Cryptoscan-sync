@@ -21,6 +21,13 @@ authenticated API:
             remediation task verifies against the same rescan, reports and
             the audit ledger tell the whole story
 
+Round 60 extends the SAME loop with the newer product links: the two-scan
+CBOM snapshot diff is spine-keyed (the 3DES fact is REMOVED, the fixed AES
+fact ADDED, the untouched AES fact UNCHANGED despite brand-new evidence
+rows — evidence churn is not estate drift), every materialised asset
+carries the identity spine, and the risk explanation is captured
+mid-loop so its before/after proves it follows the operator loop.
+
 Failure paths are part of the contract: an emergency stop refuses the
 manual trigger and launches nothing, and a tenant-scoped run stamps every
 persisted row. PostgreSQL runs when a server is available and is skipped,
@@ -184,6 +191,19 @@ def chain(request, tmp_path_factory):
                      {"notes": "administrative closure pending fix"})
     assert resolved.status_code == 200, resolved.text
 
+    # ---- §4.6/§4.7 (round 60): explain the WEAK state mid-loop --------------
+    # the risk explanation is captured while the 3DES is still there, so the
+    # tests can prove the explanation FOLLOWS the loop (cites the failing
+    # control during the incident, clean after the fix)
+    with factory() as db:
+        weak_system = db.scalar(select(System).where(System.last_scan_id == scan2))
+        weak_system_id = weak_system.id if weak_system else None
+    explain_weak = None
+    if weak_system_id:
+        resp = _call(app, "GET", f"/api/v1/risk/systems/{weak_system_id}/explain")
+        assert resp.status_code == 200, resp.text
+        explain_weak = resp.json()
+
     # ---- run 3: condition fixed ---------------------------------------------
     (estate / "src" / "LegacyPad.java").write_text(AES_JAVA.replace("PaymentCrypto", "LegacyPad"))
     scan3 = run("e2e-job-3")
@@ -214,6 +234,7 @@ def chain(request, tmp_path_factory):
         "task_verify": verify_response,
         "scan1": scan1, "scan2": scan2, "scan3": scan3,
         "event_id": event_id, "task_id": task_id, "weak_evidence_id": weak.id,
+        "explain_weak": explain_weak, "weak_system_id": weak_system_id,
     }
     engine.dispose()
     drop_engine(engine)
@@ -436,3 +457,91 @@ def test_failure_path_tenant_scope_stamps_every_row(tmp_path):
         assert facts and all(f.tenant_id == "tenant-e2e" for f in facts)
     engine.dispose()
     drop_engine(engine)
+
+
+# ------------------------------------------- round 60: the newer links in the chain
+@pytest.mark.asyncio
+async def test_link_two_scan_snapshot_comparability(chain):
+    """§4.4 done-when, through the operator loop: pin run-2 and run-3
+    CBOMs and diff them spine-keyed — 3DES removed, fixed AES added, the
+    untouched AES fact UNCHANGED despite brand-new evidence rows (bom-ref
+    churn is observation turnover, not estate drift)."""
+    async with AsyncClient(transport=ASGITransport(app=chain["app"]), base_url="http://t") as ac:
+        snap2 = await ac.post(f"/api/v1/cbom/scan/{chain['scan2']}/snapshot")
+        snap3 = await ac.post(f"/api/v1/cbom/scan/{chain['scan3']}/snapshot")
+        assert snap2.status_code == 200 and snap3.status_code == 200, (
+            snap2.text, snap3.text)
+        assert snap2.json()["created"] and snap3.json()["created"]
+        id2, id3 = snap2.json()["snapshot_id"], snap3.json()["snapshot_id"]
+
+        diff = await ac.get(f"/api/v1/cbom/snapshots/{id3}/diff?against={id2}")
+        assert diff.status_code == 200, diff.text
+        components = diff.json()["diff"]["components"]
+        assert components["key_by"] == "asset_key"
+        removed = components["removed"]
+        added = components["added"]
+        assert any("3DES" in str(c.get("name") or "").upper() for c in removed), removed
+        assert added, "the fixed LegacyPad AES fact must appear as added"
+        assert all("3DES" not in str(c.get("name") or "").upper() for c in added)
+        # the untouched PaymentCrypto AES fact survived the re-scan: it is
+        # matched by spine, not churned by its new evidence id
+        survivors = components["unchanged"] + len(components["changed"])
+        assert survivors >= 1, "the unchanged crypto fact must not churn"
+
+        # the contrast, pinned: bom_ref keying is exact per-scan evidence
+        # identity, so a cross-scan diff under it shows full turnover
+        churn = await ac.get(f"/api/v1/cbom/snapshots/{id3}/diff?against={id2}&key_by=bom_ref")
+        churned = churn.json()["diff"]["components"]
+        assert len(churned["added"]) > len(added), "every scan mints new evidence rows"
+
+
+@pytest.mark.asyncio
+async def test_link_identity_spine_survives_rescans(chain):
+    """§4.2 spine through the loop: every materialised asset carries the
+    canonical key; the PaymentCrypto AES fact observed in all three runs
+    is ONE row; the retired 3DES fact keeps its own key (assets persist
+    across scans — retirement is disposition, not disappearance)."""
+    from shared_models.asset_identity import crypto_asset_key_from_row
+
+    with chain["factory"]() as db:
+        assets = list(db.scalars(select(CryptoAsset)).all())
+        assert assets, "the loop must materialise crypto assets"
+        for asset in assets:
+            assert asset.asset_key, f"asset {asset.id} lacks the spine"
+            assert asset.asset_key == crypto_asset_key_from_row(asset.to_dict()), (
+                "persisted key must equal the canonical derivation")
+        keys = [a.asset_key for a in assets]
+        assert len(keys) == len(set(keys)), "a clean loop must not fork identities"
+
+        payments = [a for a in assets if "PaymentCrypto" in str(a.file_path or "")]
+        assert len(payments) == 1, "three scans of one crypto fact = one row"
+        legacy = [a for a in assets if "LegacyPad" in str(a.file_path or "")]
+        assert {a.algorithm for a in legacy} >= {"3DES", "AES"}
+
+
+@pytest.mark.asyncio
+async def test_link_risk_explanation_follows_the_operator_loop(chain):
+    """§4.6 through the loop: mid-incident (captured after run 2) the
+    explanation cites the failing baseline rule and the exact evidence;
+    after the fix (run 3) the same system's explanation is clean."""
+    weak = chain["explain_weak"]
+    assert weak is not None, "the fixture must capture the weak-state explanation"
+    cited_ids = {eid for c in weak["failing_controls"] for eid in c["evidence_ids"]}
+    assert chain["weak_evidence_id"] in cited_ids, "the 3DES evidence must be cited"
+    failing = [c for c in weak["failing_controls"] if c["worst_outcome"] == "FAIL"]
+    assert failing, "run-2 state must have failing controls"
+    trail = weak["evidence_trail"]
+    assert trail["verify_path"] == f"/api/v1/scans/{chain['scan2']}/verify"
+    assert any(e["evidence_id"] == chain["weak_evidence_id"] for e in trail["entries"])
+    factors = {f["factor"]: f for f in weak["factors"]}
+    assert factors["technical"]["basis"] == "OBSERVED"
+    assert factors["dependency_impact"]["basis"] == "DECLARED"
+    assert any("blast radius" in note for note in weak["limitations"])
+
+    async with AsyncClient(transport=ASGITransport(app=chain["app"]), base_url="http://t") as ac:
+        fixed = await ac.get(f"/api/v1/risk/systems/{chain['weak_system_id']}/explain")
+        assert fixed.status_code == 200, fixed.text
+        after = fixed.json()
+    assert not [c for c in after["failing_controls"] if c["worst_outcome"] == "FAIL"], (
+        "the fixed estate must show no failing controls")
+    assert after["evidence_trail"]["scan_id"] == chain["scan3"]

@@ -37,6 +37,38 @@ def component_ref(component: dict[str, Any]) -> str:
     return f"{component.get('name') or 'UNKNOWN'}@{component.get('type') or 'unknown'}"
 
 
+#: fields excluded from drift comparison in asset_key mode: they name the
+#: OBSERVATION (per-scan evidence id/position/hashes), not the asset.
+#: Two scans of the same crypto fact produce new evidence rows by design —
+#: that churn is not estate drift.
+SPINE_EXCLUDED_PATHS = (
+    "bom-ref",                      # per-scan evidence id
+    "evidence.identity",            # observation method/confidence chain
+    "evidence.occurrences",         # positional
+    "evidence.file",
+    "evidence.line",
+    "evidence.content_hash",
+    "evidence.chain_hash",
+    "properties.cryptoscan:asset_key",  # the key itself
+)
+
+
+def stable_component_key(component: dict[str, Any]) -> str:
+    """Identity-spine key (round 57) — stable ACROSS scans, unlike
+    bom-ref (a per-scan evidence id). Falls back to bom-ref form for
+    components built before the spine, namespaced so the two keyspaces
+    never collide."""
+    for prop in component.get("properties") or []:
+        if isinstance(prop, dict) and prop.get("name") == "cryptoscan:asset_key":
+            return f"spine:{prop.get('value')}"
+    return f"ref:{component_ref(component)}"
+
+
+def _path_excluded(path: str, excludes: tuple[str, ...]) -> bool:
+    return any(path == ex or path.startswith(ex + ".") or path.startswith(ex + "[")
+               for ex in excludes)
+
+
 def _flatten(value: Any, prefix: str = "") -> dict[str, str | None]:
     """Flatten a component to dotted-path → scalar, so field drift is
     reportable per path. Lists flatten by index — except ``properties``,
@@ -60,55 +92,78 @@ def _flatten(value: Any, prefix: str = "") -> dict[str, str | None]:
     return out
 
 
-def _diff_component(before: dict[str, Any], after: dict[str, Any]) -> list[dict[str, Any]]:
+def _diff_component(before: dict[str, Any], after: dict[str, Any],
+                    excludes: tuple[str, ...] = ()) -> list[dict[str, Any]]:
     flat_before = _flatten(before)
     flat_after = _flatten(after)
     changes = []
     for path in sorted(set(flat_before) | set(flat_after)):
+        if excludes and _path_excluded(path, excludes):
+            continue
         old, new = flat_before.get(path), flat_after.get(path)
         if old != new:
             changes.append({"path": path, "before": old, "after": new})
     return changes
 
 
-def diff_components(before: list[dict[str, Any]], after: list[dict[str, Any]]) -> dict[str, Any]:
-    """Set + field diff of two component lists, keyed by bom-ref."""
-    before_map = {component_ref(c): c for c in before or []}
-    after_map = {component_ref(c): c for c in after or []}
-    added_refs = sorted(set(after_map) - set(before_map))
-    removed_refs = sorted(set(before_map) - set(after_map))
+def diff_components(before: list[dict[str, Any]], after: list[dict[str, Any]],
+                    *, key_by: str = "bom_ref") -> dict[str, Any]:
+    """Set + field diff of two component lists.
+
+    key_by="bom_ref" (default): exact same-scan semantics — the per-scan
+    evidence id IS the identity, so evidence-level mutation is visible.
+
+    key_by="asset_key": the identity-spine key (round 57) — stable across
+    scans. Repeated scans produce new evidence rows (new bom-refs) for
+    unchanged crypto BY DESIGN; under bom-ref keying that churn reads as
+    100% turnover. Spine keying joins the same crypto fact across scans
+    and compares only asset-stable fields (observation-position and
+    hash fields are excluded, named in SPINE_EXCLUDED_PATHS).
+    """
+    if key_by not in {"bom_ref", "asset_key"}:
+        raise ValueError(f"unknown key_by {key_by!r}")
+    excludes = SPINE_EXCLUDED_PATHS if key_by == "asset_key" else ()
+    key_of = (stable_component_key if key_by == "asset_key" else component_ref)
+    before_map = {key_of(c): c for c in before or []}
+    after_map = {key_of(c): c for c in after or []}
+    added_keys = sorted(set(after_map) - set(before_map))
+    removed_keys = sorted(set(before_map) - set(after_map))
     changed = []
     unchanged = 0
-    for ref in sorted(set(before_map) & set(after_map)):
-        changes = _diff_component(before_map[ref], after_map[ref])
+    for key in sorted(set(before_map) & set(after_map)):
+        changes = _diff_component(before_map[key], after_map[key], excludes)
         if changes:
-            changed.append({"bom-ref": ref, "changes": changes})
+            changed.append({"key": key,
+                            "bom-ref": before_map[key].get("bom-ref"),
+                            "changes": changes})
         else:
             unchanged += 1
     return {
+        "key_by": key_by,
         "added": [
-            {"bom-ref": ref,
-             "name": after_map[ref].get("name"),
-             "type": after_map[ref].get("type")}
-            for ref in added_refs
+            {"key": key, "bom-ref": after_map[key].get("bom-ref"),
+             "name": after_map[key].get("name"),
+             "type": after_map[key].get("type")}
+            for key in added_keys
         ],
         "removed": [
-            {"bom-ref": ref,
-             "name": before_map[ref].get("name"),
-             "type": before_map[ref].get("type")}
-            for ref in removed_refs
+            {"key": key, "bom-ref": before_map[key].get("bom-ref"),
+             "name": before_map[key].get("name"),
+             "type": before_map[key].get("type")}
+            for key in removed_keys
         ],
         "changed": changed,
         "unchanged": unchanged,
     }
 
 
-def diff_snapshots(baseline_payload: dict[str, Any], target_payload: dict[str, Any]) -> dict[str, Any]:
+def diff_snapshots(baseline_payload: dict[str, Any], target_payload: dict[str, Any],
+                   *, key_by: str = "bom_ref") -> dict[str, Any]:
     """Full snapshot-vs-snapshot diff: component set drift, field drift on
     survivors, and metadata drift — all deterministic, all derived."""
     baseline_components = baseline_payload.get("components") or []
     target_components = target_payload.get("components") or []
-    component_diff = diff_components(baseline_components, target_components)
+    component_diff = diff_components(baseline_components, target_components, key_by=key_by)
     baseline_meta = baseline_payload.get("metadata") or {}
     target_meta = target_payload.get("metadata") or {}
     metadata_changes = _diff_component(baseline_meta, target_meta)

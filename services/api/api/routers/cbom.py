@@ -1026,6 +1026,10 @@ def get_cbom_snapshot(
 def diff_cbom_snapshot(
     snapshot_id: str,
     against: str = Query(..., description="snapshot_id of the baseline to diff against"),
+    key_by: str = Query("asset_key", pattern="^(asset_key|bom_ref)$",
+                        description="asset_key: identity-spine keyed, stable across scans "
+                                    "(evidence churn ignored); bom_ref: exact per-scan "
+                                    "evidence identity, same-scan mutations visible"),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -1046,7 +1050,7 @@ def diff_cbom_snapshot(
     baseline = filtered_get(db, CbomSnapshot, against)
     if baseline is None:
         raise HTTPException(status_code=404, detail="Baseline snapshot not found")
-    result = diff_snapshots(baseline.payload, target.payload)
+    result = diff_snapshots(baseline.payload, target.payload, key_by=key_by)
     return {
         "target": {
             "snapshot_id": target.id,

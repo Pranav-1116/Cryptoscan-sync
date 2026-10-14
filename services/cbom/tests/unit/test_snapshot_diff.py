@@ -116,3 +116,90 @@ def test_diff_snapshots_flags_metadata_drift_and_identical_documents():
     assert result["summary"] == {
         "baseline_components": 1, "target_components": 1,
         "added": 0, "removed": 0, "changed": 0, "unchanged": 1}
+
+
+def _spine_comp(ref: str, asset_key: str, name: str = "AES-256-GCM",
+                compliance: str = "PASS", confidence: str = "HIGH"):
+    return {
+        "type": "cryptographic-asset",
+        "name": name,
+        "bom-ref": ref,
+        "cryptoProperties": {
+            "assetType": "algorithm",
+            "algorithmProperties": {
+                "primitive": "symmetric", "algorithm": "AES", "mode": "GCM",
+                "padding": None, "parameterSetIdentifier": "256",
+            },
+        },
+        "evidence": {"compliance_status": compliance,
+                     "file": "src/A.java", "line": 10,
+                     "content_hash": "c" * 64, "chain_hash": "h" * 64,
+                     "occurrences": [{"location": "src/A.java", "line": 10}],
+                     "identity": [{"field": "bom-ref", "confidence": 1,
+                                   "methods": [{"technique": "source-code-analysis",
+                                                "confidence": 0.9,
+                                                "value": "src/A.java:10"}]}]},
+        "properties": [
+            {"name": "cryptoscan:asset_key", "value": asset_key},
+            {"name": "cryptoscan:confidence", "value": confidence},
+        ],
+    }
+
+
+def test_spine_keying_joins_the_same_asset_across_scans():
+    """Cross-scan semantics: a re-scan mints NEW evidence rows (new
+    bom-ref, new hashes/positions) for unchanged crypto BY DESIGN. Under
+    bom-ref keying that is 100% churn; under asset_key keying the same
+    crypto fact is ONE unchanged identity."""
+    scan_a = [_spine_comp("ev-run1-1", "fact:v1:aaa")]
+    scan_b = [_spine_comp("ev-run2-9", "fact:v1:aaa", confidence="MEDIUM")]
+    churned = diff_components(scan_a, scan_b, key_by="bom_ref")
+    assert len(churned["added"]) == 1 and len(churned["removed"]) == 1
+    assert churned["unchanged"] == 0
+
+    stable = diff_components(scan_a, scan_b, key_by="asset_key")
+    assert stable["added"] == [] and stable["removed"] == []
+    assert stable["unchanged"] == 0, "the confidence change IS drift"
+    # only asset-stable drift shows: confidence changed, evidence churn does not
+    assert stable["changed"] == [{
+        "key": "spine:fact:v1:aaa", "bom-ref": "ev-run1-1",
+        "changes": [{"path": "properties.cryptoscan:confidence",
+                     "before": "HIGH", "after": "MEDIUM"}]}]
+    # and with confidence identical too, the same fact is fully unchanged
+    same = diff_components(scan_a, [_spine_comp("ev-run2-9", "fact:v1:aaa")], key_by="asset_key")
+    assert same["unchanged"] == 1 and same["changed"] == []
+
+
+def test_spine_keying_reports_estate_drift_not_evidence_churn():
+    """The two-scan operator question: 3DES retired, one AES added, the
+    rest unchanged — regardless of evidence-row turnover."""
+    scan_a = [_spine_comp("ev-1", "fact:v1:keep"), _spine_comp("ev-2", "fact:v1:3des", name="3DES")]
+    scan_b = [_spine_comp("ev-3", "fact:v1:keep"), _spine_comp("ev-4", "fact:v1:newaes")]
+    diff = diff_components(scan_a, scan_b, key_by="asset_key")
+    assert [c["name"] for c in diff["removed"]] == ["3DES"]
+    assert [c["name"] for c in diff["added"]] == ["AES-256-GCM"]
+    assert diff["unchanged"] == 1
+
+
+def test_spine_keying_still_sees_real_compliance_drift():
+    """The policy verdict is asset-stable drift: PASS→FAIL across scans
+    must survive the observation-field exclusions."""
+    scan_a = [_spine_comp("ev-1", "fact:v1:aaa", compliance="PASS")]
+    scan_b = [_spine_comp("ev-2", "fact:v1:aaa", compliance="FAIL")]
+    diff = diff_components(scan_a, scan_b, key_by="asset_key")
+    assert diff["changed"][0]["changes"] == [
+        {"path": "evidence.compliance_status", "before": "PASS", "after": "FAIL"}]
+
+
+def test_spine_keying_falls_back_to_ref_namespaced():
+    """Pre-spine components must not collide with spine-keyed ones."""
+    legacy = [{"type": "cryptographic-asset", "name": "AES-256-GCM", "bom-ref": "fact:v1:aaa"}]
+    keyed = [_spine_comp("ev-1", "fact:v1:aaa")]
+    diff = diff_components(legacy, keyed, key_by="asset_key")
+    assert len(diff["added"]) == 1 and len(diff["removed"]) == 1
+
+
+def test_invalid_key_by_is_refused():
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        diff_components([], [], key_by="nonsense")
