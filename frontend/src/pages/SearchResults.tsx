@@ -40,7 +40,7 @@ export default function SearchResults() {
         apiAlgorithmCatalog({ q: term }),
         apiProtocolCatalog(),
         apiHardwareCatalog(),
-        apiRuntimeFindings(100),
+        apiRuntimeFindings(100, term),
         apiAssetsSearch(term),
       ]);
       const out: Group[] = [];
@@ -77,11 +77,15 @@ export default function SearchResults() {
           name: h.name ?? h.model ?? h.id, to: "/hardware", meta: h.category ?? h.status ?? "",
         })) });
       }
+      // §5 (round 65): runtime findings are searched SERVER-side across the
+      // whole store (the term goes to the API), not filtered from the first
+      // 100 recent rows in the browser — so older matches are found too.
       const fRows = ((find.data as any)?.findings ?? []) as any[];
-      const fHits = fRows.filter((f) => JSON.stringify(f).toLowerCase().includes(term.toLowerCase()));
-      if (fHits.length) {
-        out.push({ label: "Findings", icon: IconWarn, items: fHits.slice(0, 25).map((f) => ({
-          name: f.title ?? f.rule_id ?? f.id, to: "/runtime", meta: f.severity ?? f.status ?? "",
+      const fTotal = Number((find.data as any)?.total_count ?? fRows.length) || fRows.length;
+      if (fRows.length) {
+        out.push({ label: `Findings (runtime, ${fTotal} match${fTotal === 1 ? "" : "es"})`, icon: IconWarn, items: fRows.slice(0, 25).map((f) => ({
+          name: `${f.hostname ?? f.process_name ?? f.algorithm ?? f.id}${f.algorithm ? ` · ${f.algorithm}` : ""}`,
+          to: "/runtime", meta: f.status ?? f.kind ?? "",
         })) });
       }
       if (!cancelled) setGroups(out);

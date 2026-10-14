@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -180,13 +180,32 @@ def list_runtime_findings(
     limit: int = 100,
     kind: str | None = None,
     weak_only: bool = False,
+    q: str | None = Query(None, max_length=200,
+                          description="Server-side search across the whole runtime-findings store: "
+                                      "hostname, process, algorithm, cipher suite, TLS version, "
+                                      "scanner, kind, status"),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
-    """Recent runtime observations + aggregates (weak suites, risky libs)."""
+    """Recent runtime observations + aggregates (weak suites, risky libs).
+
+    With ``q`` the listing becomes a SEARCH over the whole store: rows match
+    the term in the database (not a filter of the recent window) and
+    ``total_count`` reports the number of MATCHING rows, like ``/assets?q=``.
+    Without ``q`` the behavior is unchanged — most-recent rows first, and
+    ``total_count`` is the number of returned rows.
+    """
     from db.repositories.runtime_finding_repository import RuntimeFindingRepository
 
     repo = RuntimeFindingRepository(db)
+    if q and q.strip():
+        rows, total = repo.search(q.strip(), limit=limit)
+        return {
+            "summary": repo.summary(),
+            "query": q.strip(),
+            "total_count": total,
+            "findings": [row.to_dict() for row in rows],
+        }
     rows = repo.list_recent(limit=limit, kind=kind, weak_only=weak_only)
     return {
         "summary": repo.summary(),

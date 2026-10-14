@@ -510,9 +510,12 @@ export const apiDeleteConnection = (id: string) => deleteCall(`/api/v1/onboardin
 export const apiStatsSummary = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/stats/summary");
 
-/** Most-recent runtime crypto findings (the live 24/7 engine). */
-export const apiRuntimeFindings = (limit = 50): Promise<ApiResult<Record<string, unknown>>> =>
-  call(`/api/v1/scans/runtime-findings?limit=${limit}`);
+/** Most-recent runtime crypto findings (the live 24/7 engine). With `q`, a
+ * SERVER-side search across the whole runtime-findings store (hostname,
+ * process, algorithm, cipher suite, TLS version, scanner, kind, status) —
+ * `total_count` then reports matching rows, not returned rows. */
+export const apiRuntimeFindings = (limit = 50, q?: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/scans/runtime-findings?limit=${limit}${q ? `&q=${encodeURIComponent(q)}` : ""}`);
 
 /* ── evidence findings (GET /api/v1/findings, /api/v1/findings/{evidence_id}) ── */
 

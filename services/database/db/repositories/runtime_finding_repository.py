@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from db.models.base import utcnow
@@ -67,6 +67,31 @@ class RuntimeFindingRepository:
         if weak_only:
             stmt = stmt.where((RuntimeFinding.weak_tls.is_(True)) | (RuntimeFinding.status.in_(["DISALLOWED", "DEPRECATED"])))
         return list(self.session.execute(stmt).scalars())
+
+    def search(self, query: str, *, limit: int = 100) -> tuple[list[RuntimeFinding], int]:
+        """§5 (round 65): server-side search across the WHOLE runtime-findings
+        store — the term is matched in the database over the observable text
+        fields (hostname, process, algorithm, cipher suite, TLS version,
+        scanner, kind, status), not a client-side filter of the most-recent
+        window. Returns the matching page plus the total match count."""
+        needle = f"%{query}%"
+        condition = or_(
+            RuntimeFinding.hostname.ilike(needle),
+            RuntimeFinding.process_name.ilike(needle),
+            RuntimeFinding.algorithm.ilike(needle),
+            RuntimeFinding.cipher_suite.ilike(needle),
+            RuntimeFinding.tls_version.ilike(needle),
+            RuntimeFinding.scanner_id.ilike(needle),
+            RuntimeFinding.kind.ilike(needle),
+            RuntimeFinding.status.ilike(needle),
+        )
+        total = int(self.session.execute(
+            select(func.count(RuntimeFinding.id)).where(condition)).scalar() or 0)
+        rows = list(self.session.execute(
+            select(RuntimeFinding).where(condition)
+            .order_by(RuntimeFinding.last_seen_at.desc())
+            .limit(max(1, min(limit, 500)))).scalars())
+        return rows, total
 
     def summary(self) -> dict[str, Any]:
         total = self.session.execute(select(func.count(RuntimeFinding.id))).scalar() or 0

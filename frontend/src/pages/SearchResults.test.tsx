@@ -21,7 +21,7 @@ describe("SearchResults — observed assets, server-side", () => {
       "/api/v1/algorithms": { algorithms: [{ name: "RSA", family: "asymmetric", status: "ALLOWED" }] },
       "/api/v1/protocols": { protocols: [] },
       "/api/v1/hardware": { devices: [] },
-      "/api/v1/runtime-findings": { findings: [] },
+      "/api/v1/scans/runtime-findings": { findings: [], total_count: 0 },
       "/api/v1/assets": { assets: [
         { id: "asset-1", algorithm: "RSA-2048", file_path: "src/Keys.java", asset_key: "fact:v1:abc", lifecycle_state: "DISCOVERED" },
         { id: "asset-2", algorithm: "RSA-4096", file_path: "src/Backup.java", asset_key: "fact:v1:def", lifecycle_state: "ACTIVE" },
@@ -43,11 +43,48 @@ describe("SearchResults — observed assets, server-side", () => {
       "/api/v1/algorithms": { algorithms: [] },
       "/api/v1/protocols": { protocols: [] },
       "/api/v1/hardware": { devices: [] },
-      "/api/v1/runtime-findings": { findings: [] },
+      "/api/v1/scans/runtime-findings": { findings: [], total_count: 0 },
       "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
     });
     renderAt("nope-xyz");
     await waitFor(() => expect(screen.getByText("No matches")).toBeTruthy());
     expect(screen.queryByText(/Assets \(estate/)).toBeNull();
+  });
+});
+
+describe("SearchResults — runtime findings, server-side (round 65)", () => {
+  it("searches the whole runtime-findings store on the server, labeled with the match total", async () => {
+    const fetchSpy = mockFetch({
+      "/api/v1/algorithms": { algorithms: [] },
+      "/api/v1/protocols": { protocols: [] },
+      "/api/v1/hardware": { devices: [] },
+      "/api/v1/scans/runtime-findings": {
+        query: "3DES",
+        total_count: 3,
+        findings: [
+          { id: "rf-1", hostname: "legacy-gateway.internal", algorithm: "3DES", status: "DISALLOWED", kind: "session" },
+        ],
+      },
+      "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
+    });
+    renderAt("3DES");
+    await waitFor(() => expect(screen.getByText(/Findings \(runtime, 3 matches\)/)).toBeTruthy());
+    expect(screen.getByText(/legacy-gateway\.internal · 3DES/)).toBeTruthy();
+    // the term went to the server — not a browser-side filter of recent rows
+    const runtimeCall = fetchSpy.mock.calls.find(([p]) => String(p).includes("/api/v1/scans/runtime-findings?limit=100&q=3DES"));
+    expect(runtimeCall).toBeTruthy();
+  });
+
+  it("shows no runtime group when the store has zero matches — no invented findings", async () => {
+    mockFetch({
+      "/api/v1/algorithms": { algorithms: [] },
+      "/api/v1/protocols": { protocols: [] },
+      "/api/v1/hardware": { devices: [] },
+      "/api/v1/scans/runtime-findings": { query: "nope", total_count: 0, findings: [] },
+      "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
+    });
+    renderAt("nope");
+    await waitFor(() => expect(screen.getByText("No matches")).toBeTruthy());
+    expect(screen.queryByText(/Findings \(runtime/)).toBeNull();
   });
 });
