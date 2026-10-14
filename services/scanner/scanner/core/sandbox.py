@@ -36,14 +36,16 @@ What this module provides:
 
 Honest scope: rlimits + the seccomp guard bound *processes*, not a
 container. They bound wall-clock time per file, address space, file size,
-kernel attack surface and new-socket creation for scanner children; the
-guard cannot block ``write()`` to a file descriptor inherited from the
-worker (fd hygiene / network namespace remain open), and full container
-isolation is still the operator-side staged profile in
-``deploy/seccomp/``. Source-root containment is enforced at admission
-(§4.1). ``RLIMIT_AS`` counts the child's whole address space, including
-mappings inherited from the parent at fork time, so the default is
-generous and every limit is env-tunable (``0`` disables that limit).
+kernel attack surface and new-socket creation for scanner children; fd
+hygiene (round 52) closes inherited non-``AF_UNIX`` sockets — a live
+database/redis connection inherited at fork — in the child before
+scanning, so ``write()`` to it yields ``EBADF``; ``AF_UNIX`` IPC, pipes
+and files remain, descriptors opened later and full container isolation
+are still the operator-side staged profile in ``deploy/seccomp/``.
+Source-root containment is enforced at admission (§4.1). ``RLIMIT_AS``
+counts the child's whole address space, including mappings inherited from
+the parent at fork time, so the default is generous and every limit is
+env-tunable (``0`` disables that limit).
 """
 
 from __future__ import annotations
@@ -185,6 +187,17 @@ def apply_child_limits(
     _set(resource.RLIMIT_AS, spec.get("address_space_mb"), "address_space_bytes", 1024 * 1024)
     _set(resource.RLIMIT_CPU, spec.get("cpu_seconds"), "cpu_seconds")
     _set(resource.RLIMIT_FSIZE, spec.get("file_size_mb"), "file_size_bytes", 1024 * 1024)
+
+    # fd hygiene BEFORE the syscall guard: an inherited live TCP socket
+    # (database/redis) cannot be blocked by a seccomp denylist — close it
+    # in this child so a hostile file hits EBADF, not a working channel.
+    # Independent switch: it has its own env var, not the seccomp flag.
+    from scanner.core.seccomp_guard import close_inherited_network_sockets, seccomp_config
+
+    if seccomp_config()["fd_hygiene"]:
+        applied["fd_hygiene"] = close_inherited_network_sockets()
+    else:
+        applied["fd_hygiene"] = {"closed": 0, "reason": "disabled by CRYPTOSCAN_SANDBOX_FD_HYGIENE"}
 
     if install_seccomp is not False:
         from scanner.core.seccomp_guard import install_seccomp_guard

@@ -27,6 +27,7 @@ from scanner.core.seccomp_guard import (
     SECCOMP_RET_ALLOW,
     SECCOMP_RET_ERRNO,
     build_filter_program,
+    close_inherited_network_sockets,
     current_seccomp_state,
     install_seccomp_guard,
 )
@@ -226,3 +227,183 @@ def test_second_install_reports_already_active_instead_of_stacking(monkeypatch):
     assert out["first"]["installed"] is True
     assert out["second"]["installed"] is False
     assert "already active" in out["second"]["reason"]
+
+
+# ---------------------------------------------------------------------------
+# Round 52 — fd hygiene: the write()-to-inherited-socket hole
+# ---------------------------------------------------------------------------
+
+def _loopback_pair():
+    """A connected TCP pair on loopback: (listener, client). The child
+    inherits the client fd at fork — exactly the "live database/redis
+    socket" the guard's syscall filter cannot police."""
+    import socket
+
+    server = socket.socket()
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    client = socket.socket()
+    client.connect(server.getsockname())
+    return server, client
+
+
+def _count_inet_fds() -> int:
+    """How many AF_INET/AF_INET6 socket fds this process still holds."""
+    import stat as stat_mod
+    import ctypes
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.getsockopt.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                                ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+    count = 0
+    for entry in os.listdir("/proc/self/fd"):
+        try:
+            fd = int(entry)
+        except ValueError:
+            continue
+        try:
+            if not stat_mod.S_ISSOCK(os.fstat(fd).st_mode):
+                continue
+        except OSError:
+            continue
+        family = ctypes.c_int(-1)
+        optlen = ctypes.c_int(4)
+        if libc.getsockopt(fd, 1, 39, ctypes.byref(family), ctypes.byref(optlen)) == 0:
+            if family.value in (2, 10):  # AF_INET, AF_INET6
+                count += 1
+    return count
+
+
+@_EMPIRICAL
+def test_inherited_socket_hole_is_real_without_hygiene(monkeypatch):
+    """CONTROL (the honest hole): with fd hygiene off, a scanner child —
+    seccomp guard fully active — writes to the inherited TCP socket with
+    plain write(), which no syscall denylist can block, and the bytes
+    arrive at the listener. This is why fd hygiene exists."""
+    monkeypatch.setenv("CRYPTOSCAN_SANDBOX_FD_HYGIENE", "off")
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_SECCOMP", raising=False)
+
+    server, client = _loopback_pair()
+    fd = client.fileno()
+
+    def _child(target_fd: int):
+        out = {"state": current_seccomp_state()}
+        try:  # the hostile payload: exfiltrate through the inherited fd
+            os.write(target_fd, b"exfil")
+            out["write"] = "ok"
+        except OSError as exc:
+            out["write"] = f"oserror-{exc.errno}"
+        report = apply_child_limits(install_seccomp=False)  # hygiene env state
+        out["hygiene_reason"] = report["fd_hygiene"].get("reason")
+        return out
+
+    out, error = run_in_sandbox(_child, (fd,), timeout_s=30)
+    conn, _ = server.accept()
+    conn.settimeout(2)
+    received = b""
+    try:
+        received = conn.recv(16)
+    except OSError:
+        pass
+    assert error is None, error
+    assert out["state"]["seccomp"] == 2, "the R51 guard is active in this child"
+    assert out["write"] == "ok", "write() to the inherited socket must be permitted (syscall level)"
+    assert received == b"exfil", "the bytes reached the listener — the hole is real"
+    assert out["hygiene_reason"] == "disabled by CRYPTOSCAN_SANDBOX_FD_HYGIENE"
+    client.close(); conn.close(); server.close()
+
+
+@_EMPIRICAL
+def test_fd_hygiene_closes_the_inherited_socket_in_the_child(monkeypatch):
+    """WITH hygiene (default): the inherited TCP fd is closed in the child
+    before the payload runs — write() gets EBADF, no AF_INET socket
+    remains, and the parent's own copy is untouched."""
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_FD_HYGIENE", raising=False)
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_SECCOMP", raising=False)
+
+    server, client = _loopback_pair()
+    fd = client.fileno()
+
+    def _child(target_fd: int):
+        out = {"state": current_seccomp_state()}
+        try:
+            os.fstat(target_fd)
+            out["fd"] = "open"
+        except OSError as exc:
+            out["fd"] = f"closed-{exc.errno}"
+        try:
+            os.write(target_fd, b"exfil")
+            out["write"] = "ok"
+        except OSError as exc:
+            out["write"] = f"oserror-{exc.errno}"
+        out["inet_fds_left"] = _count_inet_fds()
+        return out
+
+    out, error = run_in_sandbox(_child, (fd,), timeout_s=30)
+    assert error is None, error
+    assert out["state"]["seccomp"] == 2
+    assert out["fd"] == "closed-9", "EBADF — hygiene closed the inherited socket"
+    assert out["write"] == "oserror-9"
+    assert out["inet_fds_left"] == 0
+    os.fstat(fd)  # the PARENT's copy is unaffected
+    client.close(); server.close()
+
+
+@_EMPIRICAL
+def test_fd_hygiene_preserves_unix_ipc_and_files(monkeypatch):
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_FD_HYGIENE", raising=False)
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_SECCOMP", raising=False)
+
+    import socket
+    a, b = socket.socketpair()  # AF_UNIX — local IPC, must survive hygiene
+
+    def _child(fd_a: int, fd_b: int, path: str):
+        out = {}
+        os.write(fd_a, b"ping")
+        out["unix_pair"] = os.read(fd_b, 4).decode()
+        with open(path) as fh:
+            out["file"] = fh.read()
+        out["closed_report"] = close_inherited_network_sockets()  # idempotent sweep
+        return out
+
+    marker = "/etc/hostname"
+    out, error = run_in_sandbox(_child, (a.fileno(), b.fileno(), marker), timeout_s=30)
+    assert error is None, error
+    assert out["unix_pair"] == "ping"
+    assert out["file"]
+    assert out["closed_report"]["closed"] == 0, "second sweep finds nothing left to close"
+    a.close(); b.close()
+
+
+def _pool_fd_probe(fd: int):
+    """Runs INSIDE a pool child: the initializer's hygiene must have closed
+    the inherited TCP fd while local file work keeps working."""
+    out = {"state": current_seccomp_state()}
+    try:
+        os.fstat(fd)
+        out["fd"] = "open"
+    except OSError as exc:
+        out["fd"] = f"closed-{exc.errno}"
+    out["inet_fds_left"] = _count_inet_fds()
+    out["read"] = bool(open("/etc/hostname").read())
+    return out
+
+
+@_EMPIRICAL
+def test_pool_children_close_inherited_sockets(monkeypatch):
+    """The scanner's own pool initializer performs fd hygiene in every
+    child: inherited TCP socket closed, no AF_INET fds remain, files still
+    readable."""
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_FD_HYGIENE", raising=False)
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_SECCOMP", raising=False)
+    monkeypatch.delenv("CRYPTOSCAN_SANDBOX_NET_EGRESS", raising=False)
+
+    server, client = _loopback_pair()
+    ctx = mp.get_context("fork")
+    with ctx.Pool(processes=1, initializer=apply_child_limits) as pool:
+        out = pool.apply(_pool_fd_probe, (client.fileno(),))
+    assert out["state"]["seccomp"] == 2
+    assert out["fd"] == "closed-9"
+    assert out["inet_fds_left"] == 0
+    assert out["read"] is True
+    client.close(); server.close()

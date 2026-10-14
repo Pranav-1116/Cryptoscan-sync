@@ -31,14 +31,18 @@ Configuration: `CRYPTOSCAN_SANDBOX_SECCOMP=on|off` (default `on`),
 
 Verified scope and known limits:
 
+- **fd hygiene (round 52):** the same child initializer closes inherited
+  non-`AF_UNIX` socket descriptors before scanning — a seccomp filter
+  cannot block `write()` to an inherited live database/redis socket, so
+  the child closes it and a hostile write hits `EBADF`
+  (`CRYPTOSCAN_SANDBOX_FD_HYGIENE=on|off`, default `on`). `AF_UNIX` IPC
+  (multiprocessing socketpairs, `/dev/log`), pipes and files are
+  preserved, and descriptors opened *after* the sweep remain — the
+  container boundary is still the authoritative fix.
 - The syscall-number table is **x86_64 only**, verified against the
   kernel's `asm/unistd_64.h` (a unit test re-verifies it where the header
   exists). Other architectures report `unsupported` and run without this
   guard — an unverified table could block the wrong syscall.
-- The guard **cannot** block `write()` to a file descriptor inherited
-  from the worker (e.g. a live database/redis socket). Closing inherited
-  descriptors before scanning, or a dedicated network namespace, remain
-  open work.
 - Empirical tests (`services/scanner/tests/unit/test_seccomp_guard.py`)
   run every install inside forked children: a named syscall returns
   `EPERM` after the install, sockets are refused while file reads and

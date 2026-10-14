@@ -36,11 +36,15 @@ Design, deliberately conservative and honest about scope:
 
 Honest limits of this guard (still true, still documented in §4.1):
 
-* It bounds *processes*, not a container: it cannot stop ``write()`` to a
-  file descriptor inherited from the worker (e.g. a live database/redis
-  socket) — that needs fd hygiene or a network namespace, which remain
-  open; the container-level profile in ``deploy/seccomp/`` is the staged
-  operator-side complement.
+* It bounds *processes*, not a container: a seccomp filter cannot stop
+  ``write()`` to a file descriptor inherited from the worker — that is
+  what :func:`close_inherited_network_sockets` (fd hygiene, run by the
+  same child initializer before scanning) is for: inherited non-
+  ``AF_UNIX`` sockets are closed in the child, so an inherited live
+  database/redis connection yields ``EBADF`` instead of an exfiltration
+  channel. ``AF_UNIX`` IPC and non-socket fds remain, and descriptors
+  opened after the sweep are the container boundary's job — the staged
+  profile in ``deploy/seccomp/`` is the operator-side complement.
 * Once installed the filter is irreversible for that process (children
   only — the initializer runs in pool children, never the worker).
 """
@@ -56,6 +60,7 @@ __all__ = [
     "KERNEL_ATTACK_SYSCALLS",
     "NET_EGRESS_SYSCALLS",
     "build_filter_program",
+    "close_inherited_network_sockets",
     "current_seccomp_state",
     "install_seccomp_guard",
     "seccomp_config",
@@ -73,6 +78,11 @@ BPF_RET_K = 0x06  # BPF_RET | BPF_K
 SECCOMP_RET_ALLOW = 0x7FFF0000
 SECCOMP_RET_ERRNO = 0x00050000  # | errno
 _EPERM = 1
+
+# getsockopt(2) constants for fd hygiene (Linux)
+SOL_SOCKET = 1
+SO_DOMAIN = 39  # returns the socket's address family as an int
+AF_UNIX = 1
 
 _SUPPORTED_MACHINE = "x86_64"
 
@@ -186,12 +196,69 @@ def seccomp_config() -> dict[str, bool]:
       master switch for the syscall guard in scanner children.
     * ``CRYPTOSCAN_SANDBOX_NET_EGRESS`` — ``block`` (default) / ``allow``:
       whether the network-egress set is included.
+    * ``CRYPTOSCAN_SANDBOX_FD_HYGIENE`` — ``on`` (default) / ``off``:
+      close inherited non-AF_UNIX sockets in scanner children (§ the
+      documented ``write()``-to-inherited-fd hole).
     """
     def _flag(name: str, default: str) -> bool:
         return (os.environ.get(name) or default).strip().lower() not in {"off", "0", "false", "no", "allow"}
 
     return {"enabled": _flag("CRYPTOSCAN_SANDBOX_SECCOMP", "on"),
-            "net_egress": _flag("CRYPTOSCAN_SANDBOX_NET_EGRESS", "block")}
+            "net_egress": _flag("CRYPTOSCAN_SANDBOX_NET_EGRESS", "block"),
+            "fd_hygiene": _flag("CRYPTOSCAN_SANDBOX_FD_HYGIENE", "on")}
+
+
+def close_inherited_network_sockets() -> dict[str, Any]:
+    """Close inherited non-``AF_UNIX`` sockets in THIS process (a child).
+
+    A seccomp denylist cannot block ``write()`` to a file descriptor
+    inherited from the parent — and the worker parent holds live TCP
+    sockets (database, redis, API clients) when it forks scanner pool
+    children. This closes that hole from the child side: every socket fd
+    that is not ``AF_UNIX`` is closed BEFORE scanning starts, so a hostile
+    file writing to an inherited live connection gets ``EBADF`` instead of
+    a working exfiltration channel. ``AF_UNIX`` descriptors (multiprocessing
+    socketpairs, wakeup fds, ``/dev/log``) are local IPC and stay open;
+    pipes and files are untouched. Closing an fd in the forked child never
+    affects the parent's copy.
+
+    Never raises; returns what happened. A socket whose family cannot be
+    determined is closed anyway (a socket we cannot inspect is exactly
+    the risk) and reported as unknown.
+    """
+    import stat as stat_mod
+
+    try:
+        fd_entries = os.listdir("/proc/self/fd")
+    except OSError:
+        return {"closed": 0, "reason": "/proc/self/fd unavailable — cannot enumerate descriptors"}
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.getsockopt.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_void_p,
+                                ctypes.POINTER(ctypes.c_int)]
+    closed: list[dict[str, Any]] = []
+    for entry in fd_entries:
+        try:
+            fd = int(entry)
+        except ValueError:
+            continue
+        if fd <= 2:  # stdio is not an exfiltration channel to close here
+            continue
+        try:
+            if not stat_mod.S_ISSOCK(os.fstat(fd).st_mode):
+                continue
+        except OSError:  # gone between listdir and fstat — nothing to do
+            continue
+        family = ctypes.c_int(-1)
+        optlen = ctypes.c_int(ctypes.sizeof(family))
+        if libc.getsockopt(fd, SOL_SOCKET, SO_DOMAIN, ctypes.byref(family), ctypes.byref(optlen)) != 0:
+            os.close(fd)
+            closed.append({"fd": fd, "family": "unknown"})
+            continue
+        if family.value != AF_UNIX:
+            os.close(fd)
+            closed.append({"fd": fd, "family": family.value})
+    return {"closed": len(closed), "fds": closed}
 
 
 def build_filter_program(blocked: Sequence[int], arch: int = AUDIT_ARCH_X86_64) -> list[_SockFilter]:
