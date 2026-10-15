@@ -223,7 +223,31 @@ def unified_risk(levels: Optional[dict[str, Any]] = None,
     }
 
 
-def _level_of(criticality: Optional[str]) -> int:
+#: Algorithm-family classifications — the single authority for the crypto
+#: factor's level AND its explanation. Round 68's asset-level risk explain
+#: chain (api/risk_explain.py) cites these tokens/classes; restate them
+#: nowhere else.
+WEAK_FAMILY_TOKENS = ("MD5", "SHA-1", "SHA1", "DES", "RC4", "3DES", "WEAK")
+CLASSICAL_FAMILY_TOKENS = ("RSA", "ECDSA", "DH")
+
+
+def crypto_designation(algorithm: Any) -> Optional[dict[str, Any]]:
+    """The family token an algorithm name matches, its class and level.
+
+    ``None`` when the name matches no known family — which the explain
+    chain reports as *unclassified*, never as safe.
+    """
+    alg = str(algorithm or "").upper()
+    for token in WEAK_FAMILY_TOKENS:
+        if token in alg:
+            return {"token": token, "family_class": "weak_or_legacy", "level": 4}
+    for token in CLASSICAL_FAMILY_TOKENS:
+        if token in alg:
+            return {"token": token, "family_class": "classical_public_key", "level": 2}
+    return None
+
+
+def criticality_level(criticality: Optional[str]) -> int:
     """Map a persisted criticality/tier string to a 0–4 level (honest)."""
     c = str(criticality or "").upper()
     if c in {"TIER-1", "CRITICAL", "P0", "SEV1"}:
@@ -237,7 +261,7 @@ def _level_of(criticality: Optional[str]) -> int:
     return 0
 
 
-def _exposure_level(asset: dict[str, Any]) -> int:
+def exposure_level(asset: dict[str, Any]) -> int:
     env = str(asset.get("environment") or asset.get("env") or "").lower()
     if env in {"prod", "production", "internet", "public", "dmz"}:
         return 4
@@ -246,7 +270,7 @@ def _exposure_level(asset: dict[str, Any]) -> int:
     return 0
 
 
-def _confidence_level(asset: dict[str, Any]) -> int:
+def confidence_level(asset: dict[str, Any]) -> int:
     conf = str(asset.get("confidence") or "").upper()
     if conf in {"HIGH", "CONFIRMED"}:
         return 4
@@ -257,13 +281,11 @@ def _confidence_level(asset: dict[str, Any]) -> int:
     return 0
 
 
-def _crypto_level(asset: dict[str, Any]) -> int:
-    alg = str(asset.get("algorithm") or "").upper()
-    if any(x in alg for x in ("MD5", "SHA-1", "SHA1", "DES", "RC4", "3DES", "WEAK")):
-        return 4
-    if "RSA" in alg or "ECDSA" in alg or "DH" in alg:
-        return 2
-    return 0
+def crypto_family_level(algorithm: Any) -> int:
+    """The crypto-factor level for one algorithm name (see
+    :data:`WEAK_FAMILY_TOKENS` / :data:`CLASSICAL_FAMILY_TOKENS`)."""
+    designation = crypto_designation(algorithm)
+    return designation["level"] if designation else 0
 
 
 def from_asset(asset: dict[str, Any]) -> dict[str, Any]:
@@ -277,13 +299,13 @@ def from_asset(asset: dict[str, Any]) -> dict[str, Any]:
     relations = asset.get("relationships") or {}
     dep_hits = sum(len(v) for v in relations.values() if isinstance(v, list))
     levels = {
-        "technical": min(_level_of(asset.get("risk")), 4) if _level_of(asset.get("risk")) else int(asset.get("technical_level") or 0),
-        "crypto": max(_crypto_level(asset), int(asset.get("crypto_level") or 0)),
+        "technical": min(criticality_level(asset.get("risk")), 4) if criticality_level(asset.get("risk")) else int(asset.get("technical_level") or 0),
+        "crypto": max(crypto_family_level(asset.get("algorithm")), int(asset.get("crypto_level") or 0)),
         "pqc": 4 if pqc == "vulnerable" else (0 if pqc == "ready" else int(asset.get("pqc_level") or 0)),
-        "exposure": max(_exposure_level(asset), int(asset.get("exposure_level") or 0)),
-        "business_criticality": _level_of(asset.get("criticality")),
+        "exposure": max(exposure_level(asset), int(asset.get("exposure_level") or 0)),
+        "business_criticality": criticality_level(asset.get("criticality")),
         "dependency_impact": min(dep_hits, 4),
-        "evidence_confidence": _confidence_level(asset),
+        "evidence_confidence": confidence_level(asset),
         "threat": int(asset.get("threat_level") or 0),
     }
     return unified_risk(levels)

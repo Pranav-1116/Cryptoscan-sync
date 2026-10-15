@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Stat, Tabs } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, useRealtimeRefresh, RealtimeChip, severityOf, isSystemEvent, type RealtimeState } from "../lib/realtime.js";
-import { apiInventory, apiInventorySummary, apiUnifiedRisk, CmdbAsset, CmdbInventory, CmdbSummary, UnifiedRiskResponse } from "../lib/api.js";
+import { apiAssetRiskExplain, apiInventory, apiInventorySummary, apiUnifiedRisk, AssetRiskExplain, CmdbAsset, CmdbInventory, CmdbSummary, UnifiedRiskResponse } from "../lib/api.js";
 
 /* Unified Asset Inventory / CMDB — one authoritative, deduplicated view of the
    estate across systems, crypto assets, certificates, cloud, hardware, vendors,
@@ -60,6 +60,105 @@ const riskRank = (level: string) => ({ CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
 
 const TYPE_ORDER = ["Application", "Crypto", "Certificate", "Cloud", "Hardware", "Vendor", "BusinessService", "Owner", "NetworkTarget"];
 
+/* §4.6 (round 68): per-asset risk explainability. Renders the chain the
+   backend assembled from persisted state: per-factor provenance (inputs +
+   rule + what level 0 means), the evidence rows joined on the identity
+   spine (crypto assets), stored control verdicts, the asset's own PQC wave
+   and its owners. Every "no data" state is rendered as what it is —
+   unknown or unregistered — never as clean. */
+function AssetExplainPanel({ data, onClose }: { data: AssetRiskExplain; onClose: () => void }) {
+  const basisTone = (b: string) => (b === "OBSERVED" ? "cyan" : "");
+  return (
+    <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <span className="mono" style={{ fontSize: 13 }}>{data.asset_id}</span>
+        <Badge tone={riskTone(data.risk.level)}>{data.risk.level} · {data.risk.score}</Badge>
+        <Badge tone="cyan">{data.asset_type}</Badge>
+        <span className="dim" style={{ fontSize: 12 }}>{data.risk.calculation_version} · weights: {data.risk.weights_source}</span>
+        <button className="btn sm outline" onClick={onClose} style={{ marginLeft: "auto", fontSize: 11.5, padding: "4px 10px" }}>Close</button>
+      </div>
+      <Table
+        head={["factor", "level", "points", "weight", "basis", "why this level"]}
+        rows={data.factors.map((f) => [
+          <span className="mono" style={{ fontSize: 12 }}>{f.factor}</span>,
+          <span className="num">{f.level}</span>,
+          <span className="num">{f.points}</span>,
+          <span className="num dim">{f.weight}</span>,
+          <Badge tone={basisTone(f.basis)}>{f.basis}</Badge>,
+          <span className="dim" style={{ fontSize: 12 }}>
+            {f.derived_from.rule}
+            <div className="mono" style={{ fontSize: 11, marginTop: 2 }}>
+              inputs: {Object.entries(f.derived_from.inputs).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(" · ")}
+            </div>
+          </span>,
+        ])}
+      />
+      <div className="row" style={{ gap: 18, flexWrap: "wrap", alignItems: "flex-start", marginTop: 10 }}>
+        <div style={{ flex: 2, minWidth: 260 }}>
+          <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Where the observation came from</div>
+          {data.evidence_trail.entries.length ? (
+            <>
+              <div className="mono dim" style={{ fontSize: 11, marginBottom: 4 }}>
+                identity spine {data.evidence_trail.asset_key?.slice(0, 18)}… · {data.evidence_trail.total_observations ?? data.evidence_trail.entries.length} observation(s)
+              </div>
+              <Table
+                head={["location", "scan", "chain", "status"]}
+                rows={data.evidence_trail.entries.map((e) => [
+                  <span className="mono" style={{ fontSize: 12 }}>{e.location ?? "—"}</span>,
+                  <span className="mono dim" style={{ fontSize: 11 }}>{e.scan_id}</span>,
+                  <span className="num">{e.chain_position ?? "—"}</span>,
+                  <Badge tone={e.compliance_status === "FAIL" ? "red" : e.compliance_status === "WARN" ? "amber" : "green"}>{e.compliance_status ?? "—"}</Badge>,
+                ])}
+              />
+              {(data.evidence_trail.failing_controls ?? []).length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Why controls fail — the stored verdicts</div>
+                  {(data.evidence_trail.failing_controls ?? []).map((c) => (
+                    <div key={c.rule_id ?? "?"} style={{ fontSize: 12, marginBottom: 4 }}>
+                      <Badge tone="red">{c.worst_outcome}</Badge> <span className="mono">{c.rule_id}</span>{" "}
+                      <span className="dim">{c.messages[0] ?? c.rule_name ?? ""} · {c.evidence_count} evidence row(s)</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="dim" style={{ fontSize: 12 }}>{data.evidence_trail.note}</div>
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Who owns it</div>
+          <div style={{ fontSize: 12 }}>
+            <div>owner: <span className="mono">{data.accountability.owner ?? "—"}</span></div>
+            <div>technical: <span className="mono">{data.accountability.technical_owner ?? "—"}</span></div>
+            <div>security: <span className="mono">{data.accountability.security_owner ?? "—"}</span></div>
+            {data.accountability.systems_using.length > 0 && (
+              <div className="dim" style={{ marginTop: 2 }}>used by: <span className="mono">{data.accountability.systems_using.join(", ")}</span></div>
+            )}
+          </div>
+          {data.pqc_rationale && data.pqc_rationale.sites.length > 0 && (
+            <>
+              <div className="dim" style={{ fontSize: 12, marginTop: 10, marginBottom: 4 }}>PQC wave for this asset</div>
+              {data.pqc_rationale.sites.slice(0, 3).map((site, i) => (
+                <div key={i} style={{ fontSize: 12, marginBottom: 4 }}>
+                  <Badge tone="amber">wave {site.wave}</Badge> <span className="mono">{site.algorithm}</span>
+                  <div className="dim">deadline {site.migration_deadline ?? "—"} · replace with {site.recommended_replacement}</div>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <div className="dim" style={{ fontSize: 12, marginBottom: 4 }}>Honest limitations</div>
+        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }} className="dim">
+          {data.limitations.map((lim, i) => <li key={i}>{lim}</li>)}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
 export default function Cmdb() {
   const rt = useRealtime();
   const assets = usePollingApi(apiInventory, 9000);
@@ -74,6 +173,28 @@ export default function Cmdb() {
   const [typeFilter, setTypeFilter] = useState("All");
   const [riskFilter, setRiskFilter] = useState("All");
   const [q, setQ] = useState("");
+
+  /* per-asset explain chain (§4.6, round 68) */
+  const [explainFor, setExplainFor] = useState<string | null>(null);
+  const [explainData, setExplainData] = useState<AssetRiskExplain | null>(null);
+  const [explainBusy, setExplainBusy] = useState(false);
+  const loadExplain = async (assetId: string) => {
+    if (explainFor === assetId) {
+      setExplainFor(null);
+      setExplainData(null);
+      return;
+    }
+    setExplainBusy(true);
+    const r = await apiAssetRiskExplain(assetId);
+    setExplainBusy(false);
+    if (r.data) {
+      setExplainFor(assetId);
+      setExplainData(r.data);
+    } else {
+      setExplainFor(null);
+      setExplainData(null);
+    }
+  };
 
   const rows: CmdbAsset[] = useMemo(() => {
     if (!data) return [];
@@ -160,7 +281,7 @@ export default function Cmdb() {
               ))}
             </div>
             <Table
-              head={["asset", "type", "score", "level", "top factors"]}
+              head={["asset", "type", "score", "level", "top factors", ""]}
               rows={riskU.data.assets.slice(0, 12).map((a) => {
                 const top = Object.entries(a.factors).filter(([, f]) => f.level > 0).sort((a, b) => b[1].level - a[1].level).slice(0, 3).map(([k, f]) => `${k}:${f.level}`).join(", ");
                 return [
@@ -169,12 +290,30 @@ export default function Cmdb() {
                   <span className="num">{a.score}</span>,
                   <Badge tone={riskTone(a.level)}>{a.level}</Badge>,
                   <span className="dim mono" style={{ fontSize: 12 }}>{top || "no factors > 0"}</span>,
+                  <button
+                    className="btn sm outline"
+                    disabled={explainBusy}
+                    onClick={() => void loadExplain(a.id)}
+                    style={{ fontSize: 11.5, padding: "4px 10px" }}
+                    title={"Why this score — which inputs set each factor, where the observation came from, and what is unknown rather than clean."}
+                  >
+                    {explainFor === a.id ? "Hide why" : "Why?"}
+                  </button>,
                 ];
               })}
             />
           </div>
         ) : (
           <div className="dim" style={{ fontSize: 13 }}>{riskU.source === "offline" ? "Backend offline — unified risk unavailable." : "No assets yet — run a scan to compute unified risk."}</div>
+        )}
+        {explainData && explainFor && (
+          <AssetExplainPanel
+            data={explainData}
+            onClose={() => {
+              setExplainFor(null);
+              setExplainData(null);
+            }}
+          />
         )}
       </Panel>
 

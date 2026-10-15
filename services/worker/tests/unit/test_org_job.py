@@ -41,6 +41,16 @@ def _org_result(status="OK", accounts=2, resources=5):
 
 
 def test_executor_routes_org_targets_to_org_job(monkeypatch):
+    # This test pins ROUTING, not the gate: stub the policy read the
+    # execution-gate tests own (same as test_execution_gate.py and the
+    # round-67 fix in test_cloud_job.py). Without this it only passed when
+    # some earlier file in the same process had bound SessionLocal —
+    # alone, the unbound session made the gate fail closed and the refusal
+    # path crash on the same unbound session (order-dependent under xdist
+    # loadfile reshuffles).
+    import worker.core.execution_gate as _gate
+
+    monkeypatch.setattr(_gate, "_matching_policy", lambda: {"mode": "standard"})
     called = {}
 
     def fake_org_job(job):

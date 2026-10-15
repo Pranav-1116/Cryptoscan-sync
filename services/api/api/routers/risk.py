@@ -76,6 +76,38 @@ def unified_inventory_risk(
     }
 
 
+@router.get("/unified/{asset_id}/explain")
+def explain_unified_asset_risk(
+    asset_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The explainability chain behind ONE inventory asset's unified score
+    (§4.6, round 68) — the asset-level counterpart of
+    ``/risk/systems/{id}/explain``.
+
+    Every factor answers WHICH inputs set its level (the exact inventory
+    fields, the rule that applied, and what level 0 MEANS — unknown or
+    unregistered, never "clean"); for crypto assets the chain also cites
+    WHERE the observation came from (evidence rows joined on the identity
+    spine, with chain position and verify paths), WHY controls fail (the
+    STORED per-rule verdicts), WHY PQC flags the asset (the real wave
+    assignment for its own site) and WHO owns it. Levels come from the
+    same ``from_asset`` call ``/risk/unified`` scores with — the
+    explanation cannot drift from the score it explains.
+    """
+    from api.risk_explain import assemble_asset_explanation
+
+    explanation = assemble_asset_explanation(db, asset_id)
+    if explanation is None:
+        raise HTTPException(
+            status_code=404,
+            detail=("Asset not in the unified inventory (window: first 1000 "
+                    "per type — the same cap /risk/unified scores)."),
+        )
+    return explanation
+
+
 # --------------------------------------------------------------------------- #
 # Report 64 P0 — system-level unified risk: the SAME 8-factor contract,
 # derived from a system's persisted observations (evidence, drift,

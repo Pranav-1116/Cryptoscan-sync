@@ -779,6 +779,47 @@ export const apiUnifiedRisk = (params?: { asset_type?: string; risk?: string }):
   return call(`/api/v1/risk/unified${qs ? `?${qs}` : ""}`);
 };
 
+/* §4.6 (round 68): the ASSET-level explainability chain — the same depth as
+ * the per-system explain. Each factor cites WHICH inventory inputs set its
+ * level and what level 0 MEANS (unknown/unregistered, never "clean"); crypto
+ * assets additionally cite the evidence rows joined on the identity spine,
+ * the STORED control verdicts, their own PQC wave assignment and owners. */
+export interface AssetRiskFactor {
+  factor: string;
+  level: number;
+  points: number;
+  weight: number;
+  basis: "DECLARED" | "OBSERVED";
+  basis_note: string;
+  derived_from: { inputs: Record<string, unknown>; rule: string };
+}
+export interface AssetRiskExplain {
+  asset_id: string;
+  asset_type: string;
+  name: string | null;
+  risk: { score: number; level: string; calculation_version: string; weights_source: string };
+  factors: AssetRiskFactor[];
+  inventory_row: Record<string, unknown>;
+  evidence_trail: {
+    asset_key: string | null;
+    total_observations?: number;
+    entries: { evidence_id: string; scan_id: string; verify_path: string; location: string | null; content_hash?: string; chain_position?: number; compliance_status?: string }[];
+    failing_controls?: { rule_id: string | null; rule_name?: string | null; worst_outcome: string; evidence_count: number; messages: string[] }[];
+    note: string;
+  };
+  pqc_rationale: {
+    vulnerable_sites: number;
+    sites: { wave: string; wave_focus?: string; algorithm?: string; location?: string | null; migration_deadline?: string | null; hndl_risk?: string | null; recommended_replacement: string }[];
+    note: string;
+  } | null;
+  accountability: { owner: string | null; technical_owner: string | null; security_owner: string | null; systems_using: string[]; note: string };
+  system_explain_path: string | null;
+  limitations: string[];
+  model: string;
+}
+export const apiAssetRiskExplain = (assetId: string): Promise<ApiResult<AssetRiskExplain>> =>
+  call(`/api/v1/risk/unified/${encodeURIComponent(assetId)}/explain`);
+
 // ── Scope & Authorization + Multi-Tenant isolation (#2, #11) ──
 export interface ScopeEnvelope {
   org_id: string | null;
