@@ -19,6 +19,7 @@ class RemediationTaskRepository(BaseRepository[RemediationTask]):
         status: str | None = None,
         scan_id: str | None = None,
         owner: str | None = None,
+        evidence_id: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[list[RemediationTask], int]:
@@ -33,6 +34,11 @@ class RemediationTaskRepository(BaseRepository[RemediationTask]):
         if owner:
             stmt = stmt.where(RemediationTask.owner == owner)
             count_stmt = count_stmt.where(RemediationTask.owner == owner)
+        if evidence_id:
+            # the finding→task cross-link (§5, round 73): which tasks
+            # reference THIS evidence record (indexed column)
+            stmt = stmt.where(RemediationTask.evidence_id == evidence_id)
+            count_stmt = count_stmt.where(RemediationTask.evidence_id == evidence_id)
         total = int(self.session.execute(count_stmt).scalar_one())
         stmt = (
             stmt.order_by(desc(RemediationTask.created_at))

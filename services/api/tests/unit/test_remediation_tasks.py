@@ -234,3 +234,45 @@ async def test_task_not_found_and_bad_transitions():
         await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete", json={})
         again = await client.post(f"/api/v1/remediation/tasks/{task['id']}/accept")
         assert again.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_tasks_filter_by_evidence_id_the_finding_cross_link():
+    """§5 (round 73): the finding→task cross-link — `?evidence_id=`
+    returns exactly the tasks referencing THAT finding, so the Findings
+    drawer can show what an operator already owns on it."""
+    app, session, _ = _make_app()
+    _scan(session, "scan-1")
+    _evidence(session, "e1", "scan-1", "DES", key_size=56)
+    _evidence(session, "e2", "scan-1", "3DES", key_size=112)
+    session.commit()
+    async with _client(app) as client:
+        t1 = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e1"})).json()
+        t2 = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e2"})).json()
+
+        both = await client.get("/api/v1/remediation/tasks")
+        assert both.json()["total"] == 2
+
+        only_e1 = await client.get("/api/v1/remediation/tasks", params={"evidence_id": "e1"})
+        assert only_e1.status_code == 200, only_e1.text
+        body = only_e1.json()
+        assert body["total"] == 1
+        assert [t["id"] for t in body["tasks"]] == [t1["id"]]
+        assert body["tasks"][0]["evidence_id"] == "e1"
+        assert t2["id"] not in [t["id"] for t in body["tasks"]]
+
+        none = await client.get("/api/v1/remediation/tasks",
+                                params={"evidence_id": "e-does-not-exist"})
+        assert none.json()["total"] == 0
+        assert none.json()["tasks"] == []
+
+        # composes with the status filter
+        accepted = await client.post(f"/api/v1/remediation/tasks/{t2['id']}/accept")
+        assert accepted.status_code == 200
+        combo = await client.get("/api/v1/remediation/tasks",
+                                 params={"evidence_id": "e2", "status": "ACCEPTED"})
+        assert combo.json()["total"] == 1
+        assert combo.json()["tasks"][0]["id"] == t2["id"]
+        wrong_status = await client.get("/api/v1/remediation/tasks",
+                                        params={"evidence_id": "e2", "status": "PROPOSED"})
+        assert wrong_status.json()["total"] == 0

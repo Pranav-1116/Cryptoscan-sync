@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Panel, Badge, Table, PageHead, Kpi, Code, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
@@ -7,9 +8,13 @@ import { ICON_MD, ICON_SM, IconClose, IconRunning, StatusMark } from "../compone
 import {
   apiFindings,
   apiFindingDetail,
+  apiFindingVerify,
+  apiRemediationTasks,
   apiTriggerScan,
   apiRuntimeFindings,
   Finding,
+  FindingVerifyVerdict,
+  RemediationTask,
   RuntimeFindingsResponse,
   RuntimeFindingRow,
 } from "../lib/api.js";
@@ -263,6 +268,49 @@ export default function Findings() {
 
 function FindingDetail({ f }: { f: Finding }) {
   const asset = [f.file_path, f.class_name, f.method_name].filter(Boolean).join(" · ") || "—";
+
+  // §4.2 (round 42) surfaced here (round 73): per-record verification.
+  // A scan-level PASS is not a per-record seal — this recomputes ONE
+  // record's content + chain hashes against its own commitments, through
+  // the same verifier the scan sweep uses. Auditor-only: a 403 renders
+  // as the role refusal it is, never as a failure of the evidence.
+  const [verdict, setVerdict] = useState<FindingVerifyVerdict | null>(null);
+  const [verifyBusy, setVerifyBusy] = useState(false);
+  const [verifyErr, setVerifyErr] = useState<string | null>(null);
+
+  // §5 (round 73): the finding→task cross-link — which remediation
+  // tasks reference THIS finding (the lifecycle page and /priorities
+  // remain the creation entry points).
+  const [tasks, setTasks] = useState<RemediationTask[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setVerdict(null);
+    setVerifyErr(null);
+    setTasks(null);
+    void apiRemediationTasks({ evidence_id: f.evidence_id, page_size: 20 }).then((r) => {
+      if (!alive) return;
+      setTasks(r.source === "live" && r.data ? (r.data.tasks ?? []) : null);
+    });
+    return () => { alive = false; };
+  }, [f.evidence_id]);
+
+  async function runVerify() {
+    setVerifyBusy(true);
+    setVerifyErr(null);
+    const r = await apiFindingVerify(f.evidence_id);
+    setVerifyBusy(false);
+    if (r.source === "live" && r.data) {
+      setVerdict(r.data);
+    } else {
+      setVerdict(null);
+      setVerifyErr(
+        r.error === "HTTP 403"
+          ? "Requires the auditor role — per-record verification is an audit action."
+          : r.error || "verification failed");
+    }
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="kpi-strip">
@@ -285,7 +333,7 @@ function FindingDetail({ f }: { f: Finding }) {
             <Row k="last seen" v={fmtTs(f.updated_at)} />
           </div>
         </Panel>
-        <Panel title="Evidence chain" sub="tamper-evident hashes (you can verify these) ">
+        <Panel title="Evidence chain" sub="tamper-evident hashes (verifiable below)">
           <div className="mono-list">
             <Row k="content hash" v={<span className="mono">{f.content_hash}</span>} />
             <Row k="chain hash" v={<span className="mono">{f.chain_hash}</span>} />
@@ -311,13 +359,69 @@ function FindingDetail({ f }: { f: Finding }) {
         </Panel>
       )}
 
-      <Panel title="Recommendation & verification" sub="next actions after this finding">
-        <div className="mono-list">
-          <Row k="Recommended" v="Review the source location; confirm the algorithm/key against catalog policy" />
-          <Row k="Verify" v="Cross-check content_hash / chain_hash in /api/v1/auth/audit/verify" />
-          <Row k="Remediation" v="Rotate or re-key per the algorithm's policy verdict (see Policy evaluation)" />
-        </div>
-      </Panel>
+      <div className="grid cols-2">
+        <Panel title="Record verification" sub="recompute this record's hashes against its own commitments">
+          <button className="btn sm primary" disabled={verifyBusy} onClick={() => void runVerify()} style={{ fontSize: 12 }}>
+            {verifyBusy ? "Verifying…" : "Verify this record"}
+          </button>
+          {verifyErr && (
+            <div style={{ fontSize: 12.5, color: "var(--amber)", marginTop: 8 }}>{verifyErr}</div>
+          )}
+          {verdict && (
+            <div className="mono-list" style={{ marginTop: 10 }}>
+              <Row k="verdict" v={<Badge tone={verdict.result === "PASS" ? "green" : "red"}>{verdict.result}</Badge>} />
+              <Row k="content intact" v={verdict.content_intact ? <Badge tone="green">yes</Badge> : <Badge tone="red">no</Badge>} />
+              <Row k="chain intact" v={verdict.chain_intact ? <Badge tone="green">yes</Badge> : <Badge tone="red">no</Badge>} />
+              <Row k="hash format" v={verdict.hash_format_valid ? <Badge tone="green">valid</Badge> : <Badge tone="red">invalid</Badge>} />
+              {verdict.errors.length > 0 && (
+                <Row k="errors" v={verdict.errors.map((e) => (
+                  <div key={e} style={{ color: "var(--red)", fontSize: 12 }}>{e}</div>
+                ))} />
+              )}
+              <Row k="verified by" v={<span className="mono">{verdict.verified_by}</span>} />
+              <Row k="scan verify" v={<span className="mono">{verdict.scan_verify_path}</span>} />
+              <div className="dim" style={{ fontSize: 11.5, marginTop: 6 }}>
+                {verdict.notes?.[0] ||
+                  "Verifies the stored payload against its committed hashes — not a claim that the observation was true."}
+              </div>
+            </div>
+          )}
+        </Panel>
+        <Panel title="Remediation tasks" sub="tasks that reference this finding">
+          {tasks === null && (
+            <div className="dim" style={{ fontSize: 13 }}>Task lookup unavailable.</div>
+          )}
+          {tasks !== null && tasks.length === 0 && (
+            <div className="dim" style={{ fontSize: 13, marginBottom: 8 }}>
+              No remediation tasks reference this finding — create one from Priorities or the
+              finding's scan.
+            </div>
+          )}
+          {tasks !== null && tasks.length > 0 && (
+            <div className="mono-list">
+              {tasks.map((t) => (
+                <Row key={t.id}
+                  k={<span className="mono">{t.id.slice(0, 14)}…</span>}
+                  v={
+                    <span className="row" style={{ gap: 6 }}>
+                      <Badge tone={tone(t.status)}>{String(t.status || "—").toUpperCase()}</Badge>
+                      <span style={{ fontSize: 12 }}>{t.rule_id || "—"}</span>
+                      {t.owner && <span style={{ fontSize: 12, color: "var(--dim)" }}>· {t.owner}</span>}
+                    </span>
+                  } />
+              ))}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <Link to="/remediation" className="btn sm outline" style={{ textDecoration: "none", fontSize: 11.5, padding: "4px 10px" }}>
+              Open task lifecycle view →
+            </Link>
+            <span className="dim" style={{ fontSize: 11.5 }}>
+              COMPLETED is a declaration — VERIFIED is a rescan-evidence verdict.
+            </span>
+          </div>
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -331,7 +435,7 @@ function Mini({ label, v, badge }: { label: string; v: React.ReactNode; badge?: 
     </div>
   );
 }
-function Row({ k, v }: { k: string; v: React.ReactNode }) {
+function Row({ k, v }: { k: React.ReactNode; v: React.ReactNode }) {
   return (
     <div className="spread" style={{ fontSize: 13, padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
       <span className="dim">{k}</span>
