@@ -1,19 +1,19 @@
 {
   "schema": "cryptoscan.bank-readiness/1",
-  "captured_at": "2026-10-16T10:52:05.798077+00:00",
+  "captured_at": "2026-10-16T17:23:16.745004+00:00",
   "repository": {
-    "commit": "cba7885b30fef9c3757e17d559bb2918b0332272",
-    "branch": "arena/01a106c8-cryproscan",
-    "dirty": true
+    "commit": "176044d198d30797c5a734f297d66b30fd13ee73",
+    "branch": "arena/bb4b80dd-cryproscan",
+    "dirty": false
   },
   "artifact_generation_state": {
-    "commit": "cba7885b30fef9c3757e17d559bb2918b0332272",
-    "branch": "arena/01a106c8-cryproscan",
-    "dirty": true
+    "commit": "176044d198d30797c5a734f297d66b30fd13ee73",
+    "branch": "arena/bb4b80dd-cryproscan",
+    "dirty": false
   },
-  "command": "/home/user/.venv/bin/python scripts/bank_readiness.py --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-10-04.json --integrations docs/readiness-evidence/burn-in-2026-10-04.json --compliance docs/readiness-evidence/compliance-burn-2026-10-04.md --load-soak docs/readiness-evidence/load-test-2026-10-04.json",
+  "command": "/home/user/venv-cs/bin/python scripts/bank_readiness.py --engineering docs/readiness-evidence/engineering-gate.json --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-10-04.json --integrations docs/readiness-evidence/burn-in-2026-10-04.json --compliance docs/readiness-evidence/compliance-burn-2026-10-04.md --load-soak docs/readiness-evidence/load-test-2026-10-04.json --out docs/readiness-evidence/bank-readiness.json",
   "environment": {
-    "environment": "unset",
+    "environment": "development",
     "ci": false
   },
   "required_categories": [
@@ -32,9 +32,9 @@
     {
       "category": "engineering",
       "status": "FAIL",
-      "detail": "artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=22ad22c121f41b892ce480b006bf7bb53a5633820ab3ef164cfaf3cea6d6803d",
-      "artifact": "/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json",
-      "artifact_sha256": "22ad22c121f41b892ce480b006bf7bb53a5633820ab3ef164cfaf3cea6d6803d",
+      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=1c81f4af72533db1c5e2bd427dcd9ff47d93161bbf11b0bed9d6711837a4c68d",
+      "artifact": "docs/readiness-evidence/engineering-gate.json",
+      "artifact_sha256": "1c81f4af72533db1c5e2bd427dcd9ff47d93161bbf11b0bed9d6711837a4c68d",
       "observed_statuses": [
         "FAIL",
         "PASS",

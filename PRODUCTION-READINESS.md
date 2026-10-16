@@ -38,32 +38,59 @@ customer attestations in the controlled evidence store.
 
 ### Latest recorded gate
 
-The checked-in report was generated on **2026-10-04 UTC** against commit
-`e44568e` (evidence commit; the report itself is committed in the follow-up
-commit, per the repository's binding convention) with live qualification
-artifacts supplied for four evidence categories. **PostgreSQL DR is PASS**
-(`docs/readiness-evidence/postgres-dr-drill-2026-10-04.json`: 35/35 checks,
-promotion RTO 0.103 s, marker RPO 0 s, full row-count preservation, API
-failover HTTP 200, real worker recovery probe, clean pg_dump/psql restore of
-every table including the hash-chained audit log). **Integrations is PASS**
-(`burn-in-2026-10-04.json`: HMAC-signed GitHub webhook round-trip through the
-Redis queue and worker, TLS 1.3 negotiation, SMTP delivery). **Compliance is
-PASS** (`compliance-burn-2026-10-04.md`: 11/11 over live HTTP — evidence pack,
-JWS attestation sign/verify/tamper-reject, WORM retention, auditor key
-separation, capacity forecast). **Load/soak is PASS**
-(`load-test-2026-10-04.json`: 7 559 requests, 0 errors, 100 % HTTP 200;
-`soak-2026-10-04/`: 3/3 cycles with the evidence chain re-verified each cycle
-and flat RSS). The engineering subchecks for exception triage, `X-API-Key`
-coverage and frontend authorization are **PASS**; engineering as a whole is
+The checked-in report was regenerated on **2026-10-16 UTC** against evidence
+commit `176044d1` (the report itself is committed in the follow-up commit, per
+the repository's binding convention), on a **clean tree** — `dirty: false`,
+branch `arena/bb4b80dd-cryproscan`, environment `development`. It supersedes
+the capture at `cba7885b` (round 78), which predated rounds 79–80; the
+verdicts did not move, and the engineering subchecks are byte-identical to the
+previous capture apart from `captured_at`.
+
+**The four PASS categories rest on the retained 2026-10-04 qualification
+artifacts, re-supplied unchanged.** No new qualification run happened on
+2026-10-16, so those statuses describe the 2026-10-04 environment, not the
+current one — the report records the artifact digest for each so the distinction
+is checkable.
+
+**PostgreSQL DR is PASS** (`docs/readiness-evidence/postgres-dr-drill-2026-10-04.json`:
+35/35 checks, promotion RTO 0.103 s, marker RPO 0 s, full row-count
+preservation, API failover HTTP 200, real worker recovery probe, clean
+pg_dump/psql restore of every table including the hash-chained audit log).
+**Integrations is PASS** (`burn-in-2026-10-04.json`: HMAC-signed GitHub webhook
+round-trip through the Redis queue and worker, TLS 1.3 negotiation, SMTP
+delivery) — *partial scope*: cloud, Neo4j and container probes were not in
+scope of that qualification environment. **Compliance is PASS**
+(`compliance-burn-2026-10-04.md`: 11/11 over live HTTP — evidence pack, JWS
+attestation sign/verify/tamper-reject, WORM retention, auditor key separation,
+capacity forecast). **Load/soak is PASS** (`load-test-2026-10-04.json`:
+7 559 requests, 0 errors, 100 % HTTP 200; `soak-2026-10-04/`: 3/3 cycles with
+the evidence chain re-verified each cycle and flat RSS) — a *short-run*
+qualification; a multi-day production soak is still required for capacity
+claims.
+
+The engineering subchecks for exception triage (0 unresolved handlers),
+route authorization (**896 decorated routes, 896 auth-covered-or-exempt, 0
+uncovered**), frontend authorization (0 direct role/localStorage references)
+and tenant isolation (115 scoped tables, 12 justified platform-scope tables,
+1 `platform_scope()` site, 0 violations) are **PASS**; engineering as a whole is
 **FAIL** because immutable image policy is unresolved (three mutable template
 references; the release registry was unreachable from the qualification
 environment, so no digest-pinned manifests could be rendered), the
 branch-protection API query was refused for the automation credential
 (403 — Administration scope not granted), and the COBOL/PL/I/RPG
-customer-sample hooks have no customer corpora. HSM, readiness-closure and
-external-attestation categories remain **SKIP** — those require
-provider-controlled or customer evidence that a repository session cannot
-produce. See the JSON report for the complete machine-readable record.
+customer-sample hooks have no customer corpora ("corpus evidence is not
+customer validation"). HSM, readiness-closure and external-attestation
+categories remain **SKIP** — those require provider-controlled or customer
+evidence that a repository session cannot produce.
+
+**Verdict: FAIL — 6 PASS / 1 FAIL / 3 SKIP of 10 required categories**,
+recommendation *"do not approve production; remediation and/or evidence
+collection required"*. As of round 80 the accompanying claim that no in-repo
+check is failing is verified rather than asserted: the complete backend suite
+passes in isolation as well as in aggregate (7,629 / 34 skipped / 0 failed),
+where previously one order-dependent worker test failed on any run that did not
+execute `services/api/tests/unit/test_auth_lifecycle.py` first in the same
+process. See the JSON report for the complete machine-readable record.
 
 ## Required qualification categories
 
