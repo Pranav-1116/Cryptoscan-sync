@@ -38,8 +38,8 @@ not a universal "scan everything" tool.
   **key *metadata* only — never key material or secret values** (enforced by
   tests; evidence packs use strict field whitelists).
 
-Not every surface is equally proven: **33 GA · 30 beta · 8 preview** console
-surfaces, labelled on every page and listed in
+Not every surface is equally proven: **33 GA · 32 beta · 10 preview** console
+surfaces (75 in total — the same 75 the page-component count above reports), labelled on every page and listed in
 [docs/CAPABILITY-MATURITY.md](docs/CAPABILITY-MATURITY.md)
 (`GET /api/v1/platform/capabilities`, source `shared_models/capability_maturity.py`).
 
