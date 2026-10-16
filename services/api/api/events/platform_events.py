@@ -90,18 +90,31 @@ def emit_platform_event(
     *,
     target_name: str = "platform",
     tenant_id: str | None = None,
+    session: Any | None = None,
 ) -> dict[str, Any] | None:
     """Persist + publish one platform event.
 
     The durable Redis journal is the realtime authority in production; the
     monitor row is the audit record. Ownership is attached to both so replay
     and live fan-out can enforce tenant isolation.
+
+    ``session``: the caller's unit of work, when it has one. A caller that is
+    already inside an open write transaction (the scan pipeline, a graph sync)
+    MUST pass it: opening a second connection to write the event while the
+    first transaction is uncommitted is a writer-vs-writer conflict, which on
+    SQLite — the documented single-box backend — waits out ``busy_timeout``
+    and then drops the event with ``platform_event_persist_failed``. The drop
+    is silent to the operator and it empties the very journal the
+    notifications feed, the dispatch registry and the worker-fleet/connector
+    health probes read. On PostgreSQL the same call costs a pooled connection
+    and a separate transaction per event for no benefit.
     """
     tenant_id = tenant_id or _active_tenant_id(payload)
     row_id: str | None = None
     try:
         row_id = _persist(target_name=target_name, event_type=event_type,
-                          detail=detail, payload=payload, tenant_id=tenant_id)
+                          detail=detail, payload=payload, tenant_id=tenant_id,
+                          session=session)
     except Exception as exc:  # DB unavailable — the bus still delivers
         logger.warning("platform_event_persist_failed: %s", exc)
 
@@ -142,6 +155,7 @@ def persist_platform_event(
     *,
     target_name: str = "platform",
     tenant_id: str | None = None,
+    session: Any | None = None,
 ) -> str | None:
     """Durable half of a real-time event: persist to the DB event log and mark
     the row as already-delivered so the tailer never double-delivers it.
@@ -155,7 +169,8 @@ def persist_platform_event(
     tenant_id = tenant_id or _active_tenant_id(payload)
     try:
         row_id = _persist(target_name=target_name, event_type=event_type,
-                          detail=detail, payload=payload, tenant_id=tenant_id)
+                          detail=detail, payload=payload, tenant_id=tenant_id,
+                          session=session)
     except Exception as exc:  # DB unavailable — in-process delivery still happened
         logger.warning("platform_event_persist_failed: %s", exc)
         return None
@@ -168,8 +183,17 @@ def persist_platform_event(
 
 
 def _persist(*, target_name: str, event_type: str, detail: str,
-             payload: dict[str, Any] | None, tenant_id: str | None = None) -> str | None:
-    from db.connection.session import SessionLocal
+             payload: dict[str, Any] | None, tenant_id: str | None = None,
+             session: Any | None = None) -> str | None:
+    """Write the durable monitor_events row.
+
+    ``session`` is the caller's unit of work when it has one. Passing it keeps
+    the event inside the caller's transaction instead of opening a second
+    connection that has to wait for the first one to commit — see
+    :func:`emit_platform_event`. When the caller owns the session this function
+    flushes and leaves the commit (and therefore the atomicity) to the caller:
+    the event lands with the scan it describes, or not at all.
+    """
     from db.repositories.monitor_repository import MonitorRepository
 
     class _TargetShim:
@@ -181,7 +205,11 @@ def _persist(*, target_name: str, event_type: str, detail: str,
             self.name: str = name
             self.tenant_id: str | None = owner
 
-    session = SessionLocal()
+    owns_session = session is None
+    if owns_session:
+        from db.connection.session import SessionLocal
+
+        session = SessionLocal()
     try:
         repo = MonitorRepository(session)
         row = repo.add_event(
@@ -190,10 +218,14 @@ def _persist(*, target_name: str, event_type: str, detail: str,
             detail=detail,
             payload=payload,
         )
-        session.commit()
+        if owns_session:
+            session.commit()
+        else:
+            session.flush()
         return row.id
     finally:
-        session.close()
+        if owns_session:
+            session.close()
 
 
 def prune_published_ids() -> None:

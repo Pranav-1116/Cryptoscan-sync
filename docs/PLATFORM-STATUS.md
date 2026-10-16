@@ -70,7 +70,7 @@ real infrastructure or credentials.
 > running, stale leases, the monitor leader lease, drain evidence — never API
 > liveness). Per-round ledger:
 > [`audit_reports/00_ROUND_STATUS.md`](../audit_reports/00_ROUND_STATUS.md)
-> (now complete through round 79). The paragraphs below record earlier
+> (now complete through round 80). The paragraphs below record earlier
 > measurements and dated implementation updates.
 
 Measured at the release HEAD (`v1.0.0` + supervisory portal + telecom scanner + ops layer + enterprise readiness, 2026-09-11):

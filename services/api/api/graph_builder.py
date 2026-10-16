@@ -356,6 +356,11 @@ def sync_graph(session: Session, *, driver=None) -> dict[str, Any]:
     try:
         from api.events.platform_events import emit_platform_event
 
+        # session=session: sync_graph is called from the scan pipeline, which
+        # holds an open write transaction for the whole run. Emitting on a
+        # second connection made the event wait out SQLite's busy_timeout and
+        # get dropped, so the graph.updated row never reached the journal the
+        # realtime fan-out and the health probes read.
         emit_platform_event(
             "graph.updated",
             f"Dependency graph synced ({result.get('nodes')} nodes / {result.get('edges')} edges)",
@@ -365,6 +370,7 @@ def sync_graph(session: Session, *, driver=None) -> dict[str, Any]:
                 "synced": result.get("synced", True),
             },
             target_name="graph",
+            session=session,
         )
     except Exception as exc:  # pragma: no cover - best effort
         logger.warning("graph_sync_event_failed: %s", exc)

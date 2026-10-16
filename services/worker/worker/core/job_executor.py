@@ -75,17 +75,47 @@ class JobExecutor:
         refuse the job HERE, the row is stamped FAILED with the reason, and
         no collector runs.
         """
-        from worker.core.job_reaper import fail_job
-        from db.connection.session import SessionLocal
-
         permitted, reason = gate_job(job, repository_target=repository_target)
         if not permitted:
             message = f"execution gate: {reason}"
             logger.warning("job_refused_at_execution", extra={"job_id": job.job_id, "reason": reason})
-            session = SessionLocal()
-            try:
-                fail_job(session, job.job_id, message)
-            finally:
-                session.close()
+            self._stamp_refusal(job, message)
             return False
         return run()
+
+    @staticmethod
+    def _stamp_refusal(job: ScanJob, message: str) -> None:
+        """Best-effort FAILED stamp for a job the execution gate refused.
+
+        The refusal usually happens *because* the database could not be read —
+        that is the gate's fail-closed rule — so the stamp itself must never
+        become the error. Raising here replaced a clean policy refusal with an
+        ``UnboundExecutionError``/``OperationalError`` out of ``execute()``,
+        left the row un-stamped, and buried the reason: the pool logged
+        ``job_execution_failed`` (a crash) instead of a refusal with a cause.
+        Log and hand the row to the reaper, which owns orphaned jobs.
+        """
+        from db.connection.session import SessionLocal
+        from worker.core.job_reaper import fail_job
+
+        session = None
+        try:
+            session = SessionLocal()
+            fail_job(session, job.job_id, message)
+        except Exception as exc:  # noqa: BLE001 — a refused job must not raise
+            try:
+                if session is not None:
+                    session.rollback()
+            except Exception:  # noqa: BLE001
+                logger.debug("job_refusal_rollback_failed", exc_info=True)
+            logger.warning(
+                "job_refusal_stamp_failed",
+                extra={"job_id": job.job_id, "reason": message,
+                       "error_type": type(exc).__name__},
+            )
+        finally:
+            if session is not None:
+                try:
+                    session.close()
+                except Exception:  # noqa: BLE001
+                    logger.debug("job_refusal_session_close_failed", exc_info=True)

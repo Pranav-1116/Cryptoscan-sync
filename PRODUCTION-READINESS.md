@@ -125,13 +125,25 @@ session can close):
    and `target_topology_load_soak` (P1-2) artifact kinds once a continuity
    plan approval and evidence owner sign them.
 
-**2026-10-16 engineering-gate discipline.** Rounds 50–79 (per-round ledger:
+**2026-10-16 engineering-gate discipline.** Rounds 50–80 (per-round ledger:
 `audit_reports/00_ROUND_STATUS.md`) continued the full serial gate before every
-push — ruff repo-wide, the complete backend suite (7,618 passed / 34 skipped at
-round 79), the Vitest frontend suite (334 tests, clean `tsc --noEmit`) — with
+push — ruff repo-wide, the complete backend suite (7,629 passed / 34 skipped at
+round 80), the Vitest frontend suite (334 tests, clean `tsc --noEmit`) — with
 `engineering_gate.py` and `bank_readiness.py` evidence regenerated at each push.
 The verdict remains FAIL solely on the credential-blocked categories above;
 no in-repo check is failing.
+
+That last claim was NOT true until round 80, and the correction is the point of
+the round: one worker test failed on any run that did not happen to execute
+`services/api/tests/unit/test_auth_lifecycle.py` first in the same process, and
+the aggregate `make test` ordering hid it (7,618✓ reported, 7,617✓ + 1 failed
+measured per-service). The failure was not a test artifact — it was a real
+refusal path raising `UnboundExecutionError` out of `JobExecutor.execute()`. The
+same round fixed the durable-write loss it pointed at (§4.4/§4.8: scans on the
+supported SQLite default reported COMPLETED with `cbom_snapshots=0` and
+`monitor_events=0`). "No in-repo check is failing" is now verified in isolation
+as well as in aggregate: worker 612✓, api 1,743✓, remaining 49 suites + shared
+5,274✓.
 
 **2026-10-14 re-verification.** Blockers 1 and 2 were re-attempted with the
 current automation credential and remain hard-blocked: the session token is a

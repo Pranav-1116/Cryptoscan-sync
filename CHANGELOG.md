@@ -6,6 +6,76 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — round 80: derived writes were silently lost on the supported SQLite backend (transaction-scope contention)
+
+Found by running one real end-to-end scan against the documented single-box
+default (`ALLOW_SQLITE`, file-backed SQLite) and reading the database
+afterwards — not by a test that was failing. Every scan logged two warnings
+and then reported success, and the rows those warnings described were gone:
+
+```
+WARNING platform_event_persist_failed: (sqlite3.OperationalError) database is locked
+WARNING stage_cbom_snapshot_persist_failed
+scans=1  evidence_records=19  cryptographic_facts=19  cbom_snapshots=0  monitor_events=0
+```
+
+- **The mechanism is transaction scope, not the writers.**
+  `PipelineRunner.run()` writes every stage on one session and commits once at
+  the end, so it holds SQLite's single write lock for the whole run (~18 s
+  measured on a 19-evidence scan). Three callees opened their *own*
+  `SessionLocal()` to write a derived row — `stage_cbom_generate._persist_snapshot`,
+  `emit_platform_event._persist` (reached from `graph_builder.sync_graph`,
+  which already had the pipeline session in hand), and `_stamp_coverage_failed`
+  — so each waited out `busy_timeout=5000` and lost. The same
+  `POST /cbom/scan/{id}/snapshot` against an idle database succeeded in
+  milliseconds, which is what made this look like a CBOM bug. All three now
+  write on the caller's session (flush; never commit or close a session they do
+  not own) — the convention `_set_job_status` already documents at length and
+  `_quantum`/`_facts`/`_graph` already follow. Blast radius of the loss was
+  the journal the R76 notification feed, the R77 dispatch registry and the
+  R78/R79 health probes read, plus the scan's only surviving BOM.
+- **A failed scan left system coverage claiming `CURRENT`.**
+  `_stamp_coverage_failed` ran *before* the pipeline's rollback, so its own
+  connection was locked out by the transaction that was about to be discarded,
+  and the failure was swallowed at debug level (`coverage_fail_stamp_skipped`).
+  The rollback now happens first: the stamp still travels on its own connection
+  (it has to survive the rollback) but no longer has to win a lock the doomed
+  transaction is holding.
+- **A refused job could crash instead of refusing.** The round-46 execution
+  gate fails closed when it cannot read the control plane, and
+  `JobExecutor._gated` then stamped the row FAILED on a fresh session — which
+  was unavailable in exactly the situation that caused the refusal.
+  `UnboundExecutionError` escaped `execute()`, the pool logged
+  `job_execution_failed` (a crash), and the row was never stamped with the gate
+  reason, so the audit trail lost the one sentence explaining why the scan did
+  not run. The stamp is now best-effort by contract: roll back, log
+  `job_refusal_stamp_failed` carrying the gate's reason, return `False`, and
+  leave the row to the reaper.
+- **A silent optional-stage failure now discloses (§4.8 round 39).** The CBOM
+  stage logged `stage_cbom_snapshot_persist_failed` and then reported
+  `stage_cbom_done` with no `optional_stage_failures` entry, unlike the other
+  14 soft-failed sites — and the workspace rendering evaporates with the run,
+  so a failed pin means the scan has no surviving BOM at all while coverage
+  implied complete observation. `_cbom` now converts the stage's marker into
+  the standard disclosure entry on the Scan row; the round-39 source guard
+  counts the new site.
+- **Tests.** `test_binary_job.py::test_executor_routes_binary_targets_to_the_binary_job`
+  was order-dependent: it passed only when an earlier module in the same pytest
+  process had bound `SessionLocal` (`services/api`'s `test_auth_lifecycle` is
+  the only one that calls `init_db()`), so `make test`'s xdist ordering hid a
+  real failure that `make test-serial` and any worker-only run exposed. It now
+  permits at the gate explicitly — it asserts routing, not gating, and the
+  gate's fail-closed behaviour stays pinned in `test_execution_gate.py`. New:
+  `test_job_executor_refusal.py` (4 tests) and
+  `test_pipeline_durable_writes_sqlite.py` (7). The latter runs on file-backed
+  SQLite with two real connections, because the existing pin test binds an
+  in-memory `StaticPool` engine where every "second" session shares the one
+  connection and writer-vs-writer contention cannot exist — that is why the pin
+  looked durable while every real run lost it. Verified against a real inline
+  scan after the fix: zero `*_persist_failed` warnings, `cbom_snapshots=1`
+  (generator `pipeline`, 17 components), `monitor_events=1` (`graph.updated`,
+  20 nodes / 19 edges).
+
 ### Added — rounds 21–79: the gap-closure arc (consolidated entry)
 
 Rounds 21–79 closed the product-vision gaps round by round; the per-round

@@ -106,11 +106,16 @@ def test_every_soft_skip_site_is_paired_with_a_disclosure_note():
         "email_alert_failed",
         "stakeholder_alert_skipped",
         "drift_verification_skipped",
+        # the CBOM pin: the stage writes the rendering into the ephemeral
+        # workspace, so a failed pin means the scan has no surviving BOM at
+        # all — it used to log a warning and then report stage_cbom_done with
+        # no disclosure entry, unlike every site above
+        "cbom_snapshot_persist",
     ]
     for marker in soft_skip_markers:
         assert marker in src, f"soft-skip site {marker} disappeared"
-    # 14 soft-skip call sites + the helper definition itself
-    assert src.count("_note_optional_failure(") == 15, (
+    # 15 soft-skip call sites + the helper definition itself
+    assert src.count("_note_optional_failure(") == 16, (
         "every soft-skip site must disclose via _note_optional_failure"
     )
 

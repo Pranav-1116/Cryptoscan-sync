@@ -65,6 +65,18 @@ def test_executor_routes_binary_targets_to_the_binary_job(monkeypatch):
         def run(self, **kwargs):
             raise AssertionError("the git pipeline must not run for a binary target")
 
+    # Permit at the gate explicitly. This test is about ROUTING, and the gate
+    # fails closed whenever it cannot read the control plane — which is the
+    # case in a process where nothing has bound SessionLocal. Leaving it
+    # implicit made the test depend on some earlier module in the same pytest
+    # process having called init_db() (services/api's test_auth_lifecycle is
+    # the only one that does): run the worker suite on its own and the gate
+    # refused, the refusal stamp hit an unbound session, and the test failed
+    # with UnboundExecutionError instead of asserting anything about routing.
+    # The gate's own fail-closed behaviour is pinned in test_execution_gate.py
+    # and the refusal path in the tests below.
+    monkeypatch.setattr("worker.core.job_executor.gate_job",
+                        lambda job, repository_target: (True, None))
     monkeypatch.setattr("worker.pipeline.binary_job.run_binary_job", fake_binary)
     executor = JobExecutor()
     executor.runner = Boom()

@@ -272,7 +272,7 @@ class PipelineRunner:
             self._gate(ctx, session)
             stage = "cbom"
             self._advance(session, ctx, "cbom")
-            self._cbom(ctx)
+            self._cbom(ctx, session)
             self._stamp_coverage(ctx, session, status="CURRENT")
             stage = "alert"
             self._advance(session, ctx, "alert")
@@ -295,9 +295,17 @@ class PipelineRunner:
             # Job status, progress logs and coverage are API-visible. Preserve
             # the full exception in worker logs, not its SQL/parameters there.
             public_error = f"Pipeline failed at stage {stage}"
-            self._stamp_coverage_failed(ctx, public_error)
             if owns_session:
+                # Release the write lock BEFORE stamping coverage. That stamp
+                # deliberately travels on its own connection because it has to
+                # survive this rollback -- and on SQLite, which serializes
+                # writers, an open pipeline transaction makes the second
+                # connection wait out busy_timeout and lose the stamp. The
+                # result was a failed scan whose system coverage stayed
+                # CURRENT, which is the one thing a failed scan must never
+                # report. Same contract as _set_job_status below.
                 session.rollback()
+            self._stamp_coverage_failed(ctx, public_error)
             try:
                 self._advance(session, ctx, stage, status="FAILED", message=public_error)
                 self._post_github(ctx, "failure", public_error)
@@ -540,10 +548,21 @@ class PipelineRunner:
 
         detect(ctx)
 
-    def _cbom(self, ctx: PipelineContext) -> None:
+    def _cbom(self, ctx: PipelineContext, session=None) -> None:
         from worker.pipeline.stage_cbom_generate import execute as generate
 
-        generate(ctx)
+        generate(ctx, session=session)
+        # The durable half is optional, but losing it must be visible: the
+        # workspace rendering evaporates with the run, so a failed pin means
+        # this scan has no surviving CBOM at all. Same disclosure contract as
+        # every other soft-failed optional stage.
+        detail = (ctx.scan_meta or {}).pop("cbom_snapshot_persist_failed", None)
+        if detail:
+            self._note_optional_failure(
+                ctx, "cbom_snapshot_persist",
+                "CBOM rendering was written to the ephemeral workspace but the "
+                f"durable snapshot pin failed ({detail})",
+                session=session)
 
     def _scan(self, ctx: PipelineContext) -> None:
         from scanner.core.scanner import Scanner
