@@ -694,38 +694,27 @@ class PipelineRunner:
             self._note_optional_failure(ctx, "cert_inventory", "Certificate inventory stage failed")
 
     def _container(self, ctx: PipelineContext) -> None:
-        root = Path(ctx.repo_path)
-        if not root.exists():
-            return
-        markers = {"dockerfile", "requirements.txt", "package.json", "pom.xml", "go.mod"}
-        has_manifest = False
-        has_binary = False
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-            name = path.name.lower()
-            if name in markers or path.suffix.lower() == ".csproj":
-                has_manifest = True
-            if path.suffix.lower() == ".jar" or name.startswith("libcrypto"):
-                has_binary = True
-            if has_manifest or has_binary:
-                break
-        if not has_manifest and not has_binary:
-            return
-        try:
-            from container_scanner.core.scanner import ContainerScanner
-        except Exception:
+        """Optional container / dependency inventory — delegates to the stage.
+
+        This method used to carry its own copy of ``stage_container_scan``, and
+        the copies drifted: the stage expresses evidence paths in the target's
+        coordinates while the runner's copy passed the collector's staging paths
+        straight through, so dependency findings reached the evidence store as
+        ``data/workspaces/job-<uuid>/repo/pom.xml``. Because remediation
+        verification and drift detection both key on
+        ``(file_path, line_number, algorithm)``, the job id in that path made
+        every rescan look like three removed and three added conditions — an
+        honest fix could not read as VERIFIED, and drift reported movement that
+        never happened. One implementation, so the two cannot disagree again.
+        """
+        from worker.pipeline.stage_container_scan import execute as container_scan
+
+        container_scan(ctx)
+        if (ctx.scan_meta or {}).pop("container_scanner_unavailable", False):
+            # §4.8: the collector was wanted (a manifest or binary is present)
+            # but could not be imported — disclose it, do not imply completeness
             logger.debug("container_scanner_unavailable")
             self._note_optional_failure(ctx, "container_scanner", "Container scanner unavailable")
-            return
-        result = ContainerScanner(live_cve=False).scan_filesystem(root, scan_id=ctx.scan_id)
-        ctx.container_result = result
-        ctx.findings.extend(result.get("findings") or [])
-        ctx.scan_meta["container"] = {
-            "packages": len(result.get("packages") or []),
-            "libraries": len(result.get("libraries") or []),
-            "vulnerabilities": len(result.get("vulnerabilities") or []),
-        }
 
     def _evidence(self, ctx: PipelineContext) -> None:
         from evidence.core.pipeline import EvidencePipeline

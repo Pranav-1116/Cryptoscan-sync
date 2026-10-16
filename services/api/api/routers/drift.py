@@ -141,11 +141,17 @@ def _create_drift_remediation_tasks(db, drift_row, user: str, owner: str | None)
         try:
             from api.events.platform_events import emit_platform_event
 
+            # session=db: the task rows above were created on this request's
+            # still-open transaction, so emitting on a second connection is a
+            # writer-vs-writer conflict that drops the event on SQLite. The
+            # except below would swallow it silently — the audit trail of
+            # drift-opened tasks would simply be empty.
             emit_platform_event(
                 "remediation.drift_tasks_created",
                 f"{len(tasks)} remediation task(s) auto-opened from drift event {drift_row.id}",
                 {"drift_id": drift_row.id, "task_ids": tasks, "scan_id": drift_row.current_scan_id},
                 target_name="remediation",
+                session=db,
             )
         except Exception:
             logger.debug("drift_task_event_publish_failed", exc_info=True)

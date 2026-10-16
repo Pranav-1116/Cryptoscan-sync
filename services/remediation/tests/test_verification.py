@@ -121,3 +121,44 @@ def test_status_mapping_round_trip():
     # INCONCLUSIVE says nothing about the remediation itself
     assert apply_result_to_status(INCONCLUSIVE) == "COMPLETED"
     assert apply_result_to_status("WHATEVER") == "COMPLETED"
+
+
+# ---------------------------------------------------------------------------
+# Evidence identity must be stable across rescans (round 81).
+#
+# A fingerprint is (file_path, line_number, algorithm). Findings derived from a
+# dependency manifest used to arrive carrying the worker's staging path —
+# data/workspaces/job-<uuid>/repo/pom.xml — so the job id became part of the
+# identity and the next rescan "introduced" them again. The consequence, caught
+# by the operator-loop drill: an honestly fixed condition could never read as
+# VERIFIED on any target that declares a crypto dependency; it degraded to
+# REGRESSION. The paths are rebased at the source
+# (worker/pipeline/stage_container_scan.py); these two tests pin why that
+# matters here, from the verifier's side.
+# ---------------------------------------------------------------------------
+
+
+def _dep_finding(path: str, algorithm: str = "AES") -> dict:
+    """A package-manager fingerprint: a library capability, no call site."""
+    return _f(algorithm, status="FAIL", file_path=path, line=0,
+              class_name="bouncycastle")
+
+
+def test_stable_dependency_paths_do_not_mask_a_verified_fix():
+    manifest = "pom.xml"
+    rescan = [_f("AES-256-GCM"), _dep_finding(manifest)]
+    original = [_f("DES", status="FAIL"), _dep_finding(manifest)]
+    out = verify_remediation(ORIG, RULE, rescan, original_scan_findings=original)
+    assert out["result"] == VERIFIED
+    assert out["comparison"]["new_violations"] == []
+
+
+def test_job_scoped_dependency_paths_degrade_verified_to_regression():
+    """Same fix, same dependency, unstable evidence path — the defect pinned."""
+    rescan = [_f("AES-256-GCM"), _dep_finding("data/workspaces/job-2/repo/pom.xml")]
+    original = [_f("DES", status="FAIL"), _dep_finding("data/workspaces/job-1/repo/pom.xml")]
+    out = verify_remediation(ORIG, RULE, rescan, original_scan_findings=original)
+    assert out["result"] == REGRESSION
+    assert [v["file_path"] for v in out["comparison"]["new_violations"]] == [
+        "data/workspaces/job-2/repo/pom.xml"]
+    assert "new non-compliant crypto" in out["reason"]

@@ -30,7 +30,8 @@ EVENTS: list[dict] = []
 
 
 def _capture_event(event_type, detail, payload=None, **kwargs):
-    EVENTS.append({"event_type": event_type, "detail": detail, "payload": payload or {}})
+    EVENTS.append({"event_type": event_type, "detail": detail, "payload": payload or {},
+                   "kwargs": kwargs})
     return None
 
 
@@ -123,6 +124,31 @@ async def test_full_lifecycle_verified_end_to_end():
     assert {e["event_type"] for e in events} >= {
         "remediation.task_created", "remediation.task_accepted",
         "remediation.task_completed", "remediation.task_verified"}
+
+
+@pytest.mark.asyncio
+async def test_task_created_event_rides_the_request_session():
+    """Round 81: the audit event must share the task's transaction.
+
+    ``POST /remediation/tasks`` created the row on the request's session (which
+    the FastAPI dependency commits) and then emitted on a *second* connection.
+    On SQLite — the documented single-box backend — that is a writer-vs-writer
+    conflict: the emit waited out busy_timeout and dropped the event with
+    ``platform_event_persist_failed``, so an operator-loop drill found five
+    accepted and five completed tasks and **zero** ``remediation.task_created``
+    rows. The proposal step of the audit trail was silently missing.
+    """
+    app, session, events = _make_app()
+    _scan(session, "scan-1")
+    _evidence(session, "e1", "scan-1", "DES", key_size=56)
+    session.commit()
+    async with _client(app) as client:
+        created = await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e1"})
+        assert created.status_code == 200, created.text
+    emitted = [e for e in events if e["event_type"] == "remediation.task_created"]
+    assert len(emitted) == 1
+    assert emitted[0]["kwargs"].get("session") is session, (
+        "the event must be written on the caller's session, not a second connection")
 
 
 @pytest.mark.asyncio

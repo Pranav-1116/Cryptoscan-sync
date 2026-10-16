@@ -255,6 +255,11 @@ def create_task(
         notes=body.notes,
         created_by=user,
     ))
+    # session=db: the repository leaves this request's transaction open (the
+    # FastAPI dependency commits it), so emitting on a second connection is a
+    # writer-vs-writer conflict — on SQLite it waits out busy_timeout and drops
+    # the event with platform_event_persist_failed. Passing the caller's session
+    # lands the audit event with the task it describes, or not at all.
     emit_platform_event(
         "remediation.task_created",
         f"Remediation task proposed for {finding.get('algorithm')} at "
@@ -262,6 +267,7 @@ def create_task(
         {"task_id": task.id, "evidence_id": row.id, "scan_id": row.scan_id,
          "rule": rule["rule"], "status": task.status},
         target_name="remediation",
+        session=db,
     )
     return _task_out(task)
 
