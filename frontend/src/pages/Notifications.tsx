@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
-import { apiNotificationRoutingPut } from "../lib/api.js";
+import { apiNotificationRoutingPut, apiNotificationDispatch, DispatchResult } from "../lib/api.js";
 
 const CHANNELS = ["inApp", "email", "webhook", "siem"] as const;
 const CHANNEL_LABEL: Record<string, string> = { inApp: "in-app", email: "email", webhook: "webhook", siem: "SIEM / SOC" };
@@ -30,6 +30,22 @@ export default function Notifications() {
     count: number; routed_classes: string[]; note: string;
   }>("/api/v1/notifications/feed", { notifications: [], count: 0, routed_classes: [], note: "" });
   const notifications = feed.data.notifications ?? [];
+
+  /* §5 (round 77): the OUTWARD channel consumer — the webhook / SIEM columns
+   * of the matrix gate a real operator-triggered drain that sends each NEW
+   * routed notification to the registered integrations its channel claims
+   * (siem → SIEM/SOAR receivers, webhook → ITSM/CMDB receivers), over real
+   * signed HTTP, every attempt audited in the integrations delivery log. */
+  const [drain, setDrain] = useState<DispatchResult | null>(null);
+  const [draining, setDraining] = useState(false);
+  const [drainError, setDrainError] = useState<string | null>(null);
+  const runDispatch = () => {
+    setDraining(true); setDrainError(null);
+    apiNotificationDispatch(50)
+      .then((r) => { if (r.ok && r.data) setDrain(r.data); else setDrainError(r.error ?? "dispatch failed"); })
+      .catch((e) => setDrainError(String(e)))
+      .finally(() => setDraining(false));
+  };
 
   const persist = (next: RouteItem[]) => {
     setSaved(null);
@@ -101,6 +117,42 @@ export default function Notifications() {
             )),
           ])}
         />
+      </Panel>
+      <Panel title="Outward delivery — webhook / SIEM dispatch" sub="the operator-triggered drain the two outward columns actually gate" className="mt">
+        <div className="dim" style={{ fontSize: 13, marginBottom: 10 }}>
+          Dispatch sends each <b>new</b> routed notification once (per-tenant dispatch registry): the <b>SIEM / SOC</b> column delivers to registered SIEM/SOAR integrations, the <b>webhook</b> column to ITSM/CMDB receivers — over real signed HTTP, every attempt audited in the integrations delivery log. <b>Email routing is stored but no SMTP transport is wired in this deployment</b> — nothing is claimed sent. Unmapped event types are never force-fit.
+        </div>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <button className="btn" onClick={runDispatch} disabled={draining}>{draining ? "dispatching…" : "Dispatch outward now"}</button>
+          {drainError && <Badge tone="red">dispatch failed: {drainError}</Badge>}
+          {drain && !drainError && (
+            <Badge tone={drain.failed > 0 ? "amber" : "green"}>
+              dispatched {drain.dispatched} · delivered {drain.delivered} · failed {drain.failed} · skipped {drain.skipped}
+            </Badge>
+          )}
+        </div>
+        {drain && (
+          drain.attempts.length ? (
+            <Table
+              head={["Event", "Class", "Channels", "Outcome"]}
+              rows={drain.attempts.map((a) => [
+                <span key="e" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{a.event_type}</span>,
+                a.event_class,
+                a.channels.join(", "),
+                <span key="o">
+                  {a.results.map((r, i) => (
+                    <span key={i} style={{ fontFamily: "var(--mono)", fontSize: 11.5, display: "block" }}>
+                      {r.integration_id}: <b style={{ color: r.status === "delivered" ? "var(--ok, green)" : r.status === "failed" ? "var(--bad, crimson)" : "inherit" }}>{r.status}</b>
+                      {r.http_status ? ` (HTTP ${r.http_status})` : ""}{r.error ? ` — ${r.error}` : ""}
+                    </span>
+                  ))}
+                </span>,
+              ])}
+            />
+          ) : (
+            <div className="dim" style={{ fontSize: 13 }}>Nothing new to dispatch — every routed notification in the recent window has already been sent outward exactly once.</div>
+          )
+        )}
       </Panel>
       <div className="grid cols-2 mt">
         <Panel title="Channels" sub="delivery configuration">

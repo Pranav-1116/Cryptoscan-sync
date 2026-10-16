@@ -2,7 +2,7 @@
  * the feed below the routing matrix is what the in-app column actually
  * gates. Verification outcomes (VERIFIED / PARTIAL / FAILED / REGRESSION)
  * are the flagship class. No fabricated notifications. */
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
@@ -73,6 +73,63 @@ describe("Notifications page", () => {
     renderWith({});
     expect(await screen.findAllByText("Remediation verification outcome")).not.toHaveLength(0);
     expect(screen.getAllByText("Remediation task lifecycle").length).toBeGreaterThan(0);
+  });
+
+  it("dispatches outward over the drain button and shows per-integration outcomes", async () => {
+    const dispatchResult = {
+      ok: true, window: 6, examined: 1, dispatched: 1, registry_size: 1,
+      delivered: 1, failed: 1, skipped: 0, email_routed: 1,
+      integrations: { siem: 1, webhook: 1 },
+      attempts: [{
+        monitor_event_id: "ev-1", event_type: "remediation.task_verified",
+        event_class: "remediation_verification", channels: ["siem", "webhook"],
+        results: [
+          { integration_id: "soc-1", kind: "siem", endpoint: "https://soc.example/hook",
+            status: "delivered", http_status: 200, error: null, attempts: 1 },
+          { integration_id: "ops-1", kind: "itsm", endpoint: "http://ops.example/hook",
+            status: "failed", http_status: 503, error: "receiver unavailable", attempts: 2 },
+        ],
+      }],
+      note: "Operator-triggered outward drain.",
+    };
+    const fetchMock = mockFetch({
+      "/api/v1/notifications/routing": { routing },
+      "/api/v1/enterprise/integrations": { integrations: [] },
+      "/api/v1/notifications/feed": feedWithVerification,
+      "/api/v1/notifications/dispatch": dispatchResult,
+    });
+    renderPage();
+    const btn = await screen.findByRole("button", { name: /Dispatch outward now/i });
+    fireEvent.click(btn);
+    // the POST hit the real dispatch route
+    await waitFor(() => {
+      const called = fetchMock.mock.calls.some((call) => String(call?.[0]).includes("/api/v1/notifications/dispatch"));
+      expect(called).toBe(true);
+    });
+    // honest per-attempt outcome rows — delivered AND failed, never fabricated
+    expect(await screen.findByText(/dispatched 1 · delivered 1 · failed 1 · skipped 0/)).toBeTruthy();
+    expect(screen.getByText(/soc-1:/)).toBeTruthy();
+    expect(screen.getByText(/ops-1:/)).toBeTruthy();
+    expect(screen.getByText(/receiver unavailable/)).toBeTruthy();
+    // the email channel stays count-only, stated in-product
+    expect(screen.getByText(/Email routing is stored but no SMTP transport is wired/i)).toBeTruthy();
+  });
+
+  it("renders the honest nothing-new state after a dry drain", async () => {
+    const dispatchResult = {
+      ok: true, window: 6, examined: 0, dispatched: 0, registry_size: 3,
+      delivered: 0, failed: 0, skipped: 0, email_routed: 0,
+      integrations: { siem: 0, webhook: 0 }, attempts: [], note: "",
+    };
+    mockFetch({
+      "/api/v1/notifications/routing": { routing },
+      "/api/v1/enterprise/integrations": { integrations: [] },
+      "/api/v1/notifications/feed": feedWithVerification,
+      "/api/v1/notifications/dispatch": dispatchResult,
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /Dispatch outward now/i }));
+    expect(await screen.findByText(/Nothing new to dispatch/i)).toBeTruthy();
   });
 
   it("renders an honest empty feed — never fabricated notifications", async () => {

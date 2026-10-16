@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.tenant-isolation-audit/1",
-  "captured_at": "2026-10-16T09:19:38.485867+00:00",
+  "captured_at": "2026-10-16T09:55:11.512226+00:00",
   "scoped_tables": 115,
   "platform_scope_tables": 12,
   "justified": [

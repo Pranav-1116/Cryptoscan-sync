@@ -2598,6 +2598,24 @@ export const apiNotificationRoutingGet = () => _rsGet<any>("/api/v1/notification
 export const apiNotificationRoutingPut = (routing: Array<{ id: string; name: string; severity: string; channels: Record<string, boolean> }>) =>
   _rsPut<any>("/api/v1/notifications/routing", { routing });
 
+/* Outward notification drain (§5 round 77): send NEW routed notifications to
+ * the registered integrations their channel claims, over real signed HTTP.
+ * Each routed notification is dispatched exactly once per tenant. */
+export interface DispatchAttempt {
+  monitor_event_id: string; event_type: string; event_class: string;
+  channels: string[];
+  results: Array<{ integration_id: string; kind: string; endpoint: string;
+    status: string; http_status: number | null; error: string | null; attempts: number }>;
+}
+export interface DispatchResult {
+  ok: boolean; window: number; examined: number; dispatched: number;
+  registry_size: number; delivered: number; failed: number; skipped: number;
+  email_routed: number; integrations: Record<string, number>;
+  attempts: DispatchAttempt[]; note: string;
+}
+export const apiNotificationDispatch = (limit: number) =>
+  _rsPost<DispatchResult>("/api/v1/notifications/dispatch", { limit });
+
 
 /* PUT helper for persisted notification routing. */
 export async function _rsPut<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
