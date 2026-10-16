@@ -745,6 +745,15 @@ def check_audit_trail(api: Api, rec: Recorder, label: str, task_ids: list[str]) 
     server log and invisible in the audit trail: the proposal step of the
     operator's own workflow was simply missing. The check is per task id so one
     dropped proposal cannot hide behind the events that did land.
+
+    Fixing that surfaced a second, quieter failure on the same journal: the rows
+    were durable and still unreadable through ``GET /monitor/events`` — the
+    surface an operator actually reads — because that endpoint scoped exclusively
+    through the watch-list target join, and a platform journal row has no target
+    behind it, so ``NULL IN (...)`` never matched. Both are pinned here: the
+    per-task proposal event over the replay path, and the same events over the
+    operator endpoint, so a journal that only one of the two surfaces can see
+    fails the pass.
     """
     if not task_ids:
         rec.note("no remediation tasks were opened this pass; nothing to audit")
@@ -773,16 +782,34 @@ def check_audit_trail(api: Api, rec: Recorder, label: str, task_ids: list[str]) 
               lifecycle=lifecycle, replay_gap=gap, journal_events=len(events),
               task_ids=task_ids)
 
-    # The durable rows behind those events are NOT reachable through
-    # GET /monitor/events: platform-scope events are written with target_id NULL
-    # and that endpoint filters on target_id, so it returns zero rows even for a
-    # platform admin. Recorded here rather than worked around silently.
-    st_m, res_m, _ = api.get("/api/v1/monitor/events?limit=50")
+    # The same journal through the OPERATOR endpoint. Round 81 found this
+    # surface blind: it filtered on `target_id IN (SELECT id FROM monitor_targets
+    # ...)`, and a platform journal row has no target behind it, so it answered
+    # {"events": []} against a database holding every row — for a platform admin
+    # included, and with no registered watch-list targets it was empty for every
+    # caller. Ownership is now read from the row first (MonitorEvent.tenant_id,
+    # where NULL *is* the platform estate), so what an operator reads and what is
+    # on disk agree. Pinned per task, not by row count: a total can look healthy
+    # while one proposal is missing.
+    st_m, res_m, _ms_m = api.get("/api/v1/monitor/events?limit=500")
     rows_m = pick(res_m, "events", default=[]) or []
-    rec.note(f"GET /monitor/events -> {st_m} with {len(rows_m)} row(s): platform-scope "
-             f"journal rows (target_id NULL — every remediation.task_* event) are "
-             f"unreachable through that endpoint; the readable paths are /events/recent "
-             f"and the SSE stream. Open defect, recorded in PRODUCT-VISION-AND-GAPS.md.")
+    by_task_m: dict[str, set] = {tid: set() for tid in task_ids}
+    for row in rows_m:
+        payload = pick(row, "payload", default={}) or {}
+        tid = str(payload.get("task_id") or "")
+        if tid in by_task_m:
+            by_task_m[tid].add(str(pick(row, "event_type", default="")))
+    missing_m = sorted(tid for tid, seen in by_task_m.items()
+                       if "remediation.task_created" not in seen)
+    platform_rows = sum(1 for row in rows_m if pick(row, "scope") == "platform")
+    rec.check(f"audit.trail.operator_endpoint.{label}",
+              st_m == 200 and not missing_m,
+              f"GET /monitor/events -> {st_m}; {len(rows_m)} journal row(s) readable by this "
+              f"caller ({platform_rows} platform-scope); {len(task_ids) - len(missing_m)}/"
+              f"{len(task_ids)} task(s) opened this pass carry their proposal event here too — "
+              f"the operator surface and the durable journal agree",
+              http_status=st_m, monitor_rows=len(rows_m), platform_scope_rows=platform_rows,
+              tasks_missing_proposal=missing_m[:5], task_ids=task_ids)
 
 
 def pin_report(api: Api, rec: Recorder, scan_id: str, label: str) -> None:

@@ -480,3 +480,52 @@ async def test_invite_guards_ladder_expiry_revocation_quota_suspension():
         last = await client.post("/api/v1/saas/invites/accept", json={
             "token": tok5, "password": "blocked-pw-Str0ng!"})
         assert last.status_code == 423, last.text
+
+
+@pytest.mark.asyncio
+async def test_monitor_journal_is_scoped_to_the_calling_tenant():
+    """A tenant reads its own journal rows through ``GET /monitor/events``.
+
+    Round 81: the filter was the watch-list target behind a row, never the row's
+    own owner, so a journal row with no target — which is what
+    ``emit_platform_event`` writes — was invisible to the tenant it belongs to
+    as well as to the platform. Ownership is now read from the row first, and
+    the boundary is exact in both directions: another tenant's rows are absent
+    (not 403 — absent, so no existence oracle), and the platform estate's rows
+    are not folded into a tenant's monitor feed.
+    """
+    from api.events.platform_events import emit_platform_event
+    from db.tenancy import tenant_scope
+
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        a = (await _signup(client, "Alpha", "alice")).json()["tenant"]["id"]
+        b = (await _signup(client, "Beta", "bob")).json()["tenant"]["id"]
+
+        # The same emit a request makes: the tenant scope is active, so the row
+        # is attributed, and it rides the caller's session (round 81's other
+        # fix) rather than opening a second connection.
+        with tenant_scope(a):
+            emit_platform_event("remediation.task_created", "alpha task proposed",
+                                {"task_id": "ta"}, target_name="remediation", session=session)
+        with tenant_scope(b):
+            emit_platform_event("remediation.task_created", "beta task proposed",
+                                {"task_id": "tb"}, target_name="remediation", session=session)
+        emit_platform_event("graph.updated", "platform estate graph", {"nodes": 1},
+                            target_name="graph", session=session)
+        session.commit()
+
+        _act_as(client, session, "alice")
+        resp_a = await client.get("/api/v1/monitor/events", headers={"X-Tenant-ID": a},
+                                  params={"limit": 50})
+        assert resp_a.status_code == 200, resp_a.text
+        events_a = resp_a.json()["events"]
+        assert [e["detail"] for e in events_a] == ["alpha task proposed"]
+        assert events_a[0]["scope"] == "tenant"
+        assert events_a[0]["payload"]["task_id"] == "ta"
+
+        _act_as(client, session, "bob")
+        events_b = (await client.get("/api/v1/monitor/events", headers={"X-Tenant-ID": b},
+                                     params={"limit": 50})).json()["events"]
+        assert [e["detail"] for e in events_b] == ["beta task proposed"]

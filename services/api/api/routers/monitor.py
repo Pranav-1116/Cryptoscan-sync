@@ -446,6 +446,11 @@ def monitor_events(
                 "event_type": event.event_type,
                 "detail": event.detail,
                 "payload": event.payload,
+                # TenantScoped: a NULL tenant is the platform estate, not an
+                # unknown owner. Stated outright so an operator can tell a
+                # platform journal row (no watch-list target behind it) from a
+                # target's event without inferring it from a null field.
+                "scope": "platform" if event.tenant_id is None else "tenant",
                 "created_at": event.created_at.isoformat() if event.created_at else None,
             }
             for event in rows

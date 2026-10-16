@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from db.models.monitor import MonitorEvent, MonitorTarget
@@ -128,13 +128,45 @@ class MonitorRepository:
         self, *, target_id: str | None = None, limit: int = 50,
         tenant_id: str | None = None, platform: bool = False,
     ) -> list[MonitorEvent]:
+        """Newest-first journal rows that the caller's scope owns.
+
+        Ownership is read from the ROW, and only then from the target behind it.
+        ``MonitorEvent`` is ``TenantScoped``, where ``tenant_id`` NULL *is* the
+        platform estate, and a platform journal row written by
+        ``emit_platform_event`` has no ``MonitorTarget`` behind it at all: its
+        ``target_id`` is NULL by construction (the repository is handed a target
+        shim whose ``id`` is None). Scoping exclusively through
+        ``target_id IN (SELECT id FROM monitor_targets ...)`` therefore made
+        every platform row unreachable for every caller — ``NULL IN (...)`` is
+        never true, and with no registered watch-list targets (the normal case
+        outside the monitor daemon) the feed came back empty with rows on disk.
+        Round 81 found it that way: the remediation journal (``task_created``,
+        ``task_accepted``, ``task_completed``, ``task_verified``) was durable,
+        replayable over ``/events/recent``, and invisible to the platform admin
+        who owns it through ``GET /monitor/events``.
+
+        Both branches stay exact, and neither is widened past its scope: a
+        platform caller sees platform-estate rows plus rows belonging to
+        platform-scope targets, never another tenant's rows; a tenant caller sees
+        its own rows plus its own targets' rows, never the platform estate's. For
+        tenant callers the request-scoped tenant guard
+        (``db.tenancy.install_tenant_guard``) enforces the same boundary
+        independently, so this filter is the second layer rather than the only
+        one.
+        """
         stmt = select(MonitorEvent).order_by(MonitorEvent.created_at.desc()).limit(max(1, min(limit, 500)))
         if target_id:
             stmt = stmt.where(MonitorEvent.target_id == target_id)
         if platform:
-            stmt = stmt.where(MonitorEvent.target_id.in_(
-                select(MonitorTarget.id).where(MonitorTarget.tenant_id.is_(None))))
+            stmt = stmt.where(or_(
+                MonitorEvent.tenant_id.is_(None),
+                MonitorEvent.target_id.in_(
+                    select(MonitorTarget.id).where(MonitorTarget.tenant_id.is_(None))),
+            ))
         elif tenant_id is not None:
-            stmt = stmt.where(MonitorEvent.target_id.in_(
-                select(MonitorTarget.id).where(MonitorTarget.tenant_id == tenant_id)))
+            stmt = stmt.where(or_(
+                MonitorEvent.tenant_id == tenant_id,
+                MonitorEvent.target_id.in_(
+                    select(MonitorTarget.id).where(MonitorTarget.tenant_id == tenant_id)),
+            ))
         return list(self.session.execute(stmt).scalars().all())

@@ -21,7 +21,7 @@ from api.main import create_app
 from api.security.passwords import hash_password
 from api.security.session_manager import SessionManager
 from db.connection.session import Base, SessionLocal, configure_session
-from db.models.monitor import MonitorEvent
+from db.models.monitor import MonitorEvent, MonitorTarget
 from db.repositories.monitor_repository import MonitorRepository
 from db.repositories.user_repository import UserRepository
 
@@ -154,6 +154,41 @@ def test_platform_drift_and_whatif_emit_events(admin_client, db):
         assert {"PLATFORM_DRIFT_EVALUATED", "PLATFORM_WHATIF_ANALYZED"} <= types
     finally:
         session.close()
+
+
+def test_monitor_events_endpoint_returns_the_platform_journal(admin_client, db):
+    """Round 81: the journal was durable and still invisible to its own owner.
+
+    ``GET /monitor/events`` answered ``{"events": []}`` against a database
+    holding rows, because the repository scoped through the watch-list target
+    join and a platform journal row has no target behind it. The remediation
+    lifecycle — ``task_created`` through ``task_verified`` — was readable only
+    through ``/events/recent`` and the SSE stream, so the operator surface that
+    names itself after the journal did not carry it.
+    """
+    for event_type in ("remediation.task_created", "remediation.task_verified"):
+        emitted = emit_platform_event(
+            event_type, f"{event_type} for task t-1", {"task_id": "t-1"},
+            target_name="remediation", session=db,
+        )
+        assert emitted is not None
+    db.commit()
+
+    # Both rows are on disk, and no watch-list target exists to hang them off —
+    # the exact shape the old filter could not express.
+    session = SessionLocal()
+    try:
+        assert session.execute(select(func.count()).select_from(MonitorEvent)).scalar() == 2
+        assert session.execute(select(func.count()).select_from(MonitorTarget)).scalar() == 0
+    finally:
+        session.close()
+
+    events = admin_client.get("/api/v1/monitor/events", params={"limit": 50}).json()["events"]
+    assert [e["event_type"] for e in events] == [
+        "remediation.task_verified", "remediation.task_created"]
+    assert all(e["scope"] == "platform" for e in events)
+    assert all(e["target_id"] is None and e["target_name"] == "remediation" for e in events)
+    assert events[0]["payload"]["task_id"] == "t-1"
 
 
 def test_bus_stats_expose_published_total(admin_client, db):
