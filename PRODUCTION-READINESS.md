@@ -154,19 +154,22 @@ session can close):
 
 **2026-10-16 engineering-gate discipline.** Rounds 50–81 (per-round ledger:
 `audit_reports/00_ROUND_STATUS.md`) continued the full serial gate before every
-push — ruff repo-wide, the complete backend suite (7,642 passed / 34 skipped at
+push — ruff repo-wide, the complete backend suite (7,649 passed / 34 skipped at
 round 81), the Vitest frontend suite (334 tests, clean `tsc --noEmit`) — with
 `engineering_gate.py` and `bank_readiness.py` evidence regenerated at each push.
 Round 81 adds an operator-loop artifact to that discipline:
 `scripts/operator_loop_drill.py` drives authorize → scan → evidence → baseline →
 drift → owned task → authorized change → rescan → condition-level verification →
 pinned report twice against a running API and records every check
-(`docs/readiness-evidence/operator-loop-drill-2026-10-16.json`, 121/121 PASS). It
+(`docs/readiness-evidence/operator-loop-drill-2026-10-16.json`, 123/123 PASS). It
 is in-repo evidence on a synthetic corpus-derived estate: it does not substitute
-for the customer-pilot (P0-2) or target-topology (P1-2) artifacts above, and it
-left one defect open and documented rather than fixed — platform-scope journal
-rows are unreachable through `GET /monitor/events` (`PRODUCT-VISION-AND-GAPS.md`
-§4.7).
+for the customer-pilot (P0-2) or target-topology (P1-2) artifacts above. It found
+three defects no unit suite could see, and all three are closed within the round;
+the third was recorded as open in the first pass and fixed in the second rather
+than patched at the end of an unrelated step — platform-scope journal rows
+(`target_id` NULL) were unreachable through `GET /monitor/events`, so the durable
+remediation journal could not be read on the endpoint named after it
+(`PRODUCT-VISION-AND-GAPS.md` §4.7).
 The verdict remains FAIL solely on the credential-blocked categories above;
 no in-repo check is failing.
 

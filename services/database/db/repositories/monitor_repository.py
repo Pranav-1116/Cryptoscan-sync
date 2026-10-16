@@ -147,12 +147,13 @@ class MonitorRepository:
 
         Both branches stay exact, and neither is widened past its scope: a
         platform caller sees platform-estate rows plus rows belonging to
-        platform-scope targets, never another tenant's rows; a tenant caller sees
-        its own rows plus its own targets' rows, never the platform estate's. For
+        platform-scope targets (including tenant-attributed events on those shared
+        targets), not unrelated tenant journals; a tenant caller sees its own
+        rows plus its own targets' rows, not unrelated platform events. For
         tenant callers the request-scoped tenant guard
-        (``db.tenancy.install_tenant_guard``) enforces the same boundary
-        independently, so this filter is the second layer rather than the only
-        one.
+        (``db.tenancy.install_tenant_guard``) provides a broader ceiling
+        (own tenant plus NULL estate); this explicit filter narrows that ceiling
+        to the journal and targets this endpoint exposes.
         """
         stmt = select(MonitorEvent).order_by(MonitorEvent.created_at.desc()).limit(max(1, min(limit, 500)))
         if target_id:

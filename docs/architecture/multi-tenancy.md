@@ -44,6 +44,29 @@ Every tenant-scoped request resolves a `TenantContext`
 | Quotas | plan limits enforced at create time: targets, monthly scans, seats → **402 quota_exceeded** with the reason; ENTERPRISE is unlimited |
 | Metering | append-only `tenant_usage_events` (SUM per calendar month — deletes never shrink counters) |
 
+### A repository filter may be narrower than the guard, never wider
+
+The guard's SELECT criteria is `tenant_id == caller OR tenant_id IS NULL`: the
+platform estate (NULL) is readable by every tenant and writable by none. A
+repository may be stricter than that — `/monitor/events` shows a tenant their own
+journal rows and their own watch-list targets, not the estate's operational noise —
+but never looser, and the filter has to be written on the columns that actually
+carry ownership.
+
+Round 81 found `MonitorRepository.list_events` scoping only through
+`target_id IN (SELECT id FROM monitor_targets ...)`, which is neither stricter nor
+looser but simply wrong: a platform journal row has no target behind it, so
+`NULL IN (...)` never matched and the estate's own journal — every
+`remediation.task_*` event — was unreadable through that endpoint for anyone, the
+platform admin who owns it included. With no registered watch-list targets the feed
+was empty for every caller, tenant or platform, however many rows were on disk.
+Ownership is now read from the row first (`tenant_id`, NULL = the platform estate)
+and from the target second, which leaves watch-list behaviour unchanged; a tenant
+acting on a platform-estate target keeps the row in both pictures. Pinned by
+`services/database/tests/unit/test_monitor_event_scope.py` (5 cases, including the
+disagreement case and the pre-existing watch-list behaviour) and end to end by
+`test_saas_tenancy.py::test_monitor_journal_is_scoped_to_the_calling_tenant`.
+
 ### Why the middleware must fail closed
 
 Outside a tenant scope the ORM guard is **inert** — an unscoped query returns
@@ -141,6 +164,9 @@ per host), and `POST /scans/{id}/retry` (one unit). Platform-estate scans
 
 `services/api/tests/integration/test_saas_tenancy.py` proves the core
 guarantees (isolation-as-absence, quotas, suspension, signup, role ladder,
-last-owner protection, key binding), `services/api/tests/unit/
-test_tenancy_policy.py` pins the pure policy, and the monitor/api-key suites
-pin that legacy platform behavior is unchanged.
+last-owner protection, key binding, and since round 81 that a tenant reads its own
+monitor journal rows and not another tenant's or the platform estate's),
+`services/api/tests/unit/test_tenancy_policy.py` pins the pure policy,
+`services/database/tests/unit/test_monitor_event_scope.py` pins the row-ownership
+rule at the repository layer, and the monitor/api-key suites pin that legacy
+platform behavior is unchanged.

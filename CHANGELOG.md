@@ -15,7 +15,7 @@ condition-level verification -> pinned, integrity-checked report — twice over 
 three-system estate (Java/Maven payments service, Natural-on-ICSF mainframe, RPG
 IV / ILE C / GSKit on IBM i), provoking every verdict on purpose (VERIFIED,
 FAILED, PARTIAL, REGRESSION, INCONCLUSIVE) plus a reintroduced condition and the
-ticket-as-fix shortcut. It records 121 checks, all passing, in
+ticket-as-fix shortcut. It records 123 checks, all passing, in
 `docs/readiness-evidence/operator-loop-drill-2026-10-16.json`. Running it is what
 found the two defects below; neither is visible to a unit suite, because both need
 a *second* scan of the *same* estate through the *whole* chain.
@@ -54,8 +54,67 @@ a *second* scan of the *same* estate through the *whole* chain.
   so those rows — every `remediation.task_*` event — are unreachable through that
   endpoint for any caller, a platform admin included. The rows are durable and
   readable through `GET /events/recent` and the SSE stream, which is where the drill
-  reads them; rewriting a tenant-scoped query was not a last-step edit. Recorded in
-  `PRODUCT-VISION-AND-GAPS.md` §4.7 and in the drill's own notes.
+  read them at the time; rewriting a tenant-scoped query was not a last-step edit,
+  so it was recorded rather than rushed — in `PRODUCT-VISION-AND-GAPS.md` §4.7 and
+  in the drill's own notes. **Fixed in the second pass immediately below**, with
+  its own tests and a regenerated artifact.
+
+### Fixed — round 81, second pass: the monitor journal was durable and unreadable
+
+The drill's last failing check was not a missing event. The rows were on disk and
+`GET /api/v1/monitor/events` still answered `{"events": []}` — 200, no error, no
+rows — to the platform admin who owns them. `MonitorRepository.list_events` scoped
+exclusively through the watch-list join, `target_id IN (SELECT id FROM
+monitor_targets WHERE tenant_id IS NULL)`, and a platform journal row has no target
+behind it: `emit_platform_event` writes one through a target shim whose `id` is
+None. `NULL IN (...)` is never true, so every `remediation.task_*` event was
+unreachable through the one endpoint named after the journal — and with no
+registered watch-list targets, the normal case outside the monitor daemon, the feed
+was empty for every caller. The drill's database held 64 rows across 3 systems and
+22 scans; the endpoint returned nothing.
+
+The tenant branch had the same shape and the same blindness: a row stamped with a
+tenant but attached to no target — a tenant operator's own task proposal — was
+invisible to that tenant.
+
+Ownership is now read from the ROW first, where `MonitorEvent` is `TenantScoped` and
+a NULL tenant *is* the platform estate, and from the target second, which leaves
+watch-list behaviour exactly as it was:
+
+    platform caller:  tenant_id IS NULL   OR  target owned by the platform estate
+    tenant caller:    tenant_id == caller OR  target owned by the caller
+
+Neither branch is widened past its scope. A tenant still never reads another
+tenant's rows — absent, not 403, so no existence oracle — and does not read the
+platform estate's journal through this endpoint either; the request-scoped tenant
+guard (whose SELECT criteria is `tenant_id == caller OR tenant_id IS NULL`) enforces
+the same boundary independently, so this filter is a second layer rather than the
+only one, and it is deliberately narrower than that ceiling because a tenant's
+monitor feed is their journal and their watch list, not the estate's operational
+noise. Tenant ownership alone does not grant visibility to the platform caller here: a cross-tenant
+roll-up stays an explicit `platform_scope()` call, which this endpoint does not
+make. Where row and target ownership disagree — a tenant acting on a platform-estate
+watch-list target — both pictures keep the row, and that case is pinned as its own
+test rather than left to chance (a fixture accident is what surfaced it).
+`GET /monitor/events` also states a row's scope outright (`"platform" | "tenant"`)
+instead of leaving an operator to infer it from a null `target_id`.
+
+This restores the documented contract rather than inventing one:
+`docs/architecture/multi-tenancy.md` already lists the repository layer as "every
+query filters by `tenant_id` (or `platform=True` for the NULL estate)". The code did
+not. Now it does, and the doc carries the worked example.
+
+7 new tests; reverting the filter produces 6 failures while the existing
+watch-list compatibility test stays green: 5 in `services/database/tests/unit/test_monitor_event_scope.py`, 1 in
+`test_platform_events_realtime.py` (the endpoint returns the platform journal it
+just persisted, with no watch-list target in the database), 1 in
+`test_saas_tenancy.py` (a tenant reads its own journal rows, and neither another
+tenant's nor the estate's). The drill now asserts the journal through BOTH surfaces,
+per task id — the replay path and the operator endpoint — so a journal only one of
+them can see fails the pass; its disclosure note is gone because the blindness is.
+Regenerated artifact: **123 checks / 0 failed** over 2 passes at `40a27e1f`, with
+`GET /monitor/events` reading 32 platform-scope rows in pass 1 and 64 in pass 2, 5/5
+proposal events each.
 
 ### Fixed — round 80: derived writes were silently lost on the supported SQLite backend (transaction-scope contention)
 

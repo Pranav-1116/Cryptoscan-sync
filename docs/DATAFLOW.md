@@ -259,7 +259,12 @@ vendor_count}`. This is the vendor-facing view of the same unified model.
 Every operation emits a **deterministic platform event**. The pipeline is:
 
 1. **Persist** — `emit_platform_event` writes the row to `monitor_events`
-   (durable). Best-effort: DB failure → warning, bus still delivers.
+   (durable). Best-effort: DB failure → warning, bus still delivers. A platform
+   row has **no** `monitor_targets` row behind it (`target_id` NULL, written
+   through a target shim whose id is None), so its owner is the row's own
+   `tenant_id` — NULL means the platform estate. Readers must scope on those
+   columns: `GET /monitor/events` scoped only through the target join and so
+   answered `{"events": []}` against a full journal until round 81.
 2. **Publish** — the same event is immediately published to the **in-process
    EventBus** (zero tailer latency for same-process subscribers).
 3. **Dedup** — a shared `published_event_ids` registry on `app.state` means the
