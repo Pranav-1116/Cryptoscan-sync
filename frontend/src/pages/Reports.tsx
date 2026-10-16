@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
-import { getToken, tenantFetch, apiReportTemplates, apiReportScheduleCreate, generateExitReport, downloadEngagementArchive } from "../lib/api.js";
+import { getToken, tenantFetch, apiReportTemplates, apiReportScheduleCreate, apiReportSnapshotPin, generateExitReport, downloadEngagementArchive } from "../lib/api.js";
 import { StatusMark } from "../components/icons";
 
 export default function Reports() {
@@ -19,6 +19,27 @@ export default function Reports() {
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // on-demand report pin state (§4.4 round 69: the report leg of scan→BOM→report)
+  const [pinScan, setPinScan] = useState("");
+  const [pinTpl, setPinTpl] = useState("");
+  const [pinBusy, setPinBusy] = useState(false);
+  const [pinMsg, setPinMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const runPin = async () => {
+    setPinBusy(true);
+    setPinMsg(null);
+    const r = await apiReportSnapshotPin(pinScan.trim(), pinTpl || (templates[0]?.template_id ?? "pci-dss-4.0"));
+    setPinBusy(false);
+    if (r.ok && r.data) {
+      setPinMsg({
+        ok: true,
+        text: `${r.data.created ? "pinned" : "already pinned (identical rendering)"} — ${r.data.id.slice(0, 8)}… payload ${r.data.payload_hash?.slice(0, 12) ?? "unhashed"}…`,
+      });
+    } else {
+      setPinMsg({ ok: false, text: r.error ?? "pin failed" });
+    }
+  };
 
   // PoC exit report state
   const [exitClient, setExitClient] = useState("");
@@ -172,6 +193,32 @@ export default function Reports() {
         </div>
       </Panel>
 
+      {/* On-demand report pin — §4.4 round 69: the report leg of scan→BOM→report */}
+      <Panel title="Pin a scan's report now" sub="content-addressed report version authority — the exact payload (signed PDF + scan→BOM chain citation) hashed with SHA-256; identical pins collapse" className="mt">
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input className="inp" placeholder="scan id" value={pinScan} onChange={(e) => setPinScan(e.target.value)} style={{ flex: "1 1 220px" }} />
+          <select className="inp" value={pinTpl} onChange={(e) => setPinTpl(e.target.value)} style={{ flex: "0 1 200px" }}>
+            <option value="">template (default first)</option>
+            {templates.map((t) => (
+              <option key={t.template_id ?? t.id} value={t.template_id ?? t.id}>{t.template_id ?? t.id}</option>
+            ))}
+          </select>
+          <button className="btn sm primary" disabled={pinBusy || !pinScan.trim()} onClick={() => void runPin()}>
+            {pinBusy ? "Pinning…" : "Pin report"}
+          </button>
+        </div>
+        {pinMsg && (
+          <div style={{ marginTop: 8, fontSize: 12.5, color: pinMsg.ok ? "var(--green)" : "var(--red)" }}>
+            <StatusMark ok={pinMsg.ok} muted /> {pinMsg.text}
+          </div>
+        )}
+        <div className="dim" style={{ fontSize: 12, marginTop: 8 }}>
+          Schedules render "the latest completed scan of a target"; a pin freezes the EXACT scan you
+          name. The pinned report cites the scan's pinned CBOM snapshot (or says none exists) and is
+          served verbatim with an integrity self-check.
+        </div>
+      </Panel>
+
       <Panel title="Generated reports" sub="signed snapshots — each run produces a deterministic, HMAC-sealed PDF" className="mt">
         {snapshots.length === 0 ? (
           <p className="dim" style={{ fontSize: 13, marginTop: 0 }}>
@@ -187,6 +234,9 @@ export default function Reports() {
                 <div className="row">
                   <button className="btn sm primary" disabled={!r.pdf_b64} onClick={() => downloadPdf(r.id ?? r.snapshot_id)}>Download signed PDF</button>
                   {r.pdf_signature && <Badge tone="green">HMAC signed</Badge>}
+                  {r.payload_hash
+                    ? <Badge tone="cyan">content-addressed {String(r.payload_hash).slice(0, 10)}…</Badge>
+                    : <span className="dim" style={{ fontSize: 12 }}>legacy row — payload not content-addressed</span>}
                 </div>
               </Panel>
             ))}

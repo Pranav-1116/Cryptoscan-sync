@@ -1,13 +1,13 @@
 # Bank readiness evidence report
 
-Captured: `2026-10-15T17:24:06.989598+00:00`
-Commit: `aa9d9ba9aecc1cd0fd777a4fd3cc727a8b3b63b3`
+Captured: `2026-10-16T04:00:21.520095+00:00`
+Commit: `ecd0a9c64b2e5bf292a545c72c64a38033408445`
 Verdict: **FAIL**
 Recommendation: **do not approve production; remediation and/or evidence collection required**
 
 | Category | Status | Detail |
 |---|---|---|
-| engineering | FAIL | artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=dd6e16ac586c6fead9d181def53e1320807d576eeeea8e682e38f169bb9bf8e2 |
+| engineering | FAIL | artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=b6f2731f6e332fa970bc83eee997315ab64a4236a90040e7b998b0f91e6d9f49 |
 | postgresql_dr | PASS | artifact=docs/readiness-evidence/postgres-dr-drill-2026-10-04.json; sha256=bbc19aae30c70c393692a94a937f151469a1caa4b23eb7ad581624496180d32e |
 | hsm | SKIP | no external artifact supplied; this is not evidence |
 | integrations | PASS | artifact=docs/readiness-evidence/burn-in-2026-10-04.json; sha256=6209c28768630338bd453650603ef873bab5c2e26bf5f4896cc6221a13c17004 |

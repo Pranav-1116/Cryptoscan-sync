@@ -465,7 +465,8 @@ def get_remediation(
     return suggest_remediations(_findings(scan_id, evidence))
 
 
-def _rendered_report(scan_id, scans, evidence, drift, template: str | None, requirements: str | None):
+def _rendered_report(scan_id, scans, evidence, drift, template: str | None,
+                    requirements: str | None, generated_at_iso: str | None = None):
     scan = _require_scan(scan_id, scans)
     findings = _findings(scan_id, evidence)
     pack_hash = None
@@ -476,6 +477,7 @@ def _rendered_report(scan_id, scans, evidence, drift, template: str | None, requ
     report = render_json(
         scan=scan_to_dict(scan),
         findings=findings,
+        generated_at_iso=generated_at_iso,
         agility=compute_agility(findings),
         quantum=analyze_quantum_risk(findings),
         gate=evaluate_gate(findings, _drift_events(scan_id, drift)),

@@ -19,6 +19,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_auditor
+from db.models.report_snapshot import ReportSnapshot
+from db.tenancy import filtered_get
 
 router = APIRouter(tags=["report-schedules"])
 
@@ -34,6 +36,13 @@ class ScheduleCreate(BaseModel):
 
 class ScheduleUpdate(BaseModel):
     active: bool
+
+
+class ReportPinRequest(BaseModel):
+    """On-demand report pin (§4.4, round 69): name the template — the scan
+    comes from the path, never a 'latest of target' guess."""
+    template_id: str = Field(..., min_length=1, max_length=60)
+    requirements: list[str] | None = None  # only used with template_id="custom"
 
 
 def _report_signing_secret() -> str:
@@ -81,12 +90,112 @@ def _validate_template(template_id: str, requirements: list[str] | None) -> None
         raise HTTPException(status_code=422, detail="template 'custom' requires requirements")
 
 
-def _run_schedule(schedule, db: Session) -> dict:
-    """Render + snapshot + email one schedule. Never raises for expected states."""
+def _chain_block(db: Session, scan) -> dict:
+    """The scan→BOM citation embedded in every pinned report (round 69).
+
+    The report leg of scan-run → BOM → report: the pinned report names the
+    EXACT pinned CBOM snapshot it was rendered alongside — content hash
+    included — or says honestly that none exists (the report was rendered
+    from live evidence; the BOM leg was never pinned). The chain block is
+    embedded BEFORE the payload hash, so the citation is covered by the
+    snapshot's own content address.
+    """
+    from db.models.cbom_snapshot import CbomSnapshot
+
+    row = (
+        db.query(CbomSnapshot)
+        .filter(CbomSnapshot.scan_id == scan.id)
+        .order_by(CbomSnapshot.created_at.desc())
+        .limit(1)
+        .one_or_none()
+    )
+    cbom = None
+    if row is not None:
+        cbom = {
+            "snapshot_id": row.id,
+            "content_hash": row.content_hash,
+            "snapshotted_at": row.snapshotted_at.isoformat() if row.snapshotted_at else None,
+            "component_count": row.component_count,
+            "path": f"/api/v1/cbom/snapshots/{row.id}",
+        }
+    return {
+        "scan": {
+            "id": scan.id,
+            "verify_path": f"/api/v1/scans/{scan.id}/verify",
+        },
+        "cbom_snapshot": cbom,
+        "note": (
+            "Report rendered alongside pinned CBOM snapshot "
+            f"{cbom['content_hash'][:16]}… of this scan."
+            if cbom else
+            "No pinned CBOM snapshot for this scan at pin time — the report "
+            "was rendered from live evidence. Pin the BOM first "
+            f"(POST /api/v1/cbom/scan/{scan.id}/snapshot) for a fully "
+            "versioned scan→BOM→report chain."
+        ),
+    }
+
+
+def _pin_report(db: Session, *, scan, template_id: str, requirements=None,
+                schedule=None, user: str = "system") -> tuple[object, bool]:
+    """Render + chain + content-address ONE report snapshot. Shared by the
+    schedule runner and the on-demand pin so both produce the SAME
+    authority: the exact payload (signed PDF included) hashed with
+    SHA-256 over its canonical JSON, identical pins collapsing to one row.
+
+    Returns ``(snapshot_row, created)``.
+    """
     from db.repositories.drift_repository import DriftRepository
     from db.repositories.evidence_repository import EvidenceRepository
     from db.repositories.scan_repository import ScanRepository
     from api.routers.intelligence import _rendered_report
+    from reporting.report_templates import canonical_hash
+
+    # anchor the report's wall clock to the scan before hashing: identical
+    # (scan, evidence, template, chain) must hash identically or content
+    # addressing is meaningless. The snapshot's own generated_at column
+    # still records the real pin time.
+    scan_time = getattr(scan, "scan_end", None) or scan.created_at
+    report = _rendered_report(
+        scan.id,
+        ScanRepository(db),
+        EvidenceRepository(db),
+        DriftRepository(db),
+        template_id,
+        ",".join(requirements or []),
+        generated_at_iso=scan_time.isoformat() if scan_time else None,
+    )
+    _attach_signed_pdf(report)  # the signed PDF is part of the pinned payload
+    report["chain"] = _chain_block(db, scan)  # cited BEFORE hashing
+    payload_hash = canonical_hash(report)
+
+    existing = (
+        db.query(ReportSnapshot)
+        .filter(ReportSnapshot.scan_id == scan.id,
+                ReportSnapshot.payload_hash == payload_hash)
+        .one_or_none()
+    )
+    if existing is not None:
+        return existing, False
+    snapshot = _repo(db).add_snapshot(
+        schedule_id=schedule.id if schedule is not None else None,
+        schedule_name=schedule.name if schedule is not None else None,
+        scan_id=scan.id,
+        template_id=template_id,
+        report_hash=report.get("report_hash") or "",
+        payload_hash=payload_hash,
+        report=report,
+        generated_at=datetime.now(timezone.utc),
+        email_status="PENDING" if schedule is not None else None,
+    )
+    db.commit()
+    db.refresh(snapshot)
+    return snapshot, True
+
+
+def _run_schedule(schedule, db: Session) -> dict:
+    """Render + snapshot + email one schedule. Never raises for expected states."""
+    from db.repositories.scan_repository import ScanRepository
 
     scan = ScanRepository(db).get_latest_completed_for_target(schedule.scan_target)
     if scan is None:
@@ -96,26 +205,12 @@ def _run_schedule(schedule, db: Session) -> dict:
             "detail": f"no completed scan for target '{schedule.scan_target}'",
         }
 
-    report = _rendered_report(
-        scan.id,
-        ScanRepository(db),
-        EvidenceRepository(db),
-        DriftRepository(db),
-        schedule.template_id,
-        ",".join(schedule.requirements or []),
+    snapshot, _created = _pin_report(
+        db, scan=scan, template_id=schedule.template_id,
+        requirements=schedule.requirements, schedule=schedule,
     )
-    _attach_signed_pdf(report)  # unify: scheduled reports emit signed framework PDFs
+    report = snapshot.report or {}
     repo = _repo(db)
-    snapshot = repo.add_snapshot(
-        schedule_id=schedule.id,
-        schedule_name=schedule.name,
-        scan_id=scan.id,
-        template_id=schedule.template_id,
-        report_hash=report.get("report_hash") or "",
-        report=report,
-        generated_at=datetime.now(timezone.utc),
-        email_status="PENDING",
-    )
 
     from reporting.distribution import email_report
 
@@ -259,6 +354,61 @@ def run_due_schedules(user: str = Depends(require_auditor), db: Session = Depend
     return {"ran": len(results), "results": results}
 
 
+@router.post("/scans/{scan_id}/report-snapshot")
+def pin_scan_report(
+    scan_id: str,
+    body: ReportPinRequest,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Pin THIS scan's report now — the report version authority (§4.4,
+    round 69).
+
+    Schedules render "the latest completed scan of a target"; this pins the
+    EXACT scan an operator names, at release time or audit time. The
+    payload carries the scan→BOM chain citation and the signed PDF, is
+    content-addressed (SHA-256 over canonical JSON — identical pins
+    collapse), and is served verbatim with an integrity self-check by
+    ``GET /report-snapshots/{id}``.
+    """
+    from db.models.scan import Scan
+
+    scan = filtered_get(db, Scan, scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    template_id = body.template_id
+    requirements = body.requirements or []
+    _validate_template(template_id, requirements or None)
+    snapshot, created = _pin_report(
+        db, scan=scan, template_id=template_id, requirements=requirements,
+        user=user,
+    )
+    out = _snapshot_summary(snapshot)
+    out["created"] = created
+    out["note"] = (
+        "Report pinned and content-addressed; GET the snapshot id for the "
+        "exact stored payload with its integrity self-check."
+        if created else
+        "An identical rendering is already pinned for this scan "
+        "(content-addressed); the existing snapshot is returned."
+    )
+    return out
+
+
+def _snapshot_summary(row) -> dict:
+    return {
+        "id": row.id,
+        "schedule_id": row.schedule_id,
+        "schedule_name": row.schedule_name,
+        "scan_id": row.scan_id,
+        "template_id": row.template_id,
+        "report_hash": row.report_hash,
+        "payload_hash": row.payload_hash,
+        "generated_at": row.generated_at.isoformat() if row.generated_at else None,
+        "email_status": row.email_status,
+    }
+
+
 @router.get("/report-snapshots")
 def list_snapshots(
     scan_id: str | None = None,
@@ -277,6 +427,7 @@ def list_snapshots(
                 "scan_id": row.scan_id,
                 "template_id": row.template_id,
                 "report_hash": row.report_hash,
+                "payload_hash": row.payload_hash,
                 "generated_at": row.generated_at.isoformat() if row.generated_at else None,
                 "email_status": row.email_status,
             }
@@ -292,17 +443,47 @@ def get_snapshot(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """The immutable audit artifact: the full report exactly as generated."""
+    """The immutable audit artifact: the full report exactly as generated,
+    served verbatim with an integrity self-check (round 69).
+
+    The recomputed canonical hash over the stored payload must equal the
+    pinned ``payload_hash``; a mutation after pinning is served as
+    DETECTED-UNTRUSTED, never silently. Rows that predate content
+    addressing say so (``UNVERIFIED_LEGACY``) instead of pretending.
+    """
     row = _repo(db).get_snapshot(snapshot_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Snapshot not found")
     payload = dict(row.report or {})
+    from reporting.report_templates import canonical_hash
+
+    if row.payload_hash:
+        recomputed = canonical_hash(payload)
+        integrity = "OK" if recomputed == row.payload_hash else "MISMATCH"
+        integrity_note = (
+            "SHA-256 over the stored payload (PDF, signature and scan→BOM "
+            "chain citation included) matches the pinned content hash."
+            if integrity == "OK" else
+            "Stored payload does NOT match its pinned content hash — the "
+            "report was mutated after pinning. Do not trust it."
+        )
+    else:
+        integrity = "UNVERIFIED_LEGACY"
+        integrity_note = (
+            "This snapshot predates payload content addressing (round 69); "
+            "its render-level report_hash is unchanged but the stored "
+            "payload as a whole was never pinned. Re-pin for a "
+            "content-addressed authority."
+        )
     payload["snapshot"] = {
         "id": row.id,
         "schedule_name": row.schedule_name,
         "generated_at": row.generated_at.isoformat() if row.generated_at else None,
         "emailed_at": row.emailed_at.isoformat() if row.emailed_at else None,
         "email_status": row.email_status,
+        "payload_hash": row.payload_hash,
+        "integrity": integrity,
+        "integrity_note": integrity_note,
     }
     return payload
 

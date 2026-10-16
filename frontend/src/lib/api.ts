@@ -2529,6 +2529,24 @@ export const apiReportTemplates = () => _rsGet<any>("/api/v1/report-templates");
 export const apiReportScheduleCreate = (body: { name: string; template_id: string; frequency: string; scan_target?: string; requirements?: string[]; recipients?: string[] }) =>
   _rsPost<any>("/api/v1/report-schedules", body);
 
+/* §4.4 (round 69): the report leg of scan-run → BOM → report. Pin THIS
+ * scan's report on demand — content-addressed over the exact payload (signed
+ * PDF + scan→BOM chain citation included), identical pins collapsing, served
+ * verbatim with an integrity self-check by GET /report-snapshots/{id}. */
+export interface ReportPinResult {
+  id: string;
+  scan_id: string;
+  template_id: string;
+  report_hash: string;
+  payload_hash: string | null;
+  generated_at: string | null;
+  created: boolean;
+  note: string;
+}
+export const apiReportSnapshotPin = (scanId: string, templateId: string, requirements?: string[]): Promise<ApiResult<ReportPinResult>> =>
+  _rsPost<ReportPinResult>(`/api/v1/scans/${encodeURIComponent(scanId)}/report-snapshot`,
+    { template_id: templateId, ...(requirements?.length ? { requirements } : {}) });
+
 /* OT maintenance windows (author + list + cancel) and operation classes. */
 export const apiOtSafetyOperations = () => _rsGet<any>("/api/v1/ot/safety/operations");
 export const apiOtCreateMaintenanceWindow = (body: {
