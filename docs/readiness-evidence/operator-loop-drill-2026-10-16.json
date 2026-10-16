@@ -1,8 +1,8 @@
 {
   "schema": "cryptoscan.operator-loop-drill/1",
-  "captured_at": "2026-10-16T18:50:04+00:00",
+  "captured_at": "2026-10-16T19:40:19+00:00",
   "repository": {
-    "commit": "c6db45710fe25a7cfdfbc0db06ede70483ecc039",
+    "commit": "40a27e1fab6f71dd8bb61546eece16767aebbdca",
     "branch": "arena/bb4b80dd-cryproscan",
     "dirty": false
   },
@@ -15,15 +15,15 @@
   },
   "systems": {
     "payments-api": {
-      "id": "39b77484-de4f-4d47-9509-8a52ddd988a3",
+      "id": "995321d0-701e-4fa7-b0db-827172890b79",
       "target": "local:///tmp/cryptoscan-sources/operator-loop/payments-api"
     },
     "mainframe-icsf": {
-      "id": "2f3a436e-3eec-4413-ae33-3c8f94339aa3",
+      "id": "171bb5f8-d01e-4901-9efb-cb77bf8a693a",
       "target": "local:///tmp/cryptoscan-sources/operator-loop/mainframe-icsf"
     },
     "claims-ibmi": {
-      "id": "5807c364-4247-4a94-9030-20ad87a1b647",
+      "id": "3e7321f6-1ae5-4a7e-8efe-4c6335b5b86f",
       "target": "local:///tmp/cryptoscan-sources/operator-loop/claims-ibmi"
     }
   },
@@ -31,76 +31,76 @@
     {
       "id": "system.register.payments-api",
       "status": "PASS",
-      "detail": "POST /systems -> 200; id=39b77484-de4f-4d47-9509-8a52ddd988a3; owners m.iyer@bank.example / s.duarte@bank.example",
+      "detail": "POST /systems -> 200; id=995321d0-701e-4fa7-b0db-827172890b79; owners m.iyer@bank.example / s.duarte@bank.example",
       "http_status": 200,
-      "system_id": "39b77484-de4f-4d47-9509-8a52ddd988a3"
+      "system_id": "995321d0-701e-4fa7-b0db-827172890b79"
     },
     {
       "id": "system.register.mainframe-icsf",
       "status": "PASS",
-      "detail": "POST /systems -> 200; id=2f3a436e-3eec-4413-ae33-3c8f94339aa3; owners r.okonkwo@bank.example / s.duarte@bank.example",
+      "detail": "POST /systems -> 200; id=171bb5f8-d01e-4901-9efb-cb77bf8a693a; owners r.okonkwo@bank.example / s.duarte@bank.example",
       "http_status": 200,
-      "system_id": "2f3a436e-3eec-4413-ae33-3c8f94339aa3"
+      "system_id": "171bb5f8-d01e-4901-9efb-cb77bf8a693a"
     },
     {
       "id": "system.register.claims-ibmi",
       "status": "PASS",
-      "detail": "POST /systems -> 200; id=5807c364-4247-4a94-9030-20ad87a1b647; owners a.lindqvist@bank.example / s.duarte@bank.example",
+      "detail": "POST /systems -> 200; id=3e7321f6-1ae5-4a7e-8efe-4c6335b5b86f; owners a.lindqvist@bank.example / s.duarte@bank.example",
       "http_status": 200,
-      "system_id": "5807c364-4247-4a94-9030-20ad87a1b647"
+      "system_id": "3e7321f6-1ae5-4a7e-8efe-4c6335b5b86f"
     },
     {
       "id": "scan.accept.p1.payments",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=2c192714-fa74-4bc1-8b38-d30dae9b51b6",
+      "detail": "POST /systems/995321d0/scan -> 200; job=35eabb08-e640-4cbf-ba58-bce8b2fa47ef",
       "http_status": 200,
-      "job_id": "2c192714-fa74-4bc1-8b38-d30dae9b51b6"
+      "job_id": "35eabb08-e640-4cbf-ba58-bce8b2fa47ef"
     },
     {
       "id": "scan.completed.p1.payments",
       "status": "PASS",
-      "detail": "job 2c192714 -> COMPLETED; scan_id=c361ed3b-5e26-4c86-a483-ae1fd3ea53b8",
+      "detail": "job 35eabb08 -> COMPLETED; scan_id=b745c04a-5a84-493c-a53e-f5f25b5fea58",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "c361ed3b-5e26-4c86-a483-ae1fd3ea53b8"
+      "scan_id": "b745c04a-5a84-493c-a53e-f5f25b5fea58"
     },
     {
       "id": "scan.accept.p1.mainframe",
       "status": "PASS",
-      "detail": "POST /systems/2f3a436e/scan -> 200; job=f5a136b7-f5f4-4c05-8a04-d4d96314c696",
+      "detail": "POST /systems/171bb5f8/scan -> 200; job=8128c904-6fe5-4baf-9023-0de836b46891",
       "http_status": 200,
-      "job_id": "f5a136b7-f5f4-4c05-8a04-d4d96314c696"
+      "job_id": "8128c904-6fe5-4baf-9023-0de836b46891"
     },
     {
       "id": "scan.completed.p1.mainframe",
       "status": "PASS",
-      "detail": "job f5a136b7 -> COMPLETED; scan_id=0cf75a30-f71c-4dbc-b88f-831021581d9e",
+      "detail": "job 8128c904 -> COMPLETED; scan_id=be0505f2-10c0-430d-8af4-308fcae832e1",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "0cf75a30-f71c-4dbc-b88f-831021581d9e"
+      "scan_id": "be0505f2-10c0-430d-8af4-308fcae832e1"
     },
     {
       "id": "scan.accept.p1.ibmi",
       "status": "PASS",
-      "detail": "POST /systems/5807c364/scan -> 200; job=cf8f2913-9ab5-412d-90cb-957926f55740",
+      "detail": "POST /systems/3e7321f6/scan -> 200; job=1772b2fb-eb83-4759-b931-cbad7eb0238e",
       "http_status": 200,
-      "job_id": "cf8f2913-9ab5-412d-90cb-957926f55740"
+      "job_id": "1772b2fb-eb83-4759-b931-cbad7eb0238e"
     },
     {
       "id": "scan.completed.p1.ibmi",
       "status": "PASS",
-      "detail": "job cf8f2913 -> COMPLETED; scan_id=cfc0771a-729a-4256-906d-e351925f391f",
+      "detail": "job 1772b2fb -> COMPLETED; scan_id=251df758-96cc-45d4-aee1-4d12a6ab130a",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "cfc0771a-729a-4256-906d-e351925f391f"
+      "scan_id": "251df758-96cc-45d4-aee1-4d12a6ab130a"
     },
     {
       "id": "evidence.verify.p1.payments",
       "status": "PASS",
-      "detail": "GET /scans/c361ed3b/verify -> 200; PASS",
+      "detail": "GET /scans/b745c04a/verify -> 200; PASS",
       "http_status": 200,
       "verdict": "PASS",
-      "manifest_hash": "91fba6d76b2d90b4a14e3c8d462923e0dae4e418f23b5491bbe7d9b7b98acda2"
+      "manifest_hash": "ce0bff2d85210eea5b3b7c3c4f2ec774b8c62d11c05f837edaa4ce05030a37d4"
     },
     {
       "id": "evidence.mainframe.p1",
@@ -117,10 +117,10 @@
     {
       "id": "evidence.verify.p1.mainframe",
       "status": "PASS",
-      "detail": "GET /scans/0cf75a30/verify -> 200; PASS",
+      "detail": "GET /scans/be0505f2/verify -> 200; PASS",
       "http_status": 200,
       "verdict": "PASS",
-      "manifest_hash": "263293cff710e8533c6cd306416f7aaa2cd425df54a9b7156fd203c90b58a321"
+      "manifest_hash": "19d41ccbce95444846ae2b3aba587ed461d80e5e86f803c6b0cd0a531f16ae6e"
     },
     {
       "id": "evidence.ibmi.p1",
@@ -137,10 +137,10 @@
     {
       "id": "evidence.verify.p1.ibmi",
       "status": "PASS",
-      "detail": "GET /scans/cfc0771a/verify -> 200; PASS",
+      "detail": "GET /scans/251df758/verify -> 200; PASS",
       "http_status": 200,
       "verdict": "PASS",
-      "manifest_hash": "c6cac990b422d99b1ab9c650dd413843d921c15a60a8b8b1346e8a5a1a0fa28e"
+      "manifest_hash": "761077c6fc05545e3be9028a61fdd1924c28adcc8305822af75050074511a337"
     },
     {
       "id": "findings.p1",
@@ -171,45 +171,45 @@
     {
       "id": "target.finding.p1",
       "status": "PASS",
-      "detail": "driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence 7519d868, 2 record(s) at that site)",
-      "evidence_id": "7519d868-0c11-4e36-9f14-5ef92789c02c",
+      "detail": "driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence 0fec59ac, 2 record(s) at that site)",
+      "evidence_id": "0fec59ac-fb05-4885-99f5-3505a922ae1e",
       "records_at_site": 2
     },
     {
       "id": "baseline.approve.p1",
       "status": "PASS",
-      "detail": "POST /baselines/approve -> 200; baseline=f5534e15-4b8d-4eed-a6fd-adc5c7e8c0f4; approved_by=admin",
+      "detail": "POST /baselines/approve -> 200; baseline=9a2aadb3-e892-41af-a66e-f84c88f8b4aa; approved_by=admin",
       "http_status": 200,
-      "baseline_id": "f5534e15-4b8d-4eed-a6fd-adc5c7e8c0f4"
+      "baseline_id": "9a2aadb3-e892-41af-a66e-f84c88f8b4aa"
     },
     {
       "id": "task.create.p1.verified",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=28471aa2-9761-4f8e-af0f-210410aa52ed; rule=replace-3des; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=ae974299-1f7d-4d7e-a121-ea24800d0b4a; rule=replace-3des; status=PROPOSED",
       "http_status": 200,
-      "task_id": "28471aa2-9761-4f8e-af0f-210410aa52ed",
+      "task_id": "ae974299-1f7d-4d7e-a121-ea24800d0b4a",
       "rule_id": "replace-3des"
     },
     {
       "id": "task.accept.p1.verified",
       "status": "PASS",
-      "detail": "POST /tasks/28471aa2/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/ae974299/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
       "id": "scan.accept.p1.fix",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=6ff3327a-681d-4e7e-8cff-e40433b9838e",
+      "detail": "POST /systems/995321d0/scan -> 200; job=90deed8c-629a-4210-bdde-8b5a9f38ccb5",
       "http_status": 200,
-      "job_id": "6ff3327a-681d-4e7e-8cff-e40433b9838e"
+      "job_id": "90deed8c-629a-4210-bdde-8b5a9f38ccb5"
     },
     {
       "id": "scan.completed.p1.fix",
       "status": "PASS",
-      "detail": "job 6ff3327a -> COMPLETED; scan_id=cef79e8f-2212-4557-a329-1326780def2c",
+      "detail": "job 90deed8c -> COMPLETED; scan_id=e3d5084c-8922-40fb-bef4-8428957466df",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "cef79e8f-2212-4557-a329-1326780def2c"
+      "scan_id": "e3d5084c-8922-40fb-bef4-8428957466df"
     },
     {
       "id": "verification.verified.p1.verified",
@@ -233,17 +233,17 @@
     {
       "id": "scan.accept.p1.reintroduced",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=944d6e1d-2d93-44a7-a0b2-0487fcfab2b2",
+      "detail": "POST /systems/995321d0/scan -> 200; job=0f831604-a236-4fef-859b-f2ee49eb4fbd",
       "http_status": 200,
-      "job_id": "944d6e1d-2d93-44a7-a0b2-0487fcfab2b2"
+      "job_id": "0f831604-a236-4fef-859b-f2ee49eb4fbd"
     },
     {
       "id": "scan.completed.p1.reintroduced",
       "status": "PASS",
-      "detail": "job 944d6e1d -> COMPLETED; scan_id=3772cb82-9d4a-4509-b634-17cf22b55550",
+      "detail": "job 0f831604 -> COMPLETED; scan_id=7b850aba-e714-4d37-a03e-edd0b5d00b54",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "3772cb82-9d4a-4509-b634-17cf22b55550"
+      "scan_id": "7b850aba-e714-4d37-a03e-edd0b5d00b54"
     },
     {
       "id": "reintroduction.detected.p1",
@@ -265,30 +265,30 @@
     {
       "id": "scan.accept.p1.untouched",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=be22bbf7-2087-4a85-82ea-1afa692863ab",
+      "detail": "POST /systems/995321d0/scan -> 200; job=7d3c3a48-fed6-421b-8e66-6e309dd06d58",
       "http_status": 200,
-      "job_id": "be22bbf7-2087-4a85-82ea-1afa692863ab"
+      "job_id": "7d3c3a48-fed6-421b-8e66-6e309dd06d58"
     },
     {
       "id": "scan.completed.p1.untouched",
       "status": "PASS",
-      "detail": "job be22bbf7 -> COMPLETED; scan_id=d7d831e6-67d6-4943-8dd7-413167c5a201",
+      "detail": "job 7d3c3a48 -> COMPLETED; scan_id=84bb4c94-25e1-45ef-83ef-4afabb5577a3",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "d7d831e6-67d6-4943-8dd7-413167c5a201"
+      "scan_id": "84bb4c94-25e1-45ef-83ef-4afabb5577a3"
     },
     {
       "id": "task.create.p1.failed",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=368b96d3-3991-467f-b022-2fb73468fd40; rule=replace-md5; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=ec258e85-a729-414b-a02a-84c4dd52c4f3; rule=replace-md5; status=PROPOSED",
       "http_status": 200,
-      "task_id": "368b96d3-3991-467f-b022-2fb73468fd40",
+      "task_id": "ec258e85-a729-414b-a02a-84c4dd52c4f3",
       "rule_id": "replace-md5"
     },
     {
       "id": "task.accept.p1.failed",
       "status": "PASS",
-      "detail": "POST /tasks/368b96d3/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/ec258e85/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
@@ -303,30 +303,30 @@
     {
       "id": "scan.accept.p1.partial",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=8572ecd4-ac17-4240-8d47-9917e6192897",
+      "detail": "POST /systems/995321d0/scan -> 200; job=fcda3c70-8f73-4cb0-88cc-412c9d293def",
       "http_status": 200,
-      "job_id": "8572ecd4-ac17-4240-8d47-9917e6192897"
+      "job_id": "fcda3c70-8f73-4cb0-88cc-412c9d293def"
     },
     {
       "id": "scan.completed.p1.partial",
       "status": "PASS",
-      "detail": "job 8572ecd4 -> COMPLETED; scan_id=9a5a0897-35e3-48a5-ad84-e47bf33d21d8",
+      "detail": "job fcda3c70 -> COMPLETED; scan_id=514a46c3-e314-4af0-8e8b-0cf1acd26fa6",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "9a5a0897-35e3-48a5-ad84-e47bf33d21d8"
+      "scan_id": "514a46c3-e314-4af0-8e8b-0cf1acd26fa6"
     },
     {
       "id": "task.create.p1.partial",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=00b4d06b-90f7-4caa-a135-3ef0ce4c7052; rule=replace-3des; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=b6096091-98a2-40ab-a067-071e1b45e328; rule=replace-3des; status=PROPOSED",
       "http_status": 200,
-      "task_id": "00b4d06b-90f7-4caa-a135-3ef0ce4c7052",
+      "task_id": "b6096091-98a2-40ab-a067-071e1b45e328",
       "rule_id": "replace-3des"
     },
     {
       "id": "task.accept.p1.partial",
       "status": "PASS",
-      "detail": "POST /tasks/00b4d06b/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/b6096091/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
@@ -348,46 +348,46 @@
     {
       "id": "scan.accept.p1.regression-base",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=7fa2f46d-65b0-4730-a7ac-cfde83cb1fc4",
+      "detail": "POST /systems/995321d0/scan -> 200; job=671dca55-b871-4cb1-a98f-1fa9634472cf",
       "http_status": 200,
-      "job_id": "7fa2f46d-65b0-4730-a7ac-cfde83cb1fc4"
+      "job_id": "671dca55-b871-4cb1-a98f-1fa9634472cf"
     },
     {
       "id": "scan.completed.p1.regression-base",
       "status": "PASS",
-      "detail": "job 7fa2f46d -> COMPLETED; scan_id=fd049c39-6f48-4503-bf06-6b1efec69794",
+      "detail": "job 671dca55 -> COMPLETED; scan_id=e7819e08-a558-4e9e-892d-61d35a32b610",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "fd049c39-6f48-4503-bf06-6b1efec69794"
+      "scan_id": "e7819e08-a558-4e9e-892d-61d35a32b610"
     },
     {
       "id": "task.create.p1.regression",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=a01a8bae-d8bc-4b17-8ebb-fe7b6b13e3e7; rule=replace-3des; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=04ea8108-83aa-4d77-907f-935aeab8907c; rule=replace-3des; status=PROPOSED",
       "http_status": 200,
-      "task_id": "a01a8bae-d8bc-4b17-8ebb-fe7b6b13e3e7",
+      "task_id": "04ea8108-83aa-4d77-907f-935aeab8907c",
       "rule_id": "replace-3des"
     },
     {
       "id": "task.accept.p1.regression",
       "status": "PASS",
-      "detail": "POST /tasks/a01a8bae/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/04ea8108/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
       "id": "scan.accept.p1.regression",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=ac42afac-53f9-4b2d-8d1c-eabb25244599",
+      "detail": "POST /systems/995321d0/scan -> 200; job=c7544505-e268-4ff3-b352-f43d053b5582",
       "http_status": 200,
-      "job_id": "ac42afac-53f9-4b2d-8d1c-eabb25244599"
+      "job_id": "c7544505-e268-4ff3-b352-f43d053b5582"
     },
     {
       "id": "scan.completed.p1.regression",
       "status": "PASS",
-      "detail": "job ac42afac -> COMPLETED; scan_id=f68ff0be-a033-4935-92b4-8e05d2a9c1b3",
+      "detail": "job c7544505 -> COMPLETED; scan_id=f784dd0b-1427-46c6-bae7-8d07ee9c7f62",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "f68ff0be-a033-4935-92b4-8e05d2a9c1b3"
+      "scan_id": "f784dd0b-1427-46c6-bae7-8d07ee9c7f62"
     },
     {
       "id": "regression.observed.p1",
@@ -410,30 +410,30 @@
     {
       "id": "scan.accept.p1.inconclusive-base",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=0053a305-c33b-4143-b3cb-766b55aa1c25",
+      "detail": "POST /systems/995321d0/scan -> 200; job=147169a9-bd32-4851-b19e-6b24dc0c312e",
       "http_status": 200,
-      "job_id": "0053a305-c33b-4143-b3cb-766b55aa1c25"
+      "job_id": "147169a9-bd32-4851-b19e-6b24dc0c312e"
     },
     {
       "id": "scan.completed.p1.inconclusive-base",
       "status": "PASS",
-      "detail": "job 0053a305 -> COMPLETED; scan_id=7d0c5fec-5bc6-402a-844e-501b6051cb70",
+      "detail": "job 147169a9 -> COMPLETED; scan_id=ec0970db-80dc-4127-8fc9-d8e56c5a3341",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "7d0c5fec-5bc6-402a-844e-501b6051cb70"
+      "scan_id": "ec0970db-80dc-4127-8fc9-d8e56c5a3341"
     },
     {
       "id": "task.create.p1.inconclusive",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=b834d286-7269-4cc5-b983-f34e308dd4f0; rule=manual-review; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=3e19369a-5f5f-44c9-b35a-28b6af161e2b; rule=manual-review; status=PROPOSED",
       "http_status": 200,
-      "task_id": "b834d286-7269-4cc5-b983-f34e308dd4f0",
+      "task_id": "3e19369a-5f5f-44c9-b35a-28b6af161e2b",
       "rule_id": "manual-review"
     },
     {
       "id": "task.accept.p1.inconclusive",
       "status": "PASS",
-      "detail": "POST /tasks/b834d286/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/3e19369a/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
@@ -446,17 +446,17 @@
     {
       "id": "scan.accept.p1.inconclusive-empty",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=e12f5b01-2ac8-4421-847b-ab63e93dc2c2",
+      "detail": "POST /systems/995321d0/scan -> 200; job=8040d0df-a446-45f5-ac8c-223baeea8643",
       "http_status": 200,
-      "job_id": "e12f5b01-2ac8-4421-847b-ab63e93dc2c2"
+      "job_id": "8040d0df-a446-45f5-ac8c-223baeea8643"
     },
     {
       "id": "scan.completed.p1.inconclusive-empty",
       "status": "PASS",
-      "detail": "job e12f5b01 -> COMPLETED; scan_id=b88592ba-15af-4bbb-9ce0-5ac7a4085d32",
+      "detail": "job 8040d0df -> COMPLETED; scan_id=ed1ab7a7-ce1e-4986-bd23-7588885ac954",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "b88592ba-15af-4bbb-9ce0-5ac7a4085d32"
+      "scan_id": "ed1ab7a7-ce1e-4986-bd23-7588885ac954"
     },
     {
       "id": "rescan.empty.p1",
@@ -476,7 +476,7 @@
     {
       "id": "audit.trail.p1",
       "status": "PASS",
-      "detail": "GET /events/recent -> 200; 224 journal event(s) read (latest_id=224, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified']",
+      "detail": "GET /events/recent -> 200; 225 journal event(s) read (latest_id=225, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified']",
       "http_status": 200,
       "tasks_missing_proposal": [],
       "lifecycle": [
@@ -486,13 +486,29 @@
         "platform.remediation.task_verified"
       ],
       "replay_gap": false,
-      "journal_events": 224,
+      "journal_events": 225,
       "task_ids": [
-        "28471aa2-9761-4f8e-af0f-210410aa52ed",
-        "368b96d3-3991-467f-b022-2fb73468fd40",
-        "00b4d06b-90f7-4caa-a135-3ef0ce4c7052",
-        "a01a8bae-d8bc-4b17-8ebb-fe7b6b13e3e7",
-        "b834d286-7269-4cc5-b983-f34e308dd4f0"
+        "ae974299-1f7d-4d7e-a121-ea24800d0b4a",
+        "ec258e85-a729-414b-a02a-84c4dd52c4f3",
+        "b6096091-98a2-40ab-a067-071e1b45e328",
+        "04ea8108-83aa-4d77-907f-935aeab8907c",
+        "3e19369a-5f5f-44c9-b35a-28b6af161e2b"
+      ]
+    },
+    {
+      "id": "audit.trail.operator_endpoint.p1",
+      "status": "PASS",
+      "detail": "GET /monitor/events -> 200; 32 journal row(s) readable by this caller (32 platform-scope); 5/5 task(s) opened this pass carry their proposal event here too \u2014 the operator surface and the durable journal agree",
+      "http_status": 200,
+      "monitor_rows": 32,
+      "platform_scope_rows": 32,
+      "tasks_missing_proposal": [],
+      "task_ids": [
+        "ae974299-1f7d-4d7e-a121-ea24800d0b4a",
+        "ec258e85-a729-414b-a02a-84c4dd52c4f3",
+        "b6096091-98a2-40ab-a067-071e1b45e328",
+        "04ea8108-83aa-4d77-907f-935aeab8907c",
+        "3e19369a-5f5f-44c9-b35a-28b6af161e2b"
       ]
     },
     {
@@ -505,24 +521,24 @@
     {
       "id": "report.pin.p1",
       "status": "PASS",
-      "detail": "POST /scans/f68ff0be/report-snapshot {template_id=fips-140-3} -> 200; snapshot=e12156aa; payload_hash=2df501709c6691ba; created=True",
+      "detail": "POST /scans/f784dd0b/report-snapshot {template_id=fips-140-3} -> 200; snapshot=f011c03f; payload_hash=d2e319208b32cf93; created=True",
       "http_status": 200,
-      "snapshot_id": "e12156aa-30bb-43af-9195-fbe184d6d1b8",
+      "snapshot_id": "f011c03f-911c-4133-8742-562365e5d429",
       "template_id": "fips-140-3"
     },
     {
       "id": "report.serve.p1",
       "status": "PASS",
-      "detail": "GET /report-snapshots/e12156aa -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=f68ff0be (the scan named in the request=True)",
+      "detail": "GET /report-snapshots/f011c03f -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=f784dd0b (the scan named in the request=True)",
       "http_status": 200,
       "integrity": "OK",
-      "stored_payload_hash": "2df501709c6691bae9f7fe9ca812290ea5b488850e4b1b490df6f004ed33e9c2",
-      "pinned_scan_id": "f68ff0be-a033-4935-92b4-8e05d2a9c1b3"
+      "stored_payload_hash": "d2e319208b32cf9356285aafe7d72479bf5d5780c48d125ccabcb51019431ea7",
+      "pinned_scan_id": "f784dd0b-1427-46c6-bae7-8d07ee9c7f62"
     },
     {
       "id": "coverage.p1",
       "status": "PASS",
-      "detail": "GET /scans/f68ff0be/coverage -> {\"scan_id\": \"f68ff0be-a033-4935-92b4-8e05d2a9c1b3\", \"scanner_id\": \"static-multi-scanner-v1.0\", \"status\": \"COMPLETED\", \"files_scanned\": 6, \"files_with_crypto\": 6}"
+      "detail": "GET /scans/f784dd0b/coverage -> {\"scan_id\": \"f784dd0b-1427-46c6-bae7-8d07ee9c7f62\", \"scanner_id\": \"static-multi-scanner-v1.0\", \"status\": \"COMPLETED\", \"files_scanned\": 6, \"files_with_crypto\": 6}"
     },
     {
       "id": "durable.cbom_pin.p1",
@@ -534,55 +550,55 @@
     {
       "id": "scan.accept.p2.payments",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=b739fa4d-61aa-4131-8ab0-31ceaab3f968",
+      "detail": "POST /systems/995321d0/scan -> 200; job=8ebb8f84-6bbe-4ce8-9953-abb84f5b849a",
       "http_status": 200,
-      "job_id": "b739fa4d-61aa-4131-8ab0-31ceaab3f968"
+      "job_id": "8ebb8f84-6bbe-4ce8-9953-abb84f5b849a"
     },
     {
       "id": "scan.completed.p2.payments",
       "status": "PASS",
-      "detail": "job b739fa4d -> COMPLETED; scan_id=715372db-bfd4-40a2-a4f9-18d4071a79aa",
+      "detail": "job 8ebb8f84 -> COMPLETED; scan_id=284d2cce-3161-4b31-a61d-121215d6d70c",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "715372db-bfd4-40a2-a4f9-18d4071a79aa"
+      "scan_id": "284d2cce-3161-4b31-a61d-121215d6d70c"
     },
     {
       "id": "scan.accept.p2.mainframe",
       "status": "PASS",
-      "detail": "POST /systems/2f3a436e/scan -> 200; job=a433bb16-2c8e-4201-9915-cfbab4564973",
+      "detail": "POST /systems/171bb5f8/scan -> 200; job=19585d5f-ec52-44d8-a8bc-eba1bf4b2a15",
       "http_status": 200,
-      "job_id": "a433bb16-2c8e-4201-9915-cfbab4564973"
+      "job_id": "19585d5f-ec52-44d8-a8bc-eba1bf4b2a15"
     },
     {
       "id": "scan.completed.p2.mainframe",
       "status": "PASS",
-      "detail": "job a433bb16 -> COMPLETED; scan_id=c0f38752-c49a-480b-886b-c5d5b84de9cb",
+      "detail": "job 19585d5f -> COMPLETED; scan_id=736fed7a-caa3-4a02-8943-601c05cf919b",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "c0f38752-c49a-480b-886b-c5d5b84de9cb"
+      "scan_id": "736fed7a-caa3-4a02-8943-601c05cf919b"
     },
     {
       "id": "scan.accept.p2.ibmi",
       "status": "PASS",
-      "detail": "POST /systems/5807c364/scan -> 200; job=73c6c7ce-3a20-4431-bf51-af55842e3d84",
+      "detail": "POST /systems/3e7321f6/scan -> 200; job=6ce74ac7-a26f-4bfb-bd12-f0958715b4d1",
       "http_status": 200,
-      "job_id": "73c6c7ce-3a20-4431-bf51-af55842e3d84"
+      "job_id": "6ce74ac7-a26f-4bfb-bd12-f0958715b4d1"
     },
     {
       "id": "scan.completed.p2.ibmi",
       "status": "PASS",
-      "detail": "job 73c6c7ce -> COMPLETED; scan_id=91f8d99c-c94b-4d6f-bd23-a5ce8e794968",
+      "detail": "job 6ce74ac7 -> COMPLETED; scan_id=3c200121-9f8e-46e4-bb69-1a50f96c9e19",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "91f8d99c-c94b-4d6f-bd23-a5ce8e794968"
+      "scan_id": "3c200121-9f8e-46e4-bb69-1a50f96c9e19"
     },
     {
       "id": "evidence.verify.p2.payments",
       "status": "PASS",
-      "detail": "GET /scans/715372db/verify -> 200; PASS",
+      "detail": "GET /scans/284d2cce/verify -> 200; PASS",
       "http_status": 200,
       "verdict": "PASS",
-      "manifest_hash": "c37ff255cd2d4a816ce49553160afd2447909705aaf0d4764ddbcf69a86c32e9"
+      "manifest_hash": "e8d242746f024bb8fc40b8f7d1da7910f304545870fecebf2a1f9da42469ebf8"
     },
     {
       "id": "evidence.mainframe.p2",
@@ -599,10 +615,10 @@
     {
       "id": "evidence.verify.p2.mainframe",
       "status": "PASS",
-      "detail": "GET /scans/c0f38752/verify -> 200; PASS",
+      "detail": "GET /scans/736fed7a/verify -> 200; PASS",
       "http_status": 200,
       "verdict": "PASS",
-      "manifest_hash": "6d697238657638621265a1032e489d3986457fcc177c90b1ce65b4267ca1440f"
+      "manifest_hash": "1dcc5c16a7aa8db24ac47559ed4d9f4fdd6422bc7bc087773d6ad8dcc259b2fd"
     },
     {
       "id": "evidence.ibmi.p2",
@@ -619,10 +635,10 @@
     {
       "id": "evidence.verify.p2.ibmi",
       "status": "PASS",
-      "detail": "GET /scans/91f8d99c/verify -> 200; PASS",
+      "detail": "GET /scans/3c200121/verify -> 200; PASS",
       "http_status": 200,
       "verdict": "PASS",
-      "manifest_hash": "33266ac0650044e0061cce4680b992f50c95cfcc64616d0e0d93135b6764b7c7"
+      "manifest_hash": "d1dd026e27a091b2232ed701dd125cb56fdcd3a8152a78f85aefc7bf0a912115"
     },
     {
       "id": "findings.p2",
@@ -653,14 +669,14 @@
     {
       "id": "target.finding.p2",
       "status": "PASS",
-      "detail": "driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence abaef960, 2 record(s) at that site)",
-      "evidence_id": "abaef960-0e62-42cd-a5f0-ddcafd6c9a6c",
+      "detail": "driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence 68b001e7, 2 record(s) at that site)",
+      "evidence_id": "68b001e7-3040-4a25-abff-52ee8ab26c1b",
       "records_at_site": 2
     },
     {
       "id": "baseline.exists.p2",
       "status": "PASS",
-      "detail": "GET /baselines -> 200; 1 row(s), 1 ACTIVE, 1 approved against an EARLIER scan \u2014 the baseline survived the pass that created it (local:///tmp/cryptoscan-sources/operator-loop/payments-api -> c361ed3b, approved_by=admin)",
+      "detail": "GET /baselines -> 200; 1 row(s), 1 ACTIVE, 1 approved against an EARLIER scan \u2014 the baseline survived the pass that created it (local:///tmp/cryptoscan-sources/operator-loop/payments-api -> b745c04a, approved_by=admin)",
       "http_status": 200,
       "baselines": 1,
       "active": 1,
@@ -669,31 +685,31 @@
     {
       "id": "task.create.p2.verified",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=31b2e66b-4dae-4c6a-8e13-4a45b180c088; rule=replace-3des; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=4e7f0540-9ddb-4d44-bfa9-1f6ad4d83f6d; rule=replace-3des; status=PROPOSED",
       "http_status": 200,
-      "task_id": "31b2e66b-4dae-4c6a-8e13-4a45b180c088",
+      "task_id": "4e7f0540-9ddb-4d44-bfa9-1f6ad4d83f6d",
       "rule_id": "replace-3des"
     },
     {
       "id": "task.accept.p2.verified",
       "status": "PASS",
-      "detail": "POST /tasks/31b2e66b/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/4e7f0540/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
       "id": "scan.accept.p2.fix",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=7818f578-7a5c-4ee9-b5e8-a51febe3df79",
+      "detail": "POST /systems/995321d0/scan -> 200; job=ed6ca193-4b37-491f-b526-066fc88e113f",
       "http_status": 200,
-      "job_id": "7818f578-7a5c-4ee9-b5e8-a51febe3df79"
+      "job_id": "ed6ca193-4b37-491f-b526-066fc88e113f"
     },
     {
       "id": "scan.completed.p2.fix",
       "status": "PASS",
-      "detail": "job 7818f578 -> COMPLETED; scan_id=196f85c7-4083-4d95-885d-779c22471677",
+      "detail": "job ed6ca193 -> COMPLETED; scan_id=e28e5008-20f3-4c15-8866-b0827be4187d",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "196f85c7-4083-4d95-885d-779c22471677"
+      "scan_id": "e28e5008-20f3-4c15-8866-b0827be4187d"
     },
     {
       "id": "verification.verified.p2.verified",
@@ -717,17 +733,17 @@
     {
       "id": "scan.accept.p2.reintroduced",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=2a886cdb-6b08-412a-aeec-42119ce22a13",
+      "detail": "POST /systems/995321d0/scan -> 200; job=803ec56e-55a9-423a-ba75-46f3a184193d",
       "http_status": 200,
-      "job_id": "2a886cdb-6b08-412a-aeec-42119ce22a13"
+      "job_id": "803ec56e-55a9-423a-ba75-46f3a184193d"
     },
     {
       "id": "scan.completed.p2.reintroduced",
       "status": "PASS",
-      "detail": "job 2a886cdb -> COMPLETED; scan_id=a4801b03-dc23-45f3-9dfc-95aab79777ab",
+      "detail": "job 803ec56e -> COMPLETED; scan_id=f7963a6e-771e-4bbb-b17e-dabf9927d162",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "a4801b03-dc23-45f3-9dfc-95aab79777ab"
+      "scan_id": "f7963a6e-771e-4bbb-b17e-dabf9927d162"
     },
     {
       "id": "reintroduction.detected.p2",
@@ -749,30 +765,30 @@
     {
       "id": "scan.accept.p2.untouched",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=54cfdc49-850a-4c8a-92a4-fc99b404108d",
+      "detail": "POST /systems/995321d0/scan -> 200; job=df52f88b-db28-42e8-92d2-e0c6a43b692c",
       "http_status": 200,
-      "job_id": "54cfdc49-850a-4c8a-92a4-fc99b404108d"
+      "job_id": "df52f88b-db28-42e8-92d2-e0c6a43b692c"
     },
     {
       "id": "scan.completed.p2.untouched",
       "status": "PASS",
-      "detail": "job 54cfdc49 -> COMPLETED; scan_id=a3340431-fe7f-4b8b-8969-871ea72b8734",
+      "detail": "job df52f88b -> COMPLETED; scan_id=3ac47411-2217-40b3-93e8-7d9ed1025c0f",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "a3340431-fe7f-4b8b-8969-871ea72b8734"
+      "scan_id": "3ac47411-2217-40b3-93e8-7d9ed1025c0f"
     },
     {
       "id": "task.create.p2.failed",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=60abb9a0-b0a1-4693-89e9-7fde69f4bbaf; rule=replace-md5; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=5ad7bf29-aa5a-4124-8d79-c83d8ef6805e; rule=replace-md5; status=PROPOSED",
       "http_status": 200,
-      "task_id": "60abb9a0-b0a1-4693-89e9-7fde69f4bbaf",
+      "task_id": "5ad7bf29-aa5a-4124-8d79-c83d8ef6805e",
       "rule_id": "replace-md5"
     },
     {
       "id": "task.accept.p2.failed",
       "status": "PASS",
-      "detail": "POST /tasks/60abb9a0/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/5ad7bf29/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
@@ -787,30 +803,30 @@
     {
       "id": "scan.accept.p2.partial",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=03eeae60-8cd7-41c4-8033-cac3dd222a49",
+      "detail": "POST /systems/995321d0/scan -> 200; job=17e5a877-2c2d-4858-a095-42382b9d9acc",
       "http_status": 200,
-      "job_id": "03eeae60-8cd7-41c4-8033-cac3dd222a49"
+      "job_id": "17e5a877-2c2d-4858-a095-42382b9d9acc"
     },
     {
       "id": "scan.completed.p2.partial",
       "status": "PASS",
-      "detail": "job 03eeae60 -> COMPLETED; scan_id=6dadebe0-1c12-4070-a7b3-21aecc560861",
+      "detail": "job 17e5a877 -> COMPLETED; scan_id=a215e332-ed24-4bdf-81e9-056330327980",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "6dadebe0-1c12-4070-a7b3-21aecc560861"
+      "scan_id": "a215e332-ed24-4bdf-81e9-056330327980"
     },
     {
       "id": "task.create.p2.partial",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=a33f929d-1ca4-4193-a674-b9f3ba61e0f3; rule=replace-3des; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=9150d0d3-1e8c-4117-a918-05cf12a3cbcb; rule=replace-3des; status=PROPOSED",
       "http_status": 200,
-      "task_id": "a33f929d-1ca4-4193-a674-b9f3ba61e0f3",
+      "task_id": "9150d0d3-1e8c-4117-a918-05cf12a3cbcb",
       "rule_id": "replace-3des"
     },
     {
       "id": "task.accept.p2.partial",
       "status": "PASS",
-      "detail": "POST /tasks/a33f929d/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/9150d0d3/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
@@ -832,46 +848,46 @@
     {
       "id": "scan.accept.p2.regression-base",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=81890d52-2ca1-4aae-952d-8a17f20133c0",
+      "detail": "POST /systems/995321d0/scan -> 200; job=591667f5-840a-4ccc-8ea9-4f0a0f0f7c16",
       "http_status": 200,
-      "job_id": "81890d52-2ca1-4aae-952d-8a17f20133c0"
+      "job_id": "591667f5-840a-4ccc-8ea9-4f0a0f0f7c16"
     },
     {
       "id": "scan.completed.p2.regression-base",
       "status": "PASS",
-      "detail": "job 81890d52 -> COMPLETED; scan_id=bd68604f-8d56-458f-a85d-5b2351407ebd",
+      "detail": "job 591667f5 -> COMPLETED; scan_id=e8064fca-ef71-47f4-89b4-01dcf19ec880",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "bd68604f-8d56-458f-a85d-5b2351407ebd"
+      "scan_id": "e8064fca-ef71-47f4-89b4-01dcf19ec880"
     },
     {
       "id": "task.create.p2.regression",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=32dd8063-a4bc-4470-afad-85bd16abd53c; rule=replace-3des; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=f7b18215-2fc9-4f61-892d-50363b664fcc; rule=replace-3des; status=PROPOSED",
       "http_status": 200,
-      "task_id": "32dd8063-a4bc-4470-afad-85bd16abd53c",
+      "task_id": "f7b18215-2fc9-4f61-892d-50363b664fcc",
       "rule_id": "replace-3des"
     },
     {
       "id": "task.accept.p2.regression",
       "status": "PASS",
-      "detail": "POST /tasks/32dd8063/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/f7b18215/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
       "id": "scan.accept.p2.regression",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=b53f107f-4659-4a85-ba10-e737aaf8a5d2",
+      "detail": "POST /systems/995321d0/scan -> 200; job=e84badc2-3261-4772-8cb5-057191502e63",
       "http_status": 200,
-      "job_id": "b53f107f-4659-4a85-ba10-e737aaf8a5d2"
+      "job_id": "e84badc2-3261-4772-8cb5-057191502e63"
     },
     {
       "id": "scan.completed.p2.regression",
       "status": "PASS",
-      "detail": "job b53f107f -> COMPLETED; scan_id=56877237-0529-4664-9ce0-39d215a56e8c",
+      "detail": "job e84badc2 -> COMPLETED; scan_id=bddaef86-8e69-4d05-879e-0f22d71f467c",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "56877237-0529-4664-9ce0-39d215a56e8c"
+      "scan_id": "bddaef86-8e69-4d05-879e-0f22d71f467c"
     },
     {
       "id": "regression.observed.p2",
@@ -894,30 +910,30 @@
     {
       "id": "scan.accept.p2.inconclusive-base",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=9b7a48e0-712b-40d3-86cf-690d5fc8cd77",
+      "detail": "POST /systems/995321d0/scan -> 200; job=f8831e6c-c94c-4284-a416-da25349b28c4",
       "http_status": 200,
-      "job_id": "9b7a48e0-712b-40d3-86cf-690d5fc8cd77"
+      "job_id": "f8831e6c-c94c-4284-a416-da25349b28c4"
     },
     {
       "id": "scan.completed.p2.inconclusive-base",
       "status": "PASS",
-      "detail": "job 9b7a48e0 -> COMPLETED; scan_id=6ed0f912-493a-40f9-9120-a1ab4a7606da",
+      "detail": "job f8831e6c -> COMPLETED; scan_id=294af771-69da-405d-a04a-77ae78b76827",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "6ed0f912-493a-40f9-9120-a1ab4a7606da"
+      "scan_id": "294af771-69da-405d-a04a-77ae78b76827"
     },
     {
       "id": "task.create.p2.inconclusive",
       "status": "PASS",
-      "detail": "POST /remediation/tasks -> 200; task=2cfc8425-3593-4ac4-b72b-5bbc3bfcdf55; rule=manual-review; status=PROPOSED",
+      "detail": "POST /remediation/tasks -> 200; task=6c7a276b-4804-4b40-bfbb-0697fef85e17; rule=manual-review; status=PROPOSED",
       "http_status": 200,
-      "task_id": "2cfc8425-3593-4ac4-b72b-5bbc3bfcdf55",
+      "task_id": "6c7a276b-4804-4b40-bfbb-0697fef85e17",
       "rule_id": "manual-review"
     },
     {
       "id": "task.accept.p2.inconclusive",
       "status": "PASS",
-      "detail": "POST /tasks/2cfc8425/accept -> 200; status=ACCEPTED",
+      "detail": "POST /tasks/6c7a276b/accept -> 200; status=ACCEPTED",
       "http_status": 200
     },
     {
@@ -930,17 +946,17 @@
     {
       "id": "scan.accept.p2.inconclusive-empty",
       "status": "PASS",
-      "detail": "POST /systems/39b77484/scan -> 200; job=beaabfe4-8bae-4f02-8098-155471d27a57",
+      "detail": "POST /systems/995321d0/scan -> 200; job=0fbab999-d542-4024-ad52-481e802e2a6a",
       "http_status": 200,
-      "job_id": "beaabfe4-8bae-4f02-8098-155471d27a57"
+      "job_id": "0fbab999-d542-4024-ad52-481e802e2a6a"
     },
     {
       "id": "scan.completed.p2.inconclusive-empty",
       "status": "PASS",
-      "detail": "job beaabfe4 -> COMPLETED; scan_id=f379db89-98f4-4b05-a465-fe455a8b42b0",
+      "detail": "job 0fbab999 -> COMPLETED; scan_id=b316b3ff-104e-4113-9032-d3dd22e48921",
       "http_status": 200,
       "job_status": "COMPLETED",
-      "scan_id": "f379db89-98f4-4b05-a465-fe455a8b42b0"
+      "scan_id": "b316b3ff-104e-4113-9032-d3dd22e48921"
     },
     {
       "id": "rescan.empty.p2",
@@ -960,7 +976,7 @@
     {
       "id": "audit.trail.p2",
       "status": "PASS",
-      "detail": "GET /events/recent -> 200; 442 journal event(s) read (latest_id=442, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified']",
+      "detail": "GET /events/recent -> 200; 443 journal event(s) read (latest_id=443, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified']",
       "http_status": 200,
       "tasks_missing_proposal": [],
       "lifecycle": [
@@ -970,13 +986,29 @@
         "platform.remediation.task_verified"
       ],
       "replay_gap": false,
-      "journal_events": 442,
+      "journal_events": 443,
       "task_ids": [
-        "31b2e66b-4dae-4c6a-8e13-4a45b180c088",
-        "60abb9a0-b0a1-4693-89e9-7fde69f4bbaf",
-        "a33f929d-1ca4-4193-a674-b9f3ba61e0f3",
-        "32dd8063-a4bc-4470-afad-85bd16abd53c",
-        "2cfc8425-3593-4ac4-b72b-5bbc3bfcdf55"
+        "4e7f0540-9ddb-4d44-bfa9-1f6ad4d83f6d",
+        "5ad7bf29-aa5a-4124-8d79-c83d8ef6805e",
+        "9150d0d3-1e8c-4117-a918-05cf12a3cbcb",
+        "f7b18215-2fc9-4f61-892d-50363b664fcc",
+        "6c7a276b-4804-4b40-bfbb-0697fef85e17"
+      ]
+    },
+    {
+      "id": "audit.trail.operator_endpoint.p2",
+      "status": "PASS",
+      "detail": "GET /monitor/events -> 200; 64 journal row(s) readable by this caller (64 platform-scope); 5/5 task(s) opened this pass carry their proposal event here too \u2014 the operator surface and the durable journal agree",
+      "http_status": 200,
+      "monitor_rows": 64,
+      "platform_scope_rows": 64,
+      "tasks_missing_proposal": [],
+      "task_ids": [
+        "4e7f0540-9ddb-4d44-bfa9-1f6ad4d83f6d",
+        "5ad7bf29-aa5a-4124-8d79-c83d8ef6805e",
+        "9150d0d3-1e8c-4117-a918-05cf12a3cbcb",
+        "f7b18215-2fc9-4f61-892d-50363b664fcc",
+        "6c7a276b-4804-4b40-bfbb-0697fef85e17"
       ]
     },
     {
@@ -989,24 +1021,24 @@
     {
       "id": "report.pin.p2",
       "status": "PASS",
-      "detail": "POST /scans/56877237/report-snapshot {template_id=fips-140-3} -> 200; snapshot=493812dd; payload_hash=acca209604dcd918; created=True",
+      "detail": "POST /scans/bddaef86/report-snapshot {template_id=fips-140-3} -> 200; snapshot=01a5dc3b; payload_hash=865b1cd5f7f9f501; created=True",
       "http_status": 200,
-      "snapshot_id": "493812dd-e3e6-40f2-9bc3-c4d28ada1c9d",
+      "snapshot_id": "01a5dc3b-0efb-4d07-8cdb-732876db1076",
       "template_id": "fips-140-3"
     },
     {
       "id": "report.serve.p2",
       "status": "PASS",
-      "detail": "GET /report-snapshots/493812dd -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=56877237 (the scan named in the request=True)",
+      "detail": "GET /report-snapshots/01a5dc3b -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=bddaef86 (the scan named in the request=True)",
       "http_status": 200,
       "integrity": "OK",
-      "stored_payload_hash": "acca209604dcd918d155d8da678eb1179ff8595406322a137917cf2d8b9f81ad",
-      "pinned_scan_id": "56877237-0529-4664-9ce0-39d215a56e8c"
+      "stored_payload_hash": "865b1cd5f7f9f5017252b045392de8114cae2c66057844abd08d4471dbbb85a5",
+      "pinned_scan_id": "bddaef86-8e69-4d05-879e-0f22d71f467c"
     },
     {
       "id": "coverage.p2",
       "status": "PASS",
-      "detail": "GET /scans/56877237/coverage -> {\"scan_id\": \"56877237-0529-4664-9ce0-39d215a56e8c\", \"scanner_id\": \"static-multi-scanner-v1.0\", \"status\": \"COMPLETED\", \"files_scanned\": 6, \"files_with_crypto\": 6}"
+      "detail": "GET /scans/bddaef86/coverage -> {\"scan_id\": \"bddaef86-8e69-4d05-879e-0f22d71f467c\", \"scanner_id\": \"static-multi-scanner-v1.0\", \"status\": \"COMPLETED\", \"files_scanned\": 6, \"files_with_crypto\": 6}"
     },
     {
       "id": "durable.cbom_pin.p2",
@@ -1017,15 +1049,13 @@
     }
   ],
   "summary": {
-    "total": 121,
-    "passed": 121,
+    "total": 123,
+    "passed": 123,
     "failed": 0
   },
   "notes": [
     "the ticket-as-fix trap: the operator marks the task COMPLETED, the platform refuses the credit because the condition is still in the rescan evidence",
-    "GET /monitor/events -> 200 with 0 row(s): platform-scope journal rows (target_id NULL \u2014 every remediation.task_* event) are unreachable through that endpoint; the readable paths are /events/recent and the SSE stream. Open defect, recorded in PRODUCT-VISION-AND-GAPS.md.",
-    "the ticket-as-fix trap: the operator marks the task COMPLETED, the platform refuses the credit because the condition is still in the rescan evidence",
-    "GET /monitor/events -> 200 with 0 row(s): platform-scope journal rows (target_id NULL \u2014 every remediation.task_* event) are unreachable through that endpoint; the readable paths are /events/recent and the SSE stream. Open defect, recorded in PRODUCT-VISION-AND-GAPS.md."
+    "the ticket-as-fix trap: the operator marks the task COMPLETED, the platform refuses the credit because the condition is still in the rescan evidence"
   ],
   "limitations": [
     "The estate is synthetic: built from this repository's own parser corpora (corpus_wave13_mainframe_defs.py, test_rpg_parser.py) plus hand-written Java/Python/TLS/Maven sources. It is corpus evidence, NOT customer validation - the same distinction the engineering gate applies to the COBOL/PL-I/RPG customer-sample checks.",

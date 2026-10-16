@@ -1,144 +1,144 @@
-# Operator-loop drill — 2026-10-16T18:50:04+00:00
+# Operator-loop drill — 2026-10-16T19:40:19+00:00
 
-Verdict: **PASS** (121 passed / 0 failed of 121 checks, 2 pass(es))
+Verdict: **PASS** (123 passed / 0 failed of 123 checks, 2 pass(es))
 
 - API: `http://127.0.0.1:8010` (inline pipeline, no Redis)
 - Estate: `/tmp/cryptoscan-sources/operator-loop` — 3 authorized systems
-- Repository: `c6db4571` on `arena/bb4b80dd-cryproscan`
+- Repository: `40a27e1f` on `arena/bb4b80dd-cryproscan`
 - Command: `scripts/operator_loop_drill.py --passes 2 --out docs/readiness-evidence/operator-loop-drill-2026-10-16.json`
 
 ## Checks
 
 | Status | Check | Detail |
 |---|---|---|
-| PASS | `system.register.payments-api` | POST /systems -> 200; id=39b77484-de4f-4d47-9509-8a52ddd988a3; owners m.iyer@bank.example / s.duarte@bank.example |
-| PASS | `system.register.mainframe-icsf` | POST /systems -> 200; id=2f3a436e-3eec-4413-ae33-3c8f94339aa3; owners r.okonkwo@bank.example / s.duarte@bank.example |
-| PASS | `system.register.claims-ibmi` | POST /systems -> 200; id=5807c364-4247-4a94-9030-20ad87a1b647; owners a.lindqvist@bank.example / s.duarte@bank.example |
-| PASS | `scan.accept.p1.payments` | POST /systems/39b77484/scan -> 200; job=2c192714-fa74-4bc1-8b38-d30dae9b51b6 |
-| PASS | `scan.completed.p1.payments` | job 2c192714 -> COMPLETED; scan_id=c361ed3b-5e26-4c86-a483-ae1fd3ea53b8 |
-| PASS | `scan.accept.p1.mainframe` | POST /systems/2f3a436e/scan -> 200; job=f5a136b7-f5f4-4c05-8a04-d4d96314c696 |
-| PASS | `scan.completed.p1.mainframe` | job f5a136b7 -> COMPLETED; scan_id=0cf75a30-f71c-4dbc-b88f-831021581d9e |
-| PASS | `scan.accept.p1.ibmi` | POST /systems/5807c364/scan -> 200; job=cf8f2913-9ab5-412d-90cb-957926f55740 |
-| PASS | `scan.completed.p1.ibmi` | job cf8f2913 -> COMPLETED; scan_id=cfc0771a-729a-4256-906d-e351925f391f |
-| PASS | `evidence.verify.p1.payments` | GET /scans/c361ed3b/verify -> 200; PASS |
+| PASS | `system.register.payments-api` | POST /systems -> 200; id=995321d0-701e-4fa7-b0db-827172890b79; owners m.iyer@bank.example / s.duarte@bank.example |
+| PASS | `system.register.mainframe-icsf` | POST /systems -> 200; id=171bb5f8-d01e-4901-9efb-cb77bf8a693a; owners r.okonkwo@bank.example / s.duarte@bank.example |
+| PASS | `system.register.claims-ibmi` | POST /systems -> 200; id=3e7321f6-1ae5-4a7e-8efe-4c6335b5b86f; owners a.lindqvist@bank.example / s.duarte@bank.example |
+| PASS | `scan.accept.p1.payments` | POST /systems/995321d0/scan -> 200; job=35eabb08-e640-4cbf-ba58-bce8b2fa47ef |
+| PASS | `scan.completed.p1.payments` | job 35eabb08 -> COMPLETED; scan_id=b745c04a-5a84-493c-a53e-f5f25b5fea58 |
+| PASS | `scan.accept.p1.mainframe` | POST /systems/171bb5f8/scan -> 200; job=8128c904-6fe5-4baf-9023-0de836b46891 |
+| PASS | `scan.completed.p1.mainframe` | job 8128c904 -> COMPLETED; scan_id=be0505f2-10c0-430d-8af4-308fcae832e1 |
+| PASS | `scan.accept.p1.ibmi` | POST /systems/3e7321f6/scan -> 200; job=1772b2fb-eb83-4759-b931-cbad7eb0238e |
+| PASS | `scan.completed.p1.ibmi` | job 1772b2fb -> COMPLETED; scan_id=251df758-96cc-45d4-aee1-4d12a6ab130a |
+| PASS | `evidence.verify.p1.payments` | GET /scans/b745c04a/verify -> 200; PASS |
 | PASS | `evidence.mainframe.p1` | mainframe scan produced 7 evidence record(s) — the Natural/ICSF parsers participate in the loop |
-| PASS | `evidence.verify.p1.mainframe` | GET /scans/0cf75a30/verify -> 200; PASS |
+| PASS | `evidence.verify.p1.mainframe` | GET /scans/be0505f2/verify -> 200; PASS |
 | PASS | `evidence.ibmi.p1` | ibmi scan produced 11 evidence record(s) — the RPG IV/ILE C/GSKit parsers participate in the loop |
-| PASS | `evidence.verify.p1.ibmi` | GET /scans/cfc0771a/verify -> 200; PASS |
+| PASS | `evidence.verify.p1.ibmi` | GET /scans/251df758/verify -> 200; PASS |
 | PASS | `findings.p1` | payments-api scan produced 20 finding(s): ['3DES', 'AES', 'MD5', 'RC4', 'RSA', 'SHA-1', 'SHA2', 'TLS 1.0', 'TLS 1.1', 'TLS 1.2'] |
 | PASS | `evidence.paths_target_relative.p1` | all 20 evidence record(s) name their file in the TARGET's coordinates (0 carried a worker staging path) — evidence identity has to survive a rescan or verification invents regressions |
-| PASS | `target.finding.p1` | driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence 7519d868, 2 record(s) at that site) |
-| PASS | `baseline.approve.p1` | POST /baselines/approve -> 200; baseline=f5534e15-4b8d-4eed-a6fd-adc5c7e8c0f4; approved_by=admin |
-| PASS | `task.create.p1.verified` | POST /remediation/tasks -> 200; task=28471aa2-9761-4f8e-af0f-210410aa52ed; rule=replace-3des; status=PROPOSED |
-| PASS | `task.accept.p1.verified` | POST /tasks/28471aa2/accept -> 200; status=ACCEPTED |
-| PASS | `scan.accept.p1.fix` | POST /systems/39b77484/scan -> 200; job=6ff3327a-681d-4e7e-8cff-e40433b9838e |
-| PASS | `scan.completed.p1.fix` | job 6ff3327a -> COMPLETED; scan_id=cef79e8f-2212-4557-a329-1326780def2c |
+| PASS | `target.finding.p1` | driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence 0fec59ac, 2 record(s) at that site) |
+| PASS | `baseline.approve.p1` | POST /baselines/approve -> 200; baseline=9a2aadb3-e892-41af-a66e-f84c88f8b4aa; approved_by=admin |
+| PASS | `task.create.p1.verified` | POST /remediation/tasks -> 200; task=ae974299-1f7d-4d7e-a121-ea24800d0b4a; rule=replace-3des; status=PROPOSED |
+| PASS | `task.accept.p1.verified` | POST /tasks/ae974299/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p1.fix` | POST /systems/995321d0/scan -> 200; job=90deed8c-629a-4210-bdde-8b5a9f38ccb5 |
+| PASS | `scan.completed.p1.fix` | job 90deed8c -> COMPLETED; scan_id=e3d5084c-8922-40fb-bef4-8428957466df |
 | PASS | `verification.verified.p1.verified` | complete -> 200; result=VERIFIED (expected VERIFIED); task=VERIFIED; None |
 | PASS | `condition.gone.p1` | PinBlockService.java holds 0 weak-cipher record(s) after the fix (the 3DES cipher string in tls.conf is a different condition and is not what this task names) |
-| PASS | `scan.accept.p1.reintroduced` | POST /systems/39b77484/scan -> 200; job=944d6e1d-2d93-44a7-a0b2-0487fcfab2b2 |
-| PASS | `scan.completed.p1.reintroduced` | job 944d6e1d -> COMPLETED; scan_id=3772cb82-9d4a-4509-b634-17cf22b55550 |
+| PASS | `scan.accept.p1.reintroduced` | POST /systems/995321d0/scan -> 200; job=0f831604-a236-4fef-859b-f2ee49eb4fbd |
+| PASS | `scan.completed.p1.reintroduced` | job 0f831604 -> COMPLETED; scan_id=7b850aba-e714-4d37-a03e-edd0b5d00b54 |
 | PASS | `reintroduction.detected.p1` | the reintroduced 3DES PIN block is observed again at the same site (1 record(s)) — a verified fix is not a permanent state |
 | PASS | `verification.reintroduced.p1` | re-verify -> 200; result=FAILED (expected one of ['FAILED', 'PARTIAL', 'REGRESSION']); task=FAILED |
-| PASS | `scan.accept.p1.untouched` | POST /systems/39b77484/scan -> 200; job=be22bbf7-2087-4a85-82ea-1afa692863ab |
-| PASS | `scan.completed.p1.untouched` | job be22bbf7 -> COMPLETED; scan_id=d7d831e6-67d6-4943-8dd7-413167c5a201 |
-| PASS | `task.create.p1.failed` | POST /remediation/tasks -> 200; task=368b96d3-3991-467f-b022-2fb73468fd40; rule=replace-md5; status=PROPOSED |
-| PASS | `task.accept.p1.failed` | POST /tasks/368b96d3/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p1.untouched` | POST /systems/995321d0/scan -> 200; job=7d3c3a48-fed6-421b-8e66-6e309dd06d58 |
+| PASS | `scan.completed.p1.untouched` | job 7d3c3a48 -> COMPLETED; scan_id=84bb4c94-25e1-45ef-83ef-4afabb5577a3 |
+| PASS | `task.create.p1.failed` | POST /remediation/tasks -> 200; task=ec258e85-a729-414b-a02a-84c4dd52c4f3; rule=replace-md5; status=PROPOSED |
+| PASS | `task.accept.p1.failed` | POST /tasks/ec258e85/accept -> 200; status=ACCEPTED |
 | PASS | `verification.failed.p1.failed` | complete -> 200; result=FAILED (expected FAILED); task=FAILED; None |
-| PASS | `scan.accept.p1.partial` | POST /systems/39b77484/scan -> 200; job=8572ecd4-ac17-4240-8d47-9917e6192897 |
-| PASS | `scan.completed.p1.partial` | job 8572ecd4 -> COMPLETED; scan_id=9a5a0897-35e3-48a5-ad84-e47bf33d21d8 |
-| PASS | `task.create.p1.partial` | POST /remediation/tasks -> 200; task=00b4d06b-90f7-4caa-a135-3ef0ce4c7052; rule=replace-3des; status=PROPOSED |
-| PASS | `task.accept.p1.partial` | POST /tasks/00b4d06b/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p1.partial` | POST /systems/995321d0/scan -> 200; job=fcda3c70-8f73-4cb0-88cc-412c9d293def |
+| PASS | `scan.completed.p1.partial` | job fcda3c70 -> COMPLETED; scan_id=514a46c3-e314-4af0-8e8b-0cf1acd26fa6 |
+| PASS | `task.create.p1.partial` | POST /remediation/tasks -> 200; task=b6096091-98a2-40ab-a067-071e1b45e328; rule=replace-3des; status=PROPOSED |
+| PASS | `task.accept.p1.partial` | POST /tasks/b6096091/accept -> 200; status=ACCEPTED |
 | PASS | `verification.partial.p1.partial` | complete -> 200; result=PARTIAL (expected PARTIAL); task=PARTIAL; None |
 | PASS | `partial.state.p1` | after the partial change the named site holds 0 weak-cipher and 1 MD5 record(s) — the state PARTIAL describes |
-| PASS | `scan.accept.p1.regression-base` | POST /systems/39b77484/scan -> 200; job=7fa2f46d-65b0-4730-a7ac-cfde83cb1fc4 |
-| PASS | `scan.completed.p1.regression-base` | job 7fa2f46d -> COMPLETED; scan_id=fd049c39-6f48-4503-bf06-6b1efec69794 |
-| PASS | `task.create.p1.regression` | POST /remediation/tasks -> 200; task=a01a8bae-d8bc-4b17-8ebb-fe7b6b13e3e7; rule=replace-3des; status=PROPOSED |
-| PASS | `task.accept.p1.regression` | POST /tasks/a01a8bae/accept -> 200; status=ACCEPTED |
-| PASS | `scan.accept.p1.regression` | POST /systems/39b77484/scan -> 200; job=ac42afac-53f9-4b2d-8d1c-eabb25244599 |
-| PASS | `scan.completed.p1.regression` | job ac42afac -> COMPLETED; scan_id=f68ff0be-a033-4935-92b4-8e05d2a9c1b3 |
+| PASS | `scan.accept.p1.regression-base` | POST /systems/995321d0/scan -> 200; job=671dca55-b871-4cb1-a98f-1fa9634472cf |
+| PASS | `scan.completed.p1.regression-base` | job 671dca55 -> COMPLETED; scan_id=e7819e08-a558-4e9e-892d-61d35a32b610 |
+| PASS | `task.create.p1.regression` | POST /remediation/tasks -> 200; task=04ea8108-83aa-4d77-907f-935aeab8907c; rule=replace-3des; status=PROPOSED |
+| PASS | `task.accept.p1.regression` | POST /tasks/04ea8108/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p1.regression` | POST /systems/995321d0/scan -> 200; job=c7544505-e268-4ff3-b352-f43d053b5582 |
+| PASS | `scan.completed.p1.regression` | job c7544505 -> COMPLETED; scan_id=f784dd0b-1427-46c6-bae7-8d07ee9c7f62 |
 | PASS | `regression.observed.p1` | the change set fixed PinBlockService.java and dropped 1 new weak-cipher record(s) into LegacySigner.java |
 | PASS | `verification.regression.p1.regression` | complete -> 200; result=REGRESSION (expected REGRESSION); task=REGRESSION; None |
-| PASS | `scan.accept.p1.inconclusive-base` | POST /systems/39b77484/scan -> 200; job=0053a305-c33b-4143-b3cb-766b55aa1c25 |
-| PASS | `scan.completed.p1.inconclusive-base` | job 0053a305 -> COMPLETED; scan_id=7d0c5fec-5bc6-402a-844e-501b6051cb70 |
-| PASS | `task.create.p1.inconclusive` | POST /remediation/tasks -> 200; task=b834d286-7269-4cc5-b983-f34e308dd4f0; rule=manual-review; status=PROPOSED |
-| PASS | `task.accept.p1.inconclusive` | POST /tasks/b834d286/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p1.inconclusive-base` | POST /systems/995321d0/scan -> 200; job=147169a9-bd32-4851-b19e-6b24dc0c312e |
+| PASS | `scan.completed.p1.inconclusive-base` | job 147169a9 -> COMPLETED; scan_id=ec0970db-80dc-4127-8fc9-d8e56c5a3341 |
+| PASS | `task.create.p1.inconclusive` | POST /remediation/tasks -> 200; task=3e19369a-5f5f-44c9-b35a-28b6af161e2b; rule=manual-review; status=PROPOSED |
+| PASS | `task.accept.p1.inconclusive` | POST /tasks/3e19369a/accept -> 200; status=ACCEPTED |
 | PASS | `identity.stable.p1` | the same estate scanned under two job ids produced identical evidence coordinates (20 vs 20; 0 differing) — a rescan can therefore be compared to its predecessor at all |
-| PASS | `scan.accept.p1.inconclusive-empty` | POST /systems/39b77484/scan -> 200; job=e12f5b01-2ac8-4421-847b-ab63e93dc2c2 |
-| PASS | `scan.completed.p1.inconclusive-empty` | job e12f5b01 -> COMPLETED; scan_id=b88592ba-15af-4bbb-9ce0-5ac7a4085d32 |
+| PASS | `scan.accept.p1.inconclusive-empty` | POST /systems/995321d0/scan -> 200; job=8040d0df-a446-45f5-ac8c-223baeea8643 |
+| PASS | `scan.completed.p1.inconclusive-empty` | job 8040d0df -> COMPLETED; scan_id=ed1ab7a7-ce1e-4986-bd23-7588885ac954 |
 | PASS | `rescan.empty.p1` | the emptied target produced 0 evidence record(s) — this is the rescan that must NOT read as 'fixed' |
 | PASS | `verification.inconclusive.p1.inconclusive` | complete -> 200; result=INCONCLUSIVE (expected INCONCLUSIVE); task=COMPLETED; None |
-| PASS | `audit.trail.p1` | GET /events/recent -> 200; 224 journal event(s) read (latest_id=224, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified'] |
+| PASS | `audit.trail.p1` | GET /events/recent -> 200; 225 journal event(s) read (latest_id=225, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified'] |
+| PASS | `audit.trail.operator_endpoint.p1` | GET /monitor/events -> 200; 32 journal row(s) readable by this caller (32 platform-scope); 5/5 task(s) opened this pass carry their proposal event here too — the operator surface and the durable journal agree |
 | PASS | `drift.list.p1` | GET /drift -> 200; 39 event(s) |
-| PASS | `report.pin.p1` | POST /scans/f68ff0be/report-snapshot {template_id=fips-140-3} -> 200; snapshot=e12156aa; payload_hash=2df501709c6691ba; created=True |
-| PASS | `report.serve.p1` | GET /report-snapshots/e12156aa -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=f68ff0be (the scan named in the request=True) |
-| PASS | `coverage.p1` | GET /scans/f68ff0be/coverage -> {"scan_id": "f68ff0be-a033-4935-92b4-8e05d2a9c1b3", "scanner_id": "static-multi-scanner-v1.0", "status": "COMPLETED", "files_scanned": 6, "files_with_crypto": 6} |
+| PASS | `report.pin.p1` | POST /scans/f784dd0b/report-snapshot {template_id=fips-140-3} -> 200; snapshot=f011c03f; payload_hash=d2e319208b32cf93; created=True |
+| PASS | `report.serve.p1` | GET /report-snapshots/f011c03f -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=f784dd0b (the scan named in the request=True) |
+| PASS | `coverage.p1` | GET /scans/f784dd0b/coverage -> {"scan_id": "f784dd0b-1427-46c6-bae7-8d07ee9c7f62", "scanner_id": "static-multi-scanner-v1.0", "status": "COMPLETED", "files_scanned": 6, "files_with_crypto": 6} |
 | PASS | `durable.cbom_pin.p1` | the scan's CBOM pin is durable: 1 pipeline-generated snapshot(s) of 1 (round 80: this was 0 on SQLite) |
-| PASS | `scan.accept.p2.payments` | POST /systems/39b77484/scan -> 200; job=b739fa4d-61aa-4131-8ab0-31ceaab3f968 |
-| PASS | `scan.completed.p2.payments` | job b739fa4d -> COMPLETED; scan_id=715372db-bfd4-40a2-a4f9-18d4071a79aa |
-| PASS | `scan.accept.p2.mainframe` | POST /systems/2f3a436e/scan -> 200; job=a433bb16-2c8e-4201-9915-cfbab4564973 |
-| PASS | `scan.completed.p2.mainframe` | job a433bb16 -> COMPLETED; scan_id=c0f38752-c49a-480b-886b-c5d5b84de9cb |
-| PASS | `scan.accept.p2.ibmi` | POST /systems/5807c364/scan -> 200; job=73c6c7ce-3a20-4431-bf51-af55842e3d84 |
-| PASS | `scan.completed.p2.ibmi` | job 73c6c7ce -> COMPLETED; scan_id=91f8d99c-c94b-4d6f-bd23-a5ce8e794968 |
-| PASS | `evidence.verify.p2.payments` | GET /scans/715372db/verify -> 200; PASS |
+| PASS | `scan.accept.p2.payments` | POST /systems/995321d0/scan -> 200; job=8ebb8f84-6bbe-4ce8-9953-abb84f5b849a |
+| PASS | `scan.completed.p2.payments` | job 8ebb8f84 -> COMPLETED; scan_id=284d2cce-3161-4b31-a61d-121215d6d70c |
+| PASS | `scan.accept.p2.mainframe` | POST /systems/171bb5f8/scan -> 200; job=19585d5f-ec52-44d8-a8bc-eba1bf4b2a15 |
+| PASS | `scan.completed.p2.mainframe` | job 19585d5f -> COMPLETED; scan_id=736fed7a-caa3-4a02-8943-601c05cf919b |
+| PASS | `scan.accept.p2.ibmi` | POST /systems/3e7321f6/scan -> 200; job=6ce74ac7-a26f-4bfb-bd12-f0958715b4d1 |
+| PASS | `scan.completed.p2.ibmi` | job 6ce74ac7 -> COMPLETED; scan_id=3c200121-9f8e-46e4-bb69-1a50f96c9e19 |
+| PASS | `evidence.verify.p2.payments` | GET /scans/284d2cce/verify -> 200; PASS |
 | PASS | `evidence.mainframe.p2` | mainframe scan produced 7 evidence record(s) — the Natural/ICSF parsers participate in the loop |
-| PASS | `evidence.verify.p2.mainframe` | GET /scans/c0f38752/verify -> 200; PASS |
+| PASS | `evidence.verify.p2.mainframe` | GET /scans/736fed7a/verify -> 200; PASS |
 | PASS | `evidence.ibmi.p2` | ibmi scan produced 11 evidence record(s) — the RPG IV/ILE C/GSKit parsers participate in the loop |
-| PASS | `evidence.verify.p2.ibmi` | GET /scans/91f8d99c/verify -> 200; PASS |
+| PASS | `evidence.verify.p2.ibmi` | GET /scans/3c200121/verify -> 200; PASS |
 | PASS | `findings.p2` | payments-api scan produced 20 finding(s): ['3DES', 'AES', 'MD5', 'RC4', 'RSA', 'SHA-1', 'SHA2', 'TLS 1.0', 'TLS 1.1', 'TLS 1.2'] |
 | PASS | `evidence.paths_target_relative.p2` | all 20 evidence record(s) name their file in the TARGET's coordinates (0 carried a worker staging path) — evidence identity has to survive a rescan or verification invents regressions |
-| PASS | `target.finding.p2` | driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence abaef960, 2 record(s) at that site) |
-| PASS | `baseline.exists.p2` | GET /baselines -> 200; 1 row(s), 1 ACTIVE, 1 approved against an EARLIER scan — the baseline survived the pass that created it (local:///tmp/cryptoscan-sources/operator-loop/payments-api -> c361ed3b, approved_by=admin) |
-| PASS | `task.create.p2.verified` | POST /remediation/tasks -> 200; task=31b2e66b-4dae-4c6a-8e13-4a45b180c088; rule=replace-3des; status=PROPOSED |
-| PASS | `task.accept.p2.verified` | POST /tasks/31b2e66b/accept -> 200; status=ACCEPTED |
-| PASS | `scan.accept.p2.fix` | POST /systems/39b77484/scan -> 200; job=7818f578-7a5c-4ee9-b5e8-a51febe3df79 |
-| PASS | `scan.completed.p2.fix` | job 7818f578 -> COMPLETED; scan_id=196f85c7-4083-4d95-885d-779c22471677 |
+| PASS | `target.finding.p2` | driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence 68b001e7, 2 record(s) at that site) |
+| PASS | `baseline.exists.p2` | GET /baselines -> 200; 1 row(s), 1 ACTIVE, 1 approved against an EARLIER scan — the baseline survived the pass that created it (local:///tmp/cryptoscan-sources/operator-loop/payments-api -> b745c04a, approved_by=admin) |
+| PASS | `task.create.p2.verified` | POST /remediation/tasks -> 200; task=4e7f0540-9ddb-4d44-bfa9-1f6ad4d83f6d; rule=replace-3des; status=PROPOSED |
+| PASS | `task.accept.p2.verified` | POST /tasks/4e7f0540/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p2.fix` | POST /systems/995321d0/scan -> 200; job=ed6ca193-4b37-491f-b526-066fc88e113f |
+| PASS | `scan.completed.p2.fix` | job ed6ca193 -> COMPLETED; scan_id=e28e5008-20f3-4c15-8866-b0827be4187d |
 | PASS | `verification.verified.p2.verified` | complete -> 200; result=VERIFIED (expected VERIFIED); task=VERIFIED; None |
 | PASS | `condition.gone.p2` | PinBlockService.java holds 0 weak-cipher record(s) after the fix (the 3DES cipher string in tls.conf is a different condition and is not what this task names) |
-| PASS | `scan.accept.p2.reintroduced` | POST /systems/39b77484/scan -> 200; job=2a886cdb-6b08-412a-aeec-42119ce22a13 |
-| PASS | `scan.completed.p2.reintroduced` | job 2a886cdb -> COMPLETED; scan_id=a4801b03-dc23-45f3-9dfc-95aab79777ab |
+| PASS | `scan.accept.p2.reintroduced` | POST /systems/995321d0/scan -> 200; job=803ec56e-55a9-423a-ba75-46f3a184193d |
+| PASS | `scan.completed.p2.reintroduced` | job 803ec56e -> COMPLETED; scan_id=f7963a6e-771e-4bbb-b17e-dabf9927d162 |
 | PASS | `reintroduction.detected.p2` | the reintroduced 3DES PIN block is observed again at the same site (1 record(s)) — a verified fix is not a permanent state |
 | PASS | `verification.reintroduced.p2` | re-verify -> 200; result=FAILED (expected one of ['FAILED', 'PARTIAL', 'REGRESSION']); task=FAILED |
-| PASS | `scan.accept.p2.untouched` | POST /systems/39b77484/scan -> 200; job=54cfdc49-850a-4c8a-92a4-fc99b404108d |
-| PASS | `scan.completed.p2.untouched` | job 54cfdc49 -> COMPLETED; scan_id=a3340431-fe7f-4b8b-8969-871ea72b8734 |
-| PASS | `task.create.p2.failed` | POST /remediation/tasks -> 200; task=60abb9a0-b0a1-4693-89e9-7fde69f4bbaf; rule=replace-md5; status=PROPOSED |
-| PASS | `task.accept.p2.failed` | POST /tasks/60abb9a0/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p2.untouched` | POST /systems/995321d0/scan -> 200; job=df52f88b-db28-42e8-92d2-e0c6a43b692c |
+| PASS | `scan.completed.p2.untouched` | job df52f88b -> COMPLETED; scan_id=3ac47411-2217-40b3-93e8-7d9ed1025c0f |
+| PASS | `task.create.p2.failed` | POST /remediation/tasks -> 200; task=5ad7bf29-aa5a-4124-8d79-c83d8ef6805e; rule=replace-md5; status=PROPOSED |
+| PASS | `task.accept.p2.failed` | POST /tasks/5ad7bf29/accept -> 200; status=ACCEPTED |
 | PASS | `verification.failed.p2.failed` | complete -> 200; result=FAILED (expected FAILED); task=FAILED; None |
-| PASS | `scan.accept.p2.partial` | POST /systems/39b77484/scan -> 200; job=03eeae60-8cd7-41c4-8033-cac3dd222a49 |
-| PASS | `scan.completed.p2.partial` | job 03eeae60 -> COMPLETED; scan_id=6dadebe0-1c12-4070-a7b3-21aecc560861 |
-| PASS | `task.create.p2.partial` | POST /remediation/tasks -> 200; task=a33f929d-1ca4-4193-a674-b9f3ba61e0f3; rule=replace-3des; status=PROPOSED |
-| PASS | `task.accept.p2.partial` | POST /tasks/a33f929d/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p2.partial` | POST /systems/995321d0/scan -> 200; job=17e5a877-2c2d-4858-a095-42382b9d9acc |
+| PASS | `scan.completed.p2.partial` | job 17e5a877 -> COMPLETED; scan_id=a215e332-ed24-4bdf-81e9-056330327980 |
+| PASS | `task.create.p2.partial` | POST /remediation/tasks -> 200; task=9150d0d3-1e8c-4117-a918-05cf12a3cbcb; rule=replace-3des; status=PROPOSED |
+| PASS | `task.accept.p2.partial` | POST /tasks/9150d0d3/accept -> 200; status=ACCEPTED |
 | PASS | `verification.partial.p2.partial` | complete -> 200; result=PARTIAL (expected PARTIAL); task=PARTIAL; None |
 | PASS | `partial.state.p2` | after the partial change the named site holds 0 weak-cipher and 1 MD5 record(s) — the state PARTIAL describes |
-| PASS | `scan.accept.p2.regression-base` | POST /systems/39b77484/scan -> 200; job=81890d52-2ca1-4aae-952d-8a17f20133c0 |
-| PASS | `scan.completed.p2.regression-base` | job 81890d52 -> COMPLETED; scan_id=bd68604f-8d56-458f-a85d-5b2351407ebd |
-| PASS | `task.create.p2.regression` | POST /remediation/tasks -> 200; task=32dd8063-a4bc-4470-afad-85bd16abd53c; rule=replace-3des; status=PROPOSED |
-| PASS | `task.accept.p2.regression` | POST /tasks/32dd8063/accept -> 200; status=ACCEPTED |
-| PASS | `scan.accept.p2.regression` | POST /systems/39b77484/scan -> 200; job=b53f107f-4659-4a85-ba10-e737aaf8a5d2 |
-| PASS | `scan.completed.p2.regression` | job b53f107f -> COMPLETED; scan_id=56877237-0529-4664-9ce0-39d215a56e8c |
+| PASS | `scan.accept.p2.regression-base` | POST /systems/995321d0/scan -> 200; job=591667f5-840a-4ccc-8ea9-4f0a0f0f7c16 |
+| PASS | `scan.completed.p2.regression-base` | job 591667f5 -> COMPLETED; scan_id=e8064fca-ef71-47f4-89b4-01dcf19ec880 |
+| PASS | `task.create.p2.regression` | POST /remediation/tasks -> 200; task=f7b18215-2fc9-4f61-892d-50363b664fcc; rule=replace-3des; status=PROPOSED |
+| PASS | `task.accept.p2.regression` | POST /tasks/f7b18215/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p2.regression` | POST /systems/995321d0/scan -> 200; job=e84badc2-3261-4772-8cb5-057191502e63 |
+| PASS | `scan.completed.p2.regression` | job e84badc2 -> COMPLETED; scan_id=bddaef86-8e69-4d05-879e-0f22d71f467c |
 | PASS | `regression.observed.p2` | the change set fixed PinBlockService.java and dropped 1 new weak-cipher record(s) into LegacySigner.java |
 | PASS | `verification.regression.p2.regression` | complete -> 200; result=REGRESSION (expected REGRESSION); task=REGRESSION; None |
-| PASS | `scan.accept.p2.inconclusive-base` | POST /systems/39b77484/scan -> 200; job=9b7a48e0-712b-40d3-86cf-690d5fc8cd77 |
-| PASS | `scan.completed.p2.inconclusive-base` | job 9b7a48e0 -> COMPLETED; scan_id=6ed0f912-493a-40f9-9120-a1ab4a7606da |
-| PASS | `task.create.p2.inconclusive` | POST /remediation/tasks -> 200; task=2cfc8425-3593-4ac4-b72b-5bbc3bfcdf55; rule=manual-review; status=PROPOSED |
-| PASS | `task.accept.p2.inconclusive` | POST /tasks/2cfc8425/accept -> 200; status=ACCEPTED |
+| PASS | `scan.accept.p2.inconclusive-base` | POST /systems/995321d0/scan -> 200; job=f8831e6c-c94c-4284-a416-da25349b28c4 |
+| PASS | `scan.completed.p2.inconclusive-base` | job f8831e6c -> COMPLETED; scan_id=294af771-69da-405d-a04a-77ae78b76827 |
+| PASS | `task.create.p2.inconclusive` | POST /remediation/tasks -> 200; task=6c7a276b-4804-4b40-bfbb-0697fef85e17; rule=manual-review; status=PROPOSED |
+| PASS | `task.accept.p2.inconclusive` | POST /tasks/6c7a276b/accept -> 200; status=ACCEPTED |
 | PASS | `identity.stable.p2` | the same estate scanned under two job ids produced identical evidence coordinates (20 vs 20; 0 differing) — a rescan can therefore be compared to its predecessor at all |
-| PASS | `scan.accept.p2.inconclusive-empty` | POST /systems/39b77484/scan -> 200; job=beaabfe4-8bae-4f02-8098-155471d27a57 |
-| PASS | `scan.completed.p2.inconclusive-empty` | job beaabfe4 -> COMPLETED; scan_id=f379db89-98f4-4b05-a465-fe455a8b42b0 |
+| PASS | `scan.accept.p2.inconclusive-empty` | POST /systems/995321d0/scan -> 200; job=0fbab999-d542-4024-ad52-481e802e2a6a |
+| PASS | `scan.completed.p2.inconclusive-empty` | job 0fbab999 -> COMPLETED; scan_id=b316b3ff-104e-4113-9032-d3dd22e48921 |
 | PASS | `rescan.empty.p2` | the emptied target produced 0 evidence record(s) — this is the rescan that must NOT read as 'fixed' |
 | PASS | `verification.inconclusive.p2.inconclusive` | complete -> 200; result=INCONCLUSIVE (expected INCONCLUSIVE); task=COMPLETED; None |
-| PASS | `audit.trail.p2` | GET /events/recent -> 200; 442 journal event(s) read (latest_id=442, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified'] |
+| PASS | `audit.trail.p2` | GET /events/recent -> 200; 443 journal event(s) read (latest_id=443, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified'] |
+| PASS | `audit.trail.operator_endpoint.p2` | GET /monitor/events -> 200; 64 journal row(s) readable by this caller (64 platform-scope); 5/5 task(s) opened this pass carry their proposal event here too — the operator surface and the durable journal agree |
 | PASS | `drift.list.p2` | GET /drift -> 200; 78 event(s) |
-| PASS | `report.pin.p2` | POST /scans/56877237/report-snapshot {template_id=fips-140-3} -> 200; snapshot=493812dd; payload_hash=acca209604dcd918; created=True |
-| PASS | `report.serve.p2` | GET /report-snapshots/493812dd -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=56877237 (the scan named in the request=True) |
-| PASS | `coverage.p2` | GET /scans/56877237/coverage -> {"scan_id": "56877237-0529-4664-9ce0-39d215a56e8c", "scanner_id": "static-multi-scanner-v1.0", "status": "COMPLETED", "files_scanned": 6, "files_with_crypto": 6} |
+| PASS | `report.pin.p2` | POST /scans/bddaef86/report-snapshot {template_id=fips-140-3} -> 200; snapshot=01a5dc3b; payload_hash=865b1cd5f7f9f501; created=True |
+| PASS | `report.serve.p2` | GET /report-snapshots/01a5dc3b -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=bddaef86 (the scan named in the request=True) |
+| PASS | `coverage.p2` | GET /scans/bddaef86/coverage -> {"scan_id": "bddaef86-8e69-4d05-879e-0f22d71f467c", "scanner_id": "static-multi-scanner-v1.0", "status": "COMPLETED", "files_scanned": 6, "files_with_crypto": 6} |
 | PASS | `durable.cbom_pin.p2` | the scan's CBOM pin is durable: 1 pipeline-generated snapshot(s) of 1 (round 80: this was 0 on SQLite) |
 
 ## Notes
 
 - the ticket-as-fix trap: the operator marks the task COMPLETED, the platform refuses the credit because the condition is still in the rescan evidence
-- GET /monitor/events -> 200 with 0 row(s): platform-scope journal rows (target_id NULL — every remediation.task_* event) are unreachable through that endpoint; the readable paths are /events/recent and the SSE stream. Open defect, recorded in PRODUCT-VISION-AND-GAPS.md.
 - the ticket-as-fix trap: the operator marks the task COMPLETED, the platform refuses the credit because the condition is still in the rescan evidence
-- GET /monitor/events -> 200 with 0 row(s): platform-scope journal rows (target_id NULL — every remediation.task_* event) are unreachable through that endpoint; the readable paths are /events/recent and the SSE stream. Open defect, recorded in PRODUCT-VISION-AND-GAPS.md.
 
 ## What this does not prove
 
