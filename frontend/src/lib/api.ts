@@ -4145,6 +4145,49 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
     details: why,
   });
 
+  /* §5 (round 78): the queue / worker pool now HAS an independent probe —
+   * GET /health/worker-fleet measures the durable records themselves
+   * (job statuses, stuck running, event-queue depth, stale leases, the
+   * worker monitor lease). Drain evidence is completions or a live lease,
+   * never API liveness; no synthetic latency is claimed. */
+  let fleet: any = null;
+  try {
+    const token = getToken();
+    if (token) {
+      const fleetRes = await tenantFetch("/api/v1/health/worker-fleet", {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (fleetRes.ok) fleet = await fleetRes.json();
+    }
+  } catch { /* fleet probe unavailable -> row stays Not measured */ }
+
+  const fleetRow = (): SystemServiceHealth => {
+    if (!fleet) {
+      return notMeasured("Queue & Worker Pool",
+                         "Worker-fleet probe unavailable (not authenticated or unreachable)");
+    }
+    const hb = fleet.worker_heartbeat ?? {};
+    const jobParts = Object.entries(fleet.jobs?.by_status ?? {})
+      .map(([k, v]: [string, any]) => `${v} ${String(k).toLowerCase()}`).join(" / ");
+    const parts = [
+      jobParts ? `jobs: ${jobParts}` : "no jobs observed",
+      `events waiting: ${fleet.event_queue?.by_status?.queued ?? 0}`,
+      hb.measured
+        ? `heartbeat ${hb.heartbeat_age_s}s ago (${hb.lease_live ? "live" : "expired"})`
+        : "no worker heartbeat source",
+      fleet.detail,
+    ];
+    return {
+      name: "Queue & Worker Pool",
+      status: fleet.status === "Operational" ? "Operational"
+        : fleet.status === "Degraded" ? "Degraded" : "Not measured",
+      latencyMs: null, /* no synthetic latency — the probe reports state, not RTT */
+      lastHeartbeat: hb.measured ? `${hb.heartbeat_age_s}s ago` : "No heartbeat source",
+      details: parts.filter(Boolean).join(" · "),
+    };
+  };
+
   return [
     { name: "Core API", status: apiHealthy ? "Operational" : "Offline",
       latencyMs: apiHealthy ? apiLatency : null,
@@ -4162,8 +4205,7 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
                 "Evidence retention is enforced per write; no independent store probe exists yet"),
     notMeasured("Digital Twin Engine",
                 "Snapshot engine: no independent heartbeat or metrics source exists yet"),
-    notMeasured("Queue & Worker Pool",
-                "Worker fleet health needs the control-plane queue probe, not API liveness"),
+    fleetRow(),
   ];
 };
 

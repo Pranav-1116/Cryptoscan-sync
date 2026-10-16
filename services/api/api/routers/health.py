@@ -1,11 +1,14 @@
 import logging
 import time
+from datetime import datetime
 
 from db.connection.engine import check_db_health
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
 
 from api.config.settings import get_settings
+from api.dependencies import get_current_user, get_db_session
 
 router = APIRouter(tags=["health"])
 logger = logging.getLogger(__name__)
@@ -231,3 +234,200 @@ def discovery_plugins():
         return {"plugins": plugin_catalog()}
     except Exception:
         return {"plugins": []}
+
+
+# ----------------------------------------------- worker-fleet independent probe
+#: A RUNNING scan job with no update for this long is STUCK — surfaced as
+#: stuck, not failed, so operators can tell a wedged worker from a bad scan
+#: (product vision §5: distinguish RUNNING, stuck, partial, refused, failed).
+STUCK_RUNNING_AFTER_S = 15 * 60
+#: An event leased but not completed for this long is a STALE LEASE — the
+#: consumer died mid-lease; the row never completes on its own.
+STALE_LEASE_AFTER_S = 10 * 60
+#: Work waiting longer than this with no drain evidence is a backlog.
+BACKLOG_AFTER_S = 15 * 60
+
+
+def _as_dt(value):
+    """Coerce a row value to an aware datetime (SQLite text() rows come
+    back as ISO strings; ORM datetimes may be naive). None passes through."""
+    if value is None or isinstance(value, datetime):
+        return value
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return parsed
+
+
+def _age_s(value, now) -> int | None:
+    """Age in seconds of a possibly-naive datetime (assumed UTC)."""
+    if value is None:
+        return None
+    from datetime import timezone as _tz
+
+    stamp = value if value.tzinfo else value.replace(tzinfo=_tz.utc)
+    return max(0, int((now - stamp).total_seconds()))
+
+
+@router.get("/health/worker-fleet")
+def worker_fleet_health(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Independent queue / worker-pool health (§5, round 78).
+
+    The console used to report "Not measured" for the worker fleet because
+    the only signal was API liveness — which is not evidence that anything
+    consumes the queues. This probe measures the real observed state
+    instead, from the durable records themselves:
+
+    - scan jobs: per-status counts, oldest queued age, STUCK running jobs
+      (no update within the threshold), completions/failures in the last
+      hour;
+    - the control-plane event queue: depth, oldest waiting age, in-flight
+      leases, STALE leases, dead letters, completions in the last hour;
+    - the worker tier's monitor lease (``monitor_leases``): holder,
+      heartbeat age and liveness — the only true independent worker
+      heartbeat in the platform.
+
+    Drain evidence = completions in the last hour OR a live monitor lease:
+    proof that something is consuming, independent of this API. Status is
+    never derived from API liveness and never fabricated: an idle system
+    with no live heartbeat and no recent completions reports "Not
+    measured" (nothing current to measure), not Operational.
+    """
+    from datetime import timedelta, timezone
+
+    from sqlalchemy import func, text
+
+    from db.models.control_plane import QueuedEvent
+    from db.models.scan_job import ScanJob
+
+    now = datetime.now(timezone.utc)
+
+    # ---- scan jobs (durable job pipeline) ---------------------------------
+    job_status = dict(
+        db.query(ScanJob.status, func.count(ScanJob.id)).group_by(ScanJob.status).all()
+    )
+    oldest_queued = db.query(func.min(ScanJob.created_at)).filter(
+        ScanJob.status == "QUEUED").scalar()
+    stuck_running = db.query(func.count(ScanJob.id)).filter(
+        ScanJob.status == "RUNNING",
+        ScanJob.updated_at < now - timedelta(seconds=STUCK_RUNNING_AFTER_S),
+    ).scalar()
+    hour_ago = now - timedelta(hours=1)
+    jobs_completed_1h = db.query(func.count(ScanJob.id)).filter(
+        ScanJob.status == "COMPLETED", ScanJob.completed_at >= hour_ago).scalar()
+    jobs_failed_1h = db.query(func.count(ScanJob.id)).filter(
+        ScanJob.status == "FAILED", ScanJob.completed_at >= hour_ago).scalar()
+
+    # ---- control-plane event queue (outbox/inbox) ------------------------
+    event_status = dict(
+        db.query(QueuedEvent.status, func.count(QueuedEvent.id))
+        .group_by(QueuedEvent.status).all()
+    )
+    oldest_event = db.query(func.min(QueuedEvent.available_at)).filter(
+        QueuedEvent.status == "queued").scalar()
+    stale_leases = db.query(func.count(QueuedEvent.id)).filter(
+        QueuedEvent.status == "leased",
+        QueuedEvent.leased_at < now - timedelta(seconds=STALE_LEASE_AFTER_S),
+    ).scalar()
+    events_completed_1h = db.query(func.count(QueuedEvent.id)).filter(
+        QueuedEvent.status == "completed",
+        QueuedEvent.completed_at >= hour_ago).scalar()
+
+    # ---- worker tier heartbeat (monitor leader lease) --------------------
+    heartbeat: dict = {"measured": False}
+    try:
+        row = db.execute(text(
+            "SELECT holder, expires_at, updated_at FROM monitor_leases "
+            "WHERE name = 'monitor'")).first()
+    except Exception:  # table absent in this deployment — honest absence
+        row = None
+        db.rollback()  # a failed statement poisons the transaction
+        heartbeat["reason"] = "monitor_leases table absent — no worker heartbeat source"
+    if row is not None:
+        holder, expires_at, updated_at = row
+        heartbeat = {
+            "measured": True,
+            "holder": holder,
+            "heartbeat_age_s": _age_s(_as_dt(updated_at), now),
+            "lease_live": bool(_as_dt(expires_at) is not None
+                               and _as_dt(expires_at) > now),
+        }
+
+    oldest_queued_s = _age_s(_as_dt(oldest_queued), now)
+    oldest_event_s = _age_s(_as_dt(oldest_event), now)
+    completions_1h = int(jobs_completed_1h or 0) + int(events_completed_1h or 0)
+    drain_evidence = completions_1h > 0 or heartbeat.get("lease_live")
+
+    total_jobs = sum(job_status.values())
+    total_events = sum(event_status.values())
+
+    reasons: list[str] = []
+    if int(stuck_running or 0) > 0:
+        reasons.append(f"{stuck_running} running job(s) stuck "
+                       f"(no update in {STUCK_RUNNING_AFTER_S // 60} min)")
+    if int(stale_leases or 0) > 0:
+        reasons.append(f"{stale_leases} stale event lease(s) "
+                       f"(no completion in {STALE_LEASE_AFTER_S // 60} min)")
+    backlog = ((oldest_queued_s is not None and oldest_queued_s > BACKLOG_AFTER_S)
+               or (oldest_event_s is not None and oldest_event_s > BACKLOG_AFTER_S))
+    if backlog and not drain_evidence:
+        reasons.append("work waiting beyond threshold with no drain observed "
+                       "in the last hour")
+
+    if total_jobs == 0 and total_events == 0 and not heartbeat.get("measured"):
+        status = "Not measured"
+        detail = ("no scan jobs, no queued events and no worker heartbeat "
+                  "source observed — nothing to measure the fleet from")
+    elif reasons:
+        status = "Degraded"
+        detail = "; ".join(reasons)
+    elif drain_evidence:
+        status = "Operational"
+        detail = (f"drain observed: {completions_1h} completion(s) in the last hour"
+                  + (f", live monitor lease ({heartbeat.get('holder')})"
+                     if heartbeat.get("lease_live") else ""))
+    else:
+        status = "Not measured"
+        detail = ("idle — no work waiting and no live worker heartbeat; "
+                  "current fleet state is not measurable from records")
+
+    return {
+        "status": status,
+        "detail": detail,
+        "jobs": {
+            "by_status": job_status,
+            "total": total_jobs,
+            "oldest_queued_s": oldest_queued_s,
+            "stuck_running": int(stuck_running or 0),
+            "completed_last_hour": int(jobs_completed_1h or 0),
+            "failed_last_hour": int(jobs_failed_1h or 0),
+        },
+        "event_queue": {
+            "by_status": event_status,
+            "total": total_events,
+            "oldest_queued_s": oldest_event_s,
+            "stale_leases": int(stale_leases or 0),
+            "completed_last_hour": int(events_completed_1h or 0),
+        },
+        "worker_heartbeat": heartbeat,
+        "thresholds": {
+            "stuck_running_after_s": STUCK_RUNNING_AFTER_S,
+            "stale_lease_after_s": STALE_LEASE_AFTER_S,
+            "backlog_after_s": BACKLOG_AFTER_S,
+        },
+        "drain_evidence": {
+            "completions_last_hour": completions_1h,
+            "lease_live": bool(heartbeat.get("lease_live")),
+        },
+        "note": (
+            "Measured from the durable records themselves (scan jobs, the "
+            "control-plane event queue, the worker monitor lease) — never "
+            "from API liveness. Stuck running jobs and stale leases are "
+            "surfaced as such, not as failures; an idle fleet with no live "
+            "heartbeat reports Not measured, not Operational."
+        ),
+    }

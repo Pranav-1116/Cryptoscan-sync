@@ -1,13 +1,13 @@
 {
   "schema": "cryptoscan.bank-readiness/1",
-  "captured_at": "2026-10-16T09:55:11.902948+00:00",
+  "captured_at": "2026-10-16T10:21:55.364427+00:00",
   "repository": {
-    "commit": "d3548b4e0eb1b34fc85b7db5a59d76a5d9e4cd50",
+    "commit": "2da39c2b2d8644da45d73f5e7d277ac536affb9a",
     "branch": "arena/01a106c8-cryproscan",
     "dirty": true
   },
   "artifact_generation_state": {
-    "commit": "d3548b4e0eb1b34fc85b7db5a59d76a5d9e4cd50",
+    "commit": "2da39c2b2d8644da45d73f5e7d277ac536affb9a",
     "branch": "arena/01a106c8-cryproscan",
     "dirty": true
   },
@@ -32,9 +32,9 @@
     {
       "category": "engineering",
       "status": "FAIL",
-      "detail": "artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=ae87d72f867387df24b6e1ac286c28cad6d80350b6a3beafabadc0455dafdd22",
+      "detail": "artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=4e6b16ca84460924dcd7b0b222568a983a083d2e1482e03a7ff2b4b1b211d463",
       "artifact": "/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json",
-      "artifact_sha256": "ae87d72f867387df24b6e1ac286c28cad6d80350b6a3beafabadc0455dafdd22",
+      "artifact_sha256": "4e6b16ca84460924dcd7b0b222568a983a083d2e1482e03a7ff2b4b1b211d463",
       "observed_statuses": [
         "FAIL",
         "PASS",
