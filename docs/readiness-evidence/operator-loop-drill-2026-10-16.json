@@ -1,0 +1,1037 @@
+{
+  "schema": "cryptoscan.operator-loop-drill/1",
+  "captured_at": "2026-10-16T18:50:04+00:00",
+  "repository": {
+    "commit": "c6db45710fe25a7cfdfbc0db06ede70483ecc039",
+    "branch": "arena/bb4b80dd-cryproscan",
+    "dirty": false
+  },
+  "command": "scripts/operator_loop_drill.py --passes 2 --out docs/readiness-evidence/operator-loop-drill-2026-10-16.json",
+  "environment": {
+    "api": "http://127.0.0.1:8010",
+    "passes": 2,
+    "estate": "/tmp/cryptoscan-sources/operator-loop",
+    "queue": "inline (no REDIS_URL: the API runs the pipeline in-process)"
+  },
+  "systems": {
+    "payments-api": {
+      "id": "39b77484-de4f-4d47-9509-8a52ddd988a3",
+      "target": "local:///tmp/cryptoscan-sources/operator-loop/payments-api"
+    },
+    "mainframe-icsf": {
+      "id": "2f3a436e-3eec-4413-ae33-3c8f94339aa3",
+      "target": "local:///tmp/cryptoscan-sources/operator-loop/mainframe-icsf"
+    },
+    "claims-ibmi": {
+      "id": "5807c364-4247-4a94-9030-20ad87a1b647",
+      "target": "local:///tmp/cryptoscan-sources/operator-loop/claims-ibmi"
+    }
+  },
+  "checks": [
+    {
+      "id": "system.register.payments-api",
+      "status": "PASS",
+      "detail": "POST /systems -> 200; id=39b77484-de4f-4d47-9509-8a52ddd988a3; owners m.iyer@bank.example / s.duarte@bank.example",
+      "http_status": 200,
+      "system_id": "39b77484-de4f-4d47-9509-8a52ddd988a3"
+    },
+    {
+      "id": "system.register.mainframe-icsf",
+      "status": "PASS",
+      "detail": "POST /systems -> 200; id=2f3a436e-3eec-4413-ae33-3c8f94339aa3; owners r.okonkwo@bank.example / s.duarte@bank.example",
+      "http_status": 200,
+      "system_id": "2f3a436e-3eec-4413-ae33-3c8f94339aa3"
+    },
+    {
+      "id": "system.register.claims-ibmi",
+      "status": "PASS",
+      "detail": "POST /systems -> 200; id=5807c364-4247-4a94-9030-20ad87a1b647; owners a.lindqvist@bank.example / s.duarte@bank.example",
+      "http_status": 200,
+      "system_id": "5807c364-4247-4a94-9030-20ad87a1b647"
+    },
+    {
+      "id": "scan.accept.p1.payments",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=2c192714-fa74-4bc1-8b38-d30dae9b51b6",
+      "http_status": 200,
+      "job_id": "2c192714-fa74-4bc1-8b38-d30dae9b51b6"
+    },
+    {
+      "id": "scan.completed.p1.payments",
+      "status": "PASS",
+      "detail": "job 2c192714 -> COMPLETED; scan_id=c361ed3b-5e26-4c86-a483-ae1fd3ea53b8",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "c361ed3b-5e26-4c86-a483-ae1fd3ea53b8"
+    },
+    {
+      "id": "scan.accept.p1.mainframe",
+      "status": "PASS",
+      "detail": "POST /systems/2f3a436e/scan -> 200; job=f5a136b7-f5f4-4c05-8a04-d4d96314c696",
+      "http_status": 200,
+      "job_id": "f5a136b7-f5f4-4c05-8a04-d4d96314c696"
+    },
+    {
+      "id": "scan.completed.p1.mainframe",
+      "status": "PASS",
+      "detail": "job f5a136b7 -> COMPLETED; scan_id=0cf75a30-f71c-4dbc-b88f-831021581d9e",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "0cf75a30-f71c-4dbc-b88f-831021581d9e"
+    },
+    {
+      "id": "scan.accept.p1.ibmi",
+      "status": "PASS",
+      "detail": "POST /systems/5807c364/scan -> 200; job=cf8f2913-9ab5-412d-90cb-957926f55740",
+      "http_status": 200,
+      "job_id": "cf8f2913-9ab5-412d-90cb-957926f55740"
+    },
+    {
+      "id": "scan.completed.p1.ibmi",
+      "status": "PASS",
+      "detail": "job cf8f2913 -> COMPLETED; scan_id=cfc0771a-729a-4256-906d-e351925f391f",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "cfc0771a-729a-4256-906d-e351925f391f"
+    },
+    {
+      "id": "evidence.verify.p1.payments",
+      "status": "PASS",
+      "detail": "GET /scans/c361ed3b/verify -> 200; PASS",
+      "http_status": 200,
+      "verdict": "PASS",
+      "manifest_hash": "91fba6d76b2d90b4a14e3c8d462923e0dae4e418f23b5491bbe7d9b7b98acda2"
+    },
+    {
+      "id": "evidence.mainframe.p1",
+      "status": "PASS",
+      "detail": "mainframe scan produced 7 evidence record(s) \u2014 the Natural/ICSF parsers participate in the loop",
+      "findings": 7,
+      "algorithms": [
+        "AES",
+        "MD5",
+        "SHA2",
+        "UNKNOWN"
+      ]
+    },
+    {
+      "id": "evidence.verify.p1.mainframe",
+      "status": "PASS",
+      "detail": "GET /scans/0cf75a30/verify -> 200; PASS",
+      "http_status": 200,
+      "verdict": "PASS",
+      "manifest_hash": "263293cff710e8533c6cd306416f7aaa2cd425df54a9b7156fd203c90b58a321"
+    },
+    {
+      "id": "evidence.ibmi.p1",
+      "status": "PASS",
+      "detail": "ibmi scan produced 11 evidence record(s) \u2014 the RPG IV/ILE C/GSKit parsers participate in the loop",
+      "findings": 11,
+      "algorithms": [
+        "3DES",
+        "SHA-1",
+        "TLS",
+        "TLS 1.2"
+      ]
+    },
+    {
+      "id": "evidence.verify.p1.ibmi",
+      "status": "PASS",
+      "detail": "GET /scans/cfc0771a/verify -> 200; PASS",
+      "http_status": 200,
+      "verdict": "PASS",
+      "manifest_hash": "c6cac990b422d99b1ab9c650dd413843d921c15a60a8b8b1346e8a5a1a0fa28e"
+    },
+    {
+      "id": "findings.p1",
+      "status": "PASS",
+      "detail": "payments-api scan produced 20 finding(s): ['3DES', 'AES', 'MD5', 'RC4', 'RSA', 'SHA-1', 'SHA2', 'TLS 1.0', 'TLS 1.1', 'TLS 1.2']",
+      "findings": 20,
+      "algorithms": [
+        "3DES",
+        "AES",
+        "MD5",
+        "RC4",
+        "RSA",
+        "SHA-1",
+        "SHA2",
+        "TLS 1.0",
+        "TLS 1.1",
+        "TLS 1.2",
+        "TLS-CIPHERS",
+        "UNKNOWN"
+      ]
+    },
+    {
+      "id": "evidence.paths_target_relative.p1",
+      "status": "PASS",
+      "detail": "all 20 evidence record(s) name their file in the TARGET's coordinates (0 carried a worker staging path) \u2014 evidence identity has to survive a rescan or verification invents regressions",
+      "staging_paths": []
+    },
+    {
+      "id": "target.finding.p1",
+      "status": "PASS",
+      "detail": "driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence 7519d868, 2 record(s) at that site)",
+      "evidence_id": "7519d868-0c11-4e36-9f14-5ef92789c02c",
+      "records_at_site": 2
+    },
+    {
+      "id": "baseline.approve.p1",
+      "status": "PASS",
+      "detail": "POST /baselines/approve -> 200; baseline=f5534e15-4b8d-4eed-a6fd-adc5c7e8c0f4; approved_by=admin",
+      "http_status": 200,
+      "baseline_id": "f5534e15-4b8d-4eed-a6fd-adc5c7e8c0f4"
+    },
+    {
+      "id": "task.create.p1.verified",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=28471aa2-9761-4f8e-af0f-210410aa52ed; rule=replace-3des; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "28471aa2-9761-4f8e-af0f-210410aa52ed",
+      "rule_id": "replace-3des"
+    },
+    {
+      "id": "task.accept.p1.verified",
+      "status": "PASS",
+      "detail": "POST /tasks/28471aa2/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "scan.accept.p1.fix",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=6ff3327a-681d-4e7e-8cff-e40433b9838e",
+      "http_status": 200,
+      "job_id": "6ff3327a-681d-4e7e-8cff-e40433b9838e"
+    },
+    {
+      "id": "scan.completed.p1.fix",
+      "status": "PASS",
+      "detail": "job 6ff3327a -> COMPLETED; scan_id=cef79e8f-2212-4557-a329-1326780def2c",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "cef79e8f-2212-4557-a329-1326780def2c"
+    },
+    {
+      "id": "verification.verified.p1.verified",
+      "status": "PASS",
+      "detail": "complete -> 200; result=VERIFIED (expected VERIFIED); task=VERIFIED; None",
+      "http_status": 200,
+      "result": "VERIFIED",
+      "expected": "VERIFIED",
+      "task_status": "VERIFIED"
+    },
+    {
+      "id": "condition.gone.p1",
+      "status": "PASS",
+      "detail": "PinBlockService.java holds 0 weak-cipher record(s) after the fix (the 3DES cipher string in tls.conf is a different condition and is not what this task names)",
+      "remaining_at_site": 0,
+      "site_algorithms": [
+        "SHA2",
+        "AES"
+      ]
+    },
+    {
+      "id": "scan.accept.p1.reintroduced",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=944d6e1d-2d93-44a7-a0b2-0487fcfab2b2",
+      "http_status": 200,
+      "job_id": "944d6e1d-2d93-44a7-a0b2-0487fcfab2b2"
+    },
+    {
+      "id": "scan.completed.p1.reintroduced",
+      "status": "PASS",
+      "detail": "job 944d6e1d -> COMPLETED; scan_id=3772cb82-9d4a-4509-b634-17cf22b55550",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "3772cb82-9d4a-4509-b634-17cf22b55550"
+    },
+    {
+      "id": "reintroduction.detected.p1",
+      "status": "PASS",
+      "detail": "the reintroduced 3DES PIN block is observed again at the same site (1 record(s)) \u2014 a verified fix is not a permanent state",
+      "records": 1,
+      "lines": [
+        15
+      ]
+    },
+    {
+      "id": "verification.reintroduced.p1",
+      "status": "PASS",
+      "detail": "re-verify -> 200; result=FAILED (expected one of ['FAILED', 'PARTIAL', 'REGRESSION']); task=FAILED",
+      "http_status": 200,
+      "result": "FAILED",
+      "task_status": "FAILED"
+    },
+    {
+      "id": "scan.accept.p1.untouched",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=be22bbf7-2087-4a85-82ea-1afa692863ab",
+      "http_status": 200,
+      "job_id": "be22bbf7-2087-4a85-82ea-1afa692863ab"
+    },
+    {
+      "id": "scan.completed.p1.untouched",
+      "status": "PASS",
+      "detail": "job be22bbf7 -> COMPLETED; scan_id=d7d831e6-67d6-4943-8dd7-413167c5a201",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "d7d831e6-67d6-4943-8dd7-413167c5a201"
+    },
+    {
+      "id": "task.create.p1.failed",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=368b96d3-3991-467f-b022-2fb73468fd40; rule=replace-md5; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "368b96d3-3991-467f-b022-2fb73468fd40",
+      "rule_id": "replace-md5"
+    },
+    {
+      "id": "task.accept.p1.failed",
+      "status": "PASS",
+      "detail": "POST /tasks/368b96d3/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "verification.failed.p1.failed",
+      "status": "PASS",
+      "detail": "complete -> 200; result=FAILED (expected FAILED); task=FAILED; None",
+      "http_status": 200,
+      "result": "FAILED",
+      "expected": "FAILED",
+      "task_status": "FAILED"
+    },
+    {
+      "id": "scan.accept.p1.partial",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=8572ecd4-ac17-4240-8d47-9917e6192897",
+      "http_status": 200,
+      "job_id": "8572ecd4-ac17-4240-8d47-9917e6192897"
+    },
+    {
+      "id": "scan.completed.p1.partial",
+      "status": "PASS",
+      "detail": "job 8572ecd4 -> COMPLETED; scan_id=9a5a0897-35e3-48a5-ad84-e47bf33d21d8",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "9a5a0897-35e3-48a5-ad84-e47bf33d21d8"
+    },
+    {
+      "id": "task.create.p1.partial",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=00b4d06b-90f7-4caa-a135-3ef0ce4c7052; rule=replace-3des; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "00b4d06b-90f7-4caa-a135-3ef0ce4c7052",
+      "rule_id": "replace-3des"
+    },
+    {
+      "id": "task.accept.p1.partial",
+      "status": "PASS",
+      "detail": "POST /tasks/00b4d06b/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "verification.partial.p1.partial",
+      "status": "PASS",
+      "detail": "complete -> 200; result=PARTIAL (expected PARTIAL); task=PARTIAL; None",
+      "http_status": 200,
+      "result": "PARTIAL",
+      "expected": "PARTIAL",
+      "task_status": "PARTIAL"
+    },
+    {
+      "id": "partial.state.p1",
+      "status": "PASS",
+      "detail": "after the partial change the named site holds 0 weak-cipher and 1 MD5 record(s) \u2014 the state PARTIAL describes",
+      "weak": 0,
+      "md5": 1
+    },
+    {
+      "id": "scan.accept.p1.regression-base",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=7fa2f46d-65b0-4730-a7ac-cfde83cb1fc4",
+      "http_status": 200,
+      "job_id": "7fa2f46d-65b0-4730-a7ac-cfde83cb1fc4"
+    },
+    {
+      "id": "scan.completed.p1.regression-base",
+      "status": "PASS",
+      "detail": "job 7fa2f46d -> COMPLETED; scan_id=fd049c39-6f48-4503-bf06-6b1efec69794",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "fd049c39-6f48-4503-bf06-6b1efec69794"
+    },
+    {
+      "id": "task.create.p1.regression",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=a01a8bae-d8bc-4b17-8ebb-fe7b6b13e3e7; rule=replace-3des; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "a01a8bae-d8bc-4b17-8ebb-fe7b6b13e3e7",
+      "rule_id": "replace-3des"
+    },
+    {
+      "id": "task.accept.p1.regression",
+      "status": "PASS",
+      "detail": "POST /tasks/a01a8bae/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "scan.accept.p1.regression",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=ac42afac-53f9-4b2d-8d1c-eabb25244599",
+      "http_status": 200,
+      "job_id": "ac42afac-53f9-4b2d-8d1c-eabb25244599"
+    },
+    {
+      "id": "scan.completed.p1.regression",
+      "status": "PASS",
+      "detail": "job ac42afac -> COMPLETED; scan_id=f68ff0be-a033-4935-92b4-8e05d2a9c1b3",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "f68ff0be-a033-4935-92b4-8e05d2a9c1b3"
+    },
+    {
+      "id": "regression.observed.p1",
+      "status": "PASS",
+      "detail": "the change set fixed PinBlockService.java and dropped 1 new weak-cipher record(s) into LegacySigner.java",
+      "introduced": [
+        "DES:8"
+      ],
+      "driving_file_clean": true
+    },
+    {
+      "id": "verification.regression.p1.regression",
+      "status": "PASS",
+      "detail": "complete -> 200; result=REGRESSION (expected REGRESSION); task=REGRESSION; None",
+      "http_status": 200,
+      "result": "REGRESSION",
+      "expected": "REGRESSION",
+      "task_status": "REGRESSION"
+    },
+    {
+      "id": "scan.accept.p1.inconclusive-base",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=0053a305-c33b-4143-b3cb-766b55aa1c25",
+      "http_status": 200,
+      "job_id": "0053a305-c33b-4143-b3cb-766b55aa1c25"
+    },
+    {
+      "id": "scan.completed.p1.inconclusive-base",
+      "status": "PASS",
+      "detail": "job 0053a305 -> COMPLETED; scan_id=7d0c5fec-5bc6-402a-844e-501b6051cb70",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "7d0c5fec-5bc6-402a-844e-501b6051cb70"
+    },
+    {
+      "id": "task.create.p1.inconclusive",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=b834d286-7269-4cc5-b983-f34e308dd4f0; rule=manual-review; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "b834d286-7269-4cc5-b983-f34e308dd4f0",
+      "rule_id": "manual-review"
+    },
+    {
+      "id": "task.accept.p1.inconclusive",
+      "status": "PASS",
+      "detail": "POST /tasks/b834d286/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "identity.stable.p1",
+      "status": "PASS",
+      "detail": "the same estate scanned under two job ids produced identical evidence coordinates (20 vs 20; 0 differing) \u2014 a rescan can therefore be compared to its predecessor at all",
+      "coordinates": 20,
+      "differing": []
+    },
+    {
+      "id": "scan.accept.p1.inconclusive-empty",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=e12f5b01-2ac8-4421-847b-ab63e93dc2c2",
+      "http_status": 200,
+      "job_id": "e12f5b01-2ac8-4421-847b-ab63e93dc2c2"
+    },
+    {
+      "id": "scan.completed.p1.inconclusive-empty",
+      "status": "PASS",
+      "detail": "job e12f5b01 -> COMPLETED; scan_id=b88592ba-15af-4bbb-9ce0-5ac7a4085d32",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "b88592ba-15af-4bbb-9ce0-5ac7a4085d32"
+    },
+    {
+      "id": "rescan.empty.p1",
+      "status": "PASS",
+      "detail": "the emptied target produced 0 evidence record(s) \u2014 this is the rescan that must NOT read as 'fixed'",
+      "findings": 0
+    },
+    {
+      "id": "verification.inconclusive.p1.inconclusive",
+      "status": "PASS",
+      "detail": "complete -> 200; result=INCONCLUSIVE (expected INCONCLUSIVE); task=COMPLETED; None",
+      "http_status": 200,
+      "result": "INCONCLUSIVE",
+      "expected": "INCONCLUSIVE",
+      "task_status": "COMPLETED"
+    },
+    {
+      "id": "audit.trail.p1",
+      "status": "PASS",
+      "detail": "GET /events/recent -> 200; 224 journal event(s) read (latest_id=224, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified']",
+      "http_status": 200,
+      "tasks_missing_proposal": [],
+      "lifecycle": [
+        "platform.remediation.task_accepted",
+        "platform.remediation.task_completed",
+        "platform.remediation.task_created",
+        "platform.remediation.task_verified"
+      ],
+      "replay_gap": false,
+      "journal_events": 224,
+      "task_ids": [
+        "28471aa2-9761-4f8e-af0f-210410aa52ed",
+        "368b96d3-3991-467f-b022-2fb73468fd40",
+        "00b4d06b-90f7-4caa-a135-3ef0ce4c7052",
+        "a01a8bae-d8bc-4b17-8ebb-fe7b6b13e3e7",
+        "b834d286-7269-4cc5-b983-f34e308dd4f0"
+      ]
+    },
+    {
+      "id": "drift.list.p1",
+      "status": "PASS",
+      "detail": "GET /drift -> 200; 39 event(s)",
+      "http_status": 200,
+      "events": 39
+    },
+    {
+      "id": "report.pin.p1",
+      "status": "PASS",
+      "detail": "POST /scans/f68ff0be/report-snapshot {template_id=fips-140-3} -> 200; snapshot=e12156aa; payload_hash=2df501709c6691ba; created=True",
+      "http_status": 200,
+      "snapshot_id": "e12156aa-30bb-43af-9195-fbe184d6d1b8",
+      "template_id": "fips-140-3"
+    },
+    {
+      "id": "report.serve.p1",
+      "status": "PASS",
+      "detail": "GET /report-snapshots/e12156aa -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=f68ff0be (the scan named in the request=True)",
+      "http_status": 200,
+      "integrity": "OK",
+      "stored_payload_hash": "2df501709c6691bae9f7fe9ca812290ea5b488850e4b1b490df6f004ed33e9c2",
+      "pinned_scan_id": "f68ff0be-a033-4935-92b4-8e05d2a9c1b3"
+    },
+    {
+      "id": "coverage.p1",
+      "status": "PASS",
+      "detail": "GET /scans/f68ff0be/coverage -> {\"scan_id\": \"f68ff0be-a033-4935-92b4-8e05d2a9c1b3\", \"scanner_id\": \"static-multi-scanner-v1.0\", \"status\": \"COMPLETED\", \"files_scanned\": 6, \"files_with_crypto\": 6}"
+    },
+    {
+      "id": "durable.cbom_pin.p1",
+      "status": "PASS",
+      "detail": "the scan's CBOM pin is durable: 1 pipeline-generated snapshot(s) of 1 (round 80: this was 0 on SQLite)",
+      "http_status": 200,
+      "pipeline_pins": 1
+    },
+    {
+      "id": "scan.accept.p2.payments",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=b739fa4d-61aa-4131-8ab0-31ceaab3f968",
+      "http_status": 200,
+      "job_id": "b739fa4d-61aa-4131-8ab0-31ceaab3f968"
+    },
+    {
+      "id": "scan.completed.p2.payments",
+      "status": "PASS",
+      "detail": "job b739fa4d -> COMPLETED; scan_id=715372db-bfd4-40a2-a4f9-18d4071a79aa",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "715372db-bfd4-40a2-a4f9-18d4071a79aa"
+    },
+    {
+      "id": "scan.accept.p2.mainframe",
+      "status": "PASS",
+      "detail": "POST /systems/2f3a436e/scan -> 200; job=a433bb16-2c8e-4201-9915-cfbab4564973",
+      "http_status": 200,
+      "job_id": "a433bb16-2c8e-4201-9915-cfbab4564973"
+    },
+    {
+      "id": "scan.completed.p2.mainframe",
+      "status": "PASS",
+      "detail": "job a433bb16 -> COMPLETED; scan_id=c0f38752-c49a-480b-886b-c5d5b84de9cb",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "c0f38752-c49a-480b-886b-c5d5b84de9cb"
+    },
+    {
+      "id": "scan.accept.p2.ibmi",
+      "status": "PASS",
+      "detail": "POST /systems/5807c364/scan -> 200; job=73c6c7ce-3a20-4431-bf51-af55842e3d84",
+      "http_status": 200,
+      "job_id": "73c6c7ce-3a20-4431-bf51-af55842e3d84"
+    },
+    {
+      "id": "scan.completed.p2.ibmi",
+      "status": "PASS",
+      "detail": "job 73c6c7ce -> COMPLETED; scan_id=91f8d99c-c94b-4d6f-bd23-a5ce8e794968",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "91f8d99c-c94b-4d6f-bd23-a5ce8e794968"
+    },
+    {
+      "id": "evidence.verify.p2.payments",
+      "status": "PASS",
+      "detail": "GET /scans/715372db/verify -> 200; PASS",
+      "http_status": 200,
+      "verdict": "PASS",
+      "manifest_hash": "c37ff255cd2d4a816ce49553160afd2447909705aaf0d4764ddbcf69a86c32e9"
+    },
+    {
+      "id": "evidence.mainframe.p2",
+      "status": "PASS",
+      "detail": "mainframe scan produced 7 evidence record(s) \u2014 the Natural/ICSF parsers participate in the loop",
+      "findings": 7,
+      "algorithms": [
+        "AES",
+        "MD5",
+        "SHA2",
+        "UNKNOWN"
+      ]
+    },
+    {
+      "id": "evidence.verify.p2.mainframe",
+      "status": "PASS",
+      "detail": "GET /scans/c0f38752/verify -> 200; PASS",
+      "http_status": 200,
+      "verdict": "PASS",
+      "manifest_hash": "6d697238657638621265a1032e489d3986457fcc177c90b1ce65b4267ca1440f"
+    },
+    {
+      "id": "evidence.ibmi.p2",
+      "status": "PASS",
+      "detail": "ibmi scan produced 11 evidence record(s) \u2014 the RPG IV/ILE C/GSKit parsers participate in the loop",
+      "findings": 11,
+      "algorithms": [
+        "3DES",
+        "SHA-1",
+        "TLS",
+        "TLS 1.2"
+      ]
+    },
+    {
+      "id": "evidence.verify.p2.ibmi",
+      "status": "PASS",
+      "detail": "GET /scans/91f8d99c/verify -> 200; PASS",
+      "http_status": 200,
+      "verdict": "PASS",
+      "manifest_hash": "33266ac0650044e0061cce4680b992f50c95cfcc64616d0e0d93135b6764b7c7"
+    },
+    {
+      "id": "findings.p2",
+      "status": "PASS",
+      "detail": "payments-api scan produced 20 finding(s): ['3DES', 'AES', 'MD5', 'RC4', 'RSA', 'SHA-1', 'SHA2', 'TLS 1.0', 'TLS 1.1', 'TLS 1.2']",
+      "findings": 20,
+      "algorithms": [
+        "3DES",
+        "AES",
+        "MD5",
+        "RC4",
+        "RSA",
+        "SHA-1",
+        "SHA2",
+        "TLS 1.0",
+        "TLS 1.1",
+        "TLS 1.2",
+        "TLS-CIPHERS",
+        "UNKNOWN"
+      ]
+    },
+    {
+      "id": "evidence.paths_target_relative.p2",
+      "status": "PASS",
+      "detail": "all 20 evidence record(s) name their file in the TARGET's coordinates (0 carried a worker staging path) \u2014 evidence identity has to survive a rescan or verification invents regressions",
+      "staging_paths": []
+    },
+    {
+      "id": "target.finding.p2",
+      "status": "PASS",
+      "detail": "driving condition: 3DES at src/main/java/com/bank/payments/PinBlockService.java:16 (evidence abaef960, 2 record(s) at that site)",
+      "evidence_id": "abaef960-0e62-42cd-a5f0-ddcafd6c9a6c",
+      "records_at_site": 2
+    },
+    {
+      "id": "baseline.exists.p2",
+      "status": "PASS",
+      "detail": "GET /baselines -> 200; 1 row(s), 1 ACTIVE, 1 approved against an EARLIER scan \u2014 the baseline survived the pass that created it (local:///tmp/cryptoscan-sources/operator-loop/payments-api -> c361ed3b, approved_by=admin)",
+      "http_status": 200,
+      "baselines": 1,
+      "active": 1,
+      "carried_over": 1
+    },
+    {
+      "id": "task.create.p2.verified",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=31b2e66b-4dae-4c6a-8e13-4a45b180c088; rule=replace-3des; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "31b2e66b-4dae-4c6a-8e13-4a45b180c088",
+      "rule_id": "replace-3des"
+    },
+    {
+      "id": "task.accept.p2.verified",
+      "status": "PASS",
+      "detail": "POST /tasks/31b2e66b/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "scan.accept.p2.fix",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=7818f578-7a5c-4ee9-b5e8-a51febe3df79",
+      "http_status": 200,
+      "job_id": "7818f578-7a5c-4ee9-b5e8-a51febe3df79"
+    },
+    {
+      "id": "scan.completed.p2.fix",
+      "status": "PASS",
+      "detail": "job 7818f578 -> COMPLETED; scan_id=196f85c7-4083-4d95-885d-779c22471677",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "196f85c7-4083-4d95-885d-779c22471677"
+    },
+    {
+      "id": "verification.verified.p2.verified",
+      "status": "PASS",
+      "detail": "complete -> 200; result=VERIFIED (expected VERIFIED); task=VERIFIED; None",
+      "http_status": 200,
+      "result": "VERIFIED",
+      "expected": "VERIFIED",
+      "task_status": "VERIFIED"
+    },
+    {
+      "id": "condition.gone.p2",
+      "status": "PASS",
+      "detail": "PinBlockService.java holds 0 weak-cipher record(s) after the fix (the 3DES cipher string in tls.conf is a different condition and is not what this task names)",
+      "remaining_at_site": 0,
+      "site_algorithms": [
+        "SHA2",
+        "AES"
+      ]
+    },
+    {
+      "id": "scan.accept.p2.reintroduced",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=2a886cdb-6b08-412a-aeec-42119ce22a13",
+      "http_status": 200,
+      "job_id": "2a886cdb-6b08-412a-aeec-42119ce22a13"
+    },
+    {
+      "id": "scan.completed.p2.reintroduced",
+      "status": "PASS",
+      "detail": "job 2a886cdb -> COMPLETED; scan_id=a4801b03-dc23-45f3-9dfc-95aab79777ab",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "a4801b03-dc23-45f3-9dfc-95aab79777ab"
+    },
+    {
+      "id": "reintroduction.detected.p2",
+      "status": "PASS",
+      "detail": "the reintroduced 3DES PIN block is observed again at the same site (1 record(s)) \u2014 a verified fix is not a permanent state",
+      "records": 1,
+      "lines": [
+        15
+      ]
+    },
+    {
+      "id": "verification.reintroduced.p2",
+      "status": "PASS",
+      "detail": "re-verify -> 200; result=FAILED (expected one of ['FAILED', 'PARTIAL', 'REGRESSION']); task=FAILED",
+      "http_status": 200,
+      "result": "FAILED",
+      "task_status": "FAILED"
+    },
+    {
+      "id": "scan.accept.p2.untouched",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=54cfdc49-850a-4c8a-92a4-fc99b404108d",
+      "http_status": 200,
+      "job_id": "54cfdc49-850a-4c8a-92a4-fc99b404108d"
+    },
+    {
+      "id": "scan.completed.p2.untouched",
+      "status": "PASS",
+      "detail": "job 54cfdc49 -> COMPLETED; scan_id=a3340431-fe7f-4b8b-8969-871ea72b8734",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "a3340431-fe7f-4b8b-8969-871ea72b8734"
+    },
+    {
+      "id": "task.create.p2.failed",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=60abb9a0-b0a1-4693-89e9-7fde69f4bbaf; rule=replace-md5; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "60abb9a0-b0a1-4693-89e9-7fde69f4bbaf",
+      "rule_id": "replace-md5"
+    },
+    {
+      "id": "task.accept.p2.failed",
+      "status": "PASS",
+      "detail": "POST /tasks/60abb9a0/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "verification.failed.p2.failed",
+      "status": "PASS",
+      "detail": "complete -> 200; result=FAILED (expected FAILED); task=FAILED; None",
+      "http_status": 200,
+      "result": "FAILED",
+      "expected": "FAILED",
+      "task_status": "FAILED"
+    },
+    {
+      "id": "scan.accept.p2.partial",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=03eeae60-8cd7-41c4-8033-cac3dd222a49",
+      "http_status": 200,
+      "job_id": "03eeae60-8cd7-41c4-8033-cac3dd222a49"
+    },
+    {
+      "id": "scan.completed.p2.partial",
+      "status": "PASS",
+      "detail": "job 03eeae60 -> COMPLETED; scan_id=6dadebe0-1c12-4070-a7b3-21aecc560861",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "6dadebe0-1c12-4070-a7b3-21aecc560861"
+    },
+    {
+      "id": "task.create.p2.partial",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=a33f929d-1ca4-4193-a674-b9f3ba61e0f3; rule=replace-3des; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "a33f929d-1ca4-4193-a674-b9f3ba61e0f3",
+      "rule_id": "replace-3des"
+    },
+    {
+      "id": "task.accept.p2.partial",
+      "status": "PASS",
+      "detail": "POST /tasks/a33f929d/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "verification.partial.p2.partial",
+      "status": "PASS",
+      "detail": "complete -> 200; result=PARTIAL (expected PARTIAL); task=PARTIAL; None",
+      "http_status": 200,
+      "result": "PARTIAL",
+      "expected": "PARTIAL",
+      "task_status": "PARTIAL"
+    },
+    {
+      "id": "partial.state.p2",
+      "status": "PASS",
+      "detail": "after the partial change the named site holds 0 weak-cipher and 1 MD5 record(s) \u2014 the state PARTIAL describes",
+      "weak": 0,
+      "md5": 1
+    },
+    {
+      "id": "scan.accept.p2.regression-base",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=81890d52-2ca1-4aae-952d-8a17f20133c0",
+      "http_status": 200,
+      "job_id": "81890d52-2ca1-4aae-952d-8a17f20133c0"
+    },
+    {
+      "id": "scan.completed.p2.regression-base",
+      "status": "PASS",
+      "detail": "job 81890d52 -> COMPLETED; scan_id=bd68604f-8d56-458f-a85d-5b2351407ebd",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "bd68604f-8d56-458f-a85d-5b2351407ebd"
+    },
+    {
+      "id": "task.create.p2.regression",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=32dd8063-a4bc-4470-afad-85bd16abd53c; rule=replace-3des; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "32dd8063-a4bc-4470-afad-85bd16abd53c",
+      "rule_id": "replace-3des"
+    },
+    {
+      "id": "task.accept.p2.regression",
+      "status": "PASS",
+      "detail": "POST /tasks/32dd8063/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "scan.accept.p2.regression",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=b53f107f-4659-4a85-ba10-e737aaf8a5d2",
+      "http_status": 200,
+      "job_id": "b53f107f-4659-4a85-ba10-e737aaf8a5d2"
+    },
+    {
+      "id": "scan.completed.p2.regression",
+      "status": "PASS",
+      "detail": "job b53f107f -> COMPLETED; scan_id=56877237-0529-4664-9ce0-39d215a56e8c",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "56877237-0529-4664-9ce0-39d215a56e8c"
+    },
+    {
+      "id": "regression.observed.p2",
+      "status": "PASS",
+      "detail": "the change set fixed PinBlockService.java and dropped 1 new weak-cipher record(s) into LegacySigner.java",
+      "introduced": [
+        "DES:8"
+      ],
+      "driving_file_clean": true
+    },
+    {
+      "id": "verification.regression.p2.regression",
+      "status": "PASS",
+      "detail": "complete -> 200; result=REGRESSION (expected REGRESSION); task=REGRESSION; None",
+      "http_status": 200,
+      "result": "REGRESSION",
+      "expected": "REGRESSION",
+      "task_status": "REGRESSION"
+    },
+    {
+      "id": "scan.accept.p2.inconclusive-base",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=9b7a48e0-712b-40d3-86cf-690d5fc8cd77",
+      "http_status": 200,
+      "job_id": "9b7a48e0-712b-40d3-86cf-690d5fc8cd77"
+    },
+    {
+      "id": "scan.completed.p2.inconclusive-base",
+      "status": "PASS",
+      "detail": "job 9b7a48e0 -> COMPLETED; scan_id=6ed0f912-493a-40f9-9120-a1ab4a7606da",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "6ed0f912-493a-40f9-9120-a1ab4a7606da"
+    },
+    {
+      "id": "task.create.p2.inconclusive",
+      "status": "PASS",
+      "detail": "POST /remediation/tasks -> 200; task=2cfc8425-3593-4ac4-b72b-5bbc3bfcdf55; rule=manual-review; status=PROPOSED",
+      "http_status": 200,
+      "task_id": "2cfc8425-3593-4ac4-b72b-5bbc3bfcdf55",
+      "rule_id": "manual-review"
+    },
+    {
+      "id": "task.accept.p2.inconclusive",
+      "status": "PASS",
+      "detail": "POST /tasks/2cfc8425/accept -> 200; status=ACCEPTED",
+      "http_status": 200
+    },
+    {
+      "id": "identity.stable.p2",
+      "status": "PASS",
+      "detail": "the same estate scanned under two job ids produced identical evidence coordinates (20 vs 20; 0 differing) \u2014 a rescan can therefore be compared to its predecessor at all",
+      "coordinates": 20,
+      "differing": []
+    },
+    {
+      "id": "scan.accept.p2.inconclusive-empty",
+      "status": "PASS",
+      "detail": "POST /systems/39b77484/scan -> 200; job=beaabfe4-8bae-4f02-8098-155471d27a57",
+      "http_status": 200,
+      "job_id": "beaabfe4-8bae-4f02-8098-155471d27a57"
+    },
+    {
+      "id": "scan.completed.p2.inconclusive-empty",
+      "status": "PASS",
+      "detail": "job beaabfe4 -> COMPLETED; scan_id=f379db89-98f4-4b05-a465-fe455a8b42b0",
+      "http_status": 200,
+      "job_status": "COMPLETED",
+      "scan_id": "f379db89-98f4-4b05-a465-fe455a8b42b0"
+    },
+    {
+      "id": "rescan.empty.p2",
+      "status": "PASS",
+      "detail": "the emptied target produced 0 evidence record(s) \u2014 this is the rescan that must NOT read as 'fixed'",
+      "findings": 0
+    },
+    {
+      "id": "verification.inconclusive.p2.inconclusive",
+      "status": "PASS",
+      "detail": "complete -> 200; result=INCONCLUSIVE (expected INCONCLUSIVE); task=COMPLETED; None",
+      "http_status": 200,
+      "result": "INCONCLUSIVE",
+      "expected": "INCONCLUSIVE",
+      "task_status": "COMPLETED"
+    },
+    {
+      "id": "audit.trail.p2",
+      "status": "PASS",
+      "detail": "GET /events/recent -> 200; 442 journal event(s) read (latest_id=442, replay_gap=False); 5/5 task(s) opened this pass carry their proposal event; lifecycle recorded=['task_accepted', 'task_completed', 'task_created', 'task_verified']",
+      "http_status": 200,
+      "tasks_missing_proposal": [],
+      "lifecycle": [
+        "platform.remediation.task_accepted",
+        "platform.remediation.task_completed",
+        "platform.remediation.task_created",
+        "platform.remediation.task_verified"
+      ],
+      "replay_gap": false,
+      "journal_events": 442,
+      "task_ids": [
+        "31b2e66b-4dae-4c6a-8e13-4a45b180c088",
+        "60abb9a0-b0a1-4693-89e9-7fde69f4bbaf",
+        "a33f929d-1ca4-4193-a674-b9f3ba61e0f3",
+        "32dd8063-a4bc-4470-afad-85bd16abd53c",
+        "2cfc8425-3593-4ac4-b72b-5bbc3bfcdf55"
+      ]
+    },
+    {
+      "id": "drift.list.p2",
+      "status": "PASS",
+      "detail": "GET /drift -> 200; 78 event(s)",
+      "http_status": 200,
+      "events": 78
+    },
+    {
+      "id": "report.pin.p2",
+      "status": "PASS",
+      "detail": "POST /scans/56877237/report-snapshot {template_id=fips-140-3} -> 200; snapshot=493812dd; payload_hash=acca209604dcd918; created=True",
+      "http_status": 200,
+      "snapshot_id": "493812dd-e3e6-40f2-9bc3-c4d28ada1c9d",
+      "template_id": "fips-140-3"
+    },
+    {
+      "id": "report.serve.p2",
+      "status": "PASS",
+      "detail": "GET /report-snapshots/493812dd -> 200; integrity=OK (the recomputed SHA-256 over the stored payload equals the pinned hash=True); template=fips-140-3; pinned scan=56877237 (the scan named in the request=True)",
+      "http_status": 200,
+      "integrity": "OK",
+      "stored_payload_hash": "acca209604dcd918d155d8da678eb1179ff8595406322a137917cf2d8b9f81ad",
+      "pinned_scan_id": "56877237-0529-4664-9ce0-39d215a56e8c"
+    },
+    {
+      "id": "coverage.p2",
+      "status": "PASS",
+      "detail": "GET /scans/56877237/coverage -> {\"scan_id\": \"56877237-0529-4664-9ce0-39d215a56e8c\", \"scanner_id\": \"static-multi-scanner-v1.0\", \"status\": \"COMPLETED\", \"files_scanned\": 6, \"files_with_crypto\": 6}"
+    },
+    {
+      "id": "durable.cbom_pin.p2",
+      "status": "PASS",
+      "detail": "the scan's CBOM pin is durable: 1 pipeline-generated snapshot(s) of 1 (round 80: this was 0 on SQLite)",
+      "http_status": 200,
+      "pipeline_pins": 1
+    }
+  ],
+  "summary": {
+    "total": 121,
+    "passed": 121,
+    "failed": 0
+  },
+  "notes": [
+    "the ticket-as-fix trap: the operator marks the task COMPLETED, the platform refuses the credit because the condition is still in the rescan evidence",
+    "GET /monitor/events -> 200 with 0 row(s): platform-scope journal rows (target_id NULL \u2014 every remediation.task_* event) are unreachable through that endpoint; the readable paths are /events/recent and the SSE stream. Open defect, recorded in PRODUCT-VISION-AND-GAPS.md.",
+    "the ticket-as-fix trap: the operator marks the task COMPLETED, the platform refuses the credit because the condition is still in the rescan evidence",
+    "GET /monitor/events -> 200 with 0 row(s): platform-scope journal rows (target_id NULL \u2014 every remediation.task_* event) are unreachable through that endpoint; the readable paths are /events/recent and the SSE stream. Open defect, recorded in PRODUCT-VISION-AND-GAPS.md."
+  ],
+  "limitations": [
+    "The estate is synthetic: built from this repository's own parser corpora (corpus_wave13_mainframe_defs.py, test_rpg_parser.py) plus hand-written Java/Python/TLS/Maven sources. It is corpus evidence, NOT customer validation - the same distinction the engineering gate applies to the COBOL/PL-I/RPG customer-sample checks.",
+    "Runs against a single-node development deployment on SQLite with the pipeline executed inline in the API process. It does not exercise the Redis queue, a worker fleet, PostgreSQL, or Neo4j.",
+    "Authorization is exercised as the bootstrap admin (auditor-gated routes accept an admin session outside production). A denied-actor traversal belongs to the frontend P1 row, not this drill.",
+    "Notification dispatch is not asserted: no SMTP transport is wired, so email routing stays count-only."
+  ],
+  "verdict": "PASS"
+}
