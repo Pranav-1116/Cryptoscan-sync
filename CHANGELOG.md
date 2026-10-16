@@ -6,6 +6,57 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed / Added — round 81: the operator loop ran end to end twice, and two defects it could not hide
+
+Round 81 is an operator-loop round. `scripts/operator_loop_drill.py` drives the
+whole chain against a running API — authorize -> scan -> hash-chained evidence ->
+auditor-approved baseline -> drift -> owned task -> authorized change -> rescan ->
+condition-level verification -> pinned, integrity-checked report — twice over a
+three-system estate (Java/Maven payments service, Natural-on-ICSF mainframe, RPG
+IV / ILE C / GSKit on IBM i), provoking every verdict on purpose (VERIFIED,
+FAILED, PARTIAL, REGRESSION, INCONCLUSIVE) plus a reintroduced condition and the
+ticket-as-fix shortcut. It records 121 checks, all passing, in
+`docs/readiness-evidence/operator-loop-drill-2026-10-16.json`. Running it is what
+found the two defects below; neither is visible to a unit suite, because both need
+a *second* scan of the *same* estate through the *whole* chain.
+
+- **Evidence identity carried the worker's job id, so an honest fix could never
+  verify.** The container stage handed dependency findings to the evidence stage
+  with `file_path` taken verbatim from the library manifest — the worker's own
+  staging path (`data/workspaces/job-<uuid>/repo/pom.xml`, `line_number` 0). A
+  rescan stages into a *fresh* job directory, so every dependency-derived record
+  changed identity between runs: drift saw the old row vanish and a new one appear
+  (REMOVED/ADDED alerts for crypto that never moved), and verification's
+  target-wide regression sweep — which compares `(file_path, line_number,
+  algorithm)` fingerprints — always found a "new" non-compliant row and downgraded
+  VERIFIED to REGRESSION. Fixed at the source: the stage rebases container-derived
+  paths onto the target's own coordinates (`_rebase_findings`, disclosed as
+  `scan_meta["container"]["evidence_paths_rebased"]`; genuinely foreign paths such
+  as an image-internal `/etc/apk/world` are left alone), and
+  `PipelineRunner._container` — which carried a second inline copy of the stage and
+  was what actually ran — now delegates to it. `ContainerScan.target` still records
+  the staging path on purpose: that is provenance about the run, not identity of the
+  evidence. Measured: 20 evidence records before and after, 0 differing coordinates
+  across two job ids, asserted every pass by the drill's `identity.stable` check.
+- **`POST /remediation/tasks` dropped its own audit event.** `create_task` wrote the
+  task row on the request session and then emitted `remediation.task_created` on a
+  *second* connection, inside the still-open request transaction — so on SQLite it
+  waited out `busy_timeout` (`database is locked`, ~5 s per request) and lost the
+  row while the route answered 200. Before: 5 tasks in the database, 0
+  `task_created` events. After: 5 and 5, and the request went from 5021 ms to
+  8.7 ms. The fix threads the caller's session (`session=db`) — the convention
+  round 80 established for the pipeline — and the same call inside
+  `drift._create_drift_remediation_tasks` is fixed too, where the surrounding
+  `except` would have swallowed the drop without a trace.
+- **A third defect was found and is deliberately not fixed here.**
+  `emit_platform_event` writes platform-scope rows with `target_id = NULL`, and
+  `GET /monitor/events` filters on `target_id IN (SELECT id FROM monitor_targets ...)`,
+  so those rows — every `remediation.task_*` event — are unreachable through that
+  endpoint for any caller, a platform admin included. The rows are durable and
+  readable through `GET /events/recent` and the SSE stream, which is where the drill
+  reads them; rewriting a tenant-scoped query was not a last-step edit. Recorded in
+  `PRODUCT-VISION-AND-GAPS.md` §4.7 and in the drill's own notes.
+
 ### Fixed — round 80: derived writes were silently lost on the supported SQLite backend (transaction-scope contention)
 
 Found by running one real end-to-end scan against the documented single-box

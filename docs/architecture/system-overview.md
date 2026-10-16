@@ -72,6 +72,30 @@ scans used to report COMPLETED with `cbom_snapshots=0` and `monitor_events=0`.
 The failure path releases the lock (rollback) *before* stamping coverage
 `FAILED`, because that stamp has to survive the rollback.
 
+The same shape appeared one layer up in round 81, in the API: `POST
+/remediation/tasks` created its row on the request session and then emitted
+`remediation.task_created` on a *second* connection inside the still-open request
+transaction, so on SQLite the audit event was lost (`database is locked`, ~5 s per
+request) while the route answered 200. `create_task` and
+`drift._create_drift_remediation_tasks` now pass `session=db`. The rule
+generalizes: **an emit that follows a write on the request's own session must ride
+that session**, or the platform's journal silently disagrees with its tables.
+
+**Evidence coordinates are the target's, never the worker's.** A finding's identity
+is `(file_path, line_number, algorithm)`, and every consumer — drift comparison,
+condition-level verification, the CBOM spine — assumes `file_path` names the file in
+the *scanned target's* coordinates. The container collector derives paths from its
+own staging directory (`data/workspaces/job-<uuid>/repo`), which is fresh per job, so
+a dependency-derived record that kept that path changed identity on every rescan:
+drift reported REMOVED/ADDED for crypto that never moved, and verification's
+target-wide regression sweep always found a "new" non-compliant row and downgraded an
+honest VERIFIED to REGRESSION. Round 81 rebases those paths in the container stage
+(`_rebase_findings`, disclosed as `scan_meta["container"]["evidence_paths_rebased"]`;
+paths genuinely foreign to the target — an image-internal `/etc/apk/world` — are left
+untouched), and `PipelineRunner._container` delegates to the stage instead of
+carrying a second inline copy of it. `ContainerScan.target` still records the staging
+path on purpose: that is provenance about the run, not identity of the evidence.
+
 **Fail-soft is disclosed, not silent.** Optional collectors and derived stages
 (OT, container, cloud, network, certificate inventory, CBOM pin, stakeholder
 alert) may fail without failing the scan — but every one of them records an

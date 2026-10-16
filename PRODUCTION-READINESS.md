@@ -152,11 +152,21 @@ session can close):
    and `target_topology_load_soak` (P1-2) artifact kinds once a continuity
    plan approval and evidence owner sign them.
 
-**2026-10-16 engineering-gate discipline.** Rounds 50–80 (per-round ledger:
+**2026-10-16 engineering-gate discipline.** Rounds 50–81 (per-round ledger:
 `audit_reports/00_ROUND_STATUS.md`) continued the full serial gate before every
-push — ruff repo-wide, the complete backend suite (7,629 passed / 34 skipped at
-round 80), the Vitest frontend suite (334 tests, clean `tsc --noEmit`) — with
+push — ruff repo-wide, the complete backend suite (7,642 passed / 34 skipped at
+round 81), the Vitest frontend suite (334 tests, clean `tsc --noEmit`) — with
 `engineering_gate.py` and `bank_readiness.py` evidence regenerated at each push.
+Round 81 adds an operator-loop artifact to that discipline:
+`scripts/operator_loop_drill.py` drives authorize → scan → evidence → baseline →
+drift → owned task → authorized change → rescan → condition-level verification →
+pinned report twice against a running API and records every check
+(`docs/readiness-evidence/operator-loop-drill-2026-10-16.json`, 121/121 PASS). It
+is in-repo evidence on a synthetic corpus-derived estate: it does not substitute
+for the customer-pilot (P0-2) or target-topology (P1-2) artifacts above, and it
+left one defect open and documented rather than fixed — platform-scope journal
+rows are unreachable through `GET /monitor/events` (`PRODUCT-VISION-AND-GAPS.md`
+§4.7).
 The verdict remains FAIL solely on the credential-blocked categories above;
 no in-repo check is failing.
 
