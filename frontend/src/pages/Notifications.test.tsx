@@ -97,6 +97,7 @@ describe("Notifications page", () => {
       "/api/v1/enterprise/integrations": { integrations: [] },
       "/api/v1/notifications/feed": feedWithVerification,
       "/api/v1/notifications/dispatch": dispatchResult,
+      "/api/v1/health/connectors": { connectors: [] },
     });
     renderPage();
     const btn = await screen.findByRole("button", { name: /Dispatch outward now/i });
@@ -113,6 +114,28 @@ describe("Notifications page", () => {
     expect(screen.getByText(/receiver unavailable/)).toBeTruthy();
     // the email channel stays count-only, stated in-product
     expect(screen.getByText(/Email routing is stored but no SMTP transport is wired/i)).toBeTruthy();
+  });
+
+  it("shows MEASURED connector status — never a CONNECTED derivation from the enabled flag", async () => {
+    mockFetch({
+      "/api/v1/notifications/routing": { routing },
+      "/api/v1/enterprise/integrations": { integrations: [
+        { id: "soc-1", kind: "siem", provider: "webhook", name: "soc", enabled: true },
+        { id: "ops-1", kind: "itsm", provider: "webhook", name: "ops", enabled: true },
+      ] },
+      "/api/v1/notifications/feed": feedWithVerification,
+      "/api/v1/health/connectors": { connectors: [
+        { integration_id: "soc-1", status: "Operational", detail: "delivered" },
+        { integration_id: "ops-1", status: "Not measured", detail: "no delivery attempt recorded" },
+      ] },
+    });
+    renderPage();
+    // the delivered connector is Operational; the registered-but-never-
+    // delivered one is Not measured — CONNECTED is never fabricated
+    expect(await screen.findByText("Operational")).toBeTruthy();
+    expect(screen.getAllByText("Not measured").length).toBeGreaterThan(0);
+    expect(screen.queryByText("CONNECTED")).toBeNull();
+    expect(screen.getByText(/measured from the outbound delivery audit/i)).toBeTruthy();
   });
 
   it("renders the honest nothing-new state after a dry drain", async () => {

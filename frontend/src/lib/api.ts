@@ -4209,6 +4209,38 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
   ];
 };
 
+/* §4.8 (round 79): connector health measured from the outbound delivery
+ * audit (cp_delivery_logs) — registration/enabled is configuration, not
+ * health; a connector with no delivery history reports Not measured. */
+export interface ConnectorHealth {
+  integration_id: string; name: string; kind: string; provider: string;
+  enabled: boolean; endpoint_configured: boolean;
+  status: "Operational" | "Degraded" | "Outbox (air-gap)" | "Disabled" | "Not measured";
+  detail: string;
+  last_delivery: { status: string; http_status: number | null; attempts: number;
+    age_s: number | null; event_type: string } | null;
+  recent_counts: Record<string, number>;
+}
+export interface ConnectorsHealth {
+  status: string; detail: string; connectors: ConnectorHealth[];
+  count: number; note: string;
+}
+export const apiConnectorsHealth = async (): Promise<ConnectorsHealth | null> => {
+  try {
+    const token = getToken();
+    if (!token) return null;
+    const res = await tenantFetch("/api/v1/health/connectors", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return Array.isArray(body?.connectors) ? body as ConnectorsHealth : null;
+  } catch {
+    return null; /* probe unavailable -> callers report Not measured */
+  }
+};
+
 export const apiScannerEnginesHealth = async (): Promise<ScannerEngineHealth[]> => {
   // Scanners in this platform run ON DEMAND (queued jobs and admitted
   // direct routes), not as continuously-probed daemons — API liveness is

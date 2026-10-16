@@ -431,3 +431,144 @@ def worker_fleet_health(
             "heartbeat reports Not measured, not Operational."
         ),
     }
+
+
+# ------------------------------------------------- connector health probe
+#: How many recent delivery attempts per integration the probe considers
+#: (the audit window — recent outcomes, not all history).
+CONNECTOR_WINDOW = 50
+
+
+@router.get("/health/connectors")
+def connectors_health(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Independent connector health (§4.8, round 79) — measured, never
+    inferred from registration.
+
+    A registered integration with the ``enabled`` flag set is NOT evidence
+    that the external system is reachable or accepting events. The only
+    independent measurement the platform keeps is the outbound delivery
+    audit (``cp_delivery_logs`` — one row per REAL signed HTTP attempt, or
+    per air-gap skip). This probe reports, per registered connector:
+
+    - the last delivery outcome and its age (delivered / failed / skipped);
+    - recent-window attempt counts by status;
+    - an honest verdict: Operational (last attempt delivered), Degraded
+      (last attempt failed), Outbox/air-gap (no endpoint configured —
+      events are retained, delivery is not claimed), Disabled, or
+      **Not measured** when the connector has never produced a delivery
+      attempt — registration alone is not health, and no synthetic
+      "connected" status is derived.
+    """
+    from datetime import timezone
+
+    from db.models.control_plane import DeliveryLog
+    from db.repositories.enterprise_repository import EnterpriseRepository
+
+    now = datetime.now(timezone.utc)
+
+    integrations = EnterpriseRepository(db).list_integrations()
+
+    # newest-first window per integration (bounded scan of the audit trail)
+    logs = (
+        db.query(DeliveryLog)
+        .order_by(DeliveryLog.created_at.desc(), DeliveryLog.id.desc())
+        .limit(CONNECTOR_WINDOW * max(1, len(integrations)))
+        .all()
+    )
+    by_integration: dict[str, list[DeliveryLog]] = {}
+    for log in logs:
+        if log.integration_id:
+            by_integration.setdefault(str(log.integration_id), []).append(log)
+
+    def _age(iso_or_dt) -> int | None:
+        stamp = _as_dt(iso_or_dt)
+        if stamp is None:
+            return None
+        return _age_s(stamp, now)
+
+    rows = []
+    for integ in integrations:
+        attempts = by_integration.get(str(integ.id), [])
+        counts: dict[str, int] = {}
+        for a in attempts:
+            counts[a.status] = counts.get(a.status, 0) + 1
+        last = attempts[0] if attempts else None
+
+        if not integ.enabled:
+            status = "Disabled"
+            detail = "disabled by an operator — not delivering by configuration"
+        elif not integ.endpoint:
+            status = "Outbox (air-gap)"
+            detail = ("no endpoint configured — events retained in the durable "
+                      "outbox; delivery is not claimed"
+                      + (f"; last attempt {last.status}" if last else ""))
+        elif last is None:
+            status = "Not measured"
+            detail = ("registered but no delivery attempt recorded — "
+                      "registration is not health evidence")
+        elif last.status == "delivered":
+            status = "Operational"
+            detail = ("last delivery delivered"
+                      + (f" (HTTP {last.http_status})" if last.http_status else "")
+                      + f" {last.attempts} attempt(s)")
+        elif last.status == "failed":
+            status = "Degraded"
+            detail = ("last delivery failed"
+                      + (f" (HTTP {last.http_status})" if last.http_status else "")
+                      + (f": {last.error}" if last.error else ""))
+        else:  # skipped with an endpoint configured (e.g. SSRF-blocked)
+            status = "Degraded"
+            detail = (f"last attempt {last.status}"
+                      + (f": {last.error}" if last.error else ""))
+
+        rows.append({
+            "integration_id": integ.id,
+            "name": integ.name,
+            "kind": integ.kind,
+            "provider": integ.provider,
+            "enabled": bool(integ.enabled),
+            "endpoint_configured": bool(integ.endpoint),
+            "status": status,
+            "detail": detail,
+            "last_delivery": ({
+                "status": last.status,
+                "http_status": last.http_status,
+                "attempts": last.attempts,
+                "age_s": _age(last.created_at),
+                "event_type": last.event_type,
+            } if last else None),
+            "recent_counts": counts,
+        })
+
+    measured = [r for r in rows if r["status"] in ("Operational", "Degraded")]
+    degraded = [r for r in rows if r["status"] == "Degraded"]
+    if not rows:
+        overall = "Not measured"
+        overall_detail = "no integrations registered — nothing to measure"
+    elif degraded:
+        overall = "Degraded"
+        overall_detail = f"{len(degraded)} of {len(rows)} connector(s) failing"
+    elif measured:
+        overall = "Operational"
+        overall_detail = (f"{len(measured)} of {len(rows)} connector(s) measured healthy")
+    else:
+        overall = "Not measured"
+        overall_detail = ("no connector has a delivery attempt on record — "
+                          "registration is not health evidence")
+
+    return {
+        "status": overall,
+        "detail": overall_detail,
+        "connectors": rows,
+        "count": len(rows),
+        "note": (
+            "Measured from the outbound delivery audit (cp_delivery_logs): "
+            "one row per real signed HTTP attempt or air-gap skip. "
+            "Registration and the enabled flag are configuration, not "
+            "health — a connector with no delivery history reports Not "
+            "measured, never a derived 'connected'."
+        ),
+    }

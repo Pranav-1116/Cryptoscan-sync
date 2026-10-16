@@ -34,7 +34,7 @@ function renderPage() {
   );
 }
 
-function mockBackend(fleet: unknown) {
+function mockBackend(fleet: unknown, connectors?: unknown) {
   mockFetch({
     "/healthz": { status: "ok" },
     "/api/v1/ops/slo": {},
@@ -46,6 +46,21 @@ function mockBackend(fleet: unknown) {
       ],
     },
     "/api/v1/health/worker-fleet": fleet,
+    "/api/v1/health/connectors": connectors ?? {
+      status: "Not measured", detail: "", count: 2,
+      connectors: [
+        { integration_id: "c1", name: "soc", kind: "siem", provider: "webhook",
+          enabled: true, endpoint_configured: true, status: "Operational",
+          detail: "last delivery delivered (HTTP 200) 1 attempt(s)",
+          last_delivery: { status: "delivered", http_status: 200, attempts: 1, age_s: 30, event_type: "notification.remediation_verification" },
+          recent_counts: { delivered: 3 } },
+        { integration_id: "c2", name: "ops", kind: "itsm", provider: "webhook",
+          enabled: true, endpoint_configured: true, status: "Not measured",
+          detail: "registered but no delivery attempt recorded — registration is not health evidence",
+          last_delivery: null, recent_counts: {} },
+      ],
+      note: "",
+    },
     "/api/v1/assets": { total_count: 4 },
   });
 }
@@ -65,6 +80,15 @@ describe("SystemHealth worker-fleet probe", () => {
     expect(screen.getByText(/drain observed: 2 completion/)).toBeTruthy();
     // dependency rows still render from the infra probe
     expect(screen.getByText("PostgreSQL (evidence store)")).toBeTruthy();
+    // §4.8: connector health measured from the delivery audit — Operational
+    // for the delivered one, Not measured (never "connected") for the
+    // registered-but-never-delivered one
+    expect(screen.getByText("Connectors & Outbound Integrations")).toBeTruthy();
+    expect(screen.getByText(/last delivery delivered \(HTTP 200\)/)).toBeTruthy();
+    expect(screen.getByText(/registration is not health evidence/)).toBeTruthy();
+    expect(screen.getAllByText("Operational").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Not measured").length).toBeGreaterThan(0);
+    expect(screen.queryByText("CONNECTED")).toBeNull();
   });
 
   it("surfaces stuck work as Degraded with the exact measured reason", async () => {

@@ -3,9 +3,10 @@ import { Link } from "react-router-dom";
 import { Badge, Button } from "../components/ui";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import {
-  activeTenantId, apiAuditList, apiAuditVerify, apiFindings, apiScansPage,
-  apiVerifyStoredScan, type AuditChainStatus, type AuditEvent, type Finding,
-  type ScanSummaryRow, type ScanVerification, type ApiResult,
+  activeTenantId, apiAuditList, apiAuditVerify, apiFindings, apiFindingVerify,
+  apiScansPage, apiVerifyStoredScan, type AuditChainStatus, type AuditEvent,
+  type Finding, type FindingVerifyVerdict, type ScanSummaryRow,
+  type ScanVerification, type ApiResult,
 } from "../lib/api";
 
 const PAGE_SIZE = 50;
@@ -78,6 +79,29 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
   const mounted = useRef(true);
   const scanPagingGuard = useRef(false);
   const findingPagingGuard = useRef(false);
+  /* §5.6 (round 79): per-record verification on the evidence surface too —
+   * the same GET /findings/{evidence_id}/verify the Findings drawer uses.
+   * Only records actually checked here count toward the coverage line;
+   * unverified records are never claimed sealed. */
+  const [recordVerdicts, setRecordVerdicts] = useState<Record<string, { busy?: boolean; verdict?: FindingVerifyVerdict; error?: string }>>({});
+
+  function verifyRecord(evidenceId: string) {
+    if (recordVerdicts[evidenceId]?.busy) return;
+    setRecordVerdicts(prev => ({ ...prev, [evidenceId]: { busy: true } }));
+    void apiFindingVerify(evidenceId).then(res => {
+      setRecordVerdicts(prev => {
+        const next = { ...prev };
+        if (res.source !== "live" || !res.data
+          || res.data.evidence_id !== evidenceId
+          || !["PASS", "FAIL"].includes(res.data.result)) {
+          next[evidenceId] = { error: failure(res, "verify this record") };
+        } else {
+          next[evidenceId] = { verdict: res.data };
+        }
+        return next;
+      });
+    });
+  }
 
   useEffect(() => {
     mounted.current = true;
@@ -202,7 +226,7 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
               {verification.result === "EMPTY" && <p>Empty scan; no observation integrity was established.</p>}
               {verification.result === "UNVERIFIABLE" && <p>Stored scan cannot be verified (incomplete or missing manifest).</p>}
               {verification.result === "FAIL" && <p>Scan integrity failed. Investigate the stored chain and manifest.</p>}
-            </div> : !verifying && !verifyError && <p role="status" style={{ color: "var(--dim)" }}>Scan verification not requested; per-record integrity verdict unavailable from this API.</p>}
+            </div> : !verifying && !verifyError && <p role="status" style={{ color: "var(--dim)" }}>Scan verification not requested; the scan-level verdict appears here once requested — per-record seals are issued per record below.</p>}
             {findingLoading && <p role="status">Loading scan evidence…</p>}
             {findingError && <p role="alert">{findingError}</p>}
             {!findingLoading && findingTotal === 0 && <p>No evidence observations returned for this scan.</p>}
@@ -217,9 +241,32 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
                 <dt>Content hash</dt><dd style={{ margin: 0 }}>{field(f.content_hash)}</dd>
                 <dt>Chain hash</dt><dd style={{ margin: 0 }}>{field(f.chain_hash)}</dd>
               </dl>
-              <p style={{ color: "var(--dim)", fontSize: 11, marginBottom: 0 }}>Provenance fields shown only when provided by the redacted server projection. Per-record verification is not supplied by this endpoint; raw finding data is not displayed.</p>
+              <div style={{ marginTop: 10 }}>
+                <Button onClick={() => verifyRecord(f.evidence_id)} disabled={!!recordVerdicts[f.evidence_id]?.busy}>
+                  {recordVerdicts[f.evidence_id]?.busy ? "Verifying…" : "Verify this record"}
+                </Button>
+                {recordVerdicts[f.evidence_id]?.error && <p role="alert" style={{ color: "var(--amber)", fontSize: 12, marginBottom: 0 }}>{recordVerdicts[f.evidence_id]?.error}</p>}
+                {recordVerdicts[f.evidence_id]?.verdict && (() => {
+                  const v = recordVerdicts[f.evidence_id]!.verdict!;
+                  return <div role="status" style={{ marginTop: 8, fontSize: 12 }}>
+                    <Badge variant={v.result === "PASS" ? "success" : "danger"}>{v.result}</Badge>{" "}
+                    <span>content {v.content_intact ? "intact" : "broken"} · chain {v.chain_intact ? "intact" : "broken"} · hash format {v.hash_format_valid ? "valid" : "invalid"} · verified by {field(v.verified_by)}</span>
+                    {v.errors.length > 0 && <p style={{ color: "var(--red)", margin: "6px 0 0" }}>{v.errors.join("; ")}</p>}
+                    <p style={{ color: "var(--dim)", margin: "4px 0 0", fontSize: 11 }}>Recomputes this record's hashes against its own commitments — not a claim that the observation was true.</p>
+                  </div>;
+                })()}
+              </div>
+              <p style={{ color: "var(--dim)", fontSize: 11, marginBottom: 0 }}>Provenance fields shown only when provided by the redacted server projection; raw finding data is not displayed.</p>
             </article>)}
             {findingTotal !== null && <p style={{ color: "var(--dim)", fontSize: 12 }}>Loaded {findings.length} of {findingTotal} observations</p>}
+            {findings.length > 0 && (() => {
+              const checked = findings.filter(f => recordVerdicts[f.evidence_id]?.verdict);
+              const passed = checked.filter(f => recordVerdicts[f.evidence_id]?.verdict?.result === "PASS").length;
+              const failed = checked.length - passed;
+              return <p role="status" style={{ fontSize: 12 }}>
+                Per-record verification: <strong>{checked.length} of {findings.length}</strong> loaded records individually verified{checked.length > 0 ? ` — ${passed} PASS, ${failed} FAIL` : ""}. Verification is per-record and on demand; unverified records are not claimed sealed.
+              </p>;
+            })()}
             {findingTotal !== null && findings.length < findingTotal && <Button onClick={() => void moreFindings()} disabled={findingPaging}>{findingPaging ? "Loading…" : "Load more evidence"}</Button>}
             <p style={{ marginTop: 16 }}><Link to="/findings">Open findings console</Link></p>
           </>}
@@ -237,6 +284,12 @@ function AuditLedger() {
   const [loading, setLoading] = useState(true);
   const [paging, setPaging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* §5.6 (round 79): the ledger is browsable — the server-side actor/action
+   * filters the API already accepts are exposed here. Filtering reloads
+   * from page 1; the export button stays the FULL unfiltered WORM ledger. */
+  const [filters, setFilters] = useState<{ actor: string; action: string }>({ actor: "", action: "" });
+  const [applied, setApplied] = useState<{ actor: string; action: string }>({ actor: "", action: "" });
+  const [draft, setDraft] = useState<{ actor: string; action: string }>({ actor: "", action: "" });
   const [verify, setVerify] = useState<AuditChainStatus | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -247,28 +300,30 @@ function AuditLedger() {
 
   useEffect(() => {
     mounted.current = true;
-    void apiAuditList({ page: 1, page_size: PAGE_SIZE }).then(res => {
-      if (!mounted.current) return;
+    const epoch = ++verifyEpoch.current;
+    setLoading(true);
+    void apiAuditList({ page: 1, page_size: PAGE_SIZE, ...(applied.actor ? { actor: applied.actor } : {}), ...(applied.action ? { action: applied.action } : {}) }).then(res => {
+      if (!mounted.current || epoch !== verifyEpoch.current) return;
       if (res.source !== "live" || !res.data) { setError(failure(res, "view audit ledger")); return; }
       if (!Array.isArray(res.data.events) || !res.data.events.every(e => present(e?.id))) { setError("Audit response is incomplete; ledger entries are unknown."); return; }
-      setEvents(res.data.events); setSelectedId(res.data.events[0]?.id ?? null); setHasMore(res.data.events.length === PAGE_SIZE);
-    }).finally(() => { if (mounted.current) setLoading(false); });
-    const epoch = ++verifyEpoch.current;
+      setEvents(res.data.events); setSelectedId(res.data.events[0]?.id ?? null); setHasMore(res.data.events.length === PAGE_SIZE); setPage(1);
+    }).finally(() => { if (mounted.current && epoch === verifyEpoch.current) setLoading(false); });
+    const verifyChainEpoch = epoch;
     void apiAuditVerify().then(res => {
-      if (!mounted.current || epoch !== verifyEpoch.current) return;
+      if (!mounted.current || verifyChainEpoch !== verifyEpoch.current) return;
       if (res.source !== "live" || !res.data) { setVerifyError(failure(res, "verify audit chain")); return; }
       if (!["OK", "TAMPERED"].includes(res.data.status) || !validCount(res.data.checked)) { setVerifyError("Audit verification response is incomplete; verdict unavailable."); return; }
       setVerify(res.data);
     });
     return () => { mounted.current = false; verifyEpoch.current++; };
-  }, []);
+  }, [applied]);
 
   async function more() {
     if (pagingGuard.current || !hasMore) return;
     pagingGuard.current = true; setPaging(true); setError(null);
     const next = page + 1;
     try {
-      const res = await apiAuditList({ page: next, page_size: PAGE_SIZE });
+      const res = await apiAuditList({ page: next, page_size: PAGE_SIZE, ...(applied.actor ? { actor: applied.actor } : {}), ...(applied.action ? { action: applied.action } : {}) });
       if (!mounted.current) return;
       if (res.source !== "live" || !res.data) { setError(failure(res, "load more audit events")); return; }
       if (!Array.isArray(res.data.events) || !res.data.events.every(e => present(e?.id))) { setError("Audit page response is incomplete."); return; }
@@ -292,9 +347,18 @@ function AuditLedger() {
   return <div>
     <p style={{ color: "var(--dim)", fontSize: 13 }}>Platform action audit events, distinct from scan findings. The chain verdict applies to the audit ledger as a whole, not to an individual event.</p>
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+      <label style={{ fontSize: 12 }}>Actor <input aria-label="Filter by actor" value={draft.actor} onChange={e => setDraft(d => ({ ...d, actor: e.target.value }))} style={{ marginLeft: 4 }} placeholder="e.g. alice" /></label>
+      <label style={{ fontSize: 12 }}>Action <input aria-label="Filter by action" value={draft.action} onChange={e => setDraft(d => ({ ...d, action: e.target.value }))} style={{ marginLeft: 4 }} placeholder="e.g. auth.login" /></label>
+      <Button onClick={() => setApplied({ actor: draft.actor.trim(), action: draft.action.trim() })}>Apply filters</Button>
+      {(applied.actor || applied.action) && <Button onClick={() => { setDraft({ actor: "", action: "" }); setApplied({ actor: "", action: "" }); }}>Clear filters</Button>}
       <AuthenticatedDownload path="/api/v1/auth/audit/export?format=jsonl" filename="audit-export.jsonl" className="btn outline">Export JSONL audit log</AuthenticatedDownload>
       <Button onClick={() => void runVerification()} disabled={verifying}>{verifying ? "Verifying…" : "Verify audit chain"}</Button>
     </div>
+    {(applied.actor || applied.action) && (
+      <p role="status" style={{ margin: "0 0 12px", fontSize: 12 }}>
+        Filtered view{applied.actor ? ` · actor=${applied.actor}` : ""}{applied.action ? ` · action=${applied.action}` : ""} — server-side filter, showing matching entries only. The export above remains the <strong>full unfiltered WORM ledger</strong>.
+      </p>
+    )}
     {verifyError && <p role="alert">{verifyError}</p>}
     {verify && <p role="status"><Badge variant={verify.status === "OK" ? "success" : "danger"}>{verify.status}</Badge> Audit chain verification · {verify.checked} {verify.mode === "incremental" ? "suffix entries checked" : "entries checked"}. {verify.mode && `Mode: ${verify.mode}. `}{verify.status === "TAMPERED" && "A discrepancy was reported by the server."}</p>}
     {!verify && !verifyError && <p role="status">Audit verification pending or unavailable.</p>}

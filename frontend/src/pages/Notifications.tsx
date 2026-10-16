@@ -20,6 +20,13 @@ export default function Notifications() {
   const [saved, setSaved] = useState<boolean | null>(null);
   const integ = useLive<{ integrations: any[] }>("/api/v1/enterprise/integrations", { integrations: [] });
   const integrations = integ.data.integrations ?? [];
+  /* §4.8 (round 79): connector health is MEASURED from the outbound
+   * delivery audit — the old row derived "CONNECTED" from the enabled
+   * flag, which is configuration, not health. */
+  const connHealth = useLive<{ connectors: Array<{ integration_id: string; status: string; detail: string }> }>(
+    "/api/v1/health/connectors", { connectors: [] });
+  const measured = new Map((connHealth.data.connectors ?? [])
+    .map((c) => [String(c.integration_id), c]));
   /* §5 (round 76): the in-app channel DELIVERY — the feed below is what
    * the in-app column of the routing matrix actually gates. Verification
    * outcomes (VERIFIED / PARTIAL / FAILED / REGRESSION) land here. */
@@ -168,13 +175,23 @@ export default function Notifications() {
         <Panel title="SIEM / SOC integration" sub="events fan out to every connected system">
           {integrations.length ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "var(--mono)", fontSize: 12.5 }}>
-              {integrations.map((i, idx) => (
-                <div className="spread" key={i.id ?? i.name ?? idx}><span>{i.name ?? i.provider ?? i.kind}</span><Badge tone={(i.status ?? "").toLowerCase() === "connected" || i.enabled ? "green" : "amber"}>{i.status ?? (i.enabled ? "CONNECTED" : "DISABLED")}</Badge></div>
-              ))}
+              {integrations.map((i, idx) => {
+                const m = measured.get(String(i.id));
+                const status = m?.status ?? (i.enabled ? "Not measured" : "Disabled");
+                return (
+                  <div className="spread" key={i.id ?? i.name ?? idx}>
+                    <span>{i.name ?? i.provider ?? i.kind}</span>
+                    <Badge tone={status === "Operational" ? "green" : status === "Degraded" ? "red" : status === "Disabled" ? "neutral" : "amber"}>{status}</Badge>
+                  </div>
+                );
+              })}
             </div>
           ) : (
-            <div className="dim" style={{ fontSize: 13 }}>No integrations connected yet. Configure SIEM/SOC, ticketing and webhook destinations in <Link to="/integrations">Integrations</Link>.</div>
+            <div className="dim" style={{ fontSize: 13 }}>No integrations registered yet. Configure SIEM/SOC, ticketing and webhook destinations in <Link to="/integrations">Integrations</Link>.</div>
           )}
+          <div className="dim" style={{ fontSize: 12, marginTop: 10 }}>
+            Status is measured from the outbound delivery audit — a registered connector with no delivery history is Not measured, never a derived &quot;connected&quot;.
+          </div>
           <Link to="/integrations" className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 12 }}>manage integrations →</Link>
         </Panel>
       </div>

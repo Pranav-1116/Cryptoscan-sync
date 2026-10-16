@@ -31,7 +31,7 @@ describe("Evidence workflow", () => {
     expect(await screen.findByText("Evidence ID: ev-a")).toBeInTheDocument();
     const detail = screen.getByText("Evidence ID: ev-a").closest("article")!;
     expect(within(detail).getAllByText("Not supplied").length).toBeGreaterThan(0);
-    expect(screen.getByText(/per-record integrity verdict unavailable/)).toBeInTheDocument();
+    expect(screen.getByText(/the scan-level verdict appears here once requested/)).toBeInTheDocument();
     expect(screen.queryByText(/Integrity Sealed|SECRET_EXAMPLE_DO_NOT_DISPLAY|127\.0\.0\.1/)).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Audit Ledger" }));
     expect(await screen.findByRole("button", { name: /audit-a/ })).toBeInTheDocument();
@@ -57,7 +57,9 @@ describe("Evidence workflow", () => {
     expect(call?.[1]).toMatchObject({ credentials: "include", headers: { Authorization: "Bearer bearer-a", "X-Tenant-ID": "tenant-a" } });
     await act(async () => finish(verified("scan-a", "PASS")));
     expect(await screen.findByText(/Server scan verification: PASS/)).toBeInTheDocument();
-    expect(screen.getByText(/per-record verification is not supplied/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Verify this record" })).toBeInTheDocument();
+    expect(screen.getByText("0 of 1")).toBeInTheDocument();
+    expect(screen.getByText(/unverified records are not claimed sealed/)).toBeInTheDocument();
   });
 
   it("reports a server FAIL and refuses missing or mismatched scan verdicts", async () => {
@@ -205,5 +207,58 @@ describe("Evidence — completed scans disclose failed optional stages (§4.8)",
     renderWithProviders(<Evidence />);
     await screen.findByRole("button", { name: /scan-nostats/ });
     expect(screen.queryByText(/optional stage/)).toBeNull();
+  });
+
+  it("verifies a single evidence record on demand and counts only what was checked", async () => {
+    let verdict: unknown = {
+      evidence_id: "ev-a", scan_id: "scan-a", chain_position: 1,
+      content_intact: true, chain_intact: true, hash_format_valid: true,
+      result: "PASS", errors: [], notes: [], verified_by: "verifier-1",
+      scan_status: "COMPLETED", scan_verify_path: "/scans/scan-a/verify",
+    };
+    mockFetch({ [scanPath]: scans(["scan-a"]), [findingsPath]: findings([observation("ev-a", "scan-a")]),
+      "/api/v1/findings/ev-a/verify": () => verdict });
+    renderWithProviders(<Evidence />);
+    await screen.findByText("Evidence ID: ev-a");
+    // honest starting coverage: nothing individually verified yet
+    expect(screen.getByText("0 of 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Verify this record" }));
+    expect(await screen.findByText(/content intact · chain intact · hash format valid/)).toBeInTheDocument();
+    expect(screen.getByText(/verified by verifier-1/)).toBeInTheDocument();
+    expect(screen.getByText("1 of 1")).toBeInTheDocument();
+    expect(screen.getByText(/1 PASS, 0 FAIL/)).toBeInTheDocument();
+    // a mismatched verdict body is refused, never rendered as a seal
+    verdict = { ...verdict as object, evidence_id: "other-ev", result: "PASS" };
+    fireEvent.click(screen.getByRole("button", { name: "Verify this record" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("verify this record");
+  });
+
+  it("filters the audit ledger server-side and keeps the export the full WORM ledger", async () => {
+    const allEvents = [
+      { id: "audit-a", actor: "alice", action: "auth.login", outcome: "SUCCESS" },
+      { id: "audit-b", actor: "bob", action: "scan.trigger", outcome: "SUCCESS" },
+    ];
+    const fetchSpy = mockFetch({ [scanPath]: scans(["scan-a"]), [findingsPath]: findings([]),
+      [auditPath]: (url: string) => String(url).includes("actor=alice")
+        ? { events: allEvents.filter(e => e.actor === "alice"), page: 1, page_size: 50 }
+        : { events: allEvents, page: 1, page_size: 50 },
+      "/api/v1/auth/audit/verify": { status: "OK", checked: 2 } });
+    renderWithProviders(<Evidence />);
+    await screen.findByRole("button", { name: /scan-a/ });
+    fireEvent.click(screen.getByRole("tab", { name: "Audit Ledger" }));
+    expect(await screen.findByRole("button", { name: /audit-b/ })).toBeInTheDocument();
+    // apply the actor filter — the server-side query carries it
+    fireEvent.change(screen.getByLabelText("Filter by actor"), { target: { value: "alice" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+    await screen.findByText(/Filtered view · actor=alice/);
+    expect(screen.queryByRole("button", { name: /audit-b/ })).toBeNull();
+    const filteredCall = fetchSpy.mock.calls.find(([path]) => String(path).includes("actor=alice"));
+    expect(filteredCall).toBeTruthy();
+    // the export note keeps the WORM contract explicit
+    expect(screen.getByText(/full unfiltered WORM ledger/)).toBeInTheDocument();
+    // clearing restores the unfiltered ledger
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(await screen.findByRole("button", { name: /audit-b/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Filtered view/)).toBeNull();
   });
 });
