@@ -34,6 +34,7 @@ from api.security.passwords import (
     verify_password,
 )
 from api.security.session_manager import SessionManager
+from api.security.client_ip import client_ip
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -133,7 +134,7 @@ def _auth_db_error(exc: Exception) -> HTTPException | None:
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db_session)) -> LoginResponse:
     settings = get_settings()
-    client = request.client.host if request.client else ""
+    client = client_ip(request) or ""
     roles = ["admin"]
     try:
         user = AuthService(session=db).authenticate(body.username, body.password, client_key=client)
@@ -288,13 +289,13 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
         target_type="user",
         target_id=user.username,
         detail={"roles": [role]},
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     publish_auth(
         "register",
         {"user": body.username, "role": role, "self_service": True,
-         "ip": request.client.host if request.client else None},
+         "ip": client_ip(request)},
     )
     return RegisterResponse(message="account created", username=user.username, roles=[role])
 
@@ -313,7 +314,7 @@ def oidc_login(body: OidcLoginRequest, request: Request, response: Response, db:
     is on (they get the viewer role).
     """
     settings = get_settings()
-    client = request.client.host if request.client else ""
+    client = client_ip(request) or ""
     if not (settings.OIDC_ISSUER or "").strip():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OIDC SSO not configured")
     from api.security.oidc import OidcError, verify_id_token
@@ -467,7 +468,7 @@ def oidc_callback(request: Request, db: Session = Depends(get_db_session),
     settings = get_settings()
     if not (settings.OIDC_ISSUER or "").strip():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OIDC SSO not configured")
-    client = request.client.host if request.client else ""
+    client = client_ip(request) or ""
     from api.security import oidc as oidc_mod
     from api.security.oidc import OidcError, verify_id_token
 
@@ -557,7 +558,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db_se
         actor = view.username if view else "unknown"
         try:
             if _user_repo(db).revoke_session(token):
-                _user_repo(db).audit(actor, "auth.logout", ip=request.client.host if request.client else None)
+                _user_repo(db).audit(actor, "auth.logout", ip=client_ip(request))
                 db.commit()
         except Exception as exc:
             try:
@@ -571,7 +572,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db_se
                 ) from exc
             logger.warning("auth_logout_revocation_failed", extra={"actor": actor}, exc_info=True)
         if actor != "unknown":
-            publish_auth("logout", {"user": actor, "ip": request.client.host if request.client else None})
+            publish_auth("logout", {"user": actor, "ip": client_ip(request)})
     response.delete_cookie("cryptoscan_session", path="/", secure=settings.cookie_secure, httponly=True, samesite="lax")
     return {"message": "Logged out successfully"}
 
@@ -685,7 +686,7 @@ def update_me(
         target_id=username,
         detail=audit_detail_with_changes(field_diff(before, {
             "display_name": user.display_name, "email": user.email})),
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     publish_auth("profile_update", {"user": username, "fields": sorted(changes)})
@@ -718,7 +719,7 @@ def change_my_password(
     to keep every existing session alive. A ``user.password_change`` audit
     entry and an ``auth.password_change`` realtime event are emitted.
     """
-    client = request.client.host if request.client else None
+    client = client_ip(request)
     repo = _user_repo(db)
     user = repo.get_by_username(username)
     if user is None:
@@ -818,7 +819,7 @@ def revoke_my_sessions(
     """Self-service "log out everywhere else". By default the current session
     is kept (``include_current=false``); pass ``include_current=true`` to also
     revoke the calling token (full sign-out on all devices)."""
-    client = request.client.host if request.client else None
+    client = client_ip(request)
     token = token_from_request(request)
     repo = _user_repo(db)
     if body.include_current:
@@ -896,7 +897,7 @@ def login_mfa(
     db: Session = Depends(get_db_session),
 ) -> LoginResponse:
     """Second factor: exchange the short-lived challenge + TOTP/recovery code."""
-    client = request.client.host if request.client else ""
+    client = client_ip(request) or ""
     username = SessionManager().validate_mfa_challenge(body.mfa_token)
     if not username:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="MFA challenge invalid or expired")
@@ -942,7 +943,7 @@ def mfa_enroll(
     db: Session = Depends(get_db_session),
 ) -> dict:
     """Start TOTP enrollment: returns the secret + otpauth:// URI (unconfirmed)."""
-    client = request.client.host if request.client else ""
+    client = client_ip(request) or ""
     repo = _user_repo(db)
     row = repo.get_by_username(user)
     if row is None:
@@ -972,7 +973,7 @@ def mfa_enable(
     db: Session = Depends(get_db_session),
 ) -> dict:
     """Activate MFA by proving the authenticator works; issues recovery codes once."""
-    client = request.client.host if request.client else ""
+    client = client_ip(request) or ""
     repo = _user_repo(db)
     row = repo.get_by_username(user)
     if row is None:
@@ -1003,7 +1004,7 @@ def mfa_disable(
     db: Session = Depends(get_db_session),
 ) -> dict:
     """Disable MFA: requires the password AND a valid code, then kills all sessions."""
-    client = request.client.host if request.client else ""
+    client = client_ip(request) or ""
     repo = _user_repo(db)
     row = repo.get_by_username(user)
     if row is None or not row.mfa_enabled:
@@ -1159,7 +1160,7 @@ def delete_user(
         target_type="user",
         target_id=username,
         detail={"soft_delete": True, "sessions_revoked": revoked},
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     publish_auth("user_deleted", {"user": username, "by": admin, "sessions_revoked": revoked})
@@ -1183,7 +1184,7 @@ def restore_user(
         "user.restore",
         target_type="user",
         target_id=username,
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     publish_auth("user_restored", {"user": username, "by": admin})
@@ -1233,7 +1234,7 @@ def create_user(
         target_type="user",
         target_id=user.username,
         detail={"roles": user.role_list},
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     return UserResponse(
@@ -1303,7 +1304,7 @@ def update_user(
             **({"revoked_sessions": changes["revoked_sessions"]}
                if "revoked_sessions" in changes else {}),
         ),
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     user = repo.get_by_username(username)
@@ -1571,7 +1572,7 @@ def create_custom_role(
     _user_repo(db).audit(
         admin, "custom_role.create", target_type="custom_role", target_id=name,
         detail={"permissions": row.permissions, "description": row.description},
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     return {"name": row.name, "description": row.description,
@@ -1610,7 +1611,7 @@ def update_custom_role(
             "permissions": sorted(row.permissions or []),
             "description": row.description,
         })),
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     return {"name": row.name, "description": row.description,
@@ -1632,7 +1633,7 @@ def delete_custom_role(
     _user_repo(db).audit(
         admin, "custom_role.delete", target_type="custom_role", target_id=row.name,
         detail={"permissions": sorted(row.permissions or [])},
-        ip=request.client.host if request.client else None,
+        ip=client_ip(request),
     )
     db.commit()
     return {"deleted": row.name,

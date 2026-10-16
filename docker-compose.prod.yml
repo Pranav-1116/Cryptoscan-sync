@@ -75,6 +75,12 @@ services:
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: INFO
+      # §4.8 round 70: the nginx edge is the ONE trusted proxy hop — the
+      # API honors X-Forwarded-For only as the outermost trusted entry
+      # (never the first, client-controlled one). The API service exposes
+      # no ports of its own, so the socket peer is always nginx here;
+      # tighten further with TRUSTED_PROXY_CIDRS if the network shape allows.
+      TRUSTED_PROXY_COUNT: "1"
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to an explicit origin list}
       METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN for Prometheus /metrics scraping}

@@ -62,7 +62,13 @@ def _identity(request) -> str:
         except Exception as exc:
             logger.warning("rate_limit_session_identity_unavailable", extra={"error_type": type(exc).__name__})
             # An invalid/unavailable session identity falls through to IP bucket.
-    ip = request.client.host if request.client else "unknown"
+    # per-IP bucket under the same proxy-trust boundary as the API-key
+    # allowlist: honoring X-Forwarded-For without the boundary would let a
+    # client mint unlimited buckets; ignoring it behind a real proxy would
+    # lump every user into one. The boundary resolves both honestly.
+    from api.security.client_ip import client_ip
+
+    ip = client_ip(request) or "unknown"
     return f"ip:{ip}"
 
 

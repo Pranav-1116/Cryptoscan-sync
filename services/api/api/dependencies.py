@@ -137,15 +137,17 @@ def _resolve_api_key(request: Request) -> tuple[str, list[str], str] | None | ob
 
 def _authorize_key_policy(request, row, session) -> None:
     """Scope / method / quota / network enforcement for a machine API key."""
-    # Per-key IP allowlist (fail-closed). Client IP honours X-Forwarded-For
-    # only as the last hop (the edge nginx sets it); fall back to the socket.
+    # Per-key IP allowlist (fail-closed). Client IP comes from the shared
+    # trust boundary (api.security.client_ip): X-Forwarded-For is honored
+    # ONLY when the configured proxy topology says a proxy you own added
+    # it, and then only the outermost trusted hop — never the first,
+    # client-controlled entry (round 70; the old code satisfied an IP
+    # allowlist with a header any client could write).
     try:
+        from api.security.client_ip import client_ip as resolve_client_ip
         from identity.api_key_guard import ip_allowed
 
-        client_ip = request.client.host if request.client else None
-        fwd = request.headers.get("x-forwarded-for", "")
-        if fwd:
-            client_ip = fwd.split(",")[0].strip() or client_ip
+        client_ip = resolve_client_ip(request)
         if not ip_allowed(client_ip, getattr(row, "allowed_ips", None)):
             try:
                 from db.repositories.api_key_repository import ApiKeyRepository as _Repo

@@ -58,6 +58,18 @@ class APISettings(BaseSettings):
     VAULT_TIMEOUT_SECONDS: float = 5.0
     VAULT_PROVIDERS_DISABLED: bool = False  # kill-switch: inline values only
 
+    # Trusted reverse-proxy boundary (§4.8, round 70): forwarded headers
+    # are honored only when the declared topology says a proxy you own
+    # added them. COUNT=0 (default) trusts only the socket address — a
+    # client cannot satisfy an IP allowlist or dodge per-IP limits by
+    # writing X-Forwarded-For. N>=1 takes entry -N (the address the
+    # outermost trusted proxy observed; everything left of it is
+    # client-supplied). CIDRS, when set, additionally requires the socket
+    # peer itself to be inside a trusted network (closes the direct-
+    # connection spoof when the API is reachable without the proxy).
+    TRUSTED_PROXY_COUNT: int = 0
+    TRUSTED_PROXY_CIDRS: str = ""
+
     # Zero-trust policy decision point (advanced/82, round 31): external
     # policy-as-code that can only RESTRICT (deny-wins over RBAC allow).
     ZERO_TRUST_ENFORCED: bool = False

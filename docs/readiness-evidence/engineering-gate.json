@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.engineering-gate/1",
-  "captured_at": "2026-10-16T04:00:21.149723+00:00",
+  "captured_at": "2026-10-16T06:07:04.378603+00:00",
   "checks": [
     {
       "check": "exception inventory",
