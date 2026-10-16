@@ -276,3 +276,57 @@ async def test_tasks_filter_by_evidence_id_the_finding_cross_link():
         wrong_status = await client.get("/api/v1/remediation/tasks",
                                         params={"evidence_id": "e2", "status": "PROPOSED"})
         assert wrong_status.json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_tasks_filter_by_asset_id_through_the_stored_link_table():
+    """§5 (round 75): the asset→task cross-link. Tasks reference evidence
+    records; assets reference evidence through the PERSISTED
+    crypto_asset_evidence link table — the join goes through that stored
+    linkage, never a re-derived identity guess."""
+    from db.models.crypto_asset import CryptoAsset
+    from db.models.crypto_asset_evidence import CryptoAssetEvidence
+
+    app, session, _ = _make_app()
+    _scan(session, "scan-1")
+    _evidence(session, "e1", "scan-1", "DES", key_size=56)
+    _evidence(session, "e2", "scan-1", "3DES", key_size=112)
+    asset = CryptoAsset(algorithm="DES", file_path="src/payments/CardCipher.java",
+                        asset_key="spine-des-cardcipher", line_number=0)
+    session.add(asset)
+    session.flush()
+    # the stored linkage: asset ↔ e1 only (e2 stays unlinked)
+    session.add(CryptoAssetEvidence(asset_id=asset.id, evidence_id="e1"))
+    session.commit()
+    async with _client(app) as client:
+        t1 = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e1"})).json()
+        t2 = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e2"})).json()
+
+        by_asset = await client.get("/api/v1/remediation/tasks",
+                                    params={"asset_id": asset.id})
+        assert by_asset.status_code == 200, by_asset.text
+        body = by_asset.json()
+        assert body["total"] == 1
+        assert [t["id"] for t in body["tasks"]] == [t1["id"]]
+        assert body["tasks"][0]["evidence_id"] == "e1"
+        assert t2["id"] not in [t["id"] for t in body["tasks"]]
+
+        # an asset with NO linked evidence answers empty — unknown, not zero
+        orphan = CryptoAsset(algorithm="RC4", file_path="src/legacy/Old.java",
+                             asset_key="spine-rc4-old", line_number=0)
+        session.add(orphan)
+        session.commit()
+        empty = await client.get("/api/v1/remediation/tasks",
+                                 params={"asset_id": orphan.id})
+        assert empty.json()["total"] == 0
+        assert empty.json()["tasks"] == []
+
+        # composes with the status filter
+        await client.post(f"/api/v1/remediation/tasks/{t1['id']}/accept")
+        combo = await client.get("/api/v1/remediation/tasks",
+                                 params={"asset_id": asset.id, "status": "ACCEPTED"})
+        assert combo.json()["total"] == 1
+        assert combo.json()["tasks"][0]["id"] == t1["id"]
+        wrong = await client.get("/api/v1/remediation/tasks",
+                                 params={"asset_id": asset.id, "status": "PROPOSED"})
+        assert wrong.json()["total"] == 0

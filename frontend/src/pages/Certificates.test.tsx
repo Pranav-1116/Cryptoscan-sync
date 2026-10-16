@@ -158,8 +158,8 @@ describe("Certificates page", () => {
     fireEvent.change(screen.getByPlaceholderText(/reason \(mandatory/), { target: { value: "expiry ownership assigned" } });
     fireEvent.click(screen.getByText("Assign ownership"));
     expect(await screen.findByText(/Ownership recorded — owner network-team/i)).toBeTruthy();
-    const calls = fetchMock.mock.calls.filter(([p]: [string]) =>
-      String(p).includes("/ownership"));
+    const calls = fetchMock.mock.calls.filter((call) =>
+      String(call?.[0]).includes("/ownership"));
     expect(calls.length).toBeGreaterThan(0);
   });
 

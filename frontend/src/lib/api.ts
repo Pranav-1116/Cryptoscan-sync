@@ -3900,13 +3900,14 @@ export interface RemediationTaskList {
   tasks: RemediationTask[]; total: number; page: number; page_size: number;
 }
 export const apiRemediationTasks = (params: {
-  status?: string; owner?: string; evidence_id?: string;
+  status?: string; owner?: string; evidence_id?: string; asset_id?: string;
   page?: number; page_size?: number;
 } = {}): Promise<ApiResult<RemediationTaskList>> => {
   const q = new URLSearchParams();
   if (params.status) q.set("status", params.status);
   if (params.owner) q.set("owner", params.owner);
   if (params.evidence_id) q.set("evidence_id", params.evidence_id);
+  if (params.asset_id) q.set("asset_id", params.asset_id);
   if (params.page) q.set("page", String(params.page));
   if (params.page_size) q.set("page_size", String(params.page_size));
   const qs = q.toString();

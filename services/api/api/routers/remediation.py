@@ -272,6 +272,7 @@ def list_tasks(
     scan_id: str | None = None,
     owner: str | None = None,
     evidence_id: str | None = None,
+    asset_id: str | None = None,
     page: int = 1,
     page_size: int = 50,
     user: str = Depends(get_current_user),
@@ -279,7 +280,7 @@ def list_tasks(
 ):
     tasks, total = _task_repo(db).list_tasks(
         status=status, scan_id=scan_id, owner=owner, evidence_id=evidence_id,
-        page=page, page_size=page_size)
+        asset_id=asset_id, page=page, page_size=page_size)
     verifications = _verification_repo(db)
     return {
         "tasks": [_task_out(t, verifications.latest_for_task(t.id)) for t in tasks],

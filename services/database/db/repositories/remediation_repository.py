@@ -20,6 +20,7 @@ class RemediationTaskRepository(BaseRepository[RemediationTask]):
         scan_id: str | None = None,
         owner: str | None = None,
         evidence_id: str | None = None,
+        asset_id: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[list[RemediationTask], int]:
@@ -39,6 +40,16 @@ class RemediationTaskRepository(BaseRepository[RemediationTask]):
             # reference THIS evidence record (indexed column)
             stmt = stmt.where(RemediationTask.evidence_id == evidence_id)
             count_stmt = count_stmt.where(RemediationTask.evidence_id == evidence_id)
+        if asset_id:
+            # the asset→task cross-link (§5, round 75): through the STORED
+            # crypto_asset_evidence link table — the persisted
+            # asset↔evidence join, never a re-derived guess
+            from db.models.crypto_asset_evidence import CryptoAssetEvidence
+
+            linked = select(CryptoAssetEvidence.evidence_id).where(
+                CryptoAssetEvidence.asset_id == asset_id)
+            stmt = stmt.where(RemediationTask.evidence_id.in_(linked))
+            count_stmt = count_stmt.where(RemediationTask.evidence_id.in_(linked))
         total = int(self.session.execute(count_stmt).scalar_one())
         stmt = (
             stmt.order_by(desc(RemediationTask.created_at))

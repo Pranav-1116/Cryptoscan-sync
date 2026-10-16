@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Badge, Tabs } from "../components/ui";
 import { Link } from "react-router-dom";
-import { apiFactStore, apiGraphBlastRadiusFromAsset, FactStoreRow, tenantFetch } from "../lib/api";
+import { apiFactStore, apiGraphBlastRadiusFromAsset, apiRemediationTasks, FactStoreRow, RemediationTask, tenantFetch } from "../lib/api";
 import { IconEstate } from "../components/icons";
 
 // GET /api/v1/assets serializes CryptoAsset columns; only GET /assets/{id}
@@ -124,7 +124,7 @@ export default function Assets() {
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const tabNames = ["Overview", "Evidence", "Facts", "Dependencies", "Usage", "History", "Policy", "PQC"];
+  const tabNames = ["Overview", "Evidence", "Facts", "Dependencies", "Usage", "History", "Policy", "PQC", "Remediation"];
   /* §5 (round 64): the fact behind the selected asset (joined on the
    * identity spine) and its graph blast radius — loaded on demand per tab. */
   const [fact, setFact] = useState<{ forId: string; row: FactStoreRow | null; candidates: number } | null>(null);
@@ -133,6 +133,12 @@ export default function Assets() {
   const [blast, setBlast] = useState<{ forId: string; data: { owning_systems?: string[]; systems?: Array<{ id: string; name?: string; hops: number }>; nodes_visited?: number; backend?: string } | null; unlinked: boolean } | null>(null);
   const [blastLoading, setBlastLoading] = useState(false);
   const [blastError, setBlastError] = useState<string | null>(null);
+  /* §5 (round 75): the remediation tasks that reference this asset's
+   * evidence — joined server-side through the STORED crypto_asset_evidence
+   * link table, loaded on demand per tab. */
+  const [assetTasks, setAssetTasks] = useState<{ forId: string; rows: RemediationTask[] } | null>(null);
+  const [assetTasksLoading, setAssetTasksLoading] = useState(false);
+  const [assetTasksError, setAssetTasksError] = useState<string | null>(null);
 
   useEffect(() => {
     const resetForScope = () => {
@@ -156,6 +162,9 @@ export default function Assets() {
       setBlast(null);
       setBlastLoading(false);
       setBlastError(null);
+      setAssetTasks(null);
+      setAssetTasksLoading(false);
+      setAssetTasksError(null);
       setRefreshKey((key) => key + 1);
     };
     window.addEventListener("zelinx:tenant", resetForScope);
@@ -318,6 +327,31 @@ export default function Assets() {
       });
     return () => { cancelled = true; };
   }, [activeTab, selectedId, assetsList, fact?.forId]);
+
+  /* The remediation tasks referencing this asset (Remediation tab,
+   * round 75): tasks bind to evidence records; the server joins them to
+   * this asset through the stored asset↔evidence linkage. An empty
+   * answer means no task references any of this asset's evidence. */
+  useEffect(() => {
+    if (activeTab !== 8 || !selectedId || assetTasks?.forId === selectedId) return;
+    let cancelled = false;
+    setAssetTasksLoading(true);
+    setAssetTasksError(null);
+    apiRemediationTasks({ asset_id: selectedId, page_size: 20 })
+      .then((res) => {
+        if (cancelled) return;
+        setAssetTasksLoading(false);
+        if (res.source === "live" && res.data) {
+          setAssetTasks({ forId: selectedId, rows: res.data.tasks ?? [] });
+        } else {
+          const status = /^HTTP (\d+)$/.exec(res.error || "");
+          setAssetTasksError(status
+            ? requestError(Number(status[1]), "the remediation tasks")
+            : "The remediation task list is offline or unreachable.");
+        }
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, selectedId, assetTasks?.forId]);
 
   /* The graph view of this asset (Dependencies tab): the real blast-radius
    * endpoint fans out from every system linked to the asset. HTTP 404 is
@@ -640,7 +674,43 @@ export default function Assets() {
                     </div>
                   )}
 
-                  {activeTab >= 4 && (
+                  {activeTab === 8 && (
+                    <div style={{ fontSize: "13px" }}>
+                      {assetTasksError && <p style={{ color: "var(--amber)" }}>{assetTasksError}</p>}
+                      {assetTasksLoading && <p style={{ color: "var(--dim)" }}>Loading remediation tasks…</p>}
+                      {!assetTasksError && !assetTasksLoading && assetTasks && assetTasks.rows.length === 0 && (
+                        <p style={{ color: "var(--dim)" }}>
+                          No remediation tasks reference this asset's evidence. Tasks are created
+                          from Priorities or a finding's drawer — not invented here.
+                        </p>
+                      )}
+                      {!assetTasksError && !assetTasksLoading && assetTasks && assetTasks.rows.length > 0 && (
+                        <div style={{ display: "grid", gap: "8px" }}>
+                          {assetTasks.rows.map((t) => (
+                            <div key={t.id} className="spread" style={{ borderBottom: "1px solid var(--line)", paddingBottom: "8px" }}>
+                              <span style={{ fontSize: "12.5px" }}>
+                                <span className="mono" style={{ fontWeight: 600 }}>{t.rule_id}</span>
+                                <span style={{ color: "var(--dim)" }}> · evidence {t.evidence_id}</span>
+                                {t.owner && <span style={{ color: "var(--dim)" }}> · {t.owner}</span>}
+                              </span>
+                              <Badge tone={String(t.status || "").toUpperCase() === "VERIFIED" ? "green" : String(t.status || "").toUpperCase() === "COMPLETED" ? "cyan" : "amber"}>
+                                {String(t.status || "—").toUpperCase()}
+                              </Badge>
+                            </div>
+                          ))}
+                          <Link
+                            to="/remediation"
+                            className="btn outline"
+                            style={{ textDecoration: "none", fontSize: "12px", padding: "6px 12px", borderRadius: "var(--r)", justifySelf: "start" }}
+                          >
+                            Open task lifecycle view
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab >= 4 && activeTab <= 7 && (
                     <div style={{ fontSize: "13px", color: "var(--dim)", padding: "12px 0" }}>
                       No {tabNames[activeTab].toLowerCase()} verdict is provided by this asset endpoint.
                     </div>

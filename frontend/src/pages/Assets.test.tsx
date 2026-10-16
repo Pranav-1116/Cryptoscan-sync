@@ -314,4 +314,41 @@ describe("asset detail → fact and graph cross-links (round 64)", () => {
     const link = screen.getByRole("link", { name: "Open in Dependency Graph" });
     expect(link).toHaveAttribute("href", "/dependency-graph?asset=asset-aes");
   });
+  it("shows the remediation tasks that reference this asset's evidence (round 75)", async () => {
+    mockFetch({
+      [listPath]: { assets: [aesAsset], total_count: 1, page: 1, page_size: 100 },
+      "/api/v1/assets/asset-aes": { ...aesAsset, evidence_ids: ["ev-1"] },
+      "/api/v1/remediation/tasks": {
+        tasks: [{
+          id: "task-75", evidence_id: "ev-1", scan_id: "scan-77", rule_id: "P019",
+          category: "weak_cipher", priority: "P0", replace_with: "AES-256-GCM",
+          original_finding: {}, target_location: "repo", status: "VERIFIED",
+          owner: "crypto-team", notes: null, created_by: "analyst", source: "manual",
+        }],
+        total: 1, page: 1, page_size: 20,
+      },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "AES-256" });
+    fireEvent.click(screen.getByRole("tab", { name: "Remediation" }));
+    // the task renders with its rule, evidence binding, owner and status
+    expect(await screen.findByText(/P019/)).toBeInTheDocument();
+    expect(screen.getByText(/evidence ev-1/)).toBeInTheDocument();
+    expect(screen.getByText(/crypto-team/)).toBeInTheDocument();
+    expect(screen.getByText("VERIFIED")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open task lifecycle view" })).toHaveAttribute("href", "/remediation");
+  });
+
+  it("states honestly when no remediation task references the asset's evidence", async () => {
+    mockFetch({
+      [listPath]: { assets: [aesAsset], total_count: 1, page: 1, page_size: 100 },
+      "/api/v1/assets/asset-aes": { ...aesAsset, evidence_ids: ["ev-1"] },
+      "/api/v1/remediation/tasks": { tasks: [], total: 0, page: 1, page_size: 20 },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "AES-256" });
+    fireEvent.click(screen.getByRole("tab", { name: "Remediation" }));
+    expect(await screen.findByText(/No remediation tasks reference this asset's evidence/)).toBeInTheDocument();
+    expect(screen.getByText(/not invented here/)).toBeInTheDocument();
+  });
 });
