@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.engineering-gate/1",
-  "captured_at": "2026-10-16T08:54:09.361446+00:00",
+  "captured_at": "2026-10-16T09:19:38.572103+00:00",
   "checks": [
     {
       "check": "exception inventory",
@@ -17,7 +17,7 @@
     {
       "check": "X-API-Key route coverage",
       "status": "PASS",
-      "detail": "decorated routes=892; auth-covered-or-exempt=892; uncovered=0",
+      "detail": "decorated routes=893; auth-covered-or-exempt=893; uncovered=0",
       "findings": []
     },
     {

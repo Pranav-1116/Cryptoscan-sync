@@ -20,6 +20,16 @@ export default function Notifications() {
   const [saved, setSaved] = useState<boolean | null>(null);
   const integ = useLive<{ integrations: any[] }>("/api/v1/enterprise/integrations", { integrations: [] });
   const integrations = integ.data.integrations ?? [];
+  /* §5 (round 76): the in-app channel DELIVERY — the feed below is what
+   * the in-app column of the routing matrix actually gates. Verification
+   * outcomes (VERIFIED / PARTIAL / FAILED / REGRESSION) land here. */
+  const feed = useLive<{
+    notifications: Array<{ id: string; ts: string | null; event_type: string;
+      event_class: string; class_name: string; severity: string;
+      detail: string | null; target: string | null }>;
+    count: number; routed_classes: string[]; note: string;
+  }>("/api/v1/notifications/feed", { notifications: [], count: 0, routed_classes: [], note: "" });
+  const notifications = feed.data.notifications ?? [];
 
   const persist = (next: RouteItem[]) => {
     setSaved(null);
@@ -47,7 +57,33 @@ export default function Notifications() {
         {saved === true && <Badge tone="green">routing saved</Badge>}
         {saved === false && <Badge tone="red">save failed</Badge>}
       </div>
-      <Panel title="Event → channel routing" sub="toggles are saved to the control plane — changes persist across sessions">
+      <Panel
+        title="In-app notification feed"
+        sub="the in-app column of the matrix below DELIVERS here — switch a class off and it leaves this feed"
+      >
+        <Table
+          head={["severity", "class", "what happened", "when"]}
+          rows={notifications.map((n) => [
+            <Badge tone={n.severity === "CRITICAL" || n.severity === "HIGH" ? "red" : n.severity === "MEDIUM" ? "amber" : ""}>{n.severity}</Badge>,
+            <span style={{ fontSize: 12.5 }}>{n.class_name}</span>,
+            <span style={{ fontSize: 12.5 }}>{n.detail || "—"}</span>,
+            <span className="dim" style={{ fontSize: 12 }}>{n.ts ? new Date(n.ts).toLocaleString() : "—"}</span>,
+          ])}
+        />
+        {!notifications.length && (
+          <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
+            No routed notifications yet — events appear here when a mapped event class fires and
+            its in-app routing is on. Verification outcomes (VERIFIED / PARTIAL / FAILED /
+            REGRESSION) are the flagship class.
+          </div>
+        )}
+        <div className="dim" style={{ fontSize: 11.5, marginTop: 8 }}>
+          Email / webhook / SIEM delivery runs through the integrations surface; emitted event
+          types without a catalog mapping stay in the events stream, unrouted.
+        </div>
+      </Panel>
+
+      <Panel title="Event → channel routing" sub="toggles are saved to the control plane — changes persist across sessions" className="mt">
         <Table
           head={["event type", "severity", ...CHANNELS.map((c) => CHANNEL_LABEL[c])]}
           rows={state.map((n, i) => [
