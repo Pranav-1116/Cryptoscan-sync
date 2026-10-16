@@ -22,6 +22,7 @@ from db.models.crypto_library_fingerprint import CryptoLibraryFingerprint
 from db.models.drift_event import DriftEvent
 from db.models.evidence_record import EvidenceRecord
 from db.models.cbom_snapshot import CbomSnapshot
+from db.models.hbom_snapshot import HbomSnapshot
 from db.models.compliance_record import ComplianceAttestation, ComplianceEvidencePack
 from db.models.evidence_disposition import EvidenceDisposition
 from db.models.gate_evaluation import GateEvaluation

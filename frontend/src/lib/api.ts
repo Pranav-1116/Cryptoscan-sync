@@ -1178,6 +1178,66 @@ export interface LiveBomResponse {
 export const apiLiveBom = (): Promise<ApiResult<LiveBomResponse>> =>
   call(`/api/v1/live-scan/bom`);
 
+/* §4.4 (round 71): the INDEPENDENT, unified estate HBOM — ONE document
+ * over every persisted hardware_assets row (the 24/7 engine's DB truth),
+ * per-asset identity (serial / revision / firmware fingerprint), TPM/HSM
+ * posture and evidence references (agent, timestamps, evidence IDs).
+ * Content-addressed: SHA-256 over the canonical serialization, anchored
+ * to the estate's latest observation — never a wall clock. GET /hbom
+ * regenerates from current rows; POST /hbom/snapshot pins one rendering
+ * (identical pins collapse); GET /hbom/snapshots/{id} serves the exact
+ * stored document verbatim with an integrity self-check (OK / MISMATCH).
+ * This is NOT the TechBOM hardware layer and NOT the live engine's
+ * in-memory document — both remain available on their own surfaces. */
+export interface HbomEstateEvidence {
+  source: string; agent_id: string | null;
+  first_seen: string | null; last_seen: string | null;
+  last_verified: string | null; last_crypto_check: string | null;
+  evidence_ids: string[];
+}
+export interface HbomEstateComponent {
+  "bom-ref": string; asset_id: string; name: string;
+  manufacturer: string; model: string; device_type: string;
+  identity: {
+    serial_reference: string | null; hardware_revision: string | null;
+    current_fingerprint: string | null; previous_fingerprint: string | null;
+  };
+  firmware: { details: Record<string, unknown> | null; last_checked: string | null };
+  security_modules: { hsm?: Record<string, unknown>; tpm?: Record<string, unknown> };
+  capabilities: Record<string, unknown> | null;
+  crypto_capabilities: Record<string, unknown> | null;
+  risk: { score: number | null; level: string | null; last_change: string | null };
+  evidence: HbomEstateEvidence;
+}
+export interface HbomEstateDocument {
+  bomFormat: string; specVersion: string; content_hash: string;
+  metadata: {
+    generator: string; environment: string; as_of: string | null;
+    component_count: number; hsm_count: number; tpm_count: number;
+    device_types: Record<string, number>; sources: string[]; notes: string[];
+  };
+  components: HbomEstateComponent[];
+  hsm_fleet: { count: number; asset_ids: string[] };
+  tpm_fleet: { count: number; asset_ids: string[] };
+  dependencies: unknown[];
+}
+export const apiHbomEstate = (): Promise<ApiResult<HbomEstateDocument>> =>
+  _rsGet<HbomEstateDocument>("/api/v1/hbom");
+export interface HbomSnapshotMeta {
+  snapshot_id: string; environment: string; content_hash: string;
+  component_count: number; generator: string; created_by: string;
+  snapshotted_at: string; as_of: string | null; verify_path: string;
+}
+export const apiHbomSnapshots = (): Promise<ApiResult<{ snapshots: HbomSnapshotMeta[]; count: number; note: string }>> =>
+  _rsGet<{ snapshots: HbomSnapshotMeta[]; count: number; note: string }>("/api/v1/hbom/snapshots");
+export const apiHbomPin = (): Promise<ApiResult<HbomSnapshotMeta & { created: boolean; note: string }>> =>
+  _rsPost<HbomSnapshotMeta & { created: boolean; note: string }>("/api/v1/hbom/snapshot", {});
+export const apiHbomSnapshot = (id: string): Promise<ApiResult<HbomSnapshotMeta & {
+  integrity: string; integrity_note: string; payload: HbomEstateDocument;
+}>> =>
+  _rsGet<HbomSnapshotMeta & { integrity: string; integrity_note: string; payload: HbomEstateDocument }>(
+    `/api/v1/hbom/snapshots/${encodeURIComponent(id)}`);
+
 /** The caller's effective ABAC scope (Region→BU→Environment→Asset grants). */
 export const apiMyGrants = (): Promise<ApiResult<{ principal: string; roles: string[]; grants: Array<Record<string, unknown>>; count: number; abac_enforced: boolean }>> =>
   call("/api/v1/control/me/grants");

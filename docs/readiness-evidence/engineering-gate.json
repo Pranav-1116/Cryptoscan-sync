@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.engineering-gate/1",
-  "captured_at": "2026-10-16T06:07:04.378603+00:00",
+  "captured_at": "2026-10-16T06:55:18.078725+00:00",
   "checks": [
     {
       "check": "exception inventory",
@@ -17,7 +17,7 @@
     {
       "check": "X-API-Key route coverage",
       "status": "PASS",
-      "detail": "decorated routes=887; auth-covered-or-exempt=887; uncovered=0",
+      "detail": "decorated routes=891; auth-covered-or-exempt=891; uncovered=0",
       "findings": []
     },
     {
@@ -29,7 +29,7 @@
     {
       "check": "tenant isolation audit",
       "status": "PASS",
-      "detail": "114 scoped tables; 12 justified platform-scope tables; 1 platform_scope() sites; violations=0",
+      "detail": "115 scoped tables; 12 justified platform-scope tables; 1 platform_scope() sites; violations=0",
       "violations": []
     },
     {
@@ -49,8 +49,8 @@
     },
     {
       "check": "branch protection API verification",
-      "status": "FAIL",
-      "detail": "GitHub API returned exit 1; enforcement is not asserted"
+      "status": "SKIP",
+      "detail": "provider repository identifier and credentials are required; enforcement is not asserted"
     },
     {
       "check": "cobol customer sample",

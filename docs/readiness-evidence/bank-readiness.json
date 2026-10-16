@@ -1,17 +1,17 @@
 {
   "schema": "cryptoscan.bank-readiness/1",
-  "captured_at": "2026-10-16T06:07:04.784283+00:00",
+  "captured_at": "2026-10-16T06:55:18.390948+00:00",
   "repository": {
-    "commit": "a0a45d6f3ee1552629084b0cfced3883aa5c4dd9",
+    "commit": "74a64c4409c0b550d94e34b006862dc16a4d94b7",
     "branch": "arena/01a106c8-cryproscan",
     "dirty": true
   },
   "artifact_generation_state": {
-    "commit": "a0a45d6f3ee1552629084b0cfced3883aa5c4dd9",
+    "commit": "74a64c4409c0b550d94e34b006862dc16a4d94b7",
     "branch": "arena/01a106c8-cryproscan",
     "dirty": true
   },
-  "command": "/home/user/.venv/bin/python scripts/bank_readiness.py --run-engineering --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-10-04.json --integrations docs/readiness-evidence/burn-in-2026-10-04.json --compliance docs/readiness-evidence/compliance-burn-2026-10-04.md --load-soak docs/readiness-evidence/load-test-2026-10-04.json",
+  "command": "/home/user/.venv/bin/python scripts/bank_readiness.py --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-10-04.json --integrations docs/readiness-evidence/burn-in-2026-10-04.json --compliance docs/readiness-evidence/compliance-burn-2026-10-04.md --load-soak docs/readiness-evidence/load-test-2026-10-04.json",
   "environment": {
     "environment": "unset",
     "ci": false
@@ -32,9 +32,9 @@
     {
       "category": "engineering",
       "status": "FAIL",
-      "detail": "artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=d8221e8a9729e8817ccc78039ff7c88db8caaf7cf7f15c4bb04096817fd19481",
+      "detail": "artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=878816cc4c07ec2cebb31f7d0582ba5b697bef13f55b2697782b0cd64bd4f46f",
       "artifact": "/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json",
-      "artifact_sha256": "d8221e8a9729e8817ccc78039ff7c88db8caaf7cf7f15c4bb04096817fd19481",
+      "artifact_sha256": "878816cc4c07ec2cebb31f7d0582ba5b697bef13f55b2697782b0cd64bd4f46f",
       "observed_statuses": [
         "FAIL",
         "PASS",

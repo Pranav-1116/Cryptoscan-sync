@@ -72,6 +72,7 @@ from api.routers import (
     findings,
     graph,
     hardware,
+    hbom,
     health,
     hsm_scans,
     intelligence,
@@ -444,6 +445,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(webhooks.router, prefix=prefix)
     app.include_router(repo_configs.router, prefix=prefix)
     app.include_router(hardware.router, prefix=prefix)
+    app.include_router(hbom.router, prefix=prefix)
     app.include_router(crypto.router, prefix=prefix)
     app.include_router(health.router, prefix=prefix)
     app.include_router(export.router, prefix=prefix)

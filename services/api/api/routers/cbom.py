@@ -284,9 +284,12 @@ def cbom_catalog(
 def _live_bom_documents(db: Session, *, limit: int = 2000) -> tuple[dict, dict]:
     """Build cross-BOM documents and source coverage from tenant-scoped rows.
 
-    HBOM is the TechBOM hardware projection, not an independent generator.
-    NBOM comes from the same stored probes as GET /cbom/nbom. A missing
-    source is reported in coverage, not represented by a fabricated BOM.
+    The HBOM layer here is still the TechBOM hardware projection; the
+    INDEPENDENT, unified estate HBOM (round 71) lives on its own surface —
+    ``routers/hbom.py`` serves the document generated from persisted
+    ``hardware_assets`` rows with pinning. NBOM comes from the same stored
+    probes as GET /cbom/nbom. A missing source is reported in coverage,
+    not represented by a fabricated BOM.
     """
     from api.routers.techbom import _environment_of, _gather_inventory
     from cbom.nbom import build_nbom
