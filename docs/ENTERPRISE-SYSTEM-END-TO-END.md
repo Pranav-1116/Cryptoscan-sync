@@ -318,8 +318,10 @@ Credentials are referenced by a provider/secret name or short-lived resolver;
 they are not copied into vendor profiles, evidence records, logs, exports, or
 job payloads.
 
-**Proof:** scope approval record, connector health/authorization state, target
-validation test, and a sanitized configuration export.
+**Proof:** scope approval record, connector health/authorization state
+(measured from the outbound delivery audit at `GET /health/connectors` —
+registration alone is not health), target validation test, and a sanitized
+configuration export.
 
 ### Step 4 — Job acceptance
 
@@ -761,8 +763,9 @@ The release decision must be one of:
 ### Daily
 
 - review readiness, queue lag, failed jobs, auth anomalies, tenant-refusal
-  counters, connector health, stale evidence, export failures, and integration
-  retries;
+  counters, connector health (`GET /health/connectors`), worker-fleet health
+  (`GET /health/worker-fleet` — stuck jobs, stale leases, drain evidence),
+  stale evidence, export failures, and integration retries;
 - verify no critical security alert is silently suppressed;
 - review production changes and active emergency controls.
 

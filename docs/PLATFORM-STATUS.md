@@ -40,6 +40,39 @@ real infrastructure or credentials.
 > Per-round ledger: [`audit_reports/00_ROUND_STATUS.md`](../audit_reports/00_ROUND_STATUS.md).
 > The paragraphs below record earlier measurements and dated implementation updates.
 
+> **Current documentation state (2026-10-16, rounds 50–79):** **95 migrations**
+> (0001–0095), **75 frontend page components**, and the full local backend suite at
+> **7,618 passed / 34 skipped** (per-round serial gate before push: ruff repo-wide,
+> rest + api suites, Vitest, `tsc --noEmit`) plus a **334-test / 34-file** Vitest
+> frontend suite with clean `tsc --noEmit`. The regenerated API reference reports
+> **834 paths / 920 operations** across 101 tagged groups, and the engineering gate
+> reports **896 decorated routes, all auth-covered-or-exempt**. Rounds 50–79
+> delivered: HSM key-check and CT-monitor scanner modes behind the durable job
+> contract (honestly-labeled SUBMITTED vs LIVE verification); seccomp syscall
+> isolation + fd hygiene for scanner children (x86-64 and arm64); live
+> TLS-handshake NBOM generation with a mock-bank harness; a web-verified
+> bank-sandbox test pack; behavioral rule coverage 62/63 with cross-scanner alias
+> equivalence; CBOM snapshot DIFF (two pins comparable); the crypto-asset identity
+> spine; the risk explainability chain (system- and asset-level); durable
+> replica-shared API-key quota windows; the trusted-proxy client-IP boundary
+> (`TRUSTED_PROXY_COUNT`/`CIDRS`, spoof-pinned); the independent unified estate
+> HBOM with content-addressed pins and pin-to-pin diff; per-record evidence
+> verification surfaced in the Findings drawer AND the Evidence page (with an
+> honest X-of-Y coverage line); the persisted certificate estate
+> (fingerprint-deduped, where-observed, honest revocation checks); the
+> asset→remediation-task cross-link through the stored `crypto_asset_evidence`
+> join; notification routing made load-bearing end to end (in-app feed via
+> `GET /notifications/feed`, outward webhook/SIEM dispatch via
+> `POST /notifications/dispatch` with a per-tenant exactly-once registry, and
+> connector health measured from the delivery audit via `GET /health/connectors`
+> — the fabricated CONNECTED derivation removed); and the independent
+> worker-fleet health probe (`GET /health/worker-fleet`: job statuses, stuck
+> running, stale leases, the monitor leader lease, drain evidence — never API
+> liveness). Per-round ledger:
+> [`audit_reports/00_ROUND_STATUS.md`](../audit_reports/00_ROUND_STATUS.md)
+> (now complete through round 79). The paragraphs below record earlier
+> measurements and dated implementation updates.
+
 Measured at the release HEAD (`v1.0.0` + supervisory portal + telecom scanner + ops layer + enterprise readiness, 2026-09-11):
 **583 OpenAPI paths** (measured from the live schema), **56 ordered database migrations** (0001–0056),
 **64 frontend pages**, **9 RBAC roles** (superadmin, ciso, security_analyst,

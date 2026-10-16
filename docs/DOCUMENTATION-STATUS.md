@@ -1,6 +1,6 @@
 # Documentation status and coverage map
 
-**Review date:** 2026-10-03
+**Review date:** 2026-10-16
 **Repository:** CryptoScan
 **Purpose:** identify which documentation is authoritative, which material is historical, and which product areas still require evidence or deeper guides.
 
@@ -10,7 +10,7 @@ every documented capability is generally available.
 
 ## 1. Repository-wide inventory
 
-The `docs/` tree currently contains **322 files**, including **270 Markdown
+The `docs/` tree currently contains **346 files**, including **286 Markdown
 files**, plus generated diagrams, JSON/CSV evidence, templates, and scoped
 qualification artifacts. The files cover product behavior, architecture, user
 workflows, deployment, security, operations, company diligence, commercial

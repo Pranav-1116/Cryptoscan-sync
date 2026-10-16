@@ -10,6 +10,14 @@ The work below is ordered by the evidence or engineering change that closes a
 real gate. Historical percentages are intentionally not repeated here.
 
 Everything below is ordered by what raises the pilot number the most for the least effort.
+
+> **2026-10-16 reconciliation note:** the engineering-side §4/§5 gap closures of
+> rounds 50–79 (isolation bounds, identity spine, snapshot diffing, per-record
+> verification surfaces, notification delivery, independent health probes) are
+> recorded in [`audit_reports/00_ROUND_STATUS.md`](../audit_reports/00_ROUND_STATUS.md)
+> and [`PRODUCT-VISION-AND-GAPS.md`](../PRODUCT-VISION-AND-GAPS.md); the items
+> below remain the bank-feedback and discovery work that no source session can
+> close on its own.
 Items marked **[target host]** cannot be executed in the development sandbox (no Docker, Redis,
 PostgreSQL binaries, no IdP, no outbound access beyond github/npm/pypi) and need a bank-side or
 company-side machine.

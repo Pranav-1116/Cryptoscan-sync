@@ -6,6 +6,44 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Added — rounds 21–79: the gap-closure arc (consolidated entry)
+
+Rounds 21–79 closed the product-vision gaps round by round; the per-round
+detail lives in [`audit_reports/00_ROUND_STATUS.md`](audit_reports/00_ROUND_STATUS.md)
+(complete through round 79) and [`PRODUCT-VISION-AND-GAPS.md`](PRODUCT-VISION-AND-GAPS.md).
+The arc, grouped:
+
+- **Truth and safety (§4.1/§4.2):** hostile-input bounds (fail-closed archive
+  extraction, scanner sandbox with wall-clock budgets), seccomp syscall
+  isolation + fd hygiene for scanner children (x86-64/arm64), the crypto-asset
+  identity spine, historical evidence disposition, per-record evidence
+  verification shared by the scan sweep and `GET /findings/{id}/verify`.
+- **Engines and BOMs (§4.3/§4.4/§4.6):** behavioral rule coverage 62/63 with
+  cross-scanner alias equivalence; content-addressed CBOM/HBOM/report snapshot
+  pins with pin-to-pin diffs; the independent unified estate HBOM; live
+  TLS-handshake NBOM; the risk explainability chain at system and asset level.
+- **Backend and observability (§4.8):** durable per-run job records for every
+  scanner mode (HSM key-check and CT-monitor included, with honestly-labeled
+  SUBMITTED vs LIVE verification), replica-shared API-key quota windows, the
+  trusted-proxy client-IP boundary, and independent health probes for the
+  worker fleet (`GET /health/worker-fleet`) and connectors
+  (`GET /health/connectors`) — measured from durable records, never API
+  liveness.
+- **Frontend (§5):** the remediation task lifecycle page; asset-detail
+  cross-links (facts by spine join, blast radius, remediation tab through the
+  stored asset-evidence join); the persisted certificate estate; per-record
+  verification in the Findings drawer and on the Evidence page with an honest
+  X-of-Y coverage line; a filterable audit ledger; the global
+  accessibility/responsive pass (WCAG-AA contrast contract); and notification
+  routing made load-bearing end to end — in-app feed
+  (`GET /notifications/feed`), outward webhook/SIEM dispatch
+  (`POST /notifications/dispatch`, per-tenant exactly-once registry), measured
+  connector status replacing the fabricated CONNECTED derivation.
+- **Assurance (§6/§7):** the full-chain end-to-end demonstration (three
+  pipeline passes with the operator loop), per-round full serial gates (7,618
+  backend / 334 frontend tests at round 79), and regenerated engineering-gate
+  + bank-readiness evidence at every push.
+
 ### Fixed / Added — round 20: full re-read of reports 01–16 + CRYPTO_SCAN_DISCOVERY (error/bug pass)
 
 - **Silent estate truncation eliminated (bug class, 9 surfaces):** the

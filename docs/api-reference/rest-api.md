@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-13:
-**821 paths, 907 operations** across 100 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-16:
+**834 paths, 920 operations** across 101 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -301,6 +301,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/cbom/scan/{scan_id}/snapshots` | List Scan Snapshots |
 | `GET` | `/api/v1/cbom/search` | Cbom Search |
 | `GET` | `/api/v1/cbom/snapshots/{snapshot_id}` | Get Cbom Snapshot |
+| `GET` | `/api/v1/cbom/snapshots/{snapshot_id}/diff` | Diff Cbom Snapshot |
 | `GET` | `/api/v1/cbom/system/{system_id}` | Cbom For System |
 | `POST` | `/api/v1/cbom/validate` | Cbom Validate |
 | `POST` | `/api/v1/cbom/verify` | Cbom Verify |
@@ -739,11 +740,23 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/hardware/timeline` | Event Timeline |
 | `GET` | `/api/v1/hardware/timeline/state-at` | State At |
 
+## hbom
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/hbom` | Get Hbom Document |
+| `POST` | `/api/v1/hbom/snapshot` | Pin Hbom Snapshot |
+| `GET` | `/api/v1/hbom/snapshots` | List Hbom Snapshots |
+| `GET` | `/api/v1/hbom/snapshots/{snapshot_id}` | Get Hbom Snapshot |
+| `GET` | `/api/v1/hbom/snapshots/{snapshot_id}/diff` | Diff Hbom Snapshot |
+
 ## health
 
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/discovery/plugins` | Discovery Plugins |
+| `GET` | `/api/v1/health/connectors` | Connectors Health |
+| `GET` | `/api/v1/health/worker-fleet` | Worker Fleet Health |
 | `GET` | `/api/v1/healthz` | Healthz |
 | `GET` | `/api/v1/healthz/dependencies` | Healthz Dependencies |
 | `GET` | `/api/v1/healthz/schema` | Healthz Schema |
@@ -917,6 +930,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/notifications/catalog` | Get Catalog |
+| `POST` | `/api/v1/notifications/dispatch` | Dispatch Notifications |
+| `GET` | `/api/v1/notifications/feed` | Notification Feed |
 | `GET` | `/api/v1/notifications/routing` | Get Routing |
 | `PUT` | `/api/v1/notifications/routing` | Put Routing |
 
@@ -1087,6 +1102,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/report-snapshots` | List Snapshots |
 | `GET` | `/api/v1/report-snapshots/{snapshot_id}` | Get Snapshot |
 | `GET` | `/api/v1/report-snapshots/{snapshot_id}/pdf` | Get Snapshot Pdf |
+| `POST` | `/api/v1/scans/{scan_id}/report-snapshot` | Pin Scan Report |
 
 ## repos
 
@@ -1132,7 +1148,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/risk/systems` | Systems Unified Risk |
 | `GET` | `/api/v1/risk/systems/{system_id}` | System Unified Risk |
+| `GET` | `/api/v1/risk/systems/{system_id}/explain` | Explain System Unified Risk |
 | `GET` | `/api/v1/risk/unified` | Unified Inventory Risk |
+| `GET` | `/api/v1/risk/unified/{asset_id}/explain` | Explain Unified Asset Risk |
 
 ## runtime
 

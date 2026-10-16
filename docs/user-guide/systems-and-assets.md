@@ -22,10 +22,22 @@ and stamps the system `CURRENT`. After a scan the worker attaches every
 asset to that system. Set `compliance_scopes` (for example `PCI-DSS`) so
 scoped policy rules apply on the next scan.
 
+## Asset detail
+
+The asset detail page joins the estate to its evidence by declared identity,
+never similarity: the identity spine (`asset_key`), a **Facts** tab joined by
+key, a **Dependencies** tab running the real blast-radius walk (404 renders
+"not linked to any system — unknown, not zero"), and a **Remediation** tab
+listing the tasks bound to the asset's evidence through the stored
+`crypto_asset_evidence` join (honest empty state when none reference it).
+Server-side estate search is `GET /api/v1/assets?q=` — observed estate
+matches, distinct from the reference algorithm catalog.
+
 ## API
 
 ```
 GET  /api/v1/assets
+GET  /api/v1/assets?q=<term>
 GET  /api/v1/assets/{id}
 GET  /api/v1/systems
 POST /api/v1/systems

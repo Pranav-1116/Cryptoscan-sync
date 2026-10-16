@@ -27,6 +27,26 @@ them to resync.
 | `monitor.scan_ok` / `monitor.scan_degraded` / `monitor.scan_failed` / `monitor.blocked` / `monitor.alert` | monitor | live-monitor probe outcomes |
 | `auth.login` | auth | a session was issued (user + roles, never token material) |
 | `apikey.create` / `apikey.revoke` | api-keys | machine keys changed |
+| `remediation.task_created` / `task_accepted` / `task_completed` / `task_verified` / `drift_tasks_created` | remediation | task lifecycle transitions (verification outcomes included) |
+| `notifications.dispatched` | notifications | an outward dispatch drain ran (examined/dispatched/delivered counts) |
+
+## Notifications (routed delivery)
+
+The Notification center routes event classes to channels (in-app, email,
+webhook, SIEM/SOC) — and the routing is load-bearing:
+
+- **In-app** — `GET /api/v1/notifications/feed` delivers only classes routed
+  to in-app; switching a class off removes it from the feed.
+- **Webhook / SIEM** — `POST /api/v1/notifications/dispatch` is the
+  operator-triggered outward drain: each routed notification is sent once per
+  tenant (dispatch registry) over real signed HTTP — the SIEM channel to
+  SIEM/SOAR integrations, the webhook channel to ITSM/CMDB receivers — with
+  every attempt audited in the integrations delivery log. Email routing is
+  stored but no SMTP transport is wired for notifications; nothing is claimed
+  sent.
+
+Unmapped event types stay in this events stream, unrouted — never force-fit
+into a class.
 
 Honest latency note: events produced inside the API process (pipeline runs
 inline when no Redis queue is configured, auth, keys) are pushed the instant

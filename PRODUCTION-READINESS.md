@@ -1,6 +1,6 @@
 # CryptoScan production readiness — current evidence gate
 
-**Current as of:** 2026-10-04 UTC
+**Current as of:** 2026-10-16 UTC
 **Source of truth:** `scripts/bank_readiness.py` → `docs/readiness-evidence/bank-readiness.{json,md}`
 **Scope:** repository controls plus customer/provider qualification evidence.
 
@@ -124,6 +124,14 @@ session can close):
    on 2026-10-04 is directly reusable for the `topology_dr_drill` (P0-4)
    and `target_topology_load_soak` (P1-2) artifact kinds once a continuity
    plan approval and evidence owner sign them.
+
+**2026-10-16 engineering-gate discipline.** Rounds 50–79 (per-round ledger:
+`audit_reports/00_ROUND_STATUS.md`) continued the full serial gate before every
+push — ruff repo-wide, the complete backend suite (7,618 passed / 34 skipped at
+round 79), the Vitest frontend suite (334 tests, clean `tsc --noEmit`) — with
+`engineering_gate.py` and `bank_readiness.py` evidence regenerated at each push.
+The verdict remains FAIL solely on the credential-blocked categories above;
+no in-repo check is failing.
 
 **2026-10-14 re-verification.** Blockers 1 and 2 were re-attempted with the
 current automation credential and remain hard-blocked: the session token is a

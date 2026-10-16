@@ -30,12 +30,12 @@ routes are authentication flows, not primary navigation entries.
 | Sidebar label | Route | Component | Purpose |
 |---|---|---|---|
 | Scan | `/scanners` | `Scanners` | Start and monitor authorized collection jobs. |
-| Assets | `/assets` | `Assets` | Browse the unified asset inventory. |
+| Assets | `/assets` | `Assets` | Browse the unified asset inventory; detail carries identity spine, facts, blast radius and the remediation tasks bound to the asset's evidence. |
 | Network | `/network` | `Network` | Review network inventory and authorized network-scan results. |
 | Cloud | `/cloud` | `Cloud` | Review connected AWS, Azure and GCP inventory. |
 | Applications | `/dev-sec-ops` | `DevSecOps` | Source, container, SBOM, binary and firmware workflows. |
 | Hardware | `/hardware` | `Hardware` | Hardware, HSM, TPM and firmware inventory. |
-| Certificates | `/certificates` | `Certificates` | Certificate and PKI lifecycle inventory. |
+| Certificates | `/certificates` | `Certificates` | Live TLS-scan view plus the persisted estate: fingerprint-deduped rows, where observed, honest revocation checks and ownership assignment. |
 | Vendors | `/vendor` | `Vendor` | Vendor, product and supply-chain relationships. |
 | Vendor Due Diligence | `/vendor-due-diligence` | `VendorDueDiligence` | Strict, versioned supplier profile, completeness, evidence provenance and due-diligence risk review. |
 
@@ -44,7 +44,7 @@ routes are authentication flows, not primary navigation entries.
 | Sidebar label | Route | Component | Purpose |
 |---|---|---|---|
 | CBOM | `/cbom` | `Cbom` | Cryptographic assets, algorithms, libraries, protocols and CBOM views. |
-| HBOM | `/hbom` | `Hbom` | Hardware and firmware materialized view. |
+| HBOM | `/hbom` | `Hbom` | Live-scan BOM plus the independent unified estate HBOM — content-addressed pins with pin-to-pin diff. |
 | NBOM | `/nbom` | `Nbom` | Network BOM view; static binary capability candidates remain separate from live network observations. |
 | Dependency Graph | `/graph` | `Graph` | Relationships, dependencies and blast-radius exploration. |
 | Crypto Inventory | `/crypto-assets` | `CryptoAssets` | Normalized cryptographic asset inventory. |
@@ -59,7 +59,7 @@ routes are authentication flows, not primary navigation entries.
 | Banking & SWIFT | `/banking-regulatory` | `BankingRegulatory` | Banking, payment and SWIFT-oriented regulatory mapping. |
 | Policies | `/security-policy` | `SecurityPolicy` | Deterministic policy packs, scope and policy decisions. |
 | Compliance | `/compliance` | `Compliance` | Framework mappings and compliance evidence. |
-| Evidence | `/evidence` | `Evidence` | Hashes, manifests, verification and evidence packages. |
+| Evidence | `/evidence` | `Evidence` | Hashes, manifests, scan and per-record verification (with an X-of-Y coverage line), and the filterable, exportable audit ledger. |
 | Audit Log | `/security-center` | `SecurityCenter` | Audit and platform-security review from the governance context. |
 
 ### Output
@@ -73,7 +73,7 @@ routes are authentication flows, not primary navigation entries.
 
 | Sidebar label | Route | Component | Purpose |
 |---|---|---|---|
-| System Health | `/system-health` | `SystemHealth` | Health, readiness and platform service status. |
+| System Health | `/system-health` | `SystemHealth` | Health, readiness and platform service status — with independently measured worker-fleet and connector health (never derived from API liveness). |
 | Settings & Org | `/settings` | `Settings` | Organization and application settings. |
 | Security Center | `/security-center` | `SecurityCenter` | Platform security posture and operational controls. |
 | Users & Teams | `/identity` | `Identity` | Users, roles, MFA and identity administration. |
@@ -103,7 +103,7 @@ or role workspace rather than reintroduced as a second competing sidebar.
 |---|---|
 | Overview and role workspaces | `/accuracy`, `/executive`, `/role-dashboard`, `/search-results`, `/timeline` |
 | Discovery and collection | `/admin`, `/catalog`, `/cmdb`, `/live-environment`, `/live-scanners`, `/onboarding`, `/runtime`, `/sectors`, `/telecom` |
-| Intelligence and analysis | `/crypto`, `/crypto-assurance`, `/crypto-changes`, `/dependency-graph`, `/findings`, `/libraries`, `/migration`, `/pqc-map`, `/priorities`, `/protocols`, `/risk`, `/security-intelligence` |
+| Intelligence and analysis | `/crypto`, `/crypto-assurance`, `/crypto-changes`, `/dependency-graph`, `/findings`, `/libraries`, `/migration`, `/priorities`, `/pqc-map`, `/protocols`, `/remediation`, `/risk`, `/security-intelligence` (`/remediation`: the task lifecycle view — server-side status filtering across the full state machine, per-task verification verdicts, accept/complete/re-verify with API refusals surfaced verbatim) |
 | Governance and administration | `/alerts`, `/automation`, `/governance`, `/notifications`, `/organization`, `/platform-p2`, `/resilience`, `/security`, `/scope`, `/supervision`, `/tenancy`, `/trust` |
 
 Authentication and entry flows are also routed but are not sidebar pages:

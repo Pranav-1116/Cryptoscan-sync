@@ -2,7 +2,7 @@
 
 Production cryptographic inventory and compliance platform — **Full End-to-End Product**.
 
-**Current Stats (2026-10-13, measured):** 51 services (~373k lines of Python), 101 API router modules, **815 API paths / 901 operations** (regenerated reference: `docs/api-reference/rest-api.md`), 91 alembic migrations with schema-parity tests, 88 frontend page components with lazy-loaded routes, 756 backend test files (full local suite: 7,421 passed / 31 skipped) plus a 259-test Vitest frontend suite. Deterministic policy — no AI in the decision path.
+**Current Stats (2026-10-16, measured):** 51 services (~389k lines of Python), 103 API router modules, **834 API paths / 920 operations** (regenerated reference: `docs/api-reference/rest-api.md`), 95 alembic migrations with schema-parity tests, 75 frontend page components with lazy-loaded routes, 781 backend test files (full local suite: 7,618 passed / 34 skipped) plus a 334-test Vitest frontend suite with clean `tsc --noEmit`. Deterministic policy — no AI in the decision path. Per-round build ledger: `audit_reports/00_ROUND_STATUS.md` (complete through round 79).
 
 **Real-Time System:** WebSocket hub per topic /ws/{topic} plus global /ws/global; SSE /events/{topic} and /events/global; in-process event bus (publish/subscribe/recent) with a DB tailer that federates cross-process monitor events; live dashboard at /live/dashboard with history replay and auto-reconnect. Deterministic and auditable.
 

@@ -168,7 +168,7 @@ someone who does not trust the server._
 | Feature | What it does | Page · API · service | Tier |
 |---|---|---|---|
 | Evidence chain | `content_hash → chain_hash → manifest_hash` (SHA-256) per scan; chain includes the previous record | `/evidence` · `scans/{id}/verify` · `evidence` | GA |
-| Verification on demand | recomputes every hash; returns `chain_intact`, `PASS/FAIL`, first broken index; logged to `verification_log` | `/evidence` · `scans/{id}/verify` | GA |
+| Verification on demand | recomputes every hash; returns `chain_intact`, `PASS/FAIL`, first broken index; logged to `verification_log`; PER-RECORD verification at `GET /findings/{evidence_id}/verify` shares the verdict core with the scan sweep (Findings drawer + Evidence page, honest X-of-Y coverage) | `/evidence` · `scans/{id}/verify` · `findings/{id}/verify` | GA |
 | Hash-chained audit log | every auth/admin action chained; incremental verify; examiner-ready export ZIP | Audit Log · `audit-export/pack` · `api` | GA |
 | Artifact provenance | stored bytes + sha256 + HMAC manifest for every SBOM/binary artifact; `/verify` detects byte flips and manifest edits | DevSecOps · `devsecops/sbom/{id}/verify` | GA |
 | WORM retention gate | append-only stores refuse truncation or deletion | — · `compliance` | GA |
@@ -389,7 +389,7 @@ _Stop bad change at the pipeline; act only with the required human authorisation
 | Offline advisory matching and VEX | feed you supply; `exploitable` with fix, `not_affected` requires a justified operator statement (else 422) | DevSecOps · `devsecops/sbom/advisories`, `vex` | GA |
 | Licence policy | SPDX family-aware matching, undeclared reported as undeclared, copyleft review trigger | DevSecOps · `devsecops/sbom/license` | GA |
 | **Monitor daemon** | watch-list of repos, hosts, endpoints; scheduled scans; alert-once with cooldown | Alerts, Live Stream · `monitor/*` · `scripts/run_monitor.py`, `api/live_scan` | GA |
-| Alerts and notifications | in-app, email, webhook, SIEM channels; per-tenant routing by event class | `/alerts`, `/notifications` · `alerts`, `notifications` | GA / beta |
+| Alerts and notifications | in-app, email, webhook, SIEM channels; per-tenant routing by event class — and the routing is LOAD-BEARING: the in-app feed (`GET /notifications/feed`) only shows classes routed to in-app, and the operator-triggered outward drain (`POST /notifications/dispatch`) sends each routed notification once per tenant over real signed HTTP (SIEM→SIEM/SOAR receivers, webhook→ITSM/CMDB), every attempt audited in the delivery log | `/alerts`, `/notifications` · `alerts`, `notifications` | GA / beta |
 | **Automation engine** | deterministic WHEN/IF/THEN plans, safety tiers, fail-closed approval gates; playbooks (certificate rotation, NF-down, crypto-team notify) | `/automation` · `automation/*` · `automation`, `control_plane` | beta |
 | Remediation | deterministic suggestions and work orders — never a compliance determination | Findings · `remediation` · `remediation` | GA |
 | SLA tracking | remediation deadlines by severity | — · `sla` | preview |
@@ -466,12 +466,16 @@ production.
 - **Health and metrics.** `/health`, `/readyz` (drain semantics), `/metrics`
   for Prometheus; Grafana dashboard in `infra/monitoring`; structured logs
   with request-id and trace middleware; the System Health page reads the
-  same endpoints.
+  same endpoints — plus the independent worker-fleet
+  (`GET /health/worker-fleet`: job statuses, stuck running, stale leases,
+  monitor-lease heartbeat, drain evidence) and connector
+  (`GET /health/connectors`: measured from the delivery audit) probes,
+  never derived from API liveness.
 - **Backups and recovery.** `scripts/db_backup.sh` (pg dump + SHA-256
   manifest + retention, systemd timer); `db_restore.sh`; PITR and restore
   drills with recorded results; evidence backup verify; DR runbook. A backup
   on the same disk is not a backup — the runbook says so.
-- **Migrations.** Alembic 0001–0060, contiguous (`release_check.py`
+- **Migrations.** Alembic 0001–0095, contiguous (`release_check.py`
   enforces). Applied and tested on a real PostgreSQL 16
   (`test_migration_chain_postgres.py`). Before 2026-09-23 the chain did not
   apply on Postgres — found by the first staging bring-up and fixed.
