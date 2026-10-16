@@ -1238,6 +1238,34 @@ export const apiHbomSnapshot = (id: string): Promise<ApiResult<HbomSnapshotMeta 
   _rsGet<HbomSnapshotMeta & { integrity: string; integrity_note: string; payload: HbomEstateDocument }>(
     `/api/v1/hbom/snapshots/${encodeURIComponent(id)}`);
 
+/* §4.4 (round 72): the exact drift between two pinned estate HBOMs —
+ * devices added/removed and field-level drift on survivors (firmware,
+ * TPM/HSM posture, capabilities, risk, identity fingerprints), computed
+ * from the two content-addressed payloads on every call, never stored.
+ * key_by="asset_id" (default): device-keyed estate drift, observation
+ * churn excluded by name; "bom_ref": exact comparison of everything. */
+export interface HbomDiffChange { path: string; before: unknown; after: unknown }
+export interface HbomSnapshotDiff {
+  key_by: string; identical: boolean; excluded_paths: string[];
+  components: {
+    key_by: string;
+    added: Array<{ key: string; "bom-ref"?: string; name?: string; type?: string }>;
+    removed: Array<{ key: string; "bom-ref"?: string; name?: string; type?: string }>;
+    changed: Array<{ key: string; "bom-ref"?: string; changes: HbomDiffChange[] }>;
+    unchanged: number;
+  };
+  metadata_changes: HbomDiffChange[];
+  summary: {
+    baseline_components: number; target_components: number;
+    added: number; removed: number; changed: number; unchanged: number;
+  };
+}
+export const apiHbomSnapshotDiff = (
+  targetId: string, againstId: string, keyBy: "asset_id" | "bom_ref" = "asset_id",
+): Promise<ApiResult<{ target: HbomSnapshotMeta & { as_of: string | null };
+  baseline: HbomSnapshotMeta & { as_of: string | null }; diff: HbomSnapshotDiff; note: string }>> =>
+  _rsGet(`/api/v1/hbom/snapshots/${encodeURIComponent(targetId)}/diff?against=${encodeURIComponent(againstId)}&key_by=${keyBy}`);
+
 /** The caller's effective ABAC scope (Region→BU→Environment→Asset grants). */
 export const apiMyGrants = (): Promise<ApiResult<{ principal: string; roles: string[]; grants: Array<Record<string, unknown>>; count: number; abac_enforced: boolean }>> =>
   call("/api/v1/control/me/grants");

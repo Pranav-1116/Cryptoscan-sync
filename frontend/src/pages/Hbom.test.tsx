@@ -84,6 +84,13 @@ const snapshotRow = {
   snapshotted_at: "2026-10-16T10:00:00+00:00", as_of: "2026-10-16T09:00:00+00:00",
   verify_path: "/api/v1/hbom/snapshots/snap-hbom-1",
 };
+const olderSnapshotRow = {
+  ...snapshotRow,
+  snapshot_id: "snap-hbom-0", content_hash: "0".repeat(64),
+  component_count: 2, snapshotted_at: "2026-10-15T10:00:00+00:00",
+  as_of: "2026-10-15T09:00:00+00:00",
+  verify_path: "/api/v1/hbom/snapshots/snap-hbom-0",
+};
 
 describe("HBOM page", () => {
   it("renders the estate document with identity, evidence and its content hash", async () => {
@@ -184,6 +191,92 @@ describe("HBOM page", () => {
     fireEvent.click(await screen.findByText("Verify & View"));
     expect(await screen.findByText("MISMATCH")).toBeTruthy();
     expect(screen.getByText(/Do not trust it/i)).toBeTruthy();
+  });
+
+  it("compares two pins — devices added/removed and field drift on survivors", async () => {
+    const fetchMock = mockFetch({
+      "/api/v1/live-scan/bom": emptyLiveBom,
+      "/api/v1/hbom": estateDoc,
+      "/api/v1/hbom/snapshots": { snapshots: [snapshotRow, olderSnapshotRow], count: 2, note: "" },
+      "/api/v1/hbom/snapshots/snap-hbom-1/diff": (url: string) => {
+        // route key has the query stripped by the harness; both keying
+        // modes answer from the same pinned pair
+        if (url.includes("key_by=bom_ref")) {
+          return {
+            target: snapshotRow, baseline: olderSnapshotRow, note: "",
+            diff: {
+              key_by: "bom_ref", identical: false, excluded_paths: [],
+              components: {
+                key_by: "bom_ref",
+                added: [{ key: "hw:hw-se-1", name: "NXP SE050" }],
+                removed: [{ key: "hw:hw-tpm-1", name: "Infineon SLB9665" }],
+                changed: [
+                  { key: "hw:hw-hsm-1", "bom-ref": "hw:hw-hsm-1", changes: [
+                    { path: "firmware.details.version", before: "4.21.2", after: "4.22.0" },
+                    { path: "evidence.last_seen", before: "2026-10-10T09:30:00+00:00",
+                      after: "2026-10-17T09:30:00+00:00" },
+                  ] },
+                ],
+                unchanged: 0,
+              },
+              metadata_changes: [],
+              summary: { baseline_components: 2, target_components: 2,
+                         added: 1, removed: 1, changed: 1, unchanged: 0 },
+            },
+          };
+        }
+        return {
+          target: snapshotRow, baseline: olderSnapshotRow, note: "",
+          diff: {
+            key_by: "asset_id", identical: false,
+            excluded_paths: ["evidence.last_seen", "as_of"],
+            components: {
+              key_by: "asset_id",
+              added: [{ key: "hw:hw-se-1", name: "NXP SE050" }],
+              removed: [{ key: "hw:hw-tpm-1", name: "Infineon SLB9665" }],
+              changed: [
+                { key: "hw:hw-hsm-1", "bom-ref": "hw:hw-hsm-1", changes: [
+                  { path: "firmware.details.version", before: "4.21.2", after: "4.22.0" },
+                ] },
+              ],
+              unchanged: 0,
+            },
+            metadata_changes: [],
+            summary: { baseline_components: 2, target_components: 2,
+                       added: 1, removed: 1, changed: 1, unchanged: 0 },
+          },
+        };
+      },
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Unified estate HBOM")).toBeTruthy());
+
+    // diff the newest pin against the previous (older) one
+    fireEvent.click(await screen.findByText("Diff vs Prev Pin"));
+    await waitFor(() => expect(screen.getByText("PIN COMPARISON")).toBeTruthy());
+    expect(screen.getByText("+1 devices added")).toBeTruthy();
+    expect(screen.getByText("−1 removed")).toBeTruthy();
+    expect(screen.getByText("1 changed")).toBeTruthy();
+    // field-level drift on the surviving device
+    expect(await screen.findByText("hw:hw-hsm-1")).toBeTruthy();
+    expect(screen.getByText(/firmware\.details\.version/)).toBeTruthy();
+    expect(screen.getByText("4.22.0")).toBeTruthy();
+    // estate mode names what it excluded as observation churn
+    expect(screen.getByText(/Excluded as observation churn/i)).toBeTruthy();
+    // the diff fetch carried the default estate keying
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/hbom/snapshots/snap-hbom-1/diff?against=snap-hbom-0&key_by=asset_id"),
+      expect.anything());
+
+    // switching to exact mode refetches with key_by=bom_ref and shows
+    // the observation churn path estate mode excludes
+    fireEvent.click(screen.getByText("exact"));
+    await waitFor(() => expect(screen.getByText(/evidence\.last_seen/)).toBeTruthy());
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("key_by=bom_ref"),
+      expect.anything());
+    expect(screen.getByText(/Exact mode: every field the documents carry/i)).toBeTruthy();
   });
 
   it("stays honest when the backend is unreachable", async () => {

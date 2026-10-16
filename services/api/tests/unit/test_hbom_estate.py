@@ -213,3 +213,79 @@ async def test_snapshot_served_verbatim_with_integrity_self_check():
         unknown = await c.get("/api/v1/hbom/snapshots/does-not-exist")
         assert unknown.status_code == 404
     engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_diff_shows_estate_drift_between_two_pins():
+    app, session, engine = _make_app()
+    _seed_hsm(session)
+    _seed_tpm(session)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        first = (await c.post("/api/v1/hbom/snapshot")).json()
+        assert first["created"] is True
+
+        # estate change: firmware bump on the surviving HSM, TPM gone,
+        # one brand-new secure element observed
+        hsm = session.query(HardwareAsset).filter(
+            HardwareAsset.asset_id == "hw-hsm-1").one()
+        hsm.firmware = {"version": "4.22.0"}
+        hsm.risk_score = 70
+        hsm.risk_level = "HIGH"
+        tpm = session.query(HardwareAsset).filter(
+            HardwareAsset.asset_id == "hw-tpm-1").one()
+        session.delete(tpm)
+        session.commit()
+        session.add(HardwareAsset(
+            asset_id="hw-se-1", agent_id="agent-dc-1",
+            manufacturer="NXP", model="SE050", device_type="secure_element",
+            current_fingerprint="c" * 64, first_seen=NOW, last_seen=NOW,
+            firmware=None, tpm=None, hsm=None,
+            evidence_history=["ev-s1"], risk_score=5, risk_level="LOW",
+        ))
+        session.commit()
+
+        second = (await c.post("/api/v1/hbom/snapshot")).json()
+        assert second["created"] is True
+        assert second["content_hash"] != first["content_hash"]
+
+        # self-diff of one pin is identical
+        self_diff = await c.get(
+            f"/api/v1/hbom/snapshots/{second['snapshot_id']}/diff",
+            params={"against": second["snapshot_id"]})
+        assert self_diff.status_code == 200, self_diff.text
+        assert self_diff.json()["diff"]["identical"] is True
+
+        # target=second vs baseline=first: the estate drift
+        r = await c.get(f"/api/v1/hbom/snapshots/{second['snapshot_id']}/diff",
+                        params={"against": first["snapshot_id"]})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["target"]["snapshot_id"] == second["snapshot_id"]
+        assert body["baseline"]["snapshot_id"] == first["snapshot_id"]
+        assert body["diff"]["summary"] == {
+            "baseline_components": 2, "target_components": 2,
+            "added": 1, "removed": 1, "changed": 1, "unchanged": 0,
+        }
+        assert body["diff"]["components"]["added"][0]["key"] == "hw:hw-se-1"
+        assert body["diff"]["components"]["removed"][0]["key"] == "hw:hw-tpm-1"
+        (changed,) = body["diff"]["components"]["changed"]
+        assert changed["key"] == "hw:hw-hsm-1"
+        by_path = {ch["path"]: (ch["before"], ch["after"]) for ch in changed["changes"]}
+        assert by_path["firmware.details.version"] == ("4.21.2", "4.22.0")
+        assert by_path["risk.level"] == ("MEDIUM", "HIGH")
+
+        # missing either side is a 404, not a fabricated diff
+        missing = await c.get(
+            f"/api/v1/hbom/snapshots/{second['snapshot_id']}/diff",
+            params={"against": "does-not-exist"})
+        assert missing.status_code == 404
+        missing_target = await c.get("/api/v1/hbom/snapshots/none/diff",
+                                     params={"against": first["snapshot_id"]})
+        assert missing_target.status_code == 404
+
+        # bad keying mode is rejected
+        bad = await c.get(
+            f"/api/v1/hbom/snapshots/{second['snapshot_id']}/diff",
+            params={"against": first["snapshot_id"], "key_by": "spine"})
+        assert bad.status_code == 422
+    engine.dispose()

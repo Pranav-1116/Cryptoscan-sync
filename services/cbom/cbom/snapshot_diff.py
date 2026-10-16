@@ -107,7 +107,8 @@ def _diff_component(before: dict[str, Any], after: dict[str, Any],
 
 
 def diff_components(before: list[dict[str, Any]], after: list[dict[str, Any]],
-                    *, key_by: str = "bom_ref") -> dict[str, Any]:
+                    *, key_by: str = "bom_ref",
+                    excludes: tuple[str, ...] | None = None) -> dict[str, Any]:
     """Set + field diff of two component lists.
 
     key_by="bom_ref" (default): exact same-scan semantics — the per-scan
@@ -119,10 +120,15 @@ def diff_components(before: list[dict[str, Any]], after: list[dict[str, Any]],
     100% turnover. Spine keying joins the same crypto fact across scans
     and compares only asset-stable fields (observation-position and
     hash fields are excluded, named in SPINE_EXCLUDED_PATHS).
+
+    excludes: additional caller-supplied paths to exclude from field
+    drift (same path grammar as SPINE_EXCLUDED_PATHS). The HBOM estate
+    diff (round 72) uses this to separate observation churn from estate
+    drift; the default () changes nothing for existing callers.
     """
     if key_by not in {"bom_ref", "asset_key"}:
         raise ValueError(f"unknown key_by {key_by!r}")
-    excludes = SPINE_EXCLUDED_PATHS if key_by == "asset_key" else ()
+    all_excludes = (SPINE_EXCLUDED_PATHS if key_by == "asset_key" else ()) + tuple(excludes or ())
     key_of = (stable_component_key if key_by == "asset_key" else component_ref)
     before_map = {key_of(c): c for c in before or []}
     after_map = {key_of(c): c for c in after or []}
@@ -131,7 +137,7 @@ def diff_components(before: list[dict[str, Any]], after: list[dict[str, Any]],
     changed = []
     unchanged = 0
     for key in sorted(set(before_map) & set(after_map)):
-        changes = _diff_component(before_map[key], after_map[key], excludes)
+        changes = _diff_component(before_map[key], after_map[key], all_excludes)
         if changes:
             changed.append({"key": key,
                             "bom-ref": before_map[key].get("bom-ref"),

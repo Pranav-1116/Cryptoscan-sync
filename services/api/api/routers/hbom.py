@@ -20,7 +20,10 @@ wall clock — so it can be PINNED content-addressed:
   (tenant, environment, content) pins collapse idempotently;
 * ``GET  /hbom/snapshots`` — the pinned list;
 * ``GET  /hbom/snapshots/{id}`` — serve the EXACT stored document
-  verbatim with an integrity self-check (OK / MISMATCH).
+  verbatim with an integrity self-check (OK / MISMATCH);
+* ``GET  /hbom/snapshots/{id}/diff?against={baseline}`` — the exact
+  drift between two pins (round 72): devices added/removed, field-level
+  drift on survivors, computed from the two pinned payloads.
 
 No dependency edges are invented: no collector records
 hardware→system linkage today, and the document says so.
@@ -40,6 +43,7 @@ from cbom.hbom import (
     hbom_hash_matches,
     to_cyclonedx,
 )
+from cbom.hbom_diff import diff_hbom_documents
 from db.models.hardware_live import HardwareAsset
 from db.models.hbom_snapshot import HbomSnapshot
 from db.tenancy import filtered_get
@@ -188,3 +192,60 @@ def get_hbom_snapshot(
     )
     out["payload"] = payload
     return out
+
+
+@router.get("/snapshots/{snapshot_id}/diff")
+def diff_hbom_snapshot(
+    snapshot_id: str,
+    against: str = Query(..., description="snapshot_id of the baseline to diff against"),
+    key_by: str = Query("asset_id", pattern="^(asset_id|bom_ref)$",
+                        description="asset_id: device-keyed estate drift (observation "
+                                    "churn excluded); bom_ref: exact comparison of "
+                                    "everything the documents carry"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Compare two pinned estate HBOMs (§4.4, round 72).
+
+    ``GET /snapshots/{id}/diff?against={baseline}`` answers the
+    operator's question after the estate changed: which devices were
+    added, which are gone, and what drifted on the survivors (firmware,
+    TPM/HSM posture, capabilities, risk, identity fingerprints). The
+    diff is computed from the two content-addressed payloads on every
+    call, never stored; its trustworthiness is the pins'.
+    """
+    target = filtered_get(db, HbomSnapshot, snapshot_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    baseline = filtered_get(db, HbomSnapshot, against)
+    if baseline is None:
+        raise HTTPException(status_code=404, detail="Baseline snapshot not found")
+    try:
+        result = diff_hbom_documents(baseline.payload, target.payload, key_by=key_by)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "target": {
+            "snapshot_id": target.id,
+            "environment": target.environment,
+            "content_hash": target.content_hash,
+            "component_count": target.component_count,
+            "as_of": target.as_of,
+            "snapshotted_at": target.snapshotted_at.isoformat() if target.snapshotted_at else None,
+            "verify_path": f"/api/v1/hbom/snapshots/{target.id}",
+        },
+        "baseline": {
+            "snapshot_id": baseline.id,
+            "environment": baseline.environment,
+            "content_hash": baseline.content_hash,
+            "component_count": baseline.component_count,
+            "as_of": baseline.as_of,
+            "snapshotted_at": baseline.snapshotted_at.isoformat() if baseline.snapshotted_at else None,
+            "verify_path": f"/api/v1/hbom/snapshots/{baseline.id}",
+        },
+        "diff": result,
+        "note": (
+            "Computed from the two pinned payloads (never stored). "
+            "'added' = present in the target snapshot only."
+        ),
+    }

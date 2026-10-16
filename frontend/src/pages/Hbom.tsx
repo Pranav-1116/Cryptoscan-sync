@@ -4,8 +4,8 @@ import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import {
   apiLiveBom, LiveBomResponse,
-  apiHbomEstate, apiHbomPin, apiHbomSnapshot, apiHbomSnapshots,
-  HbomEstateDocument, HbomSnapshotMeta,
+  apiHbomEstate, apiHbomPin, apiHbomSnapshot, apiHbomSnapshots, apiHbomSnapshotDiff,
+  HbomEstateDocument, HbomSnapshotMeta, HbomSnapshotDiff,
 } from "../lib/api.js";
 
 /* HBOM — two honest surfaces (§4.4):
@@ -34,6 +34,13 @@ export default function Hbom() {
   const [pinBusy, setPinBusy] = useState(false);
   const [pinResult, setPinResult] = useState<string | null>(null);
   const [openSnapshot, setOpenSnapshot] = useState<any>(null);
+  // §4.4 (round 72): two-pin estate comparison — "asset_id" joins by
+  // device and ignores observation churn (named exclusions); "bom_ref"
+  // compares everything the documents carry.
+  const [diffFor, setDiffFor] = useState<string | null>(null);
+  const [diffData, setDiffData] = useState<HbomSnapshotDiff | null>(null);
+  const [diffKeyBy, setDiffKeyBy] = useState<"asset_id" | "bom_ref">("asset_id");
+  const [diffBusy, setDiffBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -82,6 +89,21 @@ export default function Hbom() {
       setOpenSnapshot(r.data);
     } else {
       setOpenSnapshot({ snapshot_id: id, integrity: "UNAVAILABLE", integrity_note: "Snapshot could not be loaded." });
+    }
+  }
+
+  async function loadDiff(targetId: string, againstId: string, keyBy: "asset_id" | "bom_ref") {
+    setDiffBusy(true);
+    try {
+      const r = await apiHbomSnapshotDiff(targetId, againstId, keyBy);
+      setDiffFor(targetId);
+      if (r.source === "live" && r.data) {
+        setDiffData(r.data.diff);
+      } else {
+        setDiffData(null);
+      }
+    } finally {
+      setDiffBusy(false);
     }
   }
 
@@ -204,7 +226,7 @@ export default function Hbom() {
                 </tr>
               </thead>
               <tbody>
-                {snapshots.map((s) => (
+                {snapshots.map((s, index) => (
                   <React.Fragment key={s.snapshot_id}>
                     <tr>
                       <td>
@@ -216,13 +238,33 @@ export default function Hbom() {
                       <td><span style={{ fontSize: 12, color: "var(--dim)" }}>{s.snapshotted_at ? new Date(s.snapshotted_at).toLocaleString() : "—"}</span></td>
                       <td><span style={{ fontSize: 12 }}>{s.created_by || "—"}</span></td>
                       <td>
-                        <button
-                          className="btn sm"
-                          onClick={() => void viewSnapshot(s.snapshot_id)}
-                          style={{ fontSize: 11.5, padding: "4px 10px" }}
-                        >
-                          {openSnapshot?.snapshot_id === s.snapshot_id ? "Hide" : "Verify & View"}
-                        </button>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            className="btn sm"
+                            onClick={() => void viewSnapshot(s.snapshot_id)}
+                            style={{ fontSize: 11.5, padding: "4px 10px" }}
+                          >
+                            {openSnapshot?.snapshot_id === s.snapshot_id ? "Hide" : "Verify & View"}
+                          </button>
+                          {snapshots.length > 1 && index < snapshots.length - 1 && (
+                            <button
+                              className="btn sm outline"
+                              disabled={diffBusy}
+                              onClick={() => {
+                                if (diffFor === s.snapshot_id) {
+                                  setDiffFor(null);
+                                  setDiffData(null);
+                                } else {
+                                  void loadDiff(s.snapshot_id, snapshots[index + 1].snapshot_id, diffKeyBy);
+                                }
+                              }}
+                              style={{ fontSize: 11.5, padding: "4px 10px" }}
+                              title={"Compare this pin against the previous (older) pin — computed from the two pinned payloads, never stored."}
+                            >
+                              {diffFor === s.snapshot_id ? "Hide Diff" : "Diff vs Prev Pin"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                     {openSnapshot?.snapshot_id === s.snapshot_id && (
@@ -253,6 +295,94 @@ export default function Hbom() {
                                 <pre style={{ fontSize: 11, margin: 0, maxHeight: 220, overflow: "auto", background: "var(--bg-1)", padding: 8, border: "1px solid var(--line)" }}>
                                   {JSON.stringify(openSnapshot.payload, null, 2)}
                                 </pre>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {diffFor === s.snapshot_id && (
+                      <tr>
+                        <td colSpan={7} style={{ background: "var(--bg-2)", borderTop: "1px dashed var(--line)" }}>
+                          <div style={{ padding: "10px 4px", display: "grid", gap: 8 }}>
+                            <div style={{ fontSize: 12.5, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                              <strong style={{ fontSize: 12 }}>PIN COMPARISON</strong>
+                              {diffData ? (
+                                <>
+                                  <Badge variant={diffData.summary.added > 0 ? "success" : "neutral"}>
+                                    +{diffData.summary.added} devices added
+                                  </Badge>
+                                  <Badge variant={diffData.summary.removed > 0 ? "danger" : "neutral"}>
+                                    −{diffData.summary.removed} removed
+                                  </Badge>
+                                  <Badge variant={diffData.summary.changed > 0 ? "warn" : "neutral"}>
+                                    {diffData.summary.changed} changed
+                                  </Badge>
+                                  <Badge variant="neutral">{diffData.summary.unchanged} unchanged</Badge>
+                                  {diffData.identical && <Badge variant="success">IDENTICAL ESTATE</Badge>}
+                                  <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
+                                    {(["asset_id", "bom_ref"] as const).map((mode) => (
+                                      <button
+                                        key={mode}
+                                        className={`btn sm ${diffKeyBy === mode ? "" : "outline"}`}
+                                        disabled={diffBusy}
+                                        onClick={() => {
+                                          setDiffKeyBy(mode);
+                                          void loadDiff(s.snapshot_id, snapshots[index + 1].snapshot_id, mode);
+                                        }}
+                                        style={{ fontSize: 11, padding: "3px 8px" }}
+                                        title={mode === "asset_id"
+                                          ? "Device-keyed estate drift — observation churn (re-observations) excluded by name"
+                                          : "Exact comparison — observation churn visible too"}
+                                      >
+                                        {mode === "asset_id" ? "estate drift" : "exact"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : (
+                                <span style={{ color: "var(--red)", fontSize: 12 }}>
+                                  Diff unavailable — the comparison could not be computed.
+                                </span>
+                              )}
+                            </div>
+                            {diffData && diffData.components.added.length > 0 && (
+                              <div style={{ fontSize: 12.5 }}>
+                                <strong style={{ fontSize: 12 }}>ADDED</strong>{" "}
+                                {diffData.components.added.map((a) => (
+                                  <span key={a.key} className="mono" style={{ marginRight: 10 }}>
+                                    {a.name || a.key}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {diffData && diffData.components.removed.length > 0 && (
+                              <div style={{ fontSize: 12.5 }}>
+                                <strong style={{ fontSize: 12 }}>REMOVED</strong>{" "}
+                                {diffData.components.removed.map((r) => (
+                                  <span key={r.key} className="mono" style={{ marginRight: 10 }}>
+                                    {r.name || r.key}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {diffData && diffData.components.changed.map((ch) => (
+                              <div key={ch.key} style={{ fontSize: 12.5, display: "grid", gap: 2 }}>
+                                <span className="mono" style={{ fontWeight: 600 }}>{ch.key}</span>
+                                {ch.changes.map((c) => (
+                                  <span key={c.path} style={{ color: "var(--dim)", fontSize: 12 }}>
+                                    {c.path}: <span className="mono">{String(c.before ?? "—")}</span> →{" "}
+                                    <span className="mono" style={{ color: "var(--amber)" }}>{String(c.after ?? "—")}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            ))}
+                            {diffData && (
+                              <div className="dim" style={{ fontSize: 11.5 }}>
+                                Computed from the two pinned payloads (never stored).
+                                {diffData.key_by === "asset_id"
+                                  ? ` Excluded as observation churn: ${diffData.excluded_paths.join(", ")}.`
+                                  : " Exact mode: every field the documents carry is compared."}
                               </div>
                             )}
                           </div>
