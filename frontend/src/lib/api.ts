@@ -2670,6 +2670,58 @@ export const apiCertRevoke = (fingerprint: string, reason: string) =>
   _rsPost<any>(`/api/v1/certificates/${encodeURIComponent(fingerprint)}/revoke`, { reason });
 export const apiCertRenewalQueue = () => _rsGet<any>("/api/v1/certificates/lifecycle/renewal-queue");
 
+/* §5 (round 74): the persisted certificate ESTATE — `certificates` rows
+ * deduped by SHA-256 fingerprint (owner, usages, revocation state,
+ * renewal workflow), distinct from the live TLS-scan view which is one
+ * ephemeral observation run. Owner absent stays absent ("unknown owner"
+ * is a fact, not an inference); usages are the recorded locations where
+ * the certificate was observed; the revocation check records that it
+ * RAN and what the OCSP/CRL probes determined — never a guess. */
+export interface CertificateEstateRow {
+  id: string;
+  fingerprint_sha256: string;
+  subject: string | null; issuer: string | null; serial_number: string | null;
+  not_before: string | null; not_after: string | null;
+  public_key_algorithm: string | null; public_key_size: number | null;
+  expiry_status: string | null; days_until_expiry: number | null;
+  is_self_signed: boolean | null;
+  owner: string | null; technical_contact: string | null;
+  revocation_status: string | null; revocation_method: string | null;
+  revocation_checked_at: string | null;
+  renewal_status: string | null; renewal_ticket: string | null;
+  san: string[] | null; usages: string[] | null;
+}
+export interface CertificateEstateList {
+  certificates: CertificateEstateRow[]; total_count: number;
+}
+export const apiCertificateEstate = (): Promise<ApiResult<CertificateEstateList>> =>
+  _rsGet<CertificateEstateList>("/api/v1/certificates");
+export interface CertificateUsageRow {
+  id: string; fingerprint_sha256: string;
+  usage_type: string; location: string; last_seen: string | null;
+}
+export const apiCertificateUsages = (certId: string): Promise<ApiResult<{
+  usages: CertificateUsageRow[]; certificate: CertificateEstateRow;
+}>> =>
+  _rsGet<{ usages: CertificateUsageRow[]; certificate: CertificateEstateRow }>(
+    `/api/v1/certificates/${encodeURIComponent(certId)}/usages`);
+export interface RevocationProbe {
+  status: string | null; method: string | null; urls: string[] | null;
+  checked_at?: string | null; [key: string]: unknown;
+}
+export const apiCertificateRevocationCheck = (certId: string): Promise<ApiResult<{
+  ocsp: RevocationProbe; crl: RevocationProbe;
+}>> =>
+  _rsPost<{ ocsp: RevocationProbe; crl: RevocationProbe }>(
+    `/api/v1/certificates/${encodeURIComponent(certId)}/revocation`, {});
+export const apiCertificateOwnership = (fingerprint: string, body: {
+  owner?: string; technical_contact?: string; reason: string;
+}): Promise<ApiResult<{
+  fingerprint_sha256: string; owner: string | null;
+  technical_contact: string | null; reason: string;
+}>> =>
+  _rsPost(`/api/v1/certificates/${encodeURIComponent(fingerprint)}/ownership`, body);
+
 /* Credential vault — vault-reference only (never inline secrets), short-lived
    leases with deterministic policy gates, rotation, and release. */
 export const apiVaultCredentials = () => _rsGet<any>("/api/v1/control/credentials");

@@ -1,5 +1,4 @@
-import { Link } from "react-router-dom";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer, Code } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
@@ -12,14 +11,28 @@ import {
   apiCertRenew,
   apiCertRevoke,
   apiCertRenewalQueue,
+  apiCertificateEstate,
+  apiCertificateOwnership,
+  apiCertificateRevocationCheck,
+  apiCertificateUsages,
+  CertificateEstateRow,
+  CertificateUsageRow,
+  RevocationProbe,
   LiveCertificate,
   LiveInventory,
   ExpiryCalendar,
 } from "../lib/api.js";
 
-/* Certificates — live certificate inventory observed on TLS endpoints by the
-   network scanner via GET /api/v1/live-scan/inventory. Empty until a network
-   scan runs. */
+/* Certificates — TWO honest surfaces:
+   1. The live TLS-scan inventory (GET /api/v1/live-scan/inventory) —
+      certificates a scan-run happened to observe. Empty until a scan
+      runs; ephemeral by nature.
+   2. The persisted certificate ESTATE (GET /api/v1/certificates,
+      round 74) — rows deduped by SHA-256 fingerprint with owner,
+      recorded usage locations, revocation state and the renewal
+      workflow. Owner absent renders as UNKNOWN — a fact, not an
+      inference; no task linkage is invented (tasks bind to evidence
+      records, certificates are not evidence records). */
 
 type CertRow = LiveCertificate & { sanCount?: number };
 
@@ -47,8 +60,198 @@ function CertDrawer({ cert, onClose }: { cert: CertRow; onClose: () => void }) {
           chain position: {cert.chain_position} of {cert.chain_length}
         </div>
       </Panel>
-      <Panel title="Evidence" sub="linked artifacts" frame className="mt">
-        <Link to="/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</Link>
+      <Panel title="Evidence" sub="what links here" frame className="mt">
+        <div className="dim" style={{ fontSize: 12 }}>
+          A live-scan certificate row is one observation run, not an evidence-chain record —
+          there is no per-record verification or task linkage to show here. The persisted
+          estate below carries the durable facts (owner, usages, revocation state).
+        </div>
+      </Panel>
+    </Drawer>
+  );
+}
+
+/* ── The persisted estate drawer (round 74) ────────────────────────── */
+
+function EstateCertDrawer({ cert, onClose }: { cert: CertificateEstateRow; onClose: () => void }) {
+  const days = cert.days_until_expiry;
+  // where this certificate was observed — the recorded usage locations
+  const [usages, setUsages] = useState<CertificateUsageRow[] | null>(null);
+  // revocation check result (OCSP + CRL probes)
+  const [revocation, setRevocation] = useState<{ ocsp: RevocationProbe; crl: RevocationProbe } | null>(null);
+  const [revokeBusy, setRevokeBusy] = useState(false);
+  const [revokeErr, setRevokeErr] = useState<string | null>(null);
+  // ownership assignment (audited, certificates.manage)
+  const [owner, setOwner] = useState("");
+  const [contact, setContact] = useState("");
+  const [reason, setReason] = useState("");
+  const [ownBusy, setOwnBusy] = useState(false);
+  const [ownMsg, setOwnMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setUsages(null);
+    setRevocation(null);
+    void apiCertificateUsages(cert.id).then((r) => {
+      if (!alive) return;
+      setUsages(r.source === "live" && r.data ? (r.data.usages ?? []) : null);
+    });
+    return () => { alive = false; };
+  }, [cert.id]);
+
+  async function runRevocationCheck() {
+    setRevokeBusy(true);
+    setRevokeErr(null);
+    const r = await apiCertificateRevocationCheck(cert.id);
+    setRevokeBusy(false);
+    if (r.source === "live" && r.data) {
+      setRevocation(r.data);
+    } else {
+      setRevocation(null);
+      setRevokeErr(r.error || "revocation check failed");
+    }
+  }
+
+  async function assignOwnership() {
+    if (!reason.trim()) {
+      setOwnMsg({ ok: false, text: "A reason is mandatory — the assignment is audited." });
+      return;
+    }
+    setOwnBusy(true);
+    setOwnMsg(null);
+    const r = await apiCertificateOwnership(cert.fingerprint_sha256, {
+      owner: owner.trim() || undefined,
+      technical_contact: contact.trim() || undefined,
+      reason: reason.trim(),
+    });
+    setOwnBusy(false);
+    if (r.source === "live" && r.data) {
+      setOwnMsg({ ok: true, text: `Ownership recorded — owner ${r.data.owner ?? "unchanged"}.` });
+    } else {
+      setOwnMsg({
+        ok: false,
+        text: r.error === "HTTP 403"
+          ? "Requires certificates.manage (superadmin / ciso / security_analyst)."
+          : r.error || "ownership assignment failed",
+      });
+    }
+  }
+
+  return (
+    <Drawer title={cert.subject || cert.fingerprint_sha256.slice(0, 16)}
+            sub={`estate row · ${cert.public_key_algorithm || "—"} ${cert.public_key_size ?? ""} · fp ${cert.fingerprint_sha256.slice(0, 12)}…`}
+            onClose={onClose}>
+      <div className="row" style={{ marginBottom: 16, flexWrap: "wrap" }}>
+        <Badge tone={certTone(cert.expiry_status || "")}>{cert.expiry_status || "UNKNOWN"}</Badge>
+        {days !== null && (
+          <Badge tone={days < 0 ? "red" : days < 30 ? "red" : days < 90 ? "amber" : "green"}>
+            {days} DAYS {days < 0 ? "PAST" : "LEFT"}
+          </Badge>
+        )}
+        {cert.owner
+          ? <Badge tone="green">OWNER {cert.owner}</Badge>
+          : <Badge tone="amber">OWNER UNKNOWN</Badge>}
+        {cert.revocation_status
+          ? <Badge tone={String(cert.revocation_status).toUpperCase().includes("REVOK") ? "red" : "cyan"}>
+              {String(cert.revocation_status).toUpperCase()}
+            </Badge>
+          : <Badge>REVOCATION UNCHECKED</Badge>}
+        {cert.is_self_signed && <Badge tone="amber">SELF-SIGNED</Badge>}
+      </div>
+
+      <Panel title="Certificate facts" sub="the persisted estate row" frame>
+        <div className="tree">
+          subject: <span className="hl">{cert.subject || "—"}</span><br />
+          issuer: {cert.issuer || "—"}<br />
+          serial: <span className="mono">{cert.serial_number || "—"}</span><br />
+          key: {cert.public_key_algorithm || "—"} {cert.public_key_size ?? ""} bits<br />
+          valid: {(cert.not_before || "—")} → {(cert.not_after || "—")}<br />
+          SAN: {(cert.san ?? []).join(", ") || "—"}
+        </div>
+      </Panel>
+
+      <Panel title="Where observed" sub="recorded usage locations (usages)" frame className="mt">
+        {usages === null && (
+          <div className="dim" style={{ fontSize: 12.5 }}>Usage lookup unavailable.</div>
+        )}
+        {usages !== null && usages.length === 0 && (
+          <div className="dim" style={{ fontSize: 12.5 }}>
+            No usage locations recorded for this certificate — it exists in the estate, but no
+            endpoint observation has been linked to it yet (unknown, not zero).
+          </div>
+        )}
+        {usages !== null && usages.length > 0 && (
+          <div className="mono-list">
+            {usages.map((u) => (
+              <div key={u.id || u.location} className="spread" style={{ fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--line)" }}>
+                <span className="mono">{u.location}</span>
+                <span className="row" style={{ gap: 6 }}>
+                  <Badge>{u.usage_type}</Badge>
+                  {u.last_seen && <span className="dim" style={{ fontSize: 11.5 }}>
+                    {new Date(u.last_seen).toLocaleString()}
+                  </span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Revocation check" sub="OCSP / CRL probes — what they determined, no guesses" frame className="mt">
+        <button className="btn sm" disabled={revokeBusy} onClick={() => void runRevocationCheck()} style={{ fontSize: 11.5 }}>
+          {revokeBusy ? "Checking…" : "Check revocation (OCSP / CRL)"}
+        </button>
+        {revokeErr && <div style={{ fontSize: 12.5, color: "var(--red)", marginTop: 8 }}>{revokeErr}</div>}
+        {revocation && (
+          <div className="mono-list" style={{ marginTop: 10 }}>
+            {(["ocsp", "crl"] as const).map((kind) => {
+              const probe = revocation[kind];
+              return (
+                <div key={kind} className="spread" style={{ fontSize: 12.5, padding: "5px 0", borderBottom: "1px solid var(--line)" }}>
+                  <span className="mono">{kind.toUpperCase()}</span>
+                  <span className="row" style={{ gap: 6 }}>
+                    <Badge tone={probe.status ? (String(probe.status).toUpperCase().includes("REVOK") ? "red" : "green") : ""}>
+                      {probe.status ? String(probe.status).toUpperCase() : "UNDETERMINED"}
+                    </Badge>
+                    {probe.method && <span className="dim" style={{ fontSize: 11.5 }}>{probe.method}</span>}
+                  </span>
+                </div>
+              );
+            })}
+            <div className="dim" style={{ fontSize: 11.5, marginTop: 6 }}>
+              The offline parse reports what the certificate's own AIA URLs allow — absent URLs
+              mean UNDETERMINED, never "good". Checked at is recorded even then.
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Ownership" sub="assign a direct owner + technical contact (audited)" frame className="mt">
+        <div className="tree" style={{ marginBottom: 10 }}>
+          current owner: <span className="hl">{cert.owner || "— none assigned —"}</span><br />
+          technical contact: {cert.technical_contact || "—"}
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input className="inp" style={{ maxWidth: 200 }} placeholder="owner" value={owner} onChange={(e) => setOwner(e.target.value)} />
+          <input className="inp" style={{ maxWidth: 220 }} placeholder="technical contact" value={contact} onChange={(e) => setContact(e.target.value)} />
+        </div>
+        <input className="inp" style={{ marginTop: 8, width: "100%" }} placeholder="reason (mandatory — the assignment is audited)" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <button className="btn sm primary" disabled={ownBusy} onClick={() => void assignOwnership()} style={{ fontSize: 11.5, marginTop: 8 }}>
+          {ownBusy ? "Assigning…" : "Assign ownership"}
+        </button>
+        {ownMsg && (
+          <div style={{ fontSize: 12.5, marginTop: 8, color: ownMsg.ok ? "var(--green)" : "var(--amber)" }}>
+            {ownMsg.text}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Tasks & verification" sub="what can and cannot be linked" frame className="mt">
+        <div className="dim" style={{ fontSize: 12 }}>
+          Remediation tasks bind to evidence records (scan findings); a certificate is not an
+          evidence record, so no task linkage exists to show — none is invented. Revocation and
+          expiry state above are the verifiable facts this row carries.
+        </div>
       </Panel>
     </Drawer>
   );
@@ -233,6 +436,14 @@ export default function Certificates() {
   const center = data?.cert_center ?? { expired: 0, expiring30: 0, weak_algorithm: 0, unknown_owner: 0, total: 0 };
   const detail = sel !== null ? certs[sel] : null;
 
+  // the persisted estate (round 74) — the durable inventory, distinct
+  // from the live observation run above
+  const [estateSel, setEstateSel] = useState<number | null>(null);
+  const estate = usePollingApi(apiCertificateEstate, 15000);
+  const estateRows = estate.data?.certificates ?? [];
+  const unknownOwner = estateRows.filter((c) => !c.owner).length;
+  const estateDetail = estateSel !== null ? (estateRows[estateSel] ?? null) : null;
+
   return (
     <>
       <PageHead
@@ -283,6 +494,51 @@ export default function Certificates() {
         )}
       </Panel>
       {detail && <CertDrawer cert={detail} onClose={() => setSel(null)} />}
+      {estateDetail && <EstateCertDrawer cert={estateDetail} onClose={() => setEstateSel(null)} />}
+      <Panel
+        title="Persisted certificate estate"
+        sub="certificates deduped by SHA-256 fingerprint — the durable inventory with owner, usages and revocation state"
+        className="mt"
+      >
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          {estate.source === "live" && <LiveBadge source="live" label="LIVE" />}
+          <Badge tone={estateRows.length ? "cyan" : ""}>
+            <span className="dot" /> {estateRows.length.toLocaleString()} ESTATE ROWS
+          </Badge>
+          <Badge tone={unknownOwner ? "amber" : "green"}>{unknownOwner} UNKNOWN OWNER</Badge>
+        </div>
+        <Table
+          clickable
+          selected={estateSel ?? -1}
+          onSelect={setEstateSel}
+          head={["subject", "issuer", "key", "days left", "owner", "revocation", "renewal"]}
+          rows={estateRows.map((c) => [
+            <span className="mono" style={{ fontWeight: 600 }}>{c.subject || c.fingerprint_sha256.slice(0, 16)}</span>,
+            <span style={{ fontSize: 12 }}>{c.issuer || "—"}</span>,
+            <span className="num">{c.public_key_algorithm || "—"}{c.public_key_size ? ` ${c.public_key_size}` : ""}</span>,
+            <span className="num">{c.days_until_expiry ?? "—"}</span>,
+            c.owner
+              ? <span style={{ fontSize: 12 }}>{c.owner}</span>
+              : <Badge tone="amber">UNKNOWN</Badge>,
+            <Badge tone={String(c.revocation_status || "").toUpperCase().includes("REVOK") ? "red" : ""}>
+              {c.revocation_status ? String(c.revocation_status).toUpperCase() : "UNCHECKED"}
+            </Badge>,
+            <span style={{ fontSize: 12 }}>{c.renewal_status || "NONE"}</span>,
+          ])}
+        />
+        {!estateRows.length && (
+          <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
+            {estate.source === "live"
+              ? "The persisted estate is empty — certificates land here when scans or CT monitoring store them (deduped by fingerprint)."
+              : "Estate unavailable — the durable inventory could not be loaded."}
+          </div>
+        )}
+        <div className="dim" style={{ fontSize: 12, marginTop: 8 }}>
+          Distinct from the live panel above: this is the whole persisted estate (every stored
+          certificate), not one scan-run's observation. UNKNOWN owner is a fact, not an
+          inference — assign one from the row.
+        </div>
+      </Panel>
       <CertLifecyclePanel />
       <ExpiryCalendarPanel />
     </>

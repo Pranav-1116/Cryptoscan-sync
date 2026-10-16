@@ -563,7 +563,7 @@ def check_revocation(cert_id: str, user: str = Depends(get_current_user), db: Se
     ocsp = check_ocsp(payload, live=False)
     crl = check_crl(payload, live=False)
     chosen = ocsp if ocsp.get("urls") else crl
-    repo.upsert(
+    row = repo.upsert(
         {
             "fingerprint_sha256": row.fingerprint_sha256,
             "revocation_status": chosen.get("status"),
@@ -573,6 +573,11 @@ def check_revocation(cert_id: str, user: str = Depends(get_current_user), db: Se
             "revocation": {"ocsp": ocsp, "crl": crl},
         }
     )
+    # the check RAN — record when, even when neither probe could
+    # determine a status (no AIA URLs): "checked, undetermined" is a
+    # different fact from "never checked" (§5, round 74)
+    row.revocation_checked_at = datetime.now(timezone.utc)
+    db.commit()
     return {"ocsp": ocsp, "crl": crl}
 
 
