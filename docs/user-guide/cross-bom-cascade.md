@@ -1,5 +1,17 @@
 # Cross-BOM cascade — "what breaks if X changes?"
 
+> **Detailed bank interpretation and current limits:** read
+> [dependency discovery](../bank-environment/12-dependency-discovery-and-evidence.md),
+> [traversal mechanics](../bank-environment/13-cascade-and-blast-radius.md),
+> [worked bank examples](../bank-environment/14-bank-cascade-examples.md),
+> [API runbook](../bank-environment/15-dependency-cascade-api-runbook.md) and
+> [limitations/acceptance](../bank-environment/16-dependency-limitations-and-acceptance.md).
+> Modeled exposure is not a confirmed outage. The standalone package SBOM is
+> distinct from the registered-system graph. Device linkage is supported when
+> explicitly declared; absent linkage must remain unknown. Graph-backend and
+> twin-input differences require qualification rather than an assumption of
+> universal parity.
+
 One question, every layer. The unified cascade takes a single target — an
 algorithm, a certificate, an endpoint, a system, a vendor, a hardware device
 or a library — and fans the blast radius out across all BOM layers at once:
@@ -7,7 +19,8 @@ or a library — and fans the blast radius out across all BOM layers at once:
 - **code** — evidence records, owning systems, files (CBOM layer)
 - **network** — endpoints on the wire, TLS versions, cipher suites (NBOM layer)
 - **system graph** — dependents and downstream via depth-bounded walks over
-  registered `SystemDependency` edges (SBOM layer)
+  registered `SystemDependency` edges (application/system context, not the
+  standalone package SBOM graph)
 - **process** — business processes supported by the affected systems
   (real `SystemBusinessProcess` links)
 - **hardware** — device facts from the hardware fleet (HBOM layer)
@@ -24,8 +37,10 @@ systems, their dependents and (where relevant) downstream — a shared key on
 an HSM names the systems that use it and everyone who calls them, provided
 the crypto-to-hardware link is declared (`POST /graph/hardware-links`).
 
-It runs over the same digital-twin snapshot the twin scenarios use, so the
-cascade and the twin can never disagree about what the estate looks like.
+It uses the digital-twin snapshot adapter also used by twin scenarios. Separate
+live reads can reflect different collection times; graph-view and unified-cascade
+input paths are not universally identical. Hold snapshot/input scope constant
+when comparing answers.
 
 ## Run a cascade
 
@@ -80,11 +95,14 @@ Verdicts:
 - `NOT_FOUND` — the target matches nothing in the twin.
 - `INSUFFICIENT_DATA` — the target exists but nothing concrete is reachable.
 
-Every answer carries `honest_unknowns` — what the engine cannot know and
-will not guess: crypto↔HSM linkage is not modelled (the hardware layer is
-inventory, not a blast radius), network evidence is only as fresh as the last
-authorized scan, code evidence is capped on very large estates, and system
-propagation walks registered edges only.
+Every answer carries `honest_unknowns`. Without a declared crypto-to-hardware
+link, a device remains inventory-only and its consumers cannot be named. With
+that link and asset/system associations, device cascades can propagate to known
+consumers. Network evidence is only as fresh as the last authorized scan, code
+evidence is capped, and system propagation only sees the relationships in its
+supplied snapshot (normally registered edges, with a graph-snapshot fallback
+when the registered list is empty). The unknowns array is not a guarantee that
+every possible coverage gap is automatically diagnosed.
 
 ## History (audit trail)
 

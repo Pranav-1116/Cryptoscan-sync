@@ -27,6 +27,11 @@ HBOM/VBOM generation, practical payments examples, console/API exports and
 acceptance criteria. It distinguishes code-backed behavior from prerequisites,
 known route differences and unqualified bank/provider runtime claims.
 
+The [dependency and cascade guides](docs/bank-environment/12-dependency-discovery-and-evidence.md)
+explain discovery, directional blast radius, bank examples, APIs, current limits
+and recommended acceptance checks. They distinguish modeled exposure from
+confirmed operational failure.
+
 ## Scope & honest boundaries
 
 CryptoScan is an **end-to-end crypto & security-configuration platform** —

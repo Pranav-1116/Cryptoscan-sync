@@ -28,6 +28,11 @@ installation or a substitute for the bank's security/change approval.
 | [09 — SBOM deep dive](09-sbom-deep-dive.md) | How are software packages, lockfiles, images, artifacts and assessments handled? |
 | [10 — Six-BOM bank release example](10-six-bom-bank-release-example.md) | How do six inventories corroborate one release without inventing relationships? |
 | [11 — Detailed rollout and responsibilities](11-detailed-rollout-and-responsibilities.md) | What does each bank team do, and what exits each implementation phase? |
+| [12 — Dependency discovery and evidence](12-dependency-discovery-and-evidence.md) | How are code, packages, systems, telemetry and cross-domain links discovered or declared? |
+| [13 — Cascade and blast-radius mechanics](13-cascade-and-blast-radius.md) | How do target resolution, directional walks, counts, backends and replay work? |
+| [14 — Detailed bank cascade examples](14-bank-cascade-examples.md) | What do HSM, application, algorithm, certificate and supplier investigations actually show? |
+| [15 — Dependency/cascade API runbook](15-dependency-cascade-api-runbook.md) | How does an operator inspect/register links, run analysis, retain history and compare results? |
+| [16 — Dependency limitations and acceptance](16-dependency-limitations-and-acceptance.md) | What can be missing or misleading, what should improve, and what should the bank test? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>
@@ -111,3 +116,14 @@ artifacts for download, verification, comparison and review. This is distinct
 from the TechBOM `sbom` layer, which starts from registered applications/systems.
 Begin with [the detailed SBOM guide](09-sbom-deep-dive.md), then follow
 [one release across all six BOMs](10-six-bom-bank-release-example.md).
+
+## Dependency, cascade and blast-radius learning path
+
+Read [12](12-dependency-discovery-and-evidence.md) through
+[16](16-dependency-limitations-and-acceptance.md) for the detailed explanation.
+The central distinction is **modeled dependency exposure versus confirmed
+operational failure**. A source import, declared system call, observed listener
+and supported package resolution have different evidence strength. The new
+[bank examples](14-bank-cascade-examples.md) include a reproducible pure-engine
+fixture showing six implicated systems, an eight-system change-review context,
+and a missing HSM link that must remain unknown rather than safe.

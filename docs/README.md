@@ -53,6 +53,12 @@ scan-to-evidence processing, the six BOMs, practical bank examples, UI/API
 exports, operational acceptance, and implementation limits. Examples are
 illustrative, not real-bank scan results or production approval.
 
+For dependency analysis, continue with [discovery and evidence](bank-environment/12-dependency-discovery-and-evidence.md),
+[cascade mechanics](bank-environment/13-cascade-and-blast-radius.md),
+[bank examples](bank-environment/14-bank-cascade-examples.md),
+[API runbook](bank-environment/15-dependency-cascade-api-runbook.md) and
+[limitations/acceptance](bank-environment/16-dependency-limitations-and-acceptance.md).
+
 ## Start here
 
 | Doc | What it covers |
