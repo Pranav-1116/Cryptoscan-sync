@@ -36,8 +36,12 @@ confirmed operational failure.
 are shown before cascade impact: source read omissions, bounded horizons,
 missing links and explanation limits stay separate. Incomplete runs cannot
 silently become watch removals or comparable impact deltas. Unknown completeness
-is not zero exposure or proof of safety; Step 10 bank/backend qualification is
-still pending.
+is not zero exposure or proof of safety.
+
+[Bank-negative and backend qualification tests](docs/bank-environment/26-bank-negative-tests-and-backend-qualification.md)
+cover exact-estate derived history/replay, writer-only watches and backend
+semantic/isolation negatives. All ten local implementation steps are delivered;
+real-bank and live backend certification remain separate obligations.
 
 ## Scope & honest boundaries
 

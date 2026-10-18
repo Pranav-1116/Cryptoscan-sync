@@ -214,5 +214,17 @@ visible missing mappings, and unchanged compact counts under explanation caps.
 Verify incomplete watches audit the answer but retain the comparable baseline,
 and legacy history stays immutable/unavailable rather than being reconstructed.
 No aggregate percentage, empty-result safety claim or real-bank completeness
-certification is accepted. Step 10 authorization/tenant/backend negative
-qualification is still pending.
+certification is accepted. The subsequent Step 10 local implementation is
+recorded below; live deployment qualification remains open.
+
+
+## Step 10 acceptance: tested local boundary, not a deployment certificate
+
+[Guide 26](26-bank-negative-tests-and-backend-qualification.md) records implemented
+real-session bank-negative tests and fixes. Verify exact-estate analysis/snapshot
+history independently of shared platform inventory, writer-only watch mutations,
+retained inaccessible baselines, no domain side effects on rejected writes,
+immutable replay under live changes and zero Bolt calls for tenant-scoped graph
+requests. Memory/native-double/unified semantic parity is locally tested; the
+six explicit live cases and real PostgreSQL/customer acceptance remain separate
+qualification obligations, not inferred from mock or SQLite success.

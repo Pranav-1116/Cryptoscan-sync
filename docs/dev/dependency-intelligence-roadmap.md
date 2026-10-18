@@ -9,12 +9,12 @@
 [Step-6 contract](../bank-environment/22-business-process-impact-and-inclusion-reasons.md) ·
 [Step-7 contract](../bank-environment/23-exact-target-identities-and-ambiguity.md) ·
 [Step-8 contract](../bank-environment/24-operational-dependency-modes-and-conditional-outcomes.md) ·
-[Step-9 contract](../bank-environment/25-coverage-truncation-and-missing-link-qualifications.md)
+[Step-9 contract](../bank-environment/25-coverage-truncation-and-missing-link-qualifications.md) ·
+[Step-10 contract](../bank-environment/26-bank-negative-tests-and-backend-qualification.md)
 
 This is an incremental engineering plan for the user's ten requested changes.
-**Steps 1–9 are implemented with local regression checks.** Step 10
-remains pending; real Neo4j/bank qualification is not implied. Pending work is not
-a feature claim. Each stage needs its own implementation, regression checks,
+**Steps 1–10 are implemented with local regression checks.** Live Neo4j/PostgreSQL
+and bank deployment qualification remain open; local tests are not certification. Each stage needs its own implementation, regression checks,
 compatibility review and a recorded delivery result before being marked done.
 CI workflow configuration is outside this task.
 
@@ -31,7 +31,7 @@ CI workflow configuration is outside this task.
 | 7. Exact target identities | Implemented; local qualification recorded below | target-resolution/1 decisions; exact fingerprint/PURL/vendor-ID priority, explicit ambiguity/conflicts, opt-in non-executing name search, exact leaf-fingerprint joins, coverage flags and canonical history/watch baseline guards |
 | 8. Operational dependency modes | Implemented; local qualification recorded below | Migration 0101, nullable strict mode assertions, revision/source/tenant-checked audited annotation, conditional operational-impact/1 across unified/memory/native paths, mode-only history/watch review and console; no availability simulation |
 | 9. Prominent coverage/truncation | Implemented; local qualification recorded below | Versioned independent source/horizon/detail/link qualifications, cap-plus-one reads, conservative native unknown extension, prominent console and coverage-aware immutable history/diff/watch guards |
-| 10. Bank-negative and backend qualification | Pending | Role/tenant/history/replay/write denial tests, backend parity and bank-specific acceptance evidence; mocks alone do not qualify deployment |
+| 10. Bank-negative and backend qualification | Implemented local negative/semantic checks; live deployment qualification open | Real-session bank denial/isolation/history/replay tests; exact-estate derived artifacts, writer-only watches, missing-baseline guards; memory/native-double/unified negatives and no-Bolt tenant gate; six opt-in live cases, not executed locally |
 
 ## Step 1 — delivered scope and compatibility
 
@@ -292,7 +292,7 @@ selection contracts, compatibility, exact shared-subject reproduction and the
 full qualification boundary. Tenant-scoped candidate checks are local regression
 coverage, not completion of step 10. Live PostgreSQL/Neo4j, complete inventories,
 whole-bank role/write denial and operational failure claims remain unqualified.
-**Steps 8–10 remain pending.**
+At Step 7 publication, Steps 8–10 remained pending; their deliveries are recorded below.
 
 
 ## Step 8 — delivered conditional operational dependency review
@@ -364,7 +364,8 @@ operational-detail gates remain in force.
 
 See [guide 25](../bank-environment/25-coverage-truncation-and-missing-link-qualifications.md)
 for limits, a runnable bank-chain example, baseline recovery and qualification
-boundaries. No new migration or workflow change. Step 10 is still pending.
+boundaries. No new migration or workflow change. Step 10 was pending at this
+publication; its subsequent delivery is recorded below.
 
 
 Local Step 9 qualification (2026-10-18): **1,687 backend tests passed, 1 skipped,
@@ -387,3 +388,41 @@ omits the required immutable scanner-image configuration. These pre-existing
 failures were not hidden, weakened, or fixed by changing production security
 settings. The expanded suite is not claimed green. The final scoped run includes
 the unchanged original CBOM tests and the final vendor-reference refinement.
+
+
+## Step 10 — delivered bank-negative tests and isolation fixes
+
+The new bank suite uses real SQL-backed sessions, DB roles and tenant middleware,
+not overridden authentication. Negative cases cover platform aggregate history,
+foreign IDs/version replay, colliding capture versions, forged/suspended/ambiguous
+contexts, watch mutations, source ownership, stale CAS/terminal edits, immutable
+capture replay and rejected-write side effects.
+
+Tests exposed shared-platform derived-history disclosure and nonwriter watch
+mutation. Production fixes use exact-estate predicates for cascade history,
+twin replay, graph versions/fallback and watches. Watch create/delete/run-due
+now require dependency-writer roles; inaccessible baseline pointers require
+attention and are retained, never silently rebaselined. Inventory sharing and
+historical JSON are unchanged; no migration is introduced.
+
+The bank graph matrix preserves mode/lifecycle/context distinctions across
+memory, native selected-query doubles and unified cascade. Scoped facade reads
+and syncs must issue zero Bolt calls. Six explicitly marked live Neo4j cases
+require an opted-in exclusive empty disposable database; they were not run here.
+See [guide 26](../bank-environment/26-bank-negative-tests-and-backend-qualification.md)
+for commands, exact authorization behavior and remaining deployment obligations.
+
+The two Step-9 baseline fixture failures were corrected without weakening
+production checks: provenance asserts the stored `manual` source, and the valid
+production-worker fixture supplies the required immutable scanner-image digest.
+Functional watch fixtures provide credentials for the new writer seam; actual
+negative authentication remains independently tested with persisted sessions.
+Hardware membership assertions no longer depend on random UUID row ordering.
+
+
+Step 10 final local regression (2026-10-18, Python 3.11.2): **1,845 passed,
+1 skipped, 13 deselected** across shared models/CBOM/graph/database/business
+context and the selected API/tenant-security suites. The two new modules add
+103 non-live cases plus six opt-in live cases (not run). Changed Python F/E9,
+whitespace and bank documentation checks passed. No frontend, migration or CI
+workflow changes; live PostgreSQL/Neo4j/bank certification remains open.

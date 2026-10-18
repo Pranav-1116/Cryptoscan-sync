@@ -251,9 +251,10 @@ source policies, withheld watch removals and baseline recovery. UI tests cover
 prominence, unknown metadata, separate denominators and no false “unchanged.”
 
 No migration is introduced by Step 9. Earlier migrations, including Step 8's
-0101 operational dependency storage, still apply. Step 10 remains pending:
-bank-specific negative authorization/tenant/backend acceptance and live backend
-qualification are not established by these local tests.
+0101 operational dependency storage, still apply. At Step 9 publication, Step 10
+remained pending. Its subsequent implementation is recorded in
+[guide 26](26-bank-negative-tests-and-backend-qualification.md); live backend
+and actual bank deployment certification remain separate obligations.
 
 
 ### Recorded local checks

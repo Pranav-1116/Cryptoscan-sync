@@ -41,6 +41,8 @@ installation or a substitute for the bank's security/change approval.
 | [22 — Implemented business-process projection](22-business-process-impact-and-inclusion-reasons.md) | Which processes are exposed, context-only or uncertain, and which system/mapping explains each inclusion? |
 | [23 — Implemented exact target identities](23-exact-target-identities-and-ambiguity.md) | How are fingerprint/PURL/vendor-ID selection, ambiguity, opt-in search, exact certificate joins and unresolved history/watch baselines handled? |
 | [24 — Implemented operational dependency modes](24-operational-dependency-modes-and-conditional-outcomes.md) | How are hard, optional, failover and buffered declarations reviewed conditionally without shrinking exposure or predicting failure? |
+| [25 — Implemented coverage qualifications](25-coverage-truncation-and-missing-link-qualifications.md) | How are source omissions, bounded horizons, missing links and detail limits exposed before impact claims? |
+| [26 — Bank-negative tests and qualification](26-bank-negative-tests-and-backend-qualification.md) | What do real-session denial/isolation and backend-negative tests establish, and what still requires live deployment evidence? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>
@@ -140,7 +142,8 @@ Implementation progress is tracked in the [ten-step engineering plan](../dev/dep
 [Step 1](17-classified-system-scope.md), [step 2](18-shared-dependency-semantics.md),
 [step 3](19-package-artifact-deployment-identity.md) and
 [step 4](20-relationship-lifecycle-and-reconciliation.md) are implemented with local
-checks; steps 5–10 and real deployment qualification remain pending.
+checks. Steps 5–10 are also delivered locally in guides 21–26; real deployment
+qualification remains open.
 
 
 ### Step 9: visible coverage before impact claims
@@ -150,5 +153,14 @@ explains cap-plus-one source reads, current/potential traversal horizons,
 explicitly unknown native extension, independent detail limits and scoped
 missing-link checks across the six BOM layers. The console shows these before
 impact; history/diffs/watches withhold unsafe change claims without rewriting
-old answers. “Within read limit” never certifies full bank discovery. Step 10
-negative/backend qualification remains pending.
+old answers. “Within read limit” never certifies full bank discovery. Guide 26
+records the subsequent Step 10 implementation and remaining live qualification.
+
+
+### Step 10: bank-negative tests and qualification boundary
+
+[Guide 26 — bank-negative tests and backend qualification](26-bank-negative-tests-and-backend-qualification.md)
+documents real-session denial tests, exact-estate derived history/replay,
+writer-only watches, unchanged rejected-write state, backend semantic negatives
+and the no-Bolt bank boundary. The ten local implementation steps are delivered;
+live PostgreSQL/Neo4j and actual bank deployment certification remain open.

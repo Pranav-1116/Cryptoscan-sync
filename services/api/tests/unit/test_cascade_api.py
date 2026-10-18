@@ -59,6 +59,8 @@ def app_db():
     session = Session()
 
     application = create_app()
+    # Functional suite only: authentication is overridden here. Writer requests
+    # still carry credentials; the bank-negative suite uses real DB sessions.
     application.dependency_overrides[get_current_user] = lambda: "testuser"
 
     def _session():
@@ -282,7 +284,7 @@ def test_algorithm_cascade_keeps_secondary_system_sharing_evidence(app_db):
 def test_watch_run_due_flags_disappeared_target(app_db):
     """A watched target that has since left the estate is reported as
     missing — explicitly, not as an unexplained zero-impact answer."""
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer functional-fixture"}) as client:
         watch = client.post("/api/v1/technology-bom/cascade/watch",
                             json={"target": "payment-api", "kind": "system",
                                   "max_depth": 6}).json()
@@ -444,7 +446,7 @@ def test_system_cbom_carries_real_estate_dependencies(app_db):
 
 # Additive scope contract: old totals are review scope, not exposure counts.
 def test_classified_scope_round_trips_live_history_and_stored_run(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer functional-fixture"}) as client:
         posted = client.post("/api/v1/technology-bom/cascade",
                              json={"target": "payment-api", "kind": "system"})
         assert posted.status_code == 200
@@ -607,7 +609,7 @@ def test_same_policy_classified_diff_remains_available(app_db):
 
 def test_watch_comparison_flags_pre_policy_run_without_rewriting_it(app_db):
     session = app_db.state.test_session
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer functional-fixture"}) as client:
         response = client.post("/api/v1/technology-bom/cascade/watch",
                                json={"target": "payment-api"})
         assert response.status_code == 200
@@ -697,7 +699,7 @@ def test_old_snapshot_without_endpoint_fingerprint_is_not_rebound_by_subject(app
 def test_watch_ambiguous_subject_keeps_resolved_baseline_without_removal(app_db):
     from db.models.cascade_extensions import CascadeWatch
     session = app_db.state.test_session
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer functional-fixture"}) as client:
         client.post("/api/v1/technology-bom/cascade/watch", json={"target": "CN=payment-api", "kind": "certificate"})
         first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
         session.add(Certificate(fingerprint_sha256="cd" * 32, subject="CN=payment-api"))
@@ -712,7 +714,7 @@ def test_watch_ambiguous_subject_keeps_resolved_baseline_without_removal(app_db)
 def test_changed_unique_subject_identity_withholds_diff_and_watch_baseline(app_db):
     from db.models.cascade_extensions import CascadeWatch
     session = app_db.state.test_session
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer functional-fixture"}) as client:
         old = client.post("/api/v1/technology-bom/cascade", json={"target": "CN=payment-api", "kind": "certificate"}).json()
         client.post("/api/v1/technology-bom/cascade/watch", json={"target": "CN=payment-api", "kind": "certificate"})
         first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
@@ -849,7 +851,7 @@ def test_unknown_historical_coverage_is_not_reconstructed_for_history_or_diff(ap
 def test_truncated_watch_cannot_emit_removals_or_replace_comparable_baseline(app_db, monkeypatch):
     from api.routers.digital_twin import SNAPSHOT_CAPS
     from db.models.cascade_extensions import CascadeWatch
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer functional-fixture"}) as client:
         watch = client.post("/api/v1/technology-bom/cascade/watch", json={"target": "payment-api"}).json()
         baseline = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
         monkeypatch.setitem(SNAPSHOT_CAPS, "dependencies", 1)
@@ -876,7 +878,7 @@ def test_changed_depth_policy_withholds_diff_even_when_same_membership(app_db):
 def test_first_truncated_watch_is_not_pinned_as_future_baseline(app_db, monkeypatch):
     from api.routers.digital_twin import SNAPSHOT_CAPS
     from db.models.cascade_extensions import CascadeWatch
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer functional-fixture"}) as client:
         watch = client.post("/api/v1/technology-bom/cascade/watch", json={"target": "payment-api"}).json()
         original = SNAPSHOT_CAPS["dependencies"]
         monkeypatch.setitem(SNAPSHOT_CAPS, "dependencies", 1)
@@ -893,7 +895,7 @@ def test_first_truncated_watch_is_not_pinned_as_future_baseline(app_db, monkeypa
 
 def test_legacy_watch_coverage_is_not_guessed_or_overwritten(app_db):
     from db.models.cascade_extensions import CascadeWatch
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer functional-fixture"}) as client:
         watch = client.post("/api/v1/technology-bom/cascade/watch", json={"target": "payment-api"}).json()
         first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
         session = app_db.state.test_session

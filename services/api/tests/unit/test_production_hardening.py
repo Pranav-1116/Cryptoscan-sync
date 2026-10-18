@@ -150,6 +150,8 @@ def test_worker_production_requires_postgres_and_redis():
         NEO4J_URI="bolt://neo4j:7687",
         NEO4J_PASSWORD="n" * 24,
         STREAM_SECRET="s" * 32,
+        CRYPTOSCAN_STATIC_SCAN_MODE="container",
+        CRYPTOSCAN_SCANNER_IMAGE="registry.example/scanner@sha256:" + "a" * 64,
         ALLOW_SQLITE=False,
     ).validate_runtime()
 

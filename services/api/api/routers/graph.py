@@ -24,6 +24,7 @@ from api.graph_builder import collect_graph_payload, graph_from_db, sync_graph
 from business_context.core.enricher import enrich_assets
 from db.models import CryptoAsset, System
 from db.models.graph_snapshot import GraphSnapshot
+from db.tenancy import current_tenant
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.repositories.maturity_repository import MaturityRepository
 from db.repositories.migration_task_repository import MigrationTaskRepository
@@ -949,7 +950,7 @@ def graph_timeline(
     from sqlalchemy import select
 
     rows = db.execute(
-        select(GraphSnapshot).order_by(GraphSnapshot.version.desc()).limit(min(limit, 200))
+        select(GraphSnapshot).where(GraphSnapshot.tenant_id == current_tenant()).order_by(GraphSnapshot.version.desc()).limit(min(limit, 200))
     ).scalars().all()
     return {"versions": [r.to_dict() for r in rows], "total_count": len(rows),
             "latest_version": rows[0].version if rows else 0}
@@ -970,8 +971,8 @@ def graph_compare(
     """
     from sqlalchemy import select
 
-    from_row = db.execute(select(GraphSnapshot).where(GraphSnapshot.version == from_version)).scalars().first()
-    to_row = db.execute(select(GraphSnapshot).where(GraphSnapshot.version == to_version)).scalars().first()
+    from_row = db.execute(select(GraphSnapshot).where(GraphSnapshot.version == from_version, GraphSnapshot.tenant_id == current_tenant())).scalars().first()
+    to_row = db.execute(select(GraphSnapshot).where(GraphSnapshot.version == to_version, GraphSnapshot.tenant_id == current_tenant())).scalars().first()
     if from_row is None or to_row is None:
         missing = from_version if from_row is None else to_version
         raise HTTPException(status_code=404, detail=f"Graph version not found: {missing}")
@@ -1489,7 +1490,7 @@ def discovered_edges(
                          0.8)
 
     # latest graph snapshot edges (captured graph versions)
-    snap = db.query(GraphSnapshot).order_by(
+    snap = db.query(GraphSnapshot).filter(GraphSnapshot.tenant_id == current_tenant()).order_by(
         GraphSnapshot.version.desc()).first()
     if snap and snap.edges:
         for edge in snap.edges:

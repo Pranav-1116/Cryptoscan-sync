@@ -483,10 +483,11 @@ def test_hsm_outage_lists_real_devices_not_keywords(client, session):
     })
     assert r.status_code == 200, r.text
     body = r.json()
-    fleet = body["affected"]["hardware_hsms"]
+    # Inventory is bounded in stable row-ID order, not hardware-name order.
+    fleet = sorted(body["affected"]["hardware_hsms"], key=lambda d: d["asset_id"])
     assert [d["asset_id"] for d in fleet] == ["hsm-core-01", "hsm-pay-02"]
     assert fleet[0]["pqc_capability"] == "HYBRID_SUPPORTED"
-    assert body["impact"]["hsm_fleet"] == ["Thales Luna 7", "Utimaco Se Gen2"]
+    assert sorted(body["impact"]["hsm_fleet"]) == ["Thales Luna 7", "Utimaco Se Gen2"]
 
 
 def test_pqc_migration_reports_hardware_pqc_capability(client, session):

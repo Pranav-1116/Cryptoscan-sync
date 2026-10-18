@@ -77,7 +77,7 @@ async def test_graph_edges_carry_provenance_class_and_source(app_db):
     assert calls, "seeded system dependencies must appear"
     for e in calls:
         assert e["provenance"] == "DECLARED"
-        assert e["source"] == "system_dependencies (operator-declared)"
+        assert e["source"] == "manual"  # preserve the stored owner/source; never relabel it as an observation
 
     # evidence-chained inventory link
     uses = by_label["USES"]

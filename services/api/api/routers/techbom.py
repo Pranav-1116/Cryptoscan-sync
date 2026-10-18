@@ -52,7 +52,8 @@ from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_roles
+from db.tenancy import current_tenant
 from api.events.platform_events import emit_platform_event
 
 router = APIRouter(prefix="/technology-bom", tags=["technology-bom"])
@@ -1078,7 +1079,7 @@ def technology_bom_cascade(
         raise HTTPException(422, "as_of requires a captured twin version")
     if version is not None:
         row = db.query(TwinSnapshot).filter(
-            TwinSnapshot.version == version).first()
+            TwinSnapshot.version == version, TwinSnapshot.tenant_id == current_tenant()).first()
         if row is None:
             raise HTTPException(status_code=404,
                                 detail=f"twin snapshot not found: v{version}")
@@ -1340,7 +1341,7 @@ class WatchRequest(BaseModel):
 @router.post("/cascade/watch")
 def cascade_watch_create(
     request: WatchRequest,
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_roles("admin", "superadmin", "security_analyst")),
     db: Session = Depends(get_db_session),
 ):
     """Save a cascade target as a watch: re-run it via run-due, and the
@@ -1362,7 +1363,7 @@ def cascade_watches_list(
 ):
     from db.models.cascade_extensions import CascadeWatch
 
-    rows = db.query(CascadeWatch).order_by(
+    rows = db.query(CascadeWatch).filter(CascadeWatch.tenant_id == current_tenant()).order_by(
         CascadeWatch.created_at.desc()).limit(200).all()
     return {"watches": [{
         "id": r.id, "target": r.target, "target_kind": r.target_kind,
@@ -1378,12 +1379,12 @@ def cascade_watches_list(
 @router.delete("/cascade/watch/{watch_id}")
 def cascade_watch_delete(
     watch_id: str,
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_roles("admin", "superadmin", "security_analyst")),
     db: Session = Depends(get_db_session),
 ):
     from db.models.cascade_extensions import CascadeWatch
 
-    watch = db.query(CascadeWatch).filter(CascadeWatch.id == watch_id).first()
+    watch = db.query(CascadeWatch).filter(CascadeWatch.id == watch_id, CascadeWatch.tenant_id == current_tenant()).first()
     if watch is None:
         raise HTTPException(status_code=404, detail=f"watch not found: {watch_id}")
     db.delete(watch)
@@ -1393,7 +1394,7 @@ def cascade_watch_delete(
 
 @router.post("/cascade/watches/run-due")
 def cascade_watches_run_due(
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_roles("admin", "superadmin", "security_analyst")),
     db: Session = Depends(get_db_session),
 ):
     """Re-run every active watch and report blast-radius changes.
@@ -1410,7 +1411,7 @@ def cascade_watches_run_due(
     from db.repositories.cascade_run_repository import CascadeRunRepository
 
     watches = db.query(CascadeWatch).filter(
-        CascadeWatch.active.is_(True)).all()
+        CascadeWatch.active.is_(True), CascadeWatch.tenant_id == current_tenant()).all()
     repo = CascadeRunRepository(db)
     estate = _snapshot(db)
     results = []
@@ -1451,6 +1452,11 @@ def cascade_watches_run_due(
             continue
         if watch.last_run_id:
             previous = repo.get(watch.last_run_id)
+            if previous is None:
+                entry["attention_required"] = True
+                entry["comparison_withheld"] = "Previous baseline is unavailable in this estate; retained without comparison or automatic rebaseline."
+                results.append(entry)
+                continue
             if previous is not None:
                 # Compare frozen canonical selections, never a reinterpreted
                 # name or unresolved placeholder against a resolved baseline.

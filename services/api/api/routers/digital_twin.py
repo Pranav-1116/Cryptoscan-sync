@@ -86,6 +86,7 @@ def _snapshot(db: Session) -> dict:
     honest unknown, so an estate that has never run a network scan still
     gets protocol scenarios — with the gap named, not papered over.
     """
+    from db.tenancy import current_tenant
     from shared_models.coverage import collection_read, SOURCE_SCHEMA
     collections = {}
     def load(model, name, cap_key, order=None):
@@ -240,7 +241,7 @@ def _snapshot(db: Session) -> dict:
         # (versioned graph_snapshots) get their edges from the latest
         # snapshot instead — attack paths work on both shapes of estate.
         snap = (
-            db.query(GraphSnapshot)
+            db.query(GraphSnapshot).filter(GraphSnapshot.tenant_id == current_tenant())
             .order_by(GraphSnapshot.version.desc()).first()
         )
         if snap and snap.edges:
@@ -657,7 +658,9 @@ def digital_twin_snapshots(
 ):
     from db.models.cascade_extensions import TwinSnapshot
 
-    rows = db.query(TwinSnapshot).order_by(
+    from db.tenancy import current_tenant
+
+    rows = db.query(TwinSnapshot).filter(TwinSnapshot.tenant_id == current_tenant()).order_by(
         TwinSnapshot.version.desc()).limit(limit).all()
     return {"snapshots": [{
         "version": r.version, "fingerprint": r.fingerprint,
@@ -675,8 +678,10 @@ def digital_twin_snapshot_get(
 ):
     from db.models.cascade_extensions import TwinSnapshot
 
+    from db.tenancy import current_tenant
+
     row = db.query(TwinSnapshot).filter(
-        TwinSnapshot.version == version).first()
+        TwinSnapshot.version == version, TwinSnapshot.tenant_id == current_tenant()).first()
     if row is None:
         raise HTTPException(status_code=404,
                             detail=f"twin snapshot not found: v{version}")
