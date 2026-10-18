@@ -41,6 +41,7 @@ TARGET_KINDS = (
 MAX_DEPTH_LIMIT = 12
 
 _SCHEMA = "cryptoscan.unified-cascade/1"
+SYSTEM_SCOPE_SCHEMA = "cryptoscan.cascade-system-scope/1"
 
 
 def _norm(value: Any) -> str:
@@ -576,6 +577,58 @@ def _cascade_process(snapshot: Mapping[str, Any],
     }
 
 
+
+def _classify_system_scope(layers: Mapping[str, Any]) -> dict[str, Any]:
+    """Disjoint review buckets; reachability is not an availability verdict.
+
+    Seeds win over reverse consumers, which win over forward-only context.
+    The original directional walks remain in layers (including cyclic overlap).
+    Keep this additive: affected_systems remains the legacy full review union.
+    """
+    system = layers.get("system") or {}
+    direct = (set((layers.get("code") or {}).get("systems") or [])
+              | set(system.get("systems") or [])
+              | set((layers.get("vendor") or {}).get("systems") or []))
+    reverse = {s for group in (system.get("dependents_by_depth") or {}).values()
+               for s in group}
+    forward = {s for group in (system.get("downstream_by_depth") or {}).values()
+               for s in group}
+    consumers = reverse - direct
+    context = forward - direct - consumers
+
+    def bucket(systems: set[str]) -> dict[str, Any]:
+        return {"systems": sorted(systems), "count": len(systems)}
+
+    return {
+        "schema": SYSTEM_SCOPE_SCHEMA,
+        "direct_exposure": bucket(direct),
+        "dependent_consumers": bucket(consumers),
+        "supporting_context": bucket(context),
+        "exposure_systems": sorted(direct | consumers),
+        "exposure_system_count": len(direct | consumers),
+        "review_systems": sorted(direct | consumers | context),
+        "review_system_count": len(direct | consumers | context),
+    }
+
+
+def summarize_system_scope(result: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Bounded summary for history/events/watches; never reconstruct old runs.
+
+    Full memberships live in the stored run. Copy counts only, so history
+    doesn't multiply a large estate's system IDs across every summary row.
+    """
+    scope = (result.get("impact") or {}).get("system_classification") or {}
+    if scope.get("schema") != SYSTEM_SCOPE_SCHEMA:
+        return None
+    return {
+        "schema": SYSTEM_SCOPE_SCHEMA,
+        **{key: {"count": scope[key]["count"]}
+           for key in ("direct_exposure", "dependent_consumers", "supporting_context")},
+        "exposure_system_count": scope["exposure_system_count"],
+        "review_system_count": scope["review_system_count"],
+    }
+
+
 def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
                     kind: str | None = None, max_depth: int = 6,
                     now: datetime) -> dict[str, Any]:
@@ -601,7 +654,8 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
             "target": {"input": target_text, "kind": kind or "unknown", "matched": None},
             "verdict": "NOT_FOUND",
             "layers": {},
-            "impact": {"affected_system_count": 0},
+            "impact": {"affected_system_count": 0, "affected_systems": [],
+                       "system_classification": _classify_system_scope({})},
             "honest_unknowns": [
                 "the target matches nothing in the twin: no certificate, "
                 "endpoint, system, vendor, device, library or algorithm",
@@ -633,12 +687,11 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
 
     dependents = layers["system"].get("dependents_by_depth") or {}
     downstream = layers["system"].get("downstream_by_depth") or {}
-    code_systems = layers["code"].get("systems") or []
-    vendor_systems = layers["vendor"].get("systems") or layers["system"].get("systems") or []
-    affected_systems = sorted(
-        {s for by_depth in dependents.values() for s in by_depth}
-        | {s for by_depth in downstream.values() for s in by_depth}
-        | set(code_systems) | set(vendor_systems))
+    classification = _classify_system_scope(layers)
+    # Compatibility alias: historically "affected" included supporting context.
+    # New callers must use the explicitly named classification, not treat the
+    # legacy review union as a confirmed failure/consumer count.
+    affected_systems = classification["review_systems"]
     affected_processes = [
         {"id": p.get("id"), "name": p.get("name")}
         for p in (layers.get("process") or {}).get("processes") or []
@@ -697,6 +750,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         "impact": {
             "affected_systems": affected_systems,
             "affected_system_count": len(affected_systems),
+            "system_classification": classification,
             "affected_processes": affected_processes,
             "migration_waves": {wave: sorted(sids)
                                 for wave, sids in sorted(waves.items())},

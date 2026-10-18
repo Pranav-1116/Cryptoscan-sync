@@ -66,17 +66,20 @@ export default function UnifiedCascadePanel() {
 
   const layers = result?.layers || {};
   const impact = result?.impact || ({} as UnifiedCascadeResult["impact"]);
-  const dependents = layers.system?.dependents_by_depth || {};
-  const downstream = layers.system?.downstream_by_depth || {};
-  const dependentsCount = Object.values(dependents).reduce(
-    (n: number, v: any) => n + (Array.isArray(v) ? v.length : 0), 0);
-  const downstreamCount = Object.values(downstream).reduce(
-    (n: number, v: any) => n + (Array.isArray(v) ? v.length : 0), 0);
+  const scope = impact.system_classification;
+  const categories = scope ? [
+    { label: "Direct exposure", value: scope.direct_exposure,
+      description: "Systems directly linked to the selected target." },
+    { label: "Dependent consumers", value: scope.dependent_consumers,
+      description: "Other systems reached through reverse dependency links." },
+    { label: "Supporting context", value: scope.supporting_context,
+      description: "Forward-only dependencies; excluded from consumer exposure." },
+  ] : [];
 
   return (
     <Panel
       title="Cross-BOM cascade"
-      sub="Explore what a change affects across code, network, systems, processes, hardware, vendors and libraries"
+      sub="Review modeled dependencies across BOM layers — not confirmed failures or outage predictions"
       className="mt"
     >
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
@@ -124,20 +127,35 @@ export default function UnifiedCascadePanel() {
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+            {categories.map(({ label, value, description }) => (
+              <section key={label} aria-label={label}
+                style={{ padding: 10, background: "var(--bg-2)", borderRadius: "var(--r)" }}>
+                <div style={{ fontSize: 11, color: "var(--dim)" }}>{label}</div>
+                <div style={{ fontSize: 22, fontWeight: 700 }}>{value.count}</div>
+                <div style={{ fontSize: 11, color: "var(--dim)" }}>{description}</div>
+                <ul style={{ fontSize: 11, paddingLeft: 16 }}>
+                  {value.systems.map((id) => <li key={id}>{id}</li>)}
+                </ul>
+              </section>
+            ))}
+            <section aria-label="System totals"
+              style={{ padding: 10, background: "var(--bg-2)", borderRadius: "var(--r)" }}>
+              {scope ? <>
+                <div>Modeled exposure: {scope.exposure_system_count}</div>
+                <div>Review scope: {scope.review_system_count}</div>
+                <div style={{ fontSize: 11, color: "var(--dim)" }}>
+                  Exposure = direct + consumers. Review = exposure + context.
+                  Buckets are disjoint; direct takes precedence over consumers, then context.
+                </div>
+              </> : <>
+                <div>Legacy review scope: {impact.affected_system_count ?? "unknown"}</div>
+                <div style={{ fontSize: 11, color: "var(--dim)" }}>
+                  Classification unavailable for this answer. Do not interpret the legacy total as exposed consumers.
+                </div>
+              </>}
+            </section>
             <div style={{ padding: 10, background: "var(--bg-2)", borderRadius: "var(--r)" }}>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>Affected systems</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "var(--red)" }}>
-                {impact.affected_system_count ?? 0}
-              </div>
-            </div>
-            <div style={{ padding: 10, background: "var(--bg-2)", borderRadius: "var(--r)" }}>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>Dependents / downstream</div>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>
-                {dependentsCount} / {downstreamCount}
-              </div>
-            </div>
-            <div style={{ padding: 10, background: "var(--bg-2)", borderRadius: "var(--r)" }}>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>Processes affected</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>Linked processes (coverage may be partial)</div>
               <div style={{ fontSize: 22, fontWeight: 700 }}>
                 {impact.affected_processes?.length ?? 0}
               </div>
@@ -162,22 +180,14 @@ export default function UnifiedCascadePanel() {
             </div>
           </div>
 
-          {(impact.affected_systems?.length ?? 0) > 0 && (
-            <div style={{ fontSize: 12 }}>
-              <div style={{ color: "var(--faint)", marginBottom: 4 }}>Affected systems</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {impact.affected_systems.map((s: string) => (
-                  <span key={s} style={{ padding: "3px 8px", background: "var(--bg-2)", borderRadius: "var(--r)", fontSize: 11 }}>
-                    {s}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+          <div style={{ fontSize: 12, color: "var(--dim)" }}>
+            These are modeled relationships, not confirmed failures. Zero linked systems is not proof of no consumers.
+            {layers.hardware?.inventory_only && " Hardware linkage is inventory-only; consumer coverage may be missing."}
+          </div>
 
           {impact.migration_waves && Object.keys(impact.migration_waves).length > 0 && (
             <div style={{ fontSize: 12 }}>
-              <div style={{ color: "var(--faint)", marginBottom: 4 }}>Migration waves (when the roadmap fixes them)</div>
+              <div style={{ color: "var(--faint)", marginBottom: 4 }}>Migration planning waves (review scope)</div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {Object.entries(impact.migration_waves).map(([wave, sids]) => (
                   <span key={wave} style={{ padding: "3px 8px", background: "var(--bg-2)", borderRadius: "var(--r)", fontSize: 11 }}>
@@ -245,7 +255,10 @@ export default function UnifiedCascadePanel() {
                 <Badge variant={verdictVariant(r.verdict)}>{r.verdict}</Badge>
                 <span style={{ fontWeight: 600 }}>{r.target}</span>
                 <span style={{ color: "var(--dim)" }}>
-                  {r.target_kind || "?"} · {r.affected_system_count ?? 0} systems · {(r.created_at || "").replace("T", " ").slice(0, 19)}
+                  {r.target_kind || "?"} · {r.system_classification
+                    ? `${r.system_classification.direct_exposure.count} direct / ${r.system_classification.dependent_consumers.count} consumers / ${r.system_classification.supporting_context.count} context · ${r.system_classification.review_system_count} review`
+                    : `legacy review scope: ${r.affected_system_count ?? "unknown"} · breakdown unavailable`}
+                  {" · "}{(r.created_at || "").replace("T", " ").slice(0, 19)}
                 </span>
                 <button className="btn sm outline" style={{ marginLeft: "auto", fontSize: 11 }} onClick={() => showDiff(r.id)}>
                   diff vs previous
@@ -261,9 +274,9 @@ export default function UnifiedCascadePanel() {
                 {diff.verdict_changed && <span style={{ color: "var(--red)" }}> · verdict changed</span>}
               </div>
               <div>
-                systems: {diff.affected_systems.before} → {diff.affected_systems.after}
+                Review scope: {diff.affected_systems.before} → {diff.affected_systems.after}
                 {diff.affected_systems.removed.length > 0 && (
-                  <span style={{ color: "var(--green)" }}> · removed: {diff.affected_systems.removed.join(", ")}</span>
+                  <span style={{ color: "var(--dim)" }}> · removed: {diff.affected_systems.removed.join(", ")}</span>
                 )}
                 {diff.affected_systems.added.length > 0 && (
                   <span style={{ color: "var(--red)" }}> · added: {diff.affected_systems.added.join(", ")}</span>
@@ -272,8 +285,20 @@ export default function UnifiedCascadePanel() {
                   <span style={{ color: "var(--dim)" }}> · unchanged</span>
                 )}
               </div>
+              {diff.system_classification?.available ? (
+                <div aria-label="Classification changes">
+                  {([ ["Direct exposure", diff.system_classification.direct_exposure],
+                      ["Dependent consumers", diff.system_classification.dependent_consumers],
+                      ["Supporting context", diff.system_classification.supporting_context] ] as const).map(([label, delta]) => (
+                    delta && <div key={label}>{label}: {delta.before} → {delta.after}
+                      {delta.added.length > 0 && ` · added: ${delta.added.join(", ")}`}
+                      {delta.removed.length > 0 && ` · removed: ${delta.removed.join(", ")}`}
+                    </div>
+                  ))}
+                </div>
+              ) : <div>Classification comparison unavailable for these stored runs.</div>}
               <div style={{ color: "var(--dim)", marginTop: 2 }}>
-                processes: {diff.affected_processes.before} → {diff.affected_processes.after}
+                linked processes: {diff.affected_processes.before} → {diff.affected_processes.after}
               </div>
             </div>
           )}

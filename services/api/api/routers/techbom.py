@@ -1066,7 +1066,7 @@ def technology_bom_cascade(
     cannot see.
     """
     from api.routers.digital_twin import _snapshot
-    from cbom.unified_cascade import MAX_DEPTH_LIMIT, unified_cascade
+    from cbom.unified_cascade import MAX_DEPTH_LIMIT, summarize_system_scope, unified_cascade
     from db.models.cascade_extensions import TwinSnapshot
     from db.repositories.cascade_run_repository import CascadeRunRepository
 
@@ -1104,11 +1104,12 @@ def technology_bom_cascade(
         "technology_bom.cascade",
         f"Cross-BOM cascade run: {result['verdict']} for target "
         f"{result['target']['kind']} {request.target!r} "
-        f"({result['impact']['affected_system_count']} systems affected)",
+        f"({result['impact']['system_classification']['review_system_count']} systems in review scope)",
         {"target": request.target, "kind": result["target"]["kind"],
          "verdict": result["verdict"], "run_id": run.id,
          "replayed_over": result.get("replayed_over"),
-         "affected_system_count": result["impact"]["affected_system_count"]},
+         "affected_system_count": result["impact"]["affected_system_count"],
+         "system_classification": summarize_system_scope(result)},
         target_name="technology-bom",
     )
     return {**result, "run_id": run.id, "max_depth_limit": MAX_DEPTH_LIMIT}
@@ -1123,6 +1124,7 @@ def technology_bom_cascade_runs(
 ):
     """Cascade history, newest first — the audit trail of past answers."""
     from db.repositories.cascade_run_repository import CascadeRunRepository
+    from cbom.unified_cascade import summarize_system_scope
 
     runs = CascadeRunRepository(db).list_runs(limit=limit, offset=offset)
     return {
@@ -1131,6 +1133,9 @@ def technology_bom_cascade_runs(
              "max_depth": r.max_depth, "verdict": r.verdict,
              "affected_system_count": (r.result or {}).get("impact", {}).get(
                  "affected_system_count"),
+             # Old persisted answers stay unclassified; never invent zeroes or
+             # silently replay them against today's graph.
+             "system_classification": summarize_system_scope(r.result or {}),
              # ownership travels with the row (NULL = platform estate)
              "tenant_id": r.tenant_id,
              # replay provenance travels with the history entry: an auditor
@@ -1231,6 +1236,20 @@ def technology_bom_cascade_run_diff(
 
     old_systems, new_systems = _systems(other.result), _systems(run.result)
     old_processes, new_processes = _processes(other.result), _processes(run.result)
+    from cbom.unified_cascade import SYSTEM_SCOPE_SCHEMA
+
+    old_scope = (other.result or {}).get("impact", {}).get("system_classification") or {}
+    new_scope = (run.result or {}).get("impact", {}).get("system_classification") or {}
+    comparable = (old_scope.get("schema") == SYSTEM_SCOPE_SCHEMA
+                  and new_scope.get("schema") == SYSTEM_SCOPE_SCHEMA)
+    scope_diff: dict[str, Any] = {"available": comparable}
+    if comparable:
+        scope_diff.update({
+            key: _delta(key, set(old_scope[key]["systems"]), set(new_scope[key]["systems"]))
+            for key in ("direct_exposure", "dependent_consumers", "supporting_context")
+        })
+    else:
+        scope_diff["reason"] = "one or both stored runs lack the current system classification"
     return {
         "schema": "cryptoscan.unified-cascade-diff/1",
         "run": {"id": run.id, "created_at": run.created_at.isoformat()
@@ -1240,6 +1259,7 @@ def technology_bom_cascade_run_diff(
         "target": run.target,
         "verdict_changed": run.verdict != other.verdict,
         "affected_systems": _delta("systems", old_systems, new_systems),
+        "system_classification": scope_diff,
         "affected_processes": {
             **_delta("processes",
                      {p[0] or p[1] for p in old_processes},
@@ -1337,7 +1357,7 @@ def cascade_watches_run_due(
     the alert stream already carries.
     """
     from api.routers.digital_twin import _snapshot
-    from cbom.unified_cascade import unified_cascade
+    from cbom.unified_cascade import summarize_system_scope, unified_cascade
     from db.models.cascade_extensions import CascadeWatch
     from db.repositories.cascade_run_repository import CascadeRunRepository
 
@@ -1363,7 +1383,8 @@ def cascade_watches_run_due(
                           created_by=f"watch:{watch.id}")
         entry = {"watch_id": watch.id, "target": watch.target,
                  "run_id": run.id, "verdict": result["verdict"],
-                 "affected_system_count": result["impact"]["affected_system_count"]}
+                 "affected_system_count": result["impact"]["affected_system_count"],
+                 "system_classification": summarize_system_scope(result)}
         if result["verdict"] == "NOT_FOUND":
             # the target has left the estate: say so explicitly instead of
             # letting a zero-impact answer read as "all clear"
@@ -1383,7 +1404,7 @@ def cascade_watches_run_due(
                     entry["blast_radius_changed"] = True
                     emit_platform_event(
                         "cascade.blast_radius_changed",
-                        f"Watched cascade '{watch.target}' blast radius changed: "
+                        f"Watched cascade '{watch.target}' review scope changed: "
                         f"{len(added)} added, {len(removed)} removed",
                         {"watch_id": watch.id, "target": watch.target,
                          "added": added, "removed": removed,

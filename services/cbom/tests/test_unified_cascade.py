@@ -521,3 +521,97 @@ def test_vendor_cascade_reports_canonical_system_ids():
     # sys-pay is the system linked to vendor v-thales by system_vendors
     assert result["layers"]["system"]["systems"] == ["sys-pay"]
     assert result["layers"]["code"]["systems"] == []
+
+
+# Disjoint system scopes: consumers are not forward-only supporting services.
+def test_system_scope_separates_exposure_consumers_and_supporting_context():
+    result = run("payment-api", kind="system")
+    scope = result["impact"]["system_classification"]
+    assert scope["schema"] == "cryptoscan.cascade-system-scope/1"
+    assert scope["direct_exposure"] == {"systems": ["sys-pay"], "count": 1}
+    assert scope["dependent_consumers"] == {"systems": ["sys-mobile", "sys-web"], "count": 2}
+    assert scope["supporting_context"] == {"systems": ["sys-db"], "count": 1}
+    assert scope["exposure_system_count"] == 3
+    assert scope["review_system_count"] == 4
+    assert result["impact"]["affected_systems"] == scope["review_systems"]
+    assert result["impact"]["affected_system_count"] == scope["review_system_count"]
+    assert "sys-db" not in scope["exposure_systems"]
+
+
+@pytest.mark.parametrize("kind,target", [
+    ("algorithm", "RSA-2048"), ("certificate", "ab" * 32),
+    ("endpoint", "api.bank:443"), ("system", "payment-api"),
+    ("vendor", "Thales"), ("device", "hsm-001"),
+    ("library", "liboqs"), ("process", "Card Payments"),
+    ("system", "not-in-inventory"),
+])
+def test_every_target_has_consistent_disjoint_system_counts(kind, target):
+    result = run(target, kind=kind)
+    scope = result["impact"]["system_classification"]
+    buckets = [scope[k] for k in ("direct_exposure", "dependent_consumers", "supporting_context")]
+    sets = [set(b["systems"]) for b in buckets]
+    assert all(b["count"] == len(b["systems"]) for b in buckets)
+    assert not (sets[0] & sets[1] or sets[0] & sets[2] or sets[1] & sets[2])
+    assert scope["exposure_systems"] == sorted(sets[0] | sets[1])
+    assert scope["exposure_system_count"] == len(sets[0] | sets[1])
+    assert scope["review_systems"] == sorted(set.union(*sets))
+    assert scope["review_system_count"] == sum(b["count"] for b in buckets)
+    assert result["impact"]["affected_systems"] == scope["review_systems"]
+    assert result["impact"]["affected_system_count"] == scope["review_system_count"]
+
+
+def test_cycle_scope_prioritizes_direct_then_consumers_and_preserves_raw_walks():
+    import copy
+
+    snapshot = copy.deepcopy(SNAPSHOT)
+    # DB is both a dependency and consumer of pay; it must not count twice.
+    snapshot["dependencies"].append({"source": "sys-db", "target": "sys-pay", "type": "CALLS"})
+    result = unified_cascade(snapshot, target="payment-api", kind="system", now=NOW)
+    scope = result["impact"]["system_classification"]
+    assert scope["direct_exposure"]["systems"] == ["sys-pay"]
+    assert "sys-db" in scope["dependent_consumers"]["systems"]
+    assert scope["supporting_context"]["systems"] == []
+    assert result["layers"]["system"]["downstream_by_depth"] == {"1": ["sys-db"]}
+    assert scope["review_system_count"] == 4
+
+
+def test_scope_multi_seed_precedence_and_depth_limit():
+    import copy
+
+    snapshot = copy.deepcopy(SNAPSHOT)
+    # RSA has two seeds (pay + web); direct classification wins even if a
+    # seed also depends on another seed. One-hop consumers stop at mobile.
+    snapshot["systems"].append({"id": "sys-channel", "name": "Channel"})
+    snapshot["dependencies"].append({"source": "sys-channel", "target": "sys-mobile"})
+    result = unified_cascade(snapshot, target="RSA-2048", kind="algorithm", max_depth=1, now=NOW)
+    scope = result["impact"]["system_classification"]
+    assert scope["direct_exposure"]["systems"] == ["sys-pay", "sys-web"]
+    assert scope["dependent_consumers"]["systems"] == ["sys-mobile"]
+    assert scope["supporting_context"]["count"] == 0
+    assert "sys-channel" not in scope["review_systems"]
+
+
+def test_inventory_only_device_has_zero_classified_systems_not_a_clean_verdict():
+    import copy
+
+    snapshot = copy.deepcopy(SNAPSHOT)
+    snapshot["crypto_hardware"] = {}
+    result = unified_cascade(snapshot, target="hsm-001", kind="device", now=NOW)
+    assert result["verdict"] == "AFFECTED"
+    assert result["layers"]["hardware"]["inventory_only"] is True
+    scope = result["impact"]["system_classification"]
+    assert scope["review_system_count"] == scope["exposure_system_count"] == 0
+    assert result["honest_unknowns"]
+
+
+def test_history_scope_summary_is_count_only_and_preserves_legacy_unknown():
+    from cbom.unified_cascade import summarize_system_scope
+
+    summary = summarize_system_scope(run("payment-api", kind="system"))
+    assert summary["direct_exposure"] == {"count": 1}
+    assert summary["dependent_consumers"] == {"count": 2}
+    assert summary["supporting_context"] == {"count": 1}
+    assert summary["exposure_system_count"] == 3
+    assert summary["review_system_count"] == 4
+    assert "sys-pay" not in str(summary)
+    assert summarize_system_scope({"impact": {"affected_system_count": 4}}) is None

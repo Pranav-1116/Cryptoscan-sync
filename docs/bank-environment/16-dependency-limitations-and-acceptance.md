@@ -2,9 +2,19 @@
 
 [Guide index](README.md) · Previous: [API runbook](15-dependency-cascade-api-runbook.md)
 
-**Source-traced limitations, not newly fixed application behavior.** This update
-adds documentation only. Recommended improvements below are not implemented by
-writing this guide, and no bank production approval is implied.
+**Source-traced baseline limitations.** This guide originally recorded a
+documentation-only review. The implementation update below identifies subsequently
+delivered changes. Recommended improvements are not implemented merely by writing
+this guide, and no bank production approval is implied.
+
+## Implementation update
+
+The limitation table below records the pre-implementation baseline documented
+at commit `94001ff2`. [Step 1](17-classified-system-scope.md) now adds disjoint
+direct/consumer/context classification and UI counts while retaining legacy
+aggregate fields. The other backlog items are not resolved by that change.
+Current engineering status is tracked in the
+[ten-step plan](../dev/dependency-intelligence-roadmap.md).
 
 ## 1. The defensible product claim
 

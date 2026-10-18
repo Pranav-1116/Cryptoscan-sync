@@ -4598,6 +4598,30 @@ export const apiDiscoverNetworkInventory = (body: {
 // Cross-BOM cascade (unified) + dependency-edge management
 // ---------------------------------------------------------------------------
 
+/** Disjoint modeled-system buckets, not confirmed outage counts.
+ * Direct seeds take precedence over consumers, then forward-only context. */
+export interface CascadeScopeCounts {
+  schema: "cryptoscan.cascade-system-scope/1";
+  direct_exposure: { count: number };
+  dependent_consumers: { count: number };
+  supporting_context: { count: number };
+  exposure_system_count: number;
+  review_system_count: number;
+}
+
+export interface CascadeSystemScope extends CascadeScopeCounts {
+  direct_exposure: { systems: string[]; count: number };
+  dependent_consumers: { systems: string[]; count: number };
+  supporting_context: { systems: string[]; count: number };
+  exposure_systems: string[];
+  review_systems: string[];
+}
+
+export interface CascadeScopeDelta {
+  added: string[]; removed: string[];
+  unchanged_count: number; before: number; after: number;
+}
+
 export interface UnifiedCascadeResult {
   schema: string;
   verdict: "AFFECTED" | "NOT_FOUND" | "INSUFFICIENT_DATA";
@@ -4606,7 +4630,9 @@ export interface UnifiedCascadeResult {
   layers: Record<string, any>;
   impact: {
     affected_systems: string[];
+    /** Legacy full review union, including supporting context. */
     affected_system_count: number;
+    system_classification?: CascadeSystemScope | null;
     affected_processes?: { id?: string; name?: string }[];
     migration_waves?: Record<string, string[]>;
     twin_assets?: string[];
@@ -4626,11 +4652,19 @@ export interface CascadeRunSummary {
   max_depth: number;
   verdict: string;
   affected_system_count?: number | null;
+  system_classification?: CascadeScopeCounts | null;
   created_by: string | null;
   created_at: string | null;
 }
 
 export interface CascadeRunDiff {
+  system_classification?: {
+    available: boolean;
+    reason?: string;
+    direct_exposure?: CascadeScopeDelta;
+    dependent_consumers?: CascadeScopeDelta;
+    supporting_context?: CascadeScopeDelta;
+  };
   target: string;
   verdict_changed: boolean;
   run: { id: string; created_at: string | null; verdict: string };

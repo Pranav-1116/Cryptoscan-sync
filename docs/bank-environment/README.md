@@ -33,6 +33,7 @@ installation or a substitute for the bank's security/change approval.
 | [14 — Detailed bank cascade examples](14-bank-cascade-examples.md) | What do HSM, application, algorithm, certificate and supplier investigations actually show? |
 | [15 — Dependency/cascade API runbook](15-dependency-cascade-api-runbook.md) | How does an operator inspect/register links, run analysis, retain history and compare results? |
 | [16 — Dependency limitations and acceptance](16-dependency-limitations-and-acceptance.md) | What can be missing or misleading, what should improve, and what should the bank test? |
+| [17 — Implemented classified system scope](17-classified-system-scope.md) | What changed in step 1, how do the disjoint counts work, and what remains pending? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>
@@ -127,3 +128,6 @@ and supported package resolution have different evidence strength. The new
 [bank examples](14-bank-cascade-examples.md) include a reproducible pure-engine
 fixture showing six implicated systems, an eight-system change-review context,
 and a missing HSM link that must remain unknown rather than safe.
+
+Implementation progress is tracked in the [ten-step engineering plan](../dev/dependency-intelligence-roadmap.md).
+[Step 1](17-classified-system-scope.md) is implemented; steps 2–10 remain pending.

@@ -131,6 +131,12 @@ it contributes to the current traversal.
 
 ## 7. Reading a unified answer
 
+**Step-1 update:** new answers also include `impact.system_classification` with
+separate direct exposure, dependent consumers and supporting context. Legacy
+`affected_*` totals below retain the full review union for compatibility. See
+[the implemented contract](17-classified-system-scope.md), including historical
+unknowns and unchanged traversal limitations.
+
 | Field | What to inspect |
 |---|---|
 | `target` | Did the engine match the intended kind/object? |

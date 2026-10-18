@@ -435,3 +435,82 @@ def test_system_cbom_carries_real_estate_dependencies(app_db):
     assert deps["system:sys-web"] == ["system:sys-pay"]
     props = {p["name"]: p["value"] for p in bom["metadata"].get("properties", [])}
     assert props.get("cryptoscan:dependencies") == "estate-linkage"
+
+
+# Additive scope contract: old totals are review scope, not exposure counts.
+def test_classified_scope_round_trips_live_history_and_stored_run(app_db):
+    with TestClient(app_db) as client:
+        posted = client.post("/api/v1/technology-bom/cascade",
+                             json={"target": "payment-api", "kind": "system"})
+        assert posted.status_code == 200
+        body = posted.json()
+        scope = body["impact"]["system_classification"]
+        assert scope["direct_exposure"] == {"systems": ["sys-pay"], "count": 1}
+        assert scope["dependent_consumers"] == {"systems": ["sys-web"], "count": 1}
+        assert scope["supporting_context"] == {"systems": ["sys-db"], "count": 1}
+        assert scope["exposure_system_count"] == 2
+        assert scope["review_system_count"] == body["impact"]["affected_system_count"] == 3
+        listed = client.get("/api/v1/technology-bom/cascade/runs").json()["runs"]
+        summary = listed[0]["system_classification"]
+        assert summary["direct_exposure"] == {"count": 1}
+        assert summary["dependent_consumers"] == {"count": 1}
+        assert summary["supporting_context"] == {"count": 1}
+        assert summary["exposure_system_count"] == 2
+        assert summary["review_system_count"] == 3
+        assert "review_systems" not in summary
+        stored = client.get(f"/api/v1/technology-bom/cascade/runs/{body['run_id']}").json()
+        assert stored["result"]["impact"]["system_classification"] == scope
+        client.post("/api/v1/technology-bom/cascade/watch", json={"target": "payment-api"})
+        watched = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()
+        assert watched["watches"][0]["system_classification"] == summary
+
+
+def test_classified_diff_reports_role_change_even_when_review_union_unchanged(app_db):
+    with TestClient(app_db) as client:
+        old = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        session = app_db.state.test_session
+        session.add(SystemDependency(parent_id="sys-db", child_id="sys-pay"))
+        session.commit()
+        new = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        resp = client.get(f"/api/v1/technology-bom/cascade/runs/{new['run_id']}/diff",
+                          params={"against": old["run_id"]})
+    assert resp.status_code == 200
+    diff = resp.json()
+    assert diff["affected_systems"]["added"] == diff["affected_systems"]["removed"] == []
+    assert diff["system_classification"]["available"] is True
+    assert diff["system_classification"]["dependent_consumers"]["added"] == ["sys-db"]
+    assert diff["system_classification"]["supporting_context"]["removed"] == ["sys-db"]
+
+
+def test_legacy_history_and_mixed_diff_do_not_invent_zero_classification(app_db):
+    session = app_db.state.test_session
+    with TestClient(app_db) as client:
+        old = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        row = session.query(CascadeRun).filter_by(id=old["run_id"]).one()
+        legacy = dict(row.result)
+        legacy["impact"] = {k: v for k, v in legacy["impact"].items() if k != "system_classification"}
+        row.result = legacy
+        session.commit()
+        new = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        listed = client.get("/api/v1/technology-bom/cascade/runs").json()["runs"]
+        entry = next(r for r in listed if r["id"] == old["run_id"])
+        assert entry["system_classification"] is None
+        assert entry["affected_system_count"] == 3
+        diff = client.get(f"/api/v1/technology-bom/cascade/runs/{new['run_id']}/diff",
+                          params={"against": old["run_id"]}).json()
+        assert diff["system_classification"]["available"] is False
+        assert "direct_exposure" not in diff["system_classification"]
+        assert diff["affected_systems"]["after"] == diff["affected_systems"]["before"] == 3
+        fetched = client.get(f"/api/v1/technology-bom/cascade/runs/{old['run_id']}").json()
+        assert "system_classification" not in fetched["result"]["impact"]
+
+
+def test_missing_target_has_explicit_zero_scope_but_stays_not_found(app_db):
+    with TestClient(app_db) as client:
+        resp = client.post("/api/v1/technology-bom/cascade", json={"target": "not-a-system", "kind": "system"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["verdict"] == "NOT_FOUND"
+    assert body["impact"]["system_classification"]["review_system_count"] == 0
+    assert body["impact"]["system_classification"]["direct_exposure"]["systems"] == []
+    assert body["honest_unknowns"]
