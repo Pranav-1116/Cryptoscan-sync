@@ -1433,16 +1433,6 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   .pipeline-arrow { display: none; }
 }
 @media (max-width: 560px) { .pipeline-stages { grid-template-columns: 1fr; } }
-(--line); color: var(--dim); font-size: 11px; }
-.pipeline-boundaries b { color: var(--accent); font-weight: 600; }
-@media (max-width: 900px) {
-  .pipeline-stages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pipeline-arrow { display: none; }
-}
-@media (max-width: 560px) { .pipeline-stages { grid-template-columns: 1fr; } }
-ne; }
-}
-@media (max-width: 560px) { .pipeline-stages { grid-template-columns: 1fr; } }
 
 /* ── global keyboard focus ring (§5, round 66) ────────────────────────
    ONE focus story for the whole console: a 2px accent ring with offset,

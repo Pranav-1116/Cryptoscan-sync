@@ -57,12 +57,14 @@ from __future__ import annotations
 import re
 from contextlib import contextmanager
 from contextvars import ContextVar
+from itertools import chain
 from typing import Any
 
 from sqlalchemy import String, Table, event, inspect as sa_inspect, or_, select
 from sqlalchemy.orm import Mapped, Session, mapped_column, with_loader_criteria
 from sqlalchemy.sql import Join, Select
 from sqlalchemy.sql.annotation import AnnotatedColumn, AnnotatedTable
+from sqlalchemy.sql.elements import BindParameter
 
 #: The tenant whose rows the current unit of work may see. ``None`` means no
 #: tenant scope is active (platform operator, worker, single-tenant install).
@@ -350,11 +352,42 @@ def _guard_orm_bulk_insert(orm_execute_state, tenant: str) -> None:
         elif isinstance(group, dict):
             rows.append(group)
 
+    if getattr(statement, "select", None) is not None:
+        raise TenantScopeViolation("INSERT from SELECT cannot establish tenant ownership")
+    parameters = orm_execute_state.parameters
+    parameter_rows = [parameters] if isinstance(parameters, dict) else list(parameters or [])
+    for params in parameter_rows:
+        if not isinstance(params, dict):
+            raise TenantScopeViolation("unsupported tenant bulk insert parameters")
+        claim = params.get("tenant_id")
+        if claim is not None and (not isinstance(claim, str) or claim != tenant):
+            raise TenantScopeViolation("bulk insert parameters claim a foreign or dynamic tenant")
+        # execute(insert(Model), rows) has no statement .values() at all.
+        # Stamp the actual execution parameters, not only the SQL template.
+        params["tenant_id"] = tenant
+
     claimed: list[str | None] = []
     normalized_rows: list[dict] = []
     for row in rows:
         plain = {getattr(key, "name", None) or getattr(key, "key", None) or key: value
                  for key, value in row.items()}
+        claim = plain.get("tenant_id")
+        # SQLAlchemy wraps .values(tenant_id="literal") in BindParameter;
+        # comparing that SQL object to a Python tenant wrongly rejected even
+        # a matching literal. Only unwrap fixed literals, never dynamic SQL or
+        # callable/required binds whose runtime ownership is not established.
+        if isinstance(claim, BindParameter):
+            if claim.callable is not None or claim.required:
+                raise TenantScopeViolation("dynamic tenant binds are not supported in scoped bulk inserts")
+            for params in parameter_rows:
+                if claim.key in params:
+                    override = params[claim.key]
+                    if override is not None and (not isinstance(override, str) or override != tenant):
+                        raise TenantScopeViolation("tenant bind parameters cannot override the active owner")
+                    params[claim.key] = tenant
+            plain["tenant_id"] = claim = claim.value
+        if claim is not None and not isinstance(claim, str):
+            raise TenantScopeViolation("bulk insert tenant must be a literal owner")
         claimed.append(plain.get("tenant_id"))
         normalized_rows.append((row, plain))
 
@@ -365,7 +398,10 @@ def _guard_orm_bulk_insert(orm_execute_state, tenant: str) -> None:
                 f"bulk insert claims tenant {claim!r} while active scope is {tenant!r}"
             )
 
-    if not rows or all(claim is not None for claim in claimed):
+    if not rows:
+        orm_execute_state.statement = statement.values(tenant_id=tenant)
+        return
+    if all(claim is not None for claim in claimed):
         return  # every row already owned by the active tenant
 
     if is_single_values:
@@ -474,13 +510,19 @@ def install_tenant_guard() -> None:
 
     @event.listens_for(Session, "before_flush")
     def _stamp_new_rows(session, flush_context, instances):  # pragma: no cover
-        for obj in session.dirty:
+        tenant = current_tenant()
+        # Unit-of-work flush SQL bypasses do_orm_execute. Objects loaded before
+        # entering this scope (including readable platform rows) must not gain
+        # write/delete authority merely by remaining in the identity map.
+        for obj in chain(session.dirty, session.deleted):
             if not isinstance(obj, TenantScoped):
                 continue
             history = sa_inspect(obj).attrs.tenant_id.history
             if history.has_changes():
                 raise TenantScopeViolation("tenant_id is immutable once a row exists")
-        if current_tenant() is None:
+            if tenant is not None and obj.tenant_id != tenant:
+                raise TenantScopeViolation("cached row is not owned by the active tenant")
+        if tenant is None:
             return
         for obj in session.new:
             stamp_tenant(obj)

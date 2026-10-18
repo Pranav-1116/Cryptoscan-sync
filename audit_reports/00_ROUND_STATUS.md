@@ -283,3 +283,295 @@ Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.
 | 81 (2026-10-16) | Round gate: full serial backend gate green before push — **7,642 passed / 34 skipped / 0 FAILED** across 54 suites (5 `live` deselected by pytest.ini), i.e. round 80's 7,629 plus this round's 13 new tests; api 1,744✓ / 2 skipped (was 1,743), worker 622✓ / 16 skipped (was 612), remediation 44✓ (was 42), container_scanner 117✓ (was 107). Frontend: Vitest **334✓ / 34 files** + clean `tsc --noEmit` (no frontend file changed — run to close the gate, not to claim a frontend fix). ruff clean repo-wide (`services scripts shared`); `tenant_isolation_audit.py` **PASS** (115 scoped / 12 platform / 1 opt-out / 0 violations). Operator-loop evidence: `docs/readiness-evidence/operator-loop-drill-2026-10-16.json` — **121 checks / 0 failed over 2 passes** at commit `c6db4571`, clean tree, inline pipeline on the SQLite default. Operator-visible proof of the two fixes: `POST /remediation/tasks` fell from 5021 ms to 8.7 ms and the journal went from 5 tasks / 0 `task_created` rows to 5 / 5; and a rescan of the same estate now reproduces 20 evidence records with 0 differing coordinates under a brand-new job id, where before every dependency-derived row changed identity, drift reported movement that never happened, and an honest fix verified as REGRESSION | gate |
 | 81 (2026-10-16) | SECOND PASS — the third defect, closed: `GET /monitor/events` answered `{"events": []}` against a database holding every row (the drill's: 64 rows, 3 systems, 22 scans) because `MonitorRepository.list_events` scoped exclusively through `target_id IN (SELECT id FROM monitor_targets ...)` — and a platform journal row, which is what `emit_platform_event` writes through a target shim whose id is None, has no target behind it, so `NULL IN (...)` never matched. Every `remediation.task_*` event was therefore unreachable through the one endpoint named after the journal, for a platform admin included; with no registered watch-list targets (the normal case outside the monitor daemon) the feed was empty for EVERY caller. The tenant branch had the same shape and the same blindness: a row stamped with a tenant but attached to no target — a tenant operator's own task proposal — was invisible to that tenant. Ownership is now read from the ROW first (`MonitorEvent` is `TenantScoped`, where NULL *is* the platform estate) and from the target second, which leaves watch-list behaviour unchanged: platform caller = `tenant_id IS NULL OR target owned by the platform estate`; tenant caller = `tenant_id == caller OR target owned by the caller`. Neither branch is widened past its scope — a tenant still never reads another tenant's rows (absent, not 403, so no existence oracle) and does not read the estate's operational noise either; the request-scoped tenant guard (SELECT criteria `tenant_id == caller OR tenant_id IS NULL`) enforces the same boundary independently, so the repository filter is a deliberately narrower second layer, and a platform caller still does not read tenant-owned rows here because a cross-tenant roll-up stays an explicit `platform_scope()` call. Where row and target ownership disagree (a tenant acting on a platform-estate watch-list target) both pictures keep the row — a case surfaced by a fixture accident and then pinned on purpose. The endpoint also states a row's scope outright (`"platform" | "tenant"`) instead of leaving an operator to infer it from a null `target_id`. This restores the documented contract rather than inventing one: `docs/architecture/multi-tenancy.md` already listed the repository layer as "every query filters by `tenant_id` (or `platform=True` for the NULL estate)" — the code did not, and that doc now carries the worked example (`docs/DATAFLOW.md` §5 step 1 states the read side of a platform row too). 7 new tests; reverting the filter yields 6 failures and preserves the watch-list compatibility case: `services/database/tests/unit/test_monitor_event_scope.py` (5: platform rows readable by their owner and not by a tenant; a tenant's own target-less rows; watch-list behaviour unchanged; the disagreement case; limit clamp + newest-first), `test_platform_events_realtime.py` (1: the endpoint returns the platform journal it just persisted, with zero watch-list targets in the database), `test_saas_tenancy.py` (1: end to end, a tenant reads its own journal rows and neither another tenant's nor the estate's). The drill now asserts the journal through BOTH surfaces per task id — replay path and operator endpoint — so a journal only one of them can see fails the pass, and its disclosure note is gone because the blindness is; regenerated artifact 123 checks / 0 failed over 2 passes at `40a27e1f`, `/monitor/events` reading 32 platform-scope rows in pass 1 and 64 in pass 2 with 5/5 proposals each — Co-authored-by: arena-agent <297053741+arena-agent@users.noreply.github.com> | §4.7, §4.8 |
 | 81 (2026-10-16) | Second-pass gate: full serial backend **7,649 passed / 34 skipped / 0 failed** across 54 suites, 5 live tests deselected. Frontend **334 passed / 34 files**, clean `tsc --noEmit`; ruff clean (`services scripts shared`); tenant-isolation audit PASS. Operator-loop drill **123/123 PASS** over 2 passes, clean tree at `40a27e1f`; operator endpoint exposes 32 then 64 platform-scope journal rows with 5/5 proposal events each. No production or external qualification claim. | gate |
+| 82 (2026-10-17) | Internal release-automation slice: main CI discovers all 54 service/shared test roots, runs frontend Vitest, preserves backend JUnit results and has an always-running fail-closed aggregate `ci` check. Empty scanner/migration/container workflows replaced with focused process/archive tests, actual SQLite/PostgreSQL Alembic/schema tests, and non-publishing builds of six Dockerfiles with correct contexts plus Compose validation. Required migration JUnit rejects skipped/no-test/error/failure proof; a deliberately unavailable local PostgreSQL endpoint produced 5 skips and was rejected. All 56 existing lock pins retained; 37 missing test/provider/transitive pins added; CI installs use lock constraints. Updated positive production-config fixture to current mandatory settings, with synthetic values only. 21 new contract tests. GitHub execution, actionlint expression validation, positive PostgreSQL, Docker/Compose builds, registry publication/digests, secret-scan activation and branch protection remain unverified/open; no release approval or external gap closure claimed. | §6, §7 release qualification |
+| 82 (2026-10-17) | Local gate for this slice: **1,760 passed / 13 skipped / 5 live deselected / 0 failed** across devsecops, database, scanner, container scanner and shared-model suites (not the full backend gate); includes all 21 new workflow/discovery/lock/production-fixture cases. Repo-wide ruff PASS; pip check PASS; four active workflow files parse as YAML and all embedded shell blocks pass `bash -n`. Positive PostgreSQL and Docker/Compose are NOT RUN (tools/services absent); actionlint unavailable because binary download is network-blocked. Existing unrelated whitespace warnings remain outside this slice. Frontend code unchanged in this slice; frontend tests not rerun. | gate |
+| 83 (2026-10-17) | Static source-parser boundary implemented locally: both worker scan paths use one launcher; production requires container mode and a preloaded immutable image, never inline fallback or auto-pull. Fixed non-root/no-capabilities/no-new-privileges/network-none/read-only command with memory/CPU/PID/fd/tmpfs limits; clone Git authentication masked; source-binding nonce rejects mismatched daemon mounts; child verifies runtime restrictions and rejects source special files before detectors; JSON/input/output/diagnostic limits, nonblocking CLI I/O, independent whole-parser watchdog, identity/status validation and explicit checked daemon cleanup. Execution policy persists in scan statistics and known Git identity is reattached by the parent, not taken from masked metadata. 77 new non-live test cases plus one opt-in real-Docker smoke test; scanner-safety workflow includes contracts. Stock worker/Compose deliberately does not provision CLI/daemon-shared staging or mount an unrestricted host socket. Real Docker, approved digest/runtime provisioning, architecture/hostile-input/escape/resource/credential and daemon-loss qualification remain OPEN; optional collectors and downstream worker operations remain outside this source-parser boundary. No build/publication/deployment/production approval. | §4.1 |
+| 83 (2026-10-17) | Local gate: **2,475 passed / 29 skipped / 6 live deselected / 0 failed**, 116.00s across worker, scanner, devsecops, database, container scanner, shared config and shared models (seven suites, NOT all 54). Focused adapter/launcher/production-setting tests **79 passed**. Fresh real three-scan SQLite chain persistence assertion **1 passed / 1 PostgreSQL skipped / 23 deselected**, 3.99s; stored execution policy checked for each scan. Explicit opt-in Docker test produced **1 skip** (runtime absent), correctly rejected by required-proof checker — not positive isolation proof. Repo-wide ruff and pip check PASS; four active workflow YAML/embedded shell checks PASS; two Compose files parse as YAML only (Compose execution unavailable). Existing Pydantic/Alembic/socket-block warnings disclosed in regression log. Frontend, positive PostgreSQL, GitHub execution and actual image builds not rerun/qualified. | gate |
+
+## UPDATE — round 84: durable notification receipts and tenant-write boundary (2026-10-17)
+
+**Implemented and locally regression-tested, not production-qualified.** This
+supersedes round 77's incorrect exactly-once statement; the old bounded event
+registry was neither retry-safe nor a durable acknowledgement ledger.
+
+- Added migration **0096** and durable same-owner per-event/integration/channel
+  receipts with stable receiver Idempotency-Key, frozen minimal retry envelope,
+  no automatic eviction/cascading deletion, and bounded oldest-first SQL
+  discovery across the retained mapped journal. New receivers can backfill
+  retained history; missing receivers are not delivery acknowledgements.
+- Committed 120-second leases before HTTP, token-fenced finalization, no database
+  transaction across transport, persistent 60-second..1-hour backoff and one
+  transport attempt per claim. Failed/air-gap destinations can retry without
+  resending successful peers. Routing/destination changes defer pending work.
+  The 20-second drain budget is soft, not a hard DNS/network deadline.
+- Receipt + integration sync + delivery audit finalize together. An HTTP ACK
+  followed by database failure is not reported as durable success. Stale
+  completion cannot overwrite a recovered lease. This remains **at-least-once**:
+  receiver deduplication is necessary after crashes, lease overrun or ambiguous
+  commits; HTTP 2xx is not proof of downstream ingestion/human action.
+- Exact tenant/platform event and receiver selection, same-owner routing keys
+  with owner-qualified legacy fallback, feed filtering before LIMIT and explicit
+  admin/CISO routing-write/drain authority. Transport HMAC now signs exactly
+  the canonical bytes sent. UI distinguishes pending, legacy-unknown and
+  unconfirmed outcomes; an empty drain no longer claims complete delivery.
+- SQLAlchemy fixed-literal/execute-parameter inserts now accept/stamp the real
+  owner without accepting foreign/dynamic claims or INSERT-from-SELECT. Final
+  review reproduced a separate pre-existing cached-ORM mutation hole and closed
+  it: flush updates/deletes must belong to the active tenant, even for expired
+  instances or platform rows loaded before entering the scope. Own/unscoped
+  platform writes still work; mixed foreign batches cannot partially flush.
+  Cached reads/session reuse and all relationship policies are not certified.
+- Migration imports old observed HTTP 2xx destination acknowledgements and
+  preserves event-only registry history as **legacy_unknown** tombstones in its
+  recorded owner scope. Unknown ≠ delivered. Evicted/unaudited or ambiguous old
+  mixed-tenant/shared-NULL history cannot be fully reconstructed. Stop old
+  drain writers and review retained-history/backfill before upgrading/resuming;
+  mixed versions are unsupported. Nonempty receipt/scoped-routing downgrade
+  refuses to silently discard authority. No deployment migration was run.
+
+**Final local evidence:**
+
+- `/home/user/notification-final-safety.{log,xml}`: **2,242 passed, 17 skipped,
+  8 live deselected, 97 warnings in 178.56s**. Database 242, control-plane 106,
+  worker 674, DevSecOps 571, shared models 534, and 115 tests in 14 selected API
+  notification/tenant/RBAC/quota/webhook/delivery/security files. These are five
+  full roots plus selected API files, **not all 54 suites/full API**. The earlier
+  full-API six-root run was stopped as superseded, not reported passing.
+- Included receipt tests **23**, handoff/rollback **4**, insert guard **13**,
+  cached ownership guard **13**; focused insert/cache checks **26 passed**.
+  `/home/user/tenant-cached-before.log` captures the pre-fix cached platform
+  update failing to raise; final regressions now pass. The readonly API
+  negative test uses freshly issued readonly claims and passed on rerun.
+- Frontend **337 tests / 35 files passed**, 113.21s; after final copy cleanup,
+  **8 notification tests + typecheck + build passed** again. Logs:
+  `/home/user/notification-frontend-final.log`,
+  `/home/user/notification-copy-final.log`.
+- Ruff (`services scripts shared`), `pip check`, tenant inventory audit
+  (**116 scoped / 12 platform tables, 1 explicit opt-out**) and migration
+  workflow YAML/embedded shell parsing passed. CI now includes receipt handoff,
+  insert/cache guards and opt-in real PostgreSQL concurrent-claim tests.
+- `/home/user/notification-postgres-unavailable.xml`: **2 live tests skipped**
+  without `CRYPTOSCAN_TEST_PG_URL`; the required-proof checker correctly
+  rejected the skips. This is negative proof-guard evidence, **not positive
+  PostgreSQL qualification**. No observed GitHub/image/receiver/SMTP deployment
+  success is implied by the workflow definitions.
+
+Operations/handoff guide: `docs/dev/notification-delivery.md`. SMTP transport,
+automatic scheduling, explicit unknown-history redrive/retention policy, real
+PostgreSQL/provider deduplication/ingestion, crash/clock-skew/load qualification
+and customer rollout remain **OPEN**. Round 83 scanner Docker/production-runtime
+qualification is unchanged. No Git checkout/commit/push/merge or deployment;
+session work stays on `arena/bb4b80dd-cryproscan` while the earlier user-named
+branch discrepancy remains unresolved. Signed external gaps, Bank FAIL and
+NO_FIELD_DATA are not converted into approval or an overall closure percentage.
+
+Notification-scoped diff whitespace checks pass. Repository-wide `git diff
+--check` still reports existing whitespace outside this slice in README,
+findings, Go parser and monitor runner files; those unrelated files were not
+rewritten just to hide that result.
+
+## UPDATE — round 85: separately enabled notification scheduling (2026-10-17)
+
+**Automatic-drain implementation complete locally; deployment/runtime
+qualification OPEN.** SMTP remains unimplemented in this notification path.
+
+- Added `worker.notifications` and `scripts/run_notifications.py`, plus an
+  optional **notifications** Compose profile. Both enablement and explicit
+  platform/tenant selection are required; defaults are off/empty. New tenants
+  are not automatically enrolled. The process is separate from scan workers,
+  the Redis maintenance callback, API requests and monitor leader ticks.
+- Selected tenants must be registered/active and match the configured declared
+  processing region against processing_regions (residency fallback only when
+  unspecified); empty/malformed policies fail closed. This is not a physical
+  infrastructure location attestation or universal collector/API region gate.
+- Fresh context/session per estate, platform-entry enforcement and bounded
+  round-robin selection. A failed/hot scope advances the cursor and does not
+  block all later ticks. Limits bound selected estates/destination attempts and
+  soft per-estate/tick budgets; no hard DNS/HTTP deadline is claimed. Fairness
+  is process-local, not durable across pathological repeated restarts.
+- Reuses round 84 receipt leases/fences/idempotency and persistent retry backoff;
+  no new leader/suppression registry. SIGTERM/SIGINT interrupt the cadence wait,
+  stop at observed scope/destination/pre-HTTP boundaries and finalize an
+  in-flight HTTP outcome. An unsent claimed receipt remains recoverable by
+  lease expiry. One-shot requires **one estate**, avoiding cron prefix starvation.
+- Dedicated settings reject unsafe bounds, missing consent/region, duplicate
+  UUIDs, unsupported dialects, production SQLite and memory-only dev databases.
+  Production uses the current Alembic gate including .env-selected production;
+  no Redis, Neo4j or scanner-image credential dependency. The Compose profile
+  waits for migration completion and is not started by the default stack.
+- Tick logs report bounded scope/attempt/observed-pending/unknown counts, not
+  global health or delivery completeness. Operational transport warnings no
+  longer repeat raw endpoint/exception text; HTTPX/httpcore URL logs are quieted
+  in this dedicated process. Existing controlled delivery audit error/response
+  excerpts retain their contract and access/retention obligations.
+- Canonical script bootstrap now includes control_plane. An enabled one-shot
+  subprocess boots and ticks an empty disposable SQLite database with no
+  ambient PYTHONPATH: startup proof only, **not an outward delivery**.
+
+**Final observed local evidence:**
+
+- `/home/user/notification-scheduler-final.{log,xml}`: **2,291 passed, 17 skipped,
+  8 live deselected, 97 warnings in 180.18s**. Database **242**, control-plane
+  **111**, worker **718**, DevSecOps **571**, shared models **534**, selected API
+  **115**. Five complete roots plus 14 API files, **not all 54 suites/full API**.
+- New scheduler module **44 tests**; receipt suite **26** (three shutdown cases);
+  ABAC/transport suite **26** (two log-redaction regressions). An earlier focused
+  scheduler/receipt run passed **68** before final CLI/logging additions; the
+  final regression above supersedes it. Persistent retry tests use fake HTTP,
+  not a provider; repeated scheduler instances share the real SQLite ledger.
+- Ruff (`services scripts shared`), `pip check`, scoped diff-whitespace checks
+  and tenant inventory audit (**116 scoped / 12 platform / 1 explicit opt-out**)
+  pass. Compose profile/migration settings are YAML contract-tested. Docker is
+  unavailable, so there is **no actual Compose config/build/start proof**.
+- No positive PostgreSQL, receiver ingestion/deduplication, supervisor/uptime,
+  forced-crash/clock-skew/load or real customer evidence was acquired. Live
+  tests remain deselected; existing skipped prerequisites are not PASS.
+  Frontend code was unchanged and its earlier result was not re-run here.
+
+Guide: `docs/dev/notification-scheduler.md`; receipt operations guide updated
+and linked. Unknown-history redrive/retention, SMTP, process/deployment
+qualification, broader cached-read/relationship ownership review and earlier
+scanner runtime qualification remain OPEN. No actual scheduler was enabled on
+a user dataset; no deployment, checkout, commit, push, merge or real outward
+notification was performed. Work remains on `arena/bb4b80dd-cryproscan`; earlier
+branch-source discrepancy is unresolved. Signed external gaps/Bank FAIL/
+NO_FIELD_DATA/readiness verdicts remain unchanged, with no invented overall
+closure percentage.
+
+## UPDATE — round 86: read-only notification receipt visibility (2026-10-18)
+
+**Implemented and locally regression-tested; no deployment/runtime approval.**
+The operator no longer needs to send another batch just to inspect backlog.
+
+- Admin/superadmin/CISO-only exact-estate summary and bounded creation-keyset
+  ledger reads. Platform is NULL/platform-exact, never a tenant roll-up. Filters
+  apply before LIMIT; scope and filter bind a versioned navigation cursor, but
+  the cursor is not authorization and cannot remove exact-owner predicates.
+- Explicit SQL projection omits envelopes/event detail, endpoint URLs, raw
+  errors/responses, lease tokens and delivery keys. Counts distinguish pending,
+  time-eligible, expired claims, HTTP acknowledgements and legacy unknown;
+  clock eligibility is not routing eligibility, ingestion or scheduler liveness.
+- Inspection never enqueues/claims/sends/reconciles/deletes. Autoflush is disabled
+  so a caller's uncommitted receipt change cannot become a stored or displayed
+  acknowledgement merely because it inspected the ledger. SQLite cursor anchors
+  resolve their exact stored timestamp spelling within the estate: server
+  defaults omitting fractional seconds must not repeat the same page forever.
+  PostgreSQL retains native timestamp comparisons.
+- Notification center has read-only count/history, state filter, older/newest
+  navigation and refresh, independent of dispatch. New-page loading hides old
+  rows, stale replies cannot overwrite a new filter, failures stay not measured,
+  observed emptiness is not completeness and unknown never becomes delivered.
+  Dispatch completion/failure also refreshes this independent view.
+- Migration **0097** adds only scope/created_at/id inspection index. Its populated
+  downgrade preserves all receipt authority; 0096's refusal to discard receipts/
+  scoped routing remains unchanged. Plan standard index-build locking and
+  aggregate-read cost; this is not CONCURRENTLY or load qualification. No
+  deployment schema was migrated and no redrive policy/SMTP was introduced.
+
+**Final observed evidence:**
+
+- `/home/user/receipt-inspection-qualified.{log,xml}`: **2,321 passed, 17 skipped,
+  8 live deselected, 105 warnings in 144.88s**. Database **243**, control-plane
+  **137**, worker **718**, DevSecOps **571**, shared models **534**, selected API
+  **118**. Five full roots plus 15 related API files, **not all 54/full API**.
+- Included **26** new service inspection cases, **1** real SQLite populated
+  migration/index rollback and **3** API cases. Focused final inspection lane:
+  **30 passed**. Tests cover exact tenants/platform, pagination ties/server
+  timestamps, malformed/forged cursors, status/time counts, safe projection,
+  no autoflush/write/send, authentication and fresh readonly-role refusal.
+- `/home/user/receipt-frontend-final.log`: **344 tests / 36 files passed**, 91.12s,
+  then typecheck and production build passed (6.32s). Six focused receipt-view
+  cases plus existing notification and auto-discovered page-smoke coverage.
+- Ruff (`services scripts shared`), dependency consistency, tenant inventory
+  (**116 scoped / 12 platform / 1 opt-out**), scoped whitespace and migration
+  workflow YAML/embedded shell checks passed. New rollback case added to the
+  migration lane; no observed GitHub workflow execution is claimed.
+- User interruption removed the temporary environment/process before the prior
+  pending run completed. Environments were restored and final evidence obtained
+  fresh. Interrupted/superseded runs are not counted as passed or duplicated.
+- npm audit reports **8 existing development-toolchain advisories** (3 moderate,
+  2 high, 3 critical); production-only audit reports **0**, not general security
+  approval. Vite/Vitest/tooling major upgrades remain an explicit hardening gap;
+  no blind force-fix/lockfile rewrite was applied to claim closure.
+
+Guide: `docs/dev/notification-inspection.md`; delivery/scheduler guides updated
+for this build's 0097 head. SMTP, unknown-history redrive/retention, scheduler
+heartbeat/liveness, positive PostgreSQL/Compose/provider/crash/load/customer
+qualification and broader cached-read/relationship policy review remain OPEN.
+No real outward receiver was contacted, scheduler enabled on user data, or
+checkout/commit/push/merge/deployment performed. Work remains on the fixed
+`arena/bb4b80dd-cryproscan` session branch; earlier source-branch discrepancy is
+unresolved. Earlier signed external gaps, Bank FAIL and NO_FIELD_DATA remain
+unchanged, with no invented overall closure percentage.
+
+
+## R87 — compatible frontend toolchain advisory remediation (2026-10-18)
+
+**Implemented and locally qualified; no deployment/security certification.**
+
+- Coordinate exact Vite **8.3.4**, Vitest/V8 coverage **5.0.5** and React plugin
+  **6.1.2** upgrades. Declare Node `^22.12.0 || ^24.0.0 || >=26.0.0` and npm
+  `>=10`, enforce engines and exact future saves. Normal clean resolution and
+  subsequent frozen installation succeeded without force/legacy-peer bypasses.
+- Clean resolution floated three motion packages; restore their prior lock
+  records, validate with `npm ci`, then compare the entire production lock
+  subset: **all 15 records identical**, no added/removed production packages.
+  No application runtime dependency range was changed.
+- Migrate the rejected Rollup `manualChunks` object to Rolldown vendor groups,
+  preserve lazy page splitting and explicitly keep Vite 5's prior production
+  compilation targets instead of silently accepting Vite 8's raised baseline.
+  Targets do not establish actual browser support or provide feature polyfills.
+- Strict CSS parsing exposed corrupt duplicated pipeline-rule fragments. Remove
+  that malformed duplicate tail, preserve earlier valid rules and leave strict
+  parsing/minification on. No broad styling redesign or parser bypass.
+- Require lock/config COPY and `npm ci` in frontend Docker. Add CI's explicit
+  development-inclusive low-or-higher advisory gate, standalone toolchain/HTTP
+  contracts and focused V8-provider smoke; a DevSecOps contract prevents their
+  silent omission/continue-on-error. Registry unavailability fails the audit
+  rather than becoming a clean result.
+- Keep loopback defaults, named Host checks and relative API proxy. Five Node
+  contracts test policy/pins, prior browser targets, cross-platform package
+  matchers, whole-CSS strict parsing and real local HTTP approved/rejected Host
+  and synthetic-env-file denial, with bounded requests and cleanup. No customer
+  backend, notification receiver or real credentials are used.
+
+**Observed evidence (fresh successful runs, not failed/interrupted attempts):**
+
+- Frozen install, final TypeScript and production build: **passed**, final
+  target-preserving build **1.14s**, React/motion/icons vendor chunks and lazy
+  routes emitted. Standalone Node contracts: **5 passed**.
+- Ordinary Vitest: **344 tests / 36 files passed**, **69.49s**. Final full V8
+  coverage repeat: **344 / 36 passed**, **84.78s**; focused API provider smoke
+  **19 / 1 passed**. Repeats/smoke are not additional distinct new tests.
+- Full V8 measurement: **49.8% statements / 38.51% branches / 36.53% functions /
+  54.32% lines**. No new coverage percentage threshold or completeness claim;
+  existing React act warnings remain. Final full report supersedes the earlier
+  focused smoke's naturally lower report.
+- DevSecOps **572 passed in 8.69s**, including the new CI contract; Ruff
+  (`services scripts shared`), `pip check`, scoped whitespace/conflict and local
+  documentation-link checks passed. This is not a full backend/all-54 rerun.
+- Fresh all-dependency npm audit **0 total, all severities zero**; separate
+  production-only audit **0**. This supersedes R86's historical **8 dev-tool
+  advisories** for this lock/registry observation, not general security approval
+  or Node/npm/OS/nginx image vulnerability qualification.
+
+Guide: `docs/dev/frontend-toolchain-security.md`; developer/release-automation
+index, changelog and R86 advisory follow-up point to the superseding evidence.
+Logs: `/home/user/toolchain-final.log`, `toolchain-coverage-final.log`,
+`toolchain-coverage-smoke-qualified.log`, `toolchain-ci-contracts-qualified.{log,xml}`,
+`toolchain-{contracts,typecheck,build}-qualified.log`,
+`toolchain-runtime-graph-qualified.log`, `toolchain-{audit,runtime-audit}-final.json`.
+The early coverage attempt raced a clean install and failed to load removed
+worker files; it is discarded, not counted as passed. Fresh isolated runs above
+qualified the installed graph. Initial chunk/CSS build failures were fixed and
+fresh builds passed rather than having their validations suppressed.
+
+No observed GitHub workflow execution, Docker/native-musl/image build, actual
+browser-runtime certification, positive PostgreSQL/Compose/provider/crash/load
+qualification, real receiver send, scheduler enablement, customer migration,
+checkout/commit/push/merge/deployment or source-branch reconciliation. Work stays
+on fixed `arena/bb4b80dd-cryproscan`; the earlier authoritative-branch discrepancy
+remains unresolved. SMTP, history redrive/retention, scheduler liveness and
+broader cached-read/relationship review remain independent work. Signed external
+gaps, Bank FAIL and NO_FIELD_DATA are unchanged; no overall closure percentage
+is invented.

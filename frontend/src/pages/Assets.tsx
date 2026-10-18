@@ -604,7 +604,7 @@ export default function Assets() {
                               </div>
                               <div>
                                 Store freshness: {fact.row.fresh === false
-                                  ? "stale — evidence activity is newer than the last store rebuild; the live projection (GET /facts/crypto) is the always-correct reference"
+                                  ? "stale — evidence activity is newer than the last store rebuild; the live cryptographic facts view is the current reference"
                                   : "current (the rebuild covers the newest evidence activity for this file)"}
                               </div>
                             </div>

@@ -61,7 +61,7 @@ describe("per-system risk explainability (§4.6)", () => {
     expect(screen.getByText("never scanned")).toBeInTheDocument();
   });
 
-  it("opens a full decomposition: factor levels, weights, signals, owners, verify path", async () => {
+  it("opens a full decomposition: factor levels, weights, signals, owners, evidence guidance", async () => {
     mockFetch({ ...ok, "/api/v1/risk/systems": systemsResponse });
     renderWithProviders(<Risk />);
     fireEvent.click(await screen.findByText("payments-core"));
@@ -76,7 +76,9 @@ describe("per-system risk explainability (§4.6)", () => {
     // accountability, honest null for the unassigned security owner
     expect(screen.getByText(/security:/)).toBeInTheDocument();
     // evidence lineage + how to verify it
-    expect(screen.getByText(/GET \/api\/v1\/scans\/scan-abc123\/verify/)).toBeInTheDocument();
+    expect(screen.getByText(/system in the Evidence workspace/)).toBeInTheDocument();
+    expect(screen.getAllByText("scan-abc123").length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain("/api/v1/");
   });
 
   it("shows the honest empty state when no systems are scored", async () => {

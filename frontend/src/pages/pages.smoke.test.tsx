@@ -40,6 +40,7 @@ describe("pages render offline", () => {
         window.removeEventListener("error", onError);
       }
       expect(errors, `uncaught error while rendering ${name}`).toEqual([]);
+      expect(container!.textContent, `raw API path visible on ${name}`).not.toMatch(/\/api\/(?:v\d+\b|docs\b)|\b(?:GET|POST|PUT|PATCH|DELETE|SSE)\s+\/[a-z]/i);
     });
   }
 });

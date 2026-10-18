@@ -12,9 +12,9 @@ export default defineConfig({
   // development server — and the authenticated /api proxy below, which
   // forwards to the backend with the operator's session — on every network
   // the machine is attached to, with DNS-rebinding protection disabled.
-  // Several open advisories against vite/esbuild are reachable only by
-  // talking to the dev server, so that pairing is what made them exploitable
-  // rather than theoretical. Neither flag is needed to run locally:
+  // Past Vite/esbuild advisories show why dev-server reachability matters;
+  // an empty audit report is no reason to drop these network boundaries.
+  // Neither flag is needed to run locally:
   // scripts/run_local_stack.sh already passes --host 127.0.0.1.
   //
   // Set VITE_DEV_HOST to expose it deliberately (a container needs 0.0.0.0
@@ -36,7 +36,10 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
+    // Preserve Vite 5's compilation targets: Vite 8 otherwise raises these to
+    // its newer baseline. This is not a browser certification or a polyfill.
+    target: ["es2020", "edge88", "firefox78", "chrome87", "safari14"],
+    rolldownOptions: {
       output: {
         // The pages already code-split via React.lazy; what stayed in one
         // 588 kB entry chunk was the dependency floor every route pays
@@ -48,10 +51,12 @@ export default defineConfig({
         // Grouped rather than one-chunk-per-package on purpose: dozens of
         // tiny chunks cost a request each on a cold load, which is worse
         // on the sort of locked-down bank network this runs on.
-        manualChunks: {
-          "vendor-react": ["react", "react-dom", "react-router-dom"],
-          "vendor-motion": ["framer-motion", "@formkit/auto-animate"],
-          "vendor-icons": ["@phosphor-icons/react"],
+        codeSplitting: {
+          groups: [
+            { name: "vendor-react", priority: 30, test: /[\\/]node_modules[\\/](?:react|react-dom|react-router|react-router-dom|scheduler)(?:[\\/]|$)/ },
+            { name: "vendor-motion", priority: 20, test: /[\\/]node_modules[\\/](?:framer-motion|motion-dom|motion-utils|@formkit[\\/]auto-animate)(?:[\\/]|$)/ },
+            { name: "vendor-icons", priority: 10, test: /[\\/]node_modules[\\/]@phosphor-icons[\\/]react(?:[\\/]|$)/ },
+          ],
         },
       },
     },

@@ -115,7 +115,7 @@ export default function Migration() {
         </Panel>
       </div>
 
-      <Panel title="System migration order" sub="GET /api/v1/graph/migration-waves — readiness waves held together by dependency cycles and by code-level imports (a system whose code calls crypto living in another system cannot go first)" className="mt">
+      <Panel title="System migration order" sub="Readiness waves reflect dependency cycles and code-level imports. A system that depends on cryptography in another system cannot migrate first." className="mt">
         {sysRows.length === 0 ? (
           <p className="dim" style={{ fontSize: 13 }}>{sysWaves.loading ? "Loading…" : "No systems in the graph yet — register systems (CMDB) or add cryptoscan-systems.yml to scanned repositories."}</p>
         ) : (

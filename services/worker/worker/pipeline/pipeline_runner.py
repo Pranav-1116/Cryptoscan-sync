@@ -565,10 +565,10 @@ class PipelineRunner:
                 session=session)
 
     def _scan(self, ctx: PipelineContext) -> None:
-        from scanner.core.scanner import Scanner
+        from worker.core.static_scan_isolation import scan_static
 
-        scanner = Scanner(exclude_test_dirs=_exclude_tests())
-        scan_result = scanner.scan(
+        scan_result = scan_static(
+            exclude_test_dirs=_exclude_tests(),
             root_path=ctx.repo_path,
             scan_id=ctx.scan_id,
             target_type="GIT_REPOSITORY"
@@ -592,6 +592,7 @@ class PipelineRunner:
         if cascade:
             stats["cascade"] = _bounded_cascade(cascade)
         stats["evidence_sources"] = _evidence_sources(findings)
+        stats["static_scan_execution"] = scan_result.isolation
         languages = list((ctx.scan_meta or {}).get("languages") or [])
         ctx.scan_meta = {
             "scan_id": getattr(scan_result, "scan_id", ctx.scan_id),

@@ -6,6 +6,107 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Security — frontend development toolchain (2026-10-18)
+
+- Coordinate exact Vite 8.3.4, Vitest/coverage 5.0.5 and React plugin 6.1.2
+  upgrades; declare/enforce supported Node/npm engines, keep all production lock
+  records unchanged, and require frozen dependency installation in Docker.
+- Migrate vendor chunks to Rolldown, retain prior production browser compilation
+  targets, and remove corrupt duplicated CSS exposed by stricter parsing.
+- Add standalone toolchain/HTTP boundary tests and CI all-dependency advisory and
+  coverage-provider checks. Fresh npm audits report zero advisories for this lock,
+  not general security approval. No Docker/GitHub/deployment proof is inferred;
+  see [qualification and limits](docs/dev/frontend-toolchain-security.md).
+
+### Added — read-only notification receipt inspection (2026-10-18)
+
+- Admin/CISO exact-estate receipt summary and bounded keyset metadata pages,
+  without enqueueing, claiming or sending. Payloads, endpoints, raw errors,
+  response bodies, lease tokens and delivery keys are omitted.
+- Notification center backlog/history panel with filter/older/newest/refresh,
+  stale-request protection and explicit not-measured/empty/unknown distinctions.
+  HTTP acknowledgement is not ingestion or scheduler liveness. Dispatch also
+  refreshes the independent receipt view.
+- Migration 0097 adds only the estate/creation/id inspection index; rollback
+  preserves populated delivery authority. Standard index-build locking/load and
+  PostgreSQL/provider/runtime qualification remain operator work. No redrive,
+  deletion policy, SMTP or deployment is introduced.
+
+### Added — opt-in notification scheduler (2026-10-17)
+
+- Dedicated `scripts/run_notifications.py` daemon and optional Compose profile;
+  disabled by default, with explicit tenant UUID/platform opt-in, active/declared
+  processing-region checks and production PostgreSQL/migration gating. No Redis,
+  scanner-image or monitor-thread dependency.
+- Fresh sessions per estate, bounded round-robin scope/attempt budgets and
+  persistent receipt retries shared with manual drains. Graceful stop before
+  HTTP or between attempts; in-flight ACKs finalize and abandoned leases recover.
+  One-shot mode refuses multi-estate configurations to avoid cron starvation.
+- Keep operational transport logs free of raw endpoints/exception text and quiet
+  full-URL HTTP client logs in the scheduler. Controlled transport audit excerpts
+  retain their existing contract and require appropriate access/retention policy.
+- SQLite/mocked-HTTP/CLI/configuration regressions added. No scheduler was
+  deployed or real receiver contacted; PostgreSQL/Compose/provider/load runtime
+  qualification, SMTP and unknown-history redrive remain open.
+
+### Fixed — durable notification delivery (2026-10-17)
+
+- Replace the capped whole-event dispatch registry with durable destination
+  receipts (migration 0096), tenant-exact selection/routing, persistent retries,
+  expiring fenced claims and stable receiver idempotency keys. No success
+  acknowledgement for absent/failed/air-gap destinations; no automatic eviction.
+- Correct exactly-once claims to at-least-once; surface pending, legacy-unknown
+  and unconfirmed receipts instead of treating a dry drain as complete delivery.
+  Preserve old known history conservatively and block unsafe downgrade.
+- Sign the exact canonical JSON bytes sent over HTTP. Harden tenant bulk insert
+  handling for SQLAlchemy literal binds and execution-parameter ownership;
+  reject cached/expired foreign/platform ORM updates and deletes on flush;
+  restrict shared routing writes to admin/CISO roles and filter the feed before
+  limiting results.
+- Add SQLite transaction/concurrency/migration, signed-wire, permission and UI
+  regressions plus an opt-in PostgreSQL claim lane. SMTP, automatic scheduling,
+  real provider/DB qualification and production rollout remain open; nothing is
+  deployed or externally sent by this change.
+
+### Added — static source-parser boundary (2026-10-17)
+
+- Route both worker source scan entry points through one execution policy:
+  production requires a separate Docker parser and preloaded immutable digest;
+  development/test inline execution is explicitly labelled not isolated.
+- Add a fixed-input JSON adapter, non-root/read-only/network-disabled/resource-
+  bounded command, masked clone Git configuration, source-binding marker,
+  runtime guards, special-file rejection and independent whole-parser watchdog.
+  Bound request/output/diagnostic I/O, reject invalid/failed/mismatched results,
+  remove failed daemon workloads and persist execution policy in scan statistics.
+- Add unit/subprocess/security-contract tests plus an opt-in real-Docker smoke
+  test. Real Docker execution is NOT qualified here. Document the deliberate
+  production provisioning prerequisite: the stock worker has no Docker CLI or
+  daemon-shared workspace; no host socket mount or automatic image pull added.
+  Optional collectors and downstream worker stages are outside this boundary.
+
+### Added — release-automation coverage (2026-10-17)
+
+- Discover every service/shared backend test suite instead of maintaining a
+  partial service list; run frontend Vitest before building and require all
+  prerequisite jobs to succeed in a stable aggregate `ci` check.
+- Fill the scanner-safety, Alembic migration and container-build workflow
+  placeholders. Required migration proof rejects skipped/no-test reports;
+  image builds use correct contexts and never publish or deploy.
+- Retain existing dependency versions while adding missing test/provider pins;
+  install CI dependencies with lock constraints. Add workflow/discovery/lock
+  regression tests and update the production-config validation fixture.
+- Document the evidence boundary: local tests are not successful GitHub,
+  PostgreSQL, Docker, registry-digest or production-qualification runs.
+
+### UI — hide implementation routes from operator-facing copy
+
+- Replace raw API methods and paths in console headings, subtitles, help text,
+  and administration details with plain-language descriptions. Request URLs,
+  authenticated downloads, and backend routes are unchanged.
+- Add authored-copy and rendered-page regression checks to keep raw endpoint
+  labels out of the UI. This is a presentation change, not a security control;
+  API requests remain inspectable in browser developer tools.
+
 ### Fixed / Added — round 81: the operator loop ran end to end twice, and two defects it could not hide
 
 Round 81 is an operator-loop round. `scripts/operator_loop_drill.py` drives the

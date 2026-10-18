@@ -60,7 +60,7 @@ export default function EdgeManagerPanel() {
   return (
     <Panel
       title="Dependency edges"
-      sub="GET/POST/DELETE /api/v1/graph/edges — the registered SystemDependency edges every cascade and blast radius walks; the only write surface for them"
+      sub="Manage the registered system dependencies used by cascade and blast-radius analysis"
       className="mt"
     >
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>

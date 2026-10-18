@@ -58,7 +58,7 @@ export default function Scope() {
       <CapabilityMaturityPanel />
 
       {!env && envelope.source === "live" && (
-        <Panel title="No scope yet" sub="POST /onboarding/organization to create a tenant">
+        <Panel title="No scope yet" sub="Create an organization to set up your scope">
           <div className="dim" style={{ fontSize: 13 }}>
             Create an organization, environments, scope entries and connectors from Onboarding → Discovery to build the authorized scope. Until then the scope is empty (fail-closed).
           </div>

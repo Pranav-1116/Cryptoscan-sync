@@ -76,7 +76,7 @@ export default function UnifiedCascadePanel() {
   return (
     <Panel
       title="Cross-BOM cascade"
-      sub="POST /api/v1/technology-bom/cascade — what breaks if X changes: one target fanned out across code, network, system graph, process, hardware, vendor and library layers"
+      sub="Explore what a change affects across code, network, systems, processes, hardware, vendors and libraries"
       className="mt"
     >
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>

@@ -270,7 +270,7 @@ export default function Drift() {
         </div>
       </div>
       <p style={{ fontSize: 12, color: "var(--dim)", margin: "0 0 20px" }}>
-        Source: GET /api/v1/drift · {scope ? `selected tenant ${scope}` : "server-resolved authorization scope"} · {fetchedAt ? `last page fetched ${timestamp(fetchedAt)}` : "event feed not loaded"}. Comparison, when available, comes from the latest GET /api/v1/scans row's statistics.baseline_comparison; it is per scan, not proof that the estate is clear.
+        Source: persisted drift events · {scope ? `selected tenant ${scope}` : "server-resolved authorization scope"} · {fetchedAt ? `last page fetched ${timestamp(fetchedAt)}` : "event feed not loaded"}. Comparison, when available, comes from the latest scan’s recorded baseline comparison; it is per scan, not proof that the estate is clear.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 440px), 1fr))", gap: 24 }}>

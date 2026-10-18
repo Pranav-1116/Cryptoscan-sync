@@ -152,7 +152,7 @@ describe("Notifications page", () => {
     });
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /Dispatch outward now/i }));
-    expect(await screen.findByText(/Nothing new to dispatch/i)).toBeTruthy();
+    expect(await screen.findByText(/No destination attempts in this drain/i)).toBeTruthy();
   });
 
   it("renders an honest empty feed — never fabricated notifications", async () => {
@@ -163,4 +163,44 @@ describe("Notifications page", () => {
     });
     expect(await screen.findByText(/No routed notifications yet/i)).toBeTruthy();
   });
+});
+
+it("does not label deferred receipts or legacy history as delivered", async () => {
+  mockFetch({
+    "/api/v1/notifications/routing": { routing },
+    "/api/v1/enterprise/integrations": { integrations: [] },
+    "/api/v1/notifications/feed": feedWithVerification,
+    "/api/v1/notifications/dispatch": {
+      ok: true, window: 0, examined: 0, dispatched: 0, registry_size: 4,
+      delivered: 0, failed: 0, skipped: 0, email_routed: 0,
+      receipts: { failed: 1, inflight: 1, legacy_unknown: 2 },
+      integrations: {}, attempts: [], note: "",
+    },
+  });
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: /Dispatch outward now/i }));
+  expect(await screen.findByText(/Pending receipts: 2; legacy outcomes unknown: 2/i)).toBeTruthy();
+  expect(screen.getByText(/does not prove all events were delivered/i)).toBeTruthy();
+  expect(screen.queryByText(/exactly once/i)).toBeNull();
+  expect(screen.getByText(/at-least-once delivery/i)).toBeTruthy();
+});
+
+it("renders a lost receipt fence as unconfirmed, not a durable delivered outcome", async () => {
+  mockFetch({
+    "/api/v1/notifications/routing": { routing },
+    "/api/v1/enterprise/integrations": { integrations: [] },
+    "/api/v1/notifications/feed": feedWithVerification,
+    "/api/v1/notifications/dispatch": {
+      ok: false, window: 0, examined: 1, dispatched: 1, registry_size: 1,
+      delivered: 0, failed: 0, skipped: 0, email_routed: 0, lease_lost: 1,
+      receipts: { inflight: 1 }, integrations: {}, note: "",
+      attempts: [{ monitor_event_id: "m1", event_type: "remediation.task_verified", event_class: "remediation_verification",
+        channels: ["siem"], results: [{ integration_id: "soc-1", provider: "webhook", kind: "siem",
+          status: "delivered", http_status: 202, attempts: 1, error: null, recorded: false }] }],
+    },
+  });
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: /Dispatch outward now/i }));
+  expect(await screen.findByText("receipt unconfirmed")).toBeTruthy();
+  expect(screen.getByText(/delivered 0.*pending 1/i)).toBeTruthy();
 });

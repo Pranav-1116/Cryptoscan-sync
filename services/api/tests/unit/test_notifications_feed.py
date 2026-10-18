@@ -38,8 +38,12 @@ def _make_app():
                            poolclass=StaticPool)
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
+    from db.models.user import User
+
+    session.add(User(username="operator", password_hash="unused-in-this-dependency-override", roles="ciso"))
+    session.commit()
     app = create_app()
-    app.dependency_overrides[get_current_user] = lambda: "auditor"
+    app.dependency_overrides[get_current_user] = lambda: "operator"
     app.dependency_overrides[get_db_session] = lambda: (yield session)
     return app, session, engine
 
@@ -102,7 +106,11 @@ async def test_feed_delivers_mapped_classes_routed_in_app():
 async def test_routing_toggle_is_load_bearing():
     app, session, engine = _make_app()
     _seed(session)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    import os
+    from api.security.session_manager import SessionManager
+    token = SessionManager(secret=os.environ["SECRET_KEY"]).create_session("operator", roles=["ciso"])
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t",
+                           headers={"Authorization": f"Bearer {token}"}) as c:
         # switch remediation_verification OFF for the in-app channel
         catalog = (await c.get("/api/v1/notifications/catalog")).json()["catalog"]
         routing = [

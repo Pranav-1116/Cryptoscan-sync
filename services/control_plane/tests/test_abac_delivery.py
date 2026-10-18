@@ -283,3 +283,57 @@ def test_deliver_to_all_fans_only_matching():
     assert len(results) == 1
     assert results[0].integration_id == "siem-1" and results[0].status == "delivered"
     assert delivered_to == ["https://siem/h"]
+
+
+def test_signature_covers_exact_transmitted_json_bytes(monkeypatch):
+    import hashlib
+    import hmac
+
+    monkeypatch.setenv("ZELNX_WEBHOOK_SECRET", "wire-signing-fixture")
+    seen = []
+
+    def post(_url, *, content, headers, timeout):
+        expected = hmac.new(b"wire-signing-fixture", content.encode(), hashlib.sha256).hexdigest()
+        assert headers["X-ZELNX-Signature"] == f"sha256={expected}"
+        seen.append(content)
+        return 202, "accepted"
+
+    result = deliver(_integ(), {"event_type": "notification.remediation_verification",
+                               "payload": {"detail": "évidence", "severity": "HIGH"}}, post=post)
+    assert result.status == "delivered" and len(seen) == 1
+
+
+def test_idempotency_key_is_explicit_stable_and_header_safe():
+    seen = []
+
+    def post(_url, *, content, headers, timeout):
+        seen.append(headers["Idempotency-Key"])
+        return 200, "ok"
+
+    for _ in range(2):
+        deliver(_integ(), {"event_type": "notification.crypto_drift", "payload": {}},
+                post=post, idempotency_key="a" * 64)
+    assert seen == ["a" * 64, "a" * 64]
+    with pytest.raises(ValueError, match="idempotency"):
+        deliver(_integ(), {"payload": {}}, post=post, idempotency_key="x\r\nInjected: true")
+    assert len(seen) == 2
+
+
+def test_transport_failure_logs_do_not_repeat_secret_exception_text(caplog):
+    def post(*args, **kwargs):
+        raise ConnectionError("https://receiver.example/?token=never-log-me")
+
+    result = deliver(_integ(), {"event_type": "siem.finding", "payload": {}}, post=post, max_attempts=1)
+    assert result.status == "failed"
+    assert "webhook_delivery_failed" in caplog.text and "never-log-me" not in caplog.text
+
+
+def test_ssrf_rejection_logs_do_not_repeat_secret_endpoint(monkeypatch, caplog):
+    def reject(url):
+        raise delivery_mod.WebhookUrlError("blocked")
+
+    monkeypatch.setattr(delivery_mod, "validate_webhook_url", reject)
+    result = deliver(_integ(endpoint="https://receiver.example/?token=never-log-me"),
+                     {"event_type": "siem.finding", "payload": {}})
+    assert result.status == "failed"
+    assert "webhook_ssrf_blocked" in caplog.text and "never-log-me" not in caplog.text

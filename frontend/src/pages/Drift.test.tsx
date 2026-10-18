@@ -60,7 +60,8 @@ describe("drift feed and disposition truth", () => {
     expect(await screen.findByText("Loaded 50 of 51 events")).toBeInTheDocument();
     expect(screen.getByText("Partial: configuration unavailable")).toBeInTheDocument();
     expect(screen.getByText("Critical events in loaded pages").parentElement).toHaveTextContent("50");
-    expect(screen.getByText(/Source: GET \/api\/v1\/drift/)).toBeInTheDocument();
+    expect(screen.getByText(/Source: persisted drift events/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("/api/v1/");
     expect(screen.getByText("AES · a.py")).toBeInTheDocument();
     expect(screen.queryByText(/TLS 1\.3|ML-KEM-768|WORM Proof/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Load more events" }));

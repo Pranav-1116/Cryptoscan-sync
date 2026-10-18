@@ -27,6 +27,7 @@ _SERVICE_PACKAGES = (
     "cbom",
     "cloud_scanner",
     "container_scanner",
+    "control_plane",
     "database",
     "deduplication",
     "drift",

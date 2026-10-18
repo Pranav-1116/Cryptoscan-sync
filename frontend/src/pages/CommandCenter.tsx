@@ -130,13 +130,13 @@ export default function CommandCenter() {
       />
 
       {scope.data && (
-        <Panel title="Platform scope (live manifest)" sub={scope.source === "live" ? "GET /api/v1/platform/scope — served by the control plane" : "no live data yet — connect the control plane"} className="mt">
+        <Panel title="Platform scope (live manifest)" sub={scope.source === "live" ? "Live scope manifest from the control plane" : "no live data yet — connect the control plane"} className="mt">
           <Code>{JSON.stringify(scope.data, null, 2)}</Code>
         </Panel>
       )}
 
       {stats && (
-        <Panel title="Platform records" sub="GET /api/v1/stats/summary — persisted scans and findings, all time; delivery counts from a separate endpoint" className="mt">
+        <Panel title="Platform records" sub="Persisted scans and findings, all time; delivery counts are tracked separately" className="mt">
           <div className="row" style={{ gap: 18, flexWrap: "wrap" }}>
             <LiveStat label="scan records" value={observed(count(stats.total_scans))} />
             <LiveStat label="evidence findings" value={observed(count(stats.total_findings))} />
@@ -214,7 +214,7 @@ export default function CommandCenter() {
             <span className="dim" style={{ fontSize: 11.5 }}>Flagged count is limited to classified components in the latest local CBOM; unknowns are not safe or ready.</span>
           </div>
         </Panel>
-        <Panel title="Local inventory" sub={snapshotObserved ? `GET /api/v1/live-scan/inventory · snapshot ${when(inventory?.generated_at)}` : "No completed local inventory snapshot observed"}>
+        <Panel title="Local inventory" sub={snapshotObserved ? `Local inventory · snapshot ${when(inventory?.generated_at)}` : "No completed local inventory snapshot observed"}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {(["hardware_devices", "network_assets", "libraries", "certificates", "processes"] as const).map((key) => (
               <Kpi key={key} k={key.replace(/_/g, " ")} v={snapshotObserved ? projected(inventory?.counts?.[key], sourceSeen[key]) : "Not observed"} />
@@ -265,7 +265,7 @@ export default function CommandCenter() {
         <Panel title="Recent events" sub={rt.connected ? "realtime SSE stream; recent sample only" : "recent endpoint sample; no 24h or rate guarantee"}>
           {feed.length ? <Feed items={feed} /> : <span className="dim">{recentEvents.error ? "Recent events unavailable" : "No recent events returned"}</span>}
         </Panel>
-        <Panel title="Latest inventory comparison" sub={driftObserved ? `Previous ${when(drift?.previous_ts)} · current ${when(drift?.ts)}` : "GET /api/v1/live-scan/drift — requires two snapshots"}>
+        <Panel title="Latest inventory comparison" sub={driftObserved ? `Previous ${when(drift?.previous_ts)} · current ${when(drift?.ts)}` : "Comparison requires two inventory snapshots"}>
           {driftObserved ? <>
             <Kpi k="changes between snapshots" v={observed(changes)} />
             {Array.isArray(drift?.changes) && drift.changes.length > 0 && (

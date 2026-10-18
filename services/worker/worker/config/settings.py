@@ -22,6 +22,11 @@ class WorkerSettings(BaseSettings):
     WORKSPACE_BASE: str = "./data/workspaces"
     WORKSPACE_BASE_PATH: str = "./data/workspaces"
     SCANNER_TIMEOUT: int = 300
+    # Blank chooses container in production, inline elsewhere. A production
+    # worker may not opt out. Images must be preloaded and digest-pinned.
+    CRYPTOSCAN_STATIC_SCAN_MODE: str = ""
+    CRYPTOSCAN_SCANNER_IMAGE: str = ""
+    CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S: float = 600
     CLONE_TIMEOUT_SECONDS: int = 300
     SCAN_TIMEOUT_SECONDS: int = 600
     MAX_CONCURRENT_JOBS: int = 2
@@ -70,6 +75,15 @@ class WorkerSettings(BaseSettings):
         if not self.is_production:
             return
         errors: list[str] = []
+        import math
+        import re
+
+        if self.CRYPTOSCAN_STATIC_SCAN_MODE.strip().lower() not in {"", "container"}:
+            errors.append("production source parsing requires container isolation")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}", self.CRYPTOSCAN_SCANNER_IMAGE.strip()):
+            errors.append("CRYPTOSCAN_SCANNER_IMAGE must be an immutable image@sha256:digest")
+        if not math.isfinite(self.CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S) or not 1 <= self.CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S <= 3600:
+            errors.append("static scan timeout must be between 1 and 3600 seconds")
         if self.DATABASE_URL.startswith("sqlite") and not self.ALLOW_SQLITE:
             errors.append("DATABASE_URL must be PostgreSQL in production (or set ALLOW_SQLITE=true)")
         if not (self.REDIS_URL or "").strip():

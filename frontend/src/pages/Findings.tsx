@@ -176,7 +176,7 @@ export default function Findings() {
         </div>
       </Panel>
 
-      <Panel title="Run a universal source scan" sub="POST /api/v1/scans/trigger — evidence-chain findings populate from the scan" className="mt">
+      <Panel title="Run a universal source scan" sub="Run a scan to collect findings backed by the evidence chain" className="mt">
         <div className="row" style={{ gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
           <label className="field" style={{ flex: "1 1 320px" }}>
             <span className="dim" style={{ fontSize: 11.5 }}>Repository URL (git / https / local path)</span>
@@ -206,7 +206,7 @@ export default function Findings() {
         </div>
       </Panel>
 
-      <Panel title="Evidence findings" sub={live ? "GET /api/v1/findings — click a row for the full finding record" : "backend offline — run a scan to populate findings"} className="mt">
+      <Panel title="Evidence findings" sub={live ? "Click a row to view the full finding record" : "backend offline — run a scan to populate findings"} className="mt">
         <Table
           clickable
           selected={selected}
@@ -242,8 +242,8 @@ export default function Findings() {
       <Panel
         title="Live runtime findings"
         sub={(runtime.data as RuntimeFindingsResponse | null)?.summary
-          ? "GET /api/v1/scans/runtime-findings — the 24/7 engine (weak TLS / risky libraries)"
-          : "GET /api/v1/scans/runtime-findings — always-on scanners"}
+          ? "Continuous monitoring findings, including weak TLS and risky libraries"
+          : "Findings from always-on scanners"}
         className="mt"
       >
         <RuntimeFeed data={runtime.data as RuntimeFindingsResponse | null} live={runtime.source === "live"} />
@@ -252,7 +252,7 @@ export default function Findings() {
       {selected >= 0 && (
         <Drawer
           title={`Finding ${detail?.evidence_id ?? findings[selected]?.evidence_id ?? ""}`}
-          sub={detailLive ? "GET /api/v1/findings/{evidence_id} — live evidence record" : detail ? "evidence record" : "loading…"}
+          sub={detailLive ? "Live evidence record" : detail ? "evidence record" : "loading…"}
           onClose={() => { setSelected(-1); setDetail(null); }}
         >
           {detailErr && <div className="auth-alert err"><IconClose className="ico" size={ICON_MD} /> {detailErr}</div>}

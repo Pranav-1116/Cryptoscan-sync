@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import NotificationReceipts from "./NotificationReceipts.js";
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
@@ -44,6 +45,9 @@ export default function Notifications() {
    * (siem → SIEM/SOAR receivers, webhook → ITSM/CMDB receivers), over real
    * signed HTTP, every attempt audited in the integrations delivery log. */
   const [drain, setDrain] = useState<DispatchResult | null>(null);
+  const [receiptRevision, setReceiptRevision] = useState(0);
+  const pending = ["pending", "failed", "skipped", "inflight"].reduce((n, state) => n + (drain?.receipts?.[state] ?? 0), 0);
+  const legacyUnknown = drain?.receipts?.legacy_unknown ?? 0;
   const [draining, setDraining] = useState(false);
   const [drainError, setDrainError] = useState<string | null>(null);
   const runDispatch = () => {
@@ -51,7 +55,7 @@ export default function Notifications() {
     apiNotificationDispatch(50)
       .then((r) => { if (r.ok && r.data) setDrain(r.data); else setDrainError(r.error ?? "dispatch failed"); })
       .catch((e) => setDrainError(String(e)))
-      .finally(() => setDraining(false));
+      .finally(() => { setDraining(false); setReceiptRevision((n) => n + 1); });
   };
 
   const persist = (next: RouteItem[]) => {
@@ -73,7 +77,7 @@ export default function Notifications() {
         crumb="operate / notifications"
         title="Notification center"
         sub="Every event class routes to the channels you choose — in-app, email, webhook, SIEM/SOC"
-        right={<Badge tone="green"><span className="dot" /> CHANNELS ACTIVE: {enabled("inApp")} / {enabled("email")} / {enabled("webhook")} / {enabled("siem")}</Badge>}
+        right={<Badge>ROUTING ENABLED: {enabled("inApp")} / {enabled("email")} / {enabled("webhook")} / {enabled("siem")}</Badge>}
       />
       <div style={{ marginBottom: 12 }} className="row">
         <LiveStatus loading={integ.loading} error={integ.error} />
@@ -127,14 +131,14 @@ export default function Notifications() {
       </Panel>
       <Panel title="Outward delivery — webhook / SIEM dispatch" sub="the operator-triggered drain the two outward columns actually gate" className="mt">
         <div className="dim" style={{ fontSize: 13, marginBottom: 10 }}>
-          Dispatch sends each <b>new</b> routed notification once (per-tenant dispatch registry): the <b>SIEM / SOC</b> column delivers to registered SIEM/SOAR integrations, the <b>webhook</b> column to ITSM/CMDB receivers — over real signed HTTP, every attempt audited in the integrations delivery log. <b>Email routing is stored but no SMTP transport is wired in this deployment</b> — nothing is claimed sent. Unmapped event types are never force-fit.
+          Dispatch uses durable per-destination receipts with <b>at-least-once delivery</b>. Failed and air-gap attempts remain retryable after backoff; receivers must honour the stable Idempotency-Key to deduplicate ambiguous retries. The <b>SIEM / SOC</b> column delivers to registered SIEM/SOAR integrations, the <b>webhook</b> column to ITSM/CMDB receivers — over real signed HTTP, every attempt audited in the integrations delivery log. <b>Email routing is stored but no SMTP transport is wired in this deployment</b> — nothing is claimed sent. Unmapped event types are never force-fit.
         </div>
         <div className="row" style={{ marginBottom: 10 }}>
           <button className="btn" onClick={runDispatch} disabled={draining}>{draining ? "dispatching…" : "Dispatch outward now"}</button>
           {drainError && <Badge tone="red">dispatch failed: {drainError}</Badge>}
           {drain && !drainError && (
-            <Badge tone={drain.failed > 0 ? "amber" : "green"}>
-              dispatched {drain.dispatched} · delivered {drain.delivered} · failed {drain.failed} · skipped {drain.skipped}
+            <Badge tone={drain.failed > 0 || drain.skipped > 0 || pending > 0 || legacyUnknown > 0 || (drain.lease_lost ?? 0) > 0 ? "amber" : drain.delivered > 0 ? "green" : ""}>
+              dispatched {drain.dispatched} · delivered {drain.delivered} · failed {drain.failed} · skipped {drain.skipped} · pending {pending} · legacy unknown {legacyUnknown}
             </Badge>
           )}
         </div>
@@ -149,7 +153,7 @@ export default function Notifications() {
                 <span key="o">
                   {a.results.map((r, i) => (
                     <span key={i} style={{ fontFamily: "var(--mono)", fontSize: 11.5, display: "block" }}>
-                      {r.integration_id}: <b style={{ color: r.status === "delivered" ? "var(--ok, green)" : r.status === "failed" ? "var(--bad, crimson)" : "inherit" }}>{r.status}</b>
+                      {r.integration_id}: <b style={{ color: r.recorded === false ? "var(--warn, darkorange)" : r.status === "delivered" ? "var(--ok, green)" : r.status === "failed" ? "var(--bad, crimson)" : "inherit" }}>{r.recorded === false ? "receipt unconfirmed" : r.status}</b>
                       {r.http_status ? ` (HTTP ${r.http_status})` : ""}{r.error ? ` — ${r.error}` : ""}
                     </span>
                   ))}
@@ -157,10 +161,11 @@ export default function Notifications() {
               ])}
             />
           ) : (
-            <div className="dim" style={{ fontSize: 13 }}>Nothing new to dispatch — every routed notification in the recent window has already been sent outward exactly once.</div>
+            <div className="dim" style={{ fontSize: 13 }}>No destination attempts in this drain. This does not prove all events were delivered: routing, destinations, retry backoff or an active claim may defer work. Pending receipts: {pending}; legacy outcomes unknown: {legacyUnknown}.</div>
           )
         )}
       </Panel>
+      <NotificationReceipts key={receiptRevision} />
       <div className="grid cols-2 mt">
         <Panel title="Channels" sub="delivery configuration">
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

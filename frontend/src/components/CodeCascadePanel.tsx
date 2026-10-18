@@ -40,7 +40,7 @@ export default function CodeCascadePanel() {
   return (
     <Panel
       title="Code-level cascade"
-      sub="GET /api/v1/scans/{id}/cascade — crypto providers, blast radius, migration waves, libraries, shared keys, weak key sizes"
+      sub="Cryptographic providers, blast radius, migration waves, libraries, shared keys and weak key sizes"
       className="mt"
     >
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>

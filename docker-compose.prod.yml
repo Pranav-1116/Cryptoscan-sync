@@ -148,6 +148,13 @@ services:
         condition: service_completed_successfully
     environment:
       ENVIRONMENT: production
+      # Fail closed until an operator provisions the separate parser runtime.
+      # This file deliberately does not mount a host Docker socket. The default
+      # private tmpfs workspace must also be replaced by a same-path shared
+      # staging mount; see docs/dev/scanner-isolation.md.
+      CRYPTOSCAN_STATIC_SCAN_MODE: container
+      CRYPTOSCAN_SCANNER_IMAGE: ${CRYPTOSCAN_SCANNER_IMAGE:-}
+      CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S: ${CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S:-600}
       LOG_LEVEL: INFO
       ALLOW_SQLITE: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
@@ -165,6 +172,20 @@ services:
       - ALL
     tmpfs:
       - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
+
+  notifications:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+    logging: *json-log
+    mem_limit: 256m
+    security_opt: !override
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   monitor:
     depends_on:

@@ -1,6 +1,6 @@
 # CryptoScan production readiness — current evidence gate
 
-**Current as of:** 2026-10-16 UTC
+**Current as of:** 2026-10-17 UTC
 **Source of truth:** `scripts/bank_readiness.py` → `docs/readiness-evidence/bank-readiness.{json,md}`
 **Scope:** repository controls plus customer/provider qualification evidence.
 
@@ -136,9 +136,11 @@ session can close):
 
 1. **Immutable image digests** — render a release with
    `scripts/pin_release_images.py` once a registry is reachable and supply
-   `--release-manifests` to the engineering gate. The release CI workflow
-   (`.github/workflows/docker-build.yml`) is written but requires a
-   workflow-scoped credential to publish.
+   `--release-manifests` to the engineering gate. **2026-10-17 clarification:**
+   `.github/workflows/docker-build.yml` now validates builds only (`push: false`);
+   it does not publish or supply registry digests. The publishing proposal remains
+   historical/staged, and real publication/provenance requires separate review,
+   authorization and execution.
 2. **Branch protection** — enable required reviews/status checks on `main`
    (needs the GitHub Administration permission the automation credential
    lacks): `gh api -X PUT repos/<org>/<repo>/branches/main/protection` with
@@ -208,3 +210,156 @@ For detailed database history and resolved versus open implementation gaps,
 see [`BACKEND-DATABASE-GAPS.md`](BACKEND-DATABASE-GAPS.md). For operational
 procedures, see [`docs/ops/production-checklist.md`](docs/ops/production-checklist.md)
 and [`docs/production-evidence.md`](docs/production-evidence.md).
+
+## 2026-10-17 — internal release-automation implementation update
+
+The CI coverage gap has a local implementation, not a new readiness approval:
+all 54 service/shared test roots are discovered automatically; frontend tests
+run before the build; a final `ci` check rejects failed/cancelled/skipped
+prerequisites; scanner safety, actual SQLite/PostgreSQL migration chains, and
+non-publishing image builds replace the three empty workflow placeholders.
+The migration lanes require executed, unskipped proof, not merely pytest exit 0.
+The production-config acceptance fixture was also brought into line with the
+current mandatory Redis, host, signing/API-key, metrics and Neo4j fields; it
+uses synthetic values, not deployment secrets.
+
+All 56 existing dependency pins were retained and 37 missing test/provider and
+transitive pins added; CI installs with the lock as constraints. This is not a
+hash-verified lock or an immutable runtime image: the Dockerfile dependency
+install and registry signing/provenance remain release work. Secret scanning is
+still staged, and no branch-protection change or successful GitHub run has been
+observed. Local checks and explicit Docker/PostgreSQL/actionlint limitations are
+recorded in [release automation](docs/dev/release-automation.md) and the round
+ledger. Earlier dated readiness artifacts are unchanged and must not be read
+as qualifying these changes.
+
+## 2026-10-17 — static source-parser isolation implementation update
+
+Both worker source-parser launch paths now enforce container mode in production
+and require a preloaded immutable scanner image. Development/test inline mode
+is retained and explicitly recorded as not isolated. The Docker command requests
+non-root/no-capabilities/no-new-privileges, no network, read-only input/root,
+hidden Git clone configuration and memory/CPU/PID/fd/tmpfs limits. The adapter
+validates a minimal bounded JSON protocol, checks runtime restrictions, verifies
+the source-binding marker, rejects source special files and enforces a separate
+whole-parser watchdog. The parent bounds all CLI I/O, rejects invalid/failed
+results, performs explicit failure cleanup and persists execution policy.
+
+**This is not closure of hostile-input or production readiness.** Local tests
+exercise contracts and harmless subprocesses, not a real Docker boundary. Docker
+is unavailable in this sandbox. The stock worker image lacks the CLI and the
+production private tmpfs staging is not daemon-visible. An operator-reviewed
+runtime, preloaded digest and same-canonical-path shared staging are deployment
+prerequisites; production now fails closed without them. No unrestricted host
+socket was mounted and no image was built/published/deployed. Clone, parent
+language discovery, other collectors and downstream stages remain credentialed
+worker operations outside this source-parser boundary. Custom container seccomp
+profile qualification, hostile-input/escape/resource tests, credential denial,
+daemon-loss/orphan cleanup and multi-architecture positive runtime evidence
+remain open. Details: [scanner isolation](docs/dev/scanner-isolation.md).
+
+Earlier readiness gate artifacts have not been regenerated and do not qualify
+this implementation. The current production decision remains unchanged.
+
+## 2026-10-17 — notification delivery reliability implementation update
+
+The manual drain now uses durable per-destination receipts (Alembic 0096), not
+a 2,000-event JSON registry that suppressed failed/air-gap sends and later
+replayed evicted successes. Event/destination/routing/receipt selection is
+tenant-exact, including the platform estate. Discovery and the feed filter
+before LIMIT; retries retain a minimal immutable envelope. Expiring atomic
+claims and token fencing protect ordinary concurrent drains, with no database
+transaction held during HTTP. Failed/skipped destinations remain retryable
+after persisted backoff, and successful peers are not resent.
+
+The protocol is explicitly **at-least-once**, not exactly-once. Receivers must
+honour the stable Idempotency-Key to deduplicate an ACK followed by a sender/DB
+failure. Durable receipt/audit failure returns an unconfirmed operation, never
+a fabricated success. HMAC now covers the exact transmitted JSON bytes. The UI
+shows pending/unknown/unconfirmed states rather than treating an empty drain as
+proof of delivery. Fixed-literal SQLAlchemy tenant inserts were corrected with
+foreign/dynamic/runtime-override guard tests. A reproduced cached-ORM flush
+write/delete loophole is also closed: foreign/platform rows loaded before a
+tenant scope cannot bypass exact-owner checks through the identity map; expired
+instances and mixed-batch rollback are covered. Cached-read/session-reuse and
+all relationship/cascade policies are not thereby certified. Shared notification routing writes have explicit admin/CISO
+role enforcement.
+
+Migration 0096 preserves observed successful destination audits and converts
+old whole-event registry IDs into **legacy_unknown** tombstones, not delivery
+claims. Lost registry/audit history cannot be reconstructed, unknown redrive is
+an operator decision, and receipt/scoped-routing-bearing downgrade is refused.
+Existing datasets require a reviewed migration/handoff, not create_all or mixed
+old/new drains. No deployment migration or external receiver was run here.
+
+This closes an internal reliability implementation gap only. Positive
+PostgreSQL runtime/migration evidence, real signed provider acknowledgement /
+ingestion / receiver deduplication, crash/lease/load qualification, retention
+and unknown-history redrive, SMTP and a scheduled notification worker remain
+OPEN. The readiness decision and earlier signed/external evidence categories
+are unchanged. See [notification delivery](docs/dev/notification-delivery.md).
+
+## 2026-10-17 — opt-in notification scheduler implementation update
+
+Round 85 closes the **automatic-drain implementation** gap from round 84 with a
+separate notification process and optional Compose profile, both off by default.
+The operator must explicitly select platform and/or registered active tenant
+UUIDs and a matching declared processing region for tenants. There is no
+automatic new-tenant enrollment. This is a declared-policy check, not proof of
+where infrastructure actually runs or universal residency enforcement.
+
+Each estate gets a fresh session/context. Bounded round-robin ticks advance past
+busy/failed scopes, reuse durable per-destination leases/backoff/idempotency and
+do not run inside scan workers or the monitor loop. SIGTERM/SIGINT stop future
+sends at observed boundaries while finalizing an in-progress ACK; unsent claims
+recover by lease expiry. No hard DNS/HTTP deadline or exactly-once guarantee is
+introduced. Cursor fairness is process-local, not restart-durable. One-shot
+mode supports exactly one estate to prevent repeated cron prefix starvation.
+
+Production requires PostgreSQL and the current migration head. The profile has
+no public port, Redis/Neo4j dependency or blanket API-secret inheritance. A
+metadata-only tick summary distinguishes blocked/failed/unconfirmed work and
+visited-scope pending/legacy-unknown counts; it is not global readiness or
+provider ingestion. Transport operational logs no longer repeat raw endpoints/
+exception text; HTTP client URL logs are quieted in this dedicated process.
+Controlled audit excerpts keep their existing access/retention obligations.
+
+Local SQLite/fake-HTTP and one-shot CLI smoke validation does **not** qualify
+PostgreSQL, an actual Compose/image deployment, process supervision, physical
+residency, receiver ingestion/deduplication, clock skew/crashes/load or customer
+field data. SMTP and unknown-history redrive/retention remain OPEN. No
+deployment, migration against a customer dataset or real outward delivery was
+performed. Existing external/signed readiness verdicts are unchanged. See
+[notification scheduler operations](docs/dev/notification-scheduler.md).
+
+## 2026-10-18 — read-only receipt diagnostics implementation update
+
+Round 86 closes the operator visibility gap: receipt backlog/history can be
+inspected without triggering another outward send. Admin/superadmin/CISO reads
+require exact tenant_id AND scope_key (platform is platform-only), returning
+state/time counts and bounded newest-created keyset pages. A safe SQL projection
+omits envelope/details, endpoint, raw error/response, lease token and delivery
+key; malformed/wrong-estate/filter cursors fail generically. Cursor contents
+are navigation, not authorization; estate predicates remain independent.
+
+The notification center distinguishes pending/expired/time-eligible/unknown
+from HTTP acknowledgement and unavailable from an observed zero. Filter/page
+changes hide stale rows and ignore old replies. Counts/pages are separate live
+observations, not frozen snapshots, global health or scheduler/ingestion proof.
+No enqueue, claim, retry, legacy reconciliation or deletion is performed by
+inspection. Existing audit-detail access/retention remains a separate surface.
+
+Migration 0097 adds an estate/created_at/id index only. Populated index-only
+rollback preserves receipts; the earlier data-bearing downgrade refusal is
+unchanged. Standard index construction can lock writes and summary aggregates
+still scale with an estate's ledger; these are not online/load qualifications.
+No deployment schema was migrated. See
+[receipt inspection](docs/dev/notification-inspection.md). SMTP, redrive/retention,
+scheduler liveness, real DB/provider/crash/load/customer evidence and earlier
+external readiness verdicts remain OPEN/unchanged.
+
+R86 dependency-audit follow-up: npm reports 8 existing development-toolchain
+advisories (3 moderate / 2 high / 3 critical). Production-only npm audit reports
+zero, not general security approval. Vite/Vitest-related major upgrades and
+source-map-js remediation remain an explicit hardening task; no blind force
+upgrade was used to manufacture a clean result.

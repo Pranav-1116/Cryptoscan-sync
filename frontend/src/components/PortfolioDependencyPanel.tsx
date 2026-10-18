@@ -44,7 +44,7 @@ export default function PortfolioDependencyPanel() {
   const rows = useMemo(() => (bom ? systemRows(bom) : []), [bom]);
   const edges = rows.reduce((n, r) => n + r.dependsOn.length, 0);
   return (
-    <Panel title="Estate dependency graph (CycloneDX)" sub="GET /api/v1/cbom/portfolio — dependencies[]: root → systems → crypto assets + the systems each one depends on; the same graph auditors get in the signed export" className="mt">
+    <Panel title="Estate dependency graph (CycloneDX)" sub="Estate, systems and cryptographic asset dependencies — the same graph auditors receive in the signed export" className="mt">
       <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <AuthenticatedDownload path="/api/v1/cbom/portfolio?signed=true" filename="crypto-portfolio.json" className="btn sm outline">Signed JSON</AuthenticatedDownload>
         <AuthenticatedDownload path="/api/v1/cbom/portfolio?fmt=xml" filename="crypto-portfolio.xml" className="btn sm outline">XML</AuthenticatedDownload>

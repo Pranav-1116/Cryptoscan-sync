@@ -20,12 +20,12 @@ def _exclude_tests() -> bool:
 
 
 def execute(ctx: PipelineContext) -> PipelineContext:
-    from scanner.core.scanner import Scanner
+    from worker.core.static_scan_isolation import scan_static
     from worker.pipeline.stage_language_detect import execute as detect_languages
 
     detect_languages(ctx)
-    scanner = Scanner(exclude_test_dirs=_exclude_tests())
-    scan_result = scanner.scan(
+    scan_result = scan_static(
+        exclude_test_dirs=_exclude_tests(),
         root_path=ctx.repo_path,
         scan_id=ctx.scan_id,
         target_type="GIT_REPOSITORY"
@@ -49,6 +49,7 @@ def execute(ctx: PipelineContext) -> PipelineContext:
     if cascade:
         stats["cascade"] = _bounded_cascade(cascade)
     stats["evidence_sources"] = _evidence_sources(findings)
+    stats["static_scan_execution"] = scan_result.isolation
     ctx.scan_meta = {
         **dict(ctx.scan_meta or {}),
         "scan_id": getattr(scan_result, "scan_id", ctx.scan_id),

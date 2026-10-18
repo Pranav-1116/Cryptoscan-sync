@@ -116,7 +116,7 @@ function SystemDetail({ a, onClose }: { a: SystemRiskAssessment; onClose: () => 
       <p className="sub" style={{ fontSize: 12, marginTop: 10 }}>
         The score says what the persisted observations are — it is not a claim
         that every row was observed first-hand. Verify the evidence behind this
-        system: <code>GET /api/v1/scans/{a.scan_id ?? "—"}/verify</code>
+        system in the Evidence workspace. Scan: <code>{a.scan_id ?? "—"}</code>
         {a.scan_id ? "" : " (no scan yet)"}.
       </p>
     </Panel>
@@ -166,7 +166,7 @@ export default function Risk() {
         }
       />
       {live?.data && (
-        <Panel title="POST /api/v1/platform/risk — live engine response" sub="eight-factor weighted score from the control plane" className="mt">
+        <Panel title="Live risk assessment" sub="eight-factor weighted score from the control plane" className="mt">
           <Code>{JSON.stringify(live.data, null, 2)}</Code>
         </Panel>
       )}

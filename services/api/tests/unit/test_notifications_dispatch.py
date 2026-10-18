@@ -118,7 +118,7 @@ def test_dispatch_delivers_routed_classes_over_signed_http_once(client, monkeypa
     r = client.post("/api/v1/notifications/dispatch", headers=h, json={"limit": 50})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["window"] >= 3
+    assert body["enqueued"] == 2  # two durable destination receipts
     assert body["examined"] == 1  # only the verification outcome is routed outward
     assert body["dispatched"] == 1
     assert body["delivered"] == 1 and body["failed"] == 1
@@ -128,9 +128,10 @@ def test_dispatch_delivers_routed_classes_over_signed_http_once(client, monkeypa
     assert "no SMTP transport" in body["note"]
 
     # the envelope is notification.<class>, carrying the real detail; the
-    # SIEM receiver got one POST, the erroring ITSM receiver one + its retry
+    # SIEM receiver got one POST, the erroring ITSM receiver one attempt;
+    # persistent retry backoff is tested independently across sessions.
     assert len([1 for url, _ in captured if "soc.example" in url]) == 1
-    assert len([1 for url, _ in captured if "ops.example" in url]) == 2
+    assert len([1 for url, _ in captured if "ops.example" in url]) == 1
     (att,) = body["attempts"]
     assert att["event_class"] == "remediation_verification"
     assert set(att["channels"]) == {"siem", "webhook"}
@@ -144,8 +145,8 @@ def test_dispatch_delivers_routed_classes_over_signed_http_once(client, monkeypa
     assert logs["stats"].get("delivered", 0) >= 1
     assert logs["stats"].get("failed", 0) >= 1
 
-    # ONCE per tenant: the dispatch registry retains the event id, so a
-    # second drain finds nothing new to send
+    # The successful destination is durable and the failed destination waits
+    # for persisted backoff; a second immediate drain sends neither again.
     r2 = client.post("/api/v1/notifications/dispatch", headers=h, json={"limit": 50})
     body2 = r2.json()
     assert body2["dispatched"] == 0 and body2["examined"] == 0
@@ -179,13 +180,13 @@ def test_outward_routing_is_load_bearing(client, monkeypatch):
     r = client.post("/api/v1/notifications/dispatch", headers=h, json={"limit": 50})
     body = r.json()
     # in the window but dispatched nowhere — the outward toggle binds
-    assert body["window"] >= 1
+    assert body["enqueued"] == 0
     assert body["dispatched"] == 0
     assert body["delivered"] == 0
 
     # re-enabling the siem channel delivers what accumulated while it was
     # off (the first event was never outward-dispatched, so it was never
-    # registered) PLUS the new one — each still exactly once
+    # registered) PLUS the new one — successful destination receipts persist
     for item in routing:
         if item["id"] == "remediation_verification":
             item["channels"]["siem"] = True
@@ -195,7 +196,7 @@ def test_outward_routing_is_load_bearing(client, monkeypatch):
     body2 = r2.json()
     assert body2["dispatched"] == 2
     assert body2["delivered"] == 2
-    # and a third drain adds nothing — the registry now holds both
+    # and a third drain adds nothing — both destination receipts are durable
     r3 = client.post("/api/v1/notifications/dispatch", headers=h, json={"limit": 50})
     assert r3.json()["dispatched"] == 0
 
@@ -222,3 +223,22 @@ def test_air_gap_integration_is_skipped_never_fabricated(client, monkeypatch):
     assert "no endpoint" in (res["error"] or "")
     # the email channel stays count-only: routed, but never claimed sent
     assert body["email_routed"] == 1
+
+
+def test_readonly_operator_cannot_change_shared_routing_or_dispatch(client):
+    from db.connection.session import SessionLocal
+    from db.models.user import User
+
+    headers = _h(client)
+    with SessionLocal() as session:
+        session.query(User).filter(User.username == "admin").one().roles = "readonly"
+        session.commit()
+    headers = _h(client)  # fresh readonly claims, not an invalidated old admin token
+    assert client.put("/api/v1/notifications/routing", headers=headers, json={"routing": []}).status_code == 403
+    assert client.post("/api/v1/notifications/dispatch", headers=headers, json={"limit": 1}).status_code == 403
+
+
+def test_dispatch_limits_are_rejected_not_silently_unbounded(client):
+    headers = _h(client)
+    for limit in (0, -1, 201):
+        assert client.post("/api/v1/notifications/dispatch", headers=headers, json={"limit": limit}).status_code == 422

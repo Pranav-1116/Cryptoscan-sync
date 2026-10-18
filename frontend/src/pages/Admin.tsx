@@ -41,7 +41,7 @@ export default function Admin() {
         right={<Badge tone="green"><span className="dot" /> {roleNames.length || 8} ROLES · {PERMISSIONS.length} PERMISSIONS</Badge>}
       />
       {live?.data && (
-        <Panel title="POST /api/v1/platform/security — live enforcement" sub="security-control validation from the control plane" className="mt">
+        <Panel title="Live security enforcement" sub="security-control validation from the control plane" className="mt">
           <Code>{JSON.stringify(live.data, null, 2)}</Code>
         </Panel>
       )}

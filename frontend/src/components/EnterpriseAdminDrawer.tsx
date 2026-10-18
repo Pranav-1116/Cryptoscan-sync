@@ -152,7 +152,7 @@ function AboutTab() {
         compliance.
       </p>
       <p className="dim" style={{ fontSize: 11 }}>
-        Version 1.0.0 · API /api/v1 · OpenAPI docs at /api/docs (when enabled)
+        Version 1.0.0 · Platform administration
       </p>
     </div>
   );

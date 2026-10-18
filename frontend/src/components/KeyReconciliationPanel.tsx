@@ -36,7 +36,7 @@ export default function KeyReconciliationPanel() {
 
   const s = report?.summary;
   return (
-    <Panel title="Key inventory ↔ source reconciliation" sub="GET /api/v1/scans/{id}/key-reconciliation — HSM / KMS / keystore / certificate exports joined with the key identifiers the code references" className="mt">
+    <Panel title="Key inventory ↔ source reconciliation" sub="Compare HSM, KMS, keystore and certificate inventories with the key identifiers referenced in code" className="mt">
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12, flexWrap: "wrap" }}>
         <label style={{ fontSize: 12, color: "var(--dim)" }}>Inventory scan</label>
         <select value={scanId} onChange={(e) => setScanId(e.target.value)} style={{ fontSize: 12, padding: "4px 8px" }} aria-label="inventory scan">

@@ -2600,17 +2600,19 @@ export const apiNotificationRoutingPut = (routing: Array<{ id: string; name: str
 
 /* Outward notification drain (§5 round 77): send NEW routed notifications to
  * the registered integrations their channel claims, over real signed HTTP.
- * Each routed notification is dispatched exactly once per tenant. */
+ * Durable per-destination receipts provide at-least-once delivery; receivers
+ * must deduplicate ambiguous retries using the stable Idempotency-Key. */
 export interface DispatchAttempt {
   monitor_event_id: string; event_type: string; event_class: string;
   channels: string[];
   results: Array<{ integration_id: string; kind: string; endpoint: string;
-    status: string; http_status: number | null; error: string | null; attempts: number }>;
+    status: string; http_status: number | null; error: string | null; attempts: number; recorded?: boolean }>;
 }
 export interface DispatchResult {
   ok: boolean; window: number; examined: number; dispatched: number;
   registry_size: number; delivered: number; failed: number; skipped: number;
   email_routed: number; integrations: Record<string, number>;
+  receipts?: Record<string, number>; enqueued?: number; destination_attempts?: number; lease_lost?: number;
   attempts: DispatchAttempt[]; note: string;
 }
 export const apiNotificationDispatch = (limit: number) =>
@@ -4750,3 +4752,18 @@ export const apiFactStore = (params: {
   const qs = q.toString();
   return call(`/api/v1/facts/store${qs ? `?${qs}` : ""}`);
 };
+
+
+export interface NotificationReceiptSummary {
+  observed_at: string; counts: Record<string, number>; total: number; pending: number;
+  time_eligible: number; expired_claims: number; oldest_pending_at: string | null; note: string;
+}
+export interface NotificationReceipt {
+  id: string; event_id: string; integration_id: string; channel: string; event_class: string;
+  status: string; attempt_count: number; http_status: number | null; created_at: string;
+  delivered_at: string | null; next_attempt_at: string | null; lease_expires_at: string | null;
+  has_error: boolean; time_eligible: boolean;
+}
+export interface NotificationReceiptPage {
+  items: NotificationReceipt[]; next_cursor: string | null; observed_at: string; note: string;
+}

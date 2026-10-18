@@ -135,7 +135,7 @@ export default function SecurityCenter() {
       )}
 
       {/* Composite posture — live via SSE */}
-      <Panel title="Security posture" sub="server-owned composite score, streamed live (GET /api/v1/security/posture/stream)" className="mt">
+      <Panel title="Security posture" sub="Live security posture score from the control plane" className="mt">
         <div className="kpi-strip">
           <ScoreBox score={score} live={postureStream.live || posture.source === "live"} delta={scoreDelta} />
           <Kpi k="open threats" v={livePosture?.threats_open ?? openThreats} tone={(livePosture?.threats_open ?? openThreats) ? "red" : "green"} />
@@ -160,7 +160,7 @@ export default function SecurityCenter() {
       </Panel>
 
       {/* Posture over time + drift */}
-      <Panel title="Posture over time" sub="server-owned time-series — score min/avg/max + per-signal trend (GET /api/v1/security/posture/trend)" className="mt">
+      <Panel title="Posture over time" sub="Security score minimum, average and maximum, with trends for each signal" className="mt">
         <PostureTrendChart trend={trend.data as PostureTrend | null} />
       </Panel>
 
@@ -181,7 +181,7 @@ export default function SecurityCenter() {
             />
           )}
         </Panel>
-        <Panel title="Live event stream" sub={rt.conn === "live" ? "SSE /api/v1/events/stream — real platform events" : `stream ${rt.conn}`}>
+        <Panel title="Live event stream" sub={rt.conn === "live" ? "Live platform events" : `stream ${rt.conn}`}>
           {liveEvents.length === 0 && <div className="dim" style={{ fontSize: 13 }}>No platform events yet — they appear as the control plane emits them.</div>}
           {liveEvents.length > 0 && (
             <Feed items={liveEvents.map((e) => ({
@@ -224,7 +224,7 @@ export default function SecurityCenter() {
         </div>
       </Panel>
 
-      <Panel title="Control-plane health" sub={health.source === "live" ? "GET /api/v1/control/health — queue, fleet, credentials, db, redis" : "backend offline"} className="mt">
+      <Panel title="Control-plane health" sub={health.source === "live" ? "Queue, worker fleet, credentials, database and cache health" : "backend offline"} className="mt">
         <Code>{JSON.stringify(health.data ?? {}, null, 2).slice(0, 1200)}</Code>
       </Panel>
     </>

@@ -271,6 +271,7 @@ def deliver(
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     sleep: Callable[[float], None] = time.sleep,
     backoff_base: float = 1.0,
+    idempotency_key: str | None = None,
 ) -> DeliveryResult:
     """Deliver one event to one integration with bounded retries.
 
@@ -298,14 +299,19 @@ def deliver(
     except WebhookUrlError as exc:
         result.status = "failed"
         result.error = f"ssrf blocked: {exc}"
-        logger.warning("webhook_ssrf_blocked integration=%s endpoint=%s",
-                       result.integration_id, endpoint)
+        logger.warning("webhook_ssrf_blocked integration=%s", result.integration_id)
         return result
 
     body, shaped = build_payload(integration, event)
     headers = shaped["headers"]
     result.signature = shaped["signature"]
-    content = body if isinstance(body, str) else json.dumps(body, default=str)
+    if idempotency_key is not None:
+        if len(idempotency_key) != 64 or any(c not in "0123456789abcdef" for c in idempotency_key):
+            raise ValueError("invalid delivery idempotency key")
+        headers["Idempotency-Key"] = idempotency_key
+    # Sign and transmit the SAME canonical bytes. Previously build_payload
+    # signed compact/sorted JSON while the transport sent spaced/unsorted JSON.
+    content = body if isinstance(body, str) else json.dumps(body, sort_keys=True, separators=(",", ":"), default=str)
 
     started = time.monotonic()
     last_error = None
@@ -337,8 +343,11 @@ def deliver(
         logger.info("webhook_delivered integration=%s event=%s attempts=%s",
                     result.integration_id, event.get("event_type"), result.attempts)
     else:
-        logger.warning("webhook_delivery_failed integration=%s error=%s",
-                       result.integration_id, result.error)
+        # URLs/transport exception text can contain query/auth secrets. Keep
+        # operational logs metadata-only; the existing controlled audit owns
+        # the transport result, not an unrestricted process log.
+        logger.warning("webhook_delivery_failed integration=%s http_status=%s",
+                       result.integration_id, result.http_status)
     return result
 
 

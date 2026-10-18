@@ -162,7 +162,7 @@ export default function Settings() {
         </Panel>
       </div>
 
-      <Panel title="Platform scope" sub="GET /api/v1/platform/scope — the single source of truth for what the platform scans">
+      <Panel title="Platform scope" sub="The single source of truth for what the platform scans">
         {scope.data ? <Code>{JSON.stringify(scope.data, null, 2)}</Code> : <div className="dim" style={{ fontSize: 13 }}>Backend offline — scope unavailable.</div>}
       </Panel>
     </>

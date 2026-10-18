@@ -247,6 +247,13 @@ pytestmark = pytest.mark.timeout(600)
 @pytest.mark.asyncio
 async def test_link_scan_and_evidence_chain(chain):
     """Scan completes; the stored evidence chain verifies PASS end-to-end."""
+    # Execution policy survives the real scan -> evidence -> database path.
+    # This fixture is a local chain demonstration, not Docker qualification.
+    with chain["factory"]() as session:
+        for scan_id in (chain["scan1"], chain["scan2"], chain["scan3"]):
+            execution = session.get(Scan, scan_id).statistics["static_scan_execution"]
+            assert execution["mode"] in {"inline", "container"}
+            assert execution["isolated"] is (execution["mode"] == "container")
     async with AsyncClient(transport=ASGITransport(app=chain["app"]), base_url="http://t") as ac:
         listed = await ac.get("/api/v1/scans?page=1&page_size=10")
         assert listed.status_code == 200

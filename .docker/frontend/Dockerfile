@@ -9,10 +9,10 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-# Install dependencies first (better layer caching). The lockfile is copied
-# when present; `npm install` tolerates its absence.
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --no-audit --no-fund
+# The checked-in lock and engine policy are mandatory. A build must not silently
+# resolve a different dependency graph or tolerate an unsupported Node runtime.
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+RUN npm ci --no-audit --no-fund
 
 # Build the static bundle.
 COPY frontend/ ./

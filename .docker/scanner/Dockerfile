@@ -1,6 +1,7 @@
-# Standalone scanner CLI image (used for out-of-band code-scan jobs).
-# The main compose stack runs scans inside the api/worker images; this image
-# is for CI / ad-hoc scanning against a mounted repository.
+# Scanner image: legacy standalone CLI plus the fixed-input parser adapter.
+# Production workers override the entrypoint to python -I -m scanner.isolated
+# and require an operator-built/preloaded immutable digest; no automatic pull.
+# See docs/dev/scanner-isolation.md for runtime and workspace prerequisites.
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \

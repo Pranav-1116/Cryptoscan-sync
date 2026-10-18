@@ -175,6 +175,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       SCAN_JOB_QUEUE_KEY: cryptoscan:jobs:queue
       WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
+      CRYPTOSCAN_STATIC_SCAN_MODE: ${CRYPTOSCAN_STATIC_SCAN_MODE:-}
+      CRYPTOSCAN_SCANNER_IMAGE: ${CRYPTOSCAN_SCANNER_IMAGE:-}
+      CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S: ${CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S:-600}
       CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       CRYPTOSCAN_ROOT: /app
       NEO4J_URI: bolt://neo4j:7687
@@ -200,6 +203,35 @@ services:
       - ALL
     networks: [cryptoscan-net]
     restart: unless-stopped
+
+  notifications:
+    profiles: [notifications]
+    build:
+      context: .
+      dockerfile: .docker/worker/Dockerfile
+    command: ["python", "scripts/run_notifications.py"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:-cryptoscan_secret}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+      DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
+      NOTIFICATION_DISPATCH_ENABLED: ${NOTIFICATION_DISPATCH_ENABLED:-false}
+      NOTIFICATION_DISPATCH_PLATFORM: ${NOTIFICATION_DISPATCH_PLATFORM:-false}
+      NOTIFICATION_DISPATCH_TENANTS: ${NOTIFICATION_DISPATCH_TENANTS:-[]}
+      NOTIFICATION_DISPATCH_REGION: ${NOTIFICATION_DISPATCH_REGION:-}
+      NOTIFICATION_DISPATCH_INTERVAL_SECONDS: ${NOTIFICATION_DISPATCH_INTERVAL_SECONDS:-30}
+      NOTIFICATION_DISPATCH_BUDGET_SECONDS: ${NOTIFICATION_DISPATCH_BUDGET_SECONDS:-20}
+      NOTIFICATION_DISPATCH_SCOPE_BUDGET_SECONDS: ${NOTIFICATION_DISPATCH_SCOPE_BUDGET_SECONDS:-5}
+      NOTIFICATION_DISPATCH_MAX_SCOPES: ${NOTIFICATION_DISPATCH_MAX_SCOPES:-10}
+      NOTIFICATION_DISPATCH_LIMIT: ${NOTIFICATION_DISPATCH_LIMIT:-50}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks: [cryptoscan-net]
+    restart: "on-failure:3"
 
   monitor:
     build:
