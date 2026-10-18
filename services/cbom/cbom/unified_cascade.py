@@ -23,6 +23,7 @@ import re
 from datetime import datetime
 from typing import Any, Mapping
 
+from shared_models.coverage import analysis_coverage, traversal_bound, vendor_traversal_bound
 from shared_models.operational_dependencies import project_operational_dependencies
 from shared_models.process_impact import classify_systems, project_processes
 from cbom.target_resolution import resolve_target, fingerprint
@@ -644,7 +645,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
 
     resolution, identified = resolve_target(snapshot, target_text, kind, allow_name_search=allow_name_search, legacy_detector=_identify_legacy)
     if identified is None:
-        return {
+        result = {
             "schema": _SCHEMA,
             "relationship_policy": policy_metadata(),
             "as_of": now.isoformat(),
@@ -664,6 +665,9 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
                   if (snapshot.get("software_supply_chain_coverage") or {}).get("truncated") else []),
             ],
         }
+
+        result["coverage"] = analysis_coverage({**snapshot, "dependencies": original_dependencies}, result)
+        return result
 
     cascade_kind, matched = identified["kind"], identified["matched"]
     if cascade_kind in {"package", "artifact"}:
@@ -800,7 +804,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     if lifecycle["unbounded_active_count"]:
         unknowns.append("some eligible relationships have no validity deadline; legacy/unbounded eligibility is not verified freshness")
 
-    return {
+    result = {
         "schema": _SCHEMA,
         "relationship_policy": policy_metadata(),
         "relationship_lifecycle": lifecycle,
@@ -832,3 +836,12 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         },
         "honest_unknowns": unknowns,
     }
+
+    bounds = [traversal_bound(original_dependencies, seeds, known=known, hops=depth, now=now, reverse=True)]
+    if cascade_kind in {"system", "certificate", "endpoint", "vendor", "package", "artifact"}:
+        bounds.append(traversal_bound(original_dependencies, seeds, known=known, hops=depth, now=now))
+    bounds.extend(traversal_bound(original_dependencies, seeds | set(possible_direct), known=known, hops=depth, now=now, reverse=reverse, potential=True) for reverse in (True, False))
+    if cascade_kind == "vendor":
+        bounds.append(vendor_traversal_bound(snapshot.get("vendor_dependencies") or [], {str(matched["id"])}, known=[v.get("id") for v in snapshot.get("vendors") or []], now=now))
+    result["coverage"] = analysis_coverage(explanation_snapshot, result, traversals=bounds)
+    return result

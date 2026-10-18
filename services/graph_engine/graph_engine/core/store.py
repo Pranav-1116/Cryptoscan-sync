@@ -21,6 +21,7 @@ from graph_engine.connection.session_manager import neo4j_session
 from graph_engine.migrations.migrator import apply_migrations
 from graph_engine.queries.blast_radius import BLAST_RADIUS, ORIGIN_SYSTEM, SYSTEMS_USING_ASSET
 from graph_engine.queries.business_impact import IMPACT_FROM_SYSTEMS, PROCESS_LINKS
+from shared_models.coverage import analysis_coverage, native_traversal_bound
 from shared_models.operational_dependencies import project_operational_dependencies, assertion_from_edge, condition
 from graph_engine.queries.operational_dependencies import OPERATIONAL_LINKS, OPERATIONAL_SYSTEMS
 from shared_models.process_impact import classify_systems, project_processes
@@ -97,6 +98,7 @@ class Neo4jGraphStore:
         # `collection` is collector meta (bounded-walk totals/truncation
         # flags); carried into the result, not synced as a node kind.
         collection_meta = dict(collection or {})
+        self.collection_meta = collection_meta
         # Per-tenant node identity (round 35): every row — nodes and edges —
         # carries the syncing tenant, so MERGE identities and prune scopes
         # are tenant-partitioned. One stamping point, every batch flows
@@ -276,10 +278,15 @@ class Neo4jGraphStore:
             **query_parameters(now=now)) if requested else []
         paths = {row["id"]: native_path(row, now=now, direction="upstream" if reverse else "downstream") for row in witnesses}
         start_links = self._domain_links(origins, {"USES"}, target_asset=str(start_id).removeprefix("asset:")) if origins and not self._run(ORIGIN_SYSTEM, start=system_id(start_id)) else None
-        return {"start_links": start_links, "traversal_evidence": envelope(paths, requested, now=now),
+        result = {"start_links": start_links, "traversal_evidence": envelope(paths, requested, now=now),
                 "start": origins[0] if origins else start_id, "owning_systems": origins,
                 "systems": systems, "hops": hops, "nodes_visited": len(systems) + len(origins),
                 "backend": self.backend, "relationship_policy": policy_metadata()}
+
+        bound = native_traversal_bound(systems, hops, reverse=reverse)
+        result["coverage"] = analysis_coverage({"collector_coverage": getattr(self, "collection_meta", {})},
+            {"traversal_evidence": {"dependent_consumers" if reverse else "supporting_context": result["traversal_evidence"]}}, traversals=[bound])
+        return result
 
     def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         return self._dependency_walk(start_id, hops=hops, reverse=False)
@@ -404,7 +411,7 @@ class Neo4jGraphStore:
         rows = self._run(IMPACT_FROM_SYSTEMS, system_ids=system_ids) if system_ids else []
         record = rows[0] if rows else {}
         members = {r["id"]: r for r in [*radius["systems"], *reverse["systems"]] if r["id"] not in direct}
-        return {"start": radius["start"], "owning_systems": direct,
+        result = {"start": radius["start"], "owning_systems": direct,
             "system_classification": classification, "process_impact": projection, "operational_impact": operational,
             "process_traversal_evidence": explanations,
             "total_revenue_at_risk": projection["economic_context"]["revenue_daily"]["known_sum"],
@@ -416,6 +423,10 @@ class Neo4jGraphStore:
             "systems": sorted(members.values(), key=lambda r: (r["hops"], r["id"])),
             "traversal_evidence": radius["traversal_evidence"],
             "domain_links": self._domain_links(system_ids, {"SUPPORTS", "OWNED_BY", "MUST_COMPLY_WITH"}), "backend": self.backend}
+
+        result["coverage"] = analysis_coverage({"collector_coverage": getattr(self, "collection_meta", {})},
+            {**result, "traversal_evidence": explanations}, traversals=[*reverse["coverage"]["traversals"], *radius["coverage"]["traversals"]])
+        return result
 
     def compliance_inheritance(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         radius = self.blast_radius(start_id, hops=hops)

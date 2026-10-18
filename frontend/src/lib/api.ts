@@ -2511,9 +2511,11 @@ export interface GraphStats {
 }
 export interface BlastSystem { id: string; name?: string; criticality?: string | null; hops: number; }
 export interface BlastRadiusResult {
+  coverage?: AnalysisCoverage | null;
   start?: string; systems: BlastSystem[]; nodes_visited: number; hops?: number; backend?: string;
 }
 export interface SimulateResult {
+  coverage?: AnalysisCoverage | null;
   node_id: string; change: string;
   affected: { assets: number; applications: number; certificates: number; services: number };
   compatibility_issues: number; migration_tasks: number;
@@ -2528,6 +2530,7 @@ export interface ExplainStep {
   evidence?: string; file?: string | null; quantum_vulnerable?: boolean;
 }
 export interface ExplainResult {
+  coverage?: AnalysisCoverage | null;
   node_id: string; title: string; quantum_vulnerable: boolean; steps: ExplainStep[]; backend?: string;
 }
 export const apiGraph = (): Promise<ApiResult<GraphView>> => call("/api/v1/graph");
@@ -4754,7 +4757,26 @@ export interface OperationalImpact {
 export interface OperationalComparison {
   comparable: boolean; reason?: string; changed_edges?: string[]; added_edges?: string[]; removed_edges?: string[];
 }
+export interface AnalysisCoverage {
+  schema: string; status: "GAPS_REPORTED" | "UNKNOWN" | "BOUNDED_REVIEW";
+  analysis_performed: boolean; source_metadata_available: boolean;
+  known_input_truncation: boolean; known_horizon_omission: boolean;
+  horizon_extension_unknown: boolean; explanation_truncation: boolean;
+  estate_completeness: "UNKNOWN"; note: string; dependency_source?: string;
+  collections: Record<string, { returned: number | null; limit: number | null; truncated: boolean;
+    known_total?: number | null; observed_lower_bound?: number; unit: string; scope?: string; status?: string }>;
+  traversals: { scope: string; unit: string; direction: string; max_depth: number;
+    extension_check: string; more_loaded_systems?: boolean | null; more_loaded_entities?: boolean | null;
+    unvisited_neighbour_count: number | null; note: string }[];
+  missing_links: { name: string; count: number | null; denominator: number | null; scope: string; status: string }[];
+  explanations: { name: string; requested?: number | null; returned?: number | null; limit?: number | null;
+    truncated: boolean; missing_within_selected_count?: number | null; scope: string }[];
+}
+export type AnalysisCoverageSummary = Pick<AnalysisCoverage, "schema" | "status" | "known_input_truncation" |
+  "known_horizon_omission" | "horizon_extension_unknown" | "explanation_truncation" | "source_metadata_available" | "estate_completeness">;
+
 export interface UnifiedCascadeResult {
+  coverage?: AnalysisCoverage | null;
   target_resolution?: CascadeTargetResolution | null;
   analysis_performed?: boolean;
   traversal_evidence?: CascadeTraversalEvidence | null;
@@ -4791,6 +4813,7 @@ export interface UnifiedCascadeResult {
 }
 
 export interface CascadeRunSummary {
+  coverage?: AnalysisCoverageSummary | null;
   analysis_performed?: boolean;
   target_resolution?: CascadeTargetResolution | null;
   id: string;
@@ -4806,6 +4829,7 @@ export interface CascadeRunSummary {
 }
 
 export interface CascadeRunDiff {
+  coverage_comparison?: { comparable: boolean; reason: string | null; note: string };
   operational_comparison?: OperationalComparison;
   target_comparison?: { comparable: boolean; reason: string | null };
   process_comparison?: { comparable: boolean; run_schema: string | null; against_schema: string | null; reason: string | null };
@@ -4822,6 +4846,7 @@ export interface CascadeRunDiff {
   run: { id: string; created_at: string | null; verdict: string };
   against: { id: string; created_at: string | null; verdict: string };
   affected_systems: {
+    available?: boolean; reason?: string;
     added: string[]; removed: string[];
     unchanged_count: number | null; before: number | null; after: number | null;
   };

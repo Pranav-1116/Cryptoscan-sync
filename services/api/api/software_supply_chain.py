@@ -34,7 +34,8 @@ def software_snapshot(db):
                   ReleaseSbomBinding.scope_key == scope_key(tenant)).scalar() or 0)}
     returned = {"artifacts": len(artifacts), "deployments": len(deployments),
                 "sbom_bindings": len(bindings), "components": components}
-    coverage = {key: {"total": total, "returned": returned[key], "truncated": returned[key] < total}
+    limits = {"artifacts": ARTIFACT_CAP, "deployments": DEPLOYMENT_CAP, "sbom_bindings": BINDING_CAP, "components": COMPONENT_CAP}
+    coverage = {key: {"total": total, "known_total": total, "limit": limits[key], "unit": "components" if key == "components" else "rows", "returned": returned[key], "truncated": returned[key] < total}
                 for key, total in totals.items()}
     return {"software_artifacts": [row.to_dict() for row in artifacts],
             "software_sbom_bindings": bindings,

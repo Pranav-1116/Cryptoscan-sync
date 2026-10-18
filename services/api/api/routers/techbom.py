@@ -1139,6 +1139,7 @@ def technology_bom_cascade_runs(
     """Cascade history, newest first — the audit trail of past answers."""
     from db.repositories.cascade_run_repository import CascadeRunRepository
     from cbom.unified_cascade import summarize_system_scope
+    from shared_models.coverage import coverage_summary
 
     runs = CascadeRunRepository(db).list_runs(limit=limit, offset=offset)
     return {
@@ -1153,6 +1154,7 @@ def technology_bom_cascade_runs(
              "relationship_policy": (r.result or {}).get("relationship_policy"),
              "analysis_performed": (r.result or {}).get("analysis_performed"),
              "target_resolution": (r.result or {}).get("target_resolution"),
+             "coverage": coverage_summary(r.result or {}),
              # ownership travels with the row (NULL = platform estate)
              "tenant_id": r.tenant_id,
              # replay provenance travels with the history entry: an auditor
@@ -1248,10 +1250,12 @@ def technology_bom_cascade_run_diff(
 
     from cbom.target_resolution import compare_resolution
     target_comparison = compare_resolution(other.result, run.result)
+    from shared_models.coverage import compare_coverage
+    coverage_comparison = compare_coverage(other.result, run.result)
 
     def _delta(label: str, old: set[str], new: set[str]) -> dict:
-        if not target_comparison["comparable"]:
-            return {"available": False, "reason": target_comparison["reason"], "added": [], "removed": [], "unchanged_count": None, "before": None, "after": None}
+        if not target_comparison["comparable"] or not coverage_comparison["comparable"]:
+            return {"available": False, "reason": target_comparison["reason"] if not target_comparison["comparable"] else coverage_comparison["reason"], "added": [], "removed": [], "unchanged_count": None, "before": None, "after": None}
         return {"added": sorted(new - old), "removed": sorted(old - new),
                 "unchanged_count": len(new & old),
                 "before": len(old), "after": len(new)}
@@ -1266,7 +1270,7 @@ def technology_bom_cascade_run_diff(
     new_policy = ((run.result or {}).get("relationship_policy") or {}).get("version")
     policy_comparable = old_policy is not None and old_policy == new_policy
     comparable = (old_scope.get("schema") == SYSTEM_SCOPE_SCHEMA
-                  and new_scope.get("schema") == SYSTEM_SCOPE_SCHEMA and policy_comparable and target_comparison["comparable"])
+                  and new_scope.get("schema") == SYSTEM_SCOPE_SCHEMA and policy_comparable and target_comparison["comparable"] and coverage_comparison["comparable"])
     scope_diff: dict[str, Any] = {"available": comparable}
     if comparable:
         scope_diff.update({
@@ -1277,6 +1281,7 @@ def technology_bom_cascade_run_diff(
         scope_diff["reason"] = (
             "relationship policy differs or is unknown for a stored run" if not policy_comparable
             else target_comparison["reason"] if not target_comparison["comparable"]
+            else coverage_comparison["reason"] if not coverage_comparison["comparable"]
             else "one or both stored runs lack the current system classification")
     from shared_models.process_impact import SCHEMA as PROCESS_SCHEMA
     old_process_schema = ((other.result or {}).get("impact", {}).get("process_impact") or {}).get("schema")
@@ -1284,7 +1289,7 @@ def technology_bom_cascade_run_diff(
     process_comparable = comparable and old_process_schema == new_process_schema == PROCESS_SCHEMA
     from shared_models.operational_dependencies import compare_operational_impacts
     operational_comparison = compare_operational_impacts(other.result, run.result) if comparable else {
-        "comparable": False, "reason": "Canonical target/system policy or classification is unavailable/different; operational deltas withheld."}
+        "comparable": False, "reason": "Canonical target/system policy, classification or input coverage is unavailable/different; operational deltas withheld."}
     return {
         "schema": "cryptoscan.unified-cascade-diff/1",
         "run": {"id": run.id, "created_at": run.created_at.isoformat()
@@ -1293,6 +1298,7 @@ def technology_bom_cascade_run_diff(
                     if other.created_at else None, "verdict": other.verdict},
         "target": run.target,
         "target_comparison": target_comparison,
+        "coverage_comparison": coverage_comparison,
         "operational_comparison": operational_comparison,
         "verdict_changed": run.verdict != other.verdict,
         "affected_systems": _delta("systems", old_systems, new_systems),
@@ -1300,7 +1306,7 @@ def technology_bom_cascade_run_diff(
         "policy_comparison": {"comparable": policy_comparable,
                               "run_version": new_policy, "against_version": old_policy},
         "process_comparison": {"comparable": process_comparable, "run_schema": new_process_schema, "against_schema": old_process_schema,
-            "reason": None if process_comparable else "Process projection or system policy differs/is unavailable; legacy seed-only counts are not comparable."},
+            "reason": None if process_comparable else "Process projection, system policy or input coverage differs/is unavailable; legacy seed-only counts are not comparable."},
         "affected_processes": {
             **_delta("processes",
                      {p[0] or p[1] for p in old_processes},
@@ -1399,6 +1405,7 @@ def cascade_watches_run_due(
     """
     from api.routers.digital_twin import _snapshot
     from cbom.unified_cascade import summarize_system_scope, unified_cascade
+    from shared_models.coverage import coverage_summary, compare_coverage
     from db.models.cascade_extensions import CascadeWatch
     from db.repositories.cascade_run_repository import CascadeRunRepository
 
@@ -1427,12 +1434,19 @@ def cascade_watches_run_due(
                  "affected_system_count": result["impact"]["affected_system_count"],
                  "system_classification": summarize_system_scope(result),
                  "relationship_policy": result.get("relationship_policy")}
+        entry["coverage"] = coverage_summary(result)
         entry["target_resolution"] = result.get("target_resolution")
         entry["analysis_performed"] = result.get("analysis_performed")
         if not result.get("analysis_performed"):
             entry["target_missing"] = result["verdict"] == "NOT_FOUND"
             entry["attention_required"] = True
             entry["comparison_withheld"] = "Target unresolved; previous resolved baseline retained. Empty compatibility counts are not impact removal."
+            results.append(entry)
+            continue
+        c = result.get("coverage") or {}
+        if not c.get("source_metadata_available") or c.get("known_input_truncation") or c.get("known_horizon_omission") or c.get("horizon_extension_unknown"):
+            entry["attention_required"] = True
+            entry["comparison_withheld"] = "Input coverage unknown, truncated or horizon-limited; previous baseline retained. Not proof of reduced exposure."
             results.append(entry)
             continue
         if watch.last_run_id:
@@ -1445,6 +1459,12 @@ def cascade_watches_run_due(
                 if not entry["target_comparison"]["comparable"]:
                     entry["attention_required"] = True
                     entry["comparison_withheld"] = entry["target_comparison"]["reason"]
+                    results.append(entry)
+                    continue
+                entry["coverage_comparison"] = compare_coverage(previous.result, result)
+                if not entry["coverage_comparison"]["comparable"]:
+                    entry["attention_required"] = True
+                    entry["comparison_withheld"] = entry["coverage_comparison"]["reason"]
                     results.append(entry)
                     continue
                 old_policy = ((previous.result or {}).get("relationship_policy") or {}).get("version")

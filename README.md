@@ -32,6 +32,13 @@ explain discovery, directional blast radius, bank examples, APIs, current limits
 and recommended acceptance checks. They distinguish modeled exposure from
 confirmed operational failure.
 
+[Coverage and truncation qualifications](docs/bank-environment/25-coverage-truncation-and-missing-link-qualifications.md)
+are shown before cascade impact: source read omissions, bounded horizons,
+missing links and explanation limits stay separate. Incomplete runs cannot
+silently become watch removals or comparable impact deltas. Unknown completeness
+is not zero exposure or proof of safety; Step 10 bank/backend qualification is
+still pending.
+
 ## Scope & honest boundaries
 
 CryptoScan is an **end-to-end crypto & security-configuration platform** —

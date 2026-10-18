@@ -8,6 +8,7 @@ import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
 
+from shared_models.coverage import analysis_coverage, traversal_bound
 from shared_models.operational_dependencies import project_operational_dependencies
 from shared_models.process_impact import classify_systems, project_processes
 from shared_models.traversal_evidence import metadata, walk_paths, envelope, path_evidence, MAX_WITNESSES, edge_evidence
@@ -348,6 +349,10 @@ class GraphEngine:
         return []
 
     def _dependency_walk(self, start_id: str, *, hops: int, reverse: bool) -> dict[str, Any]:
+        if self._as_of is None:
+            view = copy(self)
+            view._as_of = clock()
+            return view._dependency_walk(start_id, hops=hops, reverse=reverse)
         hops = max(1, min(MAX_SYSTEM_HOPS, hops))
         origins = self._system_origins(start_id)
         seen = {origin: 0 for origin in origins}
@@ -370,7 +375,7 @@ class GraphEngine:
                     "criticality": self.nodes[node_id].get("criticality"), "hops": depth}
                    for node_id, depth in seen.items() if depth > 0]
         systems.sort(key=lambda row: (row["hops"], row.get("name") or "", row["id"]))
-        return {
+        result = {
             "start": origins[0].split(":", 1)[-1] if origins else start_id,
             "owning_systems": [origin.split(":", 1)[-1] for origin in origins],
             "systems": systems, "hops": hops, "nodes_visited": len(seen),
@@ -379,6 +384,12 @@ class GraphEngine:
             "start_links": self._domain_links(origins, {"USES"}, target=self._resolve(start_id)) if (self.nodes.get(self._resolve(start_id)) or {}).get("kind") == "CryptoAsset" else None,
             "relationship_policy": policy_metadata(),
         }
+
+        bound = traversal_bound([{**props, "from": src, "to": dst, "label": rel} for (src, dst, rel), props in self.edge_meta.items()],
+            origins, known=[k for k, v in self.nodes.items() if v.get("kind") == "System"], hops=hops, now=self.as_of, reverse=reverse)
+        result["coverage"] = analysis_coverage({"collector_coverage": getattr(self, "collection_meta", {})},
+            {"traversal_evidence": {"dependent_consumers" if reverse else "supporting_context": result["traversal_evidence"]}}, traversals=[bound])
+        return result
 
     def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         return self._dependency_walk(start_id, hops=hops, reverse=False)
@@ -410,7 +421,7 @@ class GraphEngine:
                          if rel == "OWNED_BY" and self.nodes.get(n, {}).get("name")})
         scopes = sorted({scope for sid in system_ids for scope in self.nodes.get(sid, {}).get("compliance_scopes") or []})
         rows = {r["id"]: r for r in [*radius["systems"], *reverse["systems"]] if r["id"] not in direct}
-        return {"start": radius["start"], "owning_systems": direct,
+        result = {"start": radius["start"], "owning_systems": direct,
             "system_classification": classification, "process_impact": projection,
             "operational_impact": project_operational_dependencies([{**props, "from": src, "to": dst, "label": rel} for (src, dst, rel), props in self.edge_meta.items()], classification, known_systems=[k for k, v in self.nodes.items() if v.get("kind") == "System"], now=self.as_of, source_coverage=getattr(self, "collection_meta", None)),
             "process_traversal_evidence": explanations,
@@ -422,6 +433,10 @@ class GraphEngine:
             "systems": sorted(rows.values(), key=lambda r: (r["hops"], r["id"])),
             "traversal_evidence": radius["traversal_evidence"],
             "domain_links": self._domain_links(system_ids, {"SUPPORTS", "OWNED_BY", "MUST_COMPLY_WITH"}), "backend": self.backend}
+
+        result["coverage"] = analysis_coverage({"collector_coverage": getattr(self, "collection_meta", {})},
+            {**result, "traversal_evidence": explanations}, traversals=[*reverse["coverage"]["traversals"], *radius["coverage"]["traversals"]])
+        return result
 
     def compliance_inheritance(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         radius = self.blast_radius(start_id, hops=hops)

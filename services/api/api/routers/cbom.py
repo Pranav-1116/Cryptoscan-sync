@@ -1208,7 +1208,7 @@ def nbom_cascade(body: NbomRequest, ref: str = Query(..., description="bom-ref t
 # Statuses that mean the probe never completed a handshake. Same set the
 # telecom classifier uses: an endpoint we could not reach is unknown, and must
 # not be inventoried as though we had observed it to be healthy.
-def _gather_network_inventory(db: Session, *, limit: int = 2000) -> dict[str, list[dict]]:
+def _gather_network_inventory(db: Session, *, limit: int = 2000, endpoint_limit: int | None = None, include_coverage: bool = False) -> dict:
     """Build NBOM inputs from real rows: network scan probes + certificates.
 
     The network scanner already stores each run's probe results in
@@ -1228,18 +1228,29 @@ def _gather_network_inventory(db: Session, *, limit: int = 2000) -> dict[str, li
     from db.models.network_scan_run import NetworkScanRun
 
     runs = db.execute(
-        _select(NetworkScanRun).order_by(desc(NetworkScanRun.created_at)).limit(limit)
+        _select(NetworkScanRun).order_by(desc(NetworkScanRun.created_at), NetworkScanRun.id).limit(limit + 1)
     ).scalars().all()
 
     endpoints: dict[str, dict] = {}
-    for run in runs:
+    endpoints_truncated = False
+    for run in runs[:limit]:
         for probe in ((run.result or {}).get("probes") or []):
             raw = str(probe.get("endpoint") or "").strip()
             if not raw or raw in endpoints:
                 continue  # first sighting is the newest run
+            if endpoint_limit is not None and len(endpoints) >= endpoint_limit:
+                endpoints_truncated = True
+                break
             endpoints[raw] = {**probe_to_endpoint(probe), "scan_run_id": run.id,
                               "recorded_at": run.created_at.isoformat() if run.created_at else None}
-    return {"endpoints": list(endpoints.values())}
+        if endpoints_truncated:
+            break
+    result = {"endpoints": list(endpoints.values())}
+    if include_coverage:
+        from shared_models.coverage import collection_read
+        result["coverage"] = {"network_scan_runs": collection_read(min(len(runs), limit), limit, more=len(runs) > limit),
+            "observed_endpoints": collection_read(len(endpoints), endpoint_limit, more=endpoints_truncated, unit="unique endpoint keys from loaded runs")}
+    return result
 
 
 @router.get("/nbom")

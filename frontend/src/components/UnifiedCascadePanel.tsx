@@ -9,6 +9,7 @@ import {
   UnifiedCascadeResult,
 } from "../lib/api";
 
+import AnalysisCoveragePanel from "./AnalysisCoveragePanel";
 import OperationalImpactPanel from "./OperationalImpactPanel";
 import ProcessImpactPanel from "./ProcessImpactPanel";
 import TraversalEvidencePanel from "./TraversalEvidencePanel";
@@ -145,6 +146,8 @@ export default function UnifiedCascadePanel() {
               ? `Relationship policy: ${result.relationship_policy.version}. System propagation: ${result.relationship_policy.propagating_relations.join(", ")}. Unknown/context labels do not propagate.`
               : "Relationship policy unavailable for this stored answer; do not assume traversal parity."}
           </div>
+
+          <AnalysisCoveragePanel coverage={result.coverage} />
 
           <section aria-label="Target resolution" role="status">
             {result.target_resolution ? <>
@@ -357,6 +360,7 @@ export default function UnifiedCascadePanel() {
                   {r.target_kind || "?"} · {r.analysis_performed === false ? "not analyzed — target requires attention" : r.system_classification
                     ? `${r.system_classification.direct_exposure.count} direct / ${r.system_classification.dependent_consumers.count} consumers / ${r.system_classification.supporting_context.count} context · ${r.system_classification.review_system_count} review`
                     : `legacy review scope: ${r.affected_system_count ?? "unknown"} · breakdown unavailable`}
+                  {" · "}coverage: {r.coverage?.status || "unavailable for stored answer"}
                   {" · "}{(r.created_at || "").replace("T", " ").slice(0, 19)}
                 </span>
                 <button className="btn sm outline" style={{ marginLeft: "auto", fontSize: 11 }} onClick={() => showDiff(r.id)}>
@@ -372,7 +376,7 @@ export default function UnifiedCascadePanel() {
                 <b>Diff</b> {diff.run.created_at?.replace("T", " ").slice(0, 19)} vs {diff.against.created_at?.replace("T", " ").slice(0, 19)}
                 {diff.verdict_changed && <span style={{ color: "var(--red)" }}> · verdict changed</span>}
               </div>
-              {diff.target_comparison?.comparable === false ? <div role="status">{diff.target_comparison.reason} No impact-change claims are available.</div> : <div>
+              {diff.target_comparison?.comparable === false || diff.coverage_comparison?.comparable === false || diff.affected_systems.available === false ? <div role="status">{diff.target_comparison?.comparable === false ? diff.target_comparison.reason : diff.coverage_comparison?.reason || diff.affected_systems.reason} No impact-change claims are available.</div> : <div>
                 Review scope: {diff.affected_systems.before} → {diff.affected_systems.after}
                 {diff.affected_systems.removed.length > 0 && (
                   <span style={{ color: "var(--dim)" }}> · removed: {diff.affected_systems.removed.join(", ")}</span>

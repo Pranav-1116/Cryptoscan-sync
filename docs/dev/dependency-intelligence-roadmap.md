@@ -8,11 +8,12 @@
 [Step-5 contract](../bank-environment/21-traversal-provenance-evidence-and-freshness.md) ·
 [Step-6 contract](../bank-environment/22-business-process-impact-and-inclusion-reasons.md) ·
 [Step-7 contract](../bank-environment/23-exact-target-identities-and-ambiguity.md) ·
-[Step-8 contract](../bank-environment/24-operational-dependency-modes-and-conditional-outcomes.md)
+[Step-8 contract](../bank-environment/24-operational-dependency-modes-and-conditional-outcomes.md) ·
+[Step-9 contract](../bank-environment/25-coverage-truncation-and-missing-link-qualifications.md)
 
 This is an incremental engineering plan for the user's ten requested changes.
-**Steps 1–8 are implemented with local regression checks.** Steps 9–10
-remain pending; real Neo4j/bank qualification is not implied. Pending work is not
+**Steps 1–9 are implemented with local regression checks.** Step 10
+remains pending; real Neo4j/bank qualification is not implied. Pending work is not
 a feature claim. Each stage needs its own implementation, regression checks,
 compatibility review and a recorded delivery result before being marked done.
 CI workflow configuration is outside this task.
@@ -29,7 +30,7 @@ CI workflow configuration is outside this task.
 | 6. Process impact over implicated systems | Implemented; local qualification recorded below | Shared process-impact/1 projection over all classified review systems; ID deduplication, per-system support reasons/roles/evidence, context/potential separation, qualified economic context and legacy comparison guards |
 | 7. Exact target identities | Implemented; local qualification recorded below | target-resolution/1 decisions; exact fingerprint/PURL/vendor-ID priority, explicit ambiguity/conflicts, opt-in non-executing name search, exact leaf-fingerprint joins, coverage flags and canonical history/watch baseline guards |
 | 8. Operational dependency modes | Implemented; local qualification recorded below | Migration 0101, nullable strict mode assertions, revision/source/tenant-checked audited annotation, conditional operational-impact/1 across unified/memory/native paths, mode-only history/watch review and console; no availability simulation |
-| 9. Prominent coverage/truncation | Pending | Per-collection and per-walk bounds, missing-link coverage and UI warnings without treating absence as clean |
+| 9. Prominent coverage/truncation | Implemented; local qualification recorded below | Versioned independent source/horizon/detail/link qualifications, cap-plus-one reads, conservative native unknown extension, prominent console and coverage-aware immutable history/diff/watch guards |
 | 10. Bank-negative and backend qualification | Pending | Role/tenant/history/replay/write denial tests, backend parity and bank-specific acceptance evidence; mocks alone do not qualify deployment |
 
 ## Step 1 — delivered scope and compatibility
@@ -335,4 +336,54 @@ Nonfatal existing backend/React warnings remain. Deployment requires migration
 `0101`; live PostgreSQL/Neo4j, actual failover/queue behavior, comprehensive bounds
 and whole-bank authorization remain unqualified. See
 [guide 24](../bank-environment/24-operational-dependency-modes-and-conditional-outcomes.md).
-**Steps 9–10 remain pending.**
+At Step 8 publication, Steps 9–10 remained pending; Step 9 delivery is recorded below.
+
+
+## Step 9 — delivered visible bounds and missing linkage
+
+New snapshots record `cryptoscan.source-coverage/1` with stable cap-plus-one
+reads and actual sentinel-based truncation, including assets, dependency rows,
+network run/unique endpoint projection and relationship inventories. Software
+bounds expose their own limits, units and authorized query totals. Query lower
+bounds do not become fabricated exact totals or a discovery percentage.
+
+`cryptoscan.analysis-coverage/1` separates source omissions, current/potential
+walk horizons, vendor supply depth, explanation bounds and missing-link checks.
+Loaded horizon probes do not expand exposure and exclude cycles/known reached
+nodes. Native extension remains explicitly unprobed/null; no full graph export
+is performed. Missing endpoint/system/process/software linkage, unknown modes
+and returned-witness evidence gaps retain their own denominators and scope.
+
+The console puts coverage above impact, including unresolved targets. Frozen
+history is not rewritten; legacy coverage is unavailable. Diffs with unknown,
+truncated or incompatible read/depth/source profiles withhold impact deltas.
+Watches preserve the comparable baseline and audit the incomplete answer rather
+than emitting apparent removals. Explanation-only truncation does not suppress
+compact membership comparison. Existing target/policy/classification and
+operational-detail gates remain in force.
+
+See [guide 25](../bank-environment/25-coverage-truncation-and-missing-link-qualifications.md)
+for limits, a runnable bank-chain example, baseline recovery and qualification
+boundaries. No new migration or workflow change. Step 10 is still pending.
+
+
+Local Step 9 qualification (2026-10-18): **1,687 backend tests passed, 1 skipped,
+8 deselected** across shared models, CBOM, graph engine, database, business
+context and scoped twin/graph/cascade/software/lifecycle/operational API suites.
+One deselection is the baseline-failing graph provenance assertion noted below;
+the other seven are the existing non-live selection. **378 frontend tests
+passed in 42 files**, plus TypeScript typecheck, production build, F/E9 checks,
+diff whitespace, documentation validation and the runnable guide-25 example.
+A final focused shared/CBOM/graph/cascade/software supplement passed 662 tests.
+
+An expanded all-unit-API run also completed: 2,997 passed, 1 skipped, 7 deselected,
+**2 failures**, before the small final vendor-reference refinement and restoration
+of three original CBOM coverage tests to their unchanged file. Both failures were
+reproduced using archived, unchanged Step 8 modules at `e350b175`:
+`test_graph_edge_provenance_api.py::test_graph_edges_carry_provenance_class_and_source`
+expects an older source label instead of the preserved `manual` source, and
+`test_production_hardening.py::test_worker_production_requires_postgres_and_redis`
+omits the required immutable scanner-image configuration. These pre-existing
+failures were not hidden, weakened, or fixed by changing production security
+settings. The expanded suite is not claimed green. The final scoped run includes
+the unchanged original CBOM tests and the final vendor-reference refinement.

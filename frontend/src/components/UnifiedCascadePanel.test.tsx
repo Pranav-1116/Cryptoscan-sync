@@ -308,3 +308,28 @@ describe("exact cascade identities", () => {
     expect(coverage.getByText(/different fingerprint: 2/)).toBeInTheDocument();
   });
 });
+
+it("places coverage warnings before modeled impact panels", async () => {
+  render(<UnifiedCascadePanel />);
+  await runCascade();
+  const coverage = screen.getByRole("region", { name: "Coverage and limitations" });
+  const direct = screen.getByRole("region", { name: "Direct exposure" });
+  expect(coverage.compareDocumentPosition(direct) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(within(coverage).getByText(/Coverage unavailable for this stored answer/)).toBeInTheDocument();
+});
+
+it("does not label incomparable coverage as unchanged exposure", async () => {
+  vi.mocked(apiCascadeRuns).mockResolvedValue({ source: "live", data: { runs: [{ id: "run", target: "payments", target_kind: "system", max_depth: 2,
+    verdict: "AFFECTED", created_by: "test", created_at: null }], count: 1 } });
+  vi.mocked(apiCascadeRunDiff).mockResolvedValue({ source: "live", data: {
+    target: "payments", run: { id: "new", created_at: null, verdict: "AFFECTED" }, against: { id: "old", created_at: null, verdict: "AFFECTED" },
+    verdict_changed: false, target_comparison: { comparable: true, reason: null },
+    coverage_comparison: { comparable: false, reason: "Input coverage unknown; deltas withheld.", note: "Not proof of remediation." },
+    affected_systems: { available: false, added: [], removed: [], before: null, after: null, unchanged_count: null },
+    affected_processes: { added: [], removed: [], before: null, after: null },
+  } });
+  render(<UnifiedCascadePanel />);
+  fireEvent.click(await screen.findByRole("button", { name: "diff vs previous" }));
+  expect(await screen.findByText(/No impact-change claims are available/)).toHaveTextContent("Input coverage unknown");
+  expect(screen.queryByText(/· unchanged/)).not.toBeInTheDocument();
+});

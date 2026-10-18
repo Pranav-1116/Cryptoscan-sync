@@ -141,3 +141,14 @@ Implementation progress is tracked in the [ten-step engineering plan](../dev/dep
 [step 3](19-package-artifact-deployment-identity.md) and
 [step 4](20-relationship-lifecycle-and-reconciliation.md) are implemented with local
 checks; steps 5–10 and real deployment qualification remain pending.
+
+
+### Step 9: visible coverage before impact claims
+
+[Guide 25 — coverage, truncation and missing-link qualifications](25-coverage-truncation-and-missing-link-qualifications.md)
+explains cap-plus-one source reads, current/potential traversal horizons,
+explicitly unknown native extension, independent detail limits and scoped
+missing-link checks across the six BOM layers. The console shows these before
+impact; history/diffs/watches withhold unsafe change claims without rewriting
+old answers. “Within read limit” never certifies full bank discovery. Step 10
+negative/backend qualification remains pending.

@@ -54,6 +54,10 @@ TIMELINE_LIMIT = 500
 #: Read caps for the snapshot sections. The twin must degrade honestly on a
 #: huge estate rather than OOM the API; the fidelity report names the caps.
 SNAPSHOT_CAPS = {
+    "assets": 20000,
+    "dependencies": 50000,
+    "network_scan_runs": 2000,
+    "observed_endpoints": 20000,
     "certificates": 20000,
     "evidence": 20000,
     "endpoints": 20000,
@@ -82,7 +86,14 @@ def _snapshot(db: Session) -> dict:
     honest unknown, so an estate that has never run a network scan still
     gets protocol scenarios — with the gap named, not papered over.
     """
-    states = db.query(CryptoLiveState).all()
+    from shared_models.coverage import collection_read, SOURCE_SCHEMA
+    collections = {}
+    def load(model, name, cap_key, order=None):
+        cap = SNAPSHOT_CAPS[cap_key]
+        rows = db.query(model).order_by(order if order is not None else model.id).limit(cap + 1).all()
+        collections[name] = collection_read(min(len(rows), cap), cap, more=len(rows) > cap)
+        return rows[:cap]
+    states = load(CryptoLiveState, "assets", "assets", CryptoLiveState.asset_id)
     asset_ids = [s.asset_id for s in states]
 
     last_events: dict[str, datetime] = {}
@@ -105,7 +116,7 @@ def _snapshot(db: Session) -> dict:
     # algorithm cascade can name assets but never the systems running them
     asset_systems: dict[str, list[str]] = {}
     system_asset_links = []
-    for link in db.query(SystemAsset).limit(SNAPSHOT_CAPS["systems"]).all():
+    for link in load(SystemAsset, "system_asset_links", "systems"):
         system_asset_links.append(link.to_dict())
         ids = asset_systems.setdefault(link.asset_id, [])
         if link.system_id not in ids:
@@ -135,8 +146,7 @@ def _snapshot(db: Session) -> dict:
 
     from agility.roadmap import wave_for
 
-    system_vendors = db.query(SystemVendor).limit(
-        SNAPSHOT_CAPS["system_vendors"]).all()
+    system_vendors = load(SystemVendor, "system_vendor_links", "system_vendors")
     systems = [
         {
             "id": system.id,
@@ -154,11 +164,11 @@ def _snapshot(db: Session) -> dict:
             "vendor_ids": [sv.vendor_id for sv in system_vendors
                            if sv.system_id == system.id],
         }
-        for system in db.query(System).limit(SNAPSHOT_CAPS["systems"]).all()
+        for system in load(System, "systems", "systems")
     ]
 
-    certificate_page = db.query(Certificate).order_by(Certificate.fingerprint_sha256).limit(SNAPSHOT_CAPS["certificates"] + 1).all()
-    vendor_page = db.query(Vendor).order_by(Vendor.id).limit(SNAPSHOT_CAPS["vendors"] + 1).all()
+    certificate_page = load(Certificate, "certificates", "certificates", Certificate.fingerprint_sha256)
+    vendor_page = load(Vendor, "vendors", "vendors")
     certificates = [
         {
             "fingerprint_sha256": c.fingerprint_sha256,
@@ -179,16 +189,18 @@ def _snapshot(db: Session) -> dict:
     # distinct(): an evidence record reachable through two assets of the same
     # system must not appear twice. The row list is capped; the exact
     # per-algorithm counts for reconciliation come from the GROUP BY below.
-    evidence_rows = (
+    evidence_page = (
         db.query(EvidenceRecord, SystemAsset.system_id)
         .outerjoin(CryptoAssetEvidence,
                    CryptoAssetEvidence.evidence_id == EvidenceRecord.id)
         .outerjoin(SystemAsset,
                    SystemAsset.asset_id == CryptoAssetEvidence.asset_id)
         .distinct()
-        .order_by(EvidenceRecord.created_at.desc())
-        .limit(SNAPSHOT_CAPS["evidence"]).all()
+        .order_by(EvidenceRecord.created_at.desc(), EvidenceRecord.id, SystemAsset.system_id)
+        .limit(SNAPSHOT_CAPS["evidence"] + 1).all()
     )
+    evidence_rows = evidence_page[:SNAPSHOT_CAPS["evidence"]]
+    collections["evidence_system_pairs"] = collection_read(len(evidence_rows), SNAPSHOT_CAPS["evidence"], more=len(evidence_page) > len(evidence_rows), unit="evidence/system pairs")
     evidence = [
         {
             "id": record.id,
@@ -220,10 +232,10 @@ def _snapshot(db: Session) -> dict:
     dependencies = [
         {"id": dep.id, "source": dep.parent_id, "target": dep.child_id, "type": dep.relation,
          **system_dependency_metadata(dep), **lifecycle_payload(dep)}
-        for dep in db.query(SystemDependency).limit(50000).all()
+        for dep in load(SystemDependency, "dependencies", "dependencies")
     ]
     dependency_source = "system_dependencies"
-    if not dependencies:
+    if not dependencies and not collections["dependencies"]["truncated"]:
         # Estates that maintain their dependency graph in the graph engine
         # (versioned graph_snapshots) get their edges from the latest
         # snapshot instead — attack paths work on both shapes of estate.
@@ -242,7 +254,11 @@ def _snapshot(db: Session) -> dict:
                 if edge.get("from") and edge.get("to")
             ]
             dependency_source = f"graph_snapshot:v{snap.version}"
-    if not dependencies:
+            cap = SNAPSHOT_CAPS["dependencies"]
+            collections["dependencies"] = collection_read(min(len(dependencies), cap), cap, more=len(dependencies) > cap, total=len(dependencies))
+            dependencies = dependencies[:cap]
+            collections["dependencies"]["scope"] = "selected authorized graph snapshot only; no automatic union or fresh runtime verification"
+    if not dependencies and not collections["dependencies"]["truncated"]:
         dependency_source = "none"
 
     # Observed endpoints come from stored network scans — the same derivation
@@ -251,7 +267,9 @@ def _snapshot(db: Session) -> dict:
     from api.routers.cbom import _gather_network_inventory
 
     network_endpoints = []
-    for ep in _gather_network_inventory(db)["endpoints"]:
+    network_inventory = _gather_network_inventory(db, limit=SNAPSHOT_CAPS["network_scan_runs"], endpoint_limit=SNAPSHOT_CAPS["observed_endpoints"], include_coverage=True)
+    collections.update(network_inventory["coverage"])
+    for ep in network_inventory["endpoints"]:
         network_endpoints.append({
             "host": ep.get("host"), "port": ep.get("port"),
             "protocol": ep.get("protocol"), "version": ep.get("tls_version"),
@@ -267,8 +285,7 @@ def _snapshot(db: Session) -> dict:
     # and the protocol scenario reports that gap honestly. Registered
     # host:port → system linkage is also stamped onto observed endpoints so
     # certificate and endpoint cascades can name the owning system.
-    registered = db.query(NetworkScanTarget).limit(
-        SNAPSHOT_CAPS["endpoints"]).all()
+    registered = load(NetworkScanTarget, "registered_endpoints", "endpoints")
     registered_system = {
         f"{_split_endpoint(t.endpoint or '')[0]}:{_split_endpoint(t.endpoint or '')[1]}":
         t.system_id for t in registered}
@@ -310,7 +327,7 @@ def _snapshot(db: Session) -> dict:
             "risk_score": hw.risk_score,
             "risk_level": hw.risk_level,
         }
-        for hw in db.query(HardwareAsset).limit(SNAPSHOT_CAPS["hardware"]).all()
+        for hw in load(HardwareAsset, "hardware", "hardware")
     ]
 
     # Certificate→system usage from real CertificateUsage rows — the same
@@ -318,8 +335,7 @@ def _snapshot(db: Session) -> dict:
     # systems that run the certificate, not just the endpoints serving it.
     certificate_usages: dict[str, list[str]] = {}
     certificate_usage_records = []
-    for cu in db.query(CertificateUsage).limit(
-            SNAPSHOT_CAPS["certificate_usages"]).all():
+    for cu in load(CertificateUsage, "certificate_usage_links", "certificate_usages"):
         certificate_usage_records.append(cu.to_dict())
         loc = str(cu.location or "")
         if loc.startswith("system:"):
@@ -334,6 +350,8 @@ def _snapshot(db: Session) -> dict:
     process_page = db.query(BusinessProcess).order_by(BusinessProcess.id).limit(process_cap + 1).all()
     process_rows = {p.id: p for p in process_page[:process_cap]}
     link_page = db.query(SystemBusinessProcess).order_by(SystemBusinessProcess.id).limit(process_cap + 1).all()
+    collections["processes"] = collection_read(len(process_rows), process_cap, more=len(process_page) > process_cap)
+    collections["process_support_links"] = collection_read(min(len(link_page), process_cap), process_cap, more=len(link_page) > process_cap)
     process_names = {pid: p.name for pid, p in process_rows.items()}
     business_processes: dict[str, list[dict]] = {}
     for link in link_page[:process_cap]:
@@ -351,8 +369,7 @@ def _snapshot(db: Session) -> dict:
     # Vendor crypto inventory (VBOM): what each vendor's products implement —
     # algorithm, key size, PQC readiness — as discovered, never as marketed.
     vendor_crypto: dict[str, list[dict]] = {}
-    for row in db.query(VendorCryptoInventory).limit(
-            SNAPSHOT_CAPS["vendor_crypto"]).all():
+    for row in load(VendorCryptoInventory, "vendor_crypto", "vendor_crypto"):
         vendor_crypto.setdefault(row.vendor_id, []).append({
             "algorithm": row.algorithm, "key_size": row.key_size,
             "pqc_ready": bool(row.pqc_ready),
@@ -383,8 +400,7 @@ def _snapshot(db: Session) -> dict:
     # device serves; without it, the honest unknown stands.
     crypto_hardware: dict[str, list[str]] = {}
     crypto_hardware_links = []
-    for link in db.query(CryptoHardwareLink).limit(
-            SNAPSHOT_CAPS["hardware"]).all():
+    for link in load(CryptoHardwareLink, "crypto_hardware_links", "hardware"):
         crypto_hardware_links.append({**link.to_dict(), "provenance": "DECLARED", "source": "crypto_hardware_links"})
         ids = crypto_hardware.setdefault(link.hardware_asset_id, [])
         if link.asset_id not in ids:
@@ -395,21 +411,24 @@ def _snapshot(db: Session) -> dict:
         {"parent": vd.parent_vendor_id, "child": vd.child_vendor_id,
          "id": vd.id, "provenance": "DECLARED", "source": "vendor_dependencies",
          "created_by": vd.declared_by, "relation": vd.relation}
-        for vd in db.query(VendorDependency).limit(
-            SNAPSHOT_CAPS["vendors"]).all()
+        for vd in load(VendorDependency, "vendor_dependency_links", "vendors")
     ]
 
     from api.software_supply_chain import software_snapshot
 
     return {
+        "source_coverage": {"schema": SOURCE_SCHEMA, "collections": collections,
+            "estate_completeness": "UNKNOWN", "note": "Read limits qualify loaded authorized queries, not discovery completeness. Lower bounds are not exact global totals."},
+        "dependency_coverage": collections["dependencies"],
         "assets": assets,
         "system_asset_links": system_asset_links,
         "certificate_usage_records": certificate_usage_records,
         "crypto_hardware_links": crypto_hardware_links,
         "systems": systems,
         "certificates": certificates,
-        "target_resolution_coverage": {"certificate_truncated": len(certificate_page) > SNAPSHOT_CAPS["certificates"],
-            "vendor_truncated": len(vendor_page) > SNAPSHOT_CAPS["vendors"],
+        "target_resolution_coverage": {"certificate_truncated": collections["certificates"]["truncated"],
+            "vendor_truncated": collections["vendors"]["truncated"],
+            "system_truncated": collections["systems"]["truncated"],
             "certificate_limit": SNAPSHOT_CAPS["certificates"], "vendor_limit": SNAPSHOT_CAPS["vendors"],
             "scope": "authorized_loaded_inventory", "note": "Identity candidates are limited to the authorized snapshot, not a global registry search."},
         "vendors": [

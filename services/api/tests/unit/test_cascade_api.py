@@ -780,3 +780,128 @@ def test_certificate_and_vendor_search_candidates_are_tenant_scoped(tenants, ten
     response = acme.post("/api/v1/technology-bom/cascade", json={"target": "cd" * 32, "kind": "certificate"})
     assert response.json()["analysis_performed"] is False
     assert response.json()["target_resolution"]["candidate_count"] == 0
+
+
+@pytest.mark.parametrize("cap,omitted", [(2, False), (1, True), (0, True)])
+def test_dependency_source_coverage_uses_sentinel_not_cap_equality(app_db, monkeypatch, cap, omitted):
+    from api.routers.digital_twin import SNAPSHOT_CAPS, _snapshot
+    monkeypatch.setitem(SNAPSHOT_CAPS, "dependencies", cap)
+    snapshot = _snapshot(app_db.state.test_session)
+    read = snapshot["source_coverage"]["collections"]["dependencies"]
+    assert read["returned"] == cap
+    assert read["truncated"] is omitted
+    assert read["known_total"] is None
+    assert read["observed_lower_bound"] == cap + int(omitted)
+    assert snapshot["dependency_source"] == "system_dependencies"
+
+
+def test_network_source_caps_unique_endpoint_keys_and_newest_run(app_db):
+    from api.routers.cbom import _gather_network_inventory
+    from db.models.network_scan_run import NetworkScanRun
+    session = app_db.state.test_session
+    session.add_all([NetworkScanRun(id="new", created_at=NOW, result={"probes": [
+        {"endpoint": "a.bank:443", "status": "OK"}, {"endpoint": "a.bank:443", "status": "OK"}]}),
+        NetworkScanRun(id="old", created_at=NOW-timedelta(days=1), result={"probes": [
+        {"endpoint": "b.bank:443", "status": "OK"}]})])
+    session.commit()
+    full = _gather_network_inventory(session, limit=2, endpoint_limit=2, include_coverage=True)
+    assert not full["coverage"]["observed_endpoints"]["truncated"]
+    bounded = _gather_network_inventory(session, limit=2, endpoint_limit=1, include_coverage=True)
+    assert bounded["coverage"]["observed_endpoints"]["truncated"]
+    assert bounded["endpoints"][0]["scan_run_id"] == "new"
+    assert bounded["coverage"]["observed_endpoints"]["observed_lower_bound"] == 2
+    assert _gather_network_inventory(session, limit=1, include_coverage=True)["coverage"]["network_scan_runs"]["truncated"]
+
+
+def test_unresolved_selection_still_reports_truncated_input_coverage(app_db, monkeypatch):
+    from api.routers.digital_twin import SNAPSHOT_CAPS
+    monkeypatch.setitem(SNAPSHOT_CAPS, "systems", 1)
+    with TestClient(app_db) as client:
+        result = client.post("/api/v1/technology-bom/cascade", json={"target": "missing-system"}).json()
+        assert result["analysis_performed"] is False
+        assert result["coverage"]["known_input_truncation"]
+        assert result["coverage"]["traversals"] == []
+        assert result["coverage"]["estate_completeness"] == "UNKNOWN"
+
+
+def test_unknown_historical_coverage_is_not_reconstructed_for_history_or_diff(app_db):
+    from copy import deepcopy
+    with TestClient(app_db) as client:
+        first = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        session = app_db.state.test_session
+        row = session.query(CascadeRun).filter_by(id=first["run_id"]).one()
+        legacy = deepcopy(row.result)
+        del legacy["coverage"]
+        row.result = legacy
+        session.commit()
+        second = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        diff = client.get(f"/api/v1/technology-bom/cascade/runs/{second['run_id']}/diff", params={"against": first["run_id"]}).json()
+        assert not diff["coverage_comparison"]["comparable"]
+        assert not diff["system_classification"]["available"]
+        assert diff["affected_systems"]["before"] is None
+        assert diff["affected_systems"]["removed"] == []
+        assert not diff["operational_comparison"]["comparable"]
+        history = client.get("/api/v1/technology-bom/cascade/runs").json()["runs"]
+        assert next(r for r in history if r["id"] == first["run_id"])["coverage"] is None
+        assert client.get(f"/api/v1/technology-bom/cascade/runs/{first['run_id']}").json()["result"] == legacy
+
+
+def test_truncated_watch_cannot_emit_removals_or_replace_comparable_baseline(app_db, monkeypatch):
+    from api.routers.digital_twin import SNAPSHOT_CAPS
+    from db.models.cascade_extensions import CascadeWatch
+    with TestClient(app_db) as client:
+        watch = client.post("/api/v1/technology-bom/cascade/watch", json={"target": "payment-api"}).json()
+        baseline = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        monkeypatch.setitem(SNAPSHOT_CAPS, "dependencies", 1)
+        current = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        assert current["attention_required"]
+        assert "coverage" in current["comparison_withheld"]
+        assert "diff" not in current and "blast_radius_changed" not in current
+        assert "operational_conditions_changed" not in current
+        session = app_db.state.test_session
+        session.expire_all()
+        assert session.query(CascadeWatch).filter_by(id=watch["id"]).one().last_run_id == baseline["run_id"]
+        assert session.query(CascadeRun).filter_by(id=current["run_id"]).one().result["coverage"]["known_input_truncation"]
+
+
+def test_changed_depth_policy_withholds_diff_even_when_same_membership(app_db):
+    with TestClient(app_db) as client:
+        first = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api", "max_depth": 1}).json()
+        second = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api", "max_depth": 2}).json()
+        diff = client.get(f"/api/v1/technology-bom/cascade/runs/{second['run_id']}/diff", params={"against": first["run_id"]}).json()
+        assert not diff["coverage_comparison"]["comparable"]
+        assert diff["affected_systems"]["after"] is None
+
+
+def test_first_truncated_watch_is_not_pinned_as_future_baseline(app_db, monkeypatch):
+    from api.routers.digital_twin import SNAPSHOT_CAPS
+    from db.models.cascade_extensions import CascadeWatch
+    with TestClient(app_db) as client:
+        watch = client.post("/api/v1/technology-bom/cascade/watch", json={"target": "payment-api"}).json()
+        original = SNAPSHOT_CAPS["dependencies"]
+        monkeypatch.setitem(SNAPSHOT_CAPS, "dependencies", 1)
+        first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        assert first["attention_required"]
+        session = app_db.state.test_session
+        assert session.query(CascadeWatch).filter_by(id=watch["id"]).one().last_run_id is None
+        monkeypatch.setitem(SNAPSHOT_CAPS, "dependencies", original)
+        second = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        session.expire_all()
+        assert session.query(CascadeWatch).filter_by(id=watch["id"]).one().last_run_id == second["run_id"]
+        assert "diff" not in second
+
+
+def test_legacy_watch_coverage_is_not_guessed_or_overwritten(app_db):
+    from db.models.cascade_extensions import CascadeWatch
+    with TestClient(app_db) as client:
+        watch = client.post("/api/v1/technology-bom/cascade/watch", json={"target": "payment-api"}).json()
+        first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        session = app_db.state.test_session
+        row = session.query(CascadeRun).filter_by(id=first["run_id"]).one()
+        row.result = {key: value for key, value in row.result.items() if key != "coverage"}
+        session.commit()
+        second = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        assert second["attention_required"] and not second["coverage_comparison"]["comparable"]
+        session.expire_all()
+        assert session.query(CascadeWatch).filter_by(id=watch["id"]).one().last_run_id == first["run_id"]
+        assert "coverage" not in session.query(CascadeRun).filter_by(id=first["run_id"]).one().result

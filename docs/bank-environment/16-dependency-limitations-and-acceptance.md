@@ -202,3 +202,17 @@ Historical SBOM/six-BOM checks remain separately recorded in
 [08](08-implementation-map-and-limits.md). They are not evidence of additional
 coverage for this dependency-analysis task. Production readiness decisions and
 bank-specific qualification requirements remain unchanged.
+
+
+## Step 9 acceptance: coverage must qualify every impact claim
+
+[Guide 25](25-coverage-truncation-and-missing-link-qualifications.md) documents the
+implemented source/horizon/detail/missing-link contract. Verify sentinel-based
+truncation at exact/over/zero limits, separate units and lower bounds, cycles
+versus truly unseen horizon neighbours, explicit native unknown extension,
+visible missing mappings, and unchanged compact counts under explanation caps.
+Verify incomplete watches audit the answer but retain the comparable baseline,
+and legacy history stays immutable/unavailable rather than being reconstructed.
+No aggregate percentage, empty-result safety claim or real-bank completeness
+certification is accepted. Step 10 authorization/tenant/backend negative
+qualification is still pending.

@@ -302,6 +302,10 @@ def test_snapshot_component_budget_reports_missing_coverage(estate, monkeypatch)
     assert state["software_supply_chain_coverage"]["truncated"] is True
     assert state["software_supply_chain_coverage"]["collections"]["components"]["returned"] == 0
     assert state["software_sbom_bindings"] == []
+    assert state["source_coverage"]["schema"] == "cryptoscan.source-coverage/1"
+    components = state["software_supply_chain_coverage"]["collections"]["components"]
+    assert components["limit"] == 0 and components["unit"] == "components"
+    assert components["known_total"] > 0
 
 
 def test_external_supplier_sbom_persists_in_existing_store_but_does_not_deploy(estate):
