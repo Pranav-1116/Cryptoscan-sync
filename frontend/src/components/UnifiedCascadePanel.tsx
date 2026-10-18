@@ -9,6 +9,7 @@ import {
   UnifiedCascadeResult,
 } from "../lib/api";
 
+import OperationalImpactPanel from "./OperationalImpactPanel";
 import ProcessImpactPanel from "./ProcessImpactPanel";
 import TraversalEvidencePanel from "./TraversalEvidencePanel";
 
@@ -168,6 +169,7 @@ export default function UnifiedCascadePanel() {
           </section>
 
           {result.analysis_performed !== false && <>
+          <OperationalImpactPanel impact={impact.operational_impact} />
           <TraversalEvidencePanel evidence={result.traversal_evidence} />
 
           <section aria-label="Relationship lifecycle" role="status" style={{ marginBottom: 12 }}>
@@ -383,6 +385,9 @@ export default function UnifiedCascadePanel() {
                 )}
               </div>
               }
+              {diff.operational_comparison && <div role="status">{diff.operational_comparison.comparable
+                ? `Operational declarations: ${diff.operational_comparison.changed_edges?.length || 0} changed, ${diff.operational_comparison.added_edges?.length || 0} added, ${diff.operational_comparison.removed_edges?.length || 0} removed. Not measured availability changes.`
+                : `Operational comparison unavailable: ${diff.operational_comparison.reason}`}</div>}
               {diff.policy_comparison && !diff.policy_comparison.comparable && (
                 <div role="status">Relationship policy differs or is unknown. Count changes are not evidence of remediation.</div>
               )}

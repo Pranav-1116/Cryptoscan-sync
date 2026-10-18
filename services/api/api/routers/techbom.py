@@ -1282,6 +1282,9 @@ def technology_bom_cascade_run_diff(
     old_process_schema = ((other.result or {}).get("impact", {}).get("process_impact") or {}).get("schema")
     new_process_schema = ((run.result or {}).get("impact", {}).get("process_impact") or {}).get("schema")
     process_comparable = comparable and old_process_schema == new_process_schema == PROCESS_SCHEMA
+    from shared_models.operational_dependencies import compare_operational_impacts
+    operational_comparison = compare_operational_impacts(other.result, run.result) if comparable else {
+        "comparable": False, "reason": "Canonical target/system policy or classification is unavailable/different; operational deltas withheld."}
     return {
         "schema": "cryptoscan.unified-cascade-diff/1",
         "run": {"id": run.id, "created_at": run.created_at.isoformat()
@@ -1290,6 +1293,7 @@ def technology_bom_cascade_run_diff(
                     if other.created_at else None, "verdict": other.verdict},
         "target": run.target,
         "target_comparison": target_comparison,
+        "operational_comparison": operational_comparison,
         "verdict_changed": run.verdict != other.verdict,
         "affected_systems": _delta("systems", old_systems, new_systems),
         "system_classification": scope_diff,
@@ -1448,6 +1452,15 @@ def cascade_watches_run_due(
                 entry["policy_comparison"] = {
                     "comparable": old_policy is not None and old_policy == new_policy,
                     "run_version": new_policy, "against_version": old_policy}
+                from shared_models.operational_dependencies import compare_operational_impacts
+                entry["operational_comparison"] = compare_operational_impacts(previous.result, result) if entry["policy_comparison"]["comparable"] else {
+                    "comparable": False, "reason": "System relationship policy differs/is unknown."}
+                op = entry["operational_comparison"]
+                if op["comparable"] and any(op[k] for k in ("added_edges", "removed_edges", "changed_edges")):
+                    entry["operational_conditions_changed"] = True
+                    emit_platform_event("cascade.operational_conditions_changed",
+                        f"Watched cascade '{watch.target}' operational declarations changed; not an availability event",
+                        {"watch_id": watch.id, "run_id": run.id, "comparison": op}, target_name="technology-bom")
                 old = set((previous.result or {}).get("impact", {}).get(
                     "affected_systems") or [])
                 new = set(result["impact"].get("affected_systems") or [])

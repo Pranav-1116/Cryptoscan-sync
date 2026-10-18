@@ -2520,6 +2520,7 @@ export interface SimulateResult {
   systems: { id: string; name?: string; crypto_assets: number }[];
   total_revenue_at_risk: number | null; backend?: string;
   process_impact?: ProcessImpact | null;
+  operational_impact?: OperationalImpact | null;
   economic_totals_meaning?: string;
 }
 export interface ExplainStep {
@@ -4669,6 +4670,7 @@ export interface CascadeSoftwareContext {
 }
 
 export interface TraversalEdgeEvidence extends RelationshipLifecycleFields {
+  operational_condition?: OperationalDependencyCondition;
   record_id?: string;
   from: string; to: string; relation: string; provenance: string; source?: string;
   evidence_references: unknown[]; evidence_missing: boolean; references_truncated: boolean;
@@ -4731,6 +4733,27 @@ export interface CascadeTargetResolution {
   candidates_truncated: boolean; reason?: string | null; note: string;
   coverage?: Record<string, unknown> | null;
 }
+export type OperationalMode = "UNKNOWN" | "HARD" | "OPTIONAL" | "FAILOVER" | "ASYNC_BUFFERED";
+export interface OperationalDependencyAssertion {
+  mode: OperationalMode; assumptions?: string[]; evidence_ref?: string;
+  failover_system_ids?: string[]; buffer_capacity_messages?: number; buffer_retention_seconds?: number;
+}
+export interface OperationalDependencyCondition {
+  schema: string; mode: OperationalMode; assertion_status: string;
+  assertion: OperationalDependencyAssertion; conditional_outcome: string; gaps: string[];
+  failover_references: { resolution: string; loaded_system_ids: string[]; not_in_loaded_registry: string[]; invalid_self_or_provider_ids: string[] };
+  verified: false; safe_delay_seconds: null; failure_probability: null; note: string;
+}
+export interface OperationalImpact {
+  schema: string; as_of: string; analysis_kind: string; provider_disruption_assumed: false;
+  mode_counts: Record<OperationalMode, number>; edge_count: number; edge_limit: number; edges_truncated: boolean;
+  non_current_edge_count: number; scope: string; note: string; source_coverage?: unknown;
+  edges: { from: string; to: string; relation: string; record_id: string | null;
+    consumer_scope: string; provider_scope: string; condition: OperationalDependencyCondition; relationship_evidence: TraversalEdgeEvidence }[];
+}
+export interface OperationalComparison {
+  comparable: boolean; reason?: string; changed_edges?: string[]; added_edges?: string[]; removed_edges?: string[];
+}
 export interface UnifiedCascadeResult {
   target_resolution?: CascadeTargetResolution | null;
   analysis_performed?: boolean;
@@ -4755,6 +4778,7 @@ export interface UnifiedCascadeResult {
     };
     affected_processes?: { id?: string; name?: string }[];
     process_impact?: ProcessImpact | null;
+    operational_impact?: OperationalImpact | null;
     migration_waves?: Record<string, string[]>;
     twin_assets?: string[];
     libraries?: string[];
@@ -4782,6 +4806,7 @@ export interface CascadeRunSummary {
 }
 
 export interface CascadeRunDiff {
+  operational_comparison?: OperationalComparison;
   target_comparison?: { comparable: boolean; reason: string | null };
   process_comparison?: { comparable: boolean; run_schema: string | null; against_schema: string | null; reason: string | null };
   policy_comparison?: { comparable: boolean; run_version: string | null; against_version: string | null };
@@ -4829,6 +4854,8 @@ export const apiCascadeRunDiff = (
   );
 
 export interface RegisteredDependencyEdge extends RelationshipLifecycleFields {
+  operational_dependency?: OperationalDependencyAssertion | null;
+  operational_condition?: OperationalDependencyCondition;
   source?: string;
   id?: string;
   parent_id: string;
@@ -4852,7 +4879,7 @@ export const apiGraphRegisterEdge = (
   parentId: string,
   childId: string,
   relation = "CALLS",
-  evidence?: { evidence_ref?: string; confidence_meaning?: string },
+  evidence?: { evidence_ref?: string; confidence_meaning?: string; operational_dependency?: OperationalDependencyAssertion },
 ): Promise<ApiResult<{ registered: boolean; edge: RegisteredDependencyEdge }>> =>
   call("/api/v1/graph/edges", {
     method: "POST",
@@ -4935,3 +4962,12 @@ export interface NotificationReceipt {
 export interface NotificationReceiptPage {
   items: NotificationReceipt[]; next_cursor: string | null; observed_at: string; note: string;
 }
+
+
+/** Manual-owned operational annotation; a declaration, never a freshness confirmation. */
+export const apiGraphUpdateOperationalDependency = (parentId: string, childId: string, body: {
+  expected_revision: number; operational_dependency: OperationalDependencyAssertion | null; reason: string; evidence_ref: string;
+}): Promise<ApiResult<{ updated: boolean; edge: RegisteredDependencyEdge }>> =>
+  call(`/api/v1/graph/edges/${encodeURIComponent(parentId)}/${encodeURIComponent(childId)}/operational-dependency`, {
+    method: "PATCH", body: JSON.stringify(body),
+  });

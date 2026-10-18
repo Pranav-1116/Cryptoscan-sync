@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -33,6 +33,7 @@ class SystemDependency(BaseModel, TenantScoped, RelationshipLifecycle):
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     evidence_ref: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     confidence_meaning: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    operational_dependency: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     last_verified: Mapped[Optional[object]] = mapped_column(
         DateTime(timezone=True), nullable=True)
 

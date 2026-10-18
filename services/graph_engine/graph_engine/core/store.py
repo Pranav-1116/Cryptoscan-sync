@@ -21,6 +21,8 @@ from graph_engine.connection.session_manager import neo4j_session
 from graph_engine.migrations.migrator import apply_migrations
 from graph_engine.queries.blast_radius import BLAST_RADIUS, ORIGIN_SYSTEM, SYSTEMS_USING_ASSET
 from graph_engine.queries.business_impact import IMPACT_FROM_SYSTEMS, PROCESS_LINKS
+from shared_models.operational_dependencies import project_operational_dependencies, assertion_from_edge, condition
+from graph_engine.queries.operational_dependencies import OPERATIONAL_LINKS, OPERATIONAL_SYSTEMS
 from shared_models.process_impact import classify_systems, project_processes
 from collections import defaultdict
 from graph_engine.queries.compliance_inheritance import COMPLIANCE_INHERITANCE
@@ -389,6 +391,13 @@ class Neo4jGraphStore:
             registry[row["system_id"]].append({**props, "id": row["id"], "name": row.get("name"),
                 "revenue_daily": row.get("revenue_daily"), "customer_count": row.get("customer_count"),
                 "relationship_record_id": props.get("record_id")})
+        operational_edges = [{**metadata(r.get("properties") or {}), **(r.get("properties") or {}),
+            "from": r["source"], "to": r["target"], "label": stored_relation(r.get("properties") or {})}
+            for r in self._run(OPERATIONAL_LINKS, system_ids=system_ids, tenant=self._sync_tenant())] if system_ids else []
+        references = {sid for edge in operational_edges for sid in condition(assertion_from_edge(edge))["assertion"].get("failover_system_ids") or []}
+        loaded = {r["id"] for r in self._run(OPERATIONAL_SYSTEMS, ids=sorted(references), tenant=self._sync_tenant())} if references else set()
+        operational = project_operational_dependencies(operational_edges, classification, known_systems=set(system_ids) | loaded,
+            now=self._as_of, source_coverage=None)
         explanations = {"direct": [{"system_id": sid} for sid in direct],
             "dependent_consumers": reverse["traversal_evidence"], "supporting_context": radius["traversal_evidence"]}
         projection = project_processes(registry, classification, now=self._as_of or clock(), witnesses=explanations)
@@ -396,7 +405,7 @@ class Neo4jGraphStore:
         record = rows[0] if rows else {}
         members = {r["id"]: r for r in [*radius["systems"], *reverse["systems"]] if r["id"] not in direct}
         return {"start": radius["start"], "owning_systems": direct,
-            "system_classification": classification, "process_impact": projection,
+            "system_classification": classification, "process_impact": projection, "operational_impact": operational,
             "process_traversal_evidence": explanations,
             "total_revenue_at_risk": projection["economic_context"]["revenue_daily"]["known_sum"],
             "total_customers_at_risk": projection["economic_context"]["customer_count"]["known_sum"],
@@ -490,7 +499,7 @@ class Neo4jGraphStore:
                 # §4.5 (round 43): relationship properties written at MERGE
                 # time (provenance class + source) survive the export instead
                 # of collapsing to a bare relation label.
-                for prop in (*METADATA_FIELDS, "evidence_refs_json", *FIELDS):
+                for prop in (*METADATA_FIELDS, "evidence_refs_json", "operational_dependency_json", *FIELDS):
                     value = rel.get(prop) if hasattr(rel, "get") else getattr(rel, prop, None)
                     if value is None and isinstance(rel, dict):
                         value = rel.get(prop)

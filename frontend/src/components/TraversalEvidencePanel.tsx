@@ -11,6 +11,7 @@ function Path({ path }: { path: TraversalPathEvidence }) {
     {path.edges.map((edge, i) => <div key={i} style={{ padding: 8, borderLeft: "2px solid var(--dim)", margin: 4 }}>
       <strong>{edge.from} → {edge.to} · {edge.relation} · {edge.provenance}</strong>
       <div>Source: {edge.source || "unattributed"} · record: {edge.record_id || "unavailable"}</div>
+      {edge.operational_condition && <div>Operational mode: {edge.operational_condition.mode} · {edge.operational_condition.conditional_outcome}</div>}
       <div>Confidence: {edge.confidence ?? "unspecified"} · {edge.confidence_meaning}</div>
       <div>Eligibility: {edge.freshness.eligibility} · {edge.freshness.validity === "UNBOUNDED" ? "No expiry deadline — not verified freshness" : `deadline: ${edge.valid_until}`}</div>
       <div>Observation: {edge.freshness.observation.status} {edge.freshness.observation.value}</div>

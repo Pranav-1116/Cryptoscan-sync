@@ -23,6 +23,7 @@ import re
 from datetime import datetime
 from typing import Any, Mapping
 
+from shared_models.operational_dependencies import project_operational_dependencies
 from shared_models.process_impact import classify_systems, project_processes
 from cbom.target_resolution import resolve_target, fingerprint
 from cbom.cascade_evidence import cascade_evidence
@@ -812,6 +813,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         "verdict": verdict,
         "layers": layers,
         "impact": {
+            "operational_impact": project_operational_dependencies(original_dependencies, classification, known_systems=known, now=now, source_coverage=snapshot.get("dependency_coverage")),
             "affected_systems": affected_systems,
             "affected_system_count": len(affected_systems),
             "system_classification": classification,

@@ -8,6 +8,7 @@ import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
 
+from shared_models.operational_dependencies import project_operational_dependencies
 from shared_models.process_impact import classify_systems, project_processes
 from shared_models.traversal_evidence import metadata, walk_paths, envelope, path_evidence, MAX_WITNESSES, edge_evidence
 
@@ -107,6 +108,7 @@ class GraphEngine:
         evidence_ref: Any = None,
         lifecycle: dict | None = None,
         evidence_metadata: dict | None = None,
+        operational_dependency: dict | None = None,
     ) -> None:
         relation = normalize_relation(relation)
         if (dst, relation) not in self.out[src]:
@@ -127,6 +129,8 @@ class GraphEngine:
             if value is not None:
                 meta[name] = value
         meta.update(evidence_metadata or {})
+        if operational_dependency is not None:
+            meta["operational_dependency"] = operational_dependency
         meta.update(lifecycle or {})
         self.edge_meta[key] = meta
 
@@ -408,6 +412,7 @@ class GraphEngine:
         rows = {r["id"]: r for r in [*radius["systems"], *reverse["systems"]] if r["id"] not in direct}
         return {"start": radius["start"], "owning_systems": direct,
             "system_classification": classification, "process_impact": projection,
+            "operational_impact": project_operational_dependencies([{**props, "from": src, "to": dst, "label": rel} for (src, dst, rel), props in self.edge_meta.items()], classification, known_systems=[k for k, v in self.nodes.items() if v.get("kind") == "System"], now=self.as_of, source_coverage=getattr(self, "collection_meta", None)),
             "process_traversal_evidence": explanations,
             "total_revenue_at_risk": projection["economic_context"]["revenue_daily"]["known_sum"],
             "total_customers_at_risk": projection["economic_context"]["customer_count"]["known_sum"],

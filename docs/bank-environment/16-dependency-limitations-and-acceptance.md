@@ -24,6 +24,10 @@ first-match name selection and certificate subject-to-endpoint joins. Broad
 certificate/vendor/package search is opt-in discovery; ambiguity and binding gaps
 remain explicit. The old limitations below describe the historical baseline;
 legacy device/library/algorithm matching is not newly qualified exact.
+[Step 8](24-operational-dependency-modes-and-conditional-outcomes.md) adds explicit
+hard/optional/failover/buffered declarations and conditional operational review.
+Modes do not remove review membership or predict availability; missing operational
+metadata stays unknown. Bank validation remains required.
 Current engineering status is tracked in the
 [ten-step plan](../dev/dependency-intelligence-roadmap.md).
 

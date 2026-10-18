@@ -179,6 +179,8 @@ class FakeSession:
             "origin_system": self._origin,
             "business_impact": self._impact,
             "process_links": self._process_links,
+            "operational_links": self._operational_links,
+            "operational_systems": self._operational_systems,
             "compliance_inheritance": self._compliance,
             "vendor_path": self._vendor_path,
             "vendor_list": lambda p: [{"id": k} for label, k in sorted(self.graph.nodes) if label == "Vendor"][:p["limit"]],
@@ -243,6 +245,7 @@ class FakeSession:
                 {"protocol": row.get("protocol"), "relation": row.get("relation"),
                  "frequency": row.get("frequency"), "provenance": row.get("provenance"),
                  "source": row.get("source"), "observed_at": row.get("observed_at"),
+                 **({"operational_dependency_json": row.get("operational_dependency_json")} if row.get("operational_dependency_supplied") else {}),
                  **{key: row.get(key) for key in (*FIELDS, "valid_until_epoch", "evidence_ref", "evidence_refs_json", "evidence_refs_total", "evidence_refs_truncated", "confidence", "confidence_meaning", "last_verified", "created_by")}},
             )
         return []
@@ -387,6 +390,16 @@ class FakeSession:
                 yield dst[1]
             elif reverse and dst[1] == node_id:
                 yield src[1]
+
+    def _operational_links(self, params):
+        return [{"source": src[1], "target": dst[1], "properties": dict(props)}
+                for src, rel, dst, props in self.graph.edges
+                if src[0] == dst[0] == "System" and rel == "CALLS" and src[1] in params["system_ids"] and dst[1] in params["system_ids"]
+                and all(self.graph.nodes[n].get("tenant_id") in ({"platform", None} if params["tenant"] == "platform" else {params["tenant"]}) for n in (src, dst))]
+
+    def _operational_systems(self, params):
+        return [{"id": sid} for (label, sid), node in self.graph.nodes.items() if label == "System" and sid in params["ids"]
+                and node.get("tenant_id") in ({"platform", None} if params["tenant"] == "platform" else {params["tenant"]})]
 
     def _domain_links(self, params):
         rows = [{"source": src[1], "target": KIND_PREFIX.get(dst[0], dst[0].lower()) + ":" + dst[1],

@@ -1,5 +1,6 @@
 """Audited lifecycle changes; collection absence is uncertainty, never deletion."""
 from __future__ import annotations
+from copy import deepcopy
 import hashlib
 import json
 import uuid
@@ -101,6 +102,9 @@ def public(row, now=None):
 
 def mutate(db, row, kind, tenant, user, values, *, expected_revision, reason, evidence_ref, collection_id=None):
     before = lifecycle_payload(row)
+    operational_change = "operational_dependency" in values
+    if operational_change:
+        before["operational_dependency"] = deepcopy(row.operational_dependency)
     if row.lifecycle_revision != expected_revision:
         raise HTTPException(409, "relationship revision changed; reload before retrying")
     values = {**values, "lifecycle_revision": expected_revision + 1,
@@ -111,9 +115,12 @@ def mutate(db, row, kind, tenant, user, values, *, expected_revision, reason, ev
     db.expire(row)
     db.refresh(row)
     identity = {key: getattr(row, key) for key in ("parent_id", "child_id", "relation", "artifact_id", "sbom_artifact_id", "sbom_sha256", "system_id", "deployment_key", "environment") if hasattr(row, key)}
+    after = lifecycle_payload(row)
+    if operational_change:
+        after["operational_dependency"] = deepcopy(row.operational_dependency)
     db.add(RelationshipLifecycleEvent(tenant_id=tenant, scope_key=scope_key(tenant), record_kind=kind,
         record_id=row.id, collection_id=collection_id, identity=identity, before=before,
-        after=lifecycle_payload(row), reason=reason, evidence_ref=evidence_ref, created_by=user))
+        after=after, reason=reason, evidence_ref=evidence_ref, created_by=user))
 
 
 def commit(db):

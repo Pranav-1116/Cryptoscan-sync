@@ -7,10 +7,11 @@
 [Step-4 contract](../bank-environment/20-relationship-lifecycle-and-reconciliation.md) ·
 [Step-5 contract](../bank-environment/21-traversal-provenance-evidence-and-freshness.md) ·
 [Step-6 contract](../bank-environment/22-business-process-impact-and-inclusion-reasons.md) ·
-[Step-7 contract](../bank-environment/23-exact-target-identities-and-ambiguity.md)
+[Step-7 contract](../bank-environment/23-exact-target-identities-and-ambiguity.md) ·
+[Step-8 contract](../bank-environment/24-operational-dependency-modes-and-conditional-outcomes.md)
 
 This is an incremental engineering plan for the user's ten requested changes.
-**Steps 1–7 are implemented with local regression checks.** Steps 8–10
+**Steps 1–8 are implemented with local regression checks.** Steps 9–10
 remain pending; real Neo4j/bank qualification is not implied. Pending work is not
 a feature claim. Each stage needs its own implementation, regression checks,
 compatibility review and a recorded delivery result before being marked done.
@@ -27,7 +28,7 @@ CI workflow configuration is outside this task.
 | 5. Propagate provenance/evidence/freshness | Implemented; local qualification recorded below | Migration 0100, bounded traversal-evidence/1 witnesses, seed context, preserved per-edge pointers/origin/timestamp meaning, native selected-path properties and UI; no aggregate confidence or live Neo4j qualification |
 | 6. Process impact over implicated systems | Implemented; local qualification recorded below | Shared process-impact/1 projection over all classified review systems; ID deduplication, per-system support reasons/roles/evidence, context/potential separation, qualified economic context and legacy comparison guards |
 | 7. Exact target identities | Implemented; local qualification recorded below | target-resolution/1 decisions; exact fingerprint/PURL/vendor-ID priority, explicit ambiguity/conflicts, opt-in non-executing name search, exact leaf-fingerprint joins, coverage flags and canonical history/watch baseline guards |
-| 8. Operational dependency modes | Pending | Distinct hard/optional/failover/asynchronous-buffering semantics with conditional outcomes and unknowns, not probabilistic failure claims |
+| 8. Operational dependency modes | Implemented; local qualification recorded below | Migration 0101, nullable strict mode assertions, revision/source/tenant-checked audited annotation, conditional operational-impact/1 across unified/memory/native paths, mode-only history/watch review and console; no availability simulation |
 | 9. Prominent coverage/truncation | Pending | Per-collection and per-walk bounds, missing-link coverage and UI warnings without treating absence as clean |
 | 10. Bank-negative and backend qualification | Pending | Role/tenant/history/replay/write denial tests, backend parity and bank-specific acceptance evidence; mocks alone do not qualify deployment |
 
@@ -291,3 +292,47 @@ full qualification boundary. Tenant-scoped candidate checks are local regression
 coverage, not completion of step 10. Live PostgreSQL/Neo4j, complete inventories,
 whole-bank role/write denial and operational failure claims remain unqualified.
 **Steps 8–10 remain pending.**
+
+
+## Step 8 — delivered conditional operational dependency review
+
+Migration `0101` adds nullable `SystemDependency.operational_dependency`. New
+assertions distinguish UNKNOWN, HARD, OPTIONAL, FAILOVER and ASYNC_BUFFERED, with
+bounded operational assumptions/evidence and mode-specific alternative IDs or
+buffer declarations. Legacy/malformed metadata remains unknown; relationship
+labels, process roles, confidence or confirmation times do not infer a mode.
+
+The shared `cryptoscan.operational-impact/1` reducer reviews all loaded current
+propagating edges within classified review scope, not just sampled witnesses.
+Mode never removes dependencies from modeled exposure. Per-edge conditional
+interpretations retain missing assumptions/evidence and unresolved alternative
+identity gaps. Loaded alternatives are not healthy/independent paths; queue
+capacity/retention are not safe outage windows. No chained failure verdict,
+failure probability, synthesized alternate edge or buffering horizon is computed.
+
+Registering edges accepts mode assertions; the new operational PATCH requires
+writer authority, owned endpoints, manual lifecycle source and expected revision.
+Audit records freeze before/after assertions. Edits do not refresh confirmation
+or observation, extend expiry or revive terminal records. Explicit null clearing,
+partial omission and lower-revision guards preserve consistent adapter behavior.
+Nested Neo4j assertions use an explicit JSON property codec, not unsupported map
+properties. Native projection reads selected relationships and referenced IDs,
+not a whole-graph export. Tagged-query doubles do not qualify live Cypher.
+
+History/watch comparison gates preserve canonical target and system policy.
+Mode-only declaration changes are visible even when the review union is stable;
+legacy/truncated operational projections are not reconstructed into deltas.
+Console mode editing and conditional review panels retain unknowns and count/
+explanation bounds. Earlier stored answers and captured-mode replay stay frozen.
+
+Local release qualification: **2,143 backend tests passed, 1 skipped, 7 deselected**
+across shared/CBOM/graph/DevSecOps/database and selected API suites; CI-workflow
+contract checks are outside this no-workflow-change task. **371 frontend tests
+passed (41 files)**, with TypeScript typecheck and production build. The focused
+new operational suites, migration upgrade/downgrade, changed Python F/E9 checks,
+document links/routes/JSON/shell syntax and runnable bank examples passed locally.
+Nonfatal existing backend/React warnings remain. Deployment requires migration
+`0101`; live PostgreSQL/Neo4j, actual failover/queue behavior, comprehensive bounds
+and whole-bank authorization remain unqualified. See
+[guide 24](../bank-environment/24-operational-dependency-modes-and-conditional-outcomes.md).
+**Steps 9–10 remain pending.**

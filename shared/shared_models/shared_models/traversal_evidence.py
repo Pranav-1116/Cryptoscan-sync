@@ -11,6 +11,7 @@ from copy import deepcopy
 from datetime import datetime
 import json
 from typing import Mapping
+from shared_models.operational_dependencies import condition, assertion_from_edge
 from shared_models.dependency_semantics import edge_relation, propagates, system_id
 from shared_models.relationship_lifecycle import effective_state, current, possible, lifecycle_payload, utc
 
@@ -18,6 +19,7 @@ SCHEMA = "cryptoscan.traversal-evidence/1"
 MAX_WITNESSES = 500
 PROVENANCE = ("OBSERVED", "DECLARED", "SCANNER_DERIVED", "INFERRED", "UNATTRIBUTED")
 METADATA_FIELDS = (
+    "operational_dependency",
     "provenance",
     "source",
     "evidence_ref",
@@ -40,6 +42,8 @@ def provenance(value):
 
 
 def metadata(row):
+    if "operational_dependency" not in row and row.get("operational_dependency_json") is not None:
+        row = {**row, "operational_dependency": assertion_from_edge(row)}
     if row.get("evidence_refs_json") is not None and "evidence_refs" not in row:
         row = dict(row)
         try:
@@ -48,11 +52,15 @@ def metadata(row):
                 row["evidence_refs"] = decoded
         except (ValueError, TypeError):
             pass  # missing/invalid references remain an explicit evidence gap
-    return {
+    result = {
         key: value.isoformat() if isinstance(value, datetime) else deepcopy(value)
         for key in METADATA_FIELDS
         if (value := row.get(key)) is not None
     }
+
+    if "operational_dependency" in row:
+        result["operational_dependency"] = deepcopy(row["operational_dependency"])
+    return result
 
 
 def system_dependency_metadata(row):
@@ -63,6 +71,7 @@ def system_dependency_metadata(row):
             source, "UNATTRIBUTED"
         ),
         "relationship_source": source,
+        "operational_dependency": deepcopy(getattr(row, "operational_dependency", None)),
         "evidence_ref": getattr(row, "evidence_ref", None),
         "confidence": getattr(row, "confidence", None),
         "confidence_meaning": getattr(row, "confidence_meaning", None),
@@ -112,6 +121,7 @@ def edge_evidence(row: Mapping, *, now):
         "from": src,
         "to": dst,
         "relation": edge_relation(row),
+        **({"operational_condition": condition(assertion_from_edge(row))} if propagates(edge_relation(row)) else {}),
         **props,
         "identity": {
             k: row[k]
@@ -298,6 +308,9 @@ def native_path(row, *, now, direction="downstream"):
 def native_properties(row):
     """Neo4j cannot store nested reference maps as relationship properties."""
     data = metadata(row)
+    data["operational_dependency_supplied"] = "operational_dependency" in row or "operational_dependency_json" in row
+    operational = data.pop("operational_dependency", None)
+    data["operational_dependency_json"] = json.dumps(operational, sort_keys=True) if operational is not None else None
     refs = data.pop("evidence_refs", None)
     data["evidence_refs_json"] = json.dumps(refs[:50], sort_keys=True) if isinstance(refs, list) else None
     prior_total = data.get("evidence_refs_total")

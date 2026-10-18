@@ -617,6 +617,7 @@ def graph_simulate(
         "migration_tasks": migration_tasks,
         "systems": [{"id": sid, "name": (graph.nodes.get(f"system:{sid}") or {}).get("name"), "crypto_assets": crypto_by_system.get(sid, 0)} for sid in sorted(affected)],
         "total_revenue_at_risk": impact.get("total_revenue_at_risk"),
+        "operational_impact": impact.get("operational_impact"),
         "process_impact": impact.get("process_impact"),
         "process_traversal_evidence": impact.get("process_traversal_evidence"),
         "economic_totals_meaning": impact.get("economic_totals_meaning"),
@@ -699,6 +700,7 @@ def graph_explain(
         "quantum_vulnerable": bool(node.get("kind") == "CryptoAsset" and _quantum_vulnerable_algorithm(str(node.get("algorithm") or ""))),
         "steps": steps,
         "traversal_evidence": impact.get("traversal_evidence"), "domain_links": impact.get("domain_links"),
+        "operational_impact": impact.get("operational_impact"),
         "process_impact": impact.get("process_impact"), "process_traversal_evidence": impact.get("process_traversal_evidence"),
         "backend": graph.backend,
     }
@@ -1047,6 +1049,10 @@ def priorities(user: str = Depends(get_current_user), db: Session = Depends(get_
 # Dependency-edge management — the graph's input side
 # --------------------------------------------------------------------------
 
+from api.schemas.operational_dependency import OperationalDependency, OperationalDependencyChange
+from shared_models.operational_dependencies import condition
+
+
 class EdgeRequest(BaseModel):
     """Register one system→system dependency edge.
 
@@ -1059,6 +1065,7 @@ class EdgeRequest(BaseModel):
     parent_name: str | None = None
     child_id: str | None = None
     child_name: str | None = None
+    operational_dependency: OperationalDependency | None = None
     relation: str = "CALLS"
     # provenance: manual (default), discovered (adopted from a scanner or
     # graph snapshot) or imported. Confidence 0..1 is optional.
@@ -1090,6 +1097,8 @@ def _edge_payload(db: Session, edge) -> dict[str, Any]:
 
     names = {s.id: s.name for s in db.query(System).all()}
     return {
+        "operational_dependency": edge.operational_dependency,
+        "operational_condition": condition(edge.operational_dependency, known_systems=names, consumer=edge.parent_id, provider=edge.child_id),
         "id": edge.id, "evidence_ref": edge.evidence_ref, "confidence_meaning": edge.confidence_meaning, **lifecycle_payload(edge),
         "effective_state": effective_state(lifecycle_payload(edge), now=clock()),
         "parent_id": edge.parent_id, "child_id": edge.child_id,
@@ -1161,11 +1170,14 @@ def register_dependency_edge(
                    f"({existing.relation or 'CALLS'})")
 
     source = body.source if body.source in {"manual", "discovered", "imported"} else "manual"
+    assertion = body.operational_dependency.assertion() if body.operational_dependency else None
+    _validate_alternatives(db, assertion, tenant, parent.id, child.id)
     edge = SystemDependency(tenant_id=tenant, parent_id=parent.id, child_id=child.id, relation=body.relation)
     db.add(edge)
     edge.valid_until = utc(body.valid_until) if body.valid_until is not None else None
     edge.evidence_ref = body.evidence_ref
     edge.confidence_meaning = body.confidence_meaning
+    edge.operational_dependency = assertion
     edge.source = source
     edge.created_by = user
     if body.confidence is not None:
@@ -1187,6 +1199,42 @@ def register_dependency_edge(
     )
     return {"registered": True, "edge": _edge_payload(db, edge)}
 
+
+
+def _validate_alternatives(db, assertion, tenant, consumer, provider):
+    ids = (assertion or {}).get("failover_system_ids") or []
+    if set(ids) & {consumer, provider}:
+        raise HTTPException(422, "failover alternative cannot be the consumer or selected provider")
+    if ids:
+        found = {row.id for row in db.query(System).filter(System.tenant_id == tenant, System.id.in_(ids)).all()}
+        if found != set(ids):
+            raise HTTPException(404, "alternative system not found in the selected estate")
+
+
+@router.patch("/graph/edges/{parent_id}/{child_id}/operational-dependency")
+def update_operational_dependency(parent_id: str, child_id: str, body: OperationalDependencyChange,
+                                  request: Request,
+                                  user: str = Depends(require_roles("admin", "superadmin", "security_analyst")),
+                                  db: Session = Depends(get_db_session)):
+    """Revision-checked manual-source annotation; never confirms or revives a link."""
+    from api.routers.relationship_lifecycle import scoped, mutate, commit
+    from api.routers.software_supply_chain import _tenant
+    from db.models.system_dependency import SystemDependency
+    tenant = _tenant(request, db, user)
+    edge = scoped(db, SystemDependency, tenant).filter_by(parent_id=parent_id, child_id=child_id).one_or_none()
+    if edge is None:
+        raise HTTPException(404, "relationship not found")
+    if edge.lifecycle_source != "manual":
+        raise HTTPException(409, "operational edits require manual lifecycle ownership; use the audited source-claim workflow first")
+    if effective_state(lifecycle_payload(edge), now=clock()) in {"DELETED", "SUPERSEDED"}:
+        raise HTTPException(409, "terminal relationship cannot be operationally edited")
+    assertion = body.operational_dependency.assertion() if body.operational_dependency else None
+    _validate_alternatives(db, assertion, tenant, parent_id, child_id)
+    mutate(db, edge, "system_dependency", tenant, user, {"operational_dependency": assertion},
+           expected_revision=body.expected_revision, reason=body.reason, evidence_ref=body.evidence_ref)
+    commit(db)
+    return {"updated": True, "edge": _edge_payload(db, edge),
+            "note": "Operational declaration changed; lifecycle eligibility, observation and confirmation were not refreshed."}
 
 @router.delete("/graph/edges/{parent_id}/{child_id}")
 def delete_dependency_edge(
