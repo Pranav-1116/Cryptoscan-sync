@@ -1040,10 +1040,10 @@ def _resolve_state(db: Session, version: int | None) -> dict[str, Any]:
 class CascadeRequest(BaseModel):
     target: str = Field(min_length=1, max_length=500,
                         description="Algorithm, certificate fingerprint/subject, "
-                                    "host[:port], system id/name, vendor, device or library")
+                                    "host[:port], system id/name, vendor, device, library, exact package PURL or artifact digest")
     kind: str | None = Field(default=None,
                              description="Optional explicit target kind: algorithm, "
-                                         "certificate, endpoint, system, vendor, device, library")
+                                         "certificate, endpoint, system, vendor, device, library, package, artifact")
     max_depth: int = Field(default=6, ge=1, le=12,
                            description="System-graph propagation hops (1..12, as /graph/blast-radius)")
 

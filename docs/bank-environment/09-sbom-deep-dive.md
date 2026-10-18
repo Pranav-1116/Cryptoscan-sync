@@ -3,6 +3,11 @@
 [Guide index](README.md) · [All six BOMs](04-six-boms.md) ·
 [Bank release example](10-six-bom-bank-release-example.md)
 
+Implementation update: [step 3](19-package-artifact-deployment-identity.md) now
+supports explicit stored-SBOM -> immutable release digest -> application/System
+deployment assertions and exact-package unified cascade. Standalone SBOMs are
+still not automatically registered or observed deployments.
+
 ## 1. What the bank buys an SBOM capability for
 
 **SBOM means Software Bill of Materials.** It answers which software components

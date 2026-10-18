@@ -224,10 +224,12 @@ tenant isolation, performance or deployment correctness. This environment has no
 running Neo4j, Docker or Java available. Real-backend/bank qualification remains
 step 10, not a passing-mock certification.
 
-## 7. Explicitly pending
+## 7. Subsequent delivery and remaining work
 
-Steps 3–10 remain pending: immutable package/artifact/deployment joins, stale and
-deleted edge lifecycle, complete path provenance/freshness, process closure,
+[Step 3](19-package-artifact-deployment-identity.md) subsequently delivered explicit
+package/release/deployment joins; its assertions do not prove current runtime
+placement. At the time of the step-2 delivery, the backlog below was pending;
+steps 4–10 remain pending now: stale and deleted edge lifecycle, complete path provenance/freshness, process closure,
 exact/ambiguous target resolution, operational dependency modes, prominent
 coverage/truncation and bank-negative deployment qualification. The same policy
 on different incomplete or stale inventories can still return different counts.

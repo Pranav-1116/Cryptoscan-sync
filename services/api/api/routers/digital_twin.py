@@ -367,6 +367,8 @@ def _snapshot(db: Session) -> dict:
             SNAPSHOT_CAPS["vendors"]).all()
     ]
 
+    from api.software_supply_chain import software_snapshot
+
     return {
         "assets": assets,
         "systems": systems,
@@ -393,6 +395,7 @@ def _snapshot(db: Session) -> dict:
         "library_catalog": library_catalog,
         "crypto_hardware": crypto_hardware,
         "vendor_dependencies": vendor_dependencies,
+        **software_snapshot(db),
     }
 
 

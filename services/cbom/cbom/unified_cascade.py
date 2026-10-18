@@ -23,11 +23,14 @@ import re
 from datetime import datetime
 from typing import Any, Mapping
 
+from cbom.software_cascade import identify_software, software_context
 from shared_models.dependency_semantics import MAX_SYSTEM_HOPS, edge_relation, policy_metadata, propagates, system_id
 
 #: What a cascade target can be. Order matters for auto-detection when no
 #: explicit kind is given: most specific (fingerprints, host:port) first.
 TARGET_KINDS = (
+    "package",      # exact versioned PURL from explicitly bound package SBOM
+    "artifact",     # registered immutable sha256 digest or artifact id
     "certificate",  # fingerprint sha256 or subject
     "endpoint",     # host or host:port seen on the wire / registered
     "system",       # system id or name
@@ -236,7 +239,18 @@ def identify_target(snapshot: Mapping[str, Any], target: str,
                 return {"kind": "algorithm", "matched": {"algorithm": target}}
         return None
 
+    def _package():
+        return identify_software(snapshot, target.strip(), "package")
+
+    def _artifact():
+        # UUIDs can also be system identities: only a sha256: prefix opts in
+        # during auto-detection; explicit kind=artifact accepts registered IDs.
+        if kind is None and not target.strip().startswith("sha256:"):
+            return None
+        return identify_software(snapshot, target.strip(), "artifact")
+
     detectors = {
+        "package": _package, "artifact": _artifact,
         "certificate": _certificate, "endpoint": _endpoint, "system": _system,
         "vendor": _vendor, "device": _device, "library": _library,
         "process": _process, "algorithm": _algorithm,
@@ -675,12 +689,28 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
                        "system_classification": _classify_system_scope({})},
             "honest_unknowns": [
                 "the target matches nothing in the twin: no certificate, "
-                "endpoint, system, vendor, device, library or algorithm",
+                "endpoint, system, vendor, device, library, algorithm or explicitly bound package/artifact",
+                *(["software supply-chain input was truncated; a missing package/artifact match is not proof of absence"]
+                  if (snapshot.get("software_supply_chain_coverage") or {}).get("truncated") else []),
             ],
         }
 
     cascade_kind, matched = identified["kind"], identified["matched"]
-    if cascade_kind == "algorithm":
+    if cascade_kind in {"package", "artifact"}:
+        software = software_context(snapshot, purl=matched.get("purl") if cascade_kind == "package" else None,
+                                    artifact_id=matched.get("id") if cascade_kind == "artifact" else None)
+        systems = software["systems"]
+        layers = {
+            "code": {"evidence_ids": [], "systems": [], "files": []},
+            "system": {"systems": systems,
+                       "dependents_by_depth": _dependents_of(snapshot, systems, depth),
+                       "downstream_by_depth": _bfs(list(snapshot.get("dependencies") or []), set(systems),
+                                                   reverse=False, max_depth=depth)},
+            "network": {"endpoints": []}, "hardware": {"devices": []},
+            "vendor": {"vendors": [], "systems": []},
+            "process": _processes_for(snapshot, systems), "software": software,
+        }
+    elif cascade_kind == "algorithm":
         layers = _cascade_algorithm(snapshot, _norm(target_text), max_depth=depth)
     elif cascade_kind == "certificate":
         layers = _cascade_certificate(snapshot, matched, max_depth=depth)
@@ -696,6 +726,9 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         layers = _cascade_process(snapshot, matched, max_depth=depth)
     else:
         layers = _cascade_library(snapshot, matched, max_depth=depth)
+
+    if cascade_kind == "system":
+        layers["software"] = software_context(snapshot, system_id=str(matched.get("id")))
 
     # Private keys (``_``-prefixed) are folded into impact, not leaked as layers.
     extra_assets = layers.pop("_assets", [])
@@ -744,6 +777,17 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         "system propagation walks registered dependency edges only — edges "
         "nobody registered do not exist here",
     ]
+    if cascade_kind in {"package", "artifact"}:
+        unknowns.extend([
+            "SBOM membership is not proof of executable reachability or runtime use",
+            "artifact identity, SBOM-to-release linkage and deployment are separate evidence assertions",
+            "SBOM content was checked when bound; this cascade uses pinned components and does not reverify live stored bytes",
+            "deployment bindings are declarations; expiry, supersession and deletion reconciliation are not implemented yet",
+        ])
+        if layers["software"]["unbound_artifact_ids"]:
+            unknowns.append("one or more matched release artifacts have no valid explicit deployment binding; consumers remain unknown")
+        if (layers["software"].get("coverage") or {}).get("truncated"):
+            unknowns.append("software supply-chain input was truncated; absent matches or links are not proof of absence")
     if cascade_kind == "device":
         if (layers["hardware"] or {}).get("inventory_only"):
             unknowns.append(

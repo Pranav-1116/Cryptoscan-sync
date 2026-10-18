@@ -209,8 +209,9 @@ def _artifact_tenant(request: Request, db: Session | None = None,
     Three cases, in order: an API key minted inside a tenant is hard-bound to it
     (the auth middleware puts the binding on the request, and a mismatched
     ``X-Tenant-ID`` was already refused) — that is the path scanners use; a
-    session caller naming an ``X-Tenant-ID`` may use it only with a membership in
-    it; anything else is the **platform estate** (``None``), which is also where
+    session caller uses the middleware's membership-validated selected tenant
+    (or an explicitly membership-validated ``X-Tenant-ID``); only a caller with
+    no selected tenant uses the **platform estate** (``None``), which is where
     artifacts written before tenancy live. So nothing on disk became unreadable,
     and a tenant-bound key can never reach another tenant's bucket by accident.
     """
@@ -218,6 +219,16 @@ def _artifact_tenant(request: Request, db: Session | None = None,
     if binding:
         return str(binding)
     header = (request.headers.get("x-tenant-id") or "").strip()
+    # Session principals with one/default tenant need no explicit header.
+    # TenantScopeMiddleware already validated that selection. Using only the
+    # header here would write their files into the platform bucket while the
+    # ORM stamps their database rows into a tenant, splitting the identity join.
+    from db.tenancy import current_tenant
+    active = current_tenant()
+    if active is not None:
+        if header and header != active:
+            raise HTTPException(status_code=403, detail="artifact tenant differs from the active request scope")
+        return active
     if not header:
         return None
     if db is None or not user:
@@ -451,7 +462,9 @@ def sbom_scan(body: SbomScanRequest, request: Request,
     sha256 = hashlib.sha256(payload).hexdigest()
     artifact_id = str(uuid.uuid4())
     ext = "cdx.json" if fmt == "cyclonedx" else "spdx.json"
-    key = f"{artifact_id}.{ext}"
+    from devsecops.artifact_store import artifact_tenant_bucket
+    tenant = _artifact_tenant(request, db, user)
+    key = f"tenants/{artifact_tenant_bucket(tenant)}/{artifact_id}.{ext}"
 
     components = [{"name": p.get("name"),
                    "version": p.get("declared_spec") or p.get("raw_spec") or p.get("version"),
@@ -464,6 +477,8 @@ def sbom_scan(body: SbomScanRequest, request: Request,
     manifest = {
         "artifact_id": artifact_id,
         "kind": kind,
+        "tenant_id": tenant,
+        "tenant_bucket": artifact_tenant_bucket(tenant),
         "target": str(result.get("target") or body.target),
         "format": fmt,
         "sha256": sha256,

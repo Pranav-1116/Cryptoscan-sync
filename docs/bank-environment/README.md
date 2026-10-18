@@ -35,6 +35,7 @@ installation or a substitute for the bank's security/change approval.
 | [16 — Dependency limitations and acceptance](16-dependency-limitations-and-acceptance.md) | What can be missing or misleading, what should improve, and what should the bank test? |
 | [17 — Implemented classified system scope](17-classified-system-scope.md) | What changed in step 1, how do the disjoint counts work, and what remains pending? |
 | [18 — Implemented shared system semantics](18-shared-dependency-semantics.md) | Which relations propagate in step 2, how are backends/history handled, and what is still unqualified? |
+| [19 — Implemented package/release/deployment identity](19-package-artifact-deployment-identity.md) | How does a package SBOM explicitly join to immutable release bytes/digest and a declared application deployment? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>
@@ -131,6 +132,6 @@ fixture showing six implicated systems, an eight-system change-review context,
 and a missing HSM link that must remain unknown rather than safe.
 
 Implementation progress is tracked in the [ten-step engineering plan](../dev/dependency-intelligence-roadmap.md).
-[Step 1](17-classified-system-scope.md) and [step 2](18-shared-dependency-semantics.md)
-are implemented with local checks; steps 3–10 and real deployment qualification
-remain pending.
+[Step 1](17-classified-system-scope.md), [step 2](18-shared-dependency-semantics.md)
+and [step 3](19-package-artifact-deployment-identity.md) are implemented with local
+checks; steps 4–10 and real deployment qualification remain pending.

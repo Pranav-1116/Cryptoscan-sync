@@ -15,7 +15,9 @@ direct/consumer/context classification and UI counts while retaining legacy
 aggregate fields. [Step 2](18-shared-dependency-semantics.md) adds a shared
 versioned system relationship policy and deterministic adapter parity fixtures;
 real Neo4j qualification, differing collector inputs and stale-edge reconciliation
-remain outstanding. The baseline table is not a claim those pending items are
+remain outstanding. [Step 3](19-package-artifact-deployment-identity.md) adds
+explicit package-SBOM/release-digest/application deployment joins, not automatic
+whole-estate package discovery or verified current runtime placement. The baseline table is not a claim those pending items are
 resolved.
 Current engineering status is tracked in the
 [ten-step plan](../dev/dependency-intelligence-roadmap.md).

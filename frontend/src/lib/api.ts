@@ -4632,13 +4632,26 @@ export interface DependencyRelationshipPolicy {
   max_system_hops: number;
 }
 
+export interface CascadeSoftwareContext {
+  schema: string;
+  artifacts: { id: string; digest: string; identity_source: string; evidence_ref: string; byte_count?: number | null }[];
+  sbom_bindings: { id: string; artifact_id: string; sbom_artifact_id: string; sbom_sha256: string; assertion_source: string; evidence_ref: string; unresolved_component_count: number }[];
+  packages: { purl?: string | null; package_identity?: string | null; name?: string; version?: string | null; sbom_binding_id: string; artifact_id: string }[];
+  deployments: { id: string; artifact_id: string; system_id: string; deployment_key: string; environment: string; assertion_source: string; evidence_ref: string }[];
+  systems: string[];
+  unlinked_deployment_ids: string[];
+  unbound_artifact_ids: string[];
+  deployment_evidence: string;
+  coverage?: { truncated: boolean; collections: Record<string, { total: number; returned: number; truncated: boolean }> } | null;
+}
+
 export interface UnifiedCascadeResult {
   schema: string;
   relationship_policy?: DependencyRelationshipPolicy | null;
   verdict: "AFFECTED" | "NOT_FOUND" | "INSUFFICIENT_DATA";
   run_id?: string;
   target: { input: string; kind: string; matched?: Record<string, any> | null };
-  layers: Record<string, any>;
+  layers: Record<string, any> & { software?: CascadeSoftwareContext };
   impact: {
     affected_systems: string[];
     /** Legacy full review union, including supporting context. */

@@ -11,7 +11,7 @@ import {
 
 const KINDS = [
   "auto", "algorithm", "certificate", "endpoint", "system",
-  "vendor", "device", "library", "process",
+  "vendor", "device", "library", "process", "package", "artifact",
 ];
 
 /** Cross-BOM cascade: one target, every layer — code, network, system graph,
@@ -86,7 +86,7 @@ export default function UnifiedCascadePanel() {
         <input
           className="inp sm"
           style={{ minWidth: 260, fontSize: 12 }}
-          placeholder="Target: RSA-2048 · CN=…/fingerprint · host:port · system · vendor · device · library · process"
+          placeholder="Target: RSA-2048 · CN=…/fingerprint · host:port · system · vendor · device · library · process · exact PURL · sha256:digest"
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && run()}
@@ -211,6 +211,41 @@ export default function UnifiedCascadePanel() {
                 <span key={i} style={{ marginRight: 8, fontSize: 12 }}>{p.name}</span>
               ))}
             </div>
+          )}
+
+          {layers.software && (
+            <section aria-label="Software release and deployment evidence" style={{ fontSize: 12, padding: 10, background: "var(--bg-2)", borderRadius: "var(--r)" }}>
+              <b>Package SBOM → release artifact → application</b>
+              <div>{layers.software.packages.length} package rows · {layers.software.artifacts.length} release artifacts · {layers.software.deployments.length} deployment declarations</div>
+              <div>{layers.software.deployment_evidence}. SBOM document hashes are not release artifact digests.</div>
+              {layers.software.artifacts.slice(0, 20).map((artifact) => (
+                <div key={artifact.id} style={{ overflowWrap: "anywhere", marginTop: 6 }}>
+                  Release: {artifact.digest} · identity: {artifact.identity_source} · evidence: {artifact.evidence_ref}
+                </div>
+              ))}
+              {layers.software.sbom_bindings.slice(0, 20).map((binding) => (
+                <div key={binding.id} style={{ overflowWrap: "anywhere", marginTop: 6 }}>
+                  SBOM: {binding.sbom_artifact_id} · document SHA-256: {binding.sbom_sha256}
+                  {" · "}{binding.assertion_source} · evidence: {binding.evidence_ref}
+                  {binding.unresolved_component_count > 0 && ` · ${binding.unresolved_component_count} components lack an exact usable package identity`}
+                </div>
+              ))}
+              {layers.software.packages.slice(0, 20).map((pkg, index) => (
+                <div key={`${pkg.sbom_binding_id}:${index}`} style={{ overflowWrap: "anywhere" }}>
+                  Package: {pkg.package_identity || `${pkg.name || "unknown"} (unresolved identity)`}
+                </div>
+              ))}
+              {layers.software.deployments.slice(0, 20).map((deployment) => (
+                <div key={deployment.id} style={{ overflowWrap: "anywhere", marginTop: 6 }}>
+                  Application: {deployment.system_id} · {deployment.environment} · {deployment.deployment_key}
+                  {" · "}{deployment.assertion_source} · evidence: {deployment.evidence_ref}
+                </div>
+              ))}
+              {(layers.software.artifacts.length > 20 || layers.software.deployments.length > 20 || layers.software.sbom_bindings.length > 20 || layers.software.packages.length > 20) && <div>Showing first 20 records per collection; full returned evidence remains in the stored result.</div>}
+              {layers.software.unbound_artifact_ids.length > 0 && <div role="status">Release artifacts without valid deployment bindings: {layers.software.unbound_artifact_ids.length}. Consumers remain unknown, not safe.</div>}
+              {layers.software.unlinked_deployment_ids.length > 0 && <div role="status">Some deployment declarations have missing systems or conflicting environments; they do not seed exposure.</div>}
+              {layers.software.coverage?.truncated && <div role="status">Software supply-chain input was truncated. This is not a complete deployment inventory.</div>}
+            </section>
           )}
 
           {layers.library && (

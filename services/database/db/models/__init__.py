@@ -208,3 +208,6 @@ from db.models.resource_grant import ResourceGrant  # noqa: E402,F401
 from db.models.network_topology import TopologyEdge, TopologyNode  # noqa: E402,F401
 from db.models.threat_advisory import AlgorithmAdvisory  # noqa: E402,F401
 from db.models.notification_delivery import NotificationDelivery  # noqa: E402,F401
+from db.models.software_supply_chain import (  # noqa: E402,F401
+    SoftwareArtifact, ReleaseSbomBinding, SoftwareDeployment,
+)

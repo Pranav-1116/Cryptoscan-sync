@@ -24,6 +24,7 @@ from api.middleware.request_id_middleware import RequestIDMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
     accuracy,
+    software_supply_chain,
     agility,
     analytics,
     digital_twin,
@@ -513,6 +514,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(scim.router, prefix=prefix)
     app.include_router(workload.router, prefix=prefix)
     app.include_router(devsecops.router, prefix=prefix)
+    app.include_router(software_supply_chain.router, prefix=prefix)
     app.include_router(resilience.router, prefix=prefix)
     app.include_router(readiness.router, prefix=prefix)
     app.include_router(crypto_assurance.router, prefix=prefix)

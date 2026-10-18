@@ -2,10 +2,11 @@
 
 [Bank guide index](../bank-environment/README.md) ·
 [Step-1 contract](../bank-environment/17-classified-system-scope.md) ·
-[Step-2 contract](../bank-environment/18-shared-dependency-semantics.md)
+[Step-2 contract](../bank-environment/18-shared-dependency-semantics.md) ·
+[Step-3 contract](../bank-environment/19-package-artifact-deployment-identity.md)
 
 This is an incremental engineering plan for the user's ten requested changes.
-**Steps 1 and 2 are implemented with local regression checks.** Steps 3–10
+**Steps 1–3 are implemented with local regression checks.** Steps 4–10
 remain pending; real Neo4j/bank qualification is not implied. Pending work is not
 a feature claim. Each stage needs its own implementation, regression checks,
 compatibility review and a recorded delivery result before being marked done.
@@ -17,7 +18,7 @@ CI workflow configuration is outside this task.
 |---|---|---|
 | 1. Separate direct exposure, consumers and context | Implemented; local checks passed | Versioned additive unified-cascade classification, disjoint memberships/counts, history/diffs/watch summaries, UI and legacy fallback |
 | 2. Unify relationship semantics | Implemented; local checks passed | Versioned shared system policy in twin/memory/native Neo4j query paths; mixed-relation/min-hop/multi-owner fixtures, stored-policy/UI warnings; real Neo4j unqualified |
-| 3. Join package, artifact and deployment identity | Pending | Tenant-scoped immutable content identity and explicit substantiated deployment bindings, not mutable path/tag inference |
+| 3. Join package, artifact and deployment identity | Implemented; local checks passed | Migration 0098, separate document/release digests, exact-estate explicit SBOM/deployment assertions, measured/declared identity, package/artifact cascade and evidence UI |
 | 4. Edge expiry and reconciliation | Pending | Freshness lifecycle, explicit stale/deleted/tombstoned states and idempotent reconciliation without silent evidence destruction |
 | 5. Propagate provenance/evidence/freshness | Pending | Versioned path-level explanations preserving sources, evidence references, observation times and confidence meaning |
 | 6. Process impact over implicated systems | Pending | Process closure over defined system scopes, deduplication and explicit inclusion reasons, not invented revenue loss |
@@ -74,14 +75,42 @@ endpoint namespaces, legacy storage, API persistence/replay/diff and UI warnings
 The tagged-query Bolt double does not execute Cypher; real Neo4j qualification,
 existing-database migration/reconciliation and bank acceptance remain pending.
 
-## Step 3 — next implementation boundary
+## Step 3 — delivered explicit release/deployment joins
 
-Join standalone package SBOM components to immutable artifact content/digests
-and substantiated deployed application/system identity. Reuse existing SBOM,
-artifact and application models where possible. A mutable filename, image tag,
-package name or source-system guess must not become deployment proof. Preserve
-supplier-declared versus observed bindings, enforce tenant scope, test missing
-and conflicting identities, and avoid inventing consumers for an unbound SBOM.
+The [step-3 contract](../bank-environment/19-package-artifact-deployment-identity.md)
+records the new API, migration, bounds and operator examples. Existing package
+SBOM documents can be bound to a separate immutable SHA-256 release identity and
+an exact registered application/system/environment/revision declaration. The
+artifact store remains the document store; SQL persists the joins and pinned
+components. New supplier SBOM intake uses that same store.
+
+Exact versioned package PURLs and release digest/ID targets seed unified
+classification only through explicit deployment assertions. Unbound packages
+remain unknown/insufficient rather than gaining guessed bank consumers. New
+results/captures retain document hashes, release digests, sources and evidence
+references; replay does not reread or retrospectively enrich from live files.
+The UI labels declarations and separates measured content identity from runtime
+placement. Legacy application-oriented TechBOM SBOM counts are not redefined.
+
+New writes are role-gated, exact-tenant, idempotent and conflict rather than
+silently repointing a revision. Source/container artifact writes and selected
+session-tenant resolution were corrected so file and SQL ownership agree.
+Tests include the real session/middleware path, foreign/platform ID denial and
+SQLite migration upgrade/downgrade. Real PostgreSQL/registry/runtime placement
+and full bank qualification remain unverified. Validation: 1,911 backend tests
+passed (one PG-tooling skip, seven live checks deselected; CI-workflow-contract
+module excluded), 352 frontend tests passed, plus typecheck, production build,
+SQLite migration and documentation checks. Existing warnings remain.
+
+## Step 4 — next implementation boundary
+
+Add explicit active/stale/expired/deleted/superseded relationship lifecycle and
+source-aware reconciliation, including deployment assertions from step 3.
+Partial/failed collection must not silently delete evidence; retries must be
+idempotent and preserve audit explanations. Historical captures/results must
+remain immutable, and expired linkage must remain unknown rather than a clean
+bill of health. Do not silently drop old Neo4j rows or treat their retention as
+current observed topology.
 
 ## Later stages — design constraints
 

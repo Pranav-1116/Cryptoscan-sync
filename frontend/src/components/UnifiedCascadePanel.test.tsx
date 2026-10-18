@@ -159,4 +159,44 @@ describe("cascade disjoint system classification", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Count changes are not evidence of remediation");
   });
 
+  it("discloses release digests, SBOM document hashes and declared deployment evidence separately", async () => {
+    const result = answer();
+    result.layers.software = {
+      schema: "cryptoscan.software-supply-chain/1",
+      artifacts: [{ id: "release", digest: `sha256:${"a".repeat(64)}`, identity_source: "CONTENT_HASHED", evidence_ref: "build/17" }],
+      sbom_bindings: [{ id: "link", artifact_id: "release", sbom_artifact_id: "sbom-doc", sbom_sha256: "b".repeat(64), assertion_source: "SUPPLIER_DECLARED", evidence_ref: "supplier/17", unresolved_component_count: 1 }],
+      packages: [{ purl: "pkg:pypi/crypto@1.0", package_identity: "pkg:pypi/crypto@1.0", name: "crypto", sbom_binding_id: "link", artifact_id: "release" }],
+      deployments: [{ id: "deployment", artifact_id: "release", system_id: "payments", deployment_key: "cluster/pay/revision-17", environment: "prod", assertion_source: "OPERATOR_DECLARED", evidence_ref: "change/17" }],
+      systems: ["payments"], unlinked_deployment_ids: [], unbound_artifact_ids: [],
+      deployment_evidence: "explicit declarations; not independently observed running deployments",
+    };
+    vi.mocked(apiUnifiedCascade).mockResolvedValue({ source: "live", data: result });
+    render(<UnifiedCascadePanel />);
+    await runCascade();
+    const software = within(screen.getByRole("region", { name: "Software release and deployment evidence" }));
+    expect(software.getByText(/Release: sha256:/)).toHaveTextContent("CONTENT_HASHED");
+    expect(software.getByText(/document SHA-256:/)).toHaveTextContent("SUPPLIER_DECLARED");
+    expect(software.getByText(/Application: payments/)).toHaveTextContent("OPERATOR_DECLARED");
+    expect(software.getByText(/not independently observed/)).toBeInTheDocument();
+    expect(software.getByText(/Package: pkg:pypi\/crypto@1.0/)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "package" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "artifact" })).toBeInTheDocument();
+  });
+
+  it("warns about unbound release identity and bounded software input", async () => {
+    const result = answer();
+    result.layers.software = {
+      schema: "cryptoscan.software-supply-chain/1", artifacts: [], sbom_bindings: [], packages: [], deployments: [],
+      systems: [], unbound_artifact_ids: ["unbound"], unlinked_deployment_ids: ["missing-system"],
+      deployment_evidence: "explicit declarations",
+      coverage: { truncated: true, collections: {} },
+    };
+    vi.mocked(apiUnifiedCascade).mockResolvedValue({ source: "live", data: result });
+    render(<UnifiedCascadePanel />);
+    await runCascade();
+    expect(screen.getByText(/Consumers remain unknown, not safe/)).toBeInTheDocument();
+    expect(screen.getByText(/Software supply-chain input was truncated/)).toBeInTheDocument();
+    expect(screen.getByText(/missing systems or conflicting environments/)).toBeInTheDocument();
+  });
+
 });
