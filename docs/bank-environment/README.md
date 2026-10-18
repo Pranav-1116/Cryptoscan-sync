@@ -13,6 +13,21 @@ This guide explains the current implementation, an operator-approved deployment
 pattern, and illustrative bank scenarios. It is not a report of an actual bank
 installation or a substitute for the bank's security/change approval.
 
+## International, multi-vendor bank: start here
+
+The new [international-bank program](27-international-bank-scan-program.md)
+explains the end-to-end assessment lifecycle and the next required improvements.
+Guides **27–34** cover supplier permissions/evidence, system-specific collection,
+exact identities and expected-estate accounting, regional security/operations,
+30 failure scenarios, 15 prioritized engineering items and a worked four-country
+assessment. They are **proposed operating/engineering designs**, not a claim that
+all enterprise controls are implemented or a real bank has been scanned.
+
+Recommended order: **27 -> 28 -> 29 -> 30 -> 31 -> 32 -> 33 -> 34**.
+For an executive overview, read 27 and 33; for procurement, 28; for platform and
+collector teams, 29–32; for a practical assessment narrative, 34. Current delivery
+and qualification boundaries remain in guide 26 and the repository readiness gate.
+
 ## Read in order
 
 | Document | Question it answers |
@@ -43,6 +58,14 @@ installation or a substitute for the bank's security/change approval.
 | [24 — Implemented operational dependency modes](24-operational-dependency-modes-and-conditional-outcomes.md) | How are hard, optional, failover and buffered declarations reviewed conditionally without shrinking exposure or predicting failure? |
 | [25 — Implemented coverage qualifications](25-coverage-truncation-and-missing-link-qualifications.md) | How are source omissions, bounded horizons, missing links and detail limits exposed before impact claims? |
 | [26 — Bank-negative tests and qualification](26-bank-negative-tests-and-backend-qualification.md) | What do real-session denial/isolation and backend-negative tests establish, and what still requires live deployment evidence? |
+| [27 — International-bank scan program](27-international-bank-scan-program.md) | What does whole-bank scope mean, who approves it, and what must improve next? |
+| [28 — Multi-vendor access and evidence](28-multi-vendor-access-and-evidence.md) | How do supplier contracts, fourth parties, exact releases and evidence trust affect visibility? |
+| [29 — System-by-system collection](29-system-by-system-collection-playbooks.md) | How should source, cloud, mainframe, HSM, network, SaaS, branch and DR evidence be collected safely? |
+| [30 — Evidence, identity and estate coverage](30-evidence-pipeline-identity-and-coverage.md) | How do receipts and six-BOM joins expose partial, stale, missing and unsupported coverage? |
+| [31 — Regional security and operations](31-regional-deployment-security-and-operations.md) | What do residency, authorization, isolation, quotas, recovery and global governance require? |
+| [32 — Failures and qualification](32-bank-scan-failure-modes-and-qualification.md) | What 30 failure scenarios should the bank test, and what evidence establishes safe behavior? |
+| [33 — Engineering and rollout priorities](33-international-bank-engineering-and-rollout.md) | Which 15 P0/P1 improvements and P2 optimizations should precede gated expansion? |
+| [34 — Worked international-bank assessment](34-worked-international-bank-assessment.md) | How do four countries, seven supplier roles and 48 illustrative work targets reconcile end to end? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

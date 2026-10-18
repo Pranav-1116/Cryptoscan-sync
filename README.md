@@ -43,6 +43,13 @@ cover exact-estate derived history/replay, writer-only watches and backend
 semantic/isolation negatives. All ten local implementation steps are delivered;
 real-bank and live backend certification remain separate obligations.
 
+[International, multi-vendor bank assessment program](docs/bank-environment/27-international-bank-scan-program.md)
+adds eight detailed planning guides (27–34): vendor evidence/access, safe
+system-by-system collection, six-BOM identity/coverage, regional deployment,
+30 failure scenarios, prioritized improvements and a worked multinational example.
+These are proposed requirements and rollout designs, not newly shipped controls.
+
+
 ## Scope & honest boundaries
 
 CryptoScan is an **end-to-end crypto & security-configuration platform** —
@@ -54,13 +61,18 @@ not a universal "scan everything" tool.
   HSM/PCI, vendor/supply-chain, plus shared evidence-chain / CBOM / graph /
   PQC / remediation / compliance layers.
 - ❌ **It does not:** application source-code hacking (general SAST), malware
-  analysis, SIEM behavior analytics, mainframe core banking (AS/400, COBOL),
-  or employee endpoint scanning.
+  analysis, SIEM behavior analytics, core-banking transaction validation,
+  or universal employee endpoint scanning.
 - 🌐 **Cloud:** only the accounts/tenants your credentials can see — external
   surface only via public internet scanning of configured targets.
 - 🔒 **Always:** read-only collection, evidence-chained observations, and
   **key *metadata* only — never key material or secret values** (enforced by
   tests; evidence packs use strict field whitelists).
+
+Mainframe/legacy **crypto-oriented static parsers and metadata ingestion** do
+exist, including COBOL/PL/I/RPG and selected configuration/key-inventory inputs.
+That is not complete live mainframe discovery, a general core-banking audit or
+production qualification; see [the bounded collection playbook](docs/bank-environment/29-system-by-system-collection-playbooks.md).
 
 Not every surface is equally proven: **33 GA · 32 beta · 10 preview** console
 surfaces (75 in total — the same 75 the page-component count above reports), labelled on every page and listed in

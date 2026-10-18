@@ -59,6 +59,14 @@ For dependency analysis, continue with [discovery and evidence](bank-environment
 [API runbook](bank-environment/15-dependency-cascade-api-runbook.md) and
 [limitations/acceptance](bank-environment/16-dependency-limitations-and-acceptance.md).
 
+For international, multi-vendor estate assessment, start with
+[guide 27](bank-environment/27-international-bank-scan-program.md) and continue
+through guides 28–34 in the bank index. This eight-guide planning pack covers
+supplier evidence contracts, every major system class, exact identity and
+coverage, regional security/operations, failure qualification, engineering
+priorities and a fictional multinational assessment. It distinguishes current
+code from proposed controls and does not change readiness or supported topology.
+
 ## Start here
 
 | Doc | What it covers |
