@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from copy import copy
+
 import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
 
+from shared_models.process_impact import classify_systems, project_processes
 from shared_models.traversal_evidence import metadata, walk_paths, envelope, path_evidence, MAX_WITNESSES, edge_evidence
 
 from shared_models.relationship_lifecycle import (
@@ -196,12 +199,15 @@ class GraphEngine:
                 f"process:{pid}",
                 kind="BusinessProcess",
                 name=process.get("name") or process.get("process_name"),
-                revenue_daily=float(process.get("revenue_daily") or 0),
-                customer_count=int(process.get("customer_count") or 0),
+                revenue_daily=process.get("revenue_daily"),
+                customer_count=process.get("customer_count"),
             )
+            links = {link["system_id"]: link for link in process.get("system_links") or []}
             for system_id in process.get("system_ids") or []:
+                link = links.get(system_id) or {}
                 self.add_edge(f"system:{system_id}", f"process:{pid}", "SUPPORTS",
-                              provenance=PROVENANCE_DECLARED, source="system_business_process mapping")
+                              provenance=link.get("provenance") or PROVENANCE_DECLARED, source=link.get("source") or "system_business_process mapping",
+                              lifecycle=lifecycle_payload(link), evidence_metadata={**metadata(link), "role": link.get("role")})
         for owner in owners:
             oid = str(owner.get("id") or owner.get("email") or owner.get("name"))
             self.add_node(f"owner:{oid}", kind="BusinessOwner", name=owner.get("name"), email=owner.get("email"))
@@ -374,47 +380,50 @@ class GraphEngine:
         return self._dependency_walk(start_id, hops=hops, reverse=False)
 
     def business_impact(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        if self._as_of is None:
+            view = copy(self)
+            view._as_of = clock()
+            return view.business_impact(start_id, hops=hops)
         radius = self.blast_radius(start_id, hops=hops)
-        system_ids = {f"system:{row['id']}" for row in radius["systems"]}
-        system_ids.update(f"system:{sid}" for sid in radius.get("owning_systems") or [])
-        revenue = 0.0
-        customers = 0
-        processes: list[str] = []
-        owners: list[str] = []
-        scopes: set[str] = set()
-        for node_id, node in self.nodes.items():
-            if node.get("kind") == "BusinessProcess":
-                supporters = [src for src, rel in self.incoming.get(node_id, []) if rel == "SUPPORTS"]
-                if any(src in system_ids for src in supporters):
-                    revenue += float(node.get("revenue_daily") or 0)
-                    customers += int(node.get("customer_count") or 0)
-                    if node.get("name"):
-                        processes.append(node["name"])
-            if node.get("kind") == "BusinessOwner":
-                if any(src in system_ids for src, rel in self.incoming.get(node_id, []) if rel == "OWNED_BY"):
-                    if node.get("name"):
-                        owners.append(node["name"])
-        for sid in system_ids:
-            scopes.update((self.nodes.get(sid) or {}).get("compliance_scopes") or [])
-        return {
-            "start": radius["start"],
-            "total_revenue_at_risk": revenue,
-            "total_customers_at_risk": customers,
-            "affected_processes": processes,
-            "business_owners": owners,
-            "compliance_scopes": sorted(scopes),
-            "systems": radius["systems"],
+        reverse = self.dependents(start_id, hops=hops)
+        direct = radius.get("owning_systems") or []
+        classification = classify_systems(direct, [r["id"] for r in reverse["systems"]], [r["id"] for r in radius["systems"]])
+        system_ids = {"system:" + sid for sid in classification["review_systems"]}
+        registry = defaultdict(list)
+        for sid in sorted(system_ids):
+            for target, relation in self.out.get(sid, []):
+                process = self.nodes.get(target) or {}
+                if relation != "SUPPORTS" or process.get("kind") != "BusinessProcess":
+                    continue
+                props = self.edge_meta.get((sid, target, relation)) or {}
+                registry[sid.removeprefix("system:")].append({**props, "id": target.removeprefix("process:"),
+                    "relationship_record_id": props.get("record_id"), "name": process.get("name"),
+                    "revenue_daily": process.get("revenue_daily"), "customer_count": process.get("customer_count")})
+        explanations = {"direct": [{"system_id": sid} for sid in direct],
+            "dependent_consumers": reverse["traversal_evidence"], "supporting_context": radius["traversal_evidence"]}
+        projection = project_processes(registry, classification, now=self.as_of, witnesses=explanations)
+        owners = sorted({self.nodes[n].get("name") for sid in system_ids for n, rel in self.out.get(sid, [])
+                         if rel == "OWNED_BY" and self.nodes.get(n, {}).get("name")})
+        scopes = sorted({scope for sid in system_ids for scope in self.nodes.get(sid, {}).get("compliance_scopes") or []})
+        rows = {r["id"]: r for r in [*radius["systems"], *reverse["systems"]] if r["id"] not in direct}
+        return {"start": radius["start"], "owning_systems": direct,
+            "system_classification": classification, "process_impact": projection,
+            "process_traversal_evidence": explanations,
+            "total_revenue_at_risk": projection["economic_context"]["revenue_daily"]["known_sum"],
+            "total_customers_at_risk": projection["economic_context"]["customer_count"]["known_sum"],
+            "economic_totals_meaning": "Legacy aliases for declared exposed-process context, not predicted losses or unique people; see process_impact.economic_context.",
+            "affected_processes": [p["name"] for p in projection["review_processes"] if p["name"]],
+            "business_owners": owners, "compliance_scopes": scopes,
+            "systems": sorted(rows.values(), key=lambda r: (r["hops"], r["id"])),
             "traversal_evidence": radius["traversal_evidence"],
-            "domain_links": self._domain_links(system_ids, {"SUPPORTS", "OWNED_BY", "MUST_COMPLY_WITH"}),
-            "backend": self.backend,
-        }
+            "domain_links": self._domain_links(system_ids, {"SUPPORTS", "OWNED_BY", "MUST_COMPLY_WITH"}), "backend": self.backend}
 
     def compliance_inheritance(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
-        impact = self.business_impact(start_id, hops=hops)
-        systems = {f"system:{row['id']}" for row in impact["systems"]} | set(self._system_origins(start_id))
-        return {"start": impact["start"], "scopes": impact["compliance_scopes"], "backend": self.backend,
-                "traversal_evidence": impact["traversal_evidence"],
-                "domain_links": self._domain_links(systems, {"MUST_COMPLY_WITH"})}
+        radius = self.blast_radius(start_id, hops=hops)
+        systems = {"system:" + row["id"] for row in radius["systems"]} | set(self._system_origins(start_id))
+        scopes = sorted({scope for sid in systems for scope in self.nodes.get(sid, {}).get("compliance_scopes") or []})
+        return {"start": radius["start"], "scopes": scopes, "backend": self.backend,
+                "traversal_evidence": radius["traversal_evidence"], "domain_links": self._domain_links(systems, {"MUST_COMPLY_WITH"})}
 
     def vendor_path(self, start_id: str) -> dict[str, Any]:
         start = self._resolve(start_id)

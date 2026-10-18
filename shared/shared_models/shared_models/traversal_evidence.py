@@ -28,6 +28,7 @@ METADATA_FIELDS = (
     "last_verified",
     "created_by",
     "assertion_source",
+    "role",
     "evidence_refs_total",
     "evidence_refs_truncated",
 )

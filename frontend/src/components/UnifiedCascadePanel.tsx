@@ -9,6 +9,7 @@ import {
   UnifiedCascadeResult,
 } from "../lib/api";
 
+import ProcessImpactPanel from "./ProcessImpactPanel";
 import TraversalEvidencePanel from "./TraversalEvidencePanel";
 
 const KINDS = [
@@ -226,14 +227,7 @@ export default function UnifiedCascadePanel() {
             </div>
           )}
 
-          {impact.affected_processes && impact.affected_processes.length > 0 && (
-            <div style={{ fontSize: 12 }}>
-              <div style={{ color: "var(--faint)", marginBottom: 4 }}>Business processes</div>
-              {impact.affected_processes.map((p, i) => (
-                <span key={i} style={{ marginRight: 8, fontSize: 12 }}>{p.name}</span>
-              ))}
-            </div>
-          )}
+          <ProcessImpactPanel impact={impact.process_impact} legacy={impact.affected_processes} />
 
           {layers.software && (
             <section aria-label="Software release and deployment evidence" style={{ fontSize: 12, padding: 10, background: "var(--bg-2)", borderRadius: "var(--r)" }}>
@@ -365,7 +359,9 @@ export default function UnifiedCascadePanel() {
               ) : <div>Classification comparison unavailable for these stored runs.
                 {diff.system_classification?.reason && ` ${diff.system_classification.reason}`}</div>}
               <div style={{ color: "var(--dim)", marginTop: 2 }}>
-                linked processes: {diff.affected_processes.before} → {diff.affected_processes.after}
+                {diff.process_comparison?.comparable
+                  ? `linked process review scope: ${diff.affected_processes.before} → ${diff.affected_processes.after}`
+                  : "Process comparison unavailable: legacy or different process projection/system policy. Do not interpret changed counts as business change."}
               </div>
             </div>
           )}

@@ -2518,7 +2518,9 @@ export interface SimulateResult {
   affected: { assets: number; applications: number; certificates: number; services: number };
   compatibility_issues: number; migration_tasks: number;
   systems: { id: string; name?: string; crypto_assets: number }[];
-  total_revenue_at_risk: number; backend?: string;
+  total_revenue_at_risk: number | null; backend?: string;
+  process_impact?: ProcessImpact | null;
+  economic_totals_meaning?: string;
 }
 export interface ExplainStep {
   label: string; kind: string; detail?: string; confidence?: string | null;
@@ -4700,6 +4702,24 @@ export interface CascadeTraversalEvidence {
   potential: TraversalEvidenceEnvelope; vendor_subtiers?: TraversalEvidenceEnvelope; note: string;
 }
 
+export interface ProcessImpact {
+  schema: string; as_of: string;
+  counts: { review: number; exposure: number; context_only: number; potential_only: number };
+  review_processes: { id: string; name: string | null }[];
+  processes: { id: string; name: string | null; name_conflict: boolean; scopes: string[];
+    exposed: boolean; context_only: boolean; potential_only: boolean; reason_count: number; reasons_truncated: boolean;
+    reasons: { system_id: string; system_scope: string; certainty: string; role: string | null;
+      support_link: TraversalEdgeEvidence; system_explanation: { group: string; system_id: string; available: boolean; note: string } }[];
+    declared_business_context: { revenue_daily: number | null; customer_count: number | null } }[];
+  coverage: { source_coverage?: { processes_truncated: boolean; support_links_truncated: boolean } | null;
+    requested_system_count: number; systems_without_recorded_links: string[]; systems_without_recorded_links_count: number;
+    missing_system_list_truncated: boolean; unresolved_or_invalid_link_count: number; terminal_link_count: number;
+    returned_process_count: number; total_process_count: number; process_limit: number; processes_truncated: boolean; reason_limit_per_process: number };
+  economic_context: { revenue_daily: ProcessMetric; customer_count: ProcessMetric; unmapped_exposed_system_count: number; scope: string; note: string };
+  note: string;
+}
+export interface ProcessMetric { known_sum: number | null; complete_sum: number | null; missing_or_conflicting_process_count: number }
+
 export interface UnifiedCascadeResult {
   traversal_evidence?: CascadeTraversalEvidence | null;
   schema: string;
@@ -4721,6 +4741,7 @@ export interface UnifiedCascadeResult {
       note: string;
     };
     affected_processes?: { id?: string; name?: string }[];
+    process_impact?: ProcessImpact | null;
     migration_waves?: Record<string, string[]>;
     twin_assets?: string[];
     libraries?: string[];
@@ -4746,6 +4767,7 @@ export interface CascadeRunSummary {
 }
 
 export interface CascadeRunDiff {
+  process_comparison?: { comparable: boolean; run_schema: string | null; against_schema: string | null; reason: string | null };
   policy_comparison?: { comparable: boolean; run_version: string | null; against_version: string | null };
   system_classification?: {
     available: boolean;

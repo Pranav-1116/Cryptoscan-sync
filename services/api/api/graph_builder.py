@@ -116,6 +116,8 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
     for process in intel.list_processes():
         item = process.to_dict()
         item["system_ids"] = intel.process_system_ids(process.id)
+        from db.models.system_business_process import SystemBusinessProcess
+        item["system_links"] = [link.to_dict() for link in session.query(SystemBusinessProcess).filter(SystemBusinessProcess.process_id == process.id).all()]
         processes.append(item)
     vendors = []
     for vendor in intel.list_vendors():

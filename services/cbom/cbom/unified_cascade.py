@@ -23,6 +23,7 @@ import re
 from datetime import datetime
 from typing import Any, Mapping
 
+from shared_models.process_impact import classify_systems, project_processes
 from cbom.cascade_evidence import cascade_evidence
 from cbom.software_cascade import identify_software, software_context
 from shared_models.relationship_lifecycle import current, possible, summary as lifecycle_summary
@@ -551,11 +552,12 @@ def _cascade_library(snapshot: Mapping[str, Any],
 
 def _cascade_process(snapshot: Mapping[str, Any],
                      matched: Mapping[str, Any], max_depth: int = 6) -> dict[str, Any]:
-    """What breaks if this business process stops.
+    """Recorded support-system scope for a selected business process.
 
-    The systems that support the process stop with it; whoever depends on
-    those systems (registered edges, walked backwards) stops too. Crypto,
-    endpoints and vendors of the supporting systems are named so the answer
+    Support declarations do not establish that systems stop with a process.
+    Registered consumers are modeled exposure, not confirmed failures. Reverse
+    reachability is retained for review. Crypto, endpoints and vendors of the
+    supporting systems are named so the answer
     spans every BOM layer like every other cascade kind.
     """
     process_id = str(matched.get("id"))
@@ -612,22 +614,7 @@ def _classify_system_scope(layers: Mapping[str, Any]) -> dict[str, Any]:
                for s in group}
     forward = {s for group in (system.get("downstream_by_depth") or {}).values()
                for s in group}
-    consumers = reverse - direct
-    context = forward - direct - consumers
-
-    def bucket(systems: set[str]) -> dict[str, Any]:
-        return {"systems": sorted(systems), "count": len(systems)}
-
-    return {
-        "schema": SYSTEM_SCOPE_SCHEMA,
-        "direct_exposure": bucket(direct),
-        "dependent_consumers": bucket(consumers),
-        "supporting_context": bucket(context),
-        "exposure_systems": sorted(direct | consumers),
-        "exposure_system_count": len(direct | consumers),
-        "review_systems": sorted(direct | consumers | context),
-        "review_system_count": len(direct | consumers | context),
-    }
+    return classify_systems(direct, reverse, forward)
 
 
 def summarize_system_scope(result: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -770,10 +757,10 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     explanation = cascade_evidence(explanation_snapshot, classification, layers, matched, cascade_kind,
         now=now, depth=depth, uncertain_systems=uncertain_systems, possible_direct=possible_direct)
 
-    affected_processes = [
-        {"id": p.get("id"), "name": p.get("name")}
-        for p in (layers.get("process") or {}).get("processes") or []
-    ]
+    process_impact = project_processes(snapshot.get("business_processes") or {}, classification,
+        now=now, uncertain_systems=uncertain_systems, witnesses=explanation, source_coverage=snapshot.get("business_process_coverage"))
+    affected_processes = process_impact["review_processes"]
+    layers["process"] = {"processes": affected_processes, "scope": "all classified review systems"}
     # migration waves of the affected systems (twin carries the wave per
     # system, derived from its readiness category) — "what breaks" plus
     # "when the migration plan can fix it"
@@ -853,6 +840,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
                 "possible_dependents_by_depth": potential_consumers, "possible_downstream_by_depth": potential_context,
                 "note": "Potential reachability through nonterminal uncertain evidence; not active exposure or proven failure."},
             "affected_processes": affected_processes,
+            "process_impact": process_impact,
             "migration_waves": {wave: sorted(sids)
                                 for wave, sids in sorted(waves.items())},
             "twin_assets": extra_assets,

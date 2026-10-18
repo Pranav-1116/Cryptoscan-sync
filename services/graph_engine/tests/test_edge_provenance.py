@@ -150,7 +150,8 @@ def test_neo4j_merge_statements_persist_provenance():
     # would collapse provenance back to a bare relation label
     assert "rel.provenance = row.provenance" in cypher_writes.MERGE_CALLS
     assert "r.provenance = row.provenance" in cypher_writes.MERGE_USES
-    for stmt in (cypher_writes.MERGE_SUPPORTS, cypher_writes.MERGE_OWNED_BY,
+    assert "r.provenance = row.provenance" in cypher_writes.MERGE_SUPPORTS
+    for stmt in (cypher_writes.MERGE_OWNED_BY,
                  cypher_writes.MERGE_COMPLY, cypher_writes.MERGE_DEPLOYED_ON):
         assert "r.provenance = 'DECLARED'" in stmt, stmt.splitlines()[1]
     for stmt in (cypher_writes.MERGE_SECURED_BY, cypher_writes.MERGE_CONNECTS_TO,

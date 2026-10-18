@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import copy
+
 import logging
 from shared_models.relationship_lifecycle import FIELDS, clock, summary as lifecycle_summary
 
@@ -18,7 +20,9 @@ from graph_engine.config.settings import get_graph_settings
 from graph_engine.connection.session_manager import neo4j_session
 from graph_engine.migrations.migrator import apply_migrations
 from graph_engine.queries.blast_radius import BLAST_RADIUS, ORIGIN_SYSTEM, SYSTEMS_USING_ASSET
-from graph_engine.queries.business_impact import IMPACT_FROM_SYSTEMS
+from graph_engine.queries.business_impact import IMPACT_FROM_SYSTEMS, PROCESS_LINKS
+from shared_models.process_impact import classify_systems, project_processes
+from collections import defaultdict
 from graph_engine.queries.compliance_inheritance import COMPLIANCE_INHERITANCE
 from graph_engine.queries.crypto_inventory import CRYPTO_FOR_SYSTEM
 from graph_engine.queries.dependents import DEPENDENTS, SHORTEST_PATH_DOWNSTREAM, SHORTEST_PATH_UPSTREAM
@@ -370,42 +374,39 @@ class Neo4jGraphStore:
                 "truncated": len(rows) > MAX_WITNESSES, "note": "Domain/context links, not additional propagating dependencies."}
 
     def business_impact(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        if self._as_of is None:
+            view = copy(self)
+            view._as_of = clock()
+            return view.business_impact(start_id, hops=hops)
         radius = self.blast_radius(start_id, hops=hops)
-        origin = radius["start"] if radius["nodes_visited"] else self._origin(start_id)
-        system_ids = [row["id"] for row in radius["systems"] if row.get("id")]
-        system_ids.extend(radius.get("owning_systems") or ([origin] if origin else []))
-        if not system_ids:
-            return {
-                "start": start_id,
-                "total_revenue_at_risk": 0,
-                "total_customers_at_risk": 0,
-                "affected_processes": [],
-                "business_owners": [],
-                "compliance_scopes": [],
-                "systems": [],
-                "traversal_evidence": radius["traversal_evidence"],
-                "domain_links": self._domain_links([], set()),
-                "backend": self.backend,
-            }
-        rows = self._run(IMPACT_FROM_SYSTEMS, system_ids=system_ids)
+        reverse = self.dependents(start_id, hops=hops)
+        direct = radius.get("owning_systems") or []
+        classification = classify_systems(direct, [r["id"] for r in reverse["systems"]], [r["id"] for r in radius["systems"]])
+        system_ids = classification["review_systems"]
+        registry = defaultdict(list)
+        for row in self._run(PROCESS_LINKS, system_ids=system_ids) if system_ids else []:
+            props = row.get("properties") or {}
+            registry[row["system_id"]].append({**props, "id": row["id"], "name": row.get("name"),
+                "revenue_daily": row.get("revenue_daily"), "customer_count": row.get("customer_count"),
+                "relationship_record_id": props.get("record_id")})
+        explanations = {"direct": [{"system_id": sid} for sid in direct],
+            "dependent_consumers": reverse["traversal_evidence"], "supporting_context": radius["traversal_evidence"]}
+        projection = project_processes(registry, classification, now=self._as_of or clock(), witnesses=explanations)
+        rows = self._run(IMPACT_FROM_SYSTEMS, system_ids=system_ids) if system_ids else []
         record = rows[0] if rows else {}
-        revenues = [float(v or 0) for v in (record.get("revenues") or [])]
-        customers = [int(v or 0) for v in (record.get("customers") or [])]
-        processes = [name for name in (record.get("processes") or []) if name]
-        owners = [name for name in (record.get("owners") or []) if name]
-        scopes = [name for name in (record.get("scopes") or []) if name]
-        return {
-            "start": origin or start_id,
-            "total_revenue_at_risk": sum(revenues),
-            "total_customers_at_risk": sum(customers),
-            "affected_processes": processes,
-            "business_owners": owners,
-            "compliance_scopes": sorted(set(scopes)),
-            "systems": radius["systems"],
+        members = {r["id"]: r for r in [*radius["systems"], *reverse["systems"]] if r["id"] not in direct}
+        return {"start": radius["start"], "owning_systems": direct,
+            "system_classification": classification, "process_impact": projection,
+            "process_traversal_evidence": explanations,
+            "total_revenue_at_risk": projection["economic_context"]["revenue_daily"]["known_sum"],
+            "total_customers_at_risk": projection["economic_context"]["customer_count"]["known_sum"],
+            "economic_totals_meaning": "Legacy aliases for declared exposed-process context, not predicted losses or unique people; see process_impact.economic_context.",
+            "affected_processes": [p["name"] for p in projection["review_processes"] if p["name"]],
+            "business_owners": sorted({n for n in record.get("owners", []) if n}),
+            "compliance_scopes": sorted({n for n in record.get("scopes", []) if n}),
+            "systems": sorted(members.values(), key=lambda r: (r["hops"], r["id"])),
             "traversal_evidence": radius["traversal_evidence"],
-            "domain_links": self._domain_links(system_ids, {"SUPPORTS", "OWNED_BY", "MUST_COMPLY_WITH"}),
-            "backend": self.backend,
-        }
+            "domain_links": self._domain_links(system_ids, {"SUPPORTS", "OWNED_BY", "MUST_COMPLY_WITH"}), "backend": self.backend}
 
     def compliance_inheritance(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         radius = self.blast_radius(start_id, hops=hops)

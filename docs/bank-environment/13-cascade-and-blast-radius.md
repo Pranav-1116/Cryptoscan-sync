@@ -153,7 +153,7 @@ unknowns and unchanged traversal limitations.
 | `layers.hardware` | Concrete device facts and `inventory_only` status |
 | `layers.vendor` / `layers.library` | Recorded supplier/capability context, not verified runtime behavior |
 | `impact.affected_systems` | Deduplicated aggregate, potentially combining directions |
-| `impact.affected_processes` | Available process associations; not guaranteed full transitive process closure |
+| `impact.affected_processes` | Recorded process review union over all classified systems after [step 6](22-business-process-impact-and-inclusion-reasons.md); not a failure count or complete inventory guarantee |
 | `impact.migration_waves` | Readiness-based grouping, not an approved execution schedule |
 | `honest_unknowns` | Named limits; not an exhaustive automatically detected list of all possible gaps |
 | `as_of` | Analysis time, not proof that every input was collected at that instant |

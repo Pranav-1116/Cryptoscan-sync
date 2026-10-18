@@ -126,13 +126,17 @@ def process_rows(processes: Iterable[dict[str, Any]]) -> tuple[list[dict[str, An
             {
                 "process_id": pid,
                 "name": process.get("name") or process.get("process_name"),
-                "revenue_daily": float(process.get("revenue_daily") or 0),
-                "customer_count": int(process.get("customer_count") or 0),
+                "revenue_daily": process.get("revenue_daily"),
+                "customer_count": process.get("customer_count"),
                 **_tenant(process),
             }
         )
+        links = {link["system_id"]: link for link in process.get("system_links") or []}
         for system_id in process.get("system_ids") or []:
-            edges.append({"system_id": str(system_id), "process_id": pid, **_tenant(process)})
+            link = links.get(system_id) or {}
+            edges.append({"system_id": str(system_id), "process_id": pid, **storage_fields(link), **native_properties(link),
+                          "provenance": link.get("provenance") or "DECLARED", "source": link.get("source") or "system_business_process mapping",
+                          "role": link.get("role"), **_tenant(process)})
     return nodes, edges
 
 

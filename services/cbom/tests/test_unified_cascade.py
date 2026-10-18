@@ -288,9 +288,9 @@ def test_certificate_cascade_uses_real_usage_links():
 def test_system_cascade_includes_business_processes():
     result = run("payment-api")
     assert result["layers"]["process"]["processes"] == [
-        {"id": "bp-1", "name": "Card Payments"}]
+        {"id": "bp-1", "name": "Card Payments"}, {"id": "bp-2", "name": "Online Banking"}]
     assert result["impact"]["affected_processes"] == [
-        {"id": "bp-1", "name": "Card Payments"}]
+        {"id": "bp-1", "name": "Card Payments"}, {"id": "bp-2", "name": "Online Banking"}]
 
 
 def test_vendor_cascade_includes_crypto_inventory():
@@ -301,7 +301,7 @@ def test_vendor_cascade_includes_crypto_inventory():
     assert vendor["pqc_not_ready_use_cases"] == ["HSM signing"]
     # the vendor's systems carry their business processes
     assert result["layers"]["process"]["processes"] == [
-        {"id": "bp-1", "name": "Card Payments"}]
+        {"id": "bp-1", "name": "Card Payments"}, {"id": "bp-2", "name": "Online Banking"}]
 
 
 def test_library_cascade_uses_fingerprint_catalog():
@@ -371,7 +371,7 @@ def test_process_cascade_by_id():
     result = run("bp-1")
     assert result["target"]["kind"] == "process"
     assert result["layers"]["process"]["processes"] == [
-        {"id": "bp-1", "name": "Card Payments"}]
+        {"id": "bp-1", "name": "Card Payments"}, {"id": "bp-2", "name": "Online Banking"}]
 
 
 def test_process_cascade_names_endpoints():
@@ -434,9 +434,9 @@ def test_library_cascade_names_systems_and_dependents():
     # transitively: payment-api calls sys-db, web-frontend calls payment-api
     assert result["layers"]["system"]["dependents_by_depth"] == {
         "1": ["sys-pay"], "2": ["sys-mobile", "sys-web"]}
-    # sys-db (the system running liboqs) has no declared business process —
-    # an empty process layer is the honest answer for it
-    assert result["layers"]["process"]["processes"] == []
+    # sys-db has no direct process map, but its reverse consumers do.
+    assert result["layers"]["process"]["processes"] == [
+        {"id": "bp-1", "name": "Card Payments"}, {"id": "bp-2", "name": "Online Banking"}]
 
 
 def test_certificate_cascade_walks_graph_from_owning_systems():

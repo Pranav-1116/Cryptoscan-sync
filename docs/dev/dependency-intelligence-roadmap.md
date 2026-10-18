@@ -4,10 +4,12 @@
 [Step-1 contract](../bank-environment/17-classified-system-scope.md) ·
 [Step-2 contract](../bank-environment/18-shared-dependency-semantics.md) ·
 [Step-3 contract](../bank-environment/19-package-artifact-deployment-identity.md) ·
-[Step-4 contract](../bank-environment/20-relationship-lifecycle-and-reconciliation.md)
+[Step-4 contract](../bank-environment/20-relationship-lifecycle-and-reconciliation.md) ·
+[Step-5 contract](../bank-environment/21-traversal-provenance-evidence-and-freshness.md) ·
+[Step-6 contract](../bank-environment/22-business-process-impact-and-inclusion-reasons.md)
 
 This is an incremental engineering plan for the user's ten requested changes.
-**Steps 1–4 are implemented with local regression checks.** Steps 5–10
+**Steps 1–6 are implemented with local regression checks.** Steps 7–10
 remain pending; real Neo4j/bank qualification is not implied. Pending work is not
 a feature claim. Each stage needs its own implementation, regression checks,
 compatibility review and a recorded delivery result before being marked done.
@@ -22,7 +24,7 @@ CI workflow configuration is outside this task.
 | 3. Join package, artifact and deployment identity | Implemented; local checks passed | Migration 0098, separate document/release digests, exact-estate explicit SBOM/deployment assertions, measured/declared identity, package/artifact cascade and evidence UI |
 | 4. Edge expiry and reconciliation | Implemented; local qualification recorded below | Migration 0099, source-owned revision-checked lifecycle, atomic idempotent collection receipts, retained tombstones, as-of expiry/replay, separate uncertain reachability and UI; live PG/Neo4j remain unqualified |
 | 5. Propagate provenance/evidence/freshness | Implemented; local qualification recorded below | Migration 0100, bounded traversal-evidence/1 witnesses, seed context, preserved per-edge pointers/origin/timestamp meaning, native selected-path properties and UI; no aggregate confidence or live Neo4j qualification |
-| 6. Process impact over implicated systems | Pending | Process closure over defined system scopes, deduplication and explicit inclusion reasons, not invented revenue loss |
+| 6. Process impact over implicated systems | Implemented; local qualification recorded below | Shared process-impact/1 projection over all classified review systems; ID deduplication, per-system support reasons/roles/evidence, context/potential separation, qualified economic context and legacy comparison guards |
 | 7. Exact target identities | Pending | Exact certificate/package/vendor resolution, explicit ambiguity and opt-in broad search rather than silent first match |
 | 8. Operational dependency modes | Pending | Distinct hard/optional/failover/asynchronous-buffering semantics with conditional outcomes and unknowns, not probabilistic failure claims |
 | 9. Prominent coverage/truncation | Pending | Per-collection and per-walk bounds, missing-link coverage and UI warnings without treating absence as clean |
@@ -166,8 +168,38 @@ Local release validation: 1,996 backend tests passed (1 skipped, 7 deselected),
 358 frontend tests passed, typecheck/build/docs/lint passed. CI workflows unchanged.
 These are payload bounds, not dense-graph load certification. Process closure,
 exact target matching, operational modes and bank-wide negative qualification
-remain steps 6–10. Details and a runnable example are in
+were the remaining steps at this delivery; step 6 is delivered below. Details and a runnable example are in
 [bank guide 21](../bank-environment/21-traversal-provenance-evidence-and-freshness.md).
+
+## Step 6 — delivered process projection and inclusion reasons
+
+`cryptoscan.business-process-impact/1` projects recorded support across all
+classified review systems, not just direct seeds. Processes deduplicate by ID;
+every retained reason names its supporting system, scope, role, mapping record,
+per-edge evidence/freshness and system-explanation reference. Context-only and
+potential-only processes are separate from active modeled exposure. Supplied
+uncertain support metadata cannot become current exposure; terminal mappings
+are excluded. This is not a new support-map lifecycle-write/reconciliation API.
+
+SQL snapshot/graph builders retain actual support IDs/roles. Both graph adapters
+use the shared reducer; native reads selected support properties rather than
+aggregating distinct numeric values. Equal-value distinct processes remain
+separate; missing/conflicting metrics and unmapped exposed systems are explicit.
+Economic context excludes context-only/potential-only processes and never claims
+predicted loss, unique customer counts or validated currency compatibility.
+
+Detailed process/reason limits are independent of counts. Snapshot process/link
+source caps are exposed. Stored new runs retain the projection; old answers stay
+unchanged. Mixed-version process diffs are explicitly noncomparable. UI presents
+scope/reasons/gaps and qualifies economic values. Graph impact freezes one clock
+without mutating later reads; existing forward-only compliance semantics remain.
+
+Local validation: 2,017 backend tests passed (1 skipped, 7 deselected), 361
+frontend tests passed across 40 files; typecheck/build/docs/lint passed.
+No new migration: existing migration 0100 remains a deployment prerequisite.
+Native stored-projection freshness/reconciliation, real Neo4j execution, live PG
+concurrency, broad load and whole-bank negative qualification remain open.
+See [bank guide 22](../bank-environment/22-business-process-impact-and-inclusion-reasons.md).
 
 ## Later stages — design constraints
 

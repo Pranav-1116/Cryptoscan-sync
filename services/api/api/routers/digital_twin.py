@@ -327,15 +327,22 @@ def _snapshot(db: Session) -> dict:
 
     # Business processes supported by each system — real SystemBusinessProcess
     # links; cascades report process impact when a system or its vendor breaks.
-    process_names = {p.id: p.name for p in db.query(BusinessProcess).limit(
-        SNAPSHOT_CAPS["business_processes"]).all()}
+    process_cap = SNAPSHOT_CAPS["business_processes"]
+    process_page = db.query(BusinessProcess).order_by(BusinessProcess.id).limit(process_cap + 1).all()
+    process_rows = {p.id: p for p in process_page[:process_cap]}
+    link_page = db.query(SystemBusinessProcess).order_by(SystemBusinessProcess.id).limit(process_cap + 1).all()
+    process_names = {pid: p.name for pid, p in process_rows.items()}
     business_processes: dict[str, list[dict]] = {}
-    for link in db.query(SystemBusinessProcess).limit(
-            SNAPSHOT_CAPS["business_processes"]).all():
+    for link in link_page[:process_cap]:
         business_processes.setdefault(link.system_id, []).append({
             "id": link.process_id,
             "name": process_names.get(link.process_id, link.process_id),
-            "relationship_record_id": link.id, "provenance": "DECLARED",
+            "relationship_record_id": link.id, "role": link.role,
+            "process_registered": True if link.process_id in process_rows else None,
+            "process_resolution": "loaded" if link.process_id in process_rows else "not_in_loaded_registry",
+            "revenue_daily": process_rows[link.process_id].revenue_daily if link.process_id in process_rows else None,
+            "customer_count": process_rows[link.process_id].customer_count if link.process_id in process_rows else None,
+            "provenance": "DECLARED",
             "source": "system_business_process mapping", "created_at": link.created_at.isoformat() if link.created_at else None})
 
     # Vendor crypto inventory (VBOM): what each vendor's products implement —
@@ -415,6 +422,8 @@ def _snapshot(db: Session) -> dict:
         "hardware": hardware,
         "certificate_usages": certificate_usages,
         "business_processes": business_processes,
+        "business_process_coverage": {"processes_truncated": len(process_page) > process_cap,
+            "support_links_truncated": len(link_page) > process_cap, "process_limit": process_cap, "support_link_limit": process_cap},
         "vendor_crypto": vendor_crypto,
         "library_catalog": library_catalog,
         "crypto_hardware": crypto_hardware,

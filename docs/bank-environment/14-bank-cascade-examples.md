@@ -60,7 +60,7 @@ links, resolves linked crypto assets' systems and walks their dependents.
 | 3 | Mobile Banking, Internet Banking | Depend on API Gateway |
 
 The actual engine returns **6 distinct implicated systems**, maximum propagation
-depth **3**, and the linked “Payment authorization” process.
+depth **3**, and the linked “Payment authorization” and “Mobile banking” processes.
 
 Partial actual fixture output:
 
@@ -149,16 +149,20 @@ Supporting dependencies / change context
 Confirmed operational outcomes (from independent incident evidence)
 ```
 
-### A business-process completeness limit
+### Business-process closure after step 6
 
 This fixture links processes to Signing Service and Mobile Banking, not Payments
-API. The system-target result has an empty process list despite reaching those
-systems in its traversal. The current process projection for this path uses seed
-associations, not a guaranteed closure over all transitive systems.
+API. The system-target result now includes both processes because it projects
+support mappings over all classified review systems. Mobile Banking contributes
+modeled consumer exposure; Signing Service contributes supporting context only.
+The context-only process is not counted as an exposed process.
 
-A reviewer must not interpret that empty list as “no business process impact”.
-For the HSM target, only “Payment authorization” appears; the transitive Mobile
-Banking process is not automatically added either.
+For the HSM target, Signing Service is directly implicated and Mobile Banking is
+a dependent consumer, so both processes are in modeled exposure. Each process
+retains its supporting system ID, scope and mapping evidence when available.
+Missing mappings elsewhere remain unknown, not evidence of no business impact.
+See [step 6](22-business-process-impact-and-inclusion-reasons.md) for the current
+ID-based projection and its bounds.
 
 ## 5. RSA migration: a crypto-evidence cascade
 
@@ -215,12 +219,18 @@ for kind, target in [('device', 'hsm-example'), ('algorithm', 'RSA-2048'),
         assert impact['affected_system_count'] == 6
         assert impact['max_propagation_depth'] == 3
         assert impact['affected_processes'] == [
-            {'id': 'process-authorize', 'name': 'Payment authorization'}]
+            {'id': 'process-authorize', 'name': 'Payment authorization'},
+            {'id': 'process-mobile', 'name': 'Mobile banking'}]
+        assert impact['process_impact']['counts']['exposure'] == 2
     else:
         assert set(impact['affected_systems']) == set(names)
         assert impact['affected_system_count'] == 8
         assert impact['max_propagation_depth'] == 2
-        assert impact['affected_processes'] == []
+        assert impact['affected_processes'] == [
+            {'id': 'process-authorize', 'name': 'Payment authorization'},
+            {'id': 'process-mobile', 'name': 'Mobile banking'}]
+        assert impact['process_impact']['counts']['exposure'] == 1
+        assert impact['process_impact']['counts']['context_only'] == 1
     print(json.dumps({'kind': kind, 'impact': impact,
                       'system': result['layers']['system']}, indent=2))
 

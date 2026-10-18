@@ -1268,6 +1268,10 @@ def technology_bom_cascade_run_diff(
         scope_diff["reason"] = (
             "relationship policy differs or is unknown for a stored run" if not policy_comparable
             else "one or both stored runs lack the current system classification")
+    from shared_models.process_impact import SCHEMA as PROCESS_SCHEMA
+    old_process_schema = ((other.result or {}).get("impact", {}).get("process_impact") or {}).get("schema")
+    new_process_schema = ((run.result or {}).get("impact", {}).get("process_impact") or {}).get("schema")
+    process_comparable = comparable and old_process_schema == new_process_schema == PROCESS_SCHEMA
     return {
         "schema": "cryptoscan.unified-cascade-diff/1",
         "run": {"id": run.id, "created_at": run.created_at.isoformat()
@@ -1280,6 +1284,8 @@ def technology_bom_cascade_run_diff(
         "system_classification": scope_diff,
         "policy_comparison": {"comparable": policy_comparable,
                               "run_version": new_policy, "against_version": old_policy},
+        "process_comparison": {"comparable": process_comparable, "run_schema": new_process_schema, "against_schema": old_process_schema,
+            "reason": None if process_comparable else "Process projection or system policy differs/is unavailable; legacy seed-only counts are not comparable."},
         "affected_processes": {
             **_delta("processes",
                      {p[0] or p[1] for p in old_processes},

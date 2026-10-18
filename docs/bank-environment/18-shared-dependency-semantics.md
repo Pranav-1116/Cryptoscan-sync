@@ -236,7 +236,8 @@ package/release/deployment joins; its assertions do not prove current runtime
 placement. At the time of the step-2 delivery, the backlog below was pending;
 step 4 now supplies [stale/deleted lifecycle and reconciliation](20-relationship-lifecycle-and-reconciliation.md);
 [step 5 supplies bounded per-edge provenance/freshness explanations](21-traversal-provenance-evidence-and-freshness.md).
-Steps 6–10 remain pending: process closure,
+[Step 6 supplies process closure and inclusion reasons](22-business-process-impact-and-inclusion-reasons.md).
+Steps 7–10 remain pending:
 exact/ambiguous target resolution, operational dependency modes, prominent
 coverage/truncation and bank-negative deployment qualification. The same policy
 on different incomplete or stale inventories can still return different counts.

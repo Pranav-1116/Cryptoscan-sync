@@ -29,8 +29,9 @@ alongside membership/count answers. It is carried through:
   answer. The UI never manufactures explanations for old answers by consulting
   today's graph. Existing stored answers are not rewritten.
 
-Process closure and economic aggregation semantics are **not** upgraded by this
-step. Domain links explain recorded associations; the next step must resolve
+Process closure and economic aggregation semantics were **not** upgraded by
+step 5; [step 6](22-business-process-impact-and-inclusion-reasons.md) subsequently
+delivered that separate projection. Domain links explain recorded associations; the next step must resolve
 process impact over all explicitly defined implicated-system scopes. XML graph
 exports remain lossy external formats, not a substitute for the JSON witness
 contract.
@@ -245,5 +246,6 @@ acceptance certificate. CI workflows were not changed.
 
 The Bolt double does not parse/execute Cypher. Real Neo4j, PostgreSQL concurrency,
 dense-graph load, external pointer verification, full bank role/tenant negatives,
-and independent evidence qualification remain open. Steps 6–10 remain pending;
+and independent evidence qualification remain open. Step 6 is now delivered in [guide 22](22-business-process-impact-and-inclusion-reasons.md);
+steps 7–10 remain pending;
 read the [implementation roadmap](../dev/dependency-intelligence-roadmap.md).

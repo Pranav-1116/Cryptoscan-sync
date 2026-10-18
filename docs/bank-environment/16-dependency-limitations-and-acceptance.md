@@ -48,7 +48,7 @@ freshness, provenance and bank validation—not just node count.
 | Confidence is not calibrated operational probability | A heuristic score can be mistaken for an outage likelihood | State the meaning of each score; never invent probability semantics |
 | Unified BFS does not apply a confidence threshold or hard/optional dependency model | Weak/declarative/containment relations can contribute to broad reachability | Separate relationship meaning and substantiation from traversal membership |
 | Aggregate impact can combine consumers and supporting dependencies | A broad review set can be sold as confirmed outage victims | Display seeds, reverse consumers and supporting context separately |
-| Business-process projection is not full transitive closure on every path | Returned systems can have unreported process associations | Reconcile all implicated systems' process mappings; label missing coverage |
+| Process support inventory can be incomplete | Step 6 closes over all classified systems, but absent support mappings remain unknown | Inspect inclusion reasons and source caps; reconcile missing process support |
 | Some target matching is substring/first-match based | A broad vendor/library/device query can select an unintended object | Use explicit kind and canonical identity; inspect matched object |
 | Certificate endpoint association can use subject matching | Different/renewed certificates with the same subject can be conflated | Prefer exact fingerprint usage/deployment evidence and inspect ambiguity |
 | Algorithm matching and cipher tokens have different precision | Family-level transport evidence can be overstated as exact application/key usage | Preserve parameter unknowns and use the actual evidence type |
@@ -137,7 +137,7 @@ The following table is an acceptance plan, not completed bank evidence.
 | Linked HSM | Substantiated asset/system links produce the expected bounded set | The entire set necessarily suffers an outage |
 | Certificate replacement | Exact fingerprint usage is distinguished from subject-only associations | Same subject means same deployed certificate |
 | Package advisory | Package/version/artifact/deployment match is auditable | Package name alone proves vulnerable function reachability |
-| Process mapping | Demonstrate current transitive process gap and its manual reconciliation | Empty process list means no business impact |
+| Process mapping | Verify [step-6](22-business-process-impact-and-inclusion-reasons.md) consumer/context closure, identity deduplication, inclusion reasons and missing-link warnings | Empty process list means no business impact |
 | Backend parity | Same estate/depth, explicit CALLS/non-CALLS expectations, documented differences | Healthy Neo4j automatically gives identical memory results |
 | Edge removal | Demonstrate actual persisted state after a source-map change | Removed YAML entry automatically removed old inventory edges |
 | Depth/cap boundary | Show why a deeper/larger estate changes coverage | A bounded list is the whole-bank denominator |
@@ -170,7 +170,7 @@ Local checks completed for this documentation expansion on 2026-10-18:
 - The exact Bash fixture in [14](14-bank-cascade-examples.md) executed with the
   real pure engine. Assertions verified six-system device/algorithm exposure,
   eight-system application context, depth 3 versus 2, the documented process
-  gaps, and the missing hardware-link/inventory-only case.
+  gaps (then seed-only; subsequently closed by step 6), and the missing hardware-link/inventory-only case.
 - The system-map YAML in [12](12-dependency-discovery-and-evidence.md) parsed
   successfully through the actual `load_system_map` function and retained its
   three named systems and declared Payments API dependencies.

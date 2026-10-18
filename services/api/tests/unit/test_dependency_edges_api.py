@@ -417,7 +417,7 @@ def test_process_cascade_end_to_end(app_db):
     body = resp.json()
     assert body["target"]["kind"] == "process"
     assert body["layers"]["system"]["systems"] == ["sys-c"]
-    # both callers of payment-core stop with it
+    # both registered callers appear in modeled consumer exposure
     assert body["layers"]["system"]["dependents_by_depth"] == {
         "1": ["sys-a", "sys-b"]}
     assert set(body["impact"]["affected_systems"]) == {"sys-a", "sys-b", "sys-c"}
@@ -787,3 +787,86 @@ def test_asset_start_union_keeps_witnesses_and_actual_join_record_ids(app_db):
     assert result["traversal_evidence"]["complete_for_requested_systems"]
     assert {e["from"] for e in result["start_links"]["edges"]} == {"sys-a", "sys-b"}
     assert all(e["record_id"] and e["evidence_missing"] and not e["references_verified_by_traversal"] for e in result["start_links"]["edges"])
+
+
+def test_process_projection_closes_all_scopes_keeps_mapping_ids_and_history(app_db):
+    from copy import deepcopy
+    from db.models.cascade_run import CascadeRun
+    db = app_db.state.test_session
+    existing = db.query(BusinessProcess).filter_by(id="bp-1").one()
+    existing.revenue_daily = 100
+    existing.customer_count = 10
+    db.add_all([BusinessProcess(id="bp-consumer", name="Online Banking", revenue_daily=100, customer_count=10),
+        BusinessProcess(id="bp-context", name="Settlement Review", revenue_daily=9999, customer_count=999)])
+    db.flush()
+    db.add_all([SystemBusinessProcess(id="support-consumer", system_id="sys-a", process_id="bp-consumer", role="FRONTEND"),
+        SystemBusinessProcess(id="support-shared", system_id="sys-a", process_id="bp-1", role="CHANNEL"),
+        SystemBusinessProcess(id="support-context", system_id="sys-d", process_id="bp-context", role="SUPPORT")])
+    db.commit()
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
+        response = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-core"})
+        assert response.status_code == 200
+        answer = response.json()
+        projection = answer["impact"]["process_impact"]
+        assert projection["counts"] == {"review": 3, "exposure": 2, "context_only": 1, "potential_only": 0}
+        reason = next(r for p in projection["processes"] if p["id"] == "bp-1" for r in p["reasons"] if r["system_id"] == "sys-a")
+        assert reason["role"] == "CHANNEL" and reason["support_link"]["record_id"] == "support-shared"
+        assert reason["support_link"]["freshness"]["observation"]["status"] == "MISSING"
+        graph = client.get("/api/v1/graph/impact", params={"system_id": "sys-c"}).json()
+        assert graph["process_impact"]["counts"] == projection["counts"]
+        assert graph["total_revenue_at_risk"] == 200 and graph["total_customers_at_risk"] == 20
+        saved = deepcopy(db.query(CascadeRun).filter_by(id=answer["run_id"]).one().result)
+        db.add(BusinessProcess(id="bp-later", name="Later Process"))
+        db.flush()
+        db.add(SystemBusinessProcess(system_id="sys-b", process_id="bp-later"))
+        db.commit()
+        later = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-core"}).json()
+        assert later["impact"]["process_impact"]["counts"]["review"] == 4
+        assert db.query(CascadeRun).filter_by(id=answer["run_id"]).one().result == saved
+        diff = client.get(f"/api/v1/technology-bom/cascade/runs/{later['run_id']}/diff", params={"against": answer["run_id"]}).json()
+        assert diff["process_comparison"]["comparable"]
+        assert diff["affected_processes"]["added"] == ["bp-later"]
+
+
+def test_legacy_process_comparison_is_explicitly_unavailable(app_db):
+    from copy import deepcopy
+    from db.models.cascade_run import CascadeRun
+    db = app_db.state.test_session
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
+        answer = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-core"}).json()
+        legacy = deepcopy(answer)
+        del legacy["impact"]["process_impact"]
+        db.add(CascadeRun(id="legacy-process-run", target="payment-core", target_kind="system", verdict="AFFECTED", result=legacy))
+        db.commit()
+        response = client.get(f"/api/v1/technology-bom/cascade/runs/{answer['run_id']}/diff", params={"against": "legacy-process-run"})
+        assert response.status_code == 200
+        assert not response.json()["process_comparison"]["comparable"]
+        assert "legacy" in response.json()["process_comparison"]["reason"]
+        assert "process_impact" not in db.query(CascadeRun).filter_by(id="legacy-process-run").one().result["impact"]
+
+
+def test_process_source_caps_are_disclosed_and_unregistered_targets_not_invented(app_db, monkeypatch):
+    import api.routers.digital_twin as twin
+    db = app_db.state.test_session
+    db.add(BusinessProcess(id="another-process", name="Another Process"))
+    db.flush()
+    db.add(SystemBusinessProcess(system_id="sys-a", process_id="another-process"))
+    db.commit()
+    monkeypatch.setitem(twin.SNAPSHOT_CAPS, "business_processes", 1)
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
+        answer = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-core"}).json()
+    coverage = answer["impact"]["process_impact"]["coverage"]
+    assert coverage["source_coverage"]["processes_truncated"]
+    assert coverage["source_coverage"]["support_links_truncated"]
+    assert {p["id"] for p in answer["impact"]["process_impact"]["processes"]} <= {"another-process"}
+
+
+def test_graph_wrappers_keep_process_explanations_and_economic_qualification(app_db):
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
+        simulation = client.post("/api/v1/graph/simulate", json={"node_id": "sys-c"})
+        explanation = client.get("/api/v1/graph/explain", params={"node_id": "sys-c"})
+    assert simulation.status_code == explanation.status_code == 200
+    assert simulation.json()["process_impact"]["schema"] == "cryptoscan.business-process-impact/1"
+    assert "not predicted losses" in simulation.json()["economic_totals_meaning"]
+    assert explanation.json()["process_impact"]["counts"]["exposure"] == 1
+    assert any("not predicted loss" in s.get("detail", "") for s in explanation.json()["steps"])

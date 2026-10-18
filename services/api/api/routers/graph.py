@@ -616,7 +616,10 @@ def graph_simulate(
         "compatibility_issues": compat_issues,
         "migration_tasks": migration_tasks,
         "systems": [{"id": sid, "name": (graph.nodes.get(f"system:{sid}") or {}).get("name"), "crypto_assets": crypto_by_system.get(sid, 0)} for sid in sorted(affected)],
-        "total_revenue_at_risk": impact.get("total_revenue_at_risk", 0),
+        "total_revenue_at_risk": impact.get("total_revenue_at_risk"),
+        "process_impact": impact.get("process_impact"),
+        "process_traversal_evidence": impact.get("process_traversal_evidence"),
+        "economic_totals_meaning": impact.get("economic_totals_meaning"),
         "backend": graph.backend,
     }
 
@@ -681,7 +684,7 @@ def graph_explain(
         impact = graph.business_impact(node_id, hops=6)
         steps.append({
             "label": "business impact", "kind": "Impact",
-            "detail": f"{len(impact.get('systems') or [])} systems · revenue at risk {impact.get('total_revenue_at_risk', 0)}",
+            "detail": f"{len(impact.get('systems') or [])} reached systems · declared exposed-process revenue/day context {impact.get('total_revenue_at_risk')} (not predicted loss)",
             "confidence": None, "evidence": "", "file": None,
         })
     except Exception as impact_exc:
@@ -696,6 +699,7 @@ def graph_explain(
         "quantum_vulnerable": bool(node.get("kind") == "CryptoAsset" and _quantum_vulnerable_algorithm(str(node.get("algorithm") or ""))),
         "steps": steps,
         "traversal_evidence": impact.get("traversal_evidence"), "domain_links": impact.get("domain_links"),
+        "process_impact": impact.get("process_impact"), "process_traversal_evidence": impact.get("process_traversal_evidence"),
         "backend": graph.backend,
     }
 

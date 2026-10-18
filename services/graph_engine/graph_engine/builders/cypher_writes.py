@@ -145,8 +145,29 @@ UNWIND $rows AS row
 MATCH (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 MATCH (p:BusinessProcess {process_id: row.process_id, tenant_id: row.tenant_id})
 MERGE (s)-[r:SUPPORTS]->(p)
-SET r.provenance = 'DECLARED',
-    r.source = 'system_business_process mapping'
+SET r.provenance = row.provenance,
+    r.source = row.source,
+    r.record_id = row.record_id,
+    r.role = row.role,
+    r.evidence_ref = row.evidence_ref,
+    r.evidence_refs_json = row.evidence_refs_json,
+    r.evidence_refs_total = row.evidence_refs_total,
+    r.evidence_refs_truncated = row.evidence_refs_truncated,
+    r.confidence = row.confidence,
+    r.confidence_meaning = row.confidence_meaning,
+    r.last_verified = row.last_verified,
+    r.observed_at = row.observed_at,
+    r.lifecycle_state = row.lifecycle_state,
+    r.projection_state = row.projection_state,
+    r.valid_until = row.valid_until,
+    r.last_confirmed_at = row.last_confirmed_at,
+    r.lifecycle_evidence_ref = row.lifecycle_evidence_ref,
+    r.created_by = row.created_by,
+    r.assertion_source = row.assertion_source,
+    r.lifecycle_source = row.lifecycle_source,
+    r.lifecycle_revision = row.lifecycle_revision,
+    r.lifecycle_reason = row.lifecycle_reason,
+    r.last_reconciliation_id = row.last_reconciliation_id
 """
 
 MERGE_OWNED_BY = """

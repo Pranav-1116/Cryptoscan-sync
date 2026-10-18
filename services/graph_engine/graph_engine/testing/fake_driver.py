@@ -62,6 +62,10 @@ class InMemoryBoltGraph:
         value = str(props[ident] if ident in props else key)
         current = self.nodes.get((label, value), {ident: value, "_label": label})
         current.update({k: v for k, v in props.items() if v is not None})
+        if label == "BusinessProcess":
+            for field in ("revenue_daily", "customer_count"):
+                if field in props and props[field] is None:
+                    current.pop(field, None)
         current["_label"] = label
         current[ident] = value
         self.nodes[(label, value)] = current
@@ -174,6 +178,7 @@ class FakeSession:
             "systems_using_asset": self._systems_using_asset,
             "origin_system": self._origin,
             "business_impact": self._impact,
+            "process_links": self._process_links,
             "compliance_inheritance": self._compliance,
             "vendor_path": self._vendor_path,
             "vendor_list": lambda p: [{"id": k} for label, k in sorted(self.graph.nodes) if label == "Vendor"][:p["limit"]],
@@ -244,7 +249,7 @@ class FakeSession:
 
     def _merge_supports(self, params):
         for row in params.get("rows") or []:
-            self.graph.merge_edge("System", row["system_id"], "SUPPORTS", "BusinessProcess", row["process_id"], {"provenance": "DECLARED", "source": "system_business_process mapping"})
+            self.graph.merge_edge("System", row["system_id"], "SUPPORTS", "BusinessProcess", row["process_id"], dict(row))
         return []
 
     def _merge_owned(self, params):
@@ -546,6 +551,15 @@ class FakeSession:
         rows.sort(
             key=lambda row: (-row["quantum_vulnerable_assets"], -row["total_assets"], row.get("name") or "")
         )
+        return rows
+
+    def _process_links(self, params):
+        rows = []
+        for src, rel, dst, props in self.graph.edges:
+            if rel == "SUPPORTS" and src[0] == "System" and dst[0] == "BusinessProcess" and src[1] in params["system_ids"]:
+                process = self.graph.get(*dst) or {}
+                rows.append({"system_id": src[1], "id": dst[1], "name": process.get("name"),
+                    "revenue_daily": process.get("revenue_daily"), "customer_count": process.get("customer_count"), "properties": dict(props)})
         return rows
 
     def _impact(self, params):
