@@ -34,6 +34,9 @@ def resolve_graph(payload: dict[str, Any], *, driver=None, sync_if_empty: bool =
         store = Neo4jGraphStore(handle)
         if sync_if_empty:
             ensure_populated(payload, driver=handle)
+        # Never serve an older ACTIVE projection after SQL has retired it.
+        # Errors propagate rather than silently substituting an old answer.
+        store.refresh_relationship_lifecycle(payload.get("systems") or [], payload.get("edges") or [])
         return store
     return memory_graph(**payload)
 

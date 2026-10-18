@@ -156,7 +156,7 @@ describe("cascade disjoint system classification", () => {
     await runCascade();
     expect(screen.getByText(/Relationship policy: cryptoscan.system-dependency-policy\/1/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "diff vs previous" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Count changes are not evidence of remediation");
+    expect(await screen.findByText(/Count changes are not evidence of remediation/)).toBeInTheDocument();
   });
 
   it("discloses release digests, SBOM document hashes and declared deployment evidence separately", async () => {
@@ -181,6 +181,30 @@ describe("cascade disjoint system classification", () => {
     expect(software.getByText(/Package: pkg:pypi\/crypto@1.0/)).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "package" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "artifact" })).toBeInTheDocument();
+  });
+
+  it("keeps stale/expired uncertainty separate and never labels fewer links safe", async () => {
+    const result = answer();
+    result.relationship_lifecycle = {
+      schema: "cryptoscan.relationship-lifecycle/1", as_of: result.as_of,
+      counts: { ACTIVE: 1, STALE: 1, EXPIRED: 1, DELETED: 1 },
+      excluded_count: 3, excluded_records: [
+        { id: "old-edge", kind: "system_dependency", state: "STALE" },
+        { id: "old-deployment", kind: "deployment", state: "EXPIRED", valid_until: "2026-10-17T00:00:00Z" },
+        { id: "retired", kind: "sbom_binding", state: "DELETED" },
+      ], excluded_records_truncated: false, unbounded_active_count: 1, note: "not safety",
+    };
+    result.impact.lifecycle_uncertainty = { count: 1, possible_additional_systems: ["possible-consumer"], possible_direct_systems: [], note: "not confirmed" };
+    vi.mocked(apiUnifiedCascade).mockResolvedValue({ source: "live", data: result });
+    render(<UnifiedCascadePanel />);
+    await runCascade();
+    const panel = within(screen.getByRole("status", { name: "Relationship lifecycle" }));
+    expect(panel.getByText(/Fewer active links are not proof of remediation or safety/)).toBeInTheDocument();
+    expect(panel.getByText(/Legacy\/unbounded eligibility is not verified freshness/)).toBeInTheDocument();
+    expect(panel.getByText("possible-consumer")).toBeInTheDocument();
+    expect(panel.getByText(/old-deployment: EXPIRED/)).toBeInTheDocument();
+    expect(panel.getByText(/retired: DELETED/)).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Dependent consumers" })).queryByText("possible-consumer")).not.toBeInTheDocument();
   });
 
   it("warns about unbound release identity and bounded software input", async () => {

@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 from typing import Any, Mapping
 
 from shared_models.dependency_semantics import propagates
+from shared_models.relationship_lifecycle import current, clock, utc
 
 AT_RISK_PREFIXES = ("EXPIRING",)
 AT_RISK_STATUSES = ("EXPIRED",)
@@ -25,6 +26,7 @@ def _edges(vis: Mapping[str, Any]) -> list[tuple[str, str, str]]:
     return [
         (str(edge.get("from")), str(edge.get("to")), str(edge.get("label") or "RELATED"))
         for edge in vis.get("edges") or []
+        if current(edge, now=utc(vis["lifecycle_as_of"]) if vis.get("lifecycle_as_of") else clock())
     ]
 
 

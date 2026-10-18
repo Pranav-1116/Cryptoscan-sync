@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import Any, Mapping
 
 from cbom.software_cascade import identify_software, software_context
+from shared_models.relationship_lifecycle import current, possible, summary as lifecycle_summary
 from shared_models.dependency_semantics import MAX_SYSTEM_HOPS, edge_relation, policy_metadata, propagates, system_id
 
 #: What a cascade target can be. Order matters for auto-detection when no
@@ -666,12 +667,17 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     snapshot = dict(snapshot)
     known = {system_id(row.get("id")) for row in snapshot.get("systems") or []}
     dependencies = []
+    potential_dependencies = []
+    original_dependencies = list(snapshot.get("dependencies") or [])
     for edge in snapshot.get("dependencies") or []:
         src, dst = system_id(edge.get("source")), system_id(edge.get("target"))
         if (src and dst and (src in known and dst in known)
                 and propagates(edge_relation(edge))):
-            dependencies.append({**edge, "source": src, "target": dst,
-                                 "type": edge_relation(edge)})
+            normalized = {**edge, "source": src, "target": dst, "type": edge_relation(edge)}
+            if current(edge, now=now):
+                dependencies.append(normalized)
+            if possible(edge, now=now):
+                potential_dependencies.append(normalized)
     snapshot["dependencies"] = dependencies
 
     identified = identify_target(snapshot, target_text, kind)
@@ -698,7 +704,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     cascade_kind, matched = identified["kind"], identified["matched"]
     if cascade_kind in {"package", "artifact"}:
         software = software_context(snapshot, purl=matched.get("purl") if cascade_kind == "package" else None,
-                                    artifact_id=matched.get("id") if cascade_kind == "artifact" else None)
+                                    artifact_id=matched.get("id") if cascade_kind == "artifact" else None, now=now)
         systems = software["systems"]
         layers = {
             "code": {"evidence_ids": [], "systems": [], "files": []},
@@ -728,7 +734,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         layers = _cascade_library(snapshot, matched, max_depth=depth)
 
     if cascade_kind == "system":
-        layers["software"] = software_context(snapshot, system_id=str(matched.get("id")))
+        layers["software"] = software_context(snapshot, system_id=str(matched.get("id")), now=now)
 
     # Private keys (``_``-prefixed) are folded into impact, not leaked as layers.
     extra_assets = layers.pop("_assets", [])
@@ -742,6 +748,22 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     # New callers must use the explicitly named classification, not treat the
     # legacy review union as a confirmed failure/consumer count.
     affected_systems = classification["review_systems"]
+    seeds = set(classification["direct_exposure"]["systems"])
+    possible_direct = set((layers.get("software") or {}).get("uncertain_systems") or [])
+    potential_consumers = _bfs(potential_dependencies, seeds | possible_direct, reverse=True, max_depth=depth)
+    potential_context = _bfs(potential_dependencies, seeds | possible_direct, reverse=False, max_depth=depth)
+    potential_systems = possible_direct | {sid for values in [*potential_consumers.values(), *potential_context.values()] for sid in values}
+    # Some target adapters intentionally omit forward-only active context.
+    # Such ordinary active paths must not be mislabeled lifecycle uncertainty.
+    active_walks = [*_bfs(dependencies, seeds, reverse=True, max_depth=depth).values(),
+                    *_bfs(dependencies, seeds, reverse=False, max_depth=depth).values()]
+    actively_reachable = seeds | {sid for values in active_walks for sid in values}
+    uncertain_systems = sorted(potential_systems - set(affected_systems) - actively_reachable)
+    lifecycle = lifecycle_summary([{**e, "record_kind": "system_dependency"} for e in original_dependencies] +
+        [b for b in (layers.get("software") or {}).get("sbom_bindings") or []] +
+        [d for d in (layers.get("software") or {}).get("deployments") or []], now=now)
+    lifecycle["summary_scope"] = "all snapshot dependencies and matched software assertions"
+
     affected_processes = [
         {"id": p.get("id"), "name": p.get("name")}
         for p in (layers.get("process") or {}).get("processes") or []
@@ -782,7 +804,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
             "SBOM membership is not proof of executable reachability or runtime use",
             "artifact identity, SBOM-to-release linkage and deployment are separate evidence assertions",
             "SBOM content was checked when bound; this cascade uses pinned components and does not reverify live stored bytes",
-            "deployment bindings are declarations; expiry, supersession and deletion reconciliation are not implemented yet",
+            "deployment bindings remain declarations even when recently confirmed by a source collection",
         ])
         if layers["software"]["unbound_artifact_ids"]:
             unknowns.append("one or more matched release artifacts have no valid explicit deployment binding; consumers remain unknown")
@@ -800,9 +822,15 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
                 "no declared vendor-of-vendor edges for this vendor: transitive "
                 "supply-chain exposure is unmodelled (declare via POST /graph/vendor-edges)")
 
+    if lifecycle["excluded_count"]:
+        unknowns.append("non-current relationship evidence was retained but excluded from active traversal; lower counts are not proof of remediation")
+    if lifecycle["unbounded_active_count"]:
+        unknowns.append("some eligible relationships have no validity deadline; legacy/unbounded eligibility is not verified freshness")
+
     return {
         "schema": _SCHEMA,
         "relationship_policy": policy_metadata(),
+        "relationship_lifecycle": lifecycle,
         "as_of": now.isoformat(),
         "deterministic": True,
         "mutates_nothing": True,
@@ -813,6 +841,10 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
             "affected_systems": affected_systems,
             "affected_system_count": len(affected_systems),
             "system_classification": classification,
+            "lifecycle_uncertainty": {"possible_additional_systems": uncertain_systems,
+                "count": len(uncertain_systems), "possible_direct_systems": sorted(possible_direct),
+                "possible_dependents_by_depth": potential_consumers, "possible_downstream_by_depth": potential_context,
+                "note": "Potential reachability through nonterminal uncertain evidence; not active exposure or proven failure."},
             "affected_processes": affected_processes,
             "migration_waves": {wave: sorted(sids)
                                 for wave, sids in sorted(waves.items())},

@@ -211,3 +211,7 @@ from db.models.notification_delivery import NotificationDelivery  # noqa: E402,F
 from db.models.software_supply_chain import (  # noqa: E402,F401
     SoftwareArtifact, ReleaseSbomBinding, SoftwareDeployment,
 )
+
+from db.models.relationship_lifecycle import (  # noqa: E402,F401
+    RelationshipSource, RelationshipCollection, RelationshipLifecycleEvent,
+)

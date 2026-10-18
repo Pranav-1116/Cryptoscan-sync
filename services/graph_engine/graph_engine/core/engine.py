@@ -6,6 +6,10 @@ import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
 
+from shared_models.relationship_lifecycle import (
+    clock, current, effective_state, lifecycle_payload, summary as lifecycle_summary, edge_changes,
+)
+
 from shared_models.dependency_semantics import (
     MAX_SYSTEM_HOPS, edge_relation, normalize_relation, policy_metadata, propagates, system_id as canonical_system_id,
 )
@@ -35,13 +39,15 @@ def _is_shor_vulnerable(algorithm: str | None) -> bool:
     return is_shor_vulnerable(algorithm)
 
 
+
+
 class GraphEngine:
     backend = "memory"
 
     @classmethod
-    def from_vis(cls, vis: dict[str, Any]) -> "GraphEngine":
+    def from_vis(cls, vis: dict[str, Any], *, now=None) -> "GraphEngine":
         """Load a graph from any backend's vis export (nodes + edges)."""
-        engine = cls()
+        engine = cls(now=now)
         for node in vis.get("nodes") or []:
             node_id = str(node.get("id") or "")
             if not node_id:
@@ -58,10 +64,12 @@ class GraphEngine:
                 observed_at=edge.get("observed_at"),
                 confidence=edge.get("confidence"),
                 evidence_ref=edge.get("evidence_ref"),
+                lifecycle=lifecycle_payload(edge),
             )
         return engine
 
-    def __init__(self) -> None:
+    def __init__(self, *, now=None) -> None:
+        self._as_of = now
         self.nodes: dict[str, dict[str, Any]] = {}
         self.out: dict[str, list[tuple[str, str]]] = defaultdict(list)
         self.incoming: dict[str, list[tuple[str, str]]] = defaultdict(list)
@@ -71,6 +79,10 @@ class GraphEngine:
         # UNATTRIBUTED and is exported as such — it never silently becomes a
         # "known dependency".
         self.edge_meta: dict[tuple[str, str, str], dict[str, Any]] = {}
+
+    @property
+    def as_of(self):
+        return self._as_of or clock()
 
     def add_node(self, node_id: str, *, kind: str, **props: Any) -> None:
         current = self.nodes.get(node_id, {"id": node_id, "kind": kind})
@@ -90,6 +102,7 @@ class GraphEngine:
         observed_at: Any = None,
         confidence: Any = None,
         evidence_ref: Any = None,
+        lifecycle: dict | None = None,
     ) -> None:
         relation = normalize_relation(relation)
         if (dst, relation) not in self.out[src]:
@@ -98,12 +111,18 @@ class GraphEngine:
             self.incoming[dst].append((src, relation))
         key = (src, dst, relation)
         meta = self.edge_meta.get(key) or {}
+        previous_revision = meta.get("lifecycle_revision")
+        incoming_revision = (lifecycle or {}).get("lifecycle_revision")
+        # Unregistered projections cannot overwrite managed tombstones/freshness.
+        if previous_revision is not None and (incoming_revision is None or incoming_revision < previous_revision):
+            return
         if provenance is not None:
             meta["provenance"] = normalize_provenance(provenance)
         for name, value in (("source", source), ("observed_at", observed_at),
                             ("confidence", confidence), ("evidence_ref", evidence_ref)):
             if value is not None:
                 meta[name] = value
+        meta.update(lifecycle or {})
         self.edge_meta[key] = meta
 
     def edge_provenance(self, src: str, dst: str, relation: str) -> str:
@@ -168,7 +187,7 @@ class GraphEngine:
                 self.add_edge(f"system:{parent}", f"system:{child}", edge_relation(edge),
                               provenance=edge.get("provenance") or PROVENANCE_DECLARED,
                               source=edge.get("source") or "system_dependencies (operator-declared)",
-                              observed_at=edge.get("observed_at"))
+                              observed_at=edge.get("observed_at"), lifecycle=lifecycle_payload(edge))
         for process in processes:
             pid = str(process.get("id") or process.get("process_id") or process.get("name"))
             self.add_node(
@@ -282,6 +301,7 @@ class GraphEngine:
 
     def _dependency_step(self, source: str, target: str, relation: str) -> bool:
         return (propagates(relation)
+                and current(self.edge_meta.get((source, target, relation)) or {}, now=self.as_of)
                 and (self.nodes.get(source) or {}).get("kind") == "System"
                 and (self.nodes.get(target) or {}).get("kind") == "System")
 
@@ -307,7 +327,7 @@ class GraphEngine:
             if seen[node] >= hops:
                 continue
             for nxt, relation in adjacency.get(node, []):
-                if self._dependency_step(node, nxt, relation) and nxt not in seen:
+                if self._dependency_step(nxt if reverse else node, node if reverse else nxt, relation) and nxt not in seen:
                     seen[nxt] = seen[node] + 1
                     queue.append(nxt)
                     src, dst = (nxt, node) if reverse else (node, nxt)
@@ -506,7 +526,7 @@ class GraphEngine:
                 while queue and not found:
                     node = queue.popleft()
                     for nxt, rel in adjacency.get(node, []):
-                        if not self._dependency_step(node, nxt, rel) or nxt in parent:
+                        if not self._dependency_step(nxt if direction == "upstream" else node, node if direction == "upstream" else nxt, rel) or nxt in parent:
                             continue
                         if depths[node] >= MAX_SYSTEM_HOPS:
                             continue
@@ -579,7 +599,12 @@ class GraphEngine:
         nodes_removed = sorted(my_nodes - other_nodes)
         edges_added = sorted(other_edges - my_edges)
         edges_removed = sorted(my_edges - other_edges)
+        lifecycle_changes = edge_changes(
+            [{**e, "effective_state": effective_state(e, now=self.as_of)} for e in self.to_vis()["edges"]],
+            [{**e, "effective_state": effective_state(e, now=other.as_of)} for e in other.to_vis()["edges"]])
         return {
+            "relationship_lifecycle_changes": lifecycle_changes,
+            "eligibility_change_is_not_remediation": True,
             "nodes_added": nodes_added,
             "nodes_removed": nodes_removed,
             "edges_added": edges_added,
@@ -590,7 +615,7 @@ class GraphEngine:
                 "edges_added": len(edges_added),
                 "edges_removed": len(edges_removed),
             },
-            "changed": bool(nodes_added or nodes_removed or edges_added or edges_removed),
+            "changed": bool(nodes_added or nodes_removed or edges_added or edges_removed or lifecycle_changes),
         }
 
     def _display(self, node_id: str) -> str:
@@ -652,7 +677,9 @@ class GraphEngine:
                 edge = {"from": src, "to": dst, "label": rel}
                 edge.update(edge_meta_payload(self.edge_meta.get((src, dst, rel))))
                 edges.append(edge)
-        return {"nodes": nodes, "edges": edges, "backend": self.backend}
+        return {"nodes": nodes, "edges": edges, "backend": self.backend,
+                "lifecycle_as_of": self.as_of.isoformat(),
+                "relationship_lifecycle": lifecycle_summary(edges, now=self.as_of)}
 
     def _resolve(self, raw: str) -> str | None:
         if raw in self.nodes:

@@ -3,6 +3,10 @@
 [Guide index](README.md) · [Step 1](17-classified-system-scope.md) ·
 [Engineering plan](../dev/dependency-intelligence-roadmap.md)
 
+> Subsequent step 4 adds lifecycle eligibility in policy `/2`; this guide records
+> the original step-2 `/1` relation contract. See [lifecycle and reconciliation](20-relationship-lifecycle-and-reconciliation.md)
+> for current expiry, history-clock and source-owned collection behavior.
+
 ## 1. Delivery boundary
 
 The system-dependency portions of memory queries, Neo4j adapter queries and
@@ -131,7 +135,8 @@ previously synchronized under the old writer can retain legacy relationships
 alongside new semantic rows. Changing/removing an input relation does not promise
 that old edges have disappeared. Known-clean equivalent input fixtures are the
 local parity boundary; existing installations need a reviewed migration and
-step 4's lifecycle/reconciliation before that equivalence can be assumed. Do not
+[step 4's lifecycle/reconciliation](20-relationship-lifecycle-and-reconciliation.md)
+and reviewed legacy ownership before that equivalence can be assumed. Do not
 blindly delete production graph evidence to force matching counts.
 
 ## 5. API, history, replay and UI
@@ -229,7 +234,8 @@ step 10, not a passing-mock certification.
 [Step 3](19-package-artifact-deployment-identity.md) subsequently delivered explicit
 package/release/deployment joins; its assertions do not prove current runtime
 placement. At the time of the step-2 delivery, the backlog below was pending;
-steps 4–10 remain pending now: stale and deleted edge lifecycle, complete path provenance/freshness, process closure,
+step 4 now supplies [stale/deleted lifecycle and reconciliation](20-relationship-lifecycle-and-reconciliation.md);
+steps 5–10 remain pending: complete path provenance/freshness, process closure,
 exact/ambiguous target resolution, operational dependency modes, prominent
 coverage/truncation and bank-negative deployment qualification. The same policy
 on different incomplete or stale inventories can still return different counts.

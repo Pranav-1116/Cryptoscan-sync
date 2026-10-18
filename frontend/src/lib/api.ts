@@ -2498,7 +2498,8 @@ export interface GraphNode {
   subject?: string; issuer?: string; expiry_status?: string; days_until_expiry?: number;
   [k: string]: unknown;
 }
-export interface GraphEdge { from: string; to: string; label: string; [k: string]: unknown; }
+export interface GraphEdge extends RelationshipLifecycleFields {
+  id?: string; from: string; to: string; label: string; [k: string]: unknown; }
 export interface GraphView {
   nodes: GraphNode[]; edges: GraphEdge[];
   backend?: string; health?: { ok?: boolean; error?: string; backend?: string; configured?: boolean };
@@ -4632,12 +4633,32 @@ export interface DependencyRelationshipPolicy {
   max_system_hops: number;
 }
 
+export interface RelationshipLifecycleFields {
+  lifecycle_state?: string;
+  effective_state?: string;
+  lifecycle_source?: string;
+  lifecycle_revision?: number;
+  valid_until?: string | null;
+  last_confirmed_at?: string | null;
+}
+
+export interface RelationshipLifecycleSummary {
+  schema: string;
+  as_of: string;
+  counts: Record<string, number>;
+  excluded_count: number;
+  excluded_records: Array<RelationshipLifecycleFields & { id?: string | null; kind?: string | null; state: string }>;
+  excluded_records_truncated: boolean;
+  unbounded_active_count: number;
+  note: string;
+}
+
 export interface CascadeSoftwareContext {
   schema: string;
   artifacts: { id: string; digest: string; identity_source: string; evidence_ref: string; byte_count?: number | null }[];
-  sbom_bindings: { id: string; artifact_id: string; sbom_artifact_id: string; sbom_sha256: string; assertion_source: string; evidence_ref: string; unresolved_component_count: number }[];
+  sbom_bindings: (RelationshipLifecycleFields & { id: string; artifact_id: string; sbom_artifact_id: string; sbom_sha256: string; assertion_source: string; evidence_ref: string; unresolved_component_count: number })[];
   packages: { purl?: string | null; package_identity?: string | null; name?: string; version?: string | null; sbom_binding_id: string; artifact_id: string }[];
-  deployments: { id: string; artifact_id: string; system_id: string; deployment_key: string; environment: string; assertion_source: string; evidence_ref: string }[];
+  deployments: (RelationshipLifecycleFields & { id: string; artifact_id: string; system_id: string; deployment_key: string; environment: string; assertion_source: string; evidence_ref: string })[];
   systems: string[];
   unlinked_deployment_ids: string[];
   unbound_artifact_ids: string[];
@@ -4648,6 +4669,7 @@ export interface CascadeSoftwareContext {
 export interface UnifiedCascadeResult {
   schema: string;
   relationship_policy?: DependencyRelationshipPolicy | null;
+  relationship_lifecycle?: RelationshipLifecycleSummary | null;
   verdict: "AFFECTED" | "NOT_FOUND" | "INSUFFICIENT_DATA";
   run_id?: string;
   target: { input: string; kind: string; matched?: Record<string, any> | null };
@@ -4657,6 +4679,12 @@ export interface UnifiedCascadeResult {
     /** Legacy full review union, including supporting context. */
     affected_system_count: number;
     system_classification?: CascadeSystemScope | null;
+    lifecycle_uncertainty?: {
+      possible_additional_systems: string[];
+      count: number;
+      possible_direct_systems: string[];
+      note: string;
+    };
     affected_processes?: { id?: string; name?: string }[];
     migration_waves?: Record<string, string[]>;
     twin_assets?: string[];
@@ -4726,7 +4754,8 @@ export const apiCascadeRunDiff = (
     (against ? `?against=${encodeURIComponent(against)}` : ""),
   );
 
-export interface GraphEdge {
+export interface RegisteredDependencyEdge extends RelationshipLifecycleFields {
+  id?: string;
   parent_id: string;
   child_id: string;
   parent_name: string | null;
@@ -4736,7 +4765,7 @@ export interface GraphEdge {
 
 export const apiGraphEdges = (
   systemId?: string,
-): Promise<ApiResult<{ edges: GraphEdge[]; count: number }>> =>
+): Promise<ApiResult<{ edges: RegisteredDependencyEdge[]; count: number }>> =>
   call(
     `/api/v1/graph/edges` +
     (systemId ? `?system_id=${encodeURIComponent(systemId)}` : ""),
@@ -4746,7 +4775,7 @@ export const apiGraphRegisterEdge = (
   parentId: string,
   childId: string,
   relation = "CALLS",
-): Promise<ApiResult<{ registered: boolean; edge: GraphEdge }>> =>
+): Promise<ApiResult<{ registered: boolean; edge: RegisteredDependencyEdge }>> =>
   call("/api/v1/graph/edges", {
     method: "POST",
     body: JSON.stringify({ parent_id: parentId, child_id: childId, relation }),
@@ -4755,9 +4784,10 @@ export const apiGraphRegisterEdge = (
 export const apiGraphDeleteEdge = (
   parentId: string,
   childId: string,
-): Promise<ApiResult<{ deleted: boolean }>> =>
+  retirement: { expected_revision: number; reason: string; evidence_ref: string },
+): Promise<ApiResult<{ deleted: boolean; retained: boolean }>> =>
   call(
-    `/api/v1/graph/edges/${encodeURIComponent(parentId)}/${encodeURIComponent(childId)}`,
+    `/api/v1/graph/edges/${encodeURIComponent(parentId)}/${encodeURIComponent(childId)}?${new URLSearchParams({ expected_revision: String(retirement.expected_revision), reason: retirement.reason, evidence_ref: retirement.evidence_ref })}`,
     { method: "DELETE" },
   );
 

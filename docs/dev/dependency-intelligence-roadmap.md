@@ -3,10 +3,11 @@
 [Bank guide index](../bank-environment/README.md) ·
 [Step-1 contract](../bank-environment/17-classified-system-scope.md) ·
 [Step-2 contract](../bank-environment/18-shared-dependency-semantics.md) ·
-[Step-3 contract](../bank-environment/19-package-artifact-deployment-identity.md)
+[Step-3 contract](../bank-environment/19-package-artifact-deployment-identity.md) ·
+[Step-4 contract](../bank-environment/20-relationship-lifecycle-and-reconciliation.md)
 
 This is an incremental engineering plan for the user's ten requested changes.
-**Steps 1–3 are implemented with local regression checks.** Steps 4–10
+**Steps 1–4 are implemented with local regression checks.** Steps 5–10
 remain pending; real Neo4j/bank qualification is not implied. Pending work is not
 a feature claim. Each stage needs its own implementation, regression checks,
 compatibility review and a recorded delivery result before being marked done.
@@ -19,7 +20,7 @@ CI workflow configuration is outside this task.
 | 1. Separate direct exposure, consumers and context | Implemented; local checks passed | Versioned additive unified-cascade classification, disjoint memberships/counts, history/diffs/watch summaries, UI and legacy fallback |
 | 2. Unify relationship semantics | Implemented; local checks passed | Versioned shared system policy in twin/memory/native Neo4j query paths; mixed-relation/min-hop/multi-owner fixtures, stored-policy/UI warnings; real Neo4j unqualified |
 | 3. Join package, artifact and deployment identity | Implemented; local checks passed | Migration 0098, separate document/release digests, exact-estate explicit SBOM/deployment assertions, measured/declared identity, package/artifact cascade and evidence UI |
-| 4. Edge expiry and reconciliation | Pending | Freshness lifecycle, explicit stale/deleted/tombstoned states and idempotent reconciliation without silent evidence destruction |
+| 4. Edge expiry and reconciliation | Implemented; local qualification recorded below | Migration 0099, source-owned revision-checked lifecycle, atomic idempotent collection receipts, retained tombstones, as-of expiry/replay, separate uncertain reachability and UI; live PG/Neo4j remain unqualified |
 | 5. Propagate provenance/evidence/freshness | Pending | Versioned path-level explanations preserving sources, evidence references, observation times and confidence meaning |
 | 6. Process impact over implicated systems | Pending | Process closure over defined system scopes, deduplication and explicit inclusion reasons, not invented revenue loss |
 | 7. Exact target identities | Pending | Exact certificate/package/vendor resolution, explicit ambiguity and opt-in broad search rather than silent first match |
@@ -102,15 +103,41 @@ passed (one PG-tooling skip, seven live checks deselected; CI-workflow-contract
 module excluded), 352 frontend tests passed, plus typecheck, production build,
 SQLite migration and documentation checks. Existing warnings remain.
 
-## Step 4 — next implementation boundary
+## Step 4 — delivered lifecycle and conservative reconciliation
 
-Add explicit active/stale/expired/deleted/superseded relationship lifecycle and
-source-aware reconciliation, including deployment assertions from step 3.
-Partial/failed collection must not silently delete evidence; retries must be
-idempotent and preserve audit explanations. Historical captures/results must
-remain immutable, and expired linkage must remain unknown rather than a clean
-bill of health. Do not silently drop old Neo4j rows or treat their retention as
-current observed topology.
+Migration 0099 adds ACTIVE/STALE/DELETED/SUPERSEDED relationship metadata to
+system dependencies, SBOM bindings and deployment assertions; effective EXPIRED
+is evaluated at an explicit clock. Legacy metadata remains unbounded and does not
+receive a fabricated confirmation. Policy `/2` gates current propagation while
+retaining nonterminal uncertainty separately from active classification.
+
+Explicit ownership claims and state changes require writer roles, evidence and
+revision CAS. Complete source-owned collections mark missing ACTIVE rows STALE;
+partial/failed collection never infers absence. Bounded, monotonic and idempotent
+receipts, events and updates commit atomically; collectors cannot resurrect
+terminal rows. Graph deletion is now retained retirement requiring revision and
+evidence. Native eligibility refresh fails closed; incomplete sync cannot prune,
+and System relationship history is never absence-pruned.
+
+Graph fingerprints/diffs include lifecycle; captured twin replay defaults to the
+capture clock, with explicit alternate-clock reevaluation and named policy.
+Stored answers are unchanged. The UI separates active scope from potential
+uncertain systems, names unbounded eligibility and requires retirement evidence.
+See [guide 20](../bank-environment/20-relationship-lifecycle-and-reconciliation.md).
+
+Validation: **1,976 backend tests passed**, one PostgreSQL-tooling skip, seven
+live checks deselected, with 114 existing warnings; CI-workflow-contract module
+excluded. This includes the latest UTC-offset/SQLite normalization regression,
+source bounds, two-bank/platform isolation and retained replay checks. The final
+focused lifecycle/migration subset also passed **66 tests**. Frontend: **355 tests
+in 38 files**, TypeScript typecheck and production build (1.24 seconds) passed.
+Documentation: 22 Markdown files, 23 JSON blocks, 28 shell blocks, 83 explicit API
+references and 22 positive console routes checked; executable bank examples and
+new lifecycle request builders validated. New-file F/E9 lint and diff whitespace
+checks passed. CI workflows were not changed.
+
+Live PostgreSQL concurrency, real Neo4j execution, automatic collector scheduling,
+source-specific TTL policy and whole-platform bank qualification remain open.
 
 ## Later stages — design constraints
 

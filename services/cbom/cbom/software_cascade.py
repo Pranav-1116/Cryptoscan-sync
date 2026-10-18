@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from shared_models.software_identity import SCHEMA, artifact_digest, package_identity
+from shared_models.relationship_lifecycle import clock, current, possible, summary, effective_state
 
 
 def _same_scope(left, right):
@@ -27,7 +28,8 @@ def identify_software(snapshot, target, kind):
     return None
 
 
-def software_context(snapshot, *, purl=None, artifact_id=None, system_id=None):
+def software_context(snapshot, *, purl=None, artifact_id=None, system_id=None, now=None):
+    now = now or clock()
     artifacts = {a["id"]: a for a in snapshot.get("software_artifacts") or []}
     bindings = [b for b in snapshot.get("software_sbom_bindings") or []
                 if b.get("artifact_id") in artifacts and _same_scope(b, artifacts[b["artifact_id"]])]
@@ -47,19 +49,29 @@ def software_context(snapshot, *, purl=None, artifact_id=None, system_id=None):
     linked = [d for d in deployments if d.get("system_id") in known and
               (not known[d["system_id"]].get("environment") or
                known[d["system_id"]]["environment"] == d.get("environment"))]
+    eligible_artifacts = {b["artifact_id"] for b in bindings if current(b, now=now)} if purl is not None else selected_ids
+    possible_artifacts = {b["artifact_id"] for b in bindings if possible(b, now=now)} if purl is not None else selected_ids
+    active_links = [d for d in linked if d["artifact_id"] in eligible_artifacts and current(d, now=now)]
+    possible_links = [d for d in linked if d["artifact_id"] in possible_artifacts and possible(d, now=now)]
     linked_ids = {d["id"] for d in linked}
+    active_systems = {d["system_id"] for d in active_links}
+    possible_systems = {d["system_id"] for d in possible_links}
     selected = [artifacts[identifier] for identifier in sorted(selected_ids)]
     return {
         "schema": SCHEMA,
         "artifacts": selected,
-        "sbom_bindings": [{k: v for k, v in b.items() if k != "components"} for b in bindings],
+        "sbom_bindings": [{k: v for k, v in b.items() if k != "components"} | {"effective_state": effective_state(b, now=now)} for b in bindings],
         "packages": [{**c, "sbom_binding_id": b["id"], "artifact_id": b["artifact_id"]}
                      for b in bindings for c in b.get("components") or []
                      if purl is None or c.get("package_identity") == purl],
-        "deployments": deployments,
-        "systems": sorted({d["system_id"] for d in linked}),
+        "deployments": [{**d, "effective_state": effective_state(d, now=now)} for d in deployments],
+        "systems": sorted(active_systems),
+        "uncertain_systems": sorted(possible_systems - active_systems),
+        "historical_systems": sorted({d["system_id"] for d in linked} - possible_systems),
+        "relationship_lifecycle": summary([{**b, "record_kind": "sbom_binding"} for b in bindings] +
+                                           [{**d, "record_kind": "deployment"} for d in deployments], now=now),
         "unlinked_deployment_ids": sorted(d["id"] for d in deployments if d["id"] not in linked_ids),
-        "unbound_artifact_ids": sorted(selected_ids - {d["artifact_id"] for d in linked}),
+        "unbound_artifact_ids": sorted(selected_ids - {d["artifact_id"] for d in active_links}),
         "coverage": snapshot.get("software_supply_chain_coverage"),
         "deployment_evidence": "explicit declarations; not independently observed running deployments",
     }

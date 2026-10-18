@@ -81,9 +81,9 @@ retrying allows inspection of the committed assertion. There is no update/delete
 API in this delivery. This is write-once **API behavior**, not a claim privileged
 SQL administrators cannot alter the database.
 
-New rollout revisions require new deployment keys. Old assertions remain until
-step 4 introduces explicit lifecycle/reconciliation; they must not be sold as a
-verified list of deployments running now. A declaration cannot silently become
+New rollout revisions require new deployment keys. [Step 4](20-relationship-lifecycle-and-reconciliation.md)
+now adds explicit lifecycle/reconciliation while retaining old assertion identity;
+these declarations must not be sold as a verified list of deployments running now. A declaration cannot silently become
 `CONTENT_HASHED` by retrying through another endpoint.
 
 **Downgrade is destructive for these three new tables.** Export/review the
@@ -342,8 +342,9 @@ Source entry points:
 
 ## 8. Still pending
 
-Step 4 must address expiry, supersession, stale/deleted deployments and safe
-reconciliation. Steps 5–10 still cover full path evidence/freshness, process
+[Step 4](20-relationship-lifecycle-and-reconciliation.md) now implements expiry,
+supersession, stale/deleted deployments and conservative source reconciliation.
+Steps 5–10 still cover full path evidence/freshness, process
 closure, general exact/ambiguous identity resolution, operational dependency
 modes, broad coverage UX and bank-negative/backend qualification. This delivery
 adds a usable explicit join, not automated discovery or verified current runtime

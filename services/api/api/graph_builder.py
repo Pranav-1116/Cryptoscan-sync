@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
+from shared_models.relationship_lifecycle import lifecycle_payload
 
 from db.models.certificate import Certificate
 from db.models.crypto_asset import CryptoAsset
@@ -30,8 +31,8 @@ def _bounded_all(query, *, max_rows: int = _PER_KIND_MAX_ROWS):
     """Yield rows of a query in bounded pages, collecting a truncation flag."""
     rows: list[Any] = []
     offset = 0
-    while len(rows) < max_rows:
-        page = query.offset(offset).limit(1000).all()
+    while len(rows) <= max_rows:
+        page = query.offset(offset).limit(min(1000, max_rows + 1 - len(rows))).all()
         if not page:
             break
         rows.extend(page)
@@ -48,6 +49,8 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
     systems, systems_truncated = systems_repo.list_all_bounded()
     collection_meta = {
         "systems_total": len(systems),
+        "outcome": "PARTIAL",
+        "reason": "bounded multi-source projection is not an authoritative source collection",
         "systems_truncated": systems_truncated,
         "bounds": {"systems_max_rows": 50_000, "per_kind_max_rows": 50_000},
     }
@@ -78,7 +81,9 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
         )
         for edge in systems_repo.dependencies_for(system.id):
             edges.append(
-                {"parent_id": edge.parent_id, "child_id": edge.child_id, "relation": edge.relation or "CALLS"}
+                {"id": edge.id, "parent_id": edge.parent_id, "child_id": edge.child_id,
+                 "relation": edge.relation or "CALLS", "source": edge.source,
+                 "confidence": edge.confidence, **lifecycle_payload(edge)}
             )
         for asset in assets:
             payload = asset.to_dict()

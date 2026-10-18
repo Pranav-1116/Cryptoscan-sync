@@ -209,8 +209,10 @@ def _snapshot(db: Session) -> dict:
         if algorithm
     }
 
+    from shared_models.relationship_lifecycle import lifecycle_payload
     dependencies = [
-        {"source": dep.parent_id, "target": dep.child_id, "type": dep.relation}
+        {"id": dep.id, "source": dep.parent_id, "target": dep.child_id, "type": dep.relation,
+         **lifecycle_payload(dep)}
         for dep in db.query(SystemDependency).limit(50000).all()
     ]
     dependency_source = "system_dependencies"
@@ -226,7 +228,7 @@ def _snapshot(db: Session) -> dict:
             dependencies = [
                 {"source": str(edge.get("from")),
                  "target": str(edge.get("to")),
-                 "type": str(edge.get("label") or "graph")}
+                 "type": str(edge.get("label") or "graph"), **lifecycle_payload(edge)}
                 for edge in snap.edges
                 if edge.get("from") and edge.get("to")
             ]

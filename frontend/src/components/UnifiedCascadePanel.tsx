@@ -132,6 +132,24 @@ export default function UnifiedCascadePanel() {
               : "Relationship policy unavailable for this stored answer; do not assume traversal parity."}
           </div>
 
+          <section aria-label="Relationship lifecycle" role="status" style={{ marginBottom: 12 }}>
+            {result.relationship_lifecycle ? <>
+              <strong>Relationship eligibility as of {result.relationship_lifecycle.as_of}</strong>
+              <div>{Object.entries(result.relationship_lifecycle.counts).map(([state, count]) => `${state}: ${count}`).join(" · ") || "No relationship records"}</div>
+              <div>{result.relationship_lifecycle.excluded_count} non-current records retained and excluded from active traversal. Fewer active links are not proof of remediation or safety.</div>
+              {result.relationship_lifecycle.unbounded_active_count > 0 && <div>{result.relationship_lifecycle.unbounded_active_count} active relationships have no expiry deadline. Legacy/unbounded eligibility is not verified freshness.</div>}
+              {impact.lifecycle_uncertainty && <div>Potential additional systems through uncertain nonterminal links: {impact.lifecycle_uncertainty.count}. Separate from active exposure and not proven failure.
+                <ul>{impact.lifecycle_uncertainty.possible_additional_systems.slice(0, 20).map(id => <li key={id}>{id}</li>)}</ul>
+                {impact.lifecycle_uncertainty.count > 20 && <span>Showing first 20 potential systems.</span>}
+              </div>}
+              <ul>{result.relationship_lifecycle.excluded_records.slice(0, 20).map((record, i) => <li key={`${record.id}-${i}`}>
+                {record.kind || "relationship"} {record.id || "unidentified"}: {record.state}
+                {record.valid_until && ` · valid until ${record.valid_until}`}
+              </li>)}</ul>
+              {(result.relationship_lifecycle.excluded_records.length > 20 || result.relationship_lifecycle.excluded_records_truncated) && <div>Lifecycle evidence listing is bounded; not all retained records are shown.</div>}
+            </> : <div>Lifecycle metadata unavailable for this stored answer. Do not assume its links are current.</div>}
+          </section>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
             {categories.map(({ label, value, description }) => (
               <section key={label} aria-label={label}
@@ -226,7 +244,7 @@ export default function UnifiedCascadePanel() {
               {layers.software.sbom_bindings.slice(0, 20).map((binding) => (
                 <div key={binding.id} style={{ overflowWrap: "anywhere", marginTop: 6 }}>
                   SBOM: {binding.sbom_artifact_id} · document SHA-256: {binding.sbom_sha256}
-                  {" · "}{binding.assertion_source} · evidence: {binding.evidence_ref}
+                  {" · "}{binding.assertion_source} · {binding.effective_state || binding.lifecycle_state || "legacy/unbounded"} · evidence: {binding.evidence_ref}
                   {binding.unresolved_component_count > 0 && ` · ${binding.unresolved_component_count} components lack an exact usable package identity`}
                 </div>
               ))}
@@ -238,7 +256,7 @@ export default function UnifiedCascadePanel() {
               {layers.software.deployments.slice(0, 20).map((deployment) => (
                 <div key={deployment.id} style={{ overflowWrap: "anywhere", marginTop: 6 }}>
                   Application: {deployment.system_id} · {deployment.environment} · {deployment.deployment_key}
-                  {" · "}{deployment.assertion_source} · evidence: {deployment.evidence_ref}
+                  {" · "}{deployment.assertion_source} · {deployment.effective_state || deployment.lifecycle_state || "legacy/unbounded"} · evidence: {deployment.evidence_ref}
                 </div>
               ))}
               {(layers.software.artifacts.length > 20 || layers.software.deployments.length > 20 || layers.software.sbom_bindings.length > 20 || layers.software.packages.length > 20) && <div>Showing first 20 records per collection; full returned evidence remains in the stored result.</div>}

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Panel } from "./ui";
-import { apiGraphDeleteEdge, apiGraphEdges, apiGraphRegisterEdge, GraphEdge } from "../lib/api";
+import { apiGraphDeleteEdge, apiGraphEdges, apiGraphRegisterEdge, RegisteredDependencyEdge } from "../lib/api";
 
 const RELATIONS = ["CALLS", "CONTAINS", "USES", "HOSTS", "BACKS_UP"];
 
@@ -8,11 +8,13 @@ const RELATIONS = ["CALLS", "CONTAINS", "USES", "HOSTS", "BACKS_UP"];
  *  remove the system→system edges every walk (twin, cascade, blast radius)
  *  reads — nothing else writes them. */
 export default function EdgeManagerPanel() {
-  const [edges, setEdges] = useState<GraphEdge[]>([]);
+  const [edges, setEdges] = useState<RegisteredDependencyEdge[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "offline">("loading");
   const [parentId, setParentId] = useState("");
   const [childId, setChildId] = useState("");
   const [relation, setRelation] = useState("CALLS");
+  const [retirementReason, setRetirementReason] = useState("");
+  const [retirementEvidence, setRetirementEvidence] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -44,13 +46,14 @@ export default function EdgeManagerPanel() {
     }
   };
 
-  const remove = async (edge: GraphEdge) => {
+  const remove = async (edge: RegisteredDependencyEdge) => {
+    if (edge.lifecycle_revision == null || !retirementReason.trim() || !retirementEvidence.trim()) return;
     setBusy(true);
     setNote(null);
-    const r = await apiGraphDeleteEdge(edge.parent_id, edge.child_id);
+    const r = await apiGraphDeleteEdge(edge.parent_id, edge.child_id, { expected_revision: edge.lifecycle_revision, reason: retirementReason.trim(), evidence_ref: retirementEvidence.trim() });
     setBusy(false);
     if (r.source === "live" && r.data) {
-      setNote(`removed ${edge.parent_name || edge.parent_id} → ${edge.child_name || edge.child_id}`);
+      setNote(`retired (evidence retained) ${edge.parent_name || edge.parent_id} → ${edge.child_name || edge.child_id}`);
       load();
     } else {
       setNote(r.error || "delete failed");
@@ -77,6 +80,14 @@ export default function EdgeManagerPanel() {
         </button>
       </div>
 
+      <div style={{ marginBottom: 12 }}>
+        <div>Retirement retains an audited tombstone; it does not prove remediation or failure.</div>
+        <input className="inp sm" aria-label="retirement reason" placeholder="Approved retirement reason" maxLength={500}
+          value={retirementReason} onChange={e => setRetirementReason(e.target.value)} />
+        <input className="inp sm" aria-label="retirement evidence reference" placeholder="Evidence/change reference" maxLength={500}
+          value={retirementEvidence} onChange={e => setRetirementEvidence(e.target.value)} />
+      </div>
+
       {note && <div style={{ fontSize: 12, color: "var(--dim)", marginBottom: 8 }}>{note}</div>}
 
       {state === "loading" && <div style={{ fontSize: 12, color: "var(--dim)" }}>loading edges…</div>}
@@ -97,9 +108,10 @@ export default function EdgeManagerPanel() {
               <span style={{ color: "var(--cyan)" }}>→</span>
               <span style={{ fontWeight: 600 }}>{e.child_name || e.child_id}</span>
               <Badge variant="neutral">{e.relation}</Badge>
-              <button className="btn sm outline" style={{ marginLeft: "auto", fontSize: 11 }} disabled={busy}
+              <span>{e.effective_state || "lifecycle unknown"}{e.valid_until ? ` · expires ${e.valid_until}` : " · no expiry deadline"}</span>
+              <button className="btn sm outline" style={{ marginLeft: "auto", fontSize: 11 }} disabled={busy || e.lifecycle_revision == null || ["DELETED", "SUPERSEDED"].includes(e.effective_state || "") || !retirementReason.trim() || !retirementEvidence.trim()}
                 onClick={() => remove(e)}>
-                remove
+                retire
               </button>
             </div>
           ))}

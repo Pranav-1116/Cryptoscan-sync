@@ -5,6 +5,7 @@ The adapter sends the same query text and parameters to this double in tests.
 """
 
 from __future__ import annotations
+from shared_models.relationship_lifecycle import FIELDS
 
 import re
 from collections import deque
@@ -82,6 +83,8 @@ class InMemoryBoltGraph:
             if existing_src == src and existing_dst == dst and existing_rel == rel:
                 if rel == "CALLS" and existing_props.get("relation") != (props or {}).get("relation"):
                     continue
+                if rel == "CALLS" and existing_props.get("lifecycle_revision") is not None and ((props or {}).get("lifecycle_revision") is None or existing_props["lifecycle_revision"] > (props or {})["lifecycle_revision"]):
+                    return
                 existing_props.update(props or {})
                 return
         self.edges.append((src, rel, dst, dict(props or {})))
@@ -150,6 +153,7 @@ class FakeSession:
             "merge_containers": self._merge_nodes,
             "merge_uses": self._merge_uses,
             "merge_calls": self._merge_calls,
+            "quarantine_legacy_calls": self._quarantine_legacy_calls,
             "merge_supports": self._merge_supports,
             "merge_owned_by": self._merge_owned,
             "merge_comply": self._merge_comply,
@@ -205,6 +209,19 @@ class FakeSession:
             self.graph.merge_edge("System", row["system_id"], "USES", "CryptoAsset", row["asset_id"], {"usage_type": row.get("usage_type")})
         return []
 
+    def _quarantine_legacy_calls(self, params):
+        count = 0
+        for src, rel, dst, properties in self.graph.edges:
+            if rel != "CALLS" or properties.get("relation") is not None:
+                continue
+            if any((self.graph.nodes.get(key, {}).get("tenant_id") or "platform") != params["tenant"] for key in (src, dst)):
+                continue
+            if any(s == src and d == dst and r == "CALLS" and p.get("relation") is not None and p.get("lifecycle_revision") is not None
+                   for s, r, d, p in self.graph.edges):
+                properties.update(projection_state="STALE", lifecycle_reason="ambiguous_legacy_projection")
+                count += 1
+        return [{"quarantined": count}]
+
     def _merge_calls(self, params):
         for row in params.get("rows") or []:
             self.graph.merge_edge(
@@ -215,7 +232,8 @@ class FakeSession:
                 row["child_id"],
                 {"protocol": row.get("protocol"), "relation": row.get("relation"),
                  "frequency": row.get("frequency"), "provenance": row.get("provenance"),
-                 "source": row.get("source"), "observed_at": row.get("observed_at")},
+                 "source": row.get("source"), "observed_at": row.get("observed_at"),
+                 **{key: row.get(key) for key in (*FIELDS, "valid_until_epoch")}},
             )
         return []
 
@@ -348,6 +366,11 @@ class FakeSession:
             else:
                 allowed = params.get("legacy_dependency_relations") or ["CALLS"]
                 label = normalize_relation(properties.get("protocol"))
+            from datetime import datetime, timezone
+            from shared_models.relationship_lifecycle import current
+            as_of = datetime.fromtimestamp(params.get("lifecycle_as_of", datetime.now(timezone.utc).timestamp()), timezone.utc)
+            if not current(properties, now=as_of):
+                continue
             if label not in allowed:
                 continue
             if not reverse and src[1] == node_id:

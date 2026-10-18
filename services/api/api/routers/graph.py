@@ -7,17 +7,18 @@ import json
 import logging
 from typing import Any
 
+from shared_models.relationship_lifecycle import lifecycle_payload, clock, effective_state, edge_changes, utc
 from shared_models.dependency_semantics import edge_relation, policy_metadata, propagates
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
+from pydantic import BaseModel, AwareDatetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from agility.roadmap import wave_for
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_roles
 from api.graph_builder import collect_graph_payload, graph_from_db, sync_graph
 from business_context.core.enricher import enrich_assets
 from db.models import CryptoAsset, System
@@ -777,6 +778,9 @@ def _canon_edge_key(edge: dict[str, Any]) -> tuple[str, str, str]:
 
 def _canon_graph(graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """Canonicalize a graph's node/edge set (kind/hops-normalized) for hashing."""
+    vis = graph.to_vis()
+    graph_nodes = getattr(graph, "nodes", None) or {n["id"]: n for n in vis.get("nodes") or []}
+    as_of = getattr(graph, "as_of", None) or clock()
     nodes = [
         {
             "key": list(_canon_node_key(n)),
@@ -785,17 +789,18 @@ def _canon_graph(graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dic
             "algorithm": n.get("algorithm"),
             "qv": bool(n.get("kind") == "CryptoAsset" and _quantum_vulnerable_algorithm(str(n.get("algorithm") or ""))),
         }
-        for n in graph.nodes.values()
+        for n in graph_nodes.values()
     ]
     nodes.sort(key=lambda n: (n["kind"] or "", n["name"] or "", n["algorithm"] or ""))
     edges = [
-        {"from": e.get("from"), "to": e.get("to"), "label": e.get("label")}
-        for e in graph.to_vis().get("edges") or []
+        {"from": e.get("from"), "to": e.get("to"), "label": e.get("label"),
+         **lifecycle_payload(e), "effective_state": effective_state(e, now=as_of)}
+        for e in vis.get("edges") or []
     ]
-    edges.sort(key=lambda e: (e["from"], e["to"], e["label"]))
+    edges.sort(key=lambda e: (e["from"], e["to"], e["label"], json.dumps(lifecycle_payload(e), sort_keys=True)))
     nodes_by_kind: dict[str, int] = {}
     edges_by_relation: dict[str, int] = {}
-    for node in graph.nodes.values():
+    for node in graph_nodes.values():
         k = node.get("kind") or node.get("group") or "Node"
         nodes_by_kind[k] = nodes_by_kind.get(k, 0) + 1
     for e in graph.to_vis().get("edges") or []:
@@ -805,7 +810,7 @@ def _canon_graph(graph) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dic
 
 
 def _fingerprint(nodes: list[dict], edges: list[dict]) -> str:
-    payload = json.dumps({"nodes": nodes, "edges": edges}, sort_keys=True, default=str)
+    payload = json.dumps({"nodes": nodes, "edges": edges, "relationship_policy": policy_metadata()}, sort_keys=True, default=str)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -855,6 +860,7 @@ def _snapshot_graph(db: Session, *, user: str = "system") -> dict[str, Any]:
     new_version = (prev.version + 1) if prev else 1
     row = GraphSnapshot(
         version=new_version, fingerprint=fingerprint,
+        relationship_policy=policy_metadata(), lifecycle_as_of=getattr(graph, "as_of", None) or clock(),
         parent_fingerprint=prev.fingerprint if prev else None,
         node_count=len(nodes), edge_count=len(edges),
         nodes_by_kind=nodes_by_kind, edges_by_relation=edges_by_relation,
@@ -956,7 +962,14 @@ def graph_compare(
     prev_algos = {_node_id(n): n.get("algorithm") for n in (from_row.nodes or [])}
     cur_algos = {_node_id(n): n.get("algorithm") for n in (to_row.nodes or [])}
 
+    lifecycle_changes = edge_changes(from_row.edges or [], to_row.edges or [])
+    old_policy = (from_row.relationship_policy or {}).get("version")
+    new_policy = (to_row.relationship_policy or {}).get("version")
     return {
+        "relationship_lifecycle_changes": lifecycle_changes,
+        "policy_comparison": {"before": old_policy, "after": new_policy,
+            "comparable": old_policy is not None and old_policy == new_policy},
+        "eligibility_change_is_not_remediation": True,
         "from": {"version": from_row.version, "node_count": from_row.node_count, "edge_count": from_row.edge_count},
         "to": {"version": to_row.version, "node_count": to_row.node_count, "edge_count": to_row.edge_count},
         "added_nodes": [{"id": k, "kind": cur_kinds.get(k), "algorithm": cur_algos.get(k)} for k in sorted(cur_nodes - prev_nodes)],
@@ -964,7 +977,7 @@ def graph_compare(
         "added_edges": [list(e) for e in sorted(cur_edges - prev_edges)],
         "removed_edges": [list(e) for e in sorted(prev_edges - cur_edges)],
         "new_quantum_vulnerable": to_row.new_quantum_vulnerable or [],
-        "changed": (cur_nodes != prev_nodes) or (cur_edges != prev_edges),
+        "changed": (cur_nodes != prev_nodes) or (cur_edges != prev_edges) or bool(lifecycle_changes) or old_policy != new_policy,
         "backend": graph_from_db(db).backend,
     }
 
@@ -1023,6 +1036,7 @@ class EdgeRequest(BaseModel):
     # graph snapshot) or imported. Confidence 0..1 is optional.
     source: str = "manual"
     confidence: float | None = None
+    valid_until: AwareDatetime | None = None
 
 
 def _resolve_system(db: Session, system_id: str | None,
@@ -1046,6 +1060,8 @@ def _edge_payload(db: Session, edge) -> dict[str, Any]:
 
     names = {s.id: s.name for s in db.query(System).all()}
     return {
+        "id": edge.id, **lifecycle_payload(edge),
+        "effective_state": effective_state(lifecycle_payload(edge), now=clock()),
         "parent_id": edge.parent_id, "child_id": edge.child_id,
         "parent_name": names.get(edge.parent_id),
         "child_name": names.get(edge.child_id),
@@ -1089,14 +1105,19 @@ def list_dependency_edges(
 @router.post("/graph/edges")
 def register_dependency_edge(
     body: EdgeRequest,
-    user: str = Depends(get_current_user),
+    request: Request,
+    user: str = Depends(require_roles("admin", "superadmin", "security_analyst")),
     db: Session = Depends(get_db_session),
 ):
     """Register a system→system dependency edge (the graph's input side)."""
     from db.models.system_dependency import SystemDependency
 
+    from api.routers.software_supply_chain import _tenant
+    tenant = _tenant(request, db, user)
     parent = _resolve_system(db, body.parent_id, body.parent_name)
     child = _resolve_system(db, body.child_id, body.child_name)
+    if parent.tenant_id != tenant or child.tenant_id != tenant:
+        raise HTTPException(404, "system not found in the selected estate")
     if parent.id == child.id:
         raise HTTPException(status_code=400,
                             detail="self-dependency edges are not allowed")
@@ -1110,8 +1131,9 @@ def register_dependency_edge(
                    f"({existing.relation or 'CALLS'})")
 
     source = body.source if body.source in {"manual", "discovered", "imported"} else "manual"
-    edge = SystemRepository(db).add_dependency(
-        parent.id, child.id, body.relation)
+    edge = SystemDependency(tenant_id=tenant, parent_id=parent.id, child_id=child.id, relation=body.relation)
+    db.add(edge)
+    edge.valid_until = utc(body.valid_until) if body.valid_until is not None else None
     edge.source = source
     edge.created_by = user
     if body.confidence is not None:
@@ -1138,30 +1160,28 @@ def register_dependency_edge(
 def delete_dependency_edge(
     parent_id: str,
     child_id: str,
-    user: str = Depends(get_current_user),
+    request: Request,
+    expected_revision: int = Query(..., ge=0),
+    reason: str = Query(..., min_length=1, max_length=500),
+    evidence_ref: str = Query(..., min_length=1, max_length=500),
+    user: str = Depends(require_roles("admin", "superadmin", "security_analyst")),
     db: Session = Depends(get_db_session),
 ):
-    """Remove a registered dependency edge (404 when it never existed)."""
+    """Retain an audited tombstone; clients must supply a revision and evidence."""
+    from api.routers.relationship_lifecycle import scoped, mutate, commit
+    from api.routers.software_supply_chain import _tenant
     from db.models.system_dependency import SystemDependency
-
-    edge = db.query(SystemDependency).filter(
-        SystemDependency.parent_id == parent_id,
-        SystemDependency.child_id == child_id).first()
+    if not reason.strip() or not evidence_ref.strip():
+        raise HTTPException(422, "reason and evidence_ref must not be blank")
+    tenant = _tenant(request, db, user)
+    edge = scoped(db, SystemDependency, tenant).filter_by(parent_id=parent_id, child_id=child_id).one_or_none()
     if edge is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"edge not found: {parent_id} -> {child_id}")
-    db.delete(edge)
-    db.commit()
-    from api.events.platform_events import emit_platform_event
-
-    emit_platform_event(
-        "graph.updated",
-        f"Dependency edge removed: {parent_id} -> {child_id}",
-        {"parent_id": parent_id, "child_id": child_id, "removed": True},
-        target_name="graph",
-    )
-    return {"deleted": True, "parent_id": parent_id, "child_id": child_id}
+        raise HTTPException(404, "edge not found")
+    mutate(db, edge, "system_dependency", tenant, user, {"lifecycle_state": "DELETED"},
+           expected_revision=expected_revision, reason=reason, evidence_ref=evidence_ref)
+    commit(db)
+    return {"deleted": True, "retained": True, "parent_id": parent_id, "child_id": child_id,
+            "edge": _edge_payload(db, edge)}
 
 
 # --------------------------------------------------------------------------

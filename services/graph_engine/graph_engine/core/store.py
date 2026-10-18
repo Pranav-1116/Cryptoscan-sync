@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from shared_models.relationship_lifecycle import FIELDS, clock, summary as lifecycle_summary
+
 from typing import Any, Iterable
 
 from shared_models.dependency_semantics import (
@@ -29,7 +31,8 @@ logger = logging.getLogger(__name__)
 class Neo4jGraphStore:
     backend = "neo4j"
 
-    def __init__(self, driver, database: str | None = None) -> None:
+    def __init__(self, driver, database: str | None = None, *, now=None) -> None:
+        self._as_of = now
         self.driver = driver
         self.database = database or get_graph_settings().NEO4J_DATABASE
 
@@ -135,15 +138,22 @@ class Neo4jGraphStore:
                 continue
             self._run(query, rows=rows)
             written += len(rows)
-        pruned = self._prune_ghosts(batches, tenant=tenant)
+        # Collection gaps must never detach and erase relationship evidence.
+        # Full non-System maintenance pruning requires an explicit attestation.
+        complete = (collection_meta.get("outcome") == "COMPLETE"
+                    and collection_meta.get("truncated") is False
+                    and not any(value for key, value in collection_meta.items() if key.endswith("_truncated")))
+        self._run(cypher_writes.QUARANTINE_LEGACY_CALLS, tenant=tenant)
+        pruned = self._prune_ghosts(batches, tenant=tenant) if complete else 0
         counts = self.counts()
         logger.info("neo4j_graph_synced", extra={"written": written, "pruned": pruned, **counts})
         return {"written": written, "pruned": pruned, **counts, "backend": self.backend,
-                "collection": collection_meta}
+                "collection": collection_meta, "pruning_skipped": not complete,
+                "retention": "System nodes and their relationship history are never absence-pruned"}
 
     _PRUNE_KINDS = (
         # (label, id property, id key in the merge rows)
-        ("System", "system_id", "system_id"),
+        # System nodes are retained: detach-delete would erase tombstones.
         ("CryptoAsset", "asset_id", "asset_id"),
         ("BusinessProcess", "process_id", "process_id"),
         ("BusinessOwner", "owner_id", "owner_id"),
@@ -202,6 +212,22 @@ class Neo4jGraphStore:
                 pruned += int(result[0].get("pruned") or 0)
         return pruned
 
+    def refresh_relationship_lifecycle(self, systems, edges):
+        """Fail-closed refresh of SQL-backed eligibility before native reads.
+
+        No absence inference and no pruning: a bounded collector is not a full
+        inventory. Do not re-stamp unregistered/inferred edges as SQL evidence.
+        """
+        managed = [edge for edge in edges if edge.get("lifecycle_revision") is not None]
+        if not managed:
+            return
+        tenant = self._sync_tenant()
+        system_rows = payload.systems_rows([dict(row, tenant_id=tenant) for row in systems])
+        if system_rows:
+            self._run(cypher_writes.MERGE_SYSTEMS, rows=system_rows)
+        self._run(cypher_writes.MERGE_CALLS, rows=payload.call_rows([dict(edge, tenant_id=tenant) for edge in managed]))
+        self._run(cypher_writes.QUARANTINE_LEGACY_CALLS, tenant=tenant)
+
     def _origins(self, start_id: str) -> list[str]:
         start_id = system_id(start_id)
         rows = self._run(ORIGIN_SYSTEM, start=start_id)
@@ -220,7 +246,7 @@ class Neo4jGraphStore:
         by_id: dict[str, dict[str, Any]] = {}
         for origin in origins:
             rows = self._run(DEPENDENTS if reverse else BLAST_RADIUS,
-                             start=origin, hops=hops, **query_parameters())
+                             start=origin, hops=hops, **query_parameters(now=self._as_of))
             for row in rows:
                 sid = str(row.get("id") or "")
                 if not sid or sid in origins:
@@ -255,7 +281,7 @@ class Neo4jGraphStore:
             path_hops = 0
         elif resolved_start and resolved_target:
             query = SHORTEST_PATH_UPSTREAM if direction == "upstream" else SHORTEST_PATH_DOWNSTREAM
-            rows = self._run(query, start=origin, target=target, **query_parameters())
+            rows = self._run(query, start=origin, target=target, **query_parameters(now=self._as_of))
             if rows and rows[0].get("names"):
                 names = [str(item) for item in rows[0]["names"]]
                 path_hops = int(rows[0].get("hops") or (len(names) - 1))
@@ -363,7 +389,7 @@ class Neo4jGraphStore:
         return {"start": origin or start_id, "scopes": sorted(set(scopes)), "backend": self.backend}
 
     def vendor_path(self, start_id: str) -> dict[str, Any]:
-        rows = self._run(VENDOR_PATH, start=system_id(start_id), **query_parameters())
+        rows = self._run(VENDOR_PATH, start=system_id(start_id), **query_parameters(now=self._as_of))
         if not rows:
             return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata()}
         row = rows[0]
@@ -426,7 +452,7 @@ class Neo4jGraphStore:
                 # §4.5 (round 43): relationship properties written at MERGE
                 # time (provenance class + source) survive the export instead
                 # of collapsing to a bare relation label.
-                for prop in ("provenance", "source", "observed_at"):
+                for prop in ("provenance", "source", "observed_at", *FIELDS):
                     value = rel.get(prop) if hasattr(rel, "get") else getattr(rel, prop, None)
                     if value is None and isinstance(rel, dict):
                         value = rel.get(prop)
@@ -434,7 +460,9 @@ class Neo4jGraphStore:
                         edge[prop] = value
                 edges.append(edge)
                 nodes[other["id"]] = other
-        return {"nodes": list(nodes.values()), "edges": edges, "backend": self.backend}
+        as_of = self._as_of or clock()
+        return {"nodes": list(nodes.values()), "edges": edges, "backend": self.backend,
+                "lifecycle_as_of": as_of.isoformat(), "relationship_lifecycle": lifecycle_summary(edges, now=as_of)}
 
 
 def _as_vis_node(raw: Any) -> dict[str, Any] | None:

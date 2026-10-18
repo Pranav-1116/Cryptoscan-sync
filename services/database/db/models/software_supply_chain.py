@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
 from db.tenancy import TenantScoped
+from db.models.relationship_lifecycle import RelationshipLifecycle
 
 
 class SoftwareArtifact(BaseModel, TenantScoped):
@@ -29,7 +30,7 @@ class SoftwareArtifact(BaseModel, TenantScoped):
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
 
 
-class ReleaseSbomBinding(BaseModel, TenantScoped):
+class ReleaseSbomBinding(BaseModel, TenantScoped, RelationshipLifecycle):
     __tablename__ = "release_sbom_bindings"
     __table_args__ = (
         CheckConstraint("scope_key = CASE WHEN tenant_id IS NULL THEN 'platform' ELSE 'tenant:' || tenant_id END",
@@ -50,7 +51,7 @@ class ReleaseSbomBinding(BaseModel, TenantScoped):
     created_by: Mapped[str] = mapped_column(String(100), nullable=False)
 
 
-class SoftwareDeployment(BaseModel, TenantScoped):
+class SoftwareDeployment(BaseModel, TenantScoped, RelationshipLifecycle):
     __tablename__ = "software_deployments"
     __table_args__ = (
         CheckConstraint("scope_key = CASE WHEN tenant_id IS NULL THEN 'platform' ELSE 'tenant:' || tenant_id END",

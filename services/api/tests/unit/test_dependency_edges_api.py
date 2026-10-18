@@ -150,7 +150,7 @@ def app_db():
 # ------------------------------------------------------------ edge CRUD
 
 def test_register_edge_by_name_and_id(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/graph/edges", json={
             "parent_name": "web-frontend", "child_id": "sys-d",
             "relation": "CONTAINS"})
@@ -166,21 +166,21 @@ def test_register_edge_by_name_and_id(app_db):
 
 
 def test_register_edge_rejects_unknown_system(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/graph/edges", json={
             "parent_id": "nope", "child_id": "sys-d"})
     assert resp.status_code == 404
 
 
 def test_register_edge_rejects_self_loop(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/graph/edges", json={
             "parent_id": "sys-a", "child_id": "sys-a"})
     assert resp.status_code == 400
 
 
 def test_register_edge_rejects_duplicate(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         first = client.post("/api/v1/graph/edges", json={
             "parent_id": "sys-a", "child_id": "sys-b"})
         assert first.status_code == 200
@@ -190,7 +190,7 @@ def test_register_edge_rejects_duplicate(app_db):
 
 
 def test_list_edges_and_filters(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         listed = client.get("/api/v1/graph/edges").json()
         assert listed["count"] == 3
         by_system = client.get(
@@ -204,21 +204,22 @@ def test_list_edges_and_filters(app_db):
         assert by_relation["count"] == 3
 
 
-def test_delete_edge_and_404_on_missing(app_db):
-    with TestClient(app_db) as client:
-        resp = client.delete("/api/v1/graph/edges/sys-a/sys-c")
+def test_delete_retains_tombstone_and_rejects_stale_revision(app_db):
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
+        resp = client.delete("/api/v1/graph/edges/sys-a/sys-c", params={"expected_revision": 0, "reason": "explicit operator retirement", "evidence_ref": "change/retire-1"})
         assert resp.status_code == 200
         assert resp.json()["deleted"] is True
-        again = client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        again = client.delete("/api/v1/graph/edges/sys-a/sys-c", params={"expected_revision": 0, "reason": "explicit operator retirement", "evidence_ref": "change/retire-1"})
         listed = client.get("/api/v1/graph/edges").json()
-    assert again.status_code == 404
-    assert listed["count"] == 2
+    assert again.status_code == 409
+    assert listed["count"] == 3
+    assert next(e for e in listed["edges"] if e["parent_id"] == "sys-a")["effective_state"] == "DELETED"
 
 
 def test_registered_edge_is_visible_in_blast_radius(app_db):
     """The write surface and the read surface must agree: register an edge,
     then see it in the walk."""
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         client.post("/api/v1/graph/edges", json={
             "parent_id": "sys-a", "child_id": "sys-b"})
         radius = client.get("/api/v1/graph/blast-radius",
@@ -232,7 +233,7 @@ def test_registered_edge_is_visible_in_blast_radius(app_db):
 # ------------------------------------------------------------ asset radius
 
 def test_blast_radius_from_shared_asset_unions_owners(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.get("/api/v1/graph/blast-radius",
                           params={"asset_id": "ca-shared", "hops": 3})
     assert resp.status_code == 200
@@ -245,14 +246,14 @@ def test_blast_radius_from_shared_asset_unions_owners(app_db):
 
 
 def test_blast_radius_from_unlinked_asset_is_404(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.get("/api/v1/graph/blast-radius",
                           params={"asset_id": "ca-unlinked"})
     assert resp.status_code == 404
 
 
 def test_blast_radius_requires_a_start(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.get("/api/v1/graph/blast-radius")
     assert resp.status_code == 400
 
@@ -260,7 +261,7 @@ def test_blast_radius_requires_a_start(app_db):
 # ------------------------------------------------------------ scan CBOM
 
 def test_scan_cbom_carries_observed_cascade(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.get("/api/v1/cbom/scan/scan-1")
     assert resp.status_code == 200
     bom = resp.json()
@@ -298,7 +299,7 @@ def test_twin_snapshot_carries_new_real_feeds(app_db):
 
 
 def test_certificate_cascade_names_system_from_usage(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/technology-bom/cascade",
                            json={"target": "ab" * 32})
     assert resp.status_code == 200
@@ -312,7 +313,7 @@ def test_certificate_cascade_names_system_from_usage(app_db):
 
 
 def test_system_cascade_names_vendor_crypto(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/technology-bom/cascade",
                            json={"target": "payment-core"})
     assert resp.status_code == 200
@@ -352,7 +353,7 @@ def _login(session, app, username: str) -> TestClient:
 @pytest.fixture()
 def tenants(tenancy_session):
     users = UserRepository(tenancy_session)
-    users.create_user("acme_viewer", hash_password("x"), ["viewer"])
+    users.create_user("acme_viewer", hash_password("x"), ["security_analyst"])
     tenancy_session.add(Tenant(id="acme", name="Acme Bank", slug="acme"))
     tenancy_session.add(Tenant(id="globex", name="Globex", slug="globex"))
     tenancy_session.add(TenantMembership(tenant_id="acme",
@@ -389,7 +390,7 @@ def test_edges_are_tenant_scoped(tenants, tenancy_session):
     assert listed["edges"][0]["parent_id"] == "sys-acme"
     # globex's edge is invisible — in the list and by direct delete
     assert all("globex" not in str(e).lower() for e in listed["edges"])
-    resp = acme.delete("/api/v1/graph/edges/sys-globex/sys-globex-2")
+    resp = acme.delete("/api/v1/graph/edges/sys-globex/sys-globex-2", params={"expected_revision": 0, "reason": "retire", "evidence_ref": "change/1"})
     assert resp.status_code == 404
 
     # and the new edge is stamped to the acme tenant, not the platform
@@ -409,7 +410,7 @@ def test_tenant_cannot_register_cross_tenant_edge(tenants):
 # ------------------------------------------------- round-3: process, waves, diff
 
 def test_process_cascade_end_to_end(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/technology-bom/cascade",
                            json={"target": "Card Payments"})
     assert resp.status_code == 200
@@ -432,7 +433,7 @@ def test_twin_systems_carry_migration_wave(app_db):
 
 
 def test_cascade_impact_groups_migration_waves(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/technology-bom/cascade",
                            json={"target": "payment-core"})
     body = resp.json()
@@ -441,11 +442,11 @@ def test_cascade_impact_groups_migration_waves(app_db):
 
 
 def test_cascade_run_diff_shows_blast_radius_change(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         first = client.post("/api/v1/technology-bom/cascade",
                             json={"target": "payment-core"}).json()
         # the blast radius shrinks: web-frontend stops calling payment-core
-        client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        client.delete("/api/v1/graph/edges/sys-a/sys-c", params={"expected_revision": 0, "reason": "explicit operator retirement", "evidence_ref": "change/retire-1"})
         second = client.post("/api/v1/technology-bom/cascade",
                              json={"target": "payment-core"}).json()
         diff = client.get(
@@ -461,7 +462,7 @@ def test_cascade_run_diff_shows_blast_radius_change(app_db):
 
 
 def test_cascade_run_diff_explicit_against(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         first = client.post("/api/v1/technology-bom/cascade",
                             json={"target": "payment-core"}).json()
         second = client.post("/api/v1/technology-bom/cascade",
@@ -475,7 +476,7 @@ def test_cascade_run_diff_explicit_against(app_db):
 
 
 def test_cascade_run_diff_rejects_different_targets(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         run_a = client.post("/api/v1/technology-bom/cascade",
                             json={"target": "payment-core"}).json()
         run_b = client.post("/api/v1/technology-bom/cascade",
@@ -487,7 +488,7 @@ def test_cascade_run_diff_rejects_different_targets(app_db):
 
 
 def test_cascade_run_diff_needs_an_earlier_run(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         only = client.post("/api/v1/technology-bom/cascade",
                            json={"target": "settlement"}).json()
         resp = client.get(
@@ -498,7 +499,7 @@ def test_cascade_run_diff_needs_an_earlier_run(app_db):
 # ------------------------------------------- round-4: internal missing parts
 
 def test_edge_provenance_recorded(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/graph/edges", json={
             "parent_id": "sys-a", "child_id": "sys-b",
             "relation": "CALLS", "confidence": 0.9})
@@ -513,7 +514,7 @@ def test_edge_provenance_recorded(app_db):
 
 
 def test_hardware_links_and_device_cascade_end_to_end(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         # before: device cascade is inventory-only
         before = client.post("/api/v1/technology-bom/cascade",
                              json={"target": "hsm-x"}).json()
@@ -554,7 +555,7 @@ def test_hardware_links_and_device_cascade_end_to_end(app_db):
 
 
 def test_vendor_edges_and_sub_tier_cascade(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         resp = client.post("/api/v1/graph/vendor-edges", json={
             "parent_vendor_name": "Thales", "child_vendor_name": "ChipWorks",
             "relation": "supplies"})
@@ -579,7 +580,7 @@ def test_vendor_edges_and_sub_tier_cascade(app_db):
 
 
 def test_discovered_edges_and_adoption(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         session = app_db.state.test_session
         # this scan declares payment-core imports crypto from web-frontend
         # (and names a system that does not exist — reported, never guessed)
@@ -634,7 +635,7 @@ def test_discovered_edges_and_adoption(app_db):
 
 
 def test_twin_snapshots_and_version_replay(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         first = client.post("/api/v1/digital-twin/snapshot").json()
         assert first["recorded"] is True and first["version"] == 1
         # unchanged estate → no duplicate version
@@ -648,7 +649,7 @@ def test_twin_snapshots_and_version_replay(app_db):
         assert client.get("/api/v1/digital-twin/snapshots/9").status_code == 404
 
         # the estate changes after capture…
-        client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        client.delete("/api/v1/graph/edges/sys-a/sys-c", params={"expected_revision": 0, "reason": "explicit operator retirement", "evidence_ref": "change/retire-1"})
         live = client.post("/api/v1/technology-bom/cascade",
                            json={"target": "payment-core"}).json()
         assert "sys-a" not in live["impact"]["affected_systems"]
@@ -656,7 +657,9 @@ def test_twin_snapshots_and_version_replay(app_db):
         replay = client.post("/api/v1/technology-bom/cascade",
                              params={"version": 1},
                              json={"target": "payment-core"}).json()
-        assert replay["replayed_over"] == {"twin_snapshot_version": 1}
+        assert replay["replayed_over"]["twin_snapshot_version"] == 1
+        assert replay["replayed_over"]["clock_source"] == "snapshot_capture"
+        assert replay["as_of"] == replay["replayed_over"]["evaluation_clock"]
         assert "sys-a" in replay["impact"]["affected_systems"]
         assert client.post("/api/v1/technology-bom/cascade",
                            params={"version": 9},
@@ -664,7 +667,7 @@ def test_twin_snapshots_and_version_replay(app_db):
 
 
 def test_watches_run_due_and_blast_radius_change(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         created = client.post("/api/v1/technology-bom/cascade/watch",
                               json={"target": "payment-core"}).json()
         assert created["watched"] is True
@@ -678,7 +681,7 @@ def test_watches_run_due_and_blast_radius_change(app_db):
         assert "diff" not in first["watches"][0]
 
         # the blast radius shrinks; the next run-due must report it
-        client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        client.delete("/api/v1/graph/edges/sys-a/sys-c", params={"expected_revision": 0, "reason": "explicit operator retirement", "evidence_ref": "change/retire-1"})
         second = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()
         entry = second["watches"][0]
         assert entry["diff"] == {"added": [], "removed": ["sys-a"]}
@@ -693,7 +696,7 @@ def test_watches_run_due_and_blast_radius_change(app_db):
 
 
 def test_evidence_package_includes_cascade_runs(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         client.post("/api/v1/technology-bom/cascade",
                     json={"target": "payment-core"})
         package = client.get("/api/v1/technology-bom/evidence-package").json()
@@ -706,11 +709,11 @@ def test_evidence_package_includes_cascade_runs(app_db):
 
 
 def test_diff_covers_all_layers(app_db):
-    with TestClient(app_db) as client:
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
         # the first answer exists so the diff has a baseline to compare to
         client.post("/api/v1/technology-bom/cascade",
                     json={"target": "payment-core"})
-        client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        client.delete("/api/v1/graph/edges/sys-a/sys-c", params={"expected_revision": 0, "reason": "explicit operator retirement", "evidence_ref": "change/retire-1"})
         second = client.post("/api/v1/technology-bom/cascade",
                              json={"target": "payment-core"}).json()
         diff = client.get(

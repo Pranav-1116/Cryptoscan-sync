@@ -36,6 +36,7 @@ installation or a substitute for the bank's security/change approval.
 | [17 — Implemented classified system scope](17-classified-system-scope.md) | What changed in step 1, how do the disjoint counts work, and what remains pending? |
 | [18 — Implemented shared system semantics](18-shared-dependency-semantics.md) | Which relations propagate in step 2, how are backends/history handled, and what is still unqualified? |
 | [19 — Implemented package/release/deployment identity](19-package-artifact-deployment-identity.md) | How does a package SBOM explicitly join to immutable release bytes/digest and a declared application deployment? |
+| [20 — Implemented relationship lifecycle/reconciliation](20-relationship-lifecycle-and-reconciliation.md) | How are expiry, source ownership, incomplete collections, retained tombstones and historical clocks handled safely? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>
@@ -132,6 +133,7 @@ fixture showing six implicated systems, an eight-system change-review context,
 and a missing HSM link that must remain unknown rather than safe.
 
 Implementation progress is tracked in the [ten-step engineering plan](../dev/dependency-intelligence-roadmap.md).
-[Step 1](17-classified-system-scope.md), [step 2](18-shared-dependency-semantics.md)
-and [step 3](19-package-artifact-deployment-identity.md) are implemented with local
-checks; steps 4–10 and real deployment qualification remain pending.
+[Step 1](17-classified-system-scope.md), [step 2](18-shared-dependency-semantics.md),
+[step 3](19-package-artifact-deployment-identity.md) and
+[step 4](20-relationship-lifecycle-and-reconciliation.md) are implemented with local
+checks; steps 5–10 and real deployment qualification remain pending.

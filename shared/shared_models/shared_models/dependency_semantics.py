@@ -7,8 +7,9 @@ resolution but must not bridge two systems during dependency propagation.
 from __future__ import annotations
 
 from typing import Any, Mapping
+from shared_models.relationship_lifecycle import clock, cypher_current
 
-POLICY_VERSION = "cryptoscan.system-dependency-policy/1"
+POLICY_VERSION = "cryptoscan.system-dependency-policy/2"
 MAX_SYSTEM_HOPS = 12
 PROPAGATING_RELATIONS = frozenset({"CALLS", "IMPORTS", "IMPORTS_CRYPTO", "DEPENDS_ON"})
 CONTEXT_RELATIONS = frozenset({
@@ -61,11 +62,13 @@ def policy_metadata() -> dict[str, Any]:
         "unknown_relations": "non_propagating",
         "unspecified_relation": "CALLS",
         "max_system_hops": MAX_SYSTEM_HOPS,
+        "lifecycle": "ACTIVE only; stale/expired/unknown are uncertain; tombstones never propagate",
+        "legacy_freshness": "unbounded, not newly confirmed",
     }
 
 
-def query_parameters() -> dict[str, list[str]]:
-    return {"dependency_relations": sorted(PROPAGATING_RELATIONS),
+def query_parameters(*, now=None) -> dict[str, Any]:
+    return {"lifecycle_as_of": (now or clock()).timestamp(), "dependency_relations": sorted(PROPAGATING_RELATIONS),
             "legacy_dependency_relations": sorted(PROPAGATING_RELATIONS | LEGACY_CALL_PROTOCOLS)}
 
 
@@ -78,6 +81,6 @@ def cypher_dependency_predicate(variable: str = "r") -> str:
         return ("replace(replace(toUpper(CASE WHEN trim(coalesce(" + expression
                 + ", '')) = '' THEN 'CALLS' ELSE trim(" + expression
                 + ") END), '-', '_'), ' ', '_')")
-    return (f"CASE WHEN {variable}.relation IS NOT NULL THEN "
+    return (f"({cypher_current(variable)}) AND (CASE WHEN {variable}.relation IS NOT NULL THEN "
             f"{normalized(f'{variable}.relation')} IN $dependency_relations ELSE "
-            f"{normalized(f'{variable}.protocol')} IN $legacy_dependency_relations END")
+            f"{normalized(f'{variable}.protocol')} IN $legacy_dependency_relations END)")

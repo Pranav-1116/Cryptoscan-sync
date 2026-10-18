@@ -98,7 +98,7 @@ def test_prune_cannot_cross_tenants():
     ])
     graph = store.driver.graph
     ids = {n.get("system_id") for n in graph.nodes.values()}
-    assert "sys-a2" not in ids  # tenant A's ghost pruned
+    assert "sys-a2" in ids  # retained evidence: absence is not deletion
     assert "sys-b1" in ids  # tenant B untouched
 
 

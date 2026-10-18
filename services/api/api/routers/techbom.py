@@ -48,7 +48,7 @@ from db.models import (
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -1038,6 +1038,7 @@ def _resolve_state(db: Session, version: int | None) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 class CascadeRequest(BaseModel):
+    as_of: AwareDatetime | None = Field(default=None, description="Explicit reevaluation clock; requires a captured twin version")
     target: str = Field(min_length=1, max_length=500,
                         description="Algorithm, certificate fingerprint/subject, "
                                     "host[:port], system id/name, vendor, device, library, exact package PURL or artifact digest")
@@ -1070,6 +1071,10 @@ def technology_bom_cascade(
     from db.models.cascade_extensions import TwinSnapshot
     from db.repositories.cascade_run_repository import CascadeRunRepository
 
+    from shared_models.relationship_lifecycle import utc
+    evaluation_clock = datetime.now(timezone.utc)
+    if request.as_of is not None and version is None:
+        raise HTTPException(422, "as_of requires a captured twin version")
     if version is not None:
         row = db.query(TwinSnapshot).filter(
             TwinSnapshot.version == version).first()
@@ -1077,6 +1082,9 @@ def technology_bom_cascade(
             raise HTTPException(status_code=404,
                                 detail=f"twin snapshot not found: v{version}")
         estate = row.state or {}
+        if request.as_of is None and row.created_at is None:
+            raise HTTPException(409, "snapshot capture clock is unavailable; supply as_of explicitly")
+        evaluation_clock = utc(request.as_of or row.created_at)
         replayed_version = version
     else:
         estate = _snapshot(db)
@@ -1084,7 +1092,7 @@ def technology_bom_cascade(
     try:
         result = unified_cascade(
             estate, target=request.target, kind=request.kind,
-            max_depth=request.max_depth, now=datetime.now(timezone.utc))
+            max_depth=request.max_depth, now=evaluation_clock)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1092,7 +1100,11 @@ def technology_bom_cascade(
     # so the audit trail records which twin snapshot the answer replayed —
     # not just the HTTP response that happened to mention it
     if replayed_version is not None:
-        result["replayed_over"] = {"twin_snapshot_version": replayed_version}
+        result["replayed_over"] = {"twin_snapshot_version": replayed_version,
+            "evaluation_clock": evaluation_clock.isoformat(),
+            "clock_source": "explicit_request" if request.as_of is not None else "snapshot_capture",
+            "policy_version": result["relationship_policy"]["version"],
+            "note": "New evaluation of captured evidence under the named policy; stored historical runs remain unchanged."}
 
     run = CascadeRunRepository(db).create(
         target=request.target, target_kind=result["target"]["kind"],

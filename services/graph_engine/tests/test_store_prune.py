@@ -10,22 +10,23 @@ from graph_engine.testing.fake_driver import FakeDriver
 
 def _sync(store, systems, **extra):
     return store.sync(
+        collection={"outcome": "COMPLETE", "truncated": False},
         systems=[{"id": s, "name": s} for s in systems],
         edges=[],
         **extra,
     )
 
 
-def test_prune_removes_deleted_systems():
+def test_system_absence_never_erases_relationship_evidence():
     driver = FakeDriver()
     store = Neo4jGraphStore(driver, database="neo4j")
     _sync(store, ["web", "pay", "db"])
     assert store.counts()["nodes"] >= 3
 
-    # db was deleted from the inventory: the next sync must prune its ghost
+    # Absence alone must not detach-delete System relationship history
     result = _sync(store, ["web", "pay"])
-    assert result["pruned"] >= 1
-    assert driver.graph.nodes.get(("System", "db")) is None
+    assert result["pruned"] == 0
+    assert driver.graph.nodes.get(("System", "db")) is not None
     # survivors still present
     assert driver.graph.nodes.get(("System", "web")) is not None
     assert driver.graph.nodes.get(("System", "pay")) is not None
@@ -35,6 +36,7 @@ def test_prune_never_touches_kinds_absent_from_the_sync():
     driver = FakeDriver()
     store = Neo4jGraphStore(driver, database="neo4j")
     store.sync(
+        collection={"outcome": "COMPLETE", "truncated": False},
         systems=[{"id": "web", "name": "web"}],
         assets=[{"id": "a1", "algorithm": "RSA", "system_id": "web"}],
         edges=[],
@@ -50,6 +52,7 @@ def test_prune_removes_ghost_assets_when_assets_present():
     driver = FakeDriver()
     store = Neo4jGraphStore(driver, database="neo4j")
     store.sync(
+        collection={"outcome": "COMPLETE", "truncated": False},
         systems=[{"id": "web", "name": "web"}],
         assets=[{"id": "a1", "algorithm": "RSA", "system_id": "web"},
                 {"id": "a2", "algorithm": "DES", "system_id": "web"}],
@@ -57,6 +60,7 @@ def test_prune_removes_ghost_assets_when_assets_present():
     )
     # a2 retracted: next sync carrying a1 must prune a2's ghost
     result = store.sync(
+        collection={"outcome": "COMPLETE", "truncated": False},
         systems=[{"id": "web", "name": "web"}],
         assets=[{"id": "a1", "algorithm": "RSA", "system_id": "web"}],
         edges=[],
@@ -72,6 +76,7 @@ def test_network_resources_sync_neo4j_path():
     driver = FakeDriver()
     store = Neo4jGraphStore(driver, database="neo4j")
     store.sync(
+        collection={"outcome": "COMPLETE", "truncated": False},
         systems=[{"id": "web", "name": "web"}],
         edges=[],
         network_resources=[
@@ -84,6 +89,7 @@ def test_network_resources_sync_neo4j_path():
     assert ("NetworkResource", "edge-tls") in connects
     # ghost network resource pruned on the next sync (kind present, id absent)
     store.sync(
+        collection={"outcome": "COMPLETE", "truncated": False},
         systems=[{"id": "web", "name": "web"}],
         edges=[],
         network_resources=[{"id": "other-tls", "endpoint": "x:443", "system_ids": ["web"]}],
@@ -124,6 +130,7 @@ def test_container_images_sync_and_prune_neo4j_path():
     driver = FakeDriver()
     store = Neo4jGraphStore(driver, database="neo4j")
     store.sync(
+        collection={"outcome": "COMPLETE", "truncated": False},
         systems=[{"id": "web", "name": "web"}],
         edges=[],
         container_images=[
@@ -139,6 +146,7 @@ def test_container_images_sync_and_prune_neo4j_path():
     # next sync without img-1 (but with another image, so the kind is
     # present) must prune the ghost
     store.sync(
+        collection={"outcome": "COMPLETE", "truncated": False},
         systems=[{"id": "web", "name": "web"}],
         edges=[],
         container_images=[

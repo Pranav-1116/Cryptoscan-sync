@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from shared_models.relationship_lifecycle import storage_fields
 from shared_models.dependency_semantics import edge_relation, system_id
 
 
@@ -104,6 +105,7 @@ def call_rows(edges: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                     "protocol": edge.get("protocol") or edge.get("relation") or "CALLS",
                     "relation": edge_relation(edge),
                     "frequency": edge.get("frequency"),
+                    **storage_fields(edge),
                     "provenance": edge.get("provenance") or "DECLARED",
                     "source": edge.get("source") or "system_dependencies (operator-declared)",
                     "observed_at": edge.get("observed_at"),

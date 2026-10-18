@@ -171,6 +171,10 @@ and inspect what was matched. Broad text searches can be ambiguous.
 
 ## 7. Capture a twin and replay it
 
+Step 4 evaluates captured-version replay at its capture clock by default. An
+explicit aware `as_of` body field requests another clock, records that choice
+and never rewrites the saved answer. See [lifecycle/replay contract](20-relationship-lifecycle-and-reconciliation.md).
+
 | Method/path | Meaning |
 |---|---|
 | `POST /api/v1/digital-twin/snapshot` | Capture the supported twin state; unchanged content can reuse a version |

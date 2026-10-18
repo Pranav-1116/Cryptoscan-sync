@@ -9,9 +9,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
 from db.tenancy import TenantScoped
+from db.models.relationship_lifecycle import RelationshipLifecycle
 
 
-class SystemDependency(BaseModel, TenantScoped):
+class SystemDependency(BaseModel, TenantScoped, RelationshipLifecycle):
     __tablename__ = "system_dependencies"
     __table_args__ = (UniqueConstraint("parent_id", "child_id", name="uq_system_dep"),)
 

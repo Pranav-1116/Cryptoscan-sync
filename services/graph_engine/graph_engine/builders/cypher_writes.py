@@ -109,12 +109,26 @@ UNWIND $rows AS row
 MATCH (a:System {system_id: row.parent_id, tenant_id: row.tenant_id})
 MATCH (b:System {system_id: row.child_id, tenant_id: row.tenant_id})
 MERGE (a)-[rel:CALLS {relation: row.relation}]->(b)
+WITH rel, row
+WHERE coalesce(rel.lifecycle_revision, 0) <= coalesce(row.lifecycle_revision, 0)
+  AND (rel.lifecycle_revision IS NULL OR row.lifecycle_revision IS NOT NULL)
 SET rel.protocol = row.protocol,
     rel.relation = row.relation,
     rel.frequency = row.frequency,
     rel.provenance = row.provenance,
     rel.source = row.source,
-    rel.observed_at = row.observed_at
+    rel.observed_at = row.observed_at,
+    rel.lifecycle_state = row.lifecycle_state,
+    rel.lifecycle_source = row.lifecycle_source,
+    rel.lifecycle_revision = row.lifecycle_revision,
+    rel.valid_until = row.valid_until,
+    rel.valid_until_epoch = row.valid_until_epoch,
+    rel.last_confirmed_at = row.last_confirmed_at,
+    rel.lifecycle_reason = row.lifecycle_reason,
+    rel.lifecycle_evidence_ref = row.lifecycle_evidence_ref,
+    rel.last_reconciliation_id = row.last_reconciliation_id,
+    rel.projection_state = row.projection_state,
+    rel.record_id = row.record_id
 """
 
 MERGE_SUPPORTS = """
@@ -233,4 +247,16 @@ MATCH (c:ContainerImage {container_id: row.container_id, tenant_id: row.tenant_i
 MERGE (s)-[r:RUNS]->(c)
 SET r.provenance = 'SCANNER_DERIVED',
     r.source = 'container image inventory'
+"""
+
+
+QUARANTINE_LEGACY_CALLS = """
+// cryptoscan.query=quarantine_legacy_calls
+MATCH (a:System)-[r:CALLS]->(b:System)
+WHERE coalesce(a.tenant_id, 'platform') = $tenant AND coalesce(b.tenant_id, 'platform') = $tenant
+  AND r.relation IS NULL
+  AND EXISTS { MATCH (a)-[known:CALLS]->(b)
+               WHERE known.relation IS NOT NULL AND known.lifecycle_revision IS NOT NULL }
+SET r.projection_state = 'STALE', r.lifecycle_reason = 'ambiguous_legacy_projection'
+RETURN count(r) AS quarantined
 """

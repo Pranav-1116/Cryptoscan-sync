@@ -22,6 +22,7 @@ association"):
 from __future__ import annotations
 
 from typing import Any, Iterable
+from shared_models.relationship_lifecycle import lifecycle_payload
 
 PROVENANCE_OBSERVED = "OBSERVED"
 PROVENANCE_DECLARED = "DECLARED"
@@ -68,4 +69,5 @@ def edge_meta_payload(meta: dict[str, Any] | None) -> dict[str, Any]:
         value = meta.get(key)
         if value is not None:
             out[key] = value
+    out.update(lifecycle_payload(meta))
     return out
