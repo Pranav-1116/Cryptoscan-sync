@@ -45,6 +45,14 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 `admin` / `cryptoscan` (development only), then read
 [Dashboard overview](user-guide/dashboard-overview.md).
 
+## Bank environment walkthrough
+
+Start with [How CryptoScan enters a bank and produces five BOMs](bank-environment/README.md)
+for a nine-file, code-traced guide: deployment, permissions and collection,
+scan-to-evidence processing, the five BOMs, practical bank examples, UI/API
+exports, operational acceptance, and implementation limits. Examples are
+illustrative, not real-bank scan results or production approval.
+
 ## Start here
 
 | Doc | What it covers |
