@@ -229,7 +229,8 @@ def test_replay_run_persists_replay_provenance(app_db):
                              params={"version": version},
                              json={"target": "payment-api"}).json()
         # the live answer names the replayed version...
-        assert posted["replayed_over"] == {"twin_snapshot_version": version}
+        assert posted["replayed_over"]["twin_snapshot_version"] == version
+        assert posted["replayed_over"]["clock_source"] == "snapshot_capture"
 
         # ...and so does the persisted audit trail — read the row back from
         # the database (a fresh session, not the request session's identity
@@ -241,19 +242,17 @@ def test_replay_run_persists_replay_provenance(app_db):
         try:
             row = fresh.query(CascadeRun).filter(
                 CascadeRun.id == posted["run_id"]).one()
-            assert (row.result or {}).get("replayed_over") == {
-                "twin_snapshot_version": version}
+            assert (row.result or {}).get("replayed_over") == posted["replayed_over"]
         finally:
             fresh.close()
         fetched = client.get(
             f"/api/v1/technology-bom/cascade/runs/{posted['run_id']}").json()
-        assert fetched["result"]["replayed_over"] == {
-            "twin_snapshot_version": version}
+        assert fetched["result"]["replayed_over"] == posted["replayed_over"]
         # and the history list carries it too — replay runs are identifiable
         # without fetching each one
         listed = client.get("/api/v1/technology-bom/cascade/runs").json()
         entry = next(r for r in listed["runs"] if r["id"] == posted["run_id"])
-        assert entry["replayed_over"] == {"twin_snapshot_version": version}
+        assert entry["replayed_over"] == posted["replayed_over"]
         # replaying a version that was never captured is a 404
         missing = client.post("/api/v1/technology-bom/cascade",
                               params={"version": 999},
@@ -307,9 +306,15 @@ def test_watch_run_due_flags_disappeared_target(app_db):
         assert entry["target_missing"] is True
         assert entry["affected_system_count"] == 0
         assert entry["run_id"]  # the disappearance is itself an auditable run
-        # the blast radius collapsing to zero is reported as a change
-        assert entry["blast_radius_changed"] is True
-        assert entry["diff"]["removed"]  # the previous systems are named
+        # A missing target has not been analyzed. Do not invent removals or
+        # replace the last resolved baseline with placeholder zeroes.
+        assert entry["analysis_performed"] is False
+        assert entry["attention_required"] is True
+        assert "diff" not in entry
+        assert "blast_radius_changed" not in entry
+        from db.models.cascade_extensions import CascadeWatch
+        saved = session.query(CascadeWatch).one()
+        assert saved.last_run_id == first["watches"][0]["run_id"]
 
         # a third run is stable: still missing, no crash, no repeated alert
         third = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()
@@ -586,7 +591,8 @@ def test_prefixed_snapshot_edges_use_policy_without_mutating_capture(app_db):
         assert body["layers"]["system"]["downstream_by_depth"] == {}
         session.refresh(snapshot)
         assert snapshot.state["dependencies"] == state["dependencies"]
-        assert body["replayed_over"] == {"twin_snapshot_version": version}
+        assert body["replayed_over"]["twin_snapshot_version"] == version
+        assert body["replayed_over"]["clock_source"] == "snapshot_capture"
 
 
 def test_same_policy_classified_diff_remains_available(app_db):
@@ -618,3 +624,159 @@ def test_watch_comparison_flags_pre_policy_run_without_rewriting_it(app_db):
         assert "blast_radius_changed" not in second
         session.refresh(old_run)
         assert "relationship_policy" not in old_run.result
+
+
+# Step 7: exact identities and frozen resolution decisions.
+def test_vendor_search_requires_explicit_choice_and_persists_resolution(app_db):
+    with TestClient(app_db) as client:
+        default = client.post("/api/v1/technology-bom/cascade", json={"target": "Thal", "kind": "vendor"}).json()
+        assert default["analysis_performed"] is False
+        search = client.post("/api/v1/technology-bom/cascade", json={"target": "Thal", "kind": "vendor", "allow_name_search": True}).json()
+        assert search["verdict"] == "UNRESOLVED"
+        assert search["target_resolution"]["status"] == "SEARCH_RESULTS"
+        assert search["target_resolution"]["candidate_count"] == 1
+        selected = search["target_resolution"]["candidates"][0]
+        assert selected["canonical_target"] == "vendor-thales"
+        body = client.post("/api/v1/technology-bom/cascade", json={"target": selected["canonical_target"], "kind": selected["kind"]}).json()
+        assert body["analysis_performed"] is True
+        assert body["target_resolution"]["method"] == "exact_identity"
+        fetched = client.get(f"/api/v1/technology-bom/cascade/runs/{search['run_id']}").json()["result"]
+        assert fetched["target_resolution"] == search["target_resolution"]
+        assert fetched["analysis_performed"] is False
+        summary = next(r for r in client.get("/api/v1/technology-bom/cascade/runs").json()["runs"] if r["id"] == search["run_id"])
+        assert summary["analysis_performed"] is False
+        assert summary["target_resolution"] == search["target_resolution"]
+
+
+def test_network_leaf_fingerprint_survives_inventory_snapshot_and_exact_cascade(app_db):
+    from db.models.network_scan_run import NetworkScanRun
+    from api.routers.digital_twin import _snapshot
+    session = app_db.state.test_session
+    session.add(Certificate(fingerprint_sha256="cd" * 32, subject="CN=payment-api"))
+    session.add(NetworkScanRun(result={"probes": [
+        {"endpoint": "api.bank:443", "status": "OK", "certificates": [{"subject": "CN=payment-api", "fingerprint_sha256": "ab" * 32}]},
+        {"endpoint": "other.bank:443", "status": "OK", "certificates": [{"subject": "CN=payment-api", "fingerprint_sha256": "cd" * 32}]},
+        {"endpoint": "legacy.bank:443", "status": "OK", "certificates": [{"subject": "CN=payment-api"}]}
+    ]}))
+    session.add_all([NetworkScanTarget(endpoint="other.bank:443", system_id="sys-db"), NetworkScanTarget(endpoint="legacy.bank:443", system_id="sys-db")])
+    session.commit()
+    assert next(e for e in _snapshot(session)["network_endpoints"] if e["host"] == "api.bank")["certificate_fingerprint_sha256"] == "ab" * 32
+    with TestClient(app_db) as client:
+        body = client.post("/api/v1/technology-bom/cascade", json={"target": "AB" * 32, "kind": "certificate"}).json()
+        assert body["layers"]["network"]["endpoints"] == ["api.bank:443"]
+        assert body["impact"]["system_classification"]["direct_exposure"]["systems"] == ["sys-pay"]
+        assert body["layers"]["network"]["certificate_join"]["subject_only_endpoint_count"] == 1
+        ambiguous = client.post("/api/v1/technology-bom/cascade", json={"target": "CN=payment-api", "kind": "certificate"}).json()
+        assert ambiguous["analysis_performed"] is False
+        assert ambiguous["target_resolution"]["status"] == "AMBIGUOUS"
+
+
+def test_old_snapshot_without_endpoint_fingerprint_is_not_rebound_by_subject(app_db):
+    from db.models.cascade_extensions import TwinSnapshot
+    from db.models.network_scan_run import NetworkScanRun
+    session = app_db.state.test_session
+    session.add(NetworkScanRun(result={"probes": [{"endpoint": "api.bank:443", "status": "OK", "certificates": [{"subject": "CN=payment-api", "fingerprint_sha256": "ab" * 32}]}]}))
+    session.commit()
+    with TestClient(app_db) as client:
+        version = client.post("/api/v1/digital-twin/snapshot").json()["version"]
+        captured = session.query(TwinSnapshot).filter_by(version=version).one()
+        state = dict(captured.state)
+        state["network_endpoints"] = [{k: v for k, v in e.items() if k != "certificate_fingerprint_sha256"} for e in state["network_endpoints"]]
+        captured.state = state
+        session.commit()
+        before = __import__('copy').deepcopy(state)
+        result = client.post("/api/v1/technology-bom/cascade", params={"version": version}, json={"target": "ab" * 32, "kind": "certificate"}).json()
+        assert result["analysis_performed"] is True
+        assert result["layers"]["network"]["endpoints"] == []
+        assert result["layers"]["network"]["certificate_join"]["subject_only_endpoint_count"] == 1
+        assert result["impact"]["system_classification"]["direct_exposure"]["count"] == 0
+        session.refresh(captured)
+        assert captured.state == before
+
+
+def test_watch_ambiguous_subject_keeps_resolved_baseline_without_removal(app_db):
+    from db.models.cascade_extensions import CascadeWatch
+    session = app_db.state.test_session
+    with TestClient(app_db) as client:
+        client.post("/api/v1/technology-bom/cascade/watch", json={"target": "CN=payment-api", "kind": "certificate"})
+        first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        session.add(Certificate(fingerprint_sha256="cd" * 32, subject="CN=payment-api"))
+        session.commit()
+        later = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        assert later["target_resolution"]["status"] == "AMBIGUOUS"
+        assert later["attention_required"] is True
+        assert "diff" not in later and "blast_radius_changed" not in later
+        assert session.query(CascadeWatch).one().last_run_id == first["run_id"]
+
+
+def test_changed_unique_subject_identity_withholds_diff_and_watch_baseline(app_db):
+    from db.models.cascade_extensions import CascadeWatch
+    session = app_db.state.test_session
+    with TestClient(app_db) as client:
+        old = client.post("/api/v1/technology-bom/cascade", json={"target": "CN=payment-api", "kind": "certificate"}).json()
+        client.post("/api/v1/technology-bom/cascade/watch", json={"target": "CN=payment-api", "kind": "certificate"})
+        first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        session.query(Certificate).one().subject = "CN=retired"
+        session.add(Certificate(fingerprint_sha256="cd" * 32, subject="CN=payment-api"))
+        session.commit()
+        new = client.post("/api/v1/technology-bom/cascade", json={"target": "CN=payment-api", "kind": "certificate"}).json()
+        diff = client.get(f"/api/v1/technology-bom/cascade/runs/{new['run_id']}/diff", params={"against": old["run_id"]}).json()
+        assert diff["target_comparison"]["comparable"] is False
+        assert diff["affected_systems"]["before"] is None
+        assert diff["affected_systems"]["added"] == diff["affected_systems"]["removed"] == []
+        assert diff["system_classification"]["available"] is False
+        entry = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        assert entry["attention_required"] is True and "diff" not in entry
+        assert session.query(CascadeWatch).one().last_run_id == first["run_id"]
+
+
+def test_legacy_resolution_is_not_reconstructed_for_history_diff(app_db):
+    session = app_db.state.test_session
+    with TestClient(app_db) as client:
+        old = client.post("/api/v1/technology-bom/cascade", json={"target": "Thales", "kind": "vendor"}).json()
+        row = session.query(CascadeRun).filter_by(id=old["run_id"]).one()
+        legacy = {k: v for k, v in row.result.items() if k not in {"target_resolution", "analysis_performed"}}
+        row.result = legacy
+        session.commit()
+        new = client.post("/api/v1/technology-bom/cascade", json={"target": "Thales", "kind": "vendor"}).json()
+        diff = client.get(f"/api/v1/technology-bom/cascade/runs/{new['run_id']}/diff", params={"against": old["run_id"]}).json()
+        assert diff["target_comparison"]["comparable"] is False
+        assert diff["process_comparison"]["comparable"] is False
+        assert diff["affected_systems"]["after"] is None
+        assert client.get(f"/api/v1/technology-bom/cascade/runs/{old['run_id']}").json()["result"] == legacy
+
+
+def test_truncated_vendor_registry_requires_canonical_selection(app_db, monkeypatch):
+    from api.routers.digital_twin import SNAPSHOT_CAPS
+    session = app_db.state.test_session
+    session.add(Vendor(id="zz", name="Thales OTHER"))
+    session.commit()
+    monkeypatch.setitem(SNAPSHOT_CAPS, "vendors", 1)
+    with TestClient(app_db) as client:
+        body = client.post("/api/v1/technology-bom/cascade", json={"target": "Thales", "kind": "vendor"}).json()
+        assert body["target_resolution"]["status"] == "INCOMPLETE"
+        assert body["target_resolution"]["coverage"]["vendor_truncated"] is True
+        exact = client.post("/api/v1/technology-bom/cascade", json={"target": "vendor-thales", "kind": "vendor"}).json()
+        assert exact["analysis_performed"] is True
+
+
+def test_certificate_and_vendor_search_candidates_are_tenant_scoped(tenants, tenancy_session):
+    acme, _ = tenants
+    tenancy_session.add_all([
+        Certificate(tenant_id="acme", fingerprint_sha256="ab" * 32, subject="CN=Bank Acme"),
+        Certificate(tenant_id="globex", fingerprint_sha256="cd" * 32, subject="CN=Bank Secret"),
+        Vendor(tenant_id="acme", id="v-acme", name="Bank Crypto Acme"),
+        Vendor(tenant_id="globex", id="v-secret", name="Bank Crypto Secret")])
+    tenancy_session.commit()
+    for kind, query in [("certificate", "CN=Bank"), ("vendor", "Bank Crypto")]:
+        response = acme.post("/api/v1/technology-bom/cascade", json={"target": query, "kind": kind, "allow_name_search": True})
+        assert response.status_code == 200
+        result = response.json()
+        assert result["target_resolution"]["status"] == "SEARCH_RESULTS"
+        assert result["target_resolution"]["candidate_count"] == 1
+        assert "secret" not in response.text.lower()
+        assert "globex" not in response.text.lower()
+        assert result["analysis_performed"] is False
+    response = acme.post("/api/v1/technology-bom/cascade", json={"target": "cd" * 32, "kind": "certificate"})
+    assert response.json()["analysis_performed"] is False
+    assert response.json()["target_resolution"]["candidate_count"] == 0

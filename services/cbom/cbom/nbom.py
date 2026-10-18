@@ -259,6 +259,7 @@ def probe_to_endpoint(probe: Mapping[str, Any]) -> dict[str, Any]:
         "service": probe.get("alpn") or crypto.get("alpn"),
         "certificate": {
             "subject": leaf.get("subject"),
+            "fingerprint_sha256": leaf.get("fingerprint_sha256"),
             "issuer": leaf.get("issuer"),
             "serial_number": leaf.get("serial_number"),
             "public_key_algorithm": leaf.get("public_key_algorithm"),

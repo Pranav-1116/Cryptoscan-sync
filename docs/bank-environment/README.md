@@ -39,6 +39,7 @@ installation or a substitute for the bank's security/change approval.
 | [20 — Implemented relationship lifecycle/reconciliation](20-relationship-lifecycle-and-reconciliation.md) | How are expiry, source ownership, incomplete collections, retained tombstones and historical clocks handled safely? |
 | [21 — Implemented traversal explanations](21-traversal-provenance-evidence-and-freshness.md) | How do per-edge sources, references, timestamp meanings, mixed provenance and missing witnesses travel without invented confidence? |
 | [22 — Implemented business-process projection](22-business-process-impact-and-inclusion-reasons.md) | Which processes are exposed, context-only or uncertain, and which system/mapping explains each inclusion? |
+| [23 — Implemented exact target identities](23-exact-target-identities-and-ambiguity.md) | How are fingerprint/PURL/vendor-ID selection, ambiguity, opt-in search, exact certificate joins and unresolved history/watch baselines handled? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

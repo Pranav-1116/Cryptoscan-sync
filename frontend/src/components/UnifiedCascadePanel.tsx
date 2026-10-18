@@ -23,6 +23,7 @@ export default function UnifiedCascadePanel() {
   const [target, setTarget] = useState("");
   const [kind, setKind] = useState("auto");
   const [depth, setDepth] = useState(6);
+  const [nameSearch, setNameSearch] = useState(false);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<UnifiedCascadeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,13 +38,15 @@ export default function UnifiedCascadePanel() {
 
   useEffect(() => { loadRuns(); }, []);
 
-  const run = async () => {
-    if (!target.trim()) return;
+  const execute = async (value: string, selectedKind: string, search: boolean) => {
+    if (!value.trim()) return;
     setRunning(true);
     setError(null);
     setDiff(null);
     setDiffError(null);
-    const r = await apiUnifiedCascade(target.trim(), kind === "auto" ? undefined : kind, depth);
+    const r = search
+      ? await apiUnifiedCascade(value.trim(), selectedKind === "auto" ? undefined : selectedKind, depth, true)
+      : await apiUnifiedCascade(value.trim(), selectedKind === "auto" ? undefined : selectedKind, depth);
     setRunning(false);
     if (r.source === "live" && r.data) {
       setResult(r.data);
@@ -53,6 +56,8 @@ export default function UnifiedCascadePanel() {
       setError(r.error || "cascade request failed");
     }
   };
+
+  const run = () => execute(target, kind, nameSearch);
 
   const showDiff = async (runId: string) => {
     setDiff(null);
@@ -112,6 +117,11 @@ export default function UnifiedCascadePanel() {
         </button>
       </div>
 
+      <label style={{ fontSize: 12 }}>
+        <input type="checkbox" checked={nameSearch} onChange={e => setNameSearch(e.target.checked)} />
+        Search broad certificate/vendor/package names (choices only; no automatic cascade)
+      </label>
+
       {error && (
         <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 10 }}>{error}</div>
       )}
@@ -135,6 +145,29 @@ export default function UnifiedCascadePanel() {
               : "Relationship policy unavailable for this stored answer; do not assume traversal parity."}
           </div>
 
+          <section aria-label="Target resolution" role="status">
+            {result.target_resolution ? <>
+              <b>{result.target_resolution.status}</b> · {result.target_resolution.method}
+              {result.target_resolution.selected && <div>Selected {result.target_resolution.selected.kind}: {result.target_resolution.selected.canonical_target}</div>}
+              <div>{result.target_resolution.reason || result.target_resolution.note}</div>
+              {result.target_resolution.candidate_count > 0 && result.analysis_performed === false && <>
+                <div>{result.target_resolution.candidate_count} candidates in loaded snapshot; select an exact identity to analyze.</div>
+                <ul>{result.target_resolution.candidates.map((candidate, index) => <li key={`${candidate.kind}-${candidate.canonical_target}-${index}`}>
+                  {candidate.label} · {candidate.kind} · {candidate.canonical_target || "missing canonical identity"}
+                  <button className="btn sm outline" disabled={running || !candidate.selectable || !candidate.canonical_target}
+                    onClick={() => { setTarget(candidate.canonical_target!); setKind(candidate.kind); setNameSearch(false); execute(candidate.canonical_target!, candidate.kind, false); }}>
+                    Analyze exact identity
+                  </button>
+                  {candidate.conflicting_records && <span> Conflicting registry records; repair required.</span>}
+                </li>)}</ul>
+                {result.target_resolution.candidates_truncated && <div>Candidate list truncated at {result.target_resolution.candidate_limit}; narrow your search.</div>}
+              </>}
+              {result.target_resolution.coverage && <div>Candidate coverage: {JSON.stringify(result.target_resolution.coverage)}</div>}
+            </> : <div>Target selection policy unavailable for this stored answer; exact identity was not certified.</div>}
+            {result.analysis_performed === false && <strong>No impact analysis performed. Empty compatibility counts are not zero exposure or evidence of safety.</strong>}
+          </section>
+
+          {result.analysis_performed !== false && <>
           <TraversalEvidencePanel evidence={result.traversal_evidence} />
 
           <section aria-label="Relationship lifecycle" role="status" style={{ marginBottom: 12 }}>
@@ -288,6 +321,13 @@ export default function UnifiedCascadePanel() {
             </div>
           )}
 
+          {layers.network?.certificate_join && <section aria-label="Certificate binding coverage">
+            <div>Endpoint binding: exact leaf fingerprint only.</div>
+            <div>Subject-only endpoints without usable fingerprint: {layers.network.certificate_join.subject_only_endpoint_count}. Not included as certificate owners.</div>
+            <div>Same-subject endpoints with a different fingerprint: {layers.network.certificate_join.different_fingerprint_same_subject_count}. Excluded.</div>
+          </section>}
+          </>}
+
           {result.honest_unknowns?.length > 0 && (
             <div style={{ fontSize: 11.5, color: "var(--dim)" }}>
               <div style={{ marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -312,7 +352,7 @@ export default function UnifiedCascadePanel() {
                 <Badge variant={verdictVariant(r.verdict)}>{r.verdict}</Badge>
                 <span style={{ fontWeight: 600 }}>{r.target}</span>
                 <span style={{ color: "var(--dim)" }}>
-                  {r.target_kind || "?"} · {r.system_classification
+                  {r.target_kind || "?"} · {r.analysis_performed === false ? "not analyzed — target requires attention" : r.system_classification
                     ? `${r.system_classification.direct_exposure.count} direct / ${r.system_classification.dependent_consumers.count} consumers / ${r.system_classification.supporting_context.count} context · ${r.system_classification.review_system_count} review`
                     : `legacy review scope: ${r.affected_system_count ?? "unknown"} · breakdown unavailable`}
                   {" · "}{(r.created_at || "").replace("T", " ").slice(0, 19)}
@@ -330,7 +370,7 @@ export default function UnifiedCascadePanel() {
                 <b>Diff</b> {diff.run.created_at?.replace("T", " ").slice(0, 19)} vs {diff.against.created_at?.replace("T", " ").slice(0, 19)}
                 {diff.verdict_changed && <span style={{ color: "var(--red)" }}> · verdict changed</span>}
               </div>
-              <div>
+              {diff.target_comparison?.comparable === false ? <div role="status">{diff.target_comparison.reason} No impact-change claims are available.</div> : <div>
                 Review scope: {diff.affected_systems.before} → {diff.affected_systems.after}
                 {diff.affected_systems.removed.length > 0 && (
                   <span style={{ color: "var(--dim)" }}> · removed: {diff.affected_systems.removed.join(", ")}</span>
@@ -342,6 +382,7 @@ export default function UnifiedCascadePanel() {
                   <span style={{ color: "var(--dim)" }}> · unchanged</span>
                 )}
               </div>
+              }
               {diff.policy_comparison && !diff.policy_comparison.comparable && (
                 <div role="status">Relationship policy differs or is unknown. Count changes are not evidence of remediation.</div>
               )}

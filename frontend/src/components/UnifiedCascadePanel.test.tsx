@@ -224,3 +224,87 @@ describe("cascade disjoint system classification", () => {
   });
 
 });
+
+function unresolved(): UnifiedCascadeResult {
+  return { ...answer(), verdict: "UNRESOLVED", analysis_performed: false, layers: {},
+    target_resolution: {
+      schema: "cryptoscan.target-resolution/1", status: "AMBIGUOUS", method: "exact_name",
+      input: "payments", requested_kind: "certificate", allow_name_search: false,
+      selected: null, candidate_count: 2, candidate_limit: 50, candidates_truncated: false,
+      reason: "Select a canonical identity", note: "Identity is not runtime use",
+      candidates: [{ kind: "certificate", canonical_target: "ab".repeat(32), label: "CN=payments", matched_by: "exact_name", selectable: true },
+        { kind: "certificate", canonical_target: "cd".repeat(32), label: "CN=payments", matched_by: "exact_name", selectable: true }],
+    },
+  };
+}
+
+describe("exact cascade identities", () => {
+  it("hides compatibility impact counts for an unresolved target and executes only a selected identity", async () => {
+    vi.mocked(apiUnifiedCascade).mockResolvedValueOnce({ source: "live", data: unresolved() })
+      .mockResolvedValueOnce({ source: "live", data: answer() });
+    render(<UnifiedCascadePanel />);
+    fireEvent.change(screen.getByRole("textbox", { name: "cascade target" }), { target: { value: "payments" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run cascade" }));
+    expect(await screen.findByText(/No impact analysis performed/)).toBeInTheDocument();
+    expect(screen.getByText(/2 candidates in loaded snapshot/)).toBeInTheDocument();
+    expect(screen.queryByText(/Modeled exposure:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Direct exposure" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Linked processes/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Analyze exact identity" })[0]);
+    await screen.findByText("Modeled exposure: 2");
+    expect(apiUnifiedCascade).toHaveBeenLastCalledWith("ab".repeat(32), "certificate", 6);
+  });
+
+  it("requires the broad-name checkbox and warns about truncated or conflicting choices", async () => {
+    const data = unresolved();
+    data.target_resolution!.status = "SEARCH_RESULTS";
+    data.target_resolution!.candidates_truncated = true;
+    data.target_resolution!.candidate_count = 75;
+    data.target_resolution!.candidates[0].conflicting_records = true;
+    data.target_resolution!.candidates[0].selectable = false;
+    vi.mocked(apiUnifiedCascade).mockResolvedValue({ source: "live", data });
+    render(<UnifiedCascadePanel />);
+    const checkbox = screen.getByRole("checkbox");
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    fireEvent.change(screen.getByRole("textbox", { name: "cascade target" }), { target: { value: "pay" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run cascade" }));
+    await screen.findByText("SEARCH_RESULTS");
+    expect(apiUnifiedCascade).toHaveBeenLastCalledWith("pay", undefined, 6, true);
+    expect(screen.getByText(/Candidate list truncated at 50/)).toBeInTheDocument();
+    expect(screen.getByText(/Conflicting registry records/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Analyze exact identity" })[0]).toBeDisabled();
+  });
+
+  it("labels unresolved history as not analyzed and withholds misleading unchanged diffs", async () => {
+    vi.mocked(apiCascadeRuns).mockResolvedValue({ source: "live", data: { count: 1, runs: [{
+      id: "unresolved-run", target: "pay", target_kind: "vendor", max_depth: 6,
+      verdict: "UNRESOLVED", analysis_performed: false, affected_system_count: 0,
+      created_at: null, created_by: null,
+    }] } });
+    vi.mocked(apiCascadeRunDiff).mockResolvedValue({ source: "live", data: {
+      target: "pay", verdict_changed: true,
+      run: { id: "new", created_at: null, verdict: "UNRESOLVED" }, against: { id: "old", created_at: null, verdict: "AFFECTED" },
+      target_comparison: { comparable: false, reason: "Target selects different canonical identities" },
+      affected_systems: { before: null, after: null, added: [], removed: [], unchanged_count: null },
+      affected_processes: { before: null, after: null, added: [], removed: [] },
+    } });
+    render(<UnifiedCascadePanel />);
+    expect(await screen.findByText(/not analyzed — target requires attention/)).toBeInTheDocument();
+    expect(screen.queryByText(/legacy review scope: 0/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "diff vs previous" }));
+    expect(await screen.findByText(/No impact-change claims are available/)).toBeInTheDocument();
+    expect(screen.queryByText(/unchanged/)).not.toBeInTheDocument();
+  });
+
+  it("shows subject-only and different-fingerprint binding gaps without calling them exposure", async () => {
+    const data = answer();
+    data.layers.network = { certificate_join: { subject_only_endpoint_count: 3, different_fingerprint_same_subject_count: 2 } };
+    vi.mocked(apiUnifiedCascade).mockResolvedValue({ source: "live", data });
+    render(<UnifiedCascadePanel />);
+    await runCascade();
+    const coverage = within(screen.getByRole("region", { name: "Certificate binding coverage" }));
+    expect(coverage.getByText(/without usable fingerprint: 3/)).toBeInTheDocument();
+    expect(coverage.getByText(/different fingerprint: 2/)).toBeInTheDocument();
+  });
+});

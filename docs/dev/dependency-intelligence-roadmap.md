@@ -6,10 +6,11 @@
 [Step-3 contract](../bank-environment/19-package-artifact-deployment-identity.md) ·
 [Step-4 contract](../bank-environment/20-relationship-lifecycle-and-reconciliation.md) ·
 [Step-5 contract](../bank-environment/21-traversal-provenance-evidence-and-freshness.md) ·
-[Step-6 contract](../bank-environment/22-business-process-impact-and-inclusion-reasons.md)
+[Step-6 contract](../bank-environment/22-business-process-impact-and-inclusion-reasons.md) ·
+[Step-7 contract](../bank-environment/23-exact-target-identities-and-ambiguity.md)
 
 This is an incremental engineering plan for the user's ten requested changes.
-**Steps 1–6 are implemented with local regression checks.** Steps 7–10
+**Steps 1–7 are implemented with local regression checks.** Steps 8–10
 remain pending; real Neo4j/bank qualification is not implied. Pending work is not
 a feature claim. Each stage needs its own implementation, regression checks,
 compatibility review and a recorded delivery result before being marked done.
@@ -25,7 +26,7 @@ CI workflow configuration is outside this task.
 | 4. Edge expiry and reconciliation | Implemented; local qualification recorded below | Migration 0099, source-owned revision-checked lifecycle, atomic idempotent collection receipts, retained tombstones, as-of expiry/replay, separate uncertain reachability and UI; live PG/Neo4j remain unqualified |
 | 5. Propagate provenance/evidence/freshness | Implemented; local qualification recorded below | Migration 0100, bounded traversal-evidence/1 witnesses, seed context, preserved per-edge pointers/origin/timestamp meaning, native selected-path properties and UI; no aggregate confidence or live Neo4j qualification |
 | 6. Process impact over implicated systems | Implemented; local qualification recorded below | Shared process-impact/1 projection over all classified review systems; ID deduplication, per-system support reasons/roles/evidence, context/potential separation, qualified economic context and legacy comparison guards |
-| 7. Exact target identities | Pending | Exact certificate/package/vendor resolution, explicit ambiguity and opt-in broad search rather than silent first match |
+| 7. Exact target identities | Implemented; local qualification recorded below | target-resolution/1 decisions; exact fingerprint/PURL/vendor-ID priority, explicit ambiguity/conflicts, opt-in non-executing name search, exact leaf-fingerprint joins, coverage flags and canonical history/watch baseline guards |
 | 8. Operational dependency modes | Pending | Distinct hard/optional/failover/asynchronous-buffering semantics with conditional outcomes and unknowns, not probabilistic failure claims |
 | 9. Prominent coverage/truncation | Pending | Per-collection and per-walk bounds, missing-link coverage and UI warnings without treating absence as clean |
 | 10. Bank-negative and backend qualification | Pending | Role/tenant/history/replay/write denial tests, backend parity and bank-specific acceptance evidence; mocks alone do not qualify deployment |
@@ -231,8 +232,8 @@ measured loss forecast.
 
 Exact identifiers must be preferred and ambiguity rejected/reported before broad
 matching. Preserve ecosystem, version, product and release context. An exact
-certificate target must not later become an ambiguous subject-only endpoint join
-without an explicit confidence/coverage signal.
+certificate target must not later become an ambiguous subject-only endpoint join.
+Step 7 now leaves subject-only endpoints as explicit binding gaps.
 
 Operational modes need bank evidence. A failover edge is not proof failover will
 work; asynchronous buffering needs capacity/freshness assumptions. Missing
@@ -250,3 +251,43 @@ record cases across reads, writes, adoption, deployment binding, history, replay
 and watches. Compare supported backends with the same policy and fixture, then
 qualify real bank runtime integrations separately. No passing local suite alone
 constitutes a customer acceptance or production certification.
+
+
+## Step 7 — delivered exact selection and ambiguity
+
+`cryptoscan.target-resolution/1` records canonical selection, method, explicit
+search choice, bounded/sorted candidates and loaded-source coverage. Certificate
+fingerprints and vendor IDs outrank names. Package PURLs remain conservative,
+version/qualifier/subpath-exact selectors; names never infer deployment. Equal
+subjects/casefolded names with multiple identities, conflicting records and known
+truncated name registries do not silently execute. Broad search is opt-in and
+returns choices even for one substring hit; selection runs a second exact request.
+
+The scanner leaf fingerprint now survives NBOM inventory and twin snapshots.
+Certificate endpoint/usage joins and seed explanations use exact fingerprints;
+subject-only endpoints are binding gaps, while different-fingerprint peers are
+excluded. Old subject-only snapshots are not enriched from current observations.
+Other target families retain explicitly labeled legacy semantics. Partial
+certificate/vendor names cannot silently become automatic manufacturer matches.
+
+Unresolved runs are persisted with `analysis_performed=false`; compatibility
+empty counts are not analyzed zeroes. UI hides impact panels and labels history
+accordingly. Frozen canonical decisions gate diffs; unknown/different selections
+withhold deltas. Unresolved or changed-identity watch attempts retain the last
+resolved baseline instead of emitting false removals. Historical results are not
+rewritten or reconstructed. No step-7 database migration is added.
+
+Local release checks: **2,088 backend tests passed, 1 skipped, 7 deselected** across
+shared/CBOM/graph/DevSecOps/database and selected API suites, including the cascade
+API suite. The CI-workflow contract test is outside this no-workflow-change
+release check. **365 frontend tests passed (40 files)**, including 13 cascade-panel
+tests; TypeScript typecheck and production build passed. Changed Python F/E9
+checks passed. Documentation links/routes/JSON/shell and runnable bank examples
+are checked locally. Nonfatal existing backend/React warnings remain.
+
+See [guide 23](../bank-environment/23-exact-target-identities-and-ambiguity.md) for
+selection contracts, compatibility, exact shared-subject reproduction and the
+full qualification boundary. Tenant-scoped candidate checks are local regression
+coverage, not completion of step 10. Live PostgreSQL/Neo4j, complete inventories,
+whole-bank role/write denial and operational failure claims remain unqualified.
+**Steps 8–10 remain pending.**

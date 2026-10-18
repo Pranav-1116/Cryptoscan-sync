@@ -1,5 +1,7 @@
 """Witnesses for existing cascade membership; never widen modeled exposure."""
 
+from cbom.target_resolution import fingerprint
+
 from shared_models.traversal_evidence import (
     SCHEMA,
     MAX_WITNESSES,
@@ -120,7 +122,7 @@ def _seed(snapshot, sid, kind, matched, layers, *, now, potential=False):
         records.extend(
             {"record_type": "certificate_usage", **r}
             for r in snapshot.get("certificate_usage_records") or []
-            if r.get("fingerprint_sha256") == matched.get("fingerprint_sha256") and r.get("location") == "system:" + sid
+            if fingerprint(r.get("fingerprint_sha256")) == fingerprint(matched.get("fingerprint_sha256")) and r.get("location") == "system:" + sid
         )
     if kind in {"endpoint", "certificate"}:
         endpoints = set((layers.get("network") or {}).get("endpoints") or [])
@@ -132,6 +134,7 @@ def _seed(snapshot, sid, kind, matched, layers, *, now, potential=False):
             }
             for r in snapshot.get("network_endpoints") or []
             if r.get("system_id") == sid and f"{r.get('host')}:{r.get('port')}" in endpoints
+            and (kind != "certificate" or fingerprint(r.get("certificate_fingerprint_sha256") or (r.get("certificate") or {}).get("fingerprint_sha256")) == fingerprint(matched.get("fingerprint_sha256")))
         )
     if kind == "process":
         records.extend(

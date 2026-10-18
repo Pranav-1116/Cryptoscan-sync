@@ -67,6 +67,7 @@ SNAPSHOT = {
         {"host": "api.bank", "port": 443, "protocol": "tcp",
          "version": "TLSv1.2", "cipher_suite": "TLS_RSA_WITH_AES_128_GCM_SHA256",
          "observed": True, "certificate_subject": "CN=payment-api",
+         "certificate_fingerprint_sha256": "ab" * 32,
          "system_id": "sys-pay"},
         {"host": "legacy.bank", "port": 8443, "observed": False,
          "system_id": None, "certificate_subject": None},

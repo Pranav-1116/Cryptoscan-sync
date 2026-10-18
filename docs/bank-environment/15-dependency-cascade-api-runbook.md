@@ -167,7 +167,11 @@ as an outage assertion or `NOT_FOUND` as a safety result.
 
 The engine supports other kinds including `algorithm`, `library`, `certificate`,
 `endpoint`, `system`, `vendor` and `process`. Substitute a real appropriate target
-and inspect what was matched. Broad text searches can be ambiguous.
+and inspect what was matched. [Step 7](23-exact-target-identities-and-ambiguity.md)
+adds `target_resolution` and `analysis_performed`. Use exact fingerprints, versioned
+PURLs and vendor IDs. `allow_name_search=true` permits non-executing broad candidate
+discovery; submit a chosen canonical identity separately. An unresolved answer
+has not analyzed impact—do not treat its compatibility zeroes as no exposure.
 
 ## 7. Capture a twin and replay it
 

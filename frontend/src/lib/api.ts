@@ -4720,12 +4720,25 @@ export interface ProcessImpact {
 }
 export interface ProcessMetric { known_sum: number | null; complete_sum: number | null; missing_or_conflicting_process_count: number }
 
+export interface CascadeTargetCandidate {
+  kind: string; canonical_target: string | null; label: string; matched_by: string;
+  selectable: boolean; conflicting_records?: boolean;
+}
+export interface CascadeTargetResolution {
+  schema: string; status: string; method: string; input: string; requested_kind: string | null;
+  allow_name_search: boolean; selected: CascadeTargetCandidate | null;
+  candidate_count: number; candidates: CascadeTargetCandidate[]; candidate_limit: number;
+  candidates_truncated: boolean; reason?: string | null; note: string;
+  coverage?: Record<string, unknown> | null;
+}
 export interface UnifiedCascadeResult {
+  target_resolution?: CascadeTargetResolution | null;
+  analysis_performed?: boolean;
   traversal_evidence?: CascadeTraversalEvidence | null;
   schema: string;
   relationship_policy?: DependencyRelationshipPolicy | null;
   relationship_lifecycle?: RelationshipLifecycleSummary | null;
-  verdict: "AFFECTED" | "NOT_FOUND" | "INSUFFICIENT_DATA";
+  verdict: "AFFECTED" | "NOT_FOUND" | "INSUFFICIENT_DATA" | "UNRESOLVED";
   run_id?: string;
   target: { input: string; kind: string; matched?: Record<string, any> | null };
   layers: Record<string, any> & { software?: CascadeSoftwareContext };
@@ -4754,6 +4767,8 @@ export interface UnifiedCascadeResult {
 }
 
 export interface CascadeRunSummary {
+  analysis_performed?: boolean;
+  target_resolution?: CascadeTargetResolution | null;
   id: string;
   target: string;
   target_kind: string | null;
@@ -4767,6 +4782,7 @@ export interface CascadeRunSummary {
 }
 
 export interface CascadeRunDiff {
+  target_comparison?: { comparable: boolean; reason: string | null };
   process_comparison?: { comparable: boolean; run_schema: string | null; against_schema: string | null; reason: string | null };
   policy_comparison?: { comparable: boolean; run_version: string | null; against_version: string | null };
   system_classification?: {
@@ -4782,19 +4798,20 @@ export interface CascadeRunDiff {
   against: { id: string; created_at: string | null; verdict: string };
   affected_systems: {
     added: string[]; removed: string[];
-    unchanged_count: number; before: number; after: number;
+    unchanged_count: number | null; before: number | null; after: number | null;
   };
-  affected_processes: { added: string[]; removed: string[]; before: number; after: number };
+  affected_processes: { added: string[]; removed: string[]; before: number | null; after: number | null };
 }
 
 export const apiUnifiedCascade = (
   target: string,
   kind?: string,
   maxDepth = 6,
+  allowNameSearch = false,
 ): Promise<ApiResult<UnifiedCascadeResult>> =>
   call("/api/v1/technology-bom/cascade", {
     method: "POST",
-    body: JSON.stringify({ target, kind: kind || undefined, max_depth: maxDepth }),
+    body: JSON.stringify({ target, kind: kind || undefined, max_depth: maxDepth, allow_name_search: allowNameSearch }),
   });
 
 export const apiCascadeRuns = (

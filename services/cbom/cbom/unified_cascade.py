@@ -24,20 +24,21 @@ from datetime import datetime
 from typing import Any, Mapping
 
 from shared_models.process_impact import classify_systems, project_processes
+from cbom.target_resolution import resolve_target, fingerprint
 from cbom.cascade_evidence import cascade_evidence
-from cbom.software_cascade import identify_software, software_context
+from cbom.software_cascade import software_context
 from shared_models.relationship_lifecycle import current, possible, summary as lifecycle_summary
 from shared_models.dependency_semantics import MAX_SYSTEM_HOPS, edge_relation, policy_metadata, propagates, system_id
 
-#: What a cascade target can be. Order matters for auto-detection when no
-#: explicit kind is given: most specific (fingerprints, host:port) first.
+#: Public supported-kind list. Resolution tiers are defined in target_resolution;
+#: this display order does not authorize broad/first-row protected-kind selection.
 TARGET_KINDS = (
     "package",      # exact versioned PURL from explicitly bound package SBOM
     "artifact",     # registered immutable sha256 digest or artifact id
     "certificate",  # fingerprint sha256 or subject
     "endpoint",     # host or host:port seen on the wire / registered
     "system",       # system id or name
-    "vendor",       # vendor registry name
+    "vendor",       # exact vendor id or unique whole registry name
     "device",       # hardware fleet asset id / manufacturer / model
     "library",      # library named in the twin's asset libraries
     "process",      # business process (id or name)
@@ -151,7 +152,7 @@ def _bfs(edges: list[Mapping[str, Any]], seeds: set[str], *,
     return found
 
 
-def identify_target(snapshot: Mapping[str, Any], target: str,
+def _identify_legacy(snapshot: Mapping[str, Any], target: str,
                     kind: str | None = None) -> dict[str, Any] | None:
     """Detect what the target refers to. Returns ``{kind, matched}`` or None.
 
@@ -160,23 +161,6 @@ def identify_target(snapshot: Mapping[str, Any], target: str,
     """
     wanted = _norm(target)
     if not wanted:
-        return None
-
-    def _certificate() -> dict[str, Any] | None:
-        """Fingerprint is exact and unambiguous; subject matching must not
-        steal a system's name (``CN=payment-api`` contains ``payment-api``),
-        so bare-subject containment only runs as a last resort below."""
-        for cert in snapshot.get("certificates") or []:
-            if _norm(cert.get("fingerprint_sha256")) == wanted:
-                return {"kind": "certificate", "matched": dict(cert)}
-            if _norm(cert.get("subject")) == wanted:
-                return {"kind": "certificate", "matched": dict(cert)}
-        return None
-
-    def _certificate_by_subject() -> dict[str, Any] | None:
-        for cert in snapshot.get("certificates") or []:
-            if _match(cert.get("subject"), wanted):
-                return {"kind": "certificate", "matched": dict(cert)}
         return None
 
     def _endpoint() -> dict[str, Any] | None:
@@ -192,12 +176,6 @@ def identify_target(snapshot: Mapping[str, Any], target: str,
         for system in snapshot.get("systems") or []:
             if _norm(system.get("id")) == wanted or _norm(system.get("name")) == wanted:
                 return {"kind": "system", "matched": dict(system)}
-        return None
-
-    def _vendor() -> dict[str, Any] | None:
-        for vendor in snapshot.get("vendors") or []:
-            if _match(vendor.get("name"), wanted):
-                return {"kind": "vendor", "matched": dict(vendor)}
         return None
 
     def _device() -> dict[str, Any] | None:
@@ -242,28 +220,13 @@ def identify_target(snapshot: Mapping[str, Any], target: str,
                 return {"kind": "algorithm", "matched": {"algorithm": target}}
         return None
 
-    def _package():
-        return identify_software(snapshot, target.strip(), "package")
-
-    def _artifact():
-        # UUIDs can also be system identities: only a sha256: prefix opts in
-        # during auto-detection; explicit kind=artifact accepts registered IDs.
-        if kind is None and not target.strip().startswith("sha256:"):
-            return None
-        return identify_software(snapshot, target.strip(), "artifact")
-
     detectors = {
-        "package": _package, "artifact": _artifact,
-        "certificate": _certificate, "endpoint": _endpoint, "system": _system,
-        "vendor": _vendor, "device": _device, "library": _library,
+        "endpoint": _endpoint, "system": _system,
+        "device": _device, "library": _library,
         "process": _process, "algorithm": _algorithm,
     }
     if kind is not None:
         normalized_kind = _norm(kind)
-        if normalized_kind == "certificate":
-            # an explicit certificate hint means subject containment is
-            # intended too, not just exact subject/fingerprint
-            return _certificate() or _certificate_by_subject()
         if normalized_kind not in detectors:
             raise ValueError(
                 f"unknown target kind {kind!r}; available: {list(detectors)}")
@@ -272,9 +235,12 @@ def identify_target(snapshot: Mapping[str, Any], target: str,
         found = detector()
         if found is not None:
             return found
-    # nothing exact matched — a certificate subject substring is the last
-    # interpretation worth trying ("payment-api" → CN=payment-api)
-    return _certificate_by_subject()
+    return None
+
+
+def identify_target(snapshot: Mapping[str, Any], target: str, kind: str | None = None, *, allow_name_search=False):
+    """Compatibility lookup: unresolved choices never return an arbitrary row."""
+    return resolve_target(snapshot, target, kind, allow_name_search=allow_name_search, legacy_detector=_identify_legacy)[1]
 
 
 def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
@@ -333,19 +299,25 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
 def _cascade_certificate(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
                          max_depth: int = 6) -> dict[str, Any]:
     subject = _norm(matched.get("subject"))
-    fingerprint = matched.get("fingerprint_sha256")
-    endpoints = [e for e in snapshot.get("network_endpoints") or []
-                 if _match((e.get("certificate") or {}).get("subject"), subject)
-                 or _match(e.get("certificate_subject"), subject)]
-    # real usage links (CertificateUsage rows) name the systems that run the
-    # certificate; endpoint owners add whoever serves it on the wire
-    usage_systems = sorted(set(
-        (snapshot.get("certificate_usages") or {}).get(fingerprint) or []))
+    selected_fp = fingerprint(matched.get("fingerprint_sha256"))
+    def endpoint_fp(endpoint):
+        return fingerprint(endpoint.get("certificate_fingerprint_sha256") or (endpoint.get("certificate") or {}).get("fingerprint_sha256"))
+    all_endpoints = snapshot.get("network_endpoints") or []
+    endpoints = [e for e in all_endpoints if selected_fp and endpoint_fp(e) == selected_fp]
+    subject_only = [e for e in all_endpoints if subject and _norm(e.get("certificate_subject") or (e.get("certificate") or {}).get("subject")) == subject and not endpoint_fp(e)]
+    different_fp = [e for e in all_endpoints if subject and _norm(e.get("certificate_subject") or (e.get("certificate") or {}).get("subject")) == subject and endpoint_fp(e) and endpoint_fp(e) != selected_fp]
+    usage_systems = {str(sid) for fp, sids in (snapshot.get("certificate_usages") or {}).items()
+                     if selected_fp and fingerprint(fp) == selected_fp for sid in sids}
     owning = {str(e.get("system_id")) for e in endpoints if e.get("system_id")}
-    systems = sorted(set(usage_systems) | owning)
+    systems = sorted(usage_systems | owning)
     return {
         "code": {"evidence_ids": [], "systems": [], "files": []},
         "network": {
+            "certificate_join": {"method": "exact_leaf_fingerprint", "fingerprint_sha256": selected_fp,
+                "subject_only_endpoint_count": len(subject_only), "different_fingerprint_same_subject_count": len(different_fp),
+                "subject_only_endpoints": [f"{e.get('host')}:{e.get('port')}" for e in subject_only[:200]],
+                "subject_only_endpoints_truncated": len(subject_only) > 200,
+                "note": "Subject equality is not certificate identity. Subject-only endpoints do not seed system exposure."},
             "endpoints": [f"{e.get('host')}:{e.get('port')}" for e in endpoints],
             "tls_versions": sorted({str(e.get("version")) for e in endpoints if e.get("version")}),
         },
@@ -637,7 +609,7 @@ def summarize_system_scope(result: Mapping[str, Any]) -> dict[str, Any] | None:
 
 def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
                     kind: str | None = None, max_depth: int = 6,
-                    now: datetime) -> dict[str, Any]:
+                    now: datetime, allow_name_search: bool = False) -> dict[str, Any]:
     """The blast radius of changing ``target``, across every BOM layer.
 
     Pure function of the snapshot: deterministic, read-only, ``now`` always a
@@ -669,7 +641,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
                 potential_dependencies.append(normalized)
     snapshot["dependencies"] = dependencies
 
-    identified = identify_target(snapshot, target_text, kind)
+    resolution, identified = resolve_target(snapshot, target_text, kind, allow_name_search=allow_name_search, legacy_detector=_identify_legacy)
     if identified is None:
         return {
             "schema": _SCHEMA,
@@ -678,14 +650,15 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
             "deterministic": True,
             "mutates_nothing": True,
             "target": {"input": target_text, "kind": kind or "unknown", "matched": None},
-            "verdict": "NOT_FOUND",
+            "verdict": "NOT_FOUND" if resolution["status"] == "NOT_FOUND" else "UNRESOLVED",
+            "target_resolution": resolution, "analysis_performed": False,
             "traversal_evidence": cascade_evidence(snapshot, _classify_system_scope({}), {}, {}, None, now=now, depth=depth, uncertain_systems=[], possible_direct=[]),
             "layers": {},
             "impact": {"affected_system_count": 0, "affected_systems": [],
                        "system_classification": _classify_system_scope({})},
             "honest_unknowns": [
-                "the target matches nothing in the twin: no certificate, "
-                "endpoint, system, vendor, device, library, algorithm or explicitly bound package/artifact",
+                resolution["reason"] or "Target not resolved.",
+                "No impact analysis performed. Empty compatibility fields are not measured zero exposure; candidates are limited to loaded authorized inventory.",
                 *(["software supply-chain input was truncated; a missing package/artifact match is not proof of absence"]
                   if (snapshot.get("software_supply_chain_coverage") or {}).get("truncated") else []),
             ],
@@ -792,6 +765,12 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         "system propagation walks registered dependency edges only — edges "
         "nobody registered do not exist here",
     ]
+    if cascade_kind == "certificate":
+        binding = layers["network"]["certificate_join"]
+        if binding["subject_only_endpoint_count"]:
+            unknowns.append("same-subject endpoints without a usable leaf fingerprint were not bound to this certificate; owner coverage remains incomplete")
+        if not layers["network"]["endpoints"] and not layers["system"]["systems"]:
+            unknowns.append("selected certificate has no loaded exact endpoint or usage binding; consumers remain unknown, not safe")
     if cascade_kind in {"package", "artifact"}:
         unknowns.extend([
             "SBOM membership is not proof of executable reachability or runtime use",
@@ -824,6 +803,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         "schema": _SCHEMA,
         "relationship_policy": policy_metadata(),
         "relationship_lifecycle": lifecycle,
+        "target_resolution": resolution, "analysis_performed": True,
         "traversal_evidence": explanation,
         "as_of": now.isoformat(),
         "deterministic": True,

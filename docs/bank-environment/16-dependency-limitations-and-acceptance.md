@@ -19,6 +19,11 @@ remain outstanding. [Step 3](19-package-artifact-deployment-identity.md) adds
 explicit package-SBOM/release-digest/application deployment joins, not automatic
 whole-estate package discovery or verified current runtime placement. The baseline table is not a claim those pending items are
 resolved.
+[Step 7](23-exact-target-identities-and-ambiguity.md) also replaces protected-kind
+first-match name selection and certificate subject-to-endpoint joins. Broad
+certificate/vendor/package search is opt-in discovery; ambiguity and binding gaps
+remain explicit. The old limitations below describe the historical baseline;
+legacy device/library/algorithm matching is not newly qualified exact.
 Current engineering status is tracked in the
 [ten-step plan](../dev/dependency-intelligence-roadmap.md).
 

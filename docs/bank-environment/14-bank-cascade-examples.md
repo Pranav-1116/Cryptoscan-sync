@@ -260,9 +260,11 @@ requests as though those database objects exist.
 5. Perform the bank-approved rotation and re-observe the intended service.
 6. Preserve before/after evidence and explain unresolved consumers.
 
-Current caveat: even if target selection uses a fingerprint, endpoint association
-can use subject matching. Renewed/different certificates sharing a subject can
-be conflated. A file import also does not prove a certificate was served live.
+[Step 7](23-exact-target-identities-and-ambiguity.md) now selects and joins
+certificate owners by exact leaf fingerprint. Renewed/different certificates
+sharing a subject are not merged; subject-only historical endpoints remain
+explicit binding gaps. An ambiguous subject requires a fingerprint selection.
+A file import still does not prove a certificate was served live.
 
 ## 8. Supplier package advisory
 

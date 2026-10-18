@@ -157,6 +157,8 @@ def _snapshot(db: Session) -> dict:
         for system in db.query(System).limit(SNAPSHOT_CAPS["systems"]).all()
     ]
 
+    certificate_page = db.query(Certificate).order_by(Certificate.fingerprint_sha256).limit(SNAPSHOT_CAPS["certificates"] + 1).all()
+    vendor_page = db.query(Vendor).order_by(Vendor.id).limit(SNAPSHOT_CAPS["vendors"] + 1).all()
     certificates = [
         {
             "fingerprint_sha256": c.fingerprint_sha256,
@@ -169,7 +171,7 @@ def _snapshot(db: Session) -> dict:
             "days_until_expiry": c.days_until_expiry,
             "renewal_status": c.renewal_status,
         }
-        for c in db.query(Certificate).limit(SNAPSHOT_CAPS["certificates"]).all()
+        for c in certificate_page[:SNAPSHOT_CAPS["certificates"]]
     ]
 
     # Evidence → system linkage runs the real chain:
@@ -257,6 +259,7 @@ def _snapshot(db: Session) -> dict:
             "observed": bool(ep.get("observed", True)),
             "scan_run_id": ep.get("scan_run_id"), "recorded_at": ep.get("recorded_at"),
             "certificate_subject": (ep.get("certificate") or {}).get("subject"),
+            "certificate_fingerprint_sha256": (ep.get("certificate") or {}).get("fingerprint_sha256"),
         })
     observed_keys = {f"{e['host']}:{e['port']}" for e in network_endpoints}
     # Registered scan targets that no run has observed yet still count as
@@ -405,10 +408,14 @@ def _snapshot(db: Session) -> dict:
         "crypto_hardware_links": crypto_hardware_links,
         "systems": systems,
         "certificates": certificates,
+        "target_resolution_coverage": {"certificate_truncated": len(certificate_page) > SNAPSHOT_CAPS["certificates"],
+            "vendor_truncated": len(vendor_page) > SNAPSHOT_CAPS["vendors"],
+            "certificate_limit": SNAPSHOT_CAPS["certificates"], "vendor_limit": SNAPSHOT_CAPS["vendors"],
+            "scope": "authorized_loaded_inventory", "note": "Identity candidates are limited to the authorized snapshot, not a global registry search."},
         "vendors": [
             {"id": v.id, "name": v.name, "criticality": v.criticality,
              "vendor_type": v.vendor_type}
-            for v in db.query(Vendor).limit(SNAPSHOT_CAPS["vendors"]).all()
+            for v in vendor_page[:SNAPSHOT_CAPS["vendors"]]
         ],
         "system_vendors": [
             {**sv.to_dict(), "provenance": "DECLARED", "source": "system_vendor mapping"}

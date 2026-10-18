@@ -66,17 +66,19 @@ Prefer an explicit kind and exact identity:
 | Target | Strong starting reference | Ambiguity to review |
 |---|---|---|
 | System | Actual registered ID | Same/similar name across environments |
-| Certificate | SHA-256 fingerprint | Shared subjects; endpoint association may still use subject matching |
+| Certificate | Full SHA-256 fingerprint | Exact fingerprint endpoint/usage joins; same subjects do not establish identity; missing fingerprint remains a gap |
 | Endpoint | Exact registered/observed host and port | Ownership mapping, aliases, virtual hosting and intended scope |
 | Device | Actual hardware asset ID | Manufacturer/model queries can match broadly |
 | Library | Estate library identity | Partial names, ecosystem/version attribution |
-| Vendor | Actual intended registry entry/name | Substring names and first-match selection |
+| Vendor | Exact intended registry ID | Exact unique name is weaker; ambiguous names require choice; broad search is opt-in and non-executing |
 | Algorithm | Intended family/parameterized name | Substring matching and family-level network evidence |
 | Process | Actual process ID/name | Missing supporting-system links |
 
-Auto-detection checks more specific forms before broad certificate-subject
-containment. That reduces ambiguity; it does not create universally exact
-resolution. Confirm `target.kind` and `target.matched` in the answer.
+[Step 7](23-exact-target-identities-and-ambiguity.md) replaces automatic
+certificate/vendor substring selection with canonical-first resolution and
+explicit ambiguity. Package PURLs remain exact versioned identities. Inspect
+`target_resolution`, `analysis_performed`, `target.kind` and `target.matched`.
+Other families retain labeled legacy detectors; this is not universal exactness.
 
 ## 5. From a target to seed systems
 

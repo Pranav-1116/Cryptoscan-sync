@@ -1038,6 +1038,7 @@ def _resolve_state(db: Session, version: int | None) -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 class CascadeRequest(BaseModel):
+    allow_name_search: bool = Field(default=False, description="Opt-in candidate discovery only; substring results never execute a cascade")
     as_of: AwareDatetime | None = Field(default=None, description="Explicit reevaluation clock; requires a captured twin version")
     target: str = Field(min_length=1, max_length=500,
                         description="Algorithm, certificate fingerprint/subject, "
@@ -1092,7 +1093,7 @@ def technology_bom_cascade(
     try:
         result = unified_cascade(
             estate, target=request.target, kind=request.kind,
-            max_depth=request.max_depth, now=evaluation_clock)
+            max_depth=request.max_depth, now=evaluation_clock, allow_name_search=request.allow_name_search)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1116,9 +1117,10 @@ def technology_bom_cascade(
         "technology_bom.cascade",
         f"Cross-BOM cascade run: {result['verdict']} for target "
         f"{result['target']['kind']} {request.target!r} "
-        f"({result['impact']['system_classification']['review_system_count']} systems in review scope)",
+        f"({result['impact']['system_classification']['review_system_count']} systems in review scope)" if result.get("analysis_performed") else f"Cascade target requires attention: {request.target!r} ({result['target_resolution']['status']})",
         {"target": request.target, "kind": result["target"]["kind"],
          "verdict": result["verdict"], "run_id": run.id,
+         "analysis_performed": result.get("analysis_performed"), "target_resolution": result.get("target_resolution"),
          "replayed_over": result.get("replayed_over"),
          "affected_system_count": result["impact"]["affected_system_count"],
          "system_classification": summarize_system_scope(result)},
@@ -1149,6 +1151,8 @@ def technology_bom_cascade_runs(
              # silently replay them against today's graph.
              "system_classification": summarize_system_scope(r.result or {}),
              "relationship_policy": (r.result or {}).get("relationship_policy"),
+             "analysis_performed": (r.result or {}).get("analysis_performed"),
+             "target_resolution": (r.result or {}).get("target_resolution"),
              # ownership travels with the row (NULL = platform estate)
              "tenant_id": r.tenant_id,
              # replay provenance travels with the history entry: an auditor
@@ -1242,7 +1246,12 @@ def technology_bom_cascade_run_diff(
         except Exception:
             return set()
 
+    from cbom.target_resolution import compare_resolution
+    target_comparison = compare_resolution(other.result, run.result)
+
     def _delta(label: str, old: set[str], new: set[str]) -> dict:
+        if not target_comparison["comparable"]:
+            return {"available": False, "reason": target_comparison["reason"], "added": [], "removed": [], "unchanged_count": None, "before": None, "after": None}
         return {"added": sorted(new - old), "removed": sorted(old - new),
                 "unchanged_count": len(new & old),
                 "before": len(old), "after": len(new)}
@@ -1257,7 +1266,7 @@ def technology_bom_cascade_run_diff(
     new_policy = ((run.result or {}).get("relationship_policy") or {}).get("version")
     policy_comparable = old_policy is not None and old_policy == new_policy
     comparable = (old_scope.get("schema") == SYSTEM_SCOPE_SCHEMA
-                  and new_scope.get("schema") == SYSTEM_SCOPE_SCHEMA and policy_comparable)
+                  and new_scope.get("schema") == SYSTEM_SCOPE_SCHEMA and policy_comparable and target_comparison["comparable"])
     scope_diff: dict[str, Any] = {"available": comparable}
     if comparable:
         scope_diff.update({
@@ -1267,6 +1276,7 @@ def technology_bom_cascade_run_diff(
     else:
         scope_diff["reason"] = (
             "relationship policy differs or is unknown for a stored run" if not policy_comparable
+            else target_comparison["reason"] if not target_comparison["comparable"]
             else "one or both stored runs lack the current system classification")
     from shared_models.process_impact import SCHEMA as PROCESS_SCHEMA
     old_process_schema = ((other.result or {}).get("impact", {}).get("process_impact") or {}).get("schema")
@@ -1279,6 +1289,7 @@ def technology_bom_cascade_run_diff(
         "against": {"id": other.id, "created_at": other.created_at.isoformat()
                     if other.created_at else None, "verdict": other.verdict},
         "target": run.target,
+        "target_comparison": target_comparison,
         "verdict_changed": run.verdict != other.verdict,
         "affected_systems": _delta("systems", old_systems, new_systems),
         "system_classification": scope_diff,
@@ -1412,16 +1423,26 @@ def cascade_watches_run_due(
                  "affected_system_count": result["impact"]["affected_system_count"],
                  "system_classification": summarize_system_scope(result),
                  "relationship_policy": result.get("relationship_policy")}
-        if result["verdict"] == "NOT_FOUND":
-            # the target has left the estate: say so explicitly instead of
-            # letting a zero-impact answer read as "all clear"
-            entry["target_missing"] = True
+        entry["target_resolution"] = result.get("target_resolution")
+        entry["analysis_performed"] = result.get("analysis_performed")
+        if not result.get("analysis_performed"):
+            entry["target_missing"] = result["verdict"] == "NOT_FOUND"
+            entry["attention_required"] = True
+            entry["comparison_withheld"] = "Target unresolved; previous resolved baseline retained. Empty compatibility counts are not impact removal."
+            results.append(entry)
+            continue
         if watch.last_run_id:
             previous = repo.get(watch.last_run_id)
             if previous is not None:
-                # both sides tolerate the NOT_FOUND shape, which carries a
-                # count but no system list — a disappeared target must
-                # report its collapsed blast radius, not crash the run
+                # Compare frozen canonical selections, never a reinterpreted
+                # name or unresolved placeholder against a resolved baseline.
+                from cbom.target_resolution import compare_resolution
+                entry["target_comparison"] = compare_resolution(previous.result, result)
+                if not entry["target_comparison"]["comparable"]:
+                    entry["attention_required"] = True
+                    entry["comparison_withheld"] = entry["target_comparison"]["reason"]
+                    results.append(entry)
+                    continue
                 old_policy = ((previous.result or {}).get("relationship_policy") or {}).get("version")
                 new_policy = (result.get("relationship_policy") or {}).get("version")
                 entry["policy_comparison"] = {

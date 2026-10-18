@@ -22,9 +22,11 @@ def identify_software(snapshot, target, kind):
             digest = artifact_digest(target)
         except ValueError:
             digest = None
-        for row in snapshot.get("software_artifacts") or []:
-            if row.get("id") == target or (digest and row.get("digest") == digest):
-                return {"kind": "artifact", "matched": {"id": row.get("id"), "digest": row.get("digest")}}
+        matches = {(row.get("id"), row.get("digest")) for row in snapshot.get("software_artifacts") or []
+                   if row.get("id") == target or (digest and row.get("digest") == digest)}
+        if len(matches) == 1:
+            identity, digest = next(iter(matches))
+            return {"kind": "artifact", "matched": {"id": identity, "digest": digest}}
     return None
 
 
