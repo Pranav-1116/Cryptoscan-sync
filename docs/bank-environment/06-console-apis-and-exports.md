@@ -13,7 +13,7 @@ After installation and bank-approved authentication, a typical user follows:
    or network-run progress/result. A spinning widget is not durable completion.
 3. **Findings and evidence:** inspect observation provenance, policy rationale,
    confidence, code origin, exclusions and failures.
-4. **BOM views:** select the question—wire posture, crypto inventory, hardware,
+4. **BOM views:** select the question—software composition, wire posture, crypto inventory, hardware,
    supplier dependency or the shared technology view.
 5. **Capture / compare / export:** retain stable supported snapshots, exact run
    references and signed/hash metadata for an approved review period.
@@ -28,6 +28,7 @@ product names. Menu labels and permission-visible actions can change with role.
 | `/onboarding`, `/cmdb`, `/assets` | Scope/context and system estate | Registration is not proof of discovery |
 | `/scanners`, `/live-scanners` | Scan operations and job investigation | Different collectors have different result/ID paths |
 | `/findings`, `/evidence`, `/crypto-assets` | Observations, evidence and deduplicated crypto inventory | A finding is not necessarily a distinct deployed key |
+| `/dev-sec-ops` | Applications → SBOM: Scan & generate, Artifacts, Diff, Validate, Licenses, Index, Import | Standalone software artifacts, not the TechBOM application layer; no `/sbom` SPA route |
 | `/cbom` | Crypto inventory/query/coverage and supported scan pins | Scope, origins and truncation matter |
 | `/nbom`, `/network`, `/certificates` | Observed network components, transport and certificate details | No successful probe means unknown, not healthy |
 | `/hbom`, `/hardware` | Independent persisted hardware estate, live hardware and pins/diffs | Do not confuse persisted estate with ephemeral engine state |
@@ -40,13 +41,19 @@ Confirm the installed release's route/menu definitions before training operators
 A UI role guard alone is not an authorization control; server-side scope and
 permission enforcement must also be included in the bank's negative tests.
 
-## 2. Read API reference for the five BOMs
+## 2. Read API reference for the six BOMs
 
 All paths below include `/api/v1`. Use authenticated HTTPS through the bank's
 internal ingress, not an exposed development server or public database port.
 
 | Method and path | Meaning |
 |---|---|
+| `POST /api/v1/devsecops/sbom/scan` | Generate source/container/binary SBOM; synchronous artifact response, not a queued source job |
+| `GET /api/v1/devsecops/sbom/artifacts` | List accessible generated artifacts |
+| `GET /api/v1/devsecops/sbom/{artifact_id}/download` | Retrieve the exact stored software document |
+| `GET /api/v1/devsecops/sbom/{artifact_id}/verify` | Inspect digest/signature verification result |
+| `POST /api/v1/devsecops/sbom/diff` | Compare supplied software documents or actual artifact IDs |
+| `POST /api/v1/devsecops/sbom/{artifact_id}/gate` | Evaluate selected artifact policy; caller enforces the decision |
 | `GET /api/v1/cbom/nbom` | NBOM derived from stored network-run probes; response contains `nbom`, `summary`, `source` |
 | `POST /api/v1/cbom/nbom` | Build a document from supplied endpoint/tunnel/device inputs; not a network scan |
 | `POST /api/v1/cbom/nbom/cascade?ref=...` | Analyze supplied NBOM inputs for the selected component's recorded dependents |
@@ -88,6 +95,9 @@ each other only after product/deployment identity and provenance are established
 Use IDs/verification paths returned by the installation. A screenshot or a
 handwritten ID does not prove a persisted snapshot exists. NBOM and native VBOM
 do not inherit an immutable pin merely because a TechBOM version was captured.
+
+For software inputs, artifacts, imports, formats and signing/storage limitations,
+see [09 — SBOM deep dive](09-sbom-deep-dive.md).
 
 ## 4. TechBOM export contract
 
@@ -160,12 +170,13 @@ constitute third-party schema certification, regulatory approval or trusted time
 ## 6. Suggested evidence package
 
 This is an **operator packaging checklist**, not a claim that one endpoint
-atomically exports all five BOMs:
+atomically exports all six BOMs:
 
 ```text
 bank-approved evidence location/
   scope-and-authorization
   collector-builds-config-versions-and-policy-versions
+  software-sbom-artifacts-input-identities-and-verification
   source-job-result-and-coverage
   source-evidence-verification-and-cbom-pin
   network-run-results-and-nbom
@@ -177,7 +188,7 @@ bank-approved evidence location/
 ```
 
 Record a cutoff window and the actual source/run/snapshot/version identities.
-The five outputs can refer to different collection times. Retain unknowns and
+The six outputs can refer to different collection times. Retain unknowns and
 failed scopes in the handoff rather than removing them to improve a dashboard.
 Apply bank encryption, retention, access and transfer controls to the bundle.
 

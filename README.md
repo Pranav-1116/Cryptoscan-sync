@@ -21,8 +21,8 @@ The working loop is: scan source → evidence chain → SQLite/Postgres → norm
 
 ## How it operates inside a bank
 
-[Bank environment and five-BOM walkthrough](docs/bank-environment/README.md)
-explains approved deployment/access, actual scanning paths, NBOM/CBOM/TechBOM/
+[Bank environment and six-BOM walkthrough](docs/bank-environment/README.md)
+explains approved deployment/access, actual scanning paths, SBOM/NBOM/CBOM/TechBOM/
 HBOM/VBOM generation, practical payments examples, console/API exports and
 acceptance criteria. It distinguishes code-backed behavior from prerequisites,
 known route differences and unqualified bank/provider runtime claims.

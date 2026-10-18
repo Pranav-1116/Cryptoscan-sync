@@ -20,6 +20,7 @@ not evidence that a customer system was scanned.
 | Source execution | [Pipeline runner](../../services/worker/worker/pipeline/pipeline_runner.py), [progress stages](../../services/worker/worker/pipeline/progress.py), [clone/copy](../../services/worker/worker/workspace/repo_cloner.py) | [Isolated launcher tests](../../services/worker/tests/unit/test_static_scan_isolation.py) |
 | Parser boundary | [Worker launcher](../../services/worker/worker/core/static_scan_isolation.py), [parser adapter](../../services/scanner/scanner/isolated.py) | [Adapter tests](../../services/scanner/tests/unit/test_isolated_adapter.py) |
 | Cloud ingestion | [Cloud job](../../services/worker/worker/pipeline/cloud_job.py), [estate mapping](../../services/cloud_scanner/cloud_scanner/estate.py) | [Direct filesystem/cloud route](../../services/api/api/routers/cloud_scans.py) is a different path |
+| Standalone SBOM | [Source scanner/rendering](../../services/devsecops/devsecops/sbom_scan.py), [lockfile parsers](../../services/devsecops/devsecops/sbom_lockfiles.py), [API/artifacts](../../services/api/api/routers/devsecops.py), [artifact storage](../../services/devsecops/devsecops/artifact_store.py) | [Scanner tests](../../services/devsecops/tests/test_sbom_scan.py), [lockfiles](../../services/devsecops/tests/test_sbom_lockfiles.py), [assurance](../../services/devsecops/tests/test_sbom_assurance.py), [UI](../../frontend/src/pages/DevSecOps.tsx) |
 | NBOM | [Builder/mapping](../../services/cbom/cbom/nbom.py), [live/API gather](../../services/api/api/routers/cbom.py), [network execution](../../services/api/api/routers/network.py) | [NBOM tests](../../services/cbom/tests/test_nbom.py), [plaintext/unknown distinction](../../services/cbom/tests/test_nbom_plaintext.py) |
 | Network persistence | [Run repository](../../services/database/db/repositories/scan_run_repository.py), [run model](../../services/database/db/models/network_scan_run.py) | [Real controlled TLS-to-NBOM test](../../services/network_scanner/tests/test_tls_cbom_end_to_end.py) is local test evidence, not bank evidence |
 | CBOM | [Generator](../../services/cbom/cbom/generator.py), [API/pins](../../services/api/api/routers/cbom.py), [stored scan verification](../../services/api/api/routers/export.py) | [Generator tests](../../services/cbom/tests/test_generator.py) |
@@ -132,7 +133,7 @@ Where older narrative documents imply uniform automation or stronger coverage,
 use the specific source paths, explicit limits and retained measurements here
 rather than repeating an unqualified feature claim.
 
-### Checks performed for this documentation update
+### Historical checks for the original five-BOM guide (a08ac591)
 
 - **80 selected BOM tests passed** in 3.57s: NBOM/transport assessment, CBOM
   generation, independent HBOM/diff, Technology BOM and vendor BOM tests.
@@ -151,3 +152,35 @@ rather than repeating an unqualified feature claim.
 
 These are implementation/documentation checks, not new customer acceptance
 evidence. Existing production readiness decisions remain unchanged.
+
+### Checks performed for the six-BOM/SBOM expansion
+
+This record applies to the expanded guide, independently of the historical
+five-BOM validation above:
+
+- **157 selected tests passed** in 1.70s: source/container SBOM scanning,
+  supported lockfile parsing, assurance, gate CLI, licenses and VEX, plus the
+  previous NBOM/CBOM/HBOM/TechBOM/vendor tests. The first collection attempt
+  omitted nested shared-package import roots; rerunning with the repository's
+  `services` plus `shared` package-root convention passed. No application
+  changes were needed.
+- All **6 example request bodies** passed their actual Pydantic models, including
+  the new `SbomScanRequest`. The existing `SubnetDiscoverRequest.register`
+  shadowing warning remains; it was not changed by this documentation task.
+- All **13 Markdown files** in this guide directory (including the old-name
+  forwarding page), **12 JSON blocks**, **15 Bash blocks** (syntax only), local
+  file links and heading anchors passed document checks.
+- **50 explicit API method/path references** matched router declarations;
+  **22 positive console route references** matched SPA routes. Documented absent
+  routes are not represented as working deep links.
+- The documented temporary SBOM reproduction executed successfully with actual
+  `scan_source`/`render_sbom` functions and CycloneDX/SPDX assertions. Its
+  synthetic input produced one parsed manifest, one parsed lockfile, two package
+  rows and one dependency edge. The excerpt preserves generated values and
+  explains normalized range syntax and heuristic supplier-attribution limits.
+- No bank input, remote package installation, registry pull, collector deployment
+  or database ingestion was used to generate that fixture. Existing five-builder
+  excerpts remain illustrative, not refreshed bank measurements.
+- Publication remains documentation-only with unchanged CI workflows. These
+  checks are not a full suite, CI run, browser qualification, production deployment,
+  customer scan or bank acceptance decision.

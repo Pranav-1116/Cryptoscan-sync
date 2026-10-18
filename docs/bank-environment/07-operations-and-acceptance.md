@@ -62,6 +62,16 @@ forwarding arbitrary logs to a public tracker.
 
 ## 4. Change detection and closure
 
+### Example: software dependency update
+
+Retain the old standalone SBOM artifact and exact release identity. The owner
+updates the dependency/build, produces the approved new image and stages the
+corresponding source. Generate a new supported SBOM, compare actual artifact IDs
+and inspect additions/removals/version and scope changes. Check the deployed
+image mapping separately. Reapply the approved advisory feed and policy; zero
+advisories without a feed is not proof of safety. Run crypto scans too where
+usage changes need CBOM evidence.
+
 ### Example: application digest change
 
 The owner confirms that an obsolete digest is used in the production-relevant
@@ -94,6 +104,7 @@ is a proposed acceptance plan, not completed customer evidence.
 | Authorized scope | Selected repo/listener/account/device is collected in the approved window | Out-of-scope target denied; stop/window behavior and firewall containment verified |
 | Authentication and authorization | Correct identities can read/operate their permitted surfaces | Revoked session, wrong role, wrong tenant/estate and forged context denied |
 | Source isolation | Approved immutable parser image scans a real controlled input | Missing image/runtime, denied network/write access, timeout, resource limits and cleanup tested |
+| Software SBOM | Supported manifest/lockfile or image evidence, exact artifact retrieval/verification and release mapping | Malformed/skipped inputs, absent feeds, missing metadata and nonpersistent artifact storage are not hidden as clean results |
 | Source provenance | Correct release/commit/export identity and evidence linkage | Wrong/missing input or parser failure is not shown as a clean pass |
 | Network observation | Exact intended endpoint/SNI yields a stored run and correct NBOM | Timeout, failed handshake and unreachable service remain distinguishable from plaintext/healthy |
 | Provider scope | Permitted cloud calls succeed for selected accounts/regions | Denied calls, partial results and missing regions are visible; no false empty success |
@@ -125,9 +136,10 @@ If reporting collection coverage as 7/12, state the denominator and criterion.
 Do not substitute “seven BOM components” for “seven targets collected”, or
 remove failed scopes from the denominator to inflate success.
 
-Report per-output coverage separately: source evidence, observed listeners,
+Report per-output coverage separately: software components/resolutions, crypto
+source evidence, observed listeners,
 persisted hardware, supplier substantiation and shared-state mappings. One
-successful network probe does not establish the other four BOMs.
+successful network probe does not establish the other five BOMs.
 
 ## 7. Production handoff and security review
 

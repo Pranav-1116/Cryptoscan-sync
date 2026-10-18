@@ -1,7 +1,7 @@
 # 03 — From a scan request to visible, evidence-backed output
 
 [Guide index](README.md) · Previous: [Access](02-collection-and-access.md) ·
-Next: [Five BOMs](04-five-boms.md)
+Next: [Six BOMs](04-six-boms.md)
 
 ## 1. There are several execution paths, not one magical universal scan
 
@@ -112,6 +112,9 @@ hash integrity.
 
 ## 7. Materialize BOMs from the correct stores
 
+- **SBOM:** standalone software scanning parses supported manifests/lockfiles or
+  inspects container/binary inputs, renders a software document and stores its
+  own artifact. It is separate from TechBOM's registered-application layer.
 - **CBOM:** scanner/crypto asset/evidence records become scan, system and estate
   cryptographic components. An imported supplier CBOM is a different provenance.
 - **NBOM:** persisted `network_scan_runs.result` probes are mapped into endpoint,
@@ -138,8 +141,8 @@ new version for an unchanged fingerprint. CBOM and estate HBOM have their own
 pinning APIs and identifiers.
 
 These independent captures are not automatically one atomic transaction across
-all five products. For an audit, define a cutoff, settle selected scans, capture
-the supported snapshots, and retain the associated NBOM/VBOM outputs, hashes,
+all six products. For an audit, define a cutoff, settle selected scans, capture
+the supported snapshots and SBOM artifacts, and retain NBOM/VBOM outputs, hashes,
 source-run IDs and time boundaries in a bank-owned release manifest.
 
 ## 9. How results reach the screen
@@ -161,6 +164,7 @@ collectors each need their own interpretation.
 
 | Path | Important difference from the queued source pipeline |
 |---|---|
+| Standalone source SBOM | Synchronous local-path manifest/lockfile scan through `/devsecops/sbom/scan`; not the queued crypto AST parser or its isolated runtime. Retains its own artifact ID. |
 | Cloud job | Dispatches to cloud inventory/ingestion; does not clone a repository. Provider telemetry can show failed/partial scope. |
 | Direct cloud filesystem route | Returns IaC/live findings and durable job telemetry; do not assume its response automatically became the same shared estate records as queued ingestion. |
 | Network due-target execution | Performs synchronous probes and persists network runs/certificates; use network run IDs, not a source-pipeline scan ID. |

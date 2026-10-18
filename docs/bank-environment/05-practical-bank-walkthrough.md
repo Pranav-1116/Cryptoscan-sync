@@ -1,6 +1,6 @@
 # 05 — Practical walkthrough: a bank payments pilot
 
-[Guide index](README.md) · Previous: [Five BOMs](04-five-boms.md) ·
+[Guide index](README.md) · Previous: [Six BOMs](04-six-boms.md) ·
 Next: [UI and exports](06-console-apis-and-exports.md)
 
 **Every name, address, revision and outcome below is illustrative.** Requests
@@ -131,6 +131,16 @@ A job can be COMPLETED while its security decision blocks release or optional
 collectors report failures. Conversely a missing parser image means the scan
 fails; it is not evidence of a crypto-free application. Capture the actual job,
 coverage, gate, errors and evidence-verification outcome.
+
+### Generate the standalone software SBOM too
+
+The preceding job and CBOM reads do not replace a package SBOM. Stage the
+matching approved source revision on the SBOM executor and follow the
+[exact source SBOM request and artifact retrieval example](09-sbom-deep-dive.md#5-api-example-approved-local-software-input).
+Retain its distinct artifact ID, dependency-resolution coverage, input identity
+and verification. Review admission/isolation differences before using that route.
+If the release includes an image, reconcile a separately inspected image digest
+with the source-derived software inventory and the bank deployment record.
 
 ## 5. Observe the approved gateway and populate NBOM
 
@@ -285,7 +295,8 @@ Snapshot writes need the server's required permissions. A repeated identical
 capture may reuse an existing snapshot. Record returned IDs/versions; none are
 invented in this guide. Fetch the returned verification paths and inspect
 integrity results. Independently retain network run/NBOM and vendor revision/
-VBOM artifacts because one TechBOM pin is not an atomic freeze of every BOM.
+VBOM artifacts plus the standalone SBOM artifact because one TechBOM pin is not
+an atomic freeze of every BOM.
 
 For a historical TechBOM export, set `VERSION` from the returned snapshot:
 
@@ -296,8 +307,9 @@ bank_api GET "/api/v1/technology-bom/export?version=$VERSION&fmt=cyclonedx&layer
 ```
 
 The response is a manifest wrapping `data`, not necessarily a bare BOM. Preserve
-both, plus verification metadata. View `/cbom`, `/nbom`, `/hbom`, `/vendor` and
-`/live-asset-intelligence` through the internal HTTPS console. See
+both, plus verification metadata. View Applications → SBOM (`/dev-sec-ops`),
+`/cbom`, `/nbom`, `/hbom`, `/vendor` and `/live-asset-intelligence` through the
+internal HTTPS console. See
 [06](06-console-apis-and-exports.md) for exact formats and interpretation.
 
 ## 10. Make one change and prove one outcome
