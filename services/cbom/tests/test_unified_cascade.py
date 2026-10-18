@@ -615,3 +615,19 @@ def test_history_scope_summary_is_count_only_and_preserves_legacy_unknown():
     assert summary["review_system_count"] == 4
     assert "sys-pay" not in str(summary)
     assert summarize_system_scope({"impact": {"affected_system_count": 4}}) is None
+
+
+def test_vendor_sub_tier_walk_keeps_its_separate_domain_semantics():
+    # The shared policy controls system propagation, not declared supplier
+    # containment/supply links. Do not silently erase the VBOM sub-tier walk.
+    result = run("Thales", kind="vendor")
+    assert result["layers"]["vendor"]["sub_tier_vendors_by_depth"] == {"1": ["v-chip"]}
+    assert result["relationship_policy"]["direction"] == "consumer_to_provider"
+
+
+def test_empty_known_system_set_cannot_bridge_dependency_only_ghost_nodes():
+    snapshot = {"systems": [], "assets": [],
+                "evidence": [{"id": "e", "algorithm": "RSA", "system_id": "dangling"}],
+                "dependencies": [{"source": "ghost", "target": "dangling", "type": "CALLS"}]}
+    result = unified_cascade(snapshot, target="RSA", kind="algorithm", now=NOW)
+    assert result["layers"]["system"]["dependents_by_depth"] == {}

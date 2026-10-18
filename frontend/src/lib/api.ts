@@ -4622,8 +4622,19 @@ export interface CascadeScopeDelta {
   unchanged_count: number; before: number; after: number;
 }
 
+export interface DependencyRelationshipPolicy {
+  version: string;
+  direction: "consumer_to_provider";
+  propagating_relations: string[];
+  context_relations: string[];
+  unknown_relations: "non_propagating";
+  unspecified_relation: "CALLS";
+  max_system_hops: number;
+}
+
 export interface UnifiedCascadeResult {
   schema: string;
+  relationship_policy?: DependencyRelationshipPolicy | null;
   verdict: "AFFECTED" | "NOT_FOUND" | "INSUFFICIENT_DATA";
   run_id?: string;
   target: { input: string; kind: string; matched?: Record<string, any> | null };
@@ -4653,11 +4664,13 @@ export interface CascadeRunSummary {
   verdict: string;
   affected_system_count?: number | null;
   system_classification?: CascadeScopeCounts | null;
+  relationship_policy?: DependencyRelationshipPolicy | null;
   created_by: string | null;
   created_at: string | null;
 }
 
 export interface CascadeRunDiff {
+  policy_comparison?: { comparable: boolean; run_version: string | null; against_version: string | null };
   system_classification?: {
     available: boolean;
     reason?: string;

@@ -2,19 +2,23 @@
 
 from __future__ import annotations
 
+from shared_models.dependency_semantics import cypher_dependency_predicate
+
 BLAST_RADIUS = """
 // cryptoscan.query=blast_radius
 MATCH (s:System)
 WHERE s.system_id = $start OR s.name = $start
-OPTIONAL MATCH path = (s)-[:CALLS*1..12]->(downstream:System)
-WITH s, downstream, path
-WHERE downstream IS NOT NULL AND length(path) <= $hops
-RETURN DISTINCT downstream.system_id AS id,
-                downstream.name AS name,
-                downstream.criticality AS criticality,
-                length(path) AS hops
-ORDER BY hops, name
-"""
+MATCH path = (s)-[:CALLS*1..12]->(downstream:System)
+WHERE downstream <> s AND length(path) <= $hops
+  AND all(n IN nodes(path) WHERE n:System)
+  AND all(r IN relationships(path) WHERE __DEPENDENCY_POLICY__)
+WITH downstream, min(length(path)) AS hops
+RETURN downstream.system_id AS id,
+       downstream.name AS name,
+       downstream.criticality AS criticality,
+       hops
+ORDER BY hops, name, id
+""".replace("__DEPENDENCY_POLICY__", cypher_dependency_predicate())
 
 SYSTEMS_USING_ASSET = """
 // cryptoscan.query=systems_using_asset

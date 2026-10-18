@@ -3,6 +3,12 @@
 [Guide index](README.md) · Previous: [Dependency discovery](12-dependency-discovery-and-evidence.md) ·
 Next: [Detailed bank examples](14-bank-cascade-examples.md)
 
+Implementation updates: [step 1](17-classified-system-scope.md) separates system
+scope buckets; [step 2](18-shared-dependency-semantics.md) defines the shared
+relationship policy and supersedes the historical traversal differences below.
+Different input inventories and existing stale Neo4j edges can still differ;
+real-backend qualification remains pending.
+
 ## 1. Direction before numbers
 
 For this guide, every dependency arrow means the left-hand system relies on the

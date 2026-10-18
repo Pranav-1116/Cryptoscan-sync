@@ -108,8 +108,9 @@ MERGE_CALLS = """
 UNWIND $rows AS row
 MATCH (a:System {system_id: row.parent_id, tenant_id: row.tenant_id})
 MATCH (b:System {system_id: row.child_id, tenant_id: row.tenant_id})
-MERGE (a)-[rel:CALLS]->(b)
+MERGE (a)-[rel:CALLS {relation: row.relation}]->(b)
 SET rel.protocol = row.protocol,
+    rel.relation = row.relation,
     rel.frequency = row.frequency,
     rel.provenance = row.provenance,
     rel.source = row.source,

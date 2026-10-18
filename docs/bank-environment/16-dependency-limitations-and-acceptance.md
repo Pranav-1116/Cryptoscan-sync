@@ -12,7 +12,11 @@ this guide, and no bank production approval is implied.
 The limitation table below records the pre-implementation baseline documented
 at commit `94001ff2`. [Step 1](17-classified-system-scope.md) now adds disjoint
 direct/consumer/context classification and UI counts while retaining legacy
-aggregate fields. The other backlog items are not resolved by that change.
+aggregate fields. [Step 2](18-shared-dependency-semantics.md) adds a shared
+versioned system relationship policy and deterministic adapter parity fixtures;
+real Neo4j qualification, differing collector inputs and stale-edge reconciliation
+remain outstanding. The baseline table is not a claim those pending items are
+resolved.
 Current engineering status is tracked in the
 [ten-step plan](../dev/dependency-intelligence-roadmap.md).
 

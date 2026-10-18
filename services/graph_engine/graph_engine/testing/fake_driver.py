@@ -1,7 +1,7 @@
-"""In-memory Bolt stand-in that executes this service's Cypher dialect.
+"""In-memory Bolt test double dispatching tagged queries to Python handlers.
 
-Used by unit tests and by the API when Neo4j is not running. The same query
-strings go through Neo4jGraphStore either way.
+It does not parse/execute Cypher and cannot qualify a real Neo4j deployment.
+The adapter sends the same query text and parameters to this double in tests.
 """
 
 from __future__ import annotations
@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from collections import deque
 from typing import Any, Iterable
+
+from shared_models.dependency_semantics import MAX_SYSTEM_HOPS, normalize_relation
 
 from graph_engine.core.engine import _is_shor_vulnerable
 from graph_engine.schemas.node_schemas import IDENTITY_PROPERTY, KIND_PREFIX
@@ -78,6 +80,8 @@ class InMemoryBoltGraph:
             return
         for existing_src, existing_rel, existing_dst, existing_props in self.edges:
             if existing_src == src and existing_dst == dst and existing_rel == rel:
+                if rel == "CALLS" and existing_props.get("relation") != (props or {}).get("relation"):
+                    continue
                 existing_props.update(props or {})
                 return
         self.edges.append((src, rel, dst, dict(props or {})))
@@ -209,7 +213,9 @@ class FakeSession:
                 "CALLS",
                 "System",
                 row["child_id"],
-                {"protocol": row.get("protocol"), "frequency": row.get("frequency")},
+                {"protocol": row.get("protocol"), "relation": row.get("relation"),
+                 "frequency": row.get("frequency"), "provenance": row.get("provenance"),
+                 "source": row.get("source"), "observed_at": row.get("observed_at")},
             )
         return []
 
@@ -332,6 +338,23 @@ class FakeSession:
                     rows.append({"id": system.get("system_id") or src_key, "name": system.get("name")})
         return rows
 
+    def _system_neighbors(self, node_id, params, *, reverse=False):
+        for src, relation, dst, properties in self.graph.edges:
+            if relation != "CALLS" or src[0] != "System" or dst[0] != "System":
+                continue
+            if properties.get("relation") is not None:
+                allowed = params.get("dependency_relations") or ["CALLS"]
+                label = normalize_relation(properties["relation"])
+            else:
+                allowed = params.get("legacy_dependency_relations") or ["CALLS"]
+                label = normalize_relation(properties.get("protocol"))
+            if label not in allowed:
+                continue
+            if not reverse and src[1] == node_id:
+                yield dst[1]
+            elif reverse and dst[1] == node_id:
+                yield src[1]
+
     def _blast(self, params):
         start = self.graph.find_system(str(params.get("start") or ""))
         if not start:
@@ -344,7 +367,7 @@ class FakeSession:
             depth = seen[current]
             if depth >= hops:
                 continue
-            for _label, nxt in self.graph.outgoing("System", current, "CALLS"):
+            for nxt in self._system_neighbors(current, params):
                 if nxt not in seen:
                     seen[nxt] = depth + 1
                     queue.append(nxt)
@@ -376,7 +399,7 @@ class FakeSession:
             depth = seen[current]
             if depth >= hops:
                 continue
-            for _label, prev in self.graph.incoming("System", current, "CALLS"):
+            for prev in self._system_neighbors(current, params, reverse=True):
                 if prev not in seen:
                     seen[prev] = depth + 1
                     queue.append(prev)
@@ -410,12 +433,14 @@ class FakeSession:
         found = False
         while queue and not found:
             current = queue.popleft()
-            step = (
-                self.graph.incoming("System", current, "CALLS")
-                if upstream
-                else self.graph.outgoing("System", current, "CALLS")
-            )
-            for _label, nxt in step:
+            depth = 0
+            cursor = current
+            while parent.get(cursor) is not None:
+                depth += 1
+                cursor = parent[cursor]
+            if depth >= MAX_SYSTEM_HOPS:
+                continue
+            for nxt in self._system_neighbors(current, params, reverse=upstream):
                 if nxt in parent:
                     continue
                 parent[nxt] = current
@@ -510,9 +535,10 @@ class FakeSession:
         start = self.graph.find_system(str(params.get("start") or ""))
         if not start:
             return []
-        # BFS along CALLS, then a DEPENDS_ON_VENDOR hop.
+        # Policy-filtered system prefix, then one domain-specific vendor hop.
         parent: dict[str, str | None] = {start["system_id"]: None}
         queue = deque([start["system_id"]])
+        depths = {start["system_id"]: 0}
         found_vendor = None
         found_sys = None
         while queue:
@@ -523,9 +549,10 @@ class FakeSession:
                 queue.clear()
                 break
             else:
-                for _label, nxt in self.graph.outgoing("System", current, "CALLS"):
-                    if nxt not in parent:
+                for nxt in self._system_neighbors(current, params):
+                    if nxt not in parent and depths[current] < MAX_SYSTEM_HOPS:
                         parent[nxt] = current
+                        depths[nxt] = depths[current] + 1
                         queue.append(nxt)
         if not found_vendor:
             return []
@@ -584,7 +611,7 @@ class FakeSession:
                 rows.append(
                     {
                         "n": node,
-                        "r": {"type": rel},
+                        "r": {"type": rel, **_p},
                         "m": {"_label": dst_label, **dst, "id": f"{dst_prefix}:{dst_key}"},
                     }
                 )

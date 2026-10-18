@@ -126,6 +126,12 @@ export default function UnifiedCascadePanel() {
             </span>
           </div>
 
+          <div style={{ fontSize: 12, color: "var(--dim)" }}>
+            {result.relationship_policy
+              ? `Relationship policy: ${result.relationship_policy.version}. System propagation: ${result.relationship_policy.propagating_relations.join(", ")}. Unknown/context labels do not propagate.`
+              : "Relationship policy unavailable for this stored answer; do not assume traversal parity."}
+          </div>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
             {categories.map(({ label, value, description }) => (
               <section key={label} aria-label={label}
@@ -285,6 +291,9 @@ export default function UnifiedCascadePanel() {
                   <span style={{ color: "var(--dim)" }}> · unchanged</span>
                 )}
               </div>
+              {diff.policy_comparison && !diff.policy_comparison.comparable && (
+                <div role="status">Relationship policy differs or is unknown. Count changes are not evidence of remediation.</div>
+              )}
               {diff.system_classification?.available ? (
                 <div aria-label="Classification changes">
                   {([ ["Direct exposure", diff.system_classification.direct_exposure],
@@ -296,7 +305,8 @@ export default function UnifiedCascadePanel() {
                     </div>
                   ))}
                 </div>
-              ) : <div>Classification comparison unavailable for these stored runs.</div>}
+              ) : <div>Classification comparison unavailable for these stored runs.
+                {diff.system_classification?.reason && ` ${diff.system_classification.reason}`}</div>}
               <div style={{ color: "var(--dim)", marginTop: 2 }}>
                 linked processes: {diff.affected_processes.before} → {diff.affected_processes.after}
               </div>

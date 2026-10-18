@@ -2,6 +2,10 @@
 
 [Guide index](README.md) · [Ten-step implementation plan](../dev/dependency-intelligence-roadmap.md)
 
+Subsequent delivery: [step 2](18-shared-dependency-semantics.md) now controls
+which relationships feed these buckets. The step-1 validation below remains a
+historical result, not a claim that all later stages are still unimplemented.
+
 ## 1. What changed
 
 New unified-cascade answers now separate three **disjoint system buckets**:

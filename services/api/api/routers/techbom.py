@@ -1136,6 +1136,7 @@ def technology_bom_cascade_runs(
              # Old persisted answers stay unclassified; never invent zeroes or
              # silently replay them against today's graph.
              "system_classification": summarize_system_scope(r.result or {}),
+             "relationship_policy": (r.result or {}).get("relationship_policy"),
              # ownership travels with the row (NULL = platform estate)
              "tenant_id": r.tenant_id,
              # replay provenance travels with the history entry: an auditor
@@ -1240,8 +1241,11 @@ def technology_bom_cascade_run_diff(
 
     old_scope = (other.result or {}).get("impact", {}).get("system_classification") or {}
     new_scope = (run.result or {}).get("impact", {}).get("system_classification") or {}
+    old_policy = ((other.result or {}).get("relationship_policy") or {}).get("version")
+    new_policy = ((run.result or {}).get("relationship_policy") or {}).get("version")
+    policy_comparable = old_policy is not None and old_policy == new_policy
     comparable = (old_scope.get("schema") == SYSTEM_SCOPE_SCHEMA
-                  and new_scope.get("schema") == SYSTEM_SCOPE_SCHEMA)
+                  and new_scope.get("schema") == SYSTEM_SCOPE_SCHEMA and policy_comparable)
     scope_diff: dict[str, Any] = {"available": comparable}
     if comparable:
         scope_diff.update({
@@ -1249,7 +1253,9 @@ def technology_bom_cascade_run_diff(
             for key in ("direct_exposure", "dependent_consumers", "supporting_context")
         })
     else:
-        scope_diff["reason"] = "one or both stored runs lack the current system classification"
+        scope_diff["reason"] = (
+            "relationship policy differs or is unknown for a stored run" if not policy_comparable
+            else "one or both stored runs lack the current system classification")
     return {
         "schema": "cryptoscan.unified-cascade-diff/1",
         "run": {"id": run.id, "created_at": run.created_at.isoformat()
@@ -1260,6 +1266,8 @@ def technology_bom_cascade_run_diff(
         "verdict_changed": run.verdict != other.verdict,
         "affected_systems": _delta("systems", old_systems, new_systems),
         "system_classification": scope_diff,
+        "policy_comparison": {"comparable": policy_comparable,
+                              "run_version": new_policy, "against_version": old_policy},
         "affected_processes": {
             **_delta("processes",
                      {p[0] or p[1] for p in old_processes},
@@ -1384,7 +1392,8 @@ def cascade_watches_run_due(
         entry = {"watch_id": watch.id, "target": watch.target,
                  "run_id": run.id, "verdict": result["verdict"],
                  "affected_system_count": result["impact"]["affected_system_count"],
-                 "system_classification": summarize_system_scope(result)}
+                 "system_classification": summarize_system_scope(result),
+                 "relationship_policy": result.get("relationship_policy")}
         if result["verdict"] == "NOT_FOUND":
             # the target has left the estate: say so explicitly instead of
             # letting a zero-impact answer read as "all clear"
@@ -1395,6 +1404,11 @@ def cascade_watches_run_due(
                 # both sides tolerate the NOT_FOUND shape, which carries a
                 # count but no system list — a disappeared target must
                 # report its collapsed blast radius, not crash the run
+                old_policy = ((previous.result or {}).get("relationship_policy") or {}).get("version")
+                new_policy = (result.get("relationship_policy") or {}).get("version")
+                entry["policy_comparison"] = {
+                    "comparable": old_policy is not None and old_policy == new_policy,
+                    "run_version": new_policy, "against_version": old_policy}
                 old = set((previous.result or {}).get("impact", {}).get(
                     "affected_systems") or [])
                 new = set(result["impact"].get("affected_systems") or [])

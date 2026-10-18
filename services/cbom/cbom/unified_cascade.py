@@ -23,6 +23,8 @@ import re
 from datetime import datetime
 from typing import Any, Mapping
 
+from shared_models.dependency_semantics import MAX_SYSTEM_HOPS, edge_relation, policy_metadata, propagates, system_id
+
 #: What a cascade target can be. Order matters for auto-detection when no
 #: explicit kind is given: most specific (fingerprints, host:port) first.
 TARGET_KINDS = (
@@ -38,7 +40,7 @@ TARGET_KINDS = (
 
 #: Propagation depth bound. Mirrors the graph engine's blast-radius cap
 #: (``CALLS*1..12``); deeper traversals cost more than they reveal.
-MAX_DEPTH_LIMIT = 12
+MAX_DEPTH_LIMIT = MAX_SYSTEM_HOPS
 
 _SCHEMA = "cryptoscan.unified-cascade/1"
 SYSTEM_SCOPE_SCHEMA = "cryptoscan.cascade-system-scope/1"
@@ -110,7 +112,7 @@ def _downstream_of(snapshot: Mapping[str, Any], systems: list[str],
 
 
 def _bfs(edges: list[Mapping[str, Any]], seeds: set[str], *,
-         reverse: bool, max_depth: int) -> dict[int, list[str]]:
+         reverse: bool, max_depth: int) -> dict[str, list[str]]:
     """Depth-bounded BFS over {source,target} edges.
 
     ``reverse=True`` walks dependents: who (transitively) calls a seed.
@@ -644,10 +646,25 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     if not 1 <= depth <= MAX_DEPTH_LIMIT:
         raise ValueError(f"max_depth must be 1..{MAX_DEPTH_LIMIT}")
 
+    # Copy, never mutate a stored twin snapshot during replay. IDs from graph
+    # snapshots may carry the system: prefix; non-system edges cannot bridge
+    # the system graph. Empty/unknown relation behavior is versioned explicitly.
+    snapshot = dict(snapshot)
+    known = {system_id(row.get("id")) for row in snapshot.get("systems") or []}
+    dependencies = []
+    for edge in snapshot.get("dependencies") or []:
+        src, dst = system_id(edge.get("source")), system_id(edge.get("target"))
+        if (src and dst and (src in known and dst in known)
+                and propagates(edge_relation(edge))):
+            dependencies.append({**edge, "source": src, "target": dst,
+                                 "type": edge_relation(edge)})
+    snapshot["dependencies"] = dependencies
+
     identified = identify_target(snapshot, target_text, kind)
     if identified is None:
         return {
             "schema": _SCHEMA,
+            "relationship_policy": policy_metadata(),
             "as_of": now.isoformat(),
             "deterministic": True,
             "mutates_nothing": True,
@@ -741,6 +758,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
 
     return {
         "schema": _SCHEMA,
+        "relationship_policy": policy_metadata(),
         "as_of": now.isoformat(),
         "deterministic": True,
         "mutates_nothing": True,

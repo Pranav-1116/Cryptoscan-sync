@@ -7,6 +7,8 @@ import json
 import logging
 from typing import Any
 
+from shared_models.dependency_semantics import edge_relation, policy_metadata, propagates
+
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -306,6 +308,8 @@ def blast_radius(
             if part.get("start"):
                 start_systems.append(str(part["start"]))
             for row in part.get("systems") or []:
+                if str(row["id"]) in owning:
+                    continue
                 prev = union.get(str(row["id"]))
                 if prev is None or row["hops"] < prev["hops"]:
                     union[str(row["id"])] = row
@@ -318,6 +322,7 @@ def blast_radius(
             "systems": systems,
             "hops": hops,
             "nodes_visited": len(union) + len(owning),
+            "relationship_policy": policy_metadata(),
             "backend": graph.backend,
         }
     result = graph_from_db(db).blast_radius(system_id, hops=hops)
@@ -1045,6 +1050,11 @@ def _edge_payload(db: Session, edge) -> dict[str, Any]:
         "parent_name": names.get(edge.parent_id),
         "child_name": names.get(edge.child_id),
         "relation": edge.relation or "CALLS",
+        "dependency_semantics": {
+            "normalized_relation": edge_relation({"relation": edge.relation}),
+            "propagates": propagates(edge.relation),
+            "policy_version": policy_metadata()["version"],
+        },
         "source": getattr(edge, "source", None) or "manual",
         "created_by": getattr(edge, "created_by", None),
         "confidence": getattr(edge, "confidence", None),
@@ -1072,7 +1082,8 @@ def list_dependency_edges(
     if system_id:
         rows = [r for r in rows
                 if r.parent_id == system_id or r.child_id == system_id]
-    return {"edges": [_edge_payload(db, r) for r in rows], "count": len(rows)}
+    return {"edges": [_edge_payload(db, r) for r in rows], "count": len(rows),
+            "relationship_policy": policy_metadata()}
 
 
 @router.post("/graph/edges")

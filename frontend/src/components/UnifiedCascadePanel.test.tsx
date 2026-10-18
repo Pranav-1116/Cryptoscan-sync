@@ -130,4 +130,33 @@ describe("cascade disjoint system classification", () => {
     expect(screen.getByText(/Supporting context: 1 → 0 · removed: ledger/)).toBeInTheDocument();
   });
 
+  it("shows the versioned policy on new results and warns for mixed-policy comparisons", async () => {
+    const result = answer();
+    result.relationship_policy = {
+      version: "cryptoscan.system-dependency-policy/1", direction: "consumer_to_provider",
+      propagating_relations: ["CALLS", "IMPORTS", "IMPORTS_CRYPTO", "DEPENDS_ON"],
+      context_relations: ["CONTAINS"], unknown_relations: "non_propagating",
+      unspecified_relation: "CALLS", max_system_hops: 12,
+    };
+    vi.mocked(apiUnifiedCascade).mockResolvedValue({ source: "live", data: result });
+    vi.mocked(apiCascadeRuns).mockResolvedValue({ source: "live", data: { count: 1, runs: [{
+      id: "new", target: "payments", target_kind: "system", max_depth: 6, verdict: "AFFECTED",
+      affected_system_count: 3, created_by: "auditor", created_at: null,
+    }] } });
+    vi.mocked(apiCascadeRunDiff).mockResolvedValue({ source: "live", data: {
+      target: "payments", verdict_changed: false,
+      run: { id: "new", created_at: null, verdict: "AFFECTED" },
+      against: { id: "old", created_at: null, verdict: "AFFECTED" },
+      affected_systems: { before: 3, after: 3, added: [], removed: [], unchanged_count: 3 },
+      affected_processes: { before: 0, after: 0, added: [], removed: [] },
+      system_classification: { available: false, reason: "relationship policy is unknown" },
+      policy_comparison: { comparable: false, run_version: result.relationship_policy.version, against_version: null },
+    } });
+    render(<UnifiedCascadePanel />);
+    await runCascade();
+    expect(screen.getByText(/Relationship policy: cryptoscan.system-dependency-policy\/1/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "diff vs previous" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Count changes are not evidence of remediation");
+  });
+
 });

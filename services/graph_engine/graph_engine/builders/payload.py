@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from shared_models.dependency_semantics import edge_relation, system_id
+
 
 def _sid(item: dict[str, Any]) -> str:
     return str(item.get("id") or item.get("system_id") or item.get("name") or "")
@@ -90,8 +92,8 @@ def uses_rows(assets: Iterable[dict[str, Any]], systems: Iterable[dict[str, Any]
 def call_rows(edges: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for edge in edges:
-        parent = edge.get("parent_id") or edge.get("from") or edge.get("source")
-        child = edge.get("child_id") or edge.get("to") or edge.get("destination")
+        parent = system_id(edge.get("parent_id") or edge.get("from") or edge.get("source"))
+        child = system_id(edge.get("child_id") or edge.get("to") or edge.get("target") or edge.get("destination"))
         if parent and child:
             # System dependency rows are operator DECLARATIONS; an explicit
             # provenance on the edge dict (e.g. OBSERVED traffic import) wins.
@@ -100,6 +102,7 @@ def call_rows(edges: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                     "parent_id": str(parent),
                     "child_id": str(child),
                     "protocol": edge.get("protocol") or edge.get("relation") or "CALLS",
+                    "relation": edge_relation(edge),
                     "frequency": edge.get("frequency"),
                     "provenance": edge.get("provenance") or "DECLARED",
                     "source": edge.get("source") or "system_dependencies (operator-declared)",

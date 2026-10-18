@@ -6,6 +6,10 @@ import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
 
+from shared_models.dependency_semantics import (
+    MAX_SYSTEM_HOPS, edge_relation, normalize_relation, policy_metadata, propagates, system_id as canonical_system_id,
+)
+
 from graph_engine.core.edge_provenance import (
     PROVENANCE_DECLARED,
     PROVENANCE_SCANNER_DERIVED,
@@ -87,6 +91,7 @@ class GraphEngine:
         confidence: Any = None,
         evidence_ref: Any = None,
     ) -> None:
+        relation = normalize_relation(relation)
         if (dst, relation) not in self.out[src]:
             self.out[src].append((dst, relation))
         if (src, relation) not in self.incoming[dst]:
@@ -157,10 +162,10 @@ class GraphEngine:
                               provenance=PROVENANCE_SCANNER_DERIVED,
                               source="crypto_asset inventory (evidence-chained)")
         for edge in edges:
-            parent = edge.get("parent_id") or edge.get("from")
-            child = edge.get("child_id") or edge.get("to")
+            parent = canonical_system_id(edge.get("parent_id") or edge.get("from") or edge.get("source"))
+            child = canonical_system_id(edge.get("child_id") or edge.get("to") or edge.get("target") or edge.get("destination"))
             if parent and child:
-                self.add_edge(f"system:{parent}", f"system:{child}", edge.get("relation") or "CALLS",
+                self.add_edge(f"system:{parent}", f"system:{child}", edge_relation(edge),
                               provenance=edge.get("provenance") or PROVENANCE_DECLARED,
                               source=edge.get("source") or "system_dependencies (operator-declared)",
                               observed_at=edge.get("observed_at"))
@@ -275,57 +280,59 @@ class GraphEngine:
                               provenance=PROVENANCE_SCANNER_DERIVED, source="container image inventory")
         return self
 
-    def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+    def _dependency_step(self, source: str, target: str, relation: str) -> bool:
+        return (propagates(relation)
+                and (self.nodes.get(source) or {}).get("kind") == "System"
+                and (self.nodes.get(target) or {}).get("kind") == "System")
+
+    def _system_origins(self, start_id: str) -> list[str]:
         start = self._resolve(start_id)
-        if start is None:
-            return {"start": start_id, "systems": [], "hops": hops, "nodes_visited": 0, "backend": self.backend}
-        if (self.nodes.get(start) or {}).get("kind") == "CryptoAsset":
-            users = [src for src, rel in self.incoming.get(start, []) if rel == "USES"]
-            start = users[0] if users else start
-        seen: dict[str, int] = {start: 0}
-        queue = deque([start])
+        kind = (self.nodes.get(start) or {}).get("kind")
+        if kind == "System":
+            return [start]
+        if kind == "CryptoAsset":
+            return sorted({src for src, rel in self.incoming.get(start, [])
+                           if rel == "USES" and (self.nodes.get(src) or {}).get("kind") == "System"})
+        return []
+
+    def _dependency_walk(self, start_id: str, *, hops: int, reverse: bool) -> dict[str, Any]:
+        hops = max(1, min(MAX_SYSTEM_HOPS, hops))
+        origins = self._system_origins(start_id)
+        seen = {origin: 0 for origin in origins}
+        queue = deque(origins)
         followed: list[dict[str, Any]] = []
+        adjacency = self.incoming if reverse else self.out
         while queue:
             node = queue.popleft()
-            depth = seen[node]
-            if depth >= hops:
+            if seen[node] >= hops:
                 continue
-            for nxt, _rel in self.out.get(node, []):
-                if nxt not in seen:
-                    seen[nxt] = depth + 1
+            for nxt, relation in adjacency.get(node, []):
+                if self._dependency_step(node, nxt, relation) and nxt not in seen:
+                    seen[nxt] = seen[node] + 1
                     queue.append(nxt)
-                    followed.append({"from": node, "to": nxt, "label": _rel,
-                                     "provenance": self.edge_provenance(node, nxt, _rel)})
-        systems = []
-        for node_id, depth in seen.items():
-            node = self.nodes.get(node_id) or {}
-            if node.get("kind") == "System" and node_id != start:
-                systems.append(
-                    {
-                        "id": node_id.split(":", 1)[-1],
-                        "name": node.get("name"),
-                        "criticality": node.get("criticality"),
-                        "hops": depth,
-                    }
-                )
-        systems.sort(key=lambda row: (row["hops"], row.get("name") or ""))
+                    src, dst = (nxt, node) if reverse else (node, nxt)
+                    followed.append({"from": src, "to": dst, "label": relation,
+                                     "provenance": self.edge_provenance(src, dst, relation)})
+        systems = [{"id": node_id.split(":", 1)[-1],
+                    "name": self.nodes[node_id].get("name"),
+                    "criticality": self.nodes[node_id].get("criticality"), "hops": depth}
+                   for node_id, depth in seen.items() if depth > 0]
+        systems.sort(key=lambda row: (row["hops"], row.get("name") or "", row["id"]))
         return {
-            "start": start.split(":", 1)[-1],
-            "systems": systems,
-            "hops": hops,
-            "nodes_visited": len(seen),
-            "backend": self.backend,
-            # §4.5: what kinds of edges produced this impact — a declared
-            # mapping is an operator statement, not observed traffic.
-            "provenance_counts": provenance_counts(followed),
+            "start": origins[0].split(":", 1)[-1] if origins else start_id,
+            "owning_systems": [origin.split(":", 1)[-1] for origin in origins],
+            "systems": systems, "hops": hops, "nodes_visited": len(seen),
+            "backend": self.backend, "provenance_counts": provenance_counts(followed),
+            "relationship_policy": policy_metadata(),
         }
+
+    def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        return self._dependency_walk(start_id, hops=hops, reverse=False)
 
     def business_impact(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         radius = self.blast_radius(start_id, hops=hops)
-        seed = self._resolve(radius["start"] or start_id)
         system_ids = {f"system:{row['id']}" for row in radius["systems"]}
-        if seed and (self.nodes.get(seed) or {}).get("kind") == "System":
-            system_ids.add(seed)
+        system_ids.update(f"system:{sid}" for sid in radius.get("owning_systems") or [])
         revenue = 0.0
         customers = 0
         processes: list[str] = []
@@ -362,25 +369,28 @@ class GraphEngine:
 
     def vendor_path(self, start_id: str) -> dict[str, Any]:
         start = self._resolve(start_id)
-        if start is None:
-            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend}
+        if start is None or (self.nodes.get(start) or {}).get("kind") != "System":
+            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata()}
         parent: dict[str, str | None] = {start: None}
         queue = deque([start])
+        depths = {start: 0}
         found_vendor = None
         found_at = None
         while queue:
             node = queue.popleft()
             for nxt, rel in self.out.get(node, []):
-                if rel == "DEPENDS_ON_VENDOR":
+                if rel == "DEPENDS_ON_VENDOR" and (self.nodes.get(nxt) or {}).get("kind") == "Vendor":
                     found_vendor = nxt
                     found_at = node
                     queue.clear()
                     break
-                if rel == "CALLS" and nxt not in parent:
+                if (self._dependency_step(node, nxt, rel) and nxt not in parent
+                        and depths[node] < MAX_SYSTEM_HOPS):
                     parent[nxt] = node
+                    depths[nxt] = depths[node] + 1
                     queue.append(nxt)
         if not found_vendor:
-            return {"start": start.split(":", 1)[-1], "path": [], "hops": 0, "vendor": None, "backend": self.backend}
+            return {"start": start.split(":", 1)[-1], "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata()}
         chain = [found_at]
         while chain[-1] and parent.get(chain[-1]) is not None:
             chain.append(parent[chain[-1]])
@@ -394,7 +404,7 @@ class GraphEngine:
             "hops": max(0, len(names) - 1),
             "vendor": vendor.get("name"),
             "vendor_id": found_vendor.split(":", 1)[-1],
-            "backend": self.backend,
+            "backend": self.backend, "relationship_policy": policy_metadata(),
         }
 
     def vendor_chain(self, start_id: str) -> dict[str, Any]:
@@ -473,51 +483,10 @@ class GraphEngine:
         return {"chains": chains, "count": len(chains), "backend": self.backend}
 
     def dependents(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
-        """Reverse blast radius: everything upstream that depends on this node."""
-        start = self._resolve(start_id)
-        if start is None:
-            return {"start": start_id, "systems": [], "hops": hops, "nodes_visited": 0, "backend": self.backend}
-        if (self.nodes.get(start) or {}).get("kind") == "CryptoAsset":
-            users = [src for src, rel in self.incoming.get(start, []) if rel == "USES"]
-            start = users[0] if users else start
-        seen: dict[str, int] = {start: 0}
-        queue = deque([start])
-        followed: list[dict[str, Any]] = []
-        while queue:
-            node = queue.popleft()
-            depth = seen[node]
-            if depth >= hops:
-                continue
-            for prev, _rel in self.incoming.get(node, []):
-                if prev not in seen:
-                    seen[prev] = depth + 1
-                    queue.append(prev)
-                    followed.append({"from": prev, "to": node, "label": _rel,
-                                     "provenance": self.edge_provenance(prev, node, _rel)})
-        systems = []
-        for node_id, depth in seen.items():
-            node = self.nodes.get(node_id) or {}
-            if node.get("kind") == "System" and node_id != start:
-                systems.append(
-                    {
-                        "id": node_id.split(":", 1)[-1],
-                        "name": node.get("name"),
-                        "criticality": node.get("criticality"),
-                        "hops": depth,
-                    }
-                )
-        systems.sort(key=lambda row: (row["hops"], row.get("name") or ""))
-        return {
-            "start": start.split(":", 1)[-1],
-            "systems": systems,
-            "hops": hops,
-            "nodes_visited": len(seen),
-            "backend": self.backend,
-            "provenance_counts": provenance_counts(followed),
-        }
+        return self._dependency_walk(start_id, hops=hops, reverse=True)
 
     def shortest_path(self, start_id: str, target_id: str, *, direction: str = "downstream") -> dict[str, Any]:
-        """Shortest CALLS path between two systems. Honest when unreachable."""
+        """Shortest policy-permitted system path, bounded at MAX_SYSTEM_HOPS."""
         start = self._resolve(start_id)
         target = self._resolve(target_id)
         resolved_start = start is not None
@@ -532,13 +501,17 @@ class GraphEngine:
             else:
                 parent: dict[str, str | None] = {start: None}
                 queue = deque([start])
+                depths = {start: 0}
                 found = False
                 while queue and not found:
                     node = queue.popleft()
                     for nxt, rel in adjacency.get(node, []):
-                        if rel != "CALLS" or nxt in parent:
+                        if not self._dependency_step(node, nxt, rel) or nxt in parent:
+                            continue
+                        if depths[node] >= MAX_SYSTEM_HOPS:
                             continue
                         parent[nxt] = node
+                        depths[nxt] = depths[node] + 1
                         if nxt == target:
                             found = True
                             break
@@ -559,7 +532,7 @@ class GraphEngine:
             "reachable": path_hops is not None,
             "hops": path_hops,
             "path": names,
-            "backend": self.backend,
+            "relationship_policy": policy_metadata(), "backend": self.backend,
         }
 
     def crypto_hotspots(self) -> dict[str, Any]:
@@ -647,6 +620,7 @@ class GraphEngine:
         from graph_engine.core.analytics import find_cycles
 
         result = find_cycles(self.to_vis())
+        result["relationship_policy"] = policy_metadata()
         result["backend"] = self.backend
         return result
 

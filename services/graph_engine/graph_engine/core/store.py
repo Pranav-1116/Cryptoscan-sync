@@ -5,6 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Iterable
 
+from shared_models.dependency_semantics import (
+    MAX_SYSTEM_HOPS, normalize_relation, policy_metadata, query_parameters, stored_relation, system_id,
+)
+
 from graph_engine.builders import cypher_writes, payload
 from graph_engine.config.settings import get_graph_settings
 from graph_engine.connection.session_manager import neo4j_session
@@ -198,58 +202,43 @@ class Neo4jGraphStore:
                 pruned += int(result[0].get("pruned") or 0)
         return pruned
 
-    def _origin(self, start_id: str) -> str | None:
+    def _origins(self, start_id: str) -> list[str]:
+        start_id = system_id(start_id)
         rows = self._run(ORIGIN_SYSTEM, start=start_id)
         if rows:
-            return str(rows[0].get("id") or start_id)
-        asset_systems = self._run(SYSTEMS_USING_ASSET, start=start_id)
-        if asset_systems:
-            return str(asset_systems[0].get("id"))
-        return None
+            return [str(rows[0].get("id") or start_id)]
+        return sorted({str(row["id"]) for row in self._run(SYSTEMS_USING_ASSET, start=start_id)
+                       if row.get("id")})
+
+    def _origin(self, start_id: str) -> str | None:
+        origins = self._origins(start_id)
+        return origins[0] if origins else None
+
+    def _dependency_walk(self, start_id: str, *, hops: int, reverse: bool) -> dict[str, Any]:
+        hops = max(1, min(MAX_SYSTEM_HOPS, hops))
+        origins = self._origins(start_id)
+        by_id: dict[str, dict[str, Any]] = {}
+        for origin in origins:
+            rows = self._run(DEPENDENTS if reverse else BLAST_RADIUS,
+                             start=origin, hops=hops, **query_parameters())
+            for row in rows:
+                sid = str(row.get("id") or "")
+                if not sid or sid in origins:
+                    continue
+                candidate = {"id": sid, "name": row.get("name"),
+                             "criticality": row.get("criticality"), "hops": int(row.get("hops") or 0)}
+                if sid not in by_id or candidate["hops"] < by_id[sid]["hops"]:
+                    by_id[sid] = candidate
+        systems = sorted(by_id.values(), key=lambda row: (row["hops"], row.get("name") or "", row["id"]))
+        return {"start": origins[0] if origins else start_id, "owning_systems": origins,
+                "systems": systems, "hops": hops, "nodes_visited": len(systems) + len(origins),
+                "backend": self.backend, "relationship_policy": policy_metadata()}
 
     def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
-        origin = self._origin(start_id)
-        if origin is None:
-            return {"start": start_id, "systems": [], "hops": hops, "nodes_visited": 0, "backend": self.backend}
-        rows = self._run(BLAST_RADIUS, start=origin, hops=hops)
-        systems = [
-            {
-                "id": row.get("id"),
-                "name": row.get("name"),
-                "criticality": row.get("criticality"),
-                "hops": int(row.get("hops") or 0),
-            }
-            for row in rows
-        ]
-        return {
-            "start": origin,
-            "systems": systems,
-            "hops": hops,
-            "nodes_visited": len(systems) + 1,
-            "backend": self.backend,
-        }
+        return self._dependency_walk(start_id, hops=hops, reverse=False)
 
     def dependents(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
-        origin = self._origin(start_id)
-        if origin is None:
-            return {"start": start_id, "systems": [], "hops": hops, "nodes_visited": 0, "backend": self.backend}
-        rows = self._run(DEPENDENTS, start=origin, hops=hops)
-        systems = [
-            {
-                "id": row.get("id"),
-                "name": row.get("name"),
-                "criticality": row.get("criticality"),
-                "hops": int(row.get("hops") or 0),
-            }
-            for row in rows
-        ]
-        return {
-            "start": origin,
-            "systems": systems,
-            "hops": hops,
-            "nodes_visited": len(systems) + 1,
-            "backend": self.backend,
-        }
+        return self._dependency_walk(start_id, hops=hops, reverse=True)
 
     def shortest_path(self, start_id: str, target_id: str, *, direction: str = "downstream") -> dict[str, Any]:
         origin = self._origin(start_id)
@@ -258,9 +247,15 @@ class Neo4jGraphStore:
         resolved_target = target is not None
         names: list[str] = []
         path_hops = None
-        if resolved_start and resolved_target:
+        if resolved_start and resolved_target and origin == target:
+            # Resolve zero hops without shortestPath's common-node restriction
+            # on real Neo4j. Preserve the display name used by the memory path.
+            rows = self._run(ORIGIN_SYSTEM, start=origin)
+            names = [str((rows[0].get("name") if rows else None) or origin)]
+            path_hops = 0
+        elif resolved_start and resolved_target:
             query = SHORTEST_PATH_UPSTREAM if direction == "upstream" else SHORTEST_PATH_DOWNSTREAM
-            rows = self._run(query, start=origin, target=target)
+            rows = self._run(query, start=origin, target=target, **query_parameters())
             if rows and rows[0].get("names"):
                 names = [str(item) for item in rows[0]["names"]]
                 path_hops = int(rows[0].get("hops") or (len(names) - 1))
@@ -273,7 +268,7 @@ class Neo4jGraphStore:
             "reachable": path_hops is not None,
             "hops": path_hops,
             "path": names,
-            "backend": self.backend,
+            "relationship_policy": policy_metadata(), "backend": self.backend,
         }
 
     def crypto_hotspots(self) -> dict[str, Any]:
@@ -304,6 +299,7 @@ class Neo4jGraphStore:
         from graph_engine.core.analytics import find_cycles
 
         result = find_cycles(self.to_vis())
+        result["relationship_policy"] = policy_metadata()
         result["backend"] = self.backend
         return result
 
@@ -325,8 +321,7 @@ class Neo4jGraphStore:
         radius = self.blast_radius(start_id, hops=hops)
         origin = radius["start"] if radius["nodes_visited"] else self._origin(start_id)
         system_ids = [row["id"] for row in radius["systems"] if row.get("id")]
-        if origin:
-            system_ids.append(origin)
+        system_ids.extend(radius.get("owning_systems") or ([origin] if origin else []))
         if not system_ids:
             return {
                 "start": start_id,
@@ -360,8 +355,7 @@ class Neo4jGraphStore:
         radius = self.blast_radius(start_id, hops=hops)
         origin = radius["start"] if radius["nodes_visited"] else self._origin(start_id)
         system_ids = [row["id"] for row in radius["systems"] if row.get("id")]
-        if origin:
-            system_ids.append(origin)
+        system_ids.extend(radius.get("owning_systems") or ([origin] if origin else []))
         rows = self._run(COMPLIANCE_INHERITANCE, system_ids=system_ids) if system_ids else []
         scopes = []
         if rows:
@@ -369,9 +363,9 @@ class Neo4jGraphStore:
         return {"start": origin or start_id, "scopes": sorted(set(scopes)), "backend": self.backend}
 
     def vendor_path(self, start_id: str) -> dict[str, Any]:
-        rows = self._run(VENDOR_PATH, start=start_id)
+        rows = self._run(VENDOR_PATH, start=system_id(start_id), **query_parameters())
         if not rows:
-            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend}
+            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata()}
         row = rows[0]
         return {
             "start": start_id,
@@ -379,7 +373,7 @@ class Neo4jGraphStore:
             "hops": int(row.get("hops") or 0),
             "vendor": row.get("vendor"),
             "vendor_id": row.get("vendor_id"),
-            "backend": self.backend,
+            "backend": self.backend, "relationship_policy": policy_metadata(),
         }
 
     def vendor_chain(self, start_id: str) -> dict[str, Any]:
@@ -423,7 +417,12 @@ class Neo4jGraphStore:
                 label = rel.get("type") if hasattr(rel, "get") else getattr(rel, "type", None)
                 if label is None and isinstance(rel, dict):
                     label = rel.get("label")
-                edge = {"from": node["id"], "to": other["id"], "label": label or "RELATED"}
+                label = getattr(rel, "type", None) or label
+                if label == "CALLS" and node.get("kind") == other.get("kind") == "System":
+                    label = stored_relation(dict(rel))
+                else:
+                    label = normalize_relation(label or "RELATED")
+                edge = {"from": node["id"], "to": other["id"], "label": label}
                 # §4.5 (round 43): relationship properties written at MERGE
                 # time (provenance class + source) survive the export instead
                 # of collapsing to a bare relation label.

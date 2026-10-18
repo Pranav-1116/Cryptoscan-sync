@@ -1,11 +1,13 @@
 # Dependency intelligence — ten-step implementation plan
 
 [Bank guide index](../bank-environment/README.md) ·
-[Delivered step-1 contract](../bank-environment/17-classified-system-scope.md)
+[Step-1 contract](../bank-environment/17-classified-system-scope.md) ·
+[Step-2 contract](../bank-environment/18-shared-dependency-semantics.md)
 
 This is an incremental engineering plan for the user's ten requested changes.
-**Only step 1 is implemented in this iteration.** Pending work below is not a
-feature claim. Each stage needs its own implementation, regression checks,
+**Steps 1 and 2 are implemented with local regression checks.** Steps 3–10
+remain pending; real Neo4j/bank qualification is not implied. Pending work is not
+a feature claim. Each stage needs its own implementation, regression checks,
 compatibility review and a recorded delivery result before being marked done.
 CI workflow configuration is outside this task.
 
@@ -14,7 +16,7 @@ CI workflow configuration is outside this task.
 | Step | Status | Delivery / acceptance boundary |
 |---|---|---|
 | 1. Separate direct exposure, consumers and context | Implemented; local checks passed | Versioned additive unified-cascade classification, disjoint memberships/counts, history/diffs/watch summaries, UI and legacy fallback |
-| 2. Unify relationship semantics | Next; not implemented | Shared directional/relation policy across twin, memory and Neo4j, with explicit unknown/non-propagating relationships and parity fixtures |
+| 2. Unify relationship semantics | Implemented; local checks passed | Versioned shared system policy in twin/memory/native Neo4j query paths; mixed-relation/min-hop/multi-owner fixtures, stored-policy/UI warnings; real Neo4j unqualified |
 | 3. Join package, artifact and deployment identity | Pending | Tenant-scoped immutable content identity and explicit substantiated deployment bindings, not mutable path/tag inference |
 | 4. Edge expiry and reconciliation | Pending | Freshness lifecycle, explicit stale/deleted/tombstoned states and idempotent reconciliation without silent evidence destruction |
 | 5. Propagate provenance/evidence/freshness | Pending | Versioned path-level explanations preserving sources, evidence references, observation times and confidence meaning |
@@ -36,37 +38,50 @@ count-only summaries; full memberships stay with the persisted run. New run diff
 can report a category move even when the review union stays constant.
 
 Current watches return category counts but still alert on their existing
-aggregate membership changes, not category-only moves. No new scheduler,
-relation policy, exact matching, process closure, persistence migration or
-availability simulator is included.
+aggregate membership changes, not category-only moves. Step 1 did not include
+a new relation policy (subsequently delivered in step 2), scheduler, exact
+matching, process closure, persistence migration or availability simulator.
 
 Validation: 103 selected backend tests, 349 frontend tests (37 files), TypeScript
 typecheck and frontend production build passed. Details and limitations are in
 [the step-1 contract](../bank-environment/17-classified-system-scope.md).
 
-## Step 2 — next implementation boundary
+## Step 2 — delivered system relationship policy
 
-Before changing traversal, define one canonical meaning for a directed consumer
--> provider edge and classify relationship types explicitly. CALLS, IMPORTS,
-imports-crypto, containment, ownership and inventory projection must not silently
-become identical runtime dependencies.
+`cryptoscan.system-dependency-policy/1` defines consumer -> provider direction.
+CALLS, IMPORTS, IMPORTS_CRYPTO and DEPENDS_ON propagate between known systems;
+context/inventory/unknown labels do not. Missing/null/blank legacy declarations
+retain CALLS compatibility. New transport labels are kept separate from semantic
+labels, with a bounded decoder for old Neo4j protocol-overloaded rows.
 
-Required work:
+Memory and native Neo4j forward/reverse, shortest-system-path, cycle and
+vendor-system-prefix paths use this policy, as does unified system propagation.
+Forward/reverse asset starts include all owners, minimum depths are deduplicated,
+seed cycles are excluded, and walks are bounded. Domain-specific supplier walks
+remain separate. This does not join missing inventories or reconcile old edges.
 
-1. Inventory producers/consumers of relationship labels and namespace differences.
-2. Specify a versioned shared relation policy, including aliases, unsupported
-   labels, non-propagating context and reverse traversal behavior.
-3. Apply it consistently to graph construction, twin propagation, memory queries
-   and Neo4j queries; do not hide a policy change behind a backend fallback.
-4. Preserve legacy output compatibility or declare explicit policy/version
-   differences; record policy metadata with stored answers.
-5. Test chains, diamonds, cycles, mixed/non-CALLS labels, unknown relations,
-   multi-asset owners and isolated/no-link cases against identical fixture data.
-6. Distinguish deterministic unit/double tests from real Neo4j qualification and
-   leave deployment qualification pending where the real backend is unavailable.
+New runs persist policy metadata; old results remain immutable/unknown-policy.
+Classification diffs require matching known policy versions. UI and watch
+comparison metadata prevent unexplained count changes from being sold as
+remediation. Existing watch aggregate alert behavior is preserved.
 
-The direct/consumer/context classification in step 1 consumes the current
-traversal outputs. It does not itself resolve their existing semantic differences.
+The [step-2 contract](../bank-environment/18-shared-dependency-semantics.md)
+records storage compatibility, scope and reproducible checks. Local validation:
+1,044 backend tests, 350 frontend tests (37 files), the final six panel tests,
+typecheck, production build and documentation checks passed. Regression tests
+cover mixed labels, unknowns, chains/diamonds/cycles, depth, multiple asset owners,
+endpoint namespaces, legacy storage, API persistence/replay/diff and UI warnings.
+The tagged-query Bolt double does not execute Cypher; real Neo4j qualification,
+existing-database migration/reconciliation and bank acceptance remain pending.
+
+## Step 3 — next implementation boundary
+
+Join standalone package SBOM components to immutable artifact content/digests
+and substantiated deployed application/system identity. Reuse existing SBOM,
+artifact and application models where possible. A mutable filename, image tag,
+package name or source-system guess must not become deployment proof. Preserve
+supplier-declared versus observed bindings, enforce tenant scope, test missing
+and conflicting identities, and avoid inventing consumers for an unbound SBOM.
 
 ## Later stages — design constraints
 

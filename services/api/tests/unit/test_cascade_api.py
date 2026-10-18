@@ -514,3 +514,107 @@ def test_missing_target_has_explicit_zero_scope_but_stays_not_found(app_db):
     assert body["impact"]["system_classification"]["review_system_count"] == 0
     assert body["impact"]["system_classification"]["direct_exposure"]["systems"] == []
     assert body["honest_unknowns"]
+
+
+def test_system_policy_matches_graph_routes_and_persists_in_history(app_db):
+    from shared_models.dependency_semantics import POLICY_VERSION
+
+    session = app_db.state.test_session
+    edge = session.query(SystemDependency).filter_by(parent_id="sys-pay", child_id="sys-db").one()
+    edge.relation = "contains"
+    session.commit()
+    with TestClient(app_db) as client:
+        posted = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        assert posted["relationship_policy"]["version"] == POLICY_VERSION
+        assert posted["impact"]["system_classification"]["supporting_context"]["count"] == 0
+        forward = client.get("/api/v1/graph/blast-radius", params={"system_id": "sys-pay"}).json()
+        reverse = client.get("/api/v1/graph/dependents", params={"system_id": "sys-pay"}).json()
+        path = client.get("/api/v1/graph/path", params={"system_id": "sys-pay", "target_id": "sys-db"}).json()
+        assert forward["systems"] == []
+        assert {row["id"] for row in reverse["systems"]} == {"sys-web"}
+        assert path["reachable"] is False
+        for body in (forward, reverse, path):
+            assert body["relationship_policy"]["version"] == POLICY_VERSION
+        listed = client.get("/api/v1/technology-bom/cascade/runs").json()
+        assert listed["runs"][0]["relationship_policy"] == posted["relationship_policy"]
+        stored = client.get(f"/api/v1/technology-bom/cascade/runs/{posted['run_id']}").json()
+        assert stored["result"]["relationship_policy"] == posted["relationship_policy"]
+        edges = client.get("/api/v1/graph/edges").json()
+        context = next(row for row in edges["edges"] if row["child_id"] == "sys-db")
+        assert context["dependency_semantics"] == {
+            "normalized_relation": "CONTAINS", "propagates": False, "policy_version": POLICY_VERSION}
+
+
+def test_policy_unknown_history_is_not_recomputed_or_misreported_as_remediation(app_db):
+    session = app_db.state.test_session
+    with TestClient(app_db) as client:
+        first = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        row = session.query(CascadeRun).filter_by(id=first["run_id"]).one()
+        # Simulate an old step-1 answer: it has buckets but no policy version.
+        row.result = {k: v for k, v in row.result.items() if k != "relationship_policy"}
+        session.commit()
+        new = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        diff = client.get(f"/api/v1/technology-bom/cascade/runs/{new['run_id']}/diff",
+                          params={"against": first["run_id"]}).json()
+        assert diff["policy_comparison"]["comparable"] is False
+        assert diff["policy_comparison"]["against_version"] is None
+        assert diff["system_classification"]["available"] is False
+        assert "policy" in diff["system_classification"]["reason"]
+        listed = client.get("/api/v1/technology-bom/cascade/runs").json()["runs"]
+        old = next(r for r in listed if r["id"] == first["run_id"])
+        assert old["relationship_policy"] is None
+        assert old["system_classification"]["review_system_count"] == 3
+        assert diff["affected_systems"]["before"] == diff["affected_systems"]["after"] == 3
+
+
+def test_prefixed_snapshot_edges_use_policy_without_mutating_capture(app_db):
+    from db.models.cascade_extensions import TwinSnapshot
+
+    session = app_db.state.test_session
+    with TestClient(app_db) as client:
+        version = client.post("/api/v1/digital-twin/snapshot").json()["version"]
+        snapshot = session.query(TwinSnapshot).filter_by(version=version).one()
+        state = dict(snapshot.state)
+        state["dependencies"] = [
+            {"source": "system:sys-web", "target": "system:sys-pay", "type": "imports-crypto"},
+            {"source": "system:sys-pay", "target": "system:sys-db", "type": "contains"}]
+        snapshot.state = state
+        session.commit()
+        body = client.post("/api/v1/technology-bom/cascade", params={"version": version},
+                           json={"target": "payment-api"}).json()
+        assert body["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-web"]}
+        assert body["layers"]["system"]["downstream_by_depth"] == {}
+        session.refresh(snapshot)
+        assert snapshot.state["dependencies"] == state["dependencies"]
+        assert body["replayed_over"] == {"twin_snapshot_version": version}
+
+
+def test_same_policy_classified_diff_remains_available(app_db):
+    with TestClient(app_db) as client:
+        first = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        second = client.post("/api/v1/technology-bom/cascade", json={"target": "payment-api"}).json()
+        diff = client.get(f"/api/v1/technology-bom/cascade/runs/{second['run_id']}/diff",
+                          params={"against": first["run_id"]}).json()
+        assert diff["policy_comparison"]["comparable"] is True
+        assert diff["system_classification"]["available"] is True
+
+
+def test_watch_comparison_flags_pre_policy_run_without_rewriting_it(app_db):
+    session = app_db.state.test_session
+    with TestClient(app_db) as client:
+        response = client.post("/api/v1/technology-bom/cascade/watch",
+                               json={"target": "payment-api"})
+        assert response.status_code == 200
+        watch = response.json()
+        first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        assert first["watch_id"] == watch["id"]
+        old_run = session.query(CascadeRun).filter_by(id=first["run_id"]).one()
+        old_run.result = {k: v for k, v in old_run.result.items() if k != "relationship_policy"}
+        session.commit()
+        second = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()["watches"][0]
+        assert second["policy_comparison"]["comparable"] is False
+        assert second["policy_comparison"]["against_version"] is None
+        assert second["relationship_policy"]["version"] == first["relationship_policy"]["version"]
+        assert "blast_radius_changed" not in second
+        session.refresh(old_run)
+        assert "relationship_policy" not in old_run.result
