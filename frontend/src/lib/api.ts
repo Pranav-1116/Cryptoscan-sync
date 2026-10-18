@@ -4666,7 +4666,42 @@ export interface CascadeSoftwareContext {
   coverage?: { truncated: boolean; collections: Record<string, { total: number; returned: number; truncated: boolean }> } | null;
 }
 
+export interface TraversalEdgeEvidence extends RelationshipLifecycleFields {
+  record_id?: string;
+  from: string; to: string; relation: string; provenance: string; source?: string;
+  evidence_references: unknown[]; evidence_missing: boolean; references_truncated: boolean;
+  confidence?: number | string | null; confidence_meaning: string;
+  references_verified_by_traversal: false;
+  identity?: Record<string, unknown>;
+  freshness: { as_of: string; eligibility: string; validity: string;
+    observation: EvidenceTimestamp; confirmation: EvidenceTimestamp; verification_timestamp: EvidenceTimestamp; note: string };
+}
+export interface EvidenceTimestamp { value: string | null; status: string; age_seconds: number | null }
+export interface TraversalPathEvidence {
+  schema: string; available: boolean; nodes: string[]; edges: TraversalEdgeEvidence[]; hops: number;
+  direction: string; scope: string; provenance_classes: string[]; mixed_provenance: boolean;
+  evidence_gap_count: number; unbounded_edge_count: number; note: string;
+}
+export interface TraversalEvidenceEnvelope {
+  schema: string; as_of: string; paths: (TraversalPathEvidence & { system_id: string })[];
+  requested_count: number; returned_count: number; limit: number; missing_witness_count: number;
+  missing_system_ids: string[]; missing_system_ids_truncated: boolean; truncated: boolean;
+  complete_for_requested_systems: boolean; all_paths: false; note: string;
+}
+export interface CascadeSeedEvidence {
+  system_id: string; kind: string; basis: string; path?: TraversalPathEvidence;
+  records?: Record<string, unknown>[]; record_count?: number; record_listing_truncated: boolean;
+  complete_chain_verified?: false; note?: string;
+}
+export interface CascadeTraversalEvidence {
+  schema: string; direct: CascadeSeedEvidence[]; direct_count: number; direct_truncated: boolean;
+  potential_direct: CascadeSeedEvidence[]; potential_direct_count: number; potential_direct_truncated: boolean;
+  dependent_consumers: TraversalEvidenceEnvelope; supporting_context: TraversalEvidenceEnvelope;
+  potential: TraversalEvidenceEnvelope; vendor_subtiers?: TraversalEvidenceEnvelope; note: string;
+}
+
 export interface UnifiedCascadeResult {
+  traversal_evidence?: CascadeTraversalEvidence | null;
   schema: string;
   relationship_policy?: DependencyRelationshipPolicy | null;
   relationship_lifecycle?: RelationshipLifecycleSummary | null;
@@ -4755,12 +4790,15 @@ export const apiCascadeRunDiff = (
   );
 
 export interface RegisteredDependencyEdge extends RelationshipLifecycleFields {
+  source?: string;
   id?: string;
   parent_id: string;
   child_id: string;
   parent_name: string | null;
   child_name: string | null;
   relation: string;
+  evidence_ref?: string | null;
+  confidence_meaning?: string | null;
 }
 
 export const apiGraphEdges = (
@@ -4775,10 +4813,11 @@ export const apiGraphRegisterEdge = (
   parentId: string,
   childId: string,
   relation = "CALLS",
+  evidence?: { evidence_ref?: string; confidence_meaning?: string },
 ): Promise<ApiResult<{ registered: boolean; edge: RegisteredDependencyEdge }>> =>
   call("/api/v1/graph/edges", {
     method: "POST",
-    body: JSON.stringify({ parent_id: parentId, child_id: childId, relation }),
+    body: JSON.stringify({ parent_id: parentId, child_id: childId, relation, ...evidence }),
   });
 
 export const apiGraphDeleteEdge = (

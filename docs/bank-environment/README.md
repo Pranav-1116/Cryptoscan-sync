@@ -37,6 +37,7 @@ installation or a substitute for the bank's security/change approval.
 | [18 — Implemented shared system semantics](18-shared-dependency-semantics.md) | Which relations propagate in step 2, how are backends/history handled, and what is still unqualified? |
 | [19 — Implemented package/release/deployment identity](19-package-artifact-deployment-identity.md) | How does a package SBOM explicitly join to immutable release bytes/digest and a declared application deployment? |
 | [20 — Implemented relationship lifecycle/reconciliation](20-relationship-lifecycle-and-reconciliation.md) | How are expiry, source ownership, incomplete collections, retained tombstones and historical clocks handled safely? |
+| [21 — Implemented traversal explanations](21-traversal-provenance-evidence-and-freshness.md) | How do per-edge sources, references, timestamp meanings, mixed provenance and missing witnesses travel without invented confidence? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

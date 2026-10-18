@@ -292,8 +292,11 @@ plan's step-4 delivery section.
 remain unverified.** FakeDriver does not parse or execute Cypher. There is no
 large-estate/load benchmark, collector scheduler, automatic TTL policy, external
 source signature verification, replacement-target validation for SUPERSEDED,
-complete operational dependency-mode model, or universal path-level evidence
-explanation. Steps 5–10 remain pending; this stage does not certify the whole
+or complete operational dependency-mode model.
+[Step 5](21-traversal-provenance-evidence-and-freshness.md) subsequently implements
+bounded provenance/freshness witnesses, with explicit missing references and
+legacy seed gaps rather than a universal all-paths claim. Steps 6–10 remain
+pending; this stage does not certify the whole
 platform's bank authorization, historical isolation or production readiness.
 
 Implementation references:

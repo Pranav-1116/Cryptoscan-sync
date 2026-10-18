@@ -344,7 +344,8 @@ Source entry points:
 
 [Step 4](20-relationship-lifecycle-and-reconciliation.md) now implements expiry,
 supersession, stale/deleted deployments and conservative source reconciliation.
-Steps 5–10 still cover full path evidence/freshness, process
+[Step 5](21-traversal-provenance-evidence-and-freshness.md) now carries bounded
+path evidence/freshness and explicit software seed assertions. Steps 6–10 cover process
 closure, general exact/ambiguous identity resolution, operational dependency
 modes, broad coverage UX and bank-negative/backend qualification. This delivery
 adds a usable explicit join, not automated discovery or verified current runtime

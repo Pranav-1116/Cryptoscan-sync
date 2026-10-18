@@ -8,12 +8,13 @@ import logging
 from typing import Any
 
 from shared_models.relationship_lifecycle import lifecycle_payload, clock, effective_state, edge_changes, utc
+from shared_models.traversal_evidence import edge_evidence, envelope, MAX_WITNESSES
 from shared_models.dependency_semantics import edge_relation, policy_metadata, propagates
 
 logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, Request
-from pydantic import BaseModel, AwareDatetime
+from pydantic import BaseModel, AwareDatetime, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -100,16 +101,18 @@ def _edge_evidence(
     fabricated — and missing data reads as null / "" rather than a fake green.
     """
     label = edge.get("label") or "USES"
-    node = graph.nodes.get(edge.get("to") or "")
+    graph_nodes = getattr(graph, "nodes", {})
+    node = graph_nodes.get(edge.get("to") or "")
     if node is None:
-        node = graph.nodes.get(edge.get("from") or "")
+        node = graph_nodes.get(edge.get("from") or "")
 
     # For a USES/every edge the asset is the subject carrying scanner evidence.
     from_id = str(edge.get("from") or "").split(":", 1)[-1]
     to_id = str(edge.get("to") or "").split(":", 1)[-1]
     asset_row = asset_rows.get(to_id) or asset_rows.get(from_id)
 
-    confidence = node.get("confidence") if node else None
+    confidence = edge.get("confidence")
+    asset_confidence = getattr(asset_row, "confidence", None) or (node.get("confidence") if node else None)
     evidence = ""
     if node:
         ex = node.get("extra")
@@ -130,16 +133,22 @@ def _edge_evidence(
         "provenance": edge.get("provenance") or "UNATTRIBUTED",
         "source": edge.get("source") or ("crypto_discovery" if label == "USES" else "inventory"),
         "evidence": evidence,
-        "first_seen": asset_row.created_at.isoformat() if asset_row is not None and asset_row.created_at else None,
-        "last_seen": asset_row.updated_at.isoformat() if asset_row is not None and asset_row.updated_at else None,
-        "verified": bool(confidence == "HIGH") if confidence else False,
+        "first_seen": edge.get("first_seen"), "last_seen": edge.get("last_seen"),
+        "asset_first_seen": asset_row.created_at.isoformat() if asset_row is not None and asset_row.created_at else None,
+        "asset_last_updated": asset_row.updated_at.isoformat() if asset_row is not None and asset_row.updated_at else None,
+        "verified": False,
+        "asset_detection_confidence": asset_confidence,
+        "confidence_meaning": edge.get("confidence_meaning") or "unspecified; not relationship verification or failure probability",
+        "references_verified_by_traversal": False,
     }
     # deep/25 §3.4: cite the evidence chain, not just describe it
-    if asset_row is not None and evidence_by_asset is not None:
+    if label == "USES" and asset_row is not None and evidence_by_asset is not None:
         refs = evidence_by_asset.get(asset_row.id)
         if refs:
             out["evidence_count"] = refs["count"]
-            out["evidence_refs"] = refs["refs"]
+            out["evidence_refs"] = edge.get("evidence_refs") or refs["refs"]
+            out["asset_evidence_refs"] = refs["refs"]
+            out["evidence_role"] = "asset detection support; not proof of a runtime relationship"
     return out
 
 router = APIRouter(tags=["graph"])
@@ -295,19 +304,24 @@ def blast_radius(
     if asset_id and not system_id:
         from db.models.system_asset import SystemAsset
 
-        owning = sorted({link.system_id for link in db.query(SystemAsset)
-                         .filter(SystemAsset.asset_id == asset_id).all()})
+        ownership_links = db.query(SystemAsset).filter(SystemAsset.asset_id == asset_id).all()
+        owning = sorted({link.system_id for link in ownership_links})
         if not owning:
             raise HTTPException(
                 status_code=404,
                 detail=f"asset not linked to any system: {asset_id}")
         graph = graph_from_db(db)
         union: dict[str, dict[str, Any]] = {}
-        start_systems: list[str] = []
+        evidence_paths = {}
+        as_of = clock()
+        graph._as_of = as_of
         for sid in owning:
             part = graph.blast_radius(sid, hops=hops)
-            if part.get("start"):
-                start_systems.append(str(part["start"]))
+            for witness in (part.get("traversal_evidence") or {}).get("paths") or []:
+                identifier = witness["system_id"]
+                previous = evidence_paths.get(identifier)
+                if previous is None or (witness["hops"], witness["nodes"]) < (previous["hops"], previous["nodes"]):
+                    evidence_paths[identifier] = witness
             for row in part.get("systems") or []:
                 if str(row["id"]) in owning:
                     continue
@@ -316,7 +330,13 @@ def blast_radius(
                     union[str(row["id"])] = row
         systems = sorted(union.values(),
                          key=lambda row: (row["hops"], str(row.get("name") or "")))
+        evidence_paths = {sid: p for sid, p in evidence_paths.items() if sid in union and p["hops"] == union[sid]["hops"]}
+        start_edges = [edge_evidence({"from": link.system_id, "to": "asset:" + asset_id, "label": "USES", "record_id": link.id,
+                         "source": "system_assets", "provenance": "UNATTRIBUTED"}, now=as_of) for link in ownership_links[:MAX_WITNESSES]]
         return {
+            "traversal_evidence": envelope(evidence_paths, union, now=as_of),
+            "start_links": {"edges": start_edges, "returned_count": len(start_edges), "requested_count": len(ownership_links),
+                            "limit": MAX_WITNESSES, "truncated": len(ownership_links) > MAX_WITNESSES},
             "start": asset_id,
             "start_kind": "asset",
             "owning_systems": owning,
@@ -619,6 +639,7 @@ def graph_explain(
         raise HTTPException(status_code=404, detail="Node not found in graph")
     node = graph.nodes.get(start) or {}
     steps: list[dict[str, Any]] = []
+    impact = {}
 
     if node.get("kind") == "CryptoAsset":
         alg = node.get("algorithm") or ""
@@ -651,6 +672,8 @@ def graph_explain(
             "confidence": n.get("confidence"),
             "evidence": (n.get("extra") or {}).get("detection") or "",
             "file": n.get("file_path"),
+            "link_evidence": edge_evidence(
+                {"from": nxt, "to": start, "label": rel, **graph.edge_meta.get((nxt, start, rel), {})}, now=clock()),
         })
 
     # business impact
@@ -672,6 +695,7 @@ def graph_explain(
         "title": f"Why is {node.get('name') or node.get('algorithm') or node_id} risky?",
         "quantum_vulnerable": bool(node.get("kind") == "CryptoAsset" and _quantum_vulnerable_algorithm(str(node.get("algorithm") or ""))),
         "steps": steps,
+        "traversal_evidence": impact.get("traversal_evidence"), "domain_links": impact.get("domain_links"),
         "backend": graph.backend,
     }
 
@@ -1037,6 +1061,8 @@ class EdgeRequest(BaseModel):
     source: str = "manual"
     confidence: float | None = None
     valid_until: AwareDatetime | None = None
+    evidence_ref: str | None = Field(None, min_length=1, max_length=500)
+    confidence_meaning: str | None = Field(None, min_length=1, max_length=200)
 
 
 def _resolve_system(db: Session, system_id: str | None,
@@ -1060,7 +1086,7 @@ def _edge_payload(db: Session, edge) -> dict[str, Any]:
 
     names = {s.id: s.name for s in db.query(System).all()}
     return {
-        "id": edge.id, **lifecycle_payload(edge),
+        "id": edge.id, "evidence_ref": edge.evidence_ref, "confidence_meaning": edge.confidence_meaning, **lifecycle_payload(edge),
         "effective_state": effective_state(lifecycle_payload(edge), now=clock()),
         "parent_id": edge.parent_id, "child_id": edge.child_id,
         "parent_name": names.get(edge.parent_id),
@@ -1134,6 +1160,8 @@ def register_dependency_edge(
     edge = SystemDependency(tenant_id=tenant, parent_id=parent.id, child_id=child.id, relation=body.relation)
     db.add(edge)
     edge.valid_until = utc(body.valid_until) if body.valid_until is not None else None
+    edge.evidence_ref = body.evidence_ref
+    edge.confidence_meaning = body.confidence_meaning
     edge.source = source
     edge.created_by = user
     if body.confidence is not None:

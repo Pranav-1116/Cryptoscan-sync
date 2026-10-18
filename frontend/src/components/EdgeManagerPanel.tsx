@@ -15,6 +15,8 @@ export default function EdgeManagerPanel() {
   const [relation, setRelation] = useState("CALLS");
   const [retirementReason, setRetirementReason] = useState("");
   const [retirementEvidence, setRetirementEvidence] = useState("");
+  const [evidenceRef, setEvidenceRef] = useState("");
+  const [confidenceMeaning, setConfidenceMeaning] = useState("");
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
@@ -34,12 +36,15 @@ export default function EdgeManagerPanel() {
     if (!parentId.trim() || !childId.trim()) return;
     setBusy(true);
     setNote(null);
-    const r = await apiGraphRegisterEdge(parentId.trim(), childId.trim(), relation);
+    const r = evidenceRef.trim() || confidenceMeaning.trim()
+      ? await apiGraphRegisterEdge(parentId.trim(), childId.trim(), relation, { evidence_ref: evidenceRef.trim() || undefined, confidence_meaning: confidenceMeaning.trim() || undefined })
+      : await apiGraphRegisterEdge(parentId.trim(), childId.trim(), relation);
     setBusy(false);
     if (r.source === "live" && r.data) {
       setNote(`registered ${r.data.edge.parent_name || r.data.edge.parent_id} → ${r.data.edge.child_name || r.data.edge.child_id}`);
       setParentId("");
       setChildId("");
+      setEvidenceRef(""); setConfidenceMeaning("");
       load();
     } else {
       setNote(r.error || "register failed (unknown system id? duplicate edge?)");
@@ -75,6 +80,8 @@ export default function EdgeManagerPanel() {
         <select value={relation} onChange={(e) => setRelation(e.target.value)} style={{ fontSize: 12, padding: "4px 8px" }} aria-label="relation">
           {RELATIONS.map((rel) => <option key={rel} value={rel}>{rel}</option>)}
         </select>
+        <input className="inp sm" aria-label="relationship evidence reference" placeholder="Optional relationship evidence reference" maxLength={500} value={evidenceRef} onChange={e => setEvidenceRef(e.target.value)} />
+        <input className="inp sm" aria-label="confidence meaning" placeholder="Optional confidence meaning" maxLength={200} value={confidenceMeaning} onChange={e => setConfidenceMeaning(e.target.value)} />
         <button className="btn sm primary" onClick={register} disabled={busy || !parentId.trim() || !childId.trim()}>
           Register edge
         </button>
@@ -108,6 +115,7 @@ export default function EdgeManagerPanel() {
               <span style={{ color: "var(--cyan)" }}>→</span>
               <span style={{ fontWeight: 600 }}>{e.child_name || e.child_id}</span>
               <Badge variant="neutral">{e.relation}</Badge>
+              <span>{e.source || "source unknown"} · reference: {e.evidence_ref || "missing"}{e.confidence_meaning ? ` · ${e.confidence_meaning}` : " · confidence meaning unspecified"}</span>
               <span>{e.effective_state || "lifecycle unknown"}{e.valid_until ? ` · expires ${e.valid_until}` : " · no expiry deadline"}</span>
               <button className="btn sm outline" style={{ marginLeft: "auto", fontSize: 11 }} disabled={busy || e.lifecycle_revision == null || ["DELETED", "SUPERSEDED"].includes(e.effective_state || "") || !retirementReason.trim() || !retirementEvidence.trim()}
                 onClick={() => remove(e)}>

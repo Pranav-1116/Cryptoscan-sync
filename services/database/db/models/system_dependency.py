@@ -31,6 +31,8 @@ class SystemDependency(BaseModel, TenantScoped, RelationshipLifecycle):
         String(20), nullable=False, default="manual")  # manual|discovered|imported
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    evidence_ref: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    confidence_meaning: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     last_verified: Mapped[Optional[object]] = mapped_column(
         DateTime(timezone=True), nullable=True)
 

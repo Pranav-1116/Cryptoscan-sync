@@ -743,3 +743,47 @@ def test_diff_is_tenant_scoped(tenants, tenancy_session):
         f"/api/v1/technology-bom/cascade/runs/{mine['run_id']}/diff",
         params={"against": globex_run.id})
     assert resp.status_code == 404
+
+
+def test_relationship_evidence_survives_sql_graph_and_twin_cascade(app_db):
+    app, session = app_db, app_db.state.test_session
+    from api.routers.digital_twin import _snapshot
+    from cbom.unified_cascade import unified_cascade
+    with TestClient(app, headers={"Authorization": "Bearer test-token"}) as client:
+        response = client.post("/api/v1/graph/edges", json={
+            "parent_id": "sys-d", "child_id": "sys-a", "source": "imported", "confidence": .7,
+            "evidence_ref": "change:bank-42", "confidence_meaning": "operator-reviewed dependency assertion"})
+        assert response.status_code == 200
+        row = response.json()["edge"]
+        assert row["evidence_ref"] == "change:bank-42"
+        radius = client.get("/api/v1/graph/blast-radius", params={"system_id": "sys-d", "hops": 1}).json()
+        path = radius["traversal_evidence"]["paths"][0]
+        assert path["edges"][0]["provenance"] == "DECLARED"
+        assert path["edges"][0]["evidence_references"] == ["change:bank-42"]
+    snapshot = _snapshot(session)
+    answer = unified_cascade(snapshot, target="sys-a", kind="system", now=NOW)
+    edge = next(p for p in answer["traversal_evidence"]["dependent_consumers"]["paths"] if p["system_id"] == "sys-d")["edges"][0]
+    assert edge["source"] == "imported" and edge["confidence"] == .7
+    assert edge["confidence_meaning"] == "operator-reviewed dependency assertion"
+    assert edge["freshness"]["observation"]["status"] == "MISSING"
+
+
+def test_asset_detection_confidence_never_verifies_relationship():
+    from api.routers.graph import _edge_evidence
+    from graph_engine.core.engine import GraphEngine
+    graph = GraphEngine().build(systems=[{"id": "pay"}], assets=[{"id": "key", "algorithm": "RSA", "system_id": "pay", "confidence": "HIGH"}])
+    result = _edge_evidence(graph, {"from": "system:pay", "to": "asset:key", "label": "USES", "confidence": .2}, {})
+    assert result["confidence"] == .2 and result["asset_detection_confidence"] == "HIGH"
+    assert not result["verified"] and not result["references_verified_by_traversal"]
+    assert result["first_seen"] is None and result["last_seen"] is None
+
+
+def test_asset_start_union_keeps_witnesses_and_actual_join_record_ids(app_db):
+    with TestClient(app_db, headers={"Authorization": "Bearer test-token"}) as client:
+        response = client.get("/api/v1/graph/blast-radius", params={"asset_id": "ca-shared"})
+    assert response.status_code == 200
+    result = response.json()
+    assert result["traversal_evidence"]["requested_count"] == len(result["systems"])
+    assert result["traversal_evidence"]["complete_for_requested_systems"]
+    assert {e["from"] for e in result["start_links"]["edges"]} == {"sys-a", "sys-b"}
+    assert all(e["record_id"] and e["evidence_missing"] and not e["references_verified_by_traversal"] for e in result["start_links"]["edges"])

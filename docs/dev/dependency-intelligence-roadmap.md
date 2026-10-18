@@ -21,7 +21,7 @@ CI workflow configuration is outside this task.
 | 2. Unify relationship semantics | Implemented; local checks passed | Versioned shared system policy in twin/memory/native Neo4j query paths; mixed-relation/min-hop/multi-owner fixtures, stored-policy/UI warnings; real Neo4j unqualified |
 | 3. Join package, artifact and deployment identity | Implemented; local checks passed | Migration 0098, separate document/release digests, exact-estate explicit SBOM/deployment assertions, measured/declared identity, package/artifact cascade and evidence UI |
 | 4. Edge expiry and reconciliation | Implemented; local qualification recorded below | Migration 0099, source-owned revision-checked lifecycle, atomic idempotent collection receipts, retained tombstones, as-of expiry/replay, separate uncertain reachability and UI; live PG/Neo4j remain unqualified |
-| 5. Propagate provenance/evidence/freshness | Pending | Versioned path-level explanations preserving sources, evidence references, observation times and confidence meaning |
+| 5. Propagate provenance/evidence/freshness | Implemented; local qualification recorded below | Migration 0100, bounded traversal-evidence/1 witnesses, seed context, preserved per-edge pointers/origin/timestamp meaning, native selected-path properties and UI; no aggregate confidence or live Neo4j qualification |
 | 6. Process impact over implicated systems | Pending | Process closure over defined system scopes, deduplication and explicit inclusion reasons, not invented revenue loss |
 | 7. Exact target identities | Pending | Exact certificate/package/vendor resolution, explicit ambiguity and opt-in broad search rather than silent first match |
 | 8. Operational dependency modes | Pending | Distinct hard/optional/failover/asynchronous-buffering semantics with conditional outcomes and unknowns, not probabilistic failure claims |
@@ -138,6 +138,36 @@ checks passed. CI workflows were not changed.
 
 Live PostgreSQL concurrency, real Neo4j execution, automatic collector scheduling,
 source-specific TTL policy and whole-platform bank qualification remain open.
+
+## Step 5 — delivered provenance-preserving witnesses
+
+Implemented the additive `cryptoscan.traversal-evidence/1` contract in unified
+cascade and memory/native traversal adapters. It carries real selected-edge
+properties, references, assertion IDs, confidence meaning and separate observation,
+confirmation and verification timestamp states. Reverse and mixed-direction walks
+retain physical edge orientation. Unknown origins/references and unavailable
+native paths remain explicit; no aggregate confidence or failure probability is
+calculated. Asset-detection confidence no longer verifies a relationship.
+
+SQL graph/twin projection retains declared/imported/discovered origins. Migration
+0100 adds optional dependency evidence references and confidence meaning without
+fictional legacy backfill. Software seeds retain document/release/deployment
+assertions; other adapters carry available source records or explicit unverified
+legacy context. Native membership is independent of bounded witness queries;
+vendor chains query the requested neighborhood rather than export a replacement
+whole graph. Corrected duplicate SET tokens in native node-write templates while
+retaining managed-revision guards.
+
+At most 500 witnesses per group and 50 references per edge are listed, with
+explicit missing/truncated coverage that never drives exposure counts. Stored
+answers retain their explanation; old answers are not reconstructed from current
+relationships. UI and API preserve declarations versus runtime observations.
+Local release validation: 1,996 backend tests passed (1 skipped, 7 deselected),
+358 frontend tests passed, typecheck/build/docs/lint passed. CI workflows unchanged.
+These are payload bounds, not dense-graph load certification. Process closure,
+exact target matching, operational modes and bank-wide negative qualification
+remain steps 6–10. Details and a runnable example are in
+[bank guide 21](../bank-environment/21-traversal-provenance-evidence-and-freshness.md).
 
 ## Later stages — design constraints
 

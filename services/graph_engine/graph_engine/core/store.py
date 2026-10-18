@@ -7,6 +7,8 @@ from shared_models.relationship_lifecycle import FIELDS, clock, summary as lifec
 
 from typing import Any, Iterable
 
+from shared_models.traversal_evidence import envelope, native_path, path_evidence, metadata, MAX_WITNESSES, METADATA_FIELDS, edge_evidence
+
 from shared_models.dependency_semantics import (
     MAX_SYSTEM_HOPS, normalize_relation, policy_metadata, query_parameters, stored_relation, system_id,
 )
@@ -22,10 +24,13 @@ from graph_engine.queries.crypto_inventory import CRYPTO_FOR_SYSTEM
 from graph_engine.queries.dependents import DEPENDENTS, SHORTEST_PATH_DOWNSTREAM, SHORTEST_PATH_UPSTREAM
 from graph_engine.queries.hotspots import CRYPTO_HOTSPOTS
 from graph_engine.queries.reachability import COUNT_EDGES, COUNT_NODES, EXPORT_VIS, PING
-from graph_engine.queries.vendor_dependency import VENDOR_PATH
+from graph_engine.queries.traversal_evidence import WITNESS_DOWNSTREAM, WITNESS_UPSTREAM, DOMAIN_LINKS
+from graph_engine.queries.vendor_dependency import VENDOR_PATH, VENDOR_NEIGHBORHOOD, VENDOR_LIST
 from graph_engine.schemas.node_schemas import KIND_PREFIX
 
 logger = logging.getLogger(__name__)
+
+
 
 
 class Neo4jGraphStore:
@@ -230,7 +235,9 @@ class Neo4jGraphStore:
 
     def _origins(self, start_id: str) -> list[str]:
         start_id = system_id(start_id)
-        rows = self._run(ORIGIN_SYSTEM, start=start_id)
+        asset_prefix = start_id.startswith("asset:")
+        rows = [] if asset_prefix else self._run(ORIGIN_SYSTEM, start=start_id)
+        start_id = start_id.removeprefix("asset:")
         if rows:
             return [str(rows[0].get("id") or start_id)]
         return sorted({str(row["id"]) for row in self._run(SYSTEMS_USING_ASSET, start=start_id)
@@ -242,11 +249,12 @@ class Neo4jGraphStore:
 
     def _dependency_walk(self, start_id: str, *, hops: int, reverse: bool) -> dict[str, Any]:
         hops = max(1, min(MAX_SYSTEM_HOPS, hops))
+        now = self._as_of or clock()
         origins = self._origins(start_id)
         by_id: dict[str, dict[str, Any]] = {}
         for origin in origins:
             rows = self._run(DEPENDENTS if reverse else BLAST_RADIUS,
-                             start=origin, hops=hops, **query_parameters(now=self._as_of))
+                             start=origin, hops=hops, **query_parameters(now=now))
             for row in rows:
                 sid = str(row.get("id") or "")
                 if not sid or sid in origins:
@@ -256,7 +264,14 @@ class Neo4jGraphStore:
                 if sid not in by_id or candidate["hops"] < by_id[sid]["hops"]:
                     by_id[sid] = candidate
         systems = sorted(by_id.values(), key=lambda row: (row["hops"], row.get("name") or "", row["id"]))
-        return {"start": origins[0] if origins else start_id, "owning_systems": origins,
+        requested = [row["id"] for row in systems]
+        witnesses = self._run(WITNESS_UPSTREAM if reverse else WITNESS_DOWNSTREAM,
+            starts=origins, targets=sorted(requested)[:MAX_WITNESSES], hops=hops, witness_limit=MAX_WITNESSES,
+            **query_parameters(now=now)) if requested else []
+        paths = {row["id"]: native_path(row, now=now, direction="upstream" if reverse else "downstream") for row in witnesses}
+        start_links = self._domain_links(origins, {"USES"}, target_asset=str(start_id).removeprefix("asset:")) if origins and not self._run(ORIGIN_SYSTEM, start=system_id(start_id)) else None
+        return {"start_links": start_links, "traversal_evidence": envelope(paths, requested, now=now),
+                "start": origins[0] if origins else start_id, "owning_systems": origins,
                 "systems": systems, "hops": hops, "nodes_visited": len(systems) + len(origins),
                 "backend": self.backend, "relationship_policy": policy_metadata()}
 
@@ -267,6 +282,8 @@ class Neo4jGraphStore:
         return self._dependency_walk(start_id, hops=hops, reverse=True)
 
     def shortest_path(self, start_id: str, target_id: str, *, direction: str = "downstream") -> dict[str, Any]:
+        now = self._as_of or clock()
+        witness = None
         origin = self._origin(start_id)
         target = self._origin(target_id)
         resolved_start = origin is not None
@@ -279,13 +296,16 @@ class Neo4jGraphStore:
             rows = self._run(ORIGIN_SYSTEM, start=origin)
             names = [str((rows[0].get("name") if rows else None) or origin)]
             path_hops = 0
+            witness = path_evidence([origin], [], now=now, direction=direction)
         elif resolved_start and resolved_target:
             query = SHORTEST_PATH_UPSTREAM if direction == "upstream" else SHORTEST_PATH_DOWNSTREAM
-            rows = self._run(query, start=origin, target=target, **query_parameters(now=self._as_of))
+            rows = self._run(query, start=origin, target=target, **query_parameters(now=now))
             if rows and rows[0].get("names"):
                 names = [str(item) for item in rows[0]["names"]]
                 path_hops = int(rows[0].get("hops") or (len(names) - 1))
+                witness = native_path(rows[0], now=now, direction=direction)
         return {
+            "traversal_evidence": envelope({target: witness} if witness else {}, [target] if path_hops is not None else [], now=now),
             "start": origin if resolved_start else start_id,
             "target": target if resolved_target else target_id,
             "direction": "upstream" if direction == "upstream" else "downstream",
@@ -343,6 +363,12 @@ class Neo4jGraphStore:
         result["backend"] = self.backend
         return result
 
+    def _domain_links(self, systems, relations, target_asset=None):
+        rows = self._run(DOMAIN_LINKS, system_ids=sorted(set(systems)), relations=sorted(relations), target_asset=target_asset, domain_limit=MAX_WITNESSES + 1) if systems else []
+        edges = [edge_evidence({**(r.get("properties") or {}), "from": r.get("source"), "to": r.get("target"), "label": r.get("relation")}, now=self._as_of or clock()) for r in rows[:MAX_WITNESSES]]
+        return {"edges": edges, "returned_count": len(edges), "limit": MAX_WITNESSES,
+                "truncated": len(rows) > MAX_WITNESSES, "note": "Domain/context links, not additional propagating dependencies."}
+
     def business_impact(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         radius = self.blast_radius(start_id, hops=hops)
         origin = radius["start"] if radius["nodes_visited"] else self._origin(start_id)
@@ -357,6 +383,8 @@ class Neo4jGraphStore:
                 "business_owners": [],
                 "compliance_scopes": [],
                 "systems": [],
+                "traversal_evidence": radius["traversal_evidence"],
+                "domain_links": self._domain_links([], set()),
                 "backend": self.backend,
             }
         rows = self._run(IMPACT_FROM_SYSTEMS, system_ids=system_ids)
@@ -374,6 +402,8 @@ class Neo4jGraphStore:
             "business_owners": owners,
             "compliance_scopes": sorted(set(scopes)),
             "systems": radius["systems"],
+            "traversal_evidence": radius["traversal_evidence"],
+            "domain_links": self._domain_links(system_ids, {"SUPPORTS", "OWNED_BY", "MUST_COMPLY_WITH"}),
             "backend": self.backend,
         }
 
@@ -386,14 +416,19 @@ class Neo4jGraphStore:
         scopes = []
         if rows:
             scopes = [name for name in (rows[0].get("scopes") or []) if name]
-        return {"start": origin or start_id, "scopes": sorted(set(scopes)), "backend": self.backend}
+        return {"start": origin or start_id, "scopes": sorted(set(scopes)), "backend": self.backend,
+                "traversal_evidence": radius["traversal_evidence"],
+                "domain_links": self._domain_links(system_ids, {"MUST_COMPLY_WITH"})}
 
     def vendor_path(self, start_id: str) -> dict[str, Any]:
-        rows = self._run(VENDOR_PATH, start=system_id(start_id), **query_parameters(now=self._as_of))
+        now = self._as_of or clock()
+        rows = self._run(VENDOR_PATH, start=system_id(start_id), **query_parameters(now=now))
         if not rows:
-            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata()}
+            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata(), "traversal_evidence": envelope({}, [], now=now)}
         row = rows[0]
+        destination = "vendor:" + str(row.get("vendor_id"))
         return {
+            "traversal_evidence": envelope({destination: native_path(row, now=now)}, [destination] if row.get("vendor_id") else [], now=now),
             "start": start_id,
             "path": list(row.get("names") or []),
             "hops": int(row.get("hops") or 0),
@@ -403,16 +438,16 @@ class Neo4jGraphStore:
         }
 
     def vendor_chain(self, start_id: str) -> dict[str, Any]:
-        # Fallback path: build a memory engine from the exported vis so the
-        # chain is computed the same way as the in-memory backend.
         from graph_engine.core.engine import GraphEngine
-
-        return GraphEngine.from_vis(self.to_vis()).vendor_chain(start_id)
+        rows = self._run(VENDOR_NEIGHBORHOOD, start=str(start_id).removeprefix("vendor:"))
+        engine = GraphEngine.from_vis(self._vis_from_rows(rows))
+        engine.backend = self.backend
+        return engine.vendor_chain(start_id)
 
     def vendor_chains(self, *, limit: int = 100) -> dict[str, Any]:
-        from graph_engine.core.engine import GraphEngine
-
-        return GraphEngine.from_vis(self.to_vis()).vendor_chains(limit=limit)
+        chains = [self.vendor_chain(row["id"]) for row in self._run(VENDOR_LIST, limit=max(1, min(limit, 1000)))]
+        chains.sort(key=lambda c: (-c["total_assets"], c["vendor"]["name"] or ""))
+        return {"chains": chains, "count": len(chains), "backend": self.backend}
 
     def crypto_for_system(self, start_id: str) -> dict[str, Any]:
         rows = self._run(CRYPTO_FOR_SYSTEM, start=start_id)
@@ -430,7 +465,9 @@ class Neo4jGraphStore:
         return {"start": start_id, "assets": assets, "count": len(assets), "backend": self.backend}
 
     def to_vis(self) -> dict[str, Any]:
-        rows = self._run(EXPORT_VIS)
+        return self._vis_from_rows(self._run(EXPORT_VIS))
+
+    def _vis_from_rows(self, rows):
         nodes: dict[str, dict[str, Any]] = {}
         edges: list[dict[str, Any]] = []
         for row in rows:
@@ -452,12 +489,13 @@ class Neo4jGraphStore:
                 # §4.5 (round 43): relationship properties written at MERGE
                 # time (provenance class + source) survive the export instead
                 # of collapsing to a bare relation label.
-                for prop in ("provenance", "source", "observed_at", *FIELDS):
+                for prop in (*METADATA_FIELDS, "evidence_refs_json", *FIELDS):
                     value = rel.get(prop) if hasattr(rel, "get") else getattr(rel, prop, None)
                     if value is None and isinstance(rel, dict):
                         value = rel.get(prop)
                     if value is not None:
                         edge[prop] = value
+                edge.update(metadata(edge))
                 edges.append(edge)
                 nodes[other["id"]] = other
         as_of = self._as_of or clock()

@@ -6,6 +6,8 @@ import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
 
+from shared_models.traversal_evidence import metadata, walk_paths, envelope, path_evidence, MAX_WITNESSES, edge_evidence
+
 from shared_models.relationship_lifecycle import (
     clock, current, effective_state, lifecycle_payload, summary as lifecycle_summary, edge_changes,
 )
@@ -39,8 +41,6 @@ def _is_shor_vulnerable(algorithm: str | None) -> bool:
     return is_shor_vulnerable(algorithm)
 
 
-
-
 class GraphEngine:
     backend = "memory"
 
@@ -64,7 +64,7 @@ class GraphEngine:
                 observed_at=edge.get("observed_at"),
                 confidence=edge.get("confidence"),
                 evidence_ref=edge.get("evidence_ref"),
-                lifecycle=lifecycle_payload(edge),
+                lifecycle=lifecycle_payload(edge), evidence_metadata=metadata(edge),
             )
         return engine
 
@@ -103,6 +103,7 @@ class GraphEngine:
         confidence: Any = None,
         evidence_ref: Any = None,
         lifecycle: dict | None = None,
+        evidence_metadata: dict | None = None,
     ) -> None:
         relation = normalize_relation(relation)
         if (dst, relation) not in self.out[src]:
@@ -122,6 +123,7 @@ class GraphEngine:
                             ("confidence", confidence), ("evidence_ref", evidence_ref)):
             if value is not None:
                 meta[name] = value
+        meta.update(evidence_metadata or {})
         meta.update(lifecycle or {})
         self.edge_meta[key] = meta
 
@@ -187,7 +189,7 @@ class GraphEngine:
                 self.add_edge(f"system:{parent}", f"system:{child}", edge_relation(edge),
                               provenance=edge.get("provenance") or PROVENANCE_DECLARED,
                               source=edge.get("source") or "system_dependencies (operator-declared)",
-                              observed_at=edge.get("observed_at"), lifecycle=lifecycle_payload(edge))
+                              observed_at=edge.get("observed_at"), lifecycle=lifecycle_payload(edge), evidence_metadata=metadata(edge))
         for process in processes:
             pid = str(process.get("id") or process.get("process_id") or process.get("name"))
             self.add_node(
@@ -299,6 +301,26 @@ class GraphEngine:
                               provenance=PROVENANCE_SCANNER_DERIVED, source="container image inventory")
         return self
 
+    def _evidence_edges(self):
+        return [{"from": src.removeprefix("system:"), "to": dst.removeprefix("system:"), "label": rel,
+                 **metadata(self.edge_meta.get((src, dst, rel)) or {}),
+                 **lifecycle_payload(self.edge_meta.get((src, dst, rel)) or {})}
+                for src, targets in self.out.items() for dst, rel in targets]
+
+    def _witnesses(self, origins, targets, *, hops=12, reverse=False):
+        now = self.as_of
+        paths = walk_paths(self._evidence_edges(), [s.removeprefix("system:") for s in origins],
+            known={s.removeprefix("system:") for s, n in self.nodes.items() if n.get("kind") == "System"},
+            now=now, hops=hops, reverse=reverse, targets=targets)
+        return envelope(paths, targets, now=now)
+
+    def _domain_links(self, systems, relations, target=None):
+        rows = [edge_evidence({"from": src.removeprefix("system:"), "to": dst, "label": rel,
+                **metadata(self.edge_meta.get((src, dst, rel)) or {}), **lifecycle_payload(self.edge_meta.get((src, dst, rel)) or {})}, now=self.as_of)
+                for src in sorted(set(systems)) for dst, rel in sorted(self.out.get(src, [])) if rel in relations and (target is None or dst == target)]
+        return {"edges": rows[:MAX_WITNESSES], "returned_count": min(len(rows), MAX_WITNESSES), "limit": MAX_WITNESSES,
+                "truncated": len(rows) > MAX_WITNESSES, "note": "Domain/context links, not additional propagating dependencies."}
+
     def _dependency_step(self, source: str, target: str, relation: str) -> bool:
         return (propagates(relation)
                 and current(self.edge_meta.get((source, target, relation)) or {}, now=self.as_of)
@@ -343,6 +365,8 @@ class GraphEngine:
             "owning_systems": [origin.split(":", 1)[-1] for origin in origins],
             "systems": systems, "hops": hops, "nodes_visited": len(seen),
             "backend": self.backend, "provenance_counts": provenance_counts(followed),
+            "traversal_evidence": self._witnesses(origins, [r["id"] for r in systems], hops=hops, reverse=reverse),
+            "start_links": self._domain_links(origins, {"USES"}, target=self._resolve(start_id)) if (self.nodes.get(self._resolve(start_id)) or {}).get("kind") == "CryptoAsset" else None,
             "relationship_policy": policy_metadata(),
         }
 
@@ -380,17 +404,22 @@ class GraphEngine:
             "business_owners": owners,
             "compliance_scopes": sorted(scopes),
             "systems": radius["systems"],
+            "traversal_evidence": radius["traversal_evidence"],
+            "domain_links": self._domain_links(system_ids, {"SUPPORTS", "OWNED_BY", "MUST_COMPLY_WITH"}),
             "backend": self.backend,
         }
 
     def compliance_inheritance(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         impact = self.business_impact(start_id, hops=hops)
-        return {"start": impact["start"], "scopes": impact["compliance_scopes"], "backend": self.backend}
+        systems = {f"system:{row['id']}" for row in impact["systems"]} | set(self._system_origins(start_id))
+        return {"start": impact["start"], "scopes": impact["compliance_scopes"], "backend": self.backend,
+                "traversal_evidence": impact["traversal_evidence"],
+                "domain_links": self._domain_links(systems, {"MUST_COMPLY_WITH"})}
 
     def vendor_path(self, start_id: str) -> dict[str, Any]:
         start = self._resolve(start_id)
         if start is None or (self.nodes.get(start) or {}).get("kind") != "System":
-            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata()}
+            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata(), "traversal_evidence": envelope({}, [], now=self.as_of)}
         parent: dict[str, str | None] = {start: None}
         queue = deque([start])
         depths = {start: 0}
@@ -410,13 +439,20 @@ class GraphEngine:
                     depths[nxt] = depths[node] + 1
                     queue.append(nxt)
         if not found_vendor:
-            return {"start": start.split(":", 1)[-1], "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata()}
+            return {"start": start.split(":", 1)[-1], "path": [], "hops": 0, "vendor": None, "backend": self.backend, "relationship_policy": policy_metadata(), "traversal_evidence": envelope({}, [], now=self.as_of)}
         chain = [found_at]
         while chain[-1] and parent.get(chain[-1]) is not None:
             chain.append(parent[chain[-1]])
         chain.reverse()
         names = [(self.nodes.get(item) or {}).get("name") or item.split(":", 1)[-1] for item in chain if item]
         vendor = self.nodes.get(found_vendor) or {}
+        path_nodes = [node.removeprefix("system:") for node in [*chain, found_vendor]]
+        path_edges = []
+        for left, right in zip([*chain, found_vendor], [*chain, found_vendor][1:]):
+            relation = next(rel for dst, rel in self.out[left] if dst == right and (rel == "DEPENDS_ON_VENDOR" or self._dependency_step(left, right, rel)))
+            path_edges.append({"from": left.removeprefix("system:"), "to": right.removeprefix("system:"), "label": relation,
+                               **metadata(self.edge_meta.get((left, right, relation)) or {}), **lifecycle_payload(self.edge_meta.get((left, right, relation)) or {})})
+        witness = envelope({found_vendor: path_evidence(path_nodes, path_edges, now=self.as_of)}, [found_vendor], now=self.as_of)
         names.append(vendor.get("name") or found_vendor.split(":", 1)[-1])
         return {
             "start": start.split(":", 1)[-1],
@@ -424,6 +460,7 @@ class GraphEngine:
             "hops": max(0, len(names) - 1),
             "vendor": vendor.get("name"),
             "vendor_id": found_vendor.split(":", 1)[-1],
+            "traversal_evidence": witness,
             "backend": self.backend, "relationship_policy": policy_metadata(),
         }
 
@@ -445,12 +482,15 @@ class GraphEngine:
             src for src, rel in self.incoming.get(start_id, []) if rel == "DEPENDS_ON_VENDOR"
         ]
         systems = []
+        witness_count = 0
         seen_systems: set[str] = set()
         for sys_id in dependent_systems:
             if sys_id in seen_systems:
                 continue
             seen_systems.add(sys_id)
             node = self.nodes.get(sys_id) or {}
+            membership = {"from": sys_id.removeprefix("system:"), "to": start_id, "label": "DEPENDS_ON_VENDOR",
+                          **metadata(self.edge_meta.get((sys_id, start_id, "DEPENDS_ON_VENDOR")) or {})}
             assets = []
             seen_assets: set[str] = set()
             for nxt, rel in self.out.get(sys_id, []):
@@ -458,7 +498,14 @@ class GraphEngine:
                     continue
                 seen_assets.add(nxt)
                 a = self.nodes.get(nxt) or {}
+                membership_path = None
+                if witness_count < MAX_WITNESSES:
+                    membership_path = path_evidence([start_id, sys_id.removeprefix("system:"), nxt], [membership,
+                        {"from": sys_id.removeprefix("system:"), "to": nxt, "label": "USES", **metadata(self.edge_meta.get((sys_id, nxt, "USES")) or {})}],
+                        now=self.as_of, direction="mixed")
+                    witness_count += 1
                 assets.append({
+                    "traversal_evidence": membership_path,
                     "id": nxt.split(":", 1)[-1],
                     "algorithm": a.get("algorithm"),
                     "purpose": a.get("purpose"),
@@ -487,6 +534,8 @@ class GraphEngine:
             "systems": systems,
             "count": len(systems),
             "total_assets": sum(s["asset_count"] for s in systems),
+            "explanation_limit": MAX_WITNESSES, "explanations_returned": witness_count,
+            "explanations_truncated": sum(s["asset_count"] for s in systems) > MAX_WITNESSES,
             "backend": self.backend,
         }
 
@@ -543,7 +592,12 @@ class GraphEngine:
                     chain.reverse()
                     names = [self._display(item) for item in chain]
                     path_hops = len(names) - 1
+        witness = self._witnesses([start] if start else [], [target.removeprefix("system:")] if target and path_hops is not None else [],
+                                  reverse=direction == "upstream")
+        if witness["paths"] and witness["paths"][0]["available"]:
+            names = [self._display("system:" + node) for node in witness["paths"][0]["nodes"]]
         return {
+            "traversal_evidence": witness,
             "start": self._display(start) if resolved_start else start_id,
             "target": self._display(target) if resolved_target else target_id,
             "direction": "upstream" if direction == "upstream" else "downstream",

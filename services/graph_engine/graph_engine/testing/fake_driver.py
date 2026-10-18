@@ -163,6 +163,9 @@ class FakeSession:
             "merge_connects_to": self._merge_connects,
             "merge_runs": self._merge_runs,
             "prune_kind": self._prune_kind,
+            "domain_links": self._domain_links,
+            "witness_downstream": lambda params: self._witness_rows(params, reverse=False),
+            "witness_upstream": lambda params: self._witness_rows(params, reverse=True),
             "blast_radius": self._blast,
             "dependents": self._dependents,
             "shortest_path_downstream": self._shortest_path_downstream,
@@ -173,6 +176,8 @@ class FakeSession:
             "business_impact": self._impact,
             "compliance_inheritance": self._compliance,
             "vendor_path": self._vendor_path,
+            "vendor_list": lambda p: [{"id": k} for label, k in sorted(self.graph.nodes) if label == "Vendor"][:p["limit"]],
+            "vendor_neighborhood": self._vendor_neighborhood,
             "crypto_inventory": self._crypto,
             "export_vis": self._export,
             "count_nodes": lambda _p: [{"nodes": len(self.graph.nodes)}],
@@ -206,7 +211,7 @@ class FakeSession:
 
     def _merge_uses(self, params):
         for row in params.get("rows") or []:
-            self.graph.merge_edge("System", row["system_id"], "USES", "CryptoAsset", row["asset_id"], {"usage_type": row.get("usage_type")})
+            self.graph.merge_edge("System", row["system_id"], "USES", "CryptoAsset", row["asset_id"], {"usage_type": row.get("usage_type"), "provenance": "SCANNER_DERIVED", "source": "crypto_asset inventory (evidence-chained)"})
         return []
 
     def _quarantine_legacy_calls(self, params):
@@ -233,23 +238,23 @@ class FakeSession:
                 {"protocol": row.get("protocol"), "relation": row.get("relation"),
                  "frequency": row.get("frequency"), "provenance": row.get("provenance"),
                  "source": row.get("source"), "observed_at": row.get("observed_at"),
-                 **{key: row.get(key) for key in (*FIELDS, "valid_until_epoch")}},
+                 **{key: row.get(key) for key in (*FIELDS, "valid_until_epoch", "evidence_ref", "evidence_refs_json", "evidence_refs_total", "evidence_refs_truncated", "confidence", "confidence_meaning", "last_verified", "created_by")}},
             )
         return []
 
     def _merge_supports(self, params):
         for row in params.get("rows") or []:
-            self.graph.merge_edge("System", row["system_id"], "SUPPORTS", "BusinessProcess", row["process_id"])
+            self.graph.merge_edge("System", row["system_id"], "SUPPORTS", "BusinessProcess", row["process_id"], {"provenance": "DECLARED", "source": "system_business_process mapping"})
         return []
 
     def _merge_owned(self, params):
         for row in params.get("rows") or []:
-            self.graph.merge_edge("System", row["system_id"], "OWNED_BY", "BusinessOwner", row["owner_id"])
+            self.graph.merge_edge("System", row["system_id"], "OWNED_BY", "BusinessOwner", row["owner_id"], {"provenance": "DECLARED", "source": "system owner mapping"})
         return []
 
     def _merge_comply(self, params):
         for row in params.get("rows") or []:
-            self.graph.merge_edge("System", row["system_id"], "MUST_COMPLY_WITH", "ComplianceScope", row["standard_name"])
+            self.graph.merge_edge("System", row["system_id"], "MUST_COMPLY_WITH", "ComplianceScope", row["standard_name"], {"provenance": "DECLARED", "source": "system compliance_scopes"})
         return []
 
     def _merge_vendor(self, params):
@@ -260,7 +265,7 @@ class FakeSession:
                 "DEPENDS_ON_VENDOR",
                 "Vendor",
                 row["vendor_id"],
-                {"dependency_type": row.get("dependency_type")},
+                {"dependency_type": row.get("dependency_type"), "provenance": "DECLARED", "source": "vendor dependency mapping"},
             )
         return []
 
@@ -378,6 +383,38 @@ class FakeSession:
             elif reverse and dst[1] == node_id:
                 yield src[1]
 
+    def _domain_links(self, params):
+        rows = [{"source": src[1], "target": KIND_PREFIX.get(dst[0], dst[0].lower()) + ":" + dst[1],
+                 "relation": rel, "properties": dict(props)} for src, rel, dst, props in self.graph.edges
+                if src[0] == "System" and src[1] in params["system_ids"] and rel in params["relations"] and (params.get("target_asset") is None or dst == ("CryptoAsset", params["target_asset"]))]
+        return sorted(rows, key=lambda r: (r["source"], r["relation"], r["target"]))[:params["domain_limit"]]
+
+    def _witness_rows(self, params, *, reverse=False):
+        from datetime import datetime, timezone
+        from shared_models.dependency_semantics import stored_relation
+        from shared_models.traversal_evidence import walk_paths
+        now = datetime.fromtimestamp(params["lifecycle_as_of"], timezone.utc)
+        edges = [{**p, "from": src[1], "to": dst[1], "label": stored_relation(p)}
+                 for src, rel, dst, p in self.graph.edges if rel == "CALLS" and src[0] == dst[0] == "System"]
+        paths = walk_paths(edges, params["starts"], known={key for label, key in self.graph.nodes if label == "System"},
+            now=now, hops=params.get("hops", 12), reverse=reverse, targets=params["targets"])
+        return [{"id": sid, **self._path_payload(path["nodes"], params, reverse=reverse)} for sid, path in paths.items()]
+
+    def _path_payload(self, nodes, params, *, reverse=False):
+        from shared_models.dependency_semantics import stored_relation, propagates
+        from shared_models.relationship_lifecycle import current
+        from datetime import datetime, timezone
+        now = datetime.fromtimestamp(params["lifecycle_as_of"], timezone.utc)
+        links = []
+        for left, right in zip(nodes, nodes[1:]):
+            source, target = (right, left) if reverse else (left, right)
+            for src, rel, dst, props in self.graph.edges:
+                dst_id = "vendor:" + dst[1] if dst[0] == "Vendor" else dst[1]
+                if src[1] == source and dst_id == target and (rel != "CALLS" or propagates(stored_relation(props)) and current(props, now=now)):
+                    links.append({"from": source, "to": target, "type": rel, "properties": dict(props)})
+                    break
+        return {"path_nodes": list(nodes), "path_edges": links}
+
     def _blast(self, params):
         start = self.graph.find_system(str(params.get("start") or ""))
         if not start:
@@ -481,7 +518,7 @@ class FakeSession:
         for sid in chain:
             node = self.graph.get("System", sid) or {}
             names.append(node.get("name") or sid)
-        return [{"names": names, "hops": len(names) - 1}]
+        return [{"names": names, "hops": len(names) - 1, **self._path_payload(chain, params, reverse=upstream)}]
 
     def _crypto_hotspots(self, _params):
         rows = []
@@ -554,6 +591,15 @@ class FakeSession:
                     scopes.append(scope)
         return [{"scopes": scopes}]
 
+    def _vendor_neighborhood(self, params):
+        vendors = {key for (label, key), props in self.graph.nodes.items() if label == "Vendor" and (key == params["start"] or props.get("name") == params["start"])}
+        systems = {src[1] for src, rel, dst, props in self.graph.edges if rel == "DEPENDS_ON_VENDOR" and dst[1] in vendors}
+        rows = [{"n": {**self.graph.get("Vendor", vid), "_label": "Vendor"}, "r": None, "m": None} for vid in vendors]
+        for src, rel, dst, props in self.graph.edges:
+            if src[0] == "System" and src[1] in systems and (rel == "DEPENDS_ON_VENDOR" and dst[1] in vendors or rel in {"USES", "SUPPORTS"}):
+                rows.append({"n": {**self.graph.get(*src), "_label": src[0]}, "r": {**props, "type": rel}, "m": {**self.graph.get(*dst), "_label": dst[0]}})
+        return rows
+
     def _vendor_path(self, params):
         start = self.graph.find_system(str(params.get("start") or ""))
         if not start:
@@ -595,6 +641,7 @@ class FakeSession:
                 "hops": max(0, len(names) - 1),
                 "vendor": vendor.get("name"),
                 "vendor_id": found_vendor,
+                **self._path_payload([*chain, "vendor:" + found_vendor], params),
             }
         ]
 

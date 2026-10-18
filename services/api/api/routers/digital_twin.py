@@ -104,7 +104,9 @@ def _snapshot(db: Session) -> dict:
     # asset → systems (real SystemAsset links): without this, a library or
     # algorithm cascade can name assets but never the systems running them
     asset_systems: dict[str, list[str]] = {}
+    system_asset_links = []
     for link in db.query(SystemAsset).limit(SNAPSHOT_CAPS["systems"]).all():
+        system_asset_links.append(link.to_dict())
         ids = asset_systems.setdefault(link.asset_id, [])
         if link.system_id not in ids:
             ids.append(link.system_id)
@@ -194,6 +196,8 @@ def _snapshot(db: Session) -> dict:
             "is_hardcoded_key": bool(record.is_hardcoded_key),
             "file_path": record.file_path,
             "confidence": record.confidence,
+            "content_hash": record.content_hash, "chain_hash": record.chain_hash,
+            "created_at": record.created_at.isoformat() if record.created_at else None,
         }
         for record, system_id in evidence_rows
     ]
@@ -209,10 +213,11 @@ def _snapshot(db: Session) -> dict:
         if algorithm
     }
 
+    from shared_models.traversal_evidence import system_dependency_metadata, metadata
     from shared_models.relationship_lifecycle import lifecycle_payload
     dependencies = [
         {"id": dep.id, "source": dep.parent_id, "target": dep.child_id, "type": dep.relation,
-         **lifecycle_payload(dep)}
+         **system_dependency_metadata(dep), **lifecycle_payload(dep)}
         for dep in db.query(SystemDependency).limit(50000).all()
     ]
     dependency_source = "system_dependencies"
@@ -228,7 +233,9 @@ def _snapshot(db: Session) -> dict:
             dependencies = [
                 {"source": str(edge.get("from")),
                  "target": str(edge.get("to")),
-                 "type": str(edge.get("label") or "graph"), **lifecycle_payload(edge)}
+                 "type": str(edge.get("label") or "graph"),
+                 **{k: v for k, v in metadata(edge).items() if k != "source"},
+                 "relationship_source": edge.get("source"), **lifecycle_payload(edge)}
                 for edge in snap.edges
                 if edge.get("from") and edge.get("to")
             ]
@@ -248,6 +255,7 @@ def _snapshot(db: Session) -> dict:
             "protocol": ep.get("protocol"), "version": ep.get("tls_version"),
             "cipher_suite": ep.get("cipher_suite"),
             "observed": bool(ep.get("observed", True)),
+            "scan_run_id": ep.get("scan_run_id"), "recorded_at": ep.get("recorded_at"),
             "certificate_subject": (ep.get("certificate") or {}).get("subject"),
         })
     observed_keys = {f"{e['host']}:{e['port']}" for e in network_endpoints}
@@ -261,7 +269,11 @@ def _snapshot(db: Session) -> dict:
     registered_system = {
         f"{_split_endpoint(t.endpoint or '')[0]}:{_split_endpoint(t.endpoint or '')[1]}":
         t.system_id for t in registered}
+    registered_rows = {f"{_split_endpoint(t.endpoint or '')[0]}:{_split_endpoint(t.endpoint or '')[1]}": t for t in registered}
     for endpoint in network_endpoints:
+        registration = registered_rows.get(f"{endpoint.get('host')}:{endpoint.get('port')}")
+        endpoint["ownership_registration_id"] = registration.id if registration else None
+        endpoint["ownership_provenance"] = "DECLARED" if registration else "UNATTRIBUTED"
         if endpoint.get("system_id") is None:
             endpoint["system_id"] = registered_system.get(
                 f"{endpoint.get('host')}:{endpoint.get('port')}")
@@ -272,6 +284,7 @@ def _snapshot(db: Session) -> dict:
         network_endpoints.append({
             "host": host, "port": port,
             "system_id": target.system_id,
+            "ownership_registration_id": target.id, "ownership_provenance": "DECLARED",
             "protocol": None, "version": None, "observed": False,
             "certificate_subject": None,
         })
@@ -301,8 +314,10 @@ def _snapshot(db: Session) -> dict:
     # linkage the inventory view reads, so a certificate cascade names the
     # systems that run the certificate, not just the endpoints serving it.
     certificate_usages: dict[str, list[str]] = {}
+    certificate_usage_records = []
     for cu in db.query(CertificateUsage).limit(
             SNAPSHOT_CAPS["certificate_usages"]).all():
+        certificate_usage_records.append(cu.to_dict())
         loc = str(cu.location or "")
         if loc.startswith("system:"):
             sid = loc.split(":", 1)[-1]
@@ -319,7 +334,9 @@ def _snapshot(db: Session) -> dict:
             SNAPSHOT_CAPS["business_processes"]).all():
         business_processes.setdefault(link.system_id, []).append({
             "id": link.process_id,
-            "name": process_names.get(link.process_id, link.process_id)})
+            "name": process_names.get(link.process_id, link.process_id),
+            "relationship_record_id": link.id, "provenance": "DECLARED",
+            "source": "system_business_process mapping", "created_at": link.created_at.isoformat() if link.created_at else None})
 
     # Vendor crypto inventory (VBOM): what each vendor's products implement —
     # algorithm, key size, PQC readiness — as discovered, never as marketed.
@@ -355,8 +372,10 @@ def _snapshot(db: Session) -> dict:
     # with this, a device cascade can name the crypto assets and systems a
     # device serves; without it, the honest unknown stands.
     crypto_hardware: dict[str, list[str]] = {}
+    crypto_hardware_links = []
     for link in db.query(CryptoHardwareLink).limit(
             SNAPSHOT_CAPS["hardware"]).all():
+        crypto_hardware_links.append({**link.to_dict(), "provenance": "DECLARED", "source": "crypto_hardware_links"})
         ids = crypto_hardware.setdefault(link.hardware_asset_id, [])
         if link.asset_id not in ids:
             ids.append(link.asset_id)
@@ -364,7 +383,8 @@ def _snapshot(db: Session) -> dict:
     # Vendor-of-vendor (sub-tier) edges — declared supply-chain exposure.
     vendor_dependencies = [
         {"parent": vd.parent_vendor_id, "child": vd.child_vendor_id,
-         "relation": vd.relation}
+         "id": vd.id, "provenance": "DECLARED", "source": "vendor_dependencies",
+         "created_by": vd.declared_by, "relation": vd.relation}
         for vd in db.query(VendorDependency).limit(
             SNAPSHOT_CAPS["vendors"]).all()
     ]
@@ -373,6 +393,9 @@ def _snapshot(db: Session) -> dict:
 
     return {
         "assets": assets,
+        "system_asset_links": system_asset_links,
+        "certificate_usage_records": certificate_usage_records,
+        "crypto_hardware_links": crypto_hardware_links,
         "systems": systems,
         "certificates": certificates,
         "vendors": [
@@ -381,8 +404,7 @@ def _snapshot(db: Session) -> dict:
             for v in db.query(Vendor).limit(SNAPSHOT_CAPS["vendors"]).all()
         ],
         "system_vendors": [
-            {"system_id": sv.system_id, "vendor_id": sv.vendor_id,
-             "dependency_type": sv.dependency_type}
+            {**sv.to_dict(), "provenance": "DECLARED", "source": "system_vendor mapping"}
             for sv in system_vendors
         ],
         "evidence": evidence,

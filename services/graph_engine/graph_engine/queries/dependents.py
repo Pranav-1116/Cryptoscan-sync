@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from shared_models.dependency_semantics import cypher_dependency_predicate
+from graph_engine.queries.traversal_evidence import PATH_NODES, PATH_EDGES
 
 DEPENDENTS = """
 // cryptoscan.query=dependents
@@ -18,7 +19,7 @@ RETURN up.system_id AS id,
        up.criticality AS criticality,
        hops
 ORDER BY hops, name, id
-""".replace("__DEPENDENCY_POLICY__", cypher_dependency_predicate())
+""".replace("__DEPENDENCY_POLICY__", cypher_dependency_predicate()).replace("__PATH_NODES__", PATH_NODES).replace("__PATH_EDGES__", PATH_EDGES)
 
 SHORTEST_PATH_DOWNSTREAM = """
 // cryptoscan.query=shortest_path_downstream
@@ -29,8 +30,9 @@ OPTIONAL MATCH path = shortestPath((s)-[:CALLS*0..12]->(t))
 WHERE all(n IN nodes(path) WHERE n:System)
   AND all(r IN relationships(path) WHERE __DEPENDENCY_POLICY__)
 RETURN [n IN nodes(path) | coalesce(n.name, n.system_id)] AS names,
-       length(path) AS hops
-""".replace("__DEPENDENCY_POLICY__", cypher_dependency_predicate())
+       length(path) AS hops,
+       __PATH_NODES__ AS path_nodes, __PATH_EDGES__ AS path_edges
+""".replace("__DEPENDENCY_POLICY__", cypher_dependency_predicate()).replace("__PATH_NODES__", PATH_NODES).replace("__PATH_EDGES__", PATH_EDGES)
 
 SHORTEST_PATH_UPSTREAM = """
 // cryptoscan.query=shortest_path_upstream
@@ -41,5 +43,6 @@ OPTIONAL MATCH path = shortestPath((s)<-[:CALLS*0..12]-(t))
 WHERE all(n IN nodes(path) WHERE n:System)
   AND all(r IN relationships(path) WHERE __DEPENDENCY_POLICY__)
 RETURN [n IN nodes(path) | coalesce(n.name, n.system_id)] AS names,
-       length(path) AS hops
-""".replace("__DEPENDENCY_POLICY__", cypher_dependency_predicate())
+       length(path) AS hops,
+       __PATH_NODES__ AS path_nodes, __PATH_EDGES__ AS path_edges
+""".replace("__DEPENDENCY_POLICY__", cypher_dependency_predicate()).replace("__PATH_NODES__", PATH_NODES).replace("__PATH_EDGES__", PATH_EDGES)

@@ -1237,7 +1237,8 @@ def _gather_network_inventory(db: Session, *, limit: int = 2000) -> dict[str, li
             raw = str(probe.get("endpoint") or "").strip()
             if not raw or raw in endpoints:
                 continue  # first sighting is the newest run
-            endpoints[raw] = probe_to_endpoint(probe)
+            endpoints[raw] = {**probe_to_endpoint(probe), "scan_run_id": run.id,
+                              "recorded_at": run.created_at.isoformat() if run.created_at else None}
     return {"endpoints": list(endpoints.values())}
 
 

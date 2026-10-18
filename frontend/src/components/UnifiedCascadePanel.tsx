@@ -9,6 +9,8 @@ import {
   UnifiedCascadeResult,
 } from "../lib/api";
 
+import TraversalEvidencePanel from "./TraversalEvidencePanel";
+
 const KINDS = [
   "auto", "algorithm", "certificate", "endpoint", "system",
   "vendor", "device", "library", "process", "package", "artifact",
@@ -131,6 +133,8 @@ export default function UnifiedCascadePanel() {
               ? `Relationship policy: ${result.relationship_policy.version}. System propagation: ${result.relationship_policy.propagating_relations.join(", ")}. Unknown/context labels do not propagate.`
               : "Relationship policy unavailable for this stored answer; do not assume traversal parity."}
           </div>
+
+          <TraversalEvidencePanel evidence={result.traversal_evidence} />
 
           <section aria-label="Relationship lifecycle" role="status" style={{ marginBottom: 12 }}>
             {result.relationship_lifecycle ? <>

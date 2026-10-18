@@ -23,6 +23,7 @@ import re
 from datetime import datetime
 from typing import Any, Mapping
 
+from cbom.cascade_evidence import cascade_evidence
 from cbom.software_cascade import identify_software, software_context
 from shared_models.relationship_lifecycle import current, possible, summary as lifecycle_summary
 from shared_models.dependency_semantics import MAX_SYSTEM_HOPS, edge_relation, policy_metadata, propagates, system_id
@@ -310,6 +311,7 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
         "code": {
             "evidence_ids": [str(e.get("id")) for e in unique],
             "systems": systems,
+            "matched_asset_ids": [str(a.get("asset_id")) for a in assets],
             "files": sorted({str(e.get("file_path")) for e in unique if e.get("file_path")}),
         },
         "network": {
@@ -690,6 +692,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
             "mutates_nothing": True,
             "target": {"input": target_text, "kind": kind or "unknown", "matched": None},
             "verdict": "NOT_FOUND",
+            "traversal_evidence": cascade_evidence(snapshot, _classify_system_scope({}), {}, {}, None, now=now, depth=depth, uncertain_systems=[], possible_direct=[]),
             "layers": {},
             "impact": {"affected_system_count": 0, "affected_systems": [],
                        "system_classification": _classify_system_scope({})},
@@ -763,6 +766,9 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         [b for b in (layers.get("software") or {}).get("sbom_bindings") or []] +
         [d for d in (layers.get("software") or {}).get("deployments") or []], now=now)
     lifecycle["summary_scope"] = "all snapshot dependencies and matched software assertions"
+    explanation_snapshot = {**snapshot, "dependencies": original_dependencies}
+    explanation = cascade_evidence(explanation_snapshot, classification, layers, matched, cascade_kind,
+        now=now, depth=depth, uncertain_systems=uncertain_systems, possible_direct=possible_direct)
 
     affected_processes = [
         {"id": p.get("id"), "name": p.get("name")}
@@ -831,6 +837,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         "schema": _SCHEMA,
         "relationship_policy": policy_metadata(),
         "relationship_lifecycle": lifecycle,
+        "traversal_evidence": explanation,
         "as_of": now.isoformat(),
         "deterministic": True,
         "mutates_nothing": True,

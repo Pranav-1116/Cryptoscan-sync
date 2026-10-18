@@ -235,7 +235,8 @@ step 10, not a passing-mock certification.
 package/release/deployment joins; its assertions do not prove current runtime
 placement. At the time of the step-2 delivery, the backlog below was pending;
 step 4 now supplies [stale/deleted lifecycle and reconciliation](20-relationship-lifecycle-and-reconciliation.md);
-steps 5–10 remain pending: complete path provenance/freshness, process closure,
+[step 5 supplies bounded per-edge provenance/freshness explanations](21-traversal-provenance-evidence-and-freshness.md).
+Steps 6–10 remain pending: process closure,
 exact/ambiguous target resolution, operational dependency modes, prominent
 coverage/truncation and bank-negative deployment qualification. The same policy
 on different incomplete or stale inventories can still return different counts.

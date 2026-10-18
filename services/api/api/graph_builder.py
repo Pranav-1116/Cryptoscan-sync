@@ -7,6 +7,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 from shared_models.relationship_lifecycle import lifecycle_payload
+from shared_models.traversal_evidence import system_dependency_metadata
 
 from db.models.certificate import Certificate
 from db.models.crypto_asset import CryptoAsset
@@ -83,7 +84,7 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
             edges.append(
                 {"id": edge.id, "parent_id": edge.parent_id, "child_id": edge.child_id,
                  "relation": edge.relation or "CALLS", "source": edge.source,
-                 "confidence": edge.confidence, **lifecycle_payload(edge)}
+                 "confidence": edge.confidence, **system_dependency_metadata(edge), **lifecycle_payload(edge)}
             )
         for asset in assets:
             payload = asset.to_dict()

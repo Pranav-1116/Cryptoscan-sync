@@ -16,7 +16,7 @@ MERGE_SYSTEMS = """
 UNWIND $rows AS row
 MERGE (s:System {system_id: row.system_id, tenant_id: row.tenant_id})
 SET s.tenant_id = row.tenant_id,
-SET s.name = row.name,
+    s.name = row.name,
     s.environment = row.environment,
     s.criticality = row.criticality,
     s.owner = row.owner
@@ -27,7 +27,7 @@ MERGE_ASSETS = """
 UNWIND $rows AS row
 MERGE (a:CryptoAsset {asset_id: row.asset_id, tenant_id: row.tenant_id})
 SET a.tenant_id = row.tenant_id,
-SET a.algorithm = row.algorithm,
+    a.algorithm = row.algorithm,
     a.key_size = row.key_size,
     a.purpose = row.purpose,
     a.confidence = row.confidence,
@@ -39,7 +39,7 @@ MERGE_PROCESSES = """
 UNWIND $rows AS row
 MERGE (p:BusinessProcess {process_id: row.process_id, tenant_id: row.tenant_id})
 SET p.tenant_id = row.tenant_id,
-SET p.name = row.name,
+    p.name = row.name,
     p.revenue_daily = row.revenue_daily,
     p.customer_count = row.customer_count
 """
@@ -49,7 +49,7 @@ MERGE_OWNERS = """
 UNWIND $rows AS row
 MERGE (o:BusinessOwner {owner_id: row.owner_id, tenant_id: row.tenant_id})
 SET o.tenant_id = row.tenant_id,
-SET o.name = row.name,
+    o.name = row.name,
     o.email = row.email,
     o.role = row.role
 """
@@ -59,7 +59,7 @@ MERGE_SCOPES = """
 UNWIND $rows AS row
 MERGE (c:ComplianceScope {standard_name: row.standard_name, tenant_id: row.tenant_id})
 SET c.tenant_id = row.tenant_id,
-SET c.version = row.version
+    c.version = row.version
 """
 
 MERGE_VENDORS = """
@@ -67,7 +67,7 @@ MERGE_VENDORS = """
 UNWIND $rows AS row
 MERGE (v:Vendor {vendor_id: row.vendor_id, tenant_id: row.tenant_id})
 SET v.tenant_id = row.tenant_id,
-SET v.name = row.name,
+    v.name = row.name,
     v.criticality = row.criticality
 """
 
@@ -76,7 +76,7 @@ MERGE_CERTS = """
 UNWIND $rows AS row
 MERGE (c:Certificate {cert_id: row.cert_id, tenant_id: row.tenant_id})
 SET c.tenant_id = row.tenant_id,
-SET c.subject = row.subject,
+    c.subject = row.subject,
     c.issuer = row.issuer,
     c.not_after = row.not_after,
     c.expiry_status = row.expiry_status
@@ -87,7 +87,7 @@ MERGE_CLOUD = """
 UNWIND $rows AS row
 MERGE (c:CloudResource {resource_id: row.resource_id, tenant_id: row.tenant_id})
 SET c.tenant_id = row.tenant_id,
-SET c.cloud_provider = row.cloud_provider,
+    c.cloud_provider = row.cloud_provider,
     c.resource_type = row.resource_type,
     c.name = row.name
 """
@@ -128,7 +128,15 @@ SET rel.protocol = row.protocol,
     rel.lifecycle_evidence_ref = row.lifecycle_evidence_ref,
     rel.last_reconciliation_id = row.last_reconciliation_id,
     rel.projection_state = row.projection_state,
-    rel.record_id = row.record_id
+    rel.record_id = row.record_id,
+    rel.evidence_ref = row.evidence_ref,
+    rel.evidence_refs_json = row.evidence_refs_json,
+    rel.evidence_refs_total = row.evidence_refs_total,
+    rel.evidence_refs_truncated = row.evidence_refs_truncated,
+    rel.confidence = row.confidence,
+    rel.confidence_meaning = row.confidence_meaning,
+    rel.last_verified = row.last_verified,
+    rel.created_by = row.created_by
 """
 
 MERGE_SUPPORTS = """
@@ -211,7 +219,7 @@ MERGE_NETWORK = """
 UNWIND $rows AS row
 MERGE (n:NetworkResource {network_id: row.network_id, tenant_id: row.tenant_id})
 SET n.tenant_id = row.tenant_id,
-SET n.name = row.name,
+    n.name = row.name,
     n.endpoint = row.endpoint,
     n.resource_type = row.resource_type
 """
@@ -232,7 +240,7 @@ MERGE_CONTAINERS = """
 UNWIND $rows AS row
 MERGE (c:ContainerImage {container_id: row.container_id, tenant_id: row.tenant_id})
 SET c.tenant_id = row.tenant_id,
-SET c.name = row.name,
+    c.name = row.name,
     c.image = row.image,
     c.package_count = row.package_count,
     c.library_count = row.library_count,
