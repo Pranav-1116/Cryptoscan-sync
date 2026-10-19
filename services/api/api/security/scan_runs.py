@@ -130,7 +130,9 @@ class DurableScanRun:
         progress = self._progress()
         if coverage is not None:
             progress["coverage"] = coverage
-        self._repo.update_status(self._job.id, "COMPLETED", scan_id=scan_id, progress=progress)
+        updated = self._repo.update_status(self._job.id, "COMPLETED", scan_id=scan_id, progress=progress)
+        if updated is None:
+            raise RuntimeError("Durable run completion was refused")
         self._db.commit()
 
     def fail(self, error: Any) -> None:

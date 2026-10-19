@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 from api.dependencies import get_current_user, get_db_session, require_auditor
 from api.security.audit_diff import write_audited_diff
+from api.security.network_collection import (NetworkHostRequest, admit_network, checked_hosts, meter_network, network_run, persist_network, network_coverage, network_context)
+from db.tenancy import current_tenant
 from db.repositories.certificate_repository import CertificateRepository
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.repositories.maturity_repository import MaturityRepository
@@ -44,19 +46,9 @@ class NetworkInventoryAnalysisRequest(BaseModel):
     inventory: dict[str, Any]
 
 
-class HostScanRequest(BaseModel):
-    hosts: list[str] = Field(default_factory=list)
-    live: bool = True
-    timeout: float = 5.0
-    sni: str | None = None
-    starttls: str | None = None  # auto | smtp | imap | pop3 | ftp | ldap | postgresql | off
-    workers: int | None = None
-    scan_versions: bool = False
-    scan_ciphers: bool = False
-    check_renegotiation: bool = False
-    check_chain_sent: bool = False
-    live_revocation: bool = False
-    persist_run: bool = True  # store the run so /network/drift/latest can diff it later
+class HostScanRequest(NetworkHostRequest):
+    # Keep the old field discoverable, but never permit unrecorded live work.
+    persist_run: Literal[True] = True
 
 
 class TargetCreate(BaseModel):
@@ -261,48 +253,43 @@ def list_due(user: str = Depends(get_current_user), db: Session = Depends(get_db
 
 
 @router.post("/network/run-due")
-def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    # Active TLS handshakes against the due rotation: admitted first. An
-    # emergency stop (or an OT estate outside its maintenance window) must
-    # stop the rotation, not just the scan queue.
-    from api.security.scan_admission import admit_scan
-
-    admit_scan(active_probing_requested=True)
-    intel = IntelligenceRepository(db)
-    rows = intel.list_targets()
+def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_session), _ctx=Depends(network_context)):
+    # A bank may read shared platform inventory, but cannot execute/advance
+    # platform-owned or foreign scheduled work. Select the exact estate.
+    from db.models.network_scan_target import NetworkScanTarget
+    rows = db.query(NetworkScanTarget).filter(NetworkScanTarget.tenant_id == current_tenant()).all()
     due = due_targets([row.to_dict() for row in rows])
     if not due:
+        # No executor and no run, but stop/outage policy still applies.
+        from api.security.scan_admission import admit_scan
+        admit_scan(active_probing_requested=True)
         return {"scanned": 0, "findings": []}
-    hosts = [item["endpoint"] for item in due if item.get("endpoint")]
-    result = NetworkTlsScanner(live=True).scan_hosts(hosts)
-    # Keep the operator-triggered due path on the same durable run ledger as
-    # the worker scheduler. NBOM and drift must not depend on which trigger
-    # happened to execute the scan.
-    run = ScanRunRepository(db).create_run(result, target_kind="scheduled")
-    repo = CertificateRepository(db)
-    usages = MaturityRepository(db)
-    now = datetime.now(timezone.utc)
-    for cert in result.get("certificates") or []:
-        if cert.get("fingerprint_sha256"):
-            repo.upsert(cert)
-    for usage in result.get("usages") or []:
-        if usage.get("fingerprint_sha256") and usage.get("location"):
-            usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
-    for item in due:
-        intel.upsert_target(
-            item["endpoint"],
-            last_scan_time=now,
-            next_scan_time=next_scan_time(now, item.get("scan_frequency")),
-        )
-    result["scanned"] = len(hosts)
-    result["run_id"] = run.id
+    hosts = checked_hosts([item["endpoint"] for item in due if item.get("endpoint")])
+    admission = admit_network(hosts)
+    meter_network(db, hosts)
+    with network_run(db, user=user, target=",".join(hosts)[:2000], admission=admission, kind="scheduled", profile={"workers": 8, "timeout": 5.0, "scan_versions": False, "scan_ciphers": False}) as run:
+        result = NetworkTlsScanner(live=True, workers=8).scan_hosts(hosts)
+        result = persist_network(db, result, run, kind="scheduled")
+        # An unsuccessful/incomplete probe is not fresh observation. Keep the
+        # batch due unless telemetry reports every probe successfully observed.
+        # Weak-crypto findings may make a fully observed batch PARTIAL; that
+        # is a fresh observation, not a safe posture or a reason to retry-spin.
+        telemetry = result.get("probe_telemetry") or {}
+        if telemetry.get("status") in {"OK", "PARTIAL"} and telemetry.get("probed") == len(hosts) and telemetry.get("ok") == len(hosts):
+            now = datetime.now(timezone.utc)
+            for row in rows:
+                if row.endpoint in {item["endpoint"] for item in due}:
+                    row.last_scan_time = now
+                    row.next_scan_time = next_scan_time(now, row.scan_frequency)
+        result["scanned"] = len(hosts)
+        run.succeed(coverage=network_coverage(result))
     return result
 
 
 class SubnetDiscoverRequest(BaseModel):
     cidr: str
-    ports: list[int] = Field(default_factory=list)  # empty => full DEFAULT_PORTS set
-    timeout: float = 1.5
+    ports: list[Annotated[int, Field(ge=1, le=65535)]] = Field(default_factory=list, max_length=64)  # empty => DEFAULT_PORTS
+    timeout: float = Field(default=1.5, gt=0, le=30, allow_inf_nan=False)
     scan: bool = True
     register: bool = False  # upsert discovered endpoints into the due-scan rotation
     scan_frequency: str = "daily"  # hourly | daily | weekly | monthly
@@ -311,7 +298,7 @@ class SubnetDiscoverRequest(BaseModel):
     check_renegotiation: bool = False
     check_chain_sent: bool = False
     live_revocation: bool = False
-    workers: int | None = None
+    workers: int | None = Field(default=None, ge=1, le=32)
 
 
 @router.post("/network/discover")
@@ -319,6 +306,7 @@ def discover_subnet_endpoints(
     body: SubnetDiscoverRequest,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
+    _ctx=Depends(network_context),
 ):
     """Sweep a CIDR for open service ports and optionally scan each endpoint.
 
@@ -342,46 +330,50 @@ def discover_subnet_endpoints(
     # authorization — the range must sit inside the tenant's declared
     # network scope (or be a registered single host). Authorized at
     # registration is not authorized at execution: both halves are checked.
-    from api.security.scan_admission import admit_scan, authorize_network_sweep
+    from api.security.scan_admission import authorize_network_sweep
 
-    admit_scan(active_probing_requested=True, asset=safe_cidr)
+    ports = sorted(set(body.ports or list(DEFAULT_PORTS)))
+    admission = admit_network([safe_cidr], protocol="tcp", ports=ports)
     authorized, auth_reason = authorize_network_sweep(safe_cidr)
     if not authorized:
-        raise HTTPException(
-            status_code=403,
-            detail={"error": "target_outside_authorized_scope", "reason": auth_reason},
-        )
-
-    result = discover_subnet(safe_cidr, body.ports or list(DEFAULT_PORTS), timeout=body.timeout)
-    if body.register:
-        from network_scanner.discovery.registration import register_targets
-
-        intel = IntelligenceRepository(db)
-        existing = {row.endpoint for row in intel.list_targets()}
-        result["registration"] = register_targets(
-            intel,
-            result.get("endpoints") or [],
-            scan_frequency=body.scan_frequency,
-            existing=existing,
-        )
-    if body.scan and result.get("endpoints"):
-        scanned = NetworkTlsScanner(live=True, workers=body.workers).scan_hosts(
-            result["endpoints"],
-            scan_versions=body.scan_versions,
-            scan_ciphers=body.scan_ciphers,
-            check_renegotiation=body.check_renegotiation,
-            check_chain_sent=body.check_chain_sent,
-            live_revocation=body.live_revocation,
-        )
-        result["scan"] = {
-            "probe_telemetry": scanned.get("probe_telemetry"),
-            "certificates": scanned.get("certificates"),
-            "alerts": scanned.get("alerts"),
-        }
-        repo = CertificateRepository(db)
-        for cert in scanned.get("certificates") or []:
-            if cert.get("fingerprint_sha256"):
-                repo.upsert(cert)
+        raise HTTPException(403, detail={"error": "target_outside_authorized_scope", "reason": auth_reason})
+    with network_run(db, user=user, target=safe_cidr, admission=admission, kind="discovery", profile={**body.model_dump(exclude={"cidr"}), "ports": ports, "workers": body.workers or 8}) as run:
+        result = discover_subnet(safe_cidr, ports, timeout=body.timeout, workers=body.workers or 8)
+        if result.get("error"):
+            raise HTTPException(422, detail="Network discovery could not evaluate the requested scope")
+        endpoints = checked_hosts(result["endpoints"]) if result.get("endpoints") else []
+        # A sweep is not authorization for a subsequent TLS phase. Re-read
+        # policy, validate all discovered endpoints, and check containment.
+        import ipaddress
+        scope = ipaddress.ip_network(safe_cidr)
+        for endpoint in endpoints:
+            host = endpoint.rsplit(":", 1)[0].strip("[]")
+            if ipaddress.ip_address(host) not in scope:
+                raise HTTPException(422, detail="Discovery returned an endpoint outside the admitted scope")
+        if body.scan and endpoints:
+            tls_admission = admit_network(endpoints)
+            meter_network(db, endpoints)
+            # Charge admitted attempts before the second external phase, as
+            # direct/due paths do in their initial durable-job commit.
+            db.commit()
+            scanned = NetworkTlsScanner(live=True, workers=body.workers or 8).scan_hosts(
+                endpoints, scan_versions=body.scan_versions, scan_ciphers=body.scan_ciphers,
+                check_renegotiation=body.check_renegotiation, check_chain_sent=body.check_chain_sent,
+                live_revocation=body.live_revocation,
+            )
+            stored = persist_network(db, {**scanned, "discovery": result}, run, kind="discovery_tls", phase_admission=tls_admission)
+            result = {**result, "scan": {key: scanned.get(key) for key in ("probe_telemetry", "certificates", "alerts")},
+                      "job_id": stored["job_id"], "run_id": stored["run_id"], "probe_telemetry": scanned.get("probe_telemetry")}
+        else:
+            # Discovery is durable but does not masquerade as a TLS probe.
+            result = persist_network(db, result, run, kind="discovery")
+        if body.register and endpoints:
+            admit_network(endpoints, protocol="tcp")
+            from network_scanner.discovery.registration import register_targets
+            intel = IntelligenceRepository(db)
+            result["registration"] = register_targets(intel, endpoints, scan_frequency=body.scan_frequency,
+                                                       existing={row.endpoint for row in intel.list_targets()})
+        run.succeed(coverage=network_coverage(result))
     return result
 
 
@@ -582,41 +574,19 @@ def check_revocation(cert_id: str, user: str = Depends(get_current_user), db: Se
 
 
 @router.post("/network/scan")
-def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    if not body.hosts:
-        raise HTTPException(status_code=400, detail="hosts required")
-    # SSRF guard: active TLS probes must never target loopback/cloud-metadata.
-    # Hostnames and RFC1918 endpoints (the internal-asset use case) are allowed.
-    try:
-        from api.security.target_validation import TargetValidationError, validate_probe_targets
-
-        safe_hosts = validate_probe_targets(body.hosts, label="hosts")
-    except TargetValidationError as exc:
-        raise HTTPException(status_code=400, detail={"error": "invalid_target",
-                                                     "field": exc.field, "reason": str(exc)})
-    result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
-        safe_hosts,
-        sni=body.sni,
-        starttls=body.starttls,
-        scan_versions=body.scan_versions,
-        scan_ciphers=body.scan_ciphers,
-        check_renegotiation=body.check_renegotiation,
-        check_chain_sent=body.check_chain_sent,
-        live_revocation=body.live_revocation,
-    )
-    if body.persist_run:
-        try:
-            result["run_id"] = ScanRunRepository(db).create_run(result).id
-        except Exception as exc:  # noqa: BLE001 — storage must not sink the scan
-            result["storage_error"] = f"{type(exc).__name__}: {exc}"[:200]
-    repo = CertificateRepository(db)
-    usages = MaturityRepository(db)
-    for cert in result.get("certificates") or []:
-        if cert.get("fingerprint_sha256"):
-            repo.upsert(cert)
-    for usage in result.get("usages") or []:
-        if usage.get("fingerprint_sha256") and usage.get("location"):
-            usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
+def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session), _ctx=Depends(network_context)):
+    hosts = checked_hosts(body.hosts)
+    admission = admit_network(hosts)
+    meter_network(db, hosts)
+    with network_run(db, user=user, target=",".join(hosts)[:2000], admission=admission, profile={**body.model_dump(exclude={"hosts"}), "workers": body.workers or 8}) as run:
+        result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers or 8).scan_hosts(
+            hosts, sni=body.sni, starttls=body.starttls,
+            scan_versions=body.scan_versions, scan_ciphers=body.scan_ciphers,
+            check_renegotiation=body.check_renegotiation, check_chain_sent=body.check_chain_sent,
+            live_revocation=body.live_revocation,
+        )
+        result = persist_network(db, result, run)
+        run.succeed(coverage=network_coverage(result))
     return result
 
 

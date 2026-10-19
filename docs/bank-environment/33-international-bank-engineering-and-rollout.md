@@ -3,7 +3,10 @@
 [Guide index](README.md) · [Failure register](32-bank-scan-failure-modes-and-qualification.md) ·
 [Worked assessment](34-worked-international-bank-assessment.md)
 
-**This is a proposed backlog, not completed engineering.** The prior ten steps
+**This is a proposed backlog, not completed engineering.**
+The [A01 first API delivery](35-network-admission-and-durable-collection.md) is
+now implemented locally; A01 as a whole and the remaining enterprise items are
+still open. The prior ten steps
 are locally delivered as recorded in [guide 26](26-bank-negative-tests-and-backend-qualification.md).
 Their external qualification and the broader enterprise work below remain
 separate. Scope these items to the bank's actual deployment; not every pilot
@@ -58,11 +61,13 @@ not repair the identified route differences or add a regional control plane.
 | A06 Evidence + database team | Durable collection receipts and completeness-gated reconciliation | Commit/ack failure and duplicate/out-of-order/partial delivery tests preserve history and prevent false deletion or success |
 | A07 Assurance + service owners | Actual integration and operational qualification | Live disposable PostgreSQL/Neo4j evidence where used, representative vendor/runtime tests, approved restore and canary sign-off; not-run items remain open |
 
-For A01, the current direct `/api/v1/network/scan` handler validates destinations
-and can persist runs but lacks the direct admission call shown on other paths.
-Other routes can persist certificates/jobs without the NBOM probe ledger. Use
-[guide 08's matrix](08-implementation-map-and-limits.md); neither authentication
-nor validation alone closes admission/persistence parity.
+At planning commit `f901b775`, the direct `/api/v1/network/scan` handler lacked
+admission and the alias/discovery paths lacked probe-ledger writes. The
+[A01 first delivery](35-network-admission-and-durable-collection.md) closes those
+four API-path differences with bank tests and durable transaction guards.
+A01 remains partial: other executors, granular grants, real budget enforcement
+and deployment qualification are not implied. The current
+[guide 08 matrix](08-implementation-map-and-limits.md) records this update.
 
 For A02/A04, do not remove existing guardrails or reinterpret NULL history as
 shared to make a test pass. Preserve curated inventory compatibility through an

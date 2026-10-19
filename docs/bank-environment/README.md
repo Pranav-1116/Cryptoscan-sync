@@ -28,6 +28,13 @@ For an executive overview, read 27 and 33; for procurement, 28; for platform and
 collector teams, 29–32; for a practical assessment narrative, 34. Current delivery
 and qualification boundaries remain in guide 26 and the repository readiness gate.
 
+### Implementation progress after the planning pack
+
+[Guide 35 — A01 first API network delivery](35-network-admission-and-durable-collection.md)
+records implemented admission/receipt parity for direct TLS, aliases, API due
+rotation and discovery. A01 is partially delivered; worker/other profiles,
+regional/vendor qualification and the rest of the backlog remain open.
+
 ## Read in order
 
 | Document | Question it answers |
@@ -66,6 +73,7 @@ and qualification boundaries remain in guide 26 and the repository readiness gat
 | [32 — Failures and qualification](32-bank-scan-failure-modes-and-qualification.md) | What 30 failure scenarios should the bank test, and what evidence establishes safe behavior? |
 | [33 — Engineering and rollout priorities](33-international-bank-engineering-and-rollout.md) | Which 15 P0/P1 improvements and P2 optimizations should precede gated expansion? |
 | [34 — Worked international-bank assessment](34-worked-international-bank-assessment.md) | How do four countries, seven supplier roles and 48 illustrative work targets reconcile end to end? |
+| [35 — Implemented API network collection contract](35-network-admission-and-durable-collection.md) | What A01 gaps were fixed in code, what compatibility changes apply, and what remains unqualified? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

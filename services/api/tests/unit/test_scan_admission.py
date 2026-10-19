@@ -227,7 +227,7 @@ class TestOtPassiveBoundary:
                             lambda: ["10.0.0.0/16"])
         swept = []
 
-        def _fake_sweep(cidr, ports, timeout=1.5):  # noqa: ARG001
+        def _fake_sweep(cidr, ports, timeout=1.5, workers=8):  # noqa: ARG001
             swept.append(cidr)
             return {"cidr": cidr, "hosts_checked": 0, "endpoints": [],
                     "open_count": 0, "candidates": 0, "truncated": False}

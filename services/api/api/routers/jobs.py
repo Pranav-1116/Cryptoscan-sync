@@ -74,6 +74,13 @@ async def retry_job(
         job = await job
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    progress = getattr(job, "progress", None) or {}
+    if (isinstance(progress, dict) and progress.get("execution") == "synchronous"
+            and getattr(job, "job_type", None) in {"NETWORK_SCAN", "NETWORK_DISCOVERY"}):
+        raise HTTPException(
+            status_code=409,
+            detail="Resubmit synchronous network collections to their original route; repository retry cannot reproduce the admitted collection profile",
+        )
     from api.routers.trigger import enqueue_scan_job
 
     # the annotation is what makes FastAPI inject the runner: without it this

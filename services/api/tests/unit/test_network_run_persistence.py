@@ -85,14 +85,30 @@ def app_with_fake_runs(monkeypatch):
 
     FakeRunRepo.store = []
     monkeypatch.setattr(net_router, "ScanRunRepository", FakeRunRepo)
+    import api.security.network_collection as collection
+    import api.security.scan_admission as admission
+    monkeypatch.setattr(collection, "ScanRunRepository", FakeRunRepo)
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+    from db.connection.session import Base
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+
     app = create_app()
     app.dependency_overrides[get_current_user] = lambda: "testuser"
 
     def _session():
-        yield object()
+        yield session
 
     app.dependency_overrides[get_db_session] = _session
-    return app
+    yield app
+    session.close()
+    engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -113,7 +129,7 @@ async def test_scan_persists_run(app_with_fake_runs, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_scan_persist_run_false_skips_storage(app_with_fake_runs, monkeypatch):
+async def test_scan_persistence_opt_out_is_refused_before_execution(app_with_fake_runs, monkeypatch):
     import network_scanner.core.scanner as scanner_mod
 
     monkeypatch.setattr(
@@ -124,32 +140,30 @@ async def test_scan_persist_run_false_skips_storage(app_with_fake_runs, monkeypa
         response = await client.post(
             "/api/v1/network/scan", json={"hosts": ["a:443"], "persist_run": False}
         )
-    assert response.status_code == 200
-    assert "run_id" not in response.json()
+    assert response.status_code == 422
     assert FakeRunRepo.store == []
 
 
 @pytest.mark.asyncio
-async def test_storage_failure_does_not_sink_scan(app_with_fake_runs, monkeypatch):
-    import api.routers.network as net_router
+async def test_storage_failure_is_not_reported_as_success(app_with_fake_runs, monkeypatch):
 
     class BrokenRepo(FakeRunRepo):
         def create_run(self, result, *, target_kind="hosts"):
             raise RuntimeError("disk full")
 
-    monkeypatch.setattr(net_router, "ScanRunRepository", BrokenRepo)
+    import api.security.network_collection as collection
+    monkeypatch.setattr(collection, "ScanRunRepository", BrokenRepo)
     import network_scanner.core.scanner as scanner_mod
 
     monkeypatch.setattr(
         scanner_mod.NetworkTlsScanner, "scan_hosts", lambda self, hosts, **kw: _scan_payload()
     )
-    transport = ASGITransport(app=app_with_fake_runs)
+    transport = ASGITransport(app=app_with_fake_runs, raise_app_exceptions=False)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/network/scan", json={"hosts": ["a:443"]})
-    assert response.status_code == 200
-    payload = response.json()
-    assert "run_id" not in payload
-    assert "storage_error" in payload and "disk full" in payload["storage_error"]
+    assert response.status_code == 500
+    assert "run_id" not in response.text
+    assert "disk full" not in response.text
 
 
 @pytest.mark.asyncio

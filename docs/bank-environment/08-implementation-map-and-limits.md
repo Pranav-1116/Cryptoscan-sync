@@ -2,10 +2,11 @@
 
 [Guide index](README.md) · Previous: [Operations](07-operations-and-acceptance.md)
 
-**Source-inspected on 2026-10-18.** This map is deliberately more precise than a
+**Baseline inspected 2026-10-18; A01 API update 2026-10-19.** This map is deliberately more precise than a
 feature checklist. “Implemented” means code exists for the described behavior;
 it does not mean a real bank/provider/production deployment was qualified here.
-No application or CI behavior was changed to write this guide.
+The original guide was documentation-only. Subsequent A01 implementation
+updates the four API network paths below; CI workflows remain unchanged.
 
 ## 1. Source-to-output map
 
@@ -33,25 +34,25 @@ not evidence that a customer system was scanned.
 
 ## 2. Network route differences
 
-This is a source-inspection finding, not a newly fixed defect. Do not summarize
-all network entry points as having uniform admission and BOM persistence.
+The original route differences were confirmed at planning commit `f901b775`.
+The [A01 first delivery](35-network-admission-and-durable-collection.md) now
+provides shared preflight and mandatory durable records for these API paths:
 
-| Route | Explicit active-scan admission in its function | Writes NBOM's `network_scan_runs` ledger in its function | Operational implication |
+| Route | Admission | Durable collection | Boundary |
 |---|---|---|---|
-| `POST /api/v1/network/run-due` | Yes | Yes, when due targets exist | Used in the worked pilot after reviewing the entire due set; bank firewall/scope controls still apply |
-| `POST /api/v1/network/scan` | No direct `admit_scan` call | Yes when `persist_run` is true; storage failure can be returned | Do not assume emergency-stop/window parity with admitted routes; inspect storage errors and do not use as a bypass |
-| `POST /api/v1/network-scans` | Yes | No direct network-run-ledger write | Durable `ScanJob`/coverage and certificate persistence do not alone populate NBOM's probe ledger |
-| `POST /api/v1/network/discover` | Yes, plus execution-time sweep authorization | No direct network-run-ledger write for its optional TLS phase | Discovery/certificates can be present while that phase has no corresponding NBOM run |
+| `POST /api/v1/network/run-due` | Whole selected batch | Pre-execution job plus scheduled probe ledger | Exact current estate; no failed-observation schedule refresh |
+| `POST /api/v1/network/scan` | Normalized targets/ports/exclusions | Mandatory job and probe ledger; failure is not success | `live=false` and `persist_run=false` refused |
+| `POST /api/v1/network-scans` | Same contract as direct route | Job and probe ledger linked | Both slash aliases share the implementation |
+| `POST /api/v1/network/discover` | Authorized sweep, then fresh phase checks | Discovery-only or discovery/TLS ledger plus job | Port discovery is not TLS evidence; no automatic phase authorization |
 
-Authentication, target validation, role policy, persistence and admission are
-different controls. A route being authenticated or validating syntax does not
-prove that every scan-policy check ran. The table reports explicit route
-behavior; it does not certify every downstream collector or every other alias.
-
-Before production rollout, reconcile these paths, test expected safety/persistence
-uniformity, and qualify failures. This documentation task does not change them.
-The bank should restrict unreviewed routes and enforce approved network scope
-outside the application as well.
+This is **partial A01 delivery**, not uniformity across all collectors. Worker
+monitor paths, SSH/inventory plugins, distributed quotas, actual connection/QPS
+budgets, in-flight stop and production qualification remain separate work.
+Authentication, target validation, role/grant policy and collection persistence
+are different controls. Existing IT-window semantics and inventory-sharing
+policy are not silently replaced. See guide 35 for compatibility changes,
+transaction failure behavior, tests and exact remaining limits. Bank firewall,
+residency and supplier authorization controls remain necessary.
 
 ## 3. Other limits that affect a bank demonstration
 

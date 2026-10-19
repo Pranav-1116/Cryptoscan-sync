@@ -2,49 +2,29 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from api.dependencies import (
     TenantContext,
     get_current_user,
     get_db_session,
-    get_tenant_context,
 )
-from api.security.scan_admission import admit_scan
-from api.security.scan_runs import DurableScanRun, coverage_from_result
-from api.security.target_validation import (
-    TargetValidationError,
-    validate_probe_targets,
-)
-from db.repositories.certificate_repository import CertificateRepository
+from api.security.network_collection import (NetworkHostRequest, admit_network, checked_hosts, meter_network, network_run, persist_network, network_coverage, network_context)
 from db.repositories.intelligence_repository import IntelligenceRepository
-from db.repositories.maturity_repository import MaturityRepository
 from network_scanner.core.scanner import NetworkTlsScanner
 
 router = APIRouter(prefix="/network-scans", tags=["network-scans"])
 
 
-class HostScanRequest(BaseModel):
-    hosts: list[str] = Field(default_factory=list)
-    live: bool = True
-    timeout: float = 5.0
-    sni: str | None = None
-    starttls: str | None = None
-    workers: int | None = None
-    scan_versions: bool = False
-    scan_ciphers: bool = False
-    check_renegotiation: bool = False
-    check_chain_sent: bool = False
-    live_revocation: bool = False
-
+class HostScanRequest(NetworkHostRequest):
+    pass
 
 @router.post("")
 @router.post("/")
 def trigger_network_scan(
     body: HostScanRequest,
-    ctx: TenantContext = Depends(get_tenant_context),
+    ctx: TenantContext = Depends(network_context),
     db: Session = Depends(get_db_session),
 ):
     """Live TLS scan of operator-supplied hosts.
@@ -55,58 +35,18 @@ def trigger_network_scan(
     scan_run unit against the plan's monthly quota (402 when exhausted);
     metering happens here so manual scans count exactly like daemon passes.
     """
-    if not body.hosts:
-        raise HTTPException(status_code=400, detail="hosts required")
-    try:
-        validate_probe_targets(body.hosts, label="network_scan.hosts")
-    except TargetValidationError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    # Product vision §4.1 (P0): SSRF choke point + quota were already here;
-    # the missing half was the central safe-scan policy itself. A live TLS
-    # probe is an active collector, so it needs the same admission decision
-    # as queued jobs — emergency stop, queue depth, safe-scan policy and
-    # explicit active-probing authorization. Refusal means no scan ran.
-    admit_scan(active_probing_requested=True)
-    if ctx.tenant_id:
-        from db.repositories.tenant_repository import TenantRepository
-
-        t_repo = TenantRepository(db)
-        tenant = t_repo.get(ctx.tenant_id)
-        from api.security.tenancy import quota_check
-
-        allowed, reason = quota_check(
-            tenant.plan if tenant else "FREE", "scan_run",
-            t_repo.month_usage(ctx.tenant_id, "scan_run"))
-        if not allowed:
-            raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
-        t_repo.record_usage(ctx.tenant_id, "scan_run", len(body.hosts),
-                            detail="manual network scan")
-    with DurableScanRun(db, job_type="NETWORK_SCAN",
-                        target=",".join(body.hosts)[:2000],
-                        user=ctx.username,
-                        tenant_id=ctx.tenant_id,
-                        metadata={"hosts": len(body.hosts), "live": True}) as run:
-        result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
-            body.hosts,
-            sni=body.sni,
-            starttls=body.starttls,
-            scan_versions=body.scan_versions,
-            scan_ciphers=body.scan_ciphers,
-            check_renegotiation=body.check_renegotiation,
-            check_chain_sent=body.check_chain_sent,
+    hosts = checked_hosts(body.hosts)
+    admission = admit_network(hosts)
+    meter_network(db, hosts)
+    with network_run(db, user=ctx.username, target=",".join(hosts)[:2000], admission=admission, profile={**body.model_dump(exclude={"hosts"}), "workers": body.workers or 8}) as run:
+        result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers or 8).scan_hosts(
+            hosts, sni=body.sni, starttls=body.starttls,
+            scan_versions=body.scan_versions, scan_ciphers=body.scan_ciphers,
+            check_renegotiation=body.check_renegotiation, check_chain_sent=body.check_chain_sent,
             live_revocation=body.live_revocation,
         )
-        repo = CertificateRepository(db)
-        usages = MaturityRepository(db)
-        for cert in result.get("certificates") or []:
-            if cert.get("fingerprint_sha256"):
-                repo.upsert(cert)
-        for usage in result.get("usages") or []:
-            if usage.get("fingerprint_sha256") and usage.get("location"):
-                usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
-        run.succeed(coverage=coverage_from_result(result))
-    result = dict(result)
-    result["job_id"] = run.job_id
+        result = persist_network(db, result, run)
+        run.succeed(coverage=network_coverage(result))
     return result
 
 

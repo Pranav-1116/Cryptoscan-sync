@@ -259,6 +259,9 @@ def admit_scan(
     active_probing_requested: bool = False,
     is_ot_trusted: bool | None = None,
     asset: str | None = None,
+    port: int | None = None,
+    protocol: str | None = None,
+    include_exclusions: bool = False,
     region: str | None = None,
     environment: str | None = None,
 ) -> dict:
@@ -281,7 +284,7 @@ def admit_scan(
             )
         _enforce_queue_depth()
         is_ot = bool(_ot_declared()) if is_ot_trusted is None else bool(is_ot_trusted)
-        decision = evaluate_scan(policy, asset=asset, is_ot=is_ot)
+        decision = evaluate_scan(policy, asset=asset, port=port, protocol=protocol, is_ot=is_ot)
         if not decision.permitted:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -312,13 +315,18 @@ def admit_scan(
                     f"({decision.reason}); passive/safe modes remain available"
                 ),
             )
-        return {
+        admission = {
             "mode": decision.mode,
             "active_probing": bool(decision.active_probing),
             "reason": decision.reason,
             "budgets": dict(decision.budgets),
             "is_ot": is_ot,
         }
+        if include_exclusions:
+            # Internal preflight material; callers must not publish global
+            # exclusion lists as part of a tenant-visible receipt.
+            admission["exclusions"] = dict(decision.excluded)
+        return admission
     except HTTPException:
         raise
     except Exception as exc:

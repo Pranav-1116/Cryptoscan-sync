@@ -47,7 +47,10 @@ real-bank and live backend certification remain separate obligations.
 adds eight detailed planning guides (27–34): vendor evidence/access, safe
 system-by-system collection, six-BOM identity/coverage, regional deployment,
 30 failure scenarios, prioritized improvements and a worked multinational example.
-These are proposed requirements and rollout designs, not newly shipped controls.
+These are proposed requirements and rollout designs, not newly shipped controls. The subsequent
+[A01 API-network implementation](docs/bank-environment/35-network-admission-and-durable-collection.md)
+adds shared admission and mandatory linked job/probe records for four API paths;
+it does not close the full enterprise backlog or certify production safety.
 
 
 ## Scope & honest boundaries
