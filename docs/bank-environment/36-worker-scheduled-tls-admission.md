@@ -175,9 +175,10 @@ No frontend build, production deployment, migration or workflow change is claime
 
 ## 7. Next A01 slice
 
-Qualify the separate NETWORK monitor runner with trusted owner context through
-sequential/threaded execution, rollback-safe status/event persistence, no false
-blocked/error freshness and phase-specific admission/durable receipts for all
-supported network profiles. Do not simply wrap TLS and imply scope/IPsec/DNSSEC
+The subsequent [monitor lifecycle delivery](37-network-monitor-lifecycle-isolation.md)
+implements trusted owner context in sequential/threaded execution, rollback-safe
+status/event persistence and conservative blocked/incomplete freshness. It does
+not implement phase-specific admission/durable receipts for the monitor's
+network profiles; that remains next work. Do not simply wrap TLS and imply scope/IPsec/DNSSEC
 parity. Other collectors, distributed enforcement, reaper behavior, exact-estate
 schema changes and live operational qualification remain separate obligations.

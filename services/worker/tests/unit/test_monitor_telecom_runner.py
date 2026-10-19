@@ -142,7 +142,7 @@ def test_network_runner_refuses_ssrf_targets_at_execution(monkeypatch):
 
     monkeypatch.setattr(
         "network_scanner.core.scanner.NetworkTlsScanner",
-        lambda live=True, timeout=5.0: _FakeScanner(),
+        lambda live=True, timeout=5.0, workers=8: _FakeScanner(),
     )
 
     result = runner_mod.network_runner(

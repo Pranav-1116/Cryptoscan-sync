@@ -185,7 +185,9 @@ python -m pytest -q \
 A01 remains **partially delivered**. The subsequent
 [scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) extends this
 contract to the leader-worker `network_scan_targets` rotation. Next
-qualify/migrate the separate `monitor_targets` network runner,
+qualify/migrate the separate `monitor_targets` network runner. Its
+[owner/rollback/freshness groundwork](37-network-monitor-lifecycle-isolation.md)
+is now implemented, without phase admission/receipt parity. Also pending are
 other active network profiles (SSH and inventory plugins), retry/reaper behavior
 and non-API execution paths. Current direct-host role/grant policy, region/legal-
 entity restrictions, platform-inventory sharing and export boundaries remain

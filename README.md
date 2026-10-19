@@ -51,8 +51,10 @@ These are proposed requirements and rollout designs, not newly shipped controls.
 [A01 API-network implementation](docs/bank-environment/35-network-admission-and-durable-collection.md)
 adds shared admission and mandatory linked job/probe records for four API paths;
 the [scheduled TLS worker delivery](docs/bank-environment/36-worker-scheduled-tls-admission.md)
-extends that contract to the leader-worker target rotation. Neither closes the
-full enterprise backlog or certifies production safety.
+extends that contract to the leader-worker target rotation. The subsequent
+[NETWORK monitor lifecycle isolation](docs/bank-environment/37-network-monitor-lifecycle-isolation.md)
+adds owner/rollback/freshness guards, not monitor protocol admission parity.
+A01 remains partial; these changes do not certify production safety.
 
 
 ## Scope & honest boundaries

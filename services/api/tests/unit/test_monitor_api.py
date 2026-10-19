@@ -175,7 +175,7 @@ async def test_scan_now_runs_the_engine(monkeypatch):
         import worker.monitor.engine as engine_module
 
         def fake_runner(config, sess):
-            return {"summary": {"endpoints": 1, "probed_ok": 1, "unreachable": 0,
+            return {"observation_complete": True, "summary": {"endpoints": 1, "probed_ok": 1, "unreachable": 0,
                                 "issues": ["WEAK_TLS_VERSION:payments.bank.example:443"]},
                     "degraded": True, "issues": ["WEAK_TLS_VERSION:payments.bank.example:443"]}
 
@@ -210,7 +210,7 @@ async def test_status_overview_aggregates_the_live_picture(monkeypatch):
         import worker.monitor.engine as engine_module
 
         monkeypatch.setattr(engine_module, "_default_runners", lambda: {
-            "NETWORK": lambda c, s: {"summary": {"endpoints": 1}, "issues": []},
+            "NETWORK": lambda c, s: {"observation_complete": True, "summary": {"endpoints": 1}, "issues": []},
             "CLOUD": lambda c, s: {"blocked_reason": "config needs provider and account identifier"},
         })
         for name in ("edge-b", "aws-prod"):

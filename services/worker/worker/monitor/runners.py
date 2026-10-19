@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -24,8 +25,10 @@ def network_runner(config: dict, session: Any) -> dict:
     Optional enterprise extras via config:
     - ``config.ipsec = ["vpn-gw.example.com", …]`` — IKE/IPsec SA probe
     - ``config.dnssec = ["example.com", …]`` — DNS/DNSSEC posture per zone
-    Each extra runs through the same scanner the manual flows use; failures
-    are data (issues), never crashes.
+    Extra-phase failures are disclosed as incomplete observations. Scope and
+    DNSSEC currently lack a complete coverage contract and cannot refresh the
+    entire target as fully observed. This adapter is not yet migrated to the
+    admission/ScanJob contract; see the bank guide's explicit open boundary.
     """
     endpoints = [str(e) for e in (config.get("endpoints") or []) if str(e).strip()]
     if not endpoints and config.get("endpoint"):
@@ -69,21 +72,31 @@ def network_runner(config: dict, session: Any) -> dict:
             return {"summary": {"endpoints": 0, "probed_ok": 0, "unreachable": 0,
                                 "ipsec_targets": 0, "dnssec_zones": 0,
                                 "issues": ssrf_issues},
-                    "degraded": True, "issues": ssrf_issues}
+                    "degraded": True, "issues": ssrf_issues, "observation_complete": False}
         return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
 
     from network_scanner.core.scanner import NetworkTlsScanner
 
     timeout = float(config.get("timeout", 5.0))
-    scanner = NetworkTlsScanner(live=True, timeout=timeout)
+    workers = config.get("workers", 8)
+    if not math.isfinite(timeout) or not 0 < timeout <= 30:
+        raise ValueError("network monitor timeout must be finite, positive and at most 30 seconds")
+    if type(workers) is not int or not 1 <= workers <= 32:
+        raise ValueError("network monitor workers must be an integer between 1 and 32")
+    scanner = NetworkTlsScanner(live=True, timeout=timeout, workers=workers)
     issues: list[str] = list(ssrf_issues)
     ok = unreachable = 0
     scope_summary: dict | None = None
     observed: dict[str, Any] = {}
+    phase_complete: list[bool] = [not ssrf_issues]
 
     # Global Network Discovery scope: full enterprise pipeline (assets, protocol
     # detection, dependency graph, PQC readiness, simulation) on each tick.
     if config.get("scope"):
+        # The legacy discovery report does not certify all expanded targets,
+        # plugins and truncated reads. Positive findings are still retained.
+        phase_complete.append(False)
+        issues.append("SCOPE_COVERAGE_NOT_ESTABLISHED")
         try:
             discovery = scanner.discover_network(
                 [config["scope"]] if isinstance(config["scope"], str) else list(config["scope"]),
@@ -107,6 +120,12 @@ def network_runner(config: dict, session: Any) -> dict:
     if endpoints:
         result = scanner.scan_hosts(endpoints)
         observed.update(result)
+        telemetry = result.get("probe_telemetry") or {}
+        phase_complete.append(
+            telemetry.get("status") in {"OK", "PARTIAL"}
+            and telemetry.get("probed") == len(endpoints)
+            and telemetry.get("ok") == len(endpoints)
+        )
         for finding in result.get("findings") or []:
             endpoint = finding.get("endpoint") or "?"
             if finding.get("status") != "OK":
@@ -132,26 +151,40 @@ def network_runner(config: dict, session: Any) -> dict:
             for alert in expiry_alerts(result.get("certificates") or [], days=days):
                 cn = alert.get("common_name") or alert.get("subject") or "?"
                 issues.append(f"CERT_EXPIRING:{cn}:{alert.get('days_left', '?')}d")
-        except Exception:
+        except Exception as exc:
+            phase_complete.append(False)
+            issues.append(f"EXPIRY_CHECK_ERROR:{type(exc).__name__}")
             logger.debug("monitor_expiry_alerts_skipped", exc_info=True)
 
     # enterprise extras: IPsec/VPN + DNSSEC posture
     ipsec_hosts = [str(h) for h in (config.get("ipsec") or []) if str(h).strip()]
     if ipsec_hosts:
+        phase_complete.append(False)
         try:
             ports = tuple(
                 int(p) for p in str(config.get("ike_ports", "500,4500")).split(",") if p.strip().isdigit()
             ) or (500, 4500)
             vpn = scanner.scan_ipsec_hosts(ipsec_hosts, ports=ports)
             observed["ipsec"] = vpn
+            telemetry = vpn.get("probe_telemetry") or {}
+            phase_complete[-1] = (telemetry.get("probed") == len(ipsec_hosts)
+                                  and telemetry.get("responded") == len(ipsec_hosts))
+            if not phase_complete[-1]:
+                issues.append("IPSEC_OBSERVATION_INCOMPLETE")
             for finding in vpn.get("findings") or []:
                 for issue in finding.get("issues") or []:
                     issues.append(f"{issue}:{finding.get('endpoint')}")
-        except Exception:
+        except Exception as exc:
+            phase_complete[-1] = False
+            issues.append(f"IPSEC_ERROR:{type(exc).__name__}")
             logger.debug("monitor_ipsec_skipped", exc_info=True)
 
     dnssec_zones = [str(z) for z in (config.get("dnssec") or []) if str(z).strip()]
     if dnssec_zones:
+        # scan_dnssec currently swallows individual DNSKEY/DS/AXFR errors, so
+        # SIGNED/UNSIGNED alone does not establish a complete collection.
+        phase_complete.append(False)
+        issues.append("DNSSEC_COVERAGE_NOT_ESTABLISHED")
         try:
             dns = scanner.scan_dnssec_zones(
                 dnssec_zones,
@@ -161,7 +194,8 @@ def network_runner(config: dict, session: Any) -> dict:
             observed["dnssec"] = dns
             for issue in dns.get("issues") or []:
                 issues.append(issue)
-        except Exception:
+        except Exception as exc:
+            issues.append(f"DNSSEC_ERROR:{type(exc).__name__}")
             logger.debug("monitor_dnssec_skipped", exc_info=True)
 
     summary = {
@@ -174,28 +208,25 @@ def network_runner(config: dict, session: Any) -> dict:
     }
     if scope_summary is not None:
         summary["scope"] = scope_summary
-    return {"scanner": "network", "summary": summary, "degraded": bool(issues),
-            "issues": sorted(set(issues)), "data": observed}
+    complete = all(phase_complete)
+    return {"scanner": "network", "summary": summary, "degraded": bool(issues) or not complete,
+            "issues": sorted(set(issues)), "data": observed, "observation_complete": complete}
 
 
 def _persist_certificates(result: dict, session: Any) -> None:
-    try:
-        from db.repositories.certificate_repository import CertificateRepository
-        from db.repositories.maturity_repository import MaturityRepository
+    from db.repositories.certificate_repository import CertificateRepository
+    from db.repositories.maturity_repository import MaturityRepository
 
-        certs = CertificateRepository(session)
-        usages = MaturityRepository(session)
-        for cert in result.get("certificates") or []:
-            if cert.get("fingerprint_sha256"):
-                certs.upsert(cert)
-        for usage in result.get("usages") or []:
-            if usage.get("fingerprint_sha256") and usage.get("location"):
-                usages.upsert_usage(
-                    usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN"
-                )
-    except Exception:
-        logger.debug("monitor_cert_persist_skipped", exc_info=True)  # scanning still succeeded
-
+    certs = CertificateRepository(session)
+    usages = MaturityRepository(session)
+    for cert in result.get("certificates") or []:
+        if cert.get("fingerprint_sha256"):
+            certs.upsert(cert)
+    for usage in result.get("usages") or []:
+        if usage.get("fingerprint_sha256") and usage.get("location"):
+            usages.upsert_usage(
+                usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN"
+            )
 
 # --------------------------------------------------------------------- cloud
 

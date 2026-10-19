@@ -6,7 +6,8 @@
 **This is a proposed backlog, not completed engineering.**
 The [A01 first API delivery](35-network-admission-and-durable-collection.md) is
 now implemented locally, followed by the
-[scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md).
+[scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) and
+[NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md).
 A01 as a whole and the remaining enterprise items are
 still open. The prior ten steps
 are locally delivered as recorded in [guide 26](26-bank-negative-tests-and-backend-qualification.md).
@@ -68,7 +69,9 @@ admission and the alias/discovery paths lacked probe-ledger writes. The
 [A01 first delivery](35-network-admission-and-durable-collection.md) closes those
 four API-path differences with bank tests and durable transaction guards. The
 [second delivery](36-worker-scheduled-tls-admission.md) extends the contract to
-scheduled TLS worker owner batches, not the separate network monitor runner.
+scheduled TLS worker owner batches. The
+[third supporting delivery](37-network-monitor-lifecycle-isolation.md) isolates
+the separate monitor lifecycle; its protocol admission/receipts remain open.
 A01 remains partial: other executors, granular grants, real budget enforcement
 and deployment qualification are not implied. The current
 [guide 08 matrix](08-implementation-map-and-limits.md) records this update.

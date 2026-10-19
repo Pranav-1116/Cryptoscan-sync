@@ -9,6 +9,8 @@ tenant-qualified current state plus immutable replay events.
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -42,23 +44,36 @@ def persist_monitor_projection(target: Any, result: dict[str, Any], session: Any
                            for item in values)
     tenant_id = getattr(target, "tenant_id", None)
     prefix = tenant_id or "platform"
+    network = getattr(target, "target_type", None) == "NETWORK"
+    namespace = f"{prefix}:monitor:{scanner}:"
+    if network:
+        if not getattr(target, "id", None):
+            raise ValueError("Network monitor projection requires persisted target identity")
+        namespace += f"{target.id}:"
     groups: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for component in components:
         groups.setdefault((str(component.get("type") or "crypto-asset"),
                            str(component.get("name") or ""),
                            str(component.get("version") or "")), []).append(component)
 
-    session.execute(delete(CryptoLiveState).where(
-        CryptoLiveState.asset_id.like(f"{prefix}:monitor:{scanner}:%"),
-        CryptoLiveState.tenant_id == tenant_id if tenant_id is not None
-        else CryptoLiveState.tenant_id.is_(None),
-    ))
+    # Incomplete network collection may add positive observations, never infer
+    # deletion. Completed replacement is limited to this exact target namespace.
+    if not network or result.get("observation_complete") is True:
+        session.execute(delete(CryptoLiveState).where(
+            CryptoLiveState.asset_id.startswith(namespace, autoescape=True),
+            CryptoLiveState.tenant_id == tenant_id if tenant_id is not None
+            else CryptoLiveState.tenant_id.is_(None),
+        ))
     session.flush()
     repo = CryptoRepository(session)
     for (kind, name, version), rows in groups.items():
         if not name:
             continue
-        asset_id = f"{prefix}:monitor:{scanner}:{kind}:{name}:{version}"[:200]
+        if network:
+            digest = hashlib.sha256(json.dumps([kind, name, version]).encode()).hexdigest()
+            asset_id = f"{namespace}{digest}"
+        else:
+            asset_id = f"{namespace}{kind}:{name}:{version}"[:200]
         repo.upsert_state({
             "tenant_id": tenant_id,
             "asset_id": asset_id,

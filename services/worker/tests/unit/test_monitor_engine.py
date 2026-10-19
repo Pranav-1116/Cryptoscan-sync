@@ -53,7 +53,7 @@ def test_due_selection_and_ok_cycle():
 
     def ok_runner(config, sess):
         calls.append(config)
-        return {"summary": {"endpoints": 1, "probed_ok": 1, "unreachable": 0}, "issues": []}
+        return {"observation_complete": True, "summary": {"endpoints": 1, "probed_ok": 1, "unreachable": 0}, "issues": []}
 
     engine, clock = _clock_engine(session, {"NETWORK": ok_runner})
     outcome = engine.tick()
@@ -69,8 +69,8 @@ def test_due_selection_and_ok_cycle():
 def test_alert_fires_only_on_new_issues():
     session = _session()
     target = _target(session, name="weak")
-    issue = {"summary": {"endpoints": 1}, "issues": ["WEAK_TLS_VERSION:h:443"], "degraded": True}
-    clean = {"summary": {"endpoints": 1}, "issues": []}
+    issue = {"observation_complete": True, "summary": {"endpoints": 1}, "issues": ["WEAK_TLS_VERSION:h:443"], "degraded": True}
+    clean = {"observation_complete": True, "summary": {"endpoints": 1}, "issues": []}
 
     state = {"minutes": 0, "flip": True}
 
@@ -122,7 +122,7 @@ def test_failure_backoff_and_failing_status():
 
     # a success clears the failure state completely
     state["minutes"] = 120
-    engine_ok = MonitorEngine(session, runners={"NETWORK": lambda c, s: {"summary": {}, "issues": []}},
+    engine_ok = MonitorEngine(session, runners={"NETWORK": lambda c, s: {"observation_complete": True, "summary": {}, "issues": []}},
                               clock=lambda: T0 + timedelta(minutes=state["minutes"]))
     engine_ok.run_target(target)
     assert target.status == "OK" and target.consecutive_failures == 0 and target.last_error is None

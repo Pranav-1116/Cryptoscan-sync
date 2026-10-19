@@ -47,16 +47,18 @@ class MonitorLoop:
             try:
                 session = self.session_factory()
                 outcome = self.engine_factory(session).tick()
+                session.commit()
                 if outcome.get("ran"):
                     logger.info("monitor_tick", extra={"ran": outcome["ran"]})
             except Exception:
+                if session is not None:
+                    try:
+                        session.rollback()
+                    except Exception:
+                        logger.exception("monitor_rollback_failed")
                 logger.exception("monitor_tick_failed")  # keep running
             finally:
                 if session is not None:
-                    try:
-                        session.commit()
-                    except Exception:
-                        logger.exception("monitor_commit_failed")
                     try:
                         session.close()
                     except Exception as _handler_exc:

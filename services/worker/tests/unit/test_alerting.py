@@ -97,15 +97,15 @@ def test_engine_alert_hook_dispatches_once_per_new_issue():
     fired = []
 
     def runner(config, session_arg):
-        return {"summary": {"issues": ["UNREACHABLE:dead:1"]}, "degraded": True,
+        return {"observation_complete": False, "summary": {"issues": ["UNREACHABLE:dead:1"]}, "degraded": True,
                 "issues": ["UNREACHABLE:dead:1"]}
 
     monitor = MonitorEngine(session, runners={"NETWORK": runner}, clock=lambda: t0,
                             on_alert=lambda target, issue, payload: fired.append((target, issue)))
     first = monitor.tick()
     session.commit()
-    assert fired == [("edge", "UNREACHABLE:dead:1")]
-    assert first["results"][0]["new_issues"] == ["UNREACHABLE:dead:1"]
+    assert fired == [("edge", "OBSERVATION_INCOMPLETE"), ("edge", "UNREACHABLE:dead:1")]
+    assert first["results"][0]["new_issues"] == ["OBSERVATION_INCOMPLETE", "UNREACHABLE:dead:1"]
 
     fired.clear()
     target = session.query(MonitorTarget).one()

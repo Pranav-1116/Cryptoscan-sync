@@ -2,7 +2,7 @@
 
 [Guide index](README.md) · Previous: [Operations](07-operations-and-acceptance.md)
 
-**Baseline inspected 2026-10-18; A01 API/scheduled-worker update 2026-10-19.** This map is deliberately more precise than a
+**Baseline inspected 2026-10-18; A01 API/worker/monitor-lifecycle update 2026-10-19.** This map is deliberately more precise than a
 feature checklist. “Implemented” means code exists for the described behavior;
 it does not mean a real bank/provider/production deployment was qualified here.
 The original guide was documentation-only. Subsequent A01 implementation
@@ -48,9 +48,13 @@ provides shared preflight and mandatory durable records for these API paths:
 The [scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) also
 uses this contract for the leader-worker `network_scan_targets` rotation, with
 owner batches, bounded settings and durable schedule freshness.
+[NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md)
+adds owner context, rollback-safe acceptance and honest observation freshness,
+without claiming protocol-specific admission/ScanJob parity.
 
 This is **partial A01 delivery**, not uniformity across all collectors. The
-separate `monitor_targets` network runner and its scope/IPsec/DNSSEC phases,
+separate `monitor_targets` network runner still needs phase admission/receipts
+for TLS/scope/IPsec/DNSSEC;
 SSH/inventory plugins, distributed quotas, actual connection/QPS budgets, in-flight stop and production qualification remain separate work.
 Authentication, target validation, role/grant policy and collection persistence
 are different controls. Existing IT-window semantics and inventory-sharing
