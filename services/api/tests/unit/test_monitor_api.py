@@ -14,6 +14,15 @@ from api.main import create_app
 from db.connection.session import Base
 
 
+@pytest.fixture(autouse=True)
+def monitor_admission_policy(monkeypatch):
+    # Real admission engine with controlled authoritative policy lookups.
+    import api.security.scan_admission as admission
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], {}))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
+
+
 def _make_app():
     import os
 

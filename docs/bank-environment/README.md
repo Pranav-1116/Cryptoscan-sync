@@ -35,9 +35,11 @@ records implemented admission/receipt parity for direct TLS, aliases, API due
 rotation and discovery. [Guide 36 — scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md)
 extends the contract to the leader-worker target rotation. A01 is partially
 delivered. [Guide 37 — NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md)
-adds owner, rollback and freshness guards; phase-specific monitor admission,
-other profiles, regional/vendor qualification and the rest of the backlog remain
-open.
+adds owner, rollback and freshness guards.
+[Guide 38 — bounded monitor phase admission](38-monitor-network-phase-admission.md)
+adds TLS/IPsec/explicit-resolver DNSSEC admission and linked jobs; scope/plugins
+are refused pending qualification. Other profiles, distributed enforcement,
+regional/vendor qualification and the rest of the backlog remain open.
 
 ## Read in order
 
@@ -80,6 +82,7 @@ open.
 | [35 — Implemented API network collection contract](35-network-admission-and-durable-collection.md) | What A01 gaps were fixed in code, what compatibility changes apply, and what remains unqualified? |
 | [36 — Scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) | How are owner batches admitted, metered and durably recorded without false schedule freshness? |
 | [37 — NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md) | How do owner context, acceptance/rollback, current projections and honest freshness work before protocol admission parity? |
+| [38 — Bounded monitor phase admission](38-monitor-network-phase-admission.md) | Which monitor profiles now receive per-phase admission/linked receipts, what is refused, and what remains unqualified? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

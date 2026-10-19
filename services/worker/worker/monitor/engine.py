@@ -77,8 +77,9 @@ class MonitorEngine:
                  run_reintroduction: bool = True, run_sla: bool = True,
                  run_evidence_chain: bool = True,
                  backup_backend_for: Callable[[str], Any] | None = None,
-                 backup_storage: Any = None):
+                 backup_storage: Any = None, actor: str = "monitor-daemon"):
         self.session = session
+        self.actor = actor
         self.repo = MonitorRepository(session)
         self.runners = runners if runners is not None else _default_runners()
         self._now = clock or (lambda: datetime.now(timezone.utc))
@@ -391,11 +392,15 @@ class MonitorEngine:
 
         Commit preceding work before changing scope. Runner/projection/status
         writes are accepted together; failure diagnostics use a clean transaction.
-        This is not yet a ScanJob/admission contract for the network profiles.
+        Supported phases share bounded admission and linked durable jobs.
         """
         from sqlalchemy import select
         from db.models.tenant import Tenant
+        from fastapi import HTTPException
+        from api.security.network_collection import meter_network, network_run, network_coverage
+        from worker.monitor.network_collection import prepare, Execution, executing
 
+        collection = None
         caller, target_id = current_tenant(), target.id
         if caller is not None and target.tenant_id != caller:
             return {"target_id": target_id, "status": "GONE"}
@@ -432,11 +437,33 @@ class MonitorEngine:
                         event_type="BLOCKED",
                     )
                     outcome = self._outcome(target, "BLOCKED")
+                    self.session.commit()
                 else:
-                    outcome = self._run_target(target)
+                    plan = prepare(dict(target.config or {}))
+                    admission = plan.admit()
+                    meter_network(self.session, plan.units, detail="admitted monitor network collection attempt")
+                    with network_run(self.session, user=self.actor, target=f"monitor:{target_id}",
+                                     admission=admission, kind="monitor",
+                                     profile={**plan.config, "monitor_target_id": target_id}) as run:
+                        collection = Execution(self.session, plan, run, target_id)
+                        with executing(collection):
+                            outcome = self._run_target(target, collection=collection)
+                            run.succeed(coverage=network_coverage(collection.result))
+                    outcome.update(job_id=run.job_id, run_id=collection.result["run_id"])
+            except HTTPException as exc:
+                self.session.rollback()
+                self._finish(target, now=now, interval=interval, status="BLOCKED",
+                             error=str(exc.detail)[:500], event_type="BLOCKED")
+                outcome = self._outcome(target, "BLOCKED")
+                outcome.update(refusal_status=exc.status_code, refusal_reason=str(exc.detail))
+                if collection is not None:
+                    outcome["job_id"] = collection.run.job_id
                 self.session.commit()
             except Exception as exc:
                 outcome = self._failed_target(target, exc, now=now, interval=interval, rollback=True)
+                outcome["execution_failed"] = True
+                if collection is not None:
+                    outcome["job_id"] = collection.run.job_id
                 try:
                     self.session.commit()
                 except Exception:
@@ -470,7 +497,7 @@ class MonitorEngine:
         )
         return self._outcome(target, target.status)
 
-    def _run_target(self, target: MonitorTarget) -> dict[str, Any]:
+    def _run_target(self, target: MonitorTarget, *, collection=None) -> dict[str, Any]:
         network = target.target_type == "NETWORK"
         now = self._now()
         interval = int(target.interval_seconds or default_interval(target.target_type))
@@ -484,7 +511,11 @@ class MonitorEngine:
             return self._outcome(target, "BLOCKED")
 
         try:
-            result = runner(dict(target.config or {}), self.session)
+            config = collection.plan.config if collection is not None else target.config or {}
+            result = runner(dict(config), self.session)
+            if collection is not None and result.get("blocked_reason"):
+                from fastapi import HTTPException
+                raise HTTPException(409, detail=str(result["blocked_reason"]))
             if network and result.get("blocked_reason"):
                 self._finish(
                     target, now=now, interval=interval, status="BLOCKED",
@@ -498,9 +529,14 @@ class MonitorEngine:
             # silently successful scan.
             from worker.monitor.realtime_projection import persist_monitor_projection
 
+            if collection is not None:
+                collection.persist(result)
             persist_monitor_projection(target, result, self.session)
-            self._meter_scan(target)
-        except Exception as exc:  # 24/7 rule: the target fails, the loop does not
+            if collection is None:
+                self._meter_scan(target)
+        except Exception as exc:  # durable context must see failures before diagnostic writes
+            if collection is not None:
+                raise
             return self._failed_target(target, exc, now=now, interval=interval, rollback=network)
 
         if result.get("blocked_reason"):
@@ -565,7 +601,7 @@ class MonitorEngine:
                     session, runners=self.runners, clock=self._now,
                     on_alert=self._on_alert, jitter_fraction=self.jitter_fraction,
                     rng=self._rng, watch_enabled=False, probes=self.probes,
-                    probe_timeout=self.probe_timeout, concurrency=1,
+                    probe_timeout=self.probe_timeout, concurrency=1, actor=self.actor,
                 )
                 with tenant_scope(caller):
                     row = engine.repo.get(target_id)

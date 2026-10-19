@@ -358,7 +358,7 @@ def scan_now(
     target = repo.get(target_id)
     if target is None or not _in_scope(target, ctx):
         raise HTTPException(status_code=404, detail="Target not found")
-    if ctx.tenant_id:
+    if ctx.tenant_id and target.target_type != "NETWORK":
         from api.security.tenancy import quota_check
         from db.repositories.tenant_repository import TenantRepository
 
@@ -372,7 +372,16 @@ def scan_now(
         # metering happens in MonitorEngine.run_target (one funnel, no double count)
     if not target.enabled:
         raise HTTPException(status_code=409, detail="target is paused — enable it first")
-    outcome = MonitorEngine(db).run_target(target)
+    outcome = MonitorEngine(db, actor=ctx.username).run_target(target)
+    if outcome.get("refusal_status"):
+        raise HTTPException(status_code=outcome["refusal_status"], detail={
+            "reason": outcome["refusal_reason"], "job_id": outcome.get("job_id"),
+        })
+    if outcome.get("execution_failed"):
+        raise HTTPException(status_code=500, detail={
+            "reason": "Monitor network execution failed; inspect the job and monitor events",
+            "job_id": outcome.get("job_id"),
+        })
     db.commit()
     return outcome
 

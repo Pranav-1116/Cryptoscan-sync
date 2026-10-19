@@ -3,6 +3,14 @@
 [Guide index](README.md) · [Scheduled TLS worker](36-worker-scheduled-tls-admission.md) ·
 [Enterprise backlog](33-international-bank-engineering-and-rollout.md)
 
+## Subsequent delivery
+
+[Guide 38](38-monitor-network-phase-admission.md) now supplies admission and
+linked jobs for bounded monitor TLS/IPsec/explicit-resolver DNSSEC. Automatic
+scope/plugins are refused before execution. This guide records the preceding
+lifecycle delivery and its then-open boundary; guide 38 supersedes those profile
+execution/admission statements, without changing its historical test evidence.
+
 ## Status: supporting A01 delivery, not protocol admission parity
 
 **Implemented locally, 2026-10-19. A01 is still partial.** This delivery covers

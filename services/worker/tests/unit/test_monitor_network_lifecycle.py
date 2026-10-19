@@ -11,6 +11,8 @@ import db.models  # noqa: F401
 from db.connection.session import Base
 from db.models.crypto_live import CryptoLiveEventRow, CryptoLiveState
 from db.models.monitor import MonitorEvent, MonitorTarget
+from db.models.scan_job import ScanJob
+from db.models.network_scan_run import NetworkScanRun
 from db.models.tenant import Tenant, TenantUsageEvent
 from db.repositories.monitor_repository import MonitorRepository
 from db.tenancy import current_tenant, install_tenant_guard, tenant_scope
@@ -20,7 +22,11 @@ NOW = datetime(2026, 10, 19, 12, tzinfo=timezone.utc)
 
 
 @pytest.fixture
-def estate(tmp_path):
+def estate(tmp_path, monkeypatch):
+    import api.security.scan_admission as admission
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], {}))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
     engine = create_engine(
         f"sqlite:///{tmp_path / 'monitor.db'}", connect_args={"check_same_thread": False, "timeout": 15}
     )
@@ -135,13 +141,15 @@ def test_network_execution_revalidates_owner_and_enabled_state(estate, state):
     assert db.query(TenantUsageEvent).count() == 0
 
 
-def test_blocked_pass_does_not_project_meter_or_refresh(estate):
+def test_admitted_runner_block_does_not_project_or_refresh(estate):
     db, _ = estate
     row = target(db)
     result = {**observed(), "blocked_reason": "credentials unavailable"}
     monitor(db, lambda c, s: result).run_target(row)
     assert row.status == "BLOCKED" and row.last_scan_at is None
-    assert db.query(CryptoLiveState).count() == db.query(TenantUsageEvent).count() == 0
+    assert db.query(CryptoLiveState).count() == db.query(NetworkScanRun).count() == 0
+    assert db.query(TenantUsageEvent).one().amount == 1
+    assert db.query(ScanJob).one().status == "FAILED"
     assert db.query(MonitorEvent).one().event_type == "BLOCKED"
 
 
@@ -167,12 +175,8 @@ def test_failed_pass_rolls_back_staged_data_and_can_record_failure(estate, monke
         monkeypatch.setattr("db.repositories.tenant_repository.TenantRepository.record_usage", fail)
     if fault == "completion":
         original = db.commit
-        calls = 0
-
         def fail_acceptance():
-            nonlocal calls
-            calls += 1
-            if calls == 2:
+            if db.query(ScanJob).filter_by(status="COMPLETED").count():
                 fail()
             return original()
 
@@ -189,12 +193,10 @@ def test_failed_pass_rolls_back_staged_data_and_can_record_failure(estate, monke
     db.commit()
     assert outcome["status"] == "DEGRADED"
     assert row.last_scan_at is None and row.consecutive_failures == 1
-    assert (
-        db.query(CryptoLiveState).count()
-        == db.query(CryptoLiveEventRow).count()
-        == db.query(TenantUsageEvent).count()
-        == 0
-    )
+    assert db.query(CryptoLiveState).count() == db.query(CryptoLiveEventRow).count() == 0
+    assert db.query(TenantUsageEvent).count() == (0 if fault == "meter" else 1)
+    if fault != "meter":
+        assert db.query(ScanJob).one().status == "FAILED"
     assert db.query(MonitorEvent).one().event_type == "SCAN_FAILED"
     assert current_tenant() is None
 
@@ -481,8 +483,8 @@ def test_completion_failure_does_not_dispatch_unaccepted_alerts(estate, monkeypa
     original, commits, alerts = db.commit, [], []
 
     def commit():
-        commits.append(True)
-        if len(commits) == 2:
+        if db.query(ScanJob).filter_by(status="COMPLETED").count():
+            commits.append(True)
             raise RuntimeError("acceptance failed")
         original()
 
@@ -491,7 +493,8 @@ def test_completion_failure_does_not_dispatch_unaccepted_alerts(estate, monkeypa
         db, lambda c, s: {**observed(), "issues": ["WEAK_TLS_VERSION"]}, on_alert=lambda *args: alerts.append(args)
     )
     engine.run_target(row)
-    assert not alerts
+    assert not alerts and commits == [True]
+    assert db.query(ScanJob).one().status == "FAILED"
     assert db.query(MonitorEvent).one().event_type == "SCAN_FAILED"
 
 

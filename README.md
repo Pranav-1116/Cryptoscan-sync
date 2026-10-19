@@ -53,8 +53,11 @@ adds shared admission and mandatory linked job/probe records for four API paths;
 the [scheduled TLS worker delivery](docs/bank-environment/36-worker-scheduled-tls-admission.md)
 extends that contract to the leader-worker target rotation. The subsequent
 [NETWORK monitor lifecycle isolation](docs/bank-environment/37-network-monitor-lifecycle-isolation.md)
-adds owner/rollback/freshness guards, not monitor protocol admission parity.
-A01 remains partial; these changes do not certify production safety.
+adds owner/rollback/freshness guards. The
+[bounded monitor phase delivery](docs/bank-environment/38-monitor-network-phase-admission.md)
+adds admission and linked jobs for TLS/IPsec/explicit-resolver DNSSEC, while
+refusing unqualified scope/plugins. A01 remains partial; production safety is
+not certified by these local changes.
 
 
 ## Scope & honest boundaries

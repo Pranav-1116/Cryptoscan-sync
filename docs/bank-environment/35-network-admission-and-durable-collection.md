@@ -187,7 +187,9 @@ A01 remains **partially delivered**. The subsequent
 contract to the leader-worker `network_scan_targets` rotation. Next
 qualify/migrate the separate `monitor_targets` network runner. Its
 [owner/rollback/freshness groundwork](37-network-monitor-lifecycle-isolation.md)
-is now implemented, without phase admission/receipt parity. Also pending are
+is now implemented, followed by [bounded phase admission/receipts](38-monitor-network-phase-admission.md)
+for TLS/IPsec/explicit-resolver DNSSEC; scope/plugins are refused pending
+qualification. Also pending are
 other active network profiles (SSH and inventory plugins), retry/reaper behavior
 and non-API execution paths. Current direct-host role/grant policy, region/legal-
 entity restrictions, platform-inventory sharing and export boundaries remain

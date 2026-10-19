@@ -178,7 +178,8 @@ No frontend build, production deployment, migration or workflow change is claime
 The subsequent [monitor lifecycle delivery](37-network-monitor-lifecycle-isolation.md)
 implements trusted owner context in sequential/threaded execution, rollback-safe
 status/event persistence and conservative blocked/incomplete freshness. It does
-not implement phase-specific admission/durable receipts for the monitor's
-network profiles; that remains next work. Do not simply wrap TLS and imply scope/IPsec/DNSSEC
+not itself implement phase-specific admission/durable receipts. The subsequent
+[bounded monitor phase delivery](38-monitor-network-phase-admission.md) now adds
+those for TLS/IPsec/explicit-resolver DNSSEC, while refusing scope/plugins. Do not simply wrap TLS and imply scope/IPsec/DNSSEC
 parity. Other collectors, distributed enforcement, reaper behavior, exact-estate
 schema changes and live operational qualification remain separate obligations.

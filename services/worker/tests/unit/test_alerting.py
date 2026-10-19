@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 
 from worker.monitor.alerting import AlertRouter, format_cef
 
@@ -17,6 +19,15 @@ class _Settings:
         self.ALERT_EMAIL_TO = "soc@test"
         for key, value in kwargs.items():
             setattr(self, key, value)
+
+
+@pytest.fixture(autouse=True)
+def monitor_admission_policy(monkeypatch):
+    # Real admission engine with controlled authoritative policy lookups.
+    import api.security.scan_admission as admission
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], {}))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
 
 def test_cef_line_shape():

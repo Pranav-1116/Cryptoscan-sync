@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
@@ -14,6 +16,15 @@ from db.repositories.monitor_repository import MonitorRepository
 from worker.monitor.engine import MonitorEngine
 
 T0 = datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def monitor_admission_policy(monkeypatch):
+    # Real admission engine with controlled authoritative policy lookups.
+    import api.security.scan_admission as admission
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], {}))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
 
 def _session():
@@ -58,7 +69,7 @@ def test_due_selection_and_ok_cycle():
     engine, clock = _clock_engine(session, {"NETWORK": ok_runner})
     outcome = engine.tick()
     assert outcome["ran"] == 1  # only the due, enabled target
-    assert [c for c in calls] == [{"endpoints": ["h:443"]}]
+    assert calls == [{"endpoints": ["h:443"], "timeout": 5.0, "workers": 8, "expiry_alert_days": 30}]
     assert due.status == "OK" and due.last_scan_at == T0
     assert due.next_scan_at == T0 + timedelta(seconds=600)
     assert future.status == "PENDING" and disabled.status == "PENDING"

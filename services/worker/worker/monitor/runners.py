@@ -27,8 +27,8 @@ def network_runner(config: dict, session: Any) -> dict:
     - ``config.dnssec = ["example.com", …]`` — DNS/DNSSEC posture per zone
     Extra-phase failures are disclosed as incomplete observations. Scope and
     DNSSEC currently lack a complete coverage contract and cannot refresh the
-    entire target as fully observed. This adapter is not yet migrated to the
-    admission/ScanJob contract; see the bank guide's explicit open boundary.
+    entire target as fully observed. MonitorEngine supplies mandatory bounded
+    phase admission/ScanJob execution; direct SDK adapter calls are internal.
     """
     endpoints = [str(e) for e in (config.get("endpoints") or []) if str(e).strip()]
     if not endpoints and config.get("endpoint"):
@@ -77,6 +77,8 @@ def network_runner(config: dict, session: Any) -> dict:
 
     from network_scanner.core.scanner import NetworkTlsScanner
 
+    from worker.monitor.network_collection import before_phase
+
     timeout = float(config.get("timeout", 5.0))
     workers = config.get("workers", 8)
     if not math.isfinite(timeout) or not 0 < timeout <= 30:
@@ -118,6 +120,7 @@ def network_runner(config: dict, session: Any) -> dict:
             # config errors (e.g. DEEP without authorization) surface as issues
             issues.append(f"SCOPE_ERROR:{type(exc).__name__}:{str(exc)[:120]}")
     if endpoints:
+        execution = before_phase("tls")
         result = scanner.scan_hosts(endpoints)
         observed.update(result)
         telemetry = result.get("probe_telemetry") or {}
@@ -140,7 +143,8 @@ def network_runner(config: dict, session: Any) -> dict:
                 issues.append(f"WEAK_TLS_VERSION:{endpoint}")
 
         # certificates feed the shared inventory, exactly like POST /network-scans
-        _persist_certificates(result, session)
+        if execution is None:
+            _persist_certificates(result, session)
 
         # continuous expiry watch: certificates nearing expiry are issues, so a
         # certificate due to roll over starts alerting within one interval window
@@ -159,6 +163,7 @@ def network_runner(config: dict, session: Any) -> dict:
     # enterprise extras: IPsec/VPN + DNSSEC posture
     ipsec_hosts = [str(h) for h in (config.get("ipsec") or []) if str(h).strip()]
     if ipsec_hosts:
+        execution = before_phase("ipsec")
         phase_complete.append(False)
         try:
             ports = tuple(
@@ -175,12 +180,15 @@ def network_runner(config: dict, session: Any) -> dict:
                 for issue in finding.get("issues") or []:
                     issues.append(f"{issue}:{finding.get('endpoint')}")
         except Exception as exc:
+            if execution is not None:
+                raise
             phase_complete[-1] = False
             issues.append(f"IPSEC_ERROR:{type(exc).__name__}")
             logger.debug("monitor_ipsec_skipped", exc_info=True)
 
     dnssec_zones = [str(z) for z in (config.get("dnssec") or []) if str(z).strip()]
     if dnssec_zones:
+        execution = before_phase("dnssec")
         # scan_dnssec currently swallows individual DNSKEY/DS/AXFR errors, so
         # SIGNED/UNSIGNED alone does not establish a complete collection.
         phase_complete.append(False)
@@ -195,6 +203,8 @@ def network_runner(config: dict, session: Any) -> dict:
             for issue in dns.get("issues") or []:
                 issues.append(issue)
         except Exception as exc:
+            if execution is not None:
+                raise
             issues.append(f"DNSSEC_ERROR:{type(exc).__name__}")
             logger.debug("monitor_dnssec_skipped", exc_info=True)
 

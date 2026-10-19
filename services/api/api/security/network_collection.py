@@ -82,14 +82,19 @@ def _network(value):
         return None
 
 
-def _check_exclusions(target, port, decision, protocol):
+def _check_exclusions(target, port, decision, protocol, transport="tcp"):
     exclusions = decision.get("exclusions") or {}
     if port in (exclusions.get("ports") or []):
         raise HTTPException(409, detail="Network collection refused: excluded port")
     protocols = {classify_service(str(p)).canonical.lower() for p in exclusions.get("protocols") or []}
     # Port/service classification is a conservative policy hint, not proof
     # that the service behind that port was observed. No network lookup.
-    if protocols & {"tcp", protocol, classify_port(port).canonical.lower()}:
+    if protocols & {
+        transport,
+        protocol,
+        classify_service(protocol).canonical.lower(),
+        classify_port(port, transport).canonical.lower(),
+    }:
         raise HTTPException(409, detail="Network collection refused: excluded protocol")
     host, _ = _host_port(target)
     wanted = _network(host)
@@ -110,7 +115,7 @@ def _check_exclusions(target, port, decision, protocol):
             raise HTTPException(409, detail="Network collection refused: excluded target or intersecting scope")
 
 
-def admit_network(targets, *, protocol="tls", ports=None):
+def admit_network(targets, *, protocol="tls", ports=None, transport="tcp"):
     """Check the entire phase before constructing any executor or job."""
     decisions = []
     for target in targets:
@@ -118,7 +123,7 @@ def admit_network(targets, *, protocol="tls", ports=None):
             decision = scan_admission.admit_scan(
                 active_probing_requested=True, asset=target, port=port, protocol=protocol, include_exclusions=True
             )
-            _check_exclusions(target, port, decision, protocol)
+            _check_exclusions(target, port, decision, protocol, transport)
             public_decision = {key: value for key, value in decision.items() if key != "exclusions"}
             decisions.append({"target": target, "port": port, "decision": public_decision})
     if not decisions:
@@ -127,12 +132,13 @@ def admit_network(targets, *, protocol="tls", ports=None):
         **decisions[0]["decision"],
         "schema": "cryptoscan.network-admission/1",
         "protocol": protocol,
+        "transport": transport,
         "checked_targets": len(targets),
         "decisions": decisions,
     }
 
 
-def meter_network(db, hosts):
+def meter_network(db, hosts, *, detail="admitted network TLS collection attempt"):
     """Existing per-host plan accounting, shared across TLS aliases.
 
     This is a preflight check, not an atomic distributed quota reservation.
@@ -151,7 +157,7 @@ def meter_network(db, hosts):
     )
     if not allowed:
         raise HTTPException(402, detail=f"quota_exceeded: {reason}")
-    repo.record_usage(tenant_id, "scan_run", len(hosts), detail="admitted network TLS collection attempt")
+    repo.record_usage(tenant_id, "scan_run", len(hosts), detail=detail)
 
 
 @contextmanager
