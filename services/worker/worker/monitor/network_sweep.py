@@ -1,19 +1,15 @@
-"""Scheduled network-target sweep used by the monitor daemon.
+"""Leader-worker TLS rotation with the API admission/durable collection contract.
 
-The API's ``/network/run-due`` endpoint is useful for an operator, but it is
-not a scheduler. This module closes that production gap: rows registered in
-``network_scan_targets`` are selected by their persisted due time, scanned by
-the real ``NetworkTlsScanner``, written to ``network_scan_runs`` and advanced
-to their next interval. NBOM then derives from the same stored run without
-requiring a second declaration or a manual API call.
+This function owns transaction boundaries: call it with committed input and no
+unrelated pending writes. Every bounded owner batch is re-admitted, metered and
+committed RUNNING before constructing the executor. Ledger, projections, fresh
+schedule updates and COMPLETED are accepted atomically. A refusal/fault escapes
+to the monitor tick; earlier accepted batches remain durable.
 
-Target rows are grouped by tenant before execution. That keeps each persisted
-run, certificate, usage and schedule update attributed to the tenant that owns
-the endpoint while still allowing one leader worker to operate the fleet.
-
-A scanner failure is raised and leaves the affected due rows due for the next
-monitor tick; a failed attempt must not move the schedule forward and create a
-false freshness signal.
+An unscoped leader operates the fleet; a tenant-scoped caller can execute only
+its exact estate, never shared platform inventory. This is not distributed job
+claiming, quota reservation, DNS pinning or qualification of network_runner's
+separate scope/IPsec/DNSSEC profiles.
 """
 
 from __future__ import annotations
@@ -21,74 +17,94 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from db.repositories.certificate_repository import CertificateRepository
-from db.repositories.maturity_repository import MaturityRepository
+from fastapi import HTTPException
+from sqlalchemy import select
+
+from api.security.network_collection import (
+    MAX_HOSTS,
+    admit_network,
+    checked_hosts,
+    meter_network,
+    network_coverage,
+    network_run,
+    persist_network,
+)
+from db.models.network_scan_target import NetworkScanTarget
+from db.models.tenant import Tenant
 from db.repositories.network_scan_target_repository import NetworkScanTargetRepository
-from db.repositories.scan_run_repository import ScanRunRepository
-from db.tenancy import tenant_scope
+from db.tenancy import current_tenant, tenant_scope
 from network_scanner.core.scheduler import due_targets, next_scan_time
+
+PROFILE = {"workers": 8, "timeout": 5.0, "scan_versions": False, "scan_ciphers": False}
 
 
 def _scan_group(
     session: Any,
     *,
+    tenant_id: str | None,
     target_rows: list[Any],
-    due: list[dict[str, Any]],
     stamp: datetime,
     scanner_factory: Callable[[], Any],
 ) -> dict[str, Any]:
-    """Scan and persist one tenant's due endpoints inside tenant scope."""
-    tenant_id = target_rows[0].tenant_id if target_rows else None
-    endpoints = [str(item["endpoint"]) for item in due if str(item.get("endpoint") or "").strip()]
-    if not endpoints:
-        return {
-            "tenant_id": tenant_id, "due": len(due), "scanned": 0,
-            "run_id": None, "status": "BLOCKED",
-            "reason": "due network targets contain no endpoints",
-        }
-
-    # The ORM tenant guard filters reads and stamps new rows while this
-    # context is active. ``None`` deliberately represents platform-owned rows.
+    """Execute one bounded batch under persisted ownership, never config IDs."""
     with tenant_scope(tenant_id):
-        scanner = scanner_factory()
-        result = scanner.scan_hosts(endpoints)
-
-        # Keep the same certificate/materialized-usage side effects as the
-        # manual API flow. The run itself is the authoritative NBOM input.
-        certificate_repo = CertificateRepository(session)
-        maturity_repo = MaturityRepository(session)
-        for certificate in result.get("certificates") or []:
-            if certificate.get("fingerprint_sha256"):
-                certificate_repo.upsert(certificate)
-        for usage in result.get("usages") or []:
-            if usage.get("fingerprint_sha256") and usage.get("location"):
-                maturity_repo.upsert_usage(
-                    usage["fingerprint_sha256"],
-                    usage["location"],
-                    usage.get("usage_type") or "UNKNOWN",
+        if tenant_id is not None:
+            tenant = session.get(Tenant, tenant_id, populate_existing=True)
+            if tenant is None or tenant.status != "ACTIVE":
+                raise HTTPException(409, detail="Scheduled network owner is missing or inactive")
+        ids = [row.id for row in target_rows]
+        target_rows = list(
+            session.execute(
+                select(NetworkScanTarget)
+                .where(
+                    NetworkScanTarget.id.in_(ids),
+                    NetworkScanTarget.tenant_id == tenant_id,
+                    NetworkScanTarget.enabled.is_(True),
                 )
-
-        run = ScanRunRepository(session).create_run(result, target_kind="scheduled")
-        rows_by_endpoint = {row.endpoint: row for row in target_rows}
-        for item in due:
-            row = rows_by_endpoint.get(item.get("endpoint"))
-            if row is None:
-                continue
-            row.last_scan_time = stamp
-            row.next_scan_time = next_scan_time(stamp, row.scan_frequency)
-        session.flush()
-
-    telemetry = result.get("probe_telemetry") or {}
-    return {
-        "tenant_id": tenant_id,
-        "due": len(due),
-        "scanned": len(endpoints),
-        "run_id": run.id,
-        "status": telemetry.get("status") or "COMPLETED",
-        "probed": telemetry.get("probed"),
-        "ok": telemetry.get("ok"),
-        "findings": len(result.get("findings") or []),
-    }
+                .execution_options(populate_existing=True)
+            ).scalars()
+        )
+        if len(due_targets([row.to_dict() for row in target_rows], now=stamp)) != len(ids):
+            raise HTTPException(409, detail="Scheduled network batch changed; retry selection")
+        endpoints = checked_hosts([row.endpoint for row in target_rows])
+        admission = admit_network(endpoints)
+        meter_network(session, endpoints)
+        with network_run(
+            session,
+            user="monitor-daemon",
+            target=",".join(endpoints)[:2000],
+            admission=admission,
+            kind="scheduled",
+            profile=PROFILE,
+        ) as run:
+            result = scanner_factory().scan_hosts(endpoints)
+            result = persist_network(session, result, run, kind="scheduled")
+            telemetry = result.get("probe_telemetry") or {}
+            # Fully observed weak posture can legitimately be PARTIAL. Failed,
+            # missing or incomplete observations must not fabricate freshness.
+            complete = (
+                telemetry.get("status") in {"OK", "PARTIAL"}
+                and telemetry.get("probed") == len(endpoints)
+                and telemetry.get("ok") == len(endpoints)
+            )
+            if complete:
+                for row in target_rows:
+                    row.last_scan_time = stamp
+                    row.next_scan_time = next_scan_time(stamp, row.scan_frequency)
+            result["scanned"] = len(endpoints)
+            run.succeed(coverage=network_coverage(result))
+        return {
+            "tenant_id": tenant_id,
+            "due": len(target_rows),
+            "scanned": len(endpoints),
+            "observed": len(endpoints) if complete else 0,
+            "run_id": result["run_id"],
+            "job_id": result["job_id"],
+            "status": telemetry.get("status") or "NOT_EVALUATED",
+            "probed": telemetry.get("probed"),
+            "ok": telemetry.get("ok"),
+            "findings": len(result.get("findings") or []),
+        }
 
 
 def run_due_network_targets(
@@ -97,61 +113,60 @@ def run_due_network_targets(
     now: datetime | None = None,
     scanner_factory: Callable[[], Any] | None = None,
 ) -> dict[str, Any]:
-    """Scan every due persisted network target and store scheduled runs.
+    """Execute committed due targets in owner batches of at most 256 endpoints.
 
-    ``scanner_factory`` is injectable for deterministic tests. Production uses
-    the same live scanner class as the API endpoint. The return value is safe
-    to put in monitor logs/events and includes no certificate/key material.
+    ``scanner_factory`` is the controlled executor seam. Policy, tenant and
+    persistence checks remain mandatory even when the executor is injected.
     """
     stamp = now or datetime.now(timezone.utc)
-    target_repo = NetworkScanTargetRepository(session)
-    rows = target_repo.list_targets()
-    due = due_targets([row.to_dict() for row in rows], now=stamp)
-    if not due:
+    caller = current_tenant()
+    rows = NetworkScanTargetRepository(session).list_targets()
+    rows = [row for row in rows if caller is None or row.tenant_id == caller]
+    due_ids = {item["id"] for item in due_targets([row.to_dict() for row in rows], now=stamp)}
+    if not due_ids:
         return {"due": 0, "scanned": 0, "run_id": None, "status": "IDLE"}
 
     if scanner_factory is None:
         from network_scanner.core.scanner import NetworkTlsScanner
 
-        scanner_factory = lambda: NetworkTlsScanner(live=True)  # noqa: E731
+        def scanner_factory():
+            return NetworkTlsScanner(live=True, timeout=5.0, workers=8)
 
-    rows_by_endpoint = {row.endpoint: row for row in rows}
+    # Derive both grouping and lookup from the same persisted row identity,
+    # not a global endpoint map or caller-supplied tenant field.
     rows_by_tenant: dict[str | None, list[Any]] = {}
-    due_by_tenant: dict[str | None, list[dict[str, Any]]] = {}
-    for item in due:
-        if not item.get("endpoint"):
-            continue
-        row = rows_by_endpoint.get(item.get("endpoint"))
-        if row is None:
-            continue
-        tenant_id = item.get("tenant_id")
-        rows_by_tenant.setdefault(tenant_id, []).append(row)
-        due_by_tenant.setdefault(tenant_id, []).append(item)
+    for row in rows:
+        if row.id in due_ids:
+            rows_by_tenant.setdefault(row.tenant_id, []).append(row)
 
-    if not due_by_tenant:
-        return {
-            "due": len(due), "scanned": 0, "run_id": None, "run_ids": [],
-            "status": "BLOCKED", "reason": "due network targets contain no endpoints",
-        }
-
-    groups: list[dict[str, Any]] = []
-    for tenant_id, tenant_due in due_by_tenant.items():
-        # A scanner/database failure intentionally escapes here. The monitor
-        # engine records it as an ERROR and the target remains due.
-        groups.append(_scan_group(
-            session,
-            target_rows=rows_by_tenant[tenant_id],
-            due=tenant_due,
-            stamp=stamp,
-            scanner_factory=scanner_factory,
-        ))
-
-    run_ids = [str(group["run_id"]) for group in groups if group.get("run_id")]
+    groups = []
+    try:
+        for tenant_id, tenant_rows in rows_by_tenant.items():
+            for offset in range(0, len(tenant_rows), MAX_HOSTS):
+                groups.append(
+                    _scan_group(
+                        session,
+                        tenant_id=tenant_id,
+                        target_rows=tenant_rows[offset : offset + MAX_HOSTS],
+                        stamp=stamp,
+                        scanner_factory=scanner_factory,
+                    )
+                )
+    except Exception:
+        # Includes failures before the durable context enters (initial job
+        # commit, metering, admission). Leave the daemon session usable for
+        # later sweeps; never commit a staged RUNNING job after a refusal.
+        session.rollback()
+        raise
+    run_ids = [str(group["run_id"]) for group in groups]
     return {
-        "due": len(due),
-        "scanned": sum(int(group.get("scanned") or 0) for group in groups),
+        "due": len(due_ids),
+        "scanned": sum(group["scanned"] for group in groups),
+        "observed": sum(group["observed"] for group in groups),
         "run_id": run_ids[0] if len(run_ids) == 1 else None,
         "run_ids": run_ids,
-        "status": "OK" if all(group.get("status") in {"OK", "COMPLETED"} for group in groups) else "COMPLETED",
+        "status": "OK"
+        if all(group["status"] == "OK" and group["observed"] == group["scanned"] for group in groups)
+        else "PARTIAL",
         "groups": groups,
     }

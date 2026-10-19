@@ -50,7 +50,9 @@ system-by-system collection, six-BOM identity/coverage, regional deployment,
 These are proposed requirements and rollout designs, not newly shipped controls. The subsequent
 [A01 API-network implementation](docs/bank-environment/35-network-admission-and-durable-collection.md)
 adds shared admission and mandatory linked job/probe records for four API paths;
-it does not close the full enterprise backlog or certify production safety.
+the [scheduled TLS worker delivery](docs/bank-environment/36-worker-scheduled-tls-admission.md)
+extends that contract to the leader-worker target rotation. Neither closes the
+full enterprise backlog or certifies production safety.
 
 
 ## Scope & honest boundaries

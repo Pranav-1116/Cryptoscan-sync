@@ -2,7 +2,7 @@
 
 [Guide index](README.md) · Previous: [Operations](07-operations-and-acceptance.md)
 
-**Baseline inspected 2026-10-18; A01 API update 2026-10-19.** This map is deliberately more precise than a
+**Baseline inspected 2026-10-18; A01 API/scheduled-worker update 2026-10-19.** This map is deliberately more precise than a
 feature checklist. “Implemented” means code exists for the described behavior;
 it does not mean a real bank/provider/production deployment was qualified here.
 The original guide was documentation-only. Subsequent A01 implementation
@@ -45,9 +45,13 @@ provides shared preflight and mandatory durable records for these API paths:
 | `POST /api/v1/network-scans` | Same contract as direct route | Job and probe ledger linked | Both slash aliases share the implementation |
 | `POST /api/v1/network/discover` | Authorized sweep, then fresh phase checks | Discovery-only or discovery/TLS ledger plus job | Port discovery is not TLS evidence; no automatic phase authorization |
 
-This is **partial A01 delivery**, not uniformity across all collectors. Worker
-monitor paths, SSH/inventory plugins, distributed quotas, actual connection/QPS
-budgets, in-flight stop and production qualification remain separate work.
+The [scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) also
+uses this contract for the leader-worker `network_scan_targets` rotation, with
+owner batches, bounded settings and durable schedule freshness.
+
+This is **partial A01 delivery**, not uniformity across all collectors. The
+separate `monitor_targets` network runner and its scope/IPsec/DNSSEC phases,
+SSH/inventory plugins, distributed quotas, actual connection/QPS budgets, in-flight stop and production qualification remain separate work.
 Authentication, target validation, role/grant policy and collection persistence
 are different controls. Existing IT-window semantics and inventory-sharing
 policy are not silently replaced. See guide 35 for compatibility changes,

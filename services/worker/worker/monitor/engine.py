@@ -132,8 +132,13 @@ class MonitorEngine:
             try:
                 from worker.monitor.network_sweep import run_due_network_targets
 
+                # The network collector owns durable commit/rollback boundaries.
+                # Save preceding monitor/watch work first, so a network fault
+                # cannot roll it back or stamp it under a different owner.
+                self.session.commit()
                 network_summary = run_due_network_targets(self.session, now=now)
             except Exception as exc:  # noqa: BLE001 — network sweep must not stop other monitor work
+                self.session.rollback()
                 logger.exception("network_sweep_failed")
                 network_summary = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
 

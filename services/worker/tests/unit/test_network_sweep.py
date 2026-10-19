@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -11,6 +13,7 @@ from sqlalchemy.pool import StaticPool
 import db.models  # noqa: F401
 from db.connection.session import Base
 from db.models.network_scan_run import NetworkScanRun
+from db.models.tenant import Tenant
 from db.repositories.network_scan_target_repository import NetworkScanTargetRepository
 from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import install_tenant_guard
@@ -21,6 +24,15 @@ from worker.monitor.network_sweep import run_due_network_targets
 T0 = datetime(2026, 9, 27, 12, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def policy(monkeypatch):
+    # Real admission decision, controlled authoritative policy lookups.
+    import api.security.scan_admission as admission
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], {}))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
+
+
 def _session():
     engine = create_engine(
         "sqlite:///:memory:",
@@ -28,7 +40,10 @@ def _session():
         poolclass=StaticPool,
     )
     Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine, expire_on_commit=False)()
+    session = sessionmaker(bind=engine, expire_on_commit=False)()
+    session.add_all([Tenant(id=t, name=t, slug=t, status="ACTIVE") for t in ("tenant-a", "tenant-b")])
+    session.commit()
+    return session
 
 
 class FakeScanner:
@@ -168,7 +183,7 @@ def test_scanner_failure_leaves_schedule_due_and_creates_no_false_run():
         raise AssertionError("scanner failures must be visible to the monitor tick")
 
     assert row.last_scan_time is None
-    assert row.next_scan_time <= T0
+    assert row.next_scan_time.replace(tzinfo=timezone.utc) <= T0
     assert ScanRunRepository(session).count_runs() == 0
 
 

@@ -32,8 +32,10 @@ and qualification boundaries remain in guide 26 and the repository readiness gat
 
 [Guide 35 — A01 first API network delivery](35-network-admission-and-durable-collection.md)
 records implemented admission/receipt parity for direct TLS, aliases, API due
-rotation and discovery. A01 is partially delivered; worker/other profiles,
-regional/vendor qualification and the rest of the backlog remain open.
+rotation and discovery. [Guide 36 — scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md)
+extends the contract to the leader-worker target rotation. A01 is partially
+delivered; the separate monitor runner/other profiles, regional/vendor
+qualification and the rest of the backlog remain open.
 
 ## Read in order
 
@@ -74,6 +76,7 @@ regional/vendor qualification and the rest of the backlog remain open.
 | [33 — Engineering and rollout priorities](33-international-bank-engineering-and-rollout.md) | Which 15 P0/P1 improvements and P2 optimizations should precede gated expansion? |
 | [34 — Worked international-bank assessment](34-worked-international-bank-assessment.md) | How do four countries, seven supplier roles and 48 illustrative work targets reconcile end to end? |
 | [35 — Implemented API network collection contract](35-network-admission-and-durable-collection.md) | What A01 gaps were fixed in code, what compatibility changes apply, and what remains unqualified? |
+| [36 — Scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) | How are owner batches admitted, metered and durably recorded without false schedule freshness? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

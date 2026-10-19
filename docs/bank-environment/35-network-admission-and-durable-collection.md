@@ -182,7 +182,10 @@ python -m pytest -q \
 
 ## 8. What is still open
 
-A01 remains **partially delivered**. Next qualify/migrate worker monitor runners,
+A01 remains **partially delivered**. The subsequent
+[scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) extends this
+contract to the leader-worker `network_scan_targets` rotation. Next
+qualify/migrate the separate `monitor_targets` network runner,
 other active network profiles (SSH and inventory plugins), retry/reaper behavior
 and non-API execution paths. Current direct-host role/grant policy, region/legal-
 entity restrictions, platform-inventory sharing and export boundaries remain
