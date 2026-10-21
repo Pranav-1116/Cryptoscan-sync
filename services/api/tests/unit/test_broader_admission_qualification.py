@@ -51,9 +51,7 @@ def test_ssh_refusal_precedes_both_keyscan_and_kex(banks, monkeypatch, who, faul
 
 @pytest.mark.parametrize("middleware", [False, True])
 @pytest.mark.parametrize("who,owner", [("bank_a", "a"), ("bank_b", "b"), ("platform_admin", None)])
-def test_ssh_admission_has_authoritative_estate_but_discloses_no_durable_receipt(
-    banks, monkeypatch, middleware, who, owner
-):
+def test_ssh_admission_and_receipt_have_authoritative_estate(banks, monkeypatch, middleware, who, owner):
     from api.security import scan_admission as gate
 
     clients, _, _ = banks
@@ -78,7 +76,7 @@ def test_ssh_admission_has_authoritative_estate_but_discloses_no_durable_receipt
         response = client.post("/api/v1/network/ssh-scan", json={"hosts": ["10.21.0.10"]})
         assert response.status_code == 200, response.text
         assert response.json()["admission"]["protocol"] == "ssh"
-        assert response.json()["collection"]["durable"] is False
+        assert response.json()["collection"]["durable"] is True
         assert set(seen) == {owner}
 
 
@@ -102,10 +100,6 @@ def test_enterprise_discovery_cannot_bypass_bounded_phase_admission(banks, monke
 
 
 @pytest.mark.parametrize("fault", ["forged-estate", "disabled-queued-principal"])
-@pytest.mark.xfail(
-    strict=True,
-    reason="OPEN A01/A04: generic queue descriptor is not reconciled with persisted owner/live initiating identity",
-)
 def test_generic_queued_execution_needs_authoritative_owner_and_fresh_identity(banks, monkeypatch, fault):
     from worker.core.job_consumer import ScanJob
     from worker.core.job_executor import JobExecutor
@@ -118,6 +112,9 @@ def test_generic_queued_execution_needs_authoritative_owner_and_fresh_identity(b
         triggered_by="bank_a",
         status="QUEUED",
         job_type="BINARY",
+        progress={
+            "execution_authority": {"v": 1, "kind": "user", "id": UserRepository(db).get_by_username("bank_a").id}
+        },
     )
     db.add(row)
     db.commit()

@@ -25,6 +25,9 @@ def test_executor_routes_cloud_jobs_without_clone(monkeypatch):
             raise AssertionError("git pipeline must not run for CLOUD jobs")
 
     monkeypatch.setattr("worker.pipeline.cloud_job.run_cloud_job", fake_cloud)
+    # Routing/scope seam only; real persisted authority has its own contracts.
+    monkeypatch.setattr("worker.core.job_executor.reconcile", lambda job: job)
+    monkeypatch.setattr("worker.core.job_executor.claim", lambda job: None)
     executor = JobExecutor()
     executor.runner = Boom()
     job = ScanJob(job_id="j-cloud", target_repo="cloud://aws/1111", job_type="CLOUD")
@@ -43,6 +46,9 @@ def test_executor_keeps_git_pipeline(monkeypatch):
             called.update(kwargs)
             return "scan-1"
 
+    # Routing/scope seam only; real persisted authority has its own contracts.
+    monkeypatch.setattr("worker.core.job_executor.reconcile", lambda job: job)
+    monkeypatch.setattr("worker.core.job_executor.claim", lambda job: None)
     executor = JobExecutor()
     executor.runner = Runner()
     job = ScanJob(job_id="j-git", target_repo="https://git/bank/pay.git", job_type="SYSTEM")
@@ -83,12 +89,22 @@ def test_cloud_job_fails_closed_on_failed_live_scan(monkeypatch, caplog):
             "findings": [],
             "resources": 0,
             "issues": 0,
-            "errors": [{"provider": "AWS", "service": "kms", "region": "us-east-1", "code": "AccessDenied", "error": sentinel}],
+            "errors": [
+                {"provider": "AWS", "service": "kms", "region": "us-east-1", "code": "AccessDenied", "error": sentinel}
+            ],
             "live_scan": {
                 "enabled": True,
                 "status": "FAILED",
                 "resources_scanned": 0,
-                "errors": [{"provider": "AWS", "service": "kms", "region": "us-east-1", "code": "AccessDenied", "error": sentinel}],
+                "errors": [
+                    {
+                        "provider": "AWS",
+                        "service": "kms",
+                        "region": "us-east-1",
+                        "code": "AccessDenied",
+                        "error": sentinel,
+                    }
+                ],
                 "truncations": [],
                 "error_count": 1,
                 "truncation_count": 0,
@@ -168,11 +184,23 @@ def test_cloud_telemetry_errors_are_not_persisted_even_on_partial_success(monkey
 
     monkeypatch.setattr("db.connection.session.SessionLocal", Session)
     monkeypatch.setattr("db.repositories.job_repository.JobRepository", Jobs)
-    telemetry = {"enabled": True, "status": "PARTIAL", "resources_scanned": 1,
-                 "errors": [{"provider": "AWS", "error": sentinel}], "error_count": 1}
-    monkeypatch.setattr(cloud_job, "_scan", lambda *_: {
-        "findings": [], "resources": 1, "errors": telemetry["errors"], "live_scan": telemetry,
-    })
+    telemetry = {
+        "enabled": True,
+        "status": "PARTIAL",
+        "resources_scanned": 1,
+        "errors": [{"provider": "AWS", "error": sentinel}],
+        "error_count": 1,
+    }
+    monkeypatch.setattr(
+        cloud_job,
+        "_scan",
+        lambda *_: {
+            "findings": [],
+            "resources": 1,
+            "errors": telemetry["errors"],
+            "live_scan": telemetry,
+        },
+    )
     monkeypatch.setattr(cloud_job, "ingest_findings", lambda *_a, **_k: {"systems": 0})
     job = ScanJob(job_id="j-cloud-partial", target_repo="cloud://aws/2222", job_type="CLOUD")
     assert cloud_job.run_cloud_job(job) is True
@@ -214,7 +242,15 @@ def test_cloud_job_completes_with_live_scan_telemetry(monkeypatch):
             "resources": 1,
             "issues": 0,
             "errors": [],
-            "live_scan": {"enabled": True, "status": "OK", "resources_scanned": 1, "errors": [], "truncations": [], "error_count": 0, "truncation_count": 0},
+            "live_scan": {
+                "enabled": True,
+                "status": "OK",
+                "resources_scanned": 1,
+                "errors": [],
+                "truncations": [],
+                "error_count": 0,
+                "truncation_count": 0,
+            },
         }
 
     monkeypatch.setattr(cloud_job, "_scan", ok_scan)

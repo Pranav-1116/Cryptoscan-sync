@@ -9,10 +9,7 @@ from worker.core.job_executor import JobExecutor
 
 
 def _org_result(status="OK", accounts=2, resources=5):
-    rows = [
-        {"account_id": f"acc{i}", "ok": True, "resources": resources, "status": "OK"}
-        for i in range(accounts)
-    ]
+    rows = [{"account_id": f"acc{i}", "ok": True, "resources": resources, "status": "OK"} for i in range(accounts)]
     return {
         "provider": "aws",
         "org": True,
@@ -20,8 +17,16 @@ def _org_result(status="OK", accounts=2, resources=5):
         "truncated": False,
         "accounts": rows,
         "findings": [
-            {"algorithm": "AES-256", "compliance_issue": None, "metadata": {"cloud_account": "acc0", "cloud_provider": "AWS"}},
-            {"algorithm": "DES", "compliance_issue": "WEAK", "metadata": {"cloud_account": "acc1", "cloud_provider": "AWS"}},
+            {
+                "algorithm": "AES-256",
+                "compliance_issue": None,
+                "metadata": {"cloud_account": "acc0", "cloud_provider": "AWS"},
+            },
+            {
+                "algorithm": "DES",
+                "compliance_issue": "WEAK",
+                "metadata": {"cloud_account": "acc1", "cloud_provider": "AWS"},
+            },
         ],
         "resources": 2,
         "issues": 1,
@@ -63,6 +68,9 @@ def test_executor_routes_org_targets_to_org_job(monkeypatch):
         def run(self, **kwargs):
             raise AssertionError("neither cloud_job nor pipeline may run for org targets")
 
+    # Routing/scope seam only; real persisted authority has its own contracts.
+    monkeypatch.setattr("worker.core.job_executor.reconcile", lambda job: job)
+    monkeypatch.setattr("worker.core.job_executor.claim", lambda job: None)
     executor = JobExecutor()
     executor.runner = Boom()
     job = ScanJob(job_id="j-org", target_repo="cloud://aws-org/111122223333", job_type="CLOUD")
@@ -224,8 +232,9 @@ def test_org_job_malformed_status_counts_and_errors_are_not_persisted(monkeypatc
     monkeypatch.setattr("db.repositories.job_repository.JobRepository", Jobs)
     result = _org_result(status="FAILED", accounts=0, resources=0)
     result["findings"] = []
-    result["accounts"] = [{"account_id": "acc0", "ok": False, "error": sentinel,
-                           "status": sentinel, "resources": sentinel}]
+    result["accounts"] = [
+        {"account_id": "acc0", "ok": False, "error": sentinel, "status": sentinel, "resources": sentinel}
+    ]
     result["provider"] = sentinel
     result["accounts_discovered"] = sentinel
     result["resources"] = sentinel

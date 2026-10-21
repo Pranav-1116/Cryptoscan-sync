@@ -91,61 +91,12 @@ def _run_inline(payload: dict) -> None:
     without re-entering it the results would be written unscoped and land in
     the platform estate where every tenant can read them.
     """
-    from db.tenancy import tenant_scope
+    from worker.core.job_executor import JobExecutor
+    from worker.core.job_consumer import ScanJob
 
-    with tenant_scope(payload.get("tenant_id")):
-        _run_inline_in_scope(payload)
-
-
-def _run_inline_in_scope(payload: dict) -> None:
     try:
-        from worker.core.job_consumer import ScanJob
-        from worker.pipeline.binary_job import is_binary_target, run_binary_job
-
-        if is_binary_target(payload.get("target_repo")):
-            run_binary_job(
-                ScanJob(
-                    job_id=payload["job_id"],
-                    target_repo=payload["target_repo"],
-                    target_branch=payload.get("target_branch") or "main",
-                    triggered_by=payload.get("triggered_by") or "system",
-                    target_commit=payload.get("target_commit"),
-                    job_type=payload.get("job_type") or "BINARY",
-                    system_id=payload.get("system_id"),
-                    tenant_id=payload.get("tenant_id"),
-                    progress=payload.get("progress"),
-                )
-            )
-            return
-        from cloud_scanner.estate import should_run_cloud_job
-
-        if should_run_cloud_job(payload):
-            from worker.core.job_consumer import ScanJob
-            from worker.pipeline.cloud_job import run_cloud_job
-
-            run_cloud_job(
-                ScanJob(
-                    job_id=payload["job_id"],
-                    target_repo=payload["target_repo"],
-                    target_branch=payload.get("target_branch") or "main",
-                    triggered_by=payload.get("triggered_by") or "system",
-                    target_commit=payload.get("target_commit"),
-                    job_type=payload.get("job_type") or "CLOUD",
-                    system_id=payload.get("system_id"),
-                    tenant_id=payload.get("tenant_id"),
-                )
-            )
-            return
-        from worker.pipeline.pipeline_runner import PipelineRunner
-
-        PipelineRunner().run(
-            job_id=payload["job_id"],
-            target_repo=payload["target_repo"],
-            target_branch=payload["target_branch"],
-            target_commit=payload.get("target_commit"),
-            triggered_by=payload["triggered_by"],
-            system_id=payload.get("system_id"),
-        )
+        job = ScanJob(**{key: payload[key] for key in ScanJob.__dataclass_fields__ if key in payload})
+        JobExecutor().execute(job)
     except Exception:
         logger.exception("inline_pipeline_failed", extra={"job_id": payload.get("job_id")})
 
@@ -245,7 +196,9 @@ def enqueue_scan_job(
         "target_branch": branch or "main",
         "target_commit": commit,
         "triggered_by": triggered_by,
-        "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at.isoformat()
+        if hasattr(created_at, "isoformat")
+        else datetime.now(timezone.utc).isoformat(),
         "system_id": system_id,
         # Captured here, from the row the ORM guard just stamped, because the
         # publish runs as a background task after the request has finished and
@@ -269,8 +222,7 @@ def enqueue_scan_job(
 
         get_event_bus().publish(
             "scan.queued",
-            {"job_id": str(job_id), "repo": repo_url, "branch": branch or "main",
-             "triggered_by": triggered_by},
+            {"job_id": str(job_id), "repo": repo_url, "branch": branch or "main", "triggered_by": triggered_by},
             source="api",
         )
     except Exception as _handler_exc:
@@ -282,7 +234,9 @@ def enqueue_scan_job(
     return TriggerScanResponse(
         job_id=str(job_id),
         status=getattr(created, "status", None) or "QUEUED",
-        created_at=created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        created_at=created_at.isoformat()
+        if hasattr(created_at, "isoformat")
+        else datetime.now(timezone.utc).isoformat(),
         message=f"Scan queued. Poll /api/v1/jobs/{job_id} for status.",
     )
 
@@ -303,8 +257,7 @@ async def trigger_manual_scan(
     # here and a client could not have been trusted to declare it anyway.
     from api.security.scan_admission import admit_scan
 
-    admit_scan(scan_mode=getattr(request_body, "scan_mode", None),
-               asset=request_body.repo_url)
+    admit_scan(scan_mode=getattr(request_body, "scan_mode", None), asset=request_body.repo_url)
 
     # Same containment as _queue_scan_job below and as the SBOM route: a
     # local target must resolve inside CRYPTOSCAN_SOURCE_ROOTS. Without it
@@ -359,7 +312,9 @@ async def trigger_manual_scan(
         "target_branch": request_body.branch or "main",
         "target_commit": request_body.commit,
         "triggered_by": current_user,
-        "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at.isoformat()
+        if hasattr(created_at, "isoformat")
+        else datetime.now(timezone.utc).isoformat(),
         # See the note on the other payload: the background publish runs after
         # the request scope is gone, so the tenant is captured now.
         "tenant_id": getattr(created, "tenant_id", None),
@@ -375,6 +330,8 @@ async def trigger_manual_scan(
     return TriggerScanResponse(
         job_id=str(job_id),
         status=getattr(created, "status", None) or "QUEUED",
-        created_at=created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        created_at=created_at.isoformat()
+        if hasattr(created_at, "isoformat")
+        else datetime.now(timezone.utc).isoformat(),
         message=f"Scan queued. Poll /api/v1/jobs/{job_id} for status.",
     )

@@ -45,8 +45,7 @@ BANK_A = "11111111-1111-1111-1111-111111111111"
 @pytest.fixture()
 def session():
     install_tenant_guard()
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
-                           poolclass=StaticPool)
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     s = sessionmaker(bind=engine, expire_on_commit=False)()
     yield s
@@ -56,8 +55,7 @@ def session():
 
 def _write_scan(session, target: str) -> Scan:
     """Write the way a pipeline stage does: construct, add, commit."""
-    row = Scan(target_location=target, status="COMPLETED",
-               scan_start=datetime.now(timezone.utc))
+    row = Scan(target_location=target, status="COMPLETED", scan_start=datetime.now(timezone.utc))
     session.add(row)
     session.commit()
     return row
@@ -66,6 +64,7 @@ def _write_scan(session, target: str) -> Scan:
 # --------------------------------------------------------------------------- #
 # the gap
 # --------------------------------------------------------------------------- #
+
 
 def test_queue_job_descriptor_carries_the_tenant():
     """The tenant must survive the queue boundary.
@@ -84,8 +83,7 @@ def test_a_job_round_trips_its_tenant_through_the_queue_payload():
     from worker.core.job_consumer import JobConsumer
 
     consumer = JobConsumer(redis_url="", queue_name="cryptoscan:test:tenant")
-    consumer.publish_job(ScanJob(job_id="j1", target_repo="https://git/a.git",
-                                 tenant_id=BANK_A))
+    consumer.publish_job(ScanJob(job_id="j1", target_repo="https://git/a.git", tenant_id=BANK_A))
     job = consumer._pop()
     assert job is not None
     assert job.tenant_id == BANK_A
@@ -130,12 +128,13 @@ def test_job_executor_runs_the_job_inside_its_tenants_scope(monkeypatch):
     from worker.core.job_executor import JobExecutor
 
     seen: list[str | None] = []
+    # Routing/scope seam only; real persisted authority has its own contracts.
+    monkeypatch.setattr("worker.core.job_executor.reconcile", lambda job: job)
+    monkeypatch.setattr("worker.core.job_executor.claim", lambda job: None)
     executor = JobExecutor()
-    monkeypatch.setattr(executor, "_execute_in_scope",
-                        lambda job: seen.append(current_tenant()) or True)
+    monkeypatch.setattr(executor, "_execute_in_scope", lambda job: seen.append(current_tenant()) or True)
 
-    executor.execute(ScanJob(job_id="j1", target_repo="https://git/a.git",
-                             tenant_id=BANK_A))
+    executor.execute(ScanJob(job_id="j1", target_repo="https://git/a.git", tenant_id=BANK_A))
     assert seen == [BANK_A]
 
 
@@ -151,9 +150,7 @@ def test_the_scope_wraps_every_branch_not_just_the_git_pipeline(monkeypatch):
 
     source = inspect.getsource(job_executor.JobExecutor.execute)
     assert "tenant_scope" in source
-    assert "_execute_in_scope" in source, (
-        "the dispatch must happen inside the scope, not alongside it"
-    )
+    assert "_execute_in_scope" in source, "the dispatch must happen inside the scope, not alongside it"
 
 
 def test_a_platform_job_still_runs_unscoped(monkeypatch):
@@ -161,9 +158,11 @@ def test_a_platform_job_still_runs_unscoped(monkeypatch):
     from worker.core.job_executor import JobExecutor
 
     seen: list[str | None] = []
+    # Routing/scope seam only; real persisted authority has its own contracts.
+    monkeypatch.setattr("worker.core.job_executor.reconcile", lambda job: job)
+    monkeypatch.setattr("worker.core.job_executor.claim", lambda job: None)
     executor = JobExecutor()
-    monkeypatch.setattr(executor, "_execute_in_scope",
-                        lambda job: seen.append(current_tenant()) or True)
+    monkeypatch.setattr(executor, "_execute_in_scope", lambda job: seen.append(current_tenant()) or True)
 
     executor.execute(ScanJob(job_id="j2", target_repo="https://git/a.git"))
     assert seen == [None]
@@ -172,6 +171,7 @@ def test_a_platform_job_still_runs_unscoped(monkeypatch):
 # --------------------------------------------------------------------------- #
 # the mechanism works; only the propagation is missing
 # --------------------------------------------------------------------------- #
+
 
 def test_the_same_write_is_attributed_correctly_when_a_scope_is_entered(session):
     """Proof the fix is propagation, not new machinery.
@@ -201,6 +201,5 @@ def test_the_monitor_path_already_does_this(session):
 
     source = inspect.getsource(network_sweep)
     assert "tenant_scope(" in source, (
-        "the monitor path no longer scopes its work; that was the one worker "
-        "path doing this correctly"
+        "the monitor path no longer scopes its work; that was the one worker path doing this correctly"
     )

@@ -6,6 +6,7 @@ import logging
 
 from worker.core.execution_gate import gate_job
 from worker.core.job_consumer import ScanJob
+from worker.core.queued_authority import QueueRefused, reconcile, claim
 from worker.pipeline.pipeline_runner import PipelineRunner
 
 logger = logging.getLogger(__name__)
@@ -16,19 +17,15 @@ class JobExecutor:
         self.runner = PipelineRunner()
 
     def execute(self, job: ScanJob) -> bool:
-        """Run the job inside its owning tenant's scope.
-
-        The scope wraps every branch, not just the pipeline: a binary, org or
-        cloud job writes the same tenant-owned rows. Outside a scope the ORM
-        guard is inert and stamp_tenant is a no-op, so the results would land
-        with tenant_id NULL — the platform estate, readable by every tenant.
-
-        ``tenant_id`` None is the platform-owned case and also what a job
-        queued before the field existed looks like; tenant_scope(None) is a
-        no-op, so those keep behaving exactly as before.
-        """
+        """Resolve persisted authority before choosing a scope or execution branch."""
         from db.tenancy import tenant_scope
 
+        try:
+            job = reconcile(job)
+        except QueueRefused as exc:
+            # An untrusted descriptor must not be able to fail a victim row.
+            logger.warning("queue_descriptor_refused", extra={"job_id": job.job_id, "reason": str(exc)})
+            return False
         with tenant_scope(job.tenant_id):
             return self._execute_in_scope(job)
 
@@ -81,6 +78,12 @@ class JobExecutor:
             logger.warning("job_refused_at_execution", extra={"job_id": job.job_id, "reason": reason})
             self._stamp_refusal(job, message)
             return False
+        try:
+            claim(job)
+        except QueueRefused as exc:
+            logger.warning("queue_authority_refused", extra={"job_id": job.job_id, "reason": str(exc)})
+            self._stamp_refusal(job, "execution authority: " + str(exc))
+            return False
         return run()
 
     @staticmethod
@@ -96,12 +99,26 @@ class JobExecutor:
         Log and hand the row to the reaper, which owns orphaned jobs.
         """
         from db.connection.session import SessionLocal
-        from worker.core.job_reaper import fail_job
 
         session = None
         try:
             session = SessionLocal()
-            fail_job(session, job.job_id, message)
+            from sqlalchemy import update
+            from db.models.scan_job import ScanJob as JobRow
+            from db.models.base import utcnow
+
+            # Never turn forged/duplicate work into a write against a foreign
+            # row or fail another worker's already-claimed RUNNING execution.
+            session.execute(
+                update(JobRow)
+                .where(
+                    JobRow.id == job.job_id,
+                    JobRow.tenant_id == job.tenant_id,
+                    JobRow.status == "QUEUED",
+                )
+                .values(status="FAILED", version=JobRow.version + 1, completed_at=utcnow(), error_message=message[:500])
+            )
+            session.commit()
         except Exception as exc:  # noqa: BLE001 — a refused job must not raise
             try:
                 if session is not None:
@@ -110,8 +127,7 @@ class JobExecutor:
                 logger.debug("job_refusal_rollback_failed", exc_info=True)
             logger.warning(
                 "job_refusal_stamp_failed",
-                extra={"job_id": job.job_id, "reason": message,
-                       "error_type": type(exc).__name__},
+                extra={"job_id": job.job_id, "reason": message, "error_type": type(exc).__name__},
             )
         finally:
             if session is not None:

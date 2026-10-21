@@ -119,7 +119,7 @@ class RedisCurrentRun(CurrentRunStore):
                 raise RuntimeError("realtime current-run state is unavailable") from exc
 
 
-def get_current_run_store(url: str | None, *, required: bool = False) -> CurrentRunStore:
+def get_current_run_store(url: str | None, *, required: bool = False, client=None) -> CurrentRunStore:
     """Return the shared Redis store, or an explicitly allowed local store.
 
     Production callers set ``required=True`` so a missing Redis dependency or
@@ -133,8 +133,10 @@ def get_current_run_store(url: str | None, *, required: bool = False) -> Current
     try:
         import redis as _redis
 
-        client = _redis.Redis.from_url(
-            url, socket_timeout=2, socket_connect_timeout=2, decode_responses=True
+        client = (
+            client
+            if client is not None
+            else _redis.Redis.from_url(url, socket_timeout=2, socket_connect_timeout=2, decode_responses=True)
         )
         client.ping()
         return RedisCurrentRun(client, strict=required)

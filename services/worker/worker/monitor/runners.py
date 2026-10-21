@@ -338,12 +338,12 @@ def repo_runner(config: dict, session: Any) -> dict:
         except Exception:  # noqa: BLE001 — lookup must not block the monitor tick
             tenant_ref = None
     job = JobRepository(session).create_job(
-        job_type="MANUAL", target_repo=target, target_branch=branch,
+        job_type="MONITOR_REPOSITORY", target_repo=target, target_branch=branch,
         triggered_by="monitor", tenant_id=tenant_ref,
     )
     payload = {
         "job_id": job.job_id,
-        "job_type": "MANUAL",
+        "job_type": "MONITOR_REPOSITORY",
         "target_repo": target,
         "target_branch": branch,
         "triggered_by": "monitor",

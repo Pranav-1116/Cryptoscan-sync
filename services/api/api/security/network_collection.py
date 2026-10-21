@@ -181,14 +181,19 @@ def network_run(db, *, user, target, admission, kind="hosts", profile=None):
             raise
 
 
-def persist_network(db, result, run, *, kind="hosts", phase_admission=None):
+def persist_network(db, result, run, *, kind="hosts", phase_admission=None, collection_metadata=None):
     """Stage ledger + materialized projections; caller completes atomically.
 
     Never swallow storage failures and never label port discovery as TLS.
     """
     payload = {
         **result,
-        "collection": {"schema": "cryptoscan.network-collection/1", "job_id": run.job_id, "kind": kind},
+        "collection": {
+            **(collection_metadata or {}),
+            "schema": "cryptoscan.network-collection/1",
+            "job_id": run.job_id,
+            "kind": kind,
+        },
     }
     if phase_admission is not None:
         payload["collection"]["phase_admission"] = phase_admission

@@ -50,6 +50,7 @@ def test_repo_runner_inherits_tenant_from_repo_configuration(monkeypatch):
     job = session.query(ScanJob).one()
     assert job.tenant_id == "tenant-acme"
     assert published[0]["tenant_id"] == "tenant-acme"
+    assert job.job_type == published[0]["job_type"] == "MONITOR_REPOSITORY"
 
 
 def test_repo_runner_explicit_config_tenant_wins(monkeypatch):

@@ -193,9 +193,9 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
             report = resolve_settings_secrets(strict=True)
             if report.get("resolved"):
-                logger.info("secrets_resolved",
-                            extra={"count": report["resolved"],
-                                   "fields": report["resolved_fields"]})
+                logger.info(
+                    "secrets_resolved", extra={"count": report["resolved"], "fields": report["resolved_fields"]}
+                )
         except Exception as exc:
             logger.error("secret_resolution_failed", extra={"error": str(exc)})
             raise
@@ -249,16 +249,12 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             redis_sync = None
             try:
                 if settings.REDIS_URL:
-                    import redis as _redis
+                    from api.events.redis_backend import realtime_redis_client
                     from api.events.bus import get_event_bus
                     from api.events.redis_sync import start_redis_federation
 
-                    rclient = _redis.Redis.from_url(
-                        settings.REDIS_URL, socket_timeout=2, socket_connect_timeout=2
-                    )
-                    redis_sync = start_redis_federation(
-                        rclient, get_event_bus(), required=settings.is_production
-                    )
+                    rclient = realtime_redis_client(settings)
+                    redis_sync = start_redis_federation(rclient, get_event_bus(), required=settings.is_production)
                     if redis_sync is None or not getattr(redis_sync, "ready", False):
                         if settings.is_production:
                             raise RuntimeError("Redis realtime federation did not become ready")
@@ -271,7 +267,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                     from api.live_scan.orchestrator import get_scan_orchestrator
 
                     get_scan_orchestrator().set_status_store(
-                        get_current_run_store(settings.REDIS_URL, required=settings.is_production)
+                        get_current_run_store(settings.REDIS_URL, required=settings.is_production, client=rclient)
                     )
             except Exception as exc:  # noqa: BLE001 — production must not run realtime-degraded
                 if settings.is_production:
@@ -345,13 +341,14 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.state.evidence_pack = None
     _sink = _os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data")
     app.state.traces = _TraceStore(
-        sink_path=None if settings.ENVIRONMENT.lower() in {"test", "testing"}
+        sink_path=None
+        if settings.ENVIRONMENT.lower() in {"test", "testing"}
         else Path(_sink) / "traces" / "spans.jsonl",
-        otlp_endpoint=_os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"))
+        otlp_endpoint=_os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    )
     from api.middleware.observability_middleware import ObservabilityMiddleware
 
-    app.add_middleware(ObservabilityMiddleware,
-                       registry=app.state.metrics, traces=app.state.traces)
+    app.add_middleware(ObservabilityMiddleware, registry=app.state.metrics, traces=app.state.traces)
     # ABAC scope enforcement runs just inside the auth gate on EVERY route.
     # It is a no-op unless ABAC_ENFORCED is set (and grants are provisioned),
     # so test/dev installs keep working while large-bank deployments get

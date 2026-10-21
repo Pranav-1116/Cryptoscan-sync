@@ -25,10 +25,12 @@ class JobRepository(BaseRepository[ScanJob]):
 
     def create(self, obj=None, **kwargs):
         if obj is not None and not kwargs:
-            return super().create(obj)
+            created = super().create(obj)
+            from db.repositories.queued_authority import pin_authority
+
+            pin_authority(self.session, created)
+            return created
         payload = dict(kwargs)
-        if obj is not None and hasattr(obj, "__dict__") and not payload:
-            return super().create(obj)
         if "job_id" in payload:
             payload["id"] = payload.pop("job_id")
         allowed = {
@@ -48,7 +50,11 @@ class JobRepository(BaseRepository[ScanJob]):
             "tenant_id",
         }
         job = ScanJob(**{k: v for k, v in payload.items() if k in allowed})
-        return super().create(job)
+        created = super().create(job)
+        from db.repositories.queued_authority import pin_authority
+
+        pin_authority(self.session, created)
+        return created
 
     def create_job(
         self,
@@ -69,7 +75,12 @@ class JobRepository(BaseRepository[ScanJob]):
             status="QUEUED",
             tenant_id=tenant_id,
         )
-        return self.create(job)
+        return self.create(
+            **{
+                key: getattr(job, key)
+                for key in ("job_type", "target_repo", "target_branch", "target_commit", "triggered_by", "tenant_id")
+            }
+        )
 
     #: statuses a settled job must not silently leave. A non-forced update
     #: that would move a job out of one of these is a lost-update race
@@ -126,8 +137,7 @@ class JobRepository(BaseRepository[ScanJob]):
         if not rowcount:
             logger.warning(
                 "job_status_conflict_version",
-                extra={"job_id": job_id, "from": current.status, "to": status,
-                       "version": current.version},
+                extra={"job_id": job_id, "from": current.status, "to": status, "version": current.version},
             )
             # No rollback: the UPDATE matched zero rows, so the session has
             # nothing pending from this statement and the caller's other
@@ -173,7 +183,8 @@ class JobRepository(BaseRepository[ScanJob]):
                 stmt = stmt.where(ScanJob.tenant_id == owner)
             rows = self.session.execute(stmt).scalars().all()
             return [
-                row for row in rows
+                row
+                for row in rows
                 if str(((row.progress or {}).get("scan_options") or {}).get(key) or "") == str(value)
             ]
 

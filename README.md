@@ -67,8 +67,12 @@ and pre-queue filtering. The subsequent
 [estate streams/GraphQL/export delivery](docs/bank-environment/42-estate-streams-graphql-and-exports.md)
 adds retained per-estate pagination and closes the reviewed cross-surface history
 reads. [Broader qualification](docs/bank-environment/43-a01-a02-qualification-and-open-blockers.md)
-records real standalone Redis evidence, restricted aggregates/plugin discovery,
-SSH preflight and two explicitly failing queued-authority controls.
+records the historical standalone Redis evidence and original queued-authority
+blockers. [Persisted queue authority and durable SSH](docs/bank-environment/44-queued-authority-and-durable-ssh.md)
+now close those two controls locally and add stored SSH results/status.
+[Verified Redis TLS/ACL/Sentinel qualification](docs/bank-environment/45-redis-tls-sentinel-qualification.md)
+adds command readiness, subscriber recovery, primary-bound replay resets and a
+destructive disposable lab, not production deployment certification.
 **A01 and A02 remain partial; production safety is not certified.**
 
 

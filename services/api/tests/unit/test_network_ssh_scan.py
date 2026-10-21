@@ -9,6 +9,26 @@ from api.dependencies import get_current_user
 from api.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def receipt_database():
+    # Wire the now-durable findings endpoint to real isolated SQL. Auth/estate
+    # resolution remains separately pinned by this wire-shape test module.
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+    from db.connection.session import Base, SessionLocal, configure_session
+    import db.models  # noqa: F401 — register receipt models
+
+    previous = SessionLocal.kw.get("bind")
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    configure_session(engine)
+    try:
+        yield
+    finally:
+        SessionLocal.configure(bind=previous)
+        engine.dispose()
+
+
 def _fake_finding(endpoint, status="OK", issues=None, observed=None):
     return {
         "endpoint": endpoint,
@@ -52,6 +72,7 @@ async def test_ssh_scan_endpoint(monkeypatch):
     # These tests exercise wire finding projection with admission DB seams
     # pinned above. Actual selected-estate authority is covered separately.
     from api.security.network_collection import network_context
+
     app.dependency_overrides[network_context] = lambda: None
     app.dependency_overrides[get_current_user] = lambda: "testuser"
     transport = ASGITransport(app=app)
@@ -85,6 +106,7 @@ async def test_ssh_scan_requires_hosts():
     # These tests exercise wire finding projection with admission DB seams
     # pinned above. Actual selected-estate authority is covered separately.
     from api.security.network_collection import network_context
+
     app.dependency_overrides[network_context] = lambda: None
     app.dependency_overrides[get_current_user] = lambda: "testuser"
     transport = ASGITransport(app=app)
@@ -126,6 +148,7 @@ async def test_ssh_scan_includes_kex_offer(monkeypatch):
     # These tests exercise wire finding projection with admission DB seams
     # pinned above. Actual selected-estate authority is covered separately.
     from api.security.network_collection import network_context
+
     app.dependency_overrides[network_context] = lambda: None
     app.dependency_overrides[get_current_user] = lambda: "testuser"
     transport = ASGITransport(app=app)

@@ -113,7 +113,7 @@ def test_production_accepts_strong_config():
         AUDITOR_API_KEY="a" * 32,
         NEO4J_URI="bolt://neo4j:7687",
         NEO4J_PASSWORD="n" * 24,
-        REDIS_URL="redis://redis:6379/0",
+        REDIS_URL="rediss://replay:qualified-secret@redis:6379/0",
         ALLOW_SQLITE=False,
         ALLOW_INSECURE_CORS=False,
         DOCS_ENABLED=False,

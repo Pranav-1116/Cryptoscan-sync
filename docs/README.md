@@ -67,6 +67,12 @@ coverage, regional security/operations, failure qualification, engineering
 priorities and a fictional multinational assessment. It distinguishes current
 code from proposed controls and does not change readiness or supported topology.
 
+Recent bank-boundary engineering is documented in
+[queued authority and durable SSH receipts](bank-environment/44-queued-authority-and-durable-ssh.md)
+and [Redis TLS/ACL/Sentinel qualification](bank-environment/45-redis-tls-sentinel-qualification.md).
+The latter includes executable destructive disposable-lab instructions and an
+explicit production acceptance checklist; passing local fixtures is not bank certification.
+
 ## Start here
 
 | Doc | What it covers |

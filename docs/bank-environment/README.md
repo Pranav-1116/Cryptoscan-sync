@@ -51,8 +51,13 @@ privacy. [Guide 42 — estate streams, GraphQL and exports](42-estate-streams-gr
 supersedes the global-window replay limitation with paginated retained estate
 journals and explicit gaps/resets, and isolates the reviewed cross-surface reads.
 [Guide 43 — broader A01/A02 qualification](43-a01-a02-qualification-and-open-blockers.md)
-records local/real-Redis evidence, deliberate restrictions and two known queued
-authority failures. Neither guide declares enterprise deployment qualified.
+records historical local/real-Redis evidence and the original queued-authority
+failures. [Guide 44 — persisted queue authority and durable SSH](44-queued-authority-and-durable-ssh.md)
+implements those controls and stored SSH receipts.
+[Guide 45 — Redis TLS/ACL/Sentinel qualification](45-redis-tls-sentinel-qualification.md)
+adds verified transport, actual command readiness, primary-bound replay resets,
+subscriber recovery and an executable disposable lab. These are local engineering
+increments, not enterprise deployment certification.
 
 ## Read in order
 
@@ -101,6 +106,8 @@ authority failures. Neither guide declares enterprise deployment qualified.
 | [41 — Exact-estate WebSocket history](41-exact-estate-websocket-history.md) | How do binary/event sockets establish and recheck authority, filter before queueing and report bounded replay without exposing other estates? |
 | [42 — Estate streams, GraphQL, exports and replay](42-estate-streams-graphql-and-exports.md) | How do owner-partitioned cursors, handoff/recovery, exact GraphQL/export reads and fail-closed aggregates work? |
 | [43 — Broader A01/A02 qualification and blockers](43-a01-a02-qualification-and-open-blockers.md) | What passed locally/against standalone Redis, what is refused, and which queued/SSH/regional/HA controls remain unqualified? |
+| [44 — Persisted queue authority and durable SSH](44-queued-authority-and-durable-ssh.md) | How are forged descriptors refused, initiating authority rechecked, legacy queues upgraded and SSH attempts/results stored? |
+| [45 — Redis TLS/ACL/Sentinel qualification](45-redis-tls-sentinel-qualification.md) | How do verified transport, command readiness, subscriber recovery, failover cursor resets and the destructive local lab work without claiming production certification? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

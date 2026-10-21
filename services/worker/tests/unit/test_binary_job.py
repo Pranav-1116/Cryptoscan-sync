@@ -4,6 +4,7 @@ These tests run the real scanner against a real (tiny) ELF and the real artifact
 store in a temporary directory — no mocked scan — so they fail if the job path
 and the synchronous endpoint ever drift apart.
 """
+
 from __future__ import annotations
 
 import json
@@ -75,9 +76,11 @@ def test_executor_routes_binary_targets_to_the_binary_job(monkeypatch):
     # with UnboundExecutionError instead of asserting anything about routing.
     # The gate's own fail-closed behaviour is pinned in test_execution_gate.py
     # and the refusal path in the tests below.
-    monkeypatch.setattr("worker.core.job_executor.gate_job",
-                        lambda job, repository_target: (True, None))
+    monkeypatch.setattr("worker.core.job_executor.gate_job", lambda job, repository_target: (True, None))
     monkeypatch.setattr("worker.pipeline.binary_job.run_binary_job", fake_binary)
+    # Routing/scope seam only; real persisted authority has its own contracts.
+    monkeypatch.setattr("worker.core.job_executor.reconcile", lambda job: job)
+    monkeypatch.setattr("worker.core.job_executor.claim", lambda job: None)
     executor = JobExecutor()
     executor.runner = Boom()
     job = ScanJob(job_id="j-bin", target_repo="binary:///tmp/somewhere", job_type="BINARY")
@@ -94,16 +97,23 @@ def test_binary_job_scans_stores_and_reports_the_artifact(monkeypatch, tmp_path)
     rules = tmp_path / "rules"
     rules.mkdir()
     (rules / "vendor.yar").write_text(
-        'rule vendor_build : vendor { meta: severity = "HIGH" '
-        'strings: $a = "acme-vendor-build" condition: $a }', "utf-8")
+        'rule vendor_build : vendor { meta: severity = "HIGH" strings: $a = "acme-vendor-build" condition: $a }',
+        "utf-8",
+    )
 
     job = ScanJob(
         job_id="j-binary-1",
         target_repo=f"binary://{target}",
         triggered_by="operator",
         job_type="BINARY",
-        progress={"scan_options": {"format": "cyclonedx", "recursive": True,
-                                   "yara_rules": [str(rules)], "artifact_id": "art-1"}},
+        progress={
+            "scan_options": {
+                "format": "cyclonedx",
+                "recursive": True,
+                "yara_rules": [str(rules)],
+                "artifact_id": "art-1",
+            }
+        },
     )
     assert binary_job.run_binary_job(job) is True
 
@@ -129,8 +139,9 @@ def test_every_progress_write_keeps_the_scan_options(monkeypatch, tmp_path):
     target.mkdir()
     (target / "boot.bin").write_bytes(_elf64())
     options = {"format": "spdx", "yara_rules": [], "artifact_id": "art-2"}
-    job = ScanJob(job_id="j-binary-2", target_repo=f"binary://{target}",
-                  job_type="BINARY", progress={"scan_options": options})
+    job = ScanJob(
+        job_id="j-binary-2", target_repo=f"binary://{target}", job_type="BINARY", progress={"scan_options": options}
+    )
     assert binary_job.run_binary_job(job) is True
     assert writes, "the job must report progress"
     for _job_id, _status, progress, _error in writes:
@@ -144,17 +155,22 @@ def test_the_queued_artifact_is_signed_and_verifiable(monkeypatch, tmp_path):
     from devsecops import sbom_scan as sb
 
     _wire(monkeypatch, tmp_path)
-    monkeypatch.setattr("worker.pipeline.binary_job._signing_secret",
-                        lambda session: ("unit-test-secret", "tests"))
+    monkeypatch.setattr("worker.pipeline.binary_job._signing_secret", lambda session: ("unit-test-secret", "tests"))
     target = tmp_path / "signed"
     target.mkdir()
     (target / "lib.so").write_bytes(_elf64())
-    job = ScanJob(job_id="22222222-3333-4444-5555-666666666666",
-                  target_repo=f"binary://{target}", job_type="BINARY",
-                  progress={"scan_options": {}})
+    job = ScanJob(
+        job_id="22222222-3333-4444-5555-666666666666",
+        target_repo=f"binary://{target}",
+        job_type="BINARY",
+        progress={"scan_options": {}},
+    )
     assert binary_job.run_binary_job(job) is True
-    manifest_path = next(p for p in (tmp_path / "sboms").iterdir()
-                         if p.name.endswith("22222222-3333-4444-5555-666666666666.cdx.json.manifest.json"))
+    manifest_path = next(
+        p
+        for p in (tmp_path / "sboms").iterdir()
+        if p.name.endswith("22222222-3333-4444-5555-666666666666.cdx.json.manifest.json")
+    )
     manifest = json.loads(manifest_path.read_text("utf-8"))
     assert manifest["signature_alg"] == "HMAC-SHA256"
     assert manifest["signature_key"] == "tests"
@@ -168,9 +184,12 @@ def test_the_artifact_is_keyed_by_the_job_so_a_retry_overwrites_it(monkeypatch, 
     target = tmp_path / "release"
     target.mkdir()
     (target / "libpay.so").write_bytes(_elf64())
-    job = ScanJob(job_id="11111111-2222-3333-4444-555555555555",
-                  target_repo=f"binary://{target}", job_type="BINARY",
-                  progress={"scan_options": {}})
+    job = ScanJob(
+        job_id="11111111-2222-3333-4444-555555555555",
+        target_repo=f"binary://{target}",
+        job_type="BINARY",
+        progress={"scan_options": {}},
+    )
     assert binary_job.run_binary_job(job) is True
     first = sorted(p.name for p in (tmp_path / "sboms").iterdir())
     assert binary_job.run_binary_job(job) is True
@@ -182,8 +201,12 @@ def test_the_artifact_is_keyed_by_the_job_so_a_retry_overwrites_it(monkeypatch, 
 def test_binary_job_fails_closed_when_the_target_is_gone(monkeypatch, tmp_path, caplog):
     """A missing target is FAILED; the detailed path stays in worker logs."""
     writes = _wire(monkeypatch, tmp_path)
-    job = ScanJob(job_id="j-binary-3", target_repo=f"binary://{tmp_path}/not-there",
-                  job_type="BINARY", progress={"scan_options": {"artifact_id": "art-3"}})
+    job = ScanJob(
+        job_id="j-binary-3",
+        target_repo=f"binary://{tmp_path}/not-there",
+        job_type="BINARY",
+        progress={"scan_options": {"artifact_id": "art-3"}},
+    )
     assert binary_job.run_binary_job(job) is False
     status, progress, error = writes[-1][1], writes[-1][2], writes[-1][3]
     assert status == "FAILED"
@@ -196,8 +219,9 @@ def test_binary_job_fails_closed_when_the_target_is_gone(monkeypatch, tmp_path, 
 def test_binary_job_refuses_a_target_outside_the_source_roots(monkeypatch, tmp_path):
     """The worker re-validates the path: a job row is data, not a permission."""
     writes = _wire(monkeypatch, tmp_path)
-    job = ScanJob(job_id="j-binary-4", target_repo="binary:///etc/ssl",
-                  job_type="BINARY", progress={"scan_options": {}})
+    job = ScanJob(
+        job_id="j-binary-4", target_repo="binary:///etc/ssl", job_type="BINARY", progress={"scan_options": {}}
+    )
     assert binary_job.run_binary_job(job) is False
     error = writes[-1][3] or ""
     assert error == "Binary scan failed at stage binary_target"
@@ -212,8 +236,12 @@ def test_binary_job_exception_stays_out_of_public_fields(monkeypatch, tmp_path, 
         raise RuntimeError(sentinel)
 
     monkeypatch.setattr(binary_job, "_run", fail_at_store)
-    job = ScanJob(job_id="j-binary-error", target_repo=f"binary://{tmp_path}",
-                  job_type="BINARY", progress={"scan_options": {"artifact_id": "art-error"}})
+    job = ScanJob(
+        job_id="j-binary-error",
+        target_repo=f"binary://{tmp_path}",
+        job_type="BINARY",
+        progress={"scan_options": {"artifact_id": "art-error"}},
+    )
     assert binary_job.run_binary_job(job) is False
     assert writes[-1][1] == "FAILED"
     assert writes[-1][2]["current_stage"] == "binary_store"
@@ -231,10 +259,15 @@ def test_cbom_ingest_exception_is_not_persisted_in_completed_artifact(monkeypatc
     target = tmp_path / "bundle"
     target.mkdir()
     (target / "tool.so").write_bytes(_elf64())
-    monkeypatch.setattr("api.routers.cbom.ingest_document",
-                        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError(sentinel)))
-    job = ScanJob(job_id="j-binary-ingest", target_repo=f"binary://{target}", job_type="BINARY",
-                  progress={"scan_options": {"ingest_cbom": True, "artifact_id": "art-ingest"}})
+    monkeypatch.setattr(
+        "api.routers.cbom.ingest_document", lambda **_kwargs: (_ for _ in ()).throw(RuntimeError(sentinel))
+    )
+    job = ScanJob(
+        job_id="j-binary-ingest",
+        target_repo=f"binary://{target}",
+        job_type="BINARY",
+        progress={"scan_options": {"ingest_cbom": True, "artifact_id": "art-ingest"}},
+    )
     assert binary_job.run_binary_job(job) is True
     assert writes[-1][1] == "COMPLETED"
     assert writes[-1][2]["binary"]["cbom_ingested"] is False
@@ -250,10 +283,15 @@ def test_a_cbom_ingest_failure_does_not_lose_the_artifact(monkeypatch, tmp_path)
     target = tmp_path / "bundle"
     target.mkdir()
     (target / "tool.so").write_bytes(_elf64())
-    monkeypatch.setattr("worker.pipeline.binary_job._ingest_cbom",
-                        lambda *a, **k: {"ingested": False, "error": "inventory unavailable"})
-    job = ScanJob(job_id="j-binary-5", target_repo=f"binary://{target}", job_type="BINARY",
-                  progress={"scan_options": {"ingest_cbom": True, "artifact_id": "art-5"}})
+    monkeypatch.setattr(
+        "worker.pipeline.binary_job._ingest_cbom", lambda *a, **k: {"ingested": False, "error": "inventory unavailable"}
+    )
+    job = ScanJob(
+        job_id="j-binary-5",
+        target_repo=f"binary://{target}",
+        job_type="BINARY",
+        progress={"scan_options": {"ingest_cbom": True, "artifact_id": "art-5"}},
+    )
     assert binary_job.run_binary_job(job) is True
     status, progress = writes[-1][1], writes[-1][2]
     assert status == "COMPLETED"
@@ -267,8 +305,12 @@ def test_a_walk_with_nothing_parseable_says_so(monkeypatch, tmp_path):
     target = tmp_path / "notes"
     target.mkdir()
     (target / "readme.txt").write_text("nothing binary here", "utf-8")
-    job = ScanJob(job_id="j-binary-6", target_repo=f"binary://{target}", job_type="BINARY",
-                  progress={"scan_options": {"artifact_id": "art-6"}})
+    job = ScanJob(
+        job_id="j-binary-6",
+        target_repo=f"binary://{target}",
+        job_type="BINARY",
+        progress={"scan_options": {"artifact_id": "art-6"}},
+    )
     assert binary_job.run_binary_job(job) is True
     note = writes[-1][2]["binary"]["note"]
     assert note and "walked" in note and "none was a format" in note

@@ -9,6 +9,19 @@ here from refused execution profiles, known failing controls and external tests
 that were not run. The original ten implementation steps and six-BOM semantics
 remain as documented; this increment does not retroactively certify them.
 
+## Subsequent delivery — read before interpreting the blockers
+
+This guide is the **historical** ledger for the preceding increment. Its two
+queued-authority strict failures and response-only SSH limitation are superseded
+by [Guide 44](44-queued-authority-and-durable-ssh.md): persisted descriptor
+reconciliation, pinned/current initiating authority, compare-and-set claims and
+durable SSH jobs/results. [Guide 45](45-redis-tls-sentinel-qualification.md) adds
+verified TLS/ACL/Sentinel controls, primary-bound replay resets, subscriber
+recovery and executed disposable real-server qualification. Historical failing
+counts below are retained honestly, not current unresolved implementation claims.
+Positive scope grants, distributed budgets, region binding and actual production
+HA/security acceptance are still open. A01/A02 are not declared closed.
+
 ## 1. What was actually added
 
 ### A02 — reviewed history/export boundary

@@ -111,6 +111,9 @@ def db_env(monkeypatch):
 
     monkeypatch.setattr(connection, "SessionLocal", factory)
     session = factory()
+    from db.models.user import User
+
+    session.add(User(id="actor-alice", username="alice", password_hash="unused", roles="admin", is_active=True))
     session.add(
         ScanJobRow(
             id="job-1",
@@ -119,6 +122,7 @@ def db_env(monkeypatch):
             target_branch="main",
             triggered_by="alice",
             status="QUEUED",
+            progress={"execution_authority": {"v": 1, "kind": "user", "id": "actor-alice"}},
         )
     )
     session.commit()
@@ -170,4 +174,5 @@ def test_permitted_job_proceeds_to_the_pipeline(db_env, monkeypatch, tmp_path):
     result = executor.execute(_job(str(repo_dir)))
     assert result is True
     row = session.query(ScanJobRow).filter_by(id="job-1").one()
-    assert row.status == "QUEUED", "gate does not touch the row when it permits"
+    session.expire_all()
+    assert row.status == "RUNNING", "permitted execution claims the queued row before dispatch"

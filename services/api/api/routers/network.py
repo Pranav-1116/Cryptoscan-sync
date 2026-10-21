@@ -13,7 +13,16 @@ from datetime import datetime, timezone
 from api.dependencies import TenantContext, get_current_user, get_db_session, require_auditor
 from api.security.estate_history import history_context
 from api.security.audit_diff import write_audited_diff
-from api.security.network_collection import (NetworkHostRequest, admit_network, checked_hosts, meter_network, network_run, persist_network, network_coverage, network_context)
+from api.security.network_collection import (
+    NetworkHostRequest,
+    admit_network,
+    checked_hosts,
+    meter_network,
+    network_run,
+    persist_network,
+    network_coverage,
+    network_context,
+)
 from db.tenancy import current_tenant
 from db.repositories.certificate_repository import CertificateRepository
 from db.repositories.intelligence_repository import IntelligenceRepository
@@ -65,8 +74,8 @@ class FilesystemTlsRequest(BaseModel):
 
 
 class CertificateRenewalUpdate(BaseModel):
-    status: str                 # NONE | PLANNED | IN_PROGRESS | DONE
-    ticket: str | None = None   # change-management reference
+    status: str  # NONE | PLANNED | IN_PROGRESS | DONE
+    ticket: str | None = None  # change-management reference
     note: str | None = None
 
 
@@ -135,23 +144,25 @@ def list_composite_certificates(
         scheme_counts[composite.get("scheme") or "unknown"] = (
             scheme_counts.get(composite.get("scheme") or "unknown", 0) + 1
         )
-        entries.append({
-            "fingerprint_sha256": row.fingerprint_sha256,
-            "subject": row.subject,
-            "issuer": row.issuer,
-            "not_after": row.not_after.isoformat() if row.not_after else None,
-            "days_until_expiry": row.days_until_expiry,
-            "public_key_algorithm": row.public_key_algorithm,
-            "composite": composite,
-        })
+        entries.append(
+            {
+                "fingerprint_sha256": row.fingerprint_sha256,
+                "subject": row.subject,
+                "issuer": row.issuer,
+                "not_after": row.not_after.isoformat() if row.not_after else None,
+                "days_until_expiry": row.days_until_expiry,
+                "public_key_algorithm": row.public_key_algorithm,
+                "composite": composite,
+            }
+        )
     return {
         "model": "composite-certificates/read-projection-v1",
         "count": len(entries),
         "scheme_counts": scheme_counts,
         "certificates": entries,
         "detection": "registered composite OID arcs (2.16.840.1.114027.80/81/82) "
-                     "and the composite name registry; unknown identifiers are "
-                     "not reported as composite",
+        "and the composite name registry; unknown identifiers are "
+        "not reported as composite",
     }
 
 
@@ -166,10 +177,15 @@ def update_certificate_renewal(
     repo = CertificateRepository(db)
     try:
         current = repo.get_by_fingerprint(fingerprint)
-        before = ({"renewal_status": current.renewal_status,
-                   "renewal_ticket": current.renewal_ticket,
-                   "renewal_note": current.renewal_note}
-                  if current is not None else {})
+        before = (
+            {
+                "renewal_status": current.renewal_status,
+                "renewal_ticket": current.renewal_ticket,
+                "renewal_note": current.renewal_note,
+            }
+            if current is not None
+            else {}
+        )
         row = repo.update_renewal(fingerprint, body.status, ticket=body.ticket, note=body.note)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
@@ -179,11 +195,17 @@ def update_certificate_renewal(
     # field-level audit diff (audit 78): the renewal workflow changes state,
     # so the change is audited like every other mutation
     write_audited_diff(
-        db, user, "certificate.renewal_update", target_type="certificate",
-        target_id=row.fingerprint_sha256, before=before,
-        after={"renewal_status": row.renewal_status,
-               "renewal_ticket": row.renewal_ticket,
-               "renewal_note": row.renewal_note},
+        db,
+        user,
+        "certificate.renewal_update",
+        target_type="certificate",
+        target_id=row.fingerprint_sha256,
+        before=before,
+        after={
+            "renewal_status": row.renewal_status,
+            "renewal_ticket": row.renewal_ticket,
+            "renewal_note": row.renewal_note,
+        },
     )
     return {
         "fingerprint_sha256": row.fingerprint_sha256,
@@ -212,8 +234,7 @@ def certificate_expiry_calendar(
     rows = CertificateRepository(db).list_all()
     certs = [row.to_dict() for row in rows]
     if not include_renewed:
-        certs = [c for c in certs if (c.get("renewal_status") or "").lower() not in
-                 ("renewed", "completed", "done")]
+        certs = [c for c in certs if (c.get("renewal_status") or "").lower() not in ("renewed", "completed", "done")]
     calendar = build_expiry_calendar(certs)
     # return the summary counts/tier structure plus entries; drop nothing
     return calendar
@@ -254,21 +275,32 @@ def list_due(user: str = Depends(get_current_user), db: Session = Depends(get_db
 
 
 @router.post("/network/run-due")
-def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_session), _ctx=Depends(network_context)):
+def run_due(
+    user: str = Depends(get_current_user), db: Session = Depends(get_db_session), _ctx=Depends(network_context)
+):
     # A bank may read shared platform inventory, but cannot execute/advance
     # platform-owned or foreign scheduled work. Select the exact estate.
     from db.models.network_scan_target import NetworkScanTarget
+
     rows = db.query(NetworkScanTarget).filter(NetworkScanTarget.tenant_id == current_tenant()).all()
     due = due_targets([row.to_dict() for row in rows])
     if not due:
         # No executor and no run, but stop/outage policy still applies.
         from api.security.scan_admission import admit_scan
+
         admit_scan(active_probing_requested=True)
         return {"scanned": 0, "findings": []}
     hosts = checked_hosts([item["endpoint"] for item in due if item.get("endpoint")])
     admission = admit_network(hosts)
     meter_network(db, hosts)
-    with network_run(db, user=user, target=",".join(hosts)[:2000], admission=admission, kind="scheduled", profile={"workers": 8, "timeout": 5.0, "scan_versions": False, "scan_ciphers": False}) as run:
+    with network_run(
+        db,
+        user=user,
+        target=",".join(hosts)[:2000],
+        admission=admission,
+        kind="scheduled",
+        profile={"workers": 8, "timeout": 5.0, "scan_versions": False, "scan_ciphers": False},
+    ) as run:
         result = NetworkTlsScanner(live=True, workers=8).scan_hosts(hosts)
         result = persist_network(db, result, run, kind="scheduled")
         # An unsuccessful/incomplete probe is not fresh observation. Keep the
@@ -276,7 +308,11 @@ def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_
         # Weak-crypto findings may make a fully observed batch PARTIAL; that
         # is a fresh observation, not a safe posture or a reason to retry-spin.
         telemetry = result.get("probe_telemetry") or {}
-        if telemetry.get("status") in {"OK", "PARTIAL"} and telemetry.get("probed") == len(hosts) and telemetry.get("ok") == len(hosts):
+        if (
+            telemetry.get("status") in {"OK", "PARTIAL"}
+            and telemetry.get("probed") == len(hosts)
+            and telemetry.get("ok") == len(hosts)
+        ):
             now = datetime.now(timezone.utc)
             for row in rows:
                 if row.endpoint in {item["endpoint"] for item in due}:
@@ -289,7 +325,9 @@ def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_
 
 class SubnetDiscoverRequest(BaseModel):
     cidr: str
-    ports: list[Annotated[int, Field(ge=1, le=65535)]] = Field(default_factory=list, max_length=64)  # empty => DEFAULT_PORTS
+    ports: list[Annotated[int, Field(ge=1, le=65535)]] = Field(
+        default_factory=list, max_length=64
+    )  # empty => DEFAULT_PORTS
     timeout: float = Field(default=1.5, gt=0, le=30, allow_inf_nan=False)
     scan: bool = True
     register: bool = False  # upsert discovered endpoints into the due-scan rotation
@@ -338,7 +376,14 @@ def discover_subnet_endpoints(
     authorized, auth_reason = authorize_network_sweep(safe_cidr)
     if not authorized:
         raise HTTPException(403, detail={"error": "target_outside_authorized_scope", "reason": auth_reason})
-    with network_run(db, user=user, target=safe_cidr, admission=admission, kind="discovery", profile={**body.model_dump(exclude={"cidr"}), "ports": ports, "workers": body.workers or 8}) as run:
+    with network_run(
+        db,
+        user=user,
+        target=safe_cidr,
+        admission=admission,
+        kind="discovery",
+        profile={**body.model_dump(exclude={"cidr"}), "ports": ports, "workers": body.workers or 8},
+    ) as run:
         result = discover_subnet(safe_cidr, ports, timeout=body.timeout, workers=body.workers or 8)
         if result.get("error"):
             raise HTTPException(422, detail="Network discovery could not evaluate the requested scope")
@@ -346,6 +391,7 @@ def discover_subnet_endpoints(
         # A sweep is not authorization for a subsequent TLS phase. Re-read
         # policy, validate all discovered endpoints, and check containment.
         import ipaddress
+
         scope = ipaddress.ip_network(safe_cidr)
         for endpoint in endpoints:
             host = endpoint.rsplit(":", 1)[0].strip("[]")
@@ -358,22 +404,37 @@ def discover_subnet_endpoints(
             # direct/due paths do in their initial durable-job commit.
             db.commit()
             scanned = NetworkTlsScanner(live=True, workers=body.workers or 8).scan_hosts(
-                endpoints, scan_versions=body.scan_versions, scan_ciphers=body.scan_ciphers,
-                check_renegotiation=body.check_renegotiation, check_chain_sent=body.check_chain_sent,
+                endpoints,
+                scan_versions=body.scan_versions,
+                scan_ciphers=body.scan_ciphers,
+                check_renegotiation=body.check_renegotiation,
+                check_chain_sent=body.check_chain_sent,
                 live_revocation=body.live_revocation,
             )
-            stored = persist_network(db, {**scanned, "discovery": result}, run, kind="discovery_tls", phase_admission=tls_admission)
-            result = {**result, "scan": {key: scanned.get(key) for key in ("probe_telemetry", "certificates", "alerts")},
-                      "job_id": stored["job_id"], "run_id": stored["run_id"], "probe_telemetry": scanned.get("probe_telemetry")}
+            stored = persist_network(
+                db, {**scanned, "discovery": result}, run, kind="discovery_tls", phase_admission=tls_admission
+            )
+            result = {
+                **result,
+                "scan": {key: scanned.get(key) for key in ("probe_telemetry", "certificates", "alerts")},
+                "job_id": stored["job_id"],
+                "run_id": stored["run_id"],
+                "probe_telemetry": scanned.get("probe_telemetry"),
+            }
         else:
             # Discovery is durable but does not masquerade as a TLS probe.
             result = persist_network(db, result, run, kind="discovery")
         if body.register and endpoints:
             admit_network(endpoints, protocol="tcp")
             from network_scanner.discovery.registration import register_targets
+
             intel = IntelligenceRepository(db)
-            result["registration"] = register_targets(intel, endpoints, scan_frequency=body.scan_frequency,
-                                                       existing={row.endpoint for row in intel.list_targets()})
+            result["registration"] = register_targets(
+                intel,
+                endpoints,
+                scan_frequency=body.scan_frequency,
+                existing={row.endpoint for row in intel.list_targets()},
+            )
         run.succeed(coverage=network_coverage(result))
     return result
 
@@ -388,8 +449,13 @@ class SshScanRequest(BaseModel):
 
 
 @router.post("/network/ssh-scan")
-def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user), _ctx=Depends(network_context)):
-    """SSH host-key scan with optional TOFU baselines (no DB state kept)."""
+def scan_ssh_hosts(
+    body: SshScanRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+    _ctx=Depends(network_context),
+):
+    """Persist each admitted SSH attempt and its bounded host-key/KEX observations."""
     from network_scanner.probing.ssh_kex import probe_ssh_kex_offer
     from network_scanner.probing.ssh_keyscan import scan_ssh_host_keys, split_ssh_target, ssh_probe_telemetry
 
@@ -406,32 +472,63 @@ def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user), 
         raise HTTPException(422, detail="Invalid SSH target") from exc
     endpoints = checked_hosts(endpoints)
     admission = admit_network(endpoints, protocol="ssh")
-    baselines = body.known_host_keys or {}
-    findings = []
-    updated: dict[str, dict[str, str]] = dict(baselines)
-    for item in endpoints:
-        host, port = split_ssh_target(item)
-        endpoint = f"{host}:{port}"
-        finding = scan_ssh_host_keys(host, port, timeout=body.timeout, baseline=baselines.get(endpoint))
-        if body.include_kex:
-            offer = probe_ssh_kex_offer(host, port, timeout=body.timeout, strict=body.strict_kex)
-            finding["kex_offer"] = offer
-            merged = list(finding.get("policy_issues") or []) + list(offer.get("policy_issues") or [])
-            finding["policy_issues"] = sorted(set(merged))
-            if merged and not finding.get("compliance_issue"):
-                finding["compliance_issue"] = finding["policy_issues"][0]
-        findings.append(finding)
-        drift = finding.get("key_drift") or {}
-        if drift.get("observed"):
-            updated[endpoint] = {str(k): str(v) for k, v in drift["observed"].items()}
-    return {
-        "findings": findings,
-        "ssh_probe_telemetry": ssh_probe_telemetry(findings),
-        "known_host_keys": updated,
-        "admission": admission,
-        "collection": {"protocol": "ssh", "durable": False,
-                       "coverage": "HOST_KEY_AND_OPTIONAL_KEX_ONLY"},
-    }
+    with network_run(
+        db,
+        user=user,
+        target=",".join(endpoints),
+        admission=admission,
+        kind="ssh",
+        profile={**body.model_dump(exclude={"known_host_keys"}), "baseline_source": "CALLER_SUPPLIED_UNVERIFIED"},
+    ) as run:
+        try:
+            meter_network(db, endpoints, detail="admitted SSH host-key/KEX collection attempt")
+            baselines = body.known_host_keys or {}
+            findings = []
+            phases = []
+            updated: dict[str, dict[str, str]] = dict(baselines)
+            for item in endpoints:
+                host, port = split_ssh_target(item)
+                endpoint = f"{host}:{port}"
+                phases.append({"phase": "host_keys", "admission": admit_network([item], protocol="ssh")})
+                finding = scan_ssh_host_keys(host, port, timeout=body.timeout, baseline=baselines.get(endpoint))
+                if body.include_kex:
+                    phases.append({"phase": "kex", "admission": admit_network([item], protocol="ssh")})
+                    offer = probe_ssh_kex_offer(host, port, timeout=body.timeout, strict=body.strict_kex)
+                    finding["kex_offer"] = offer
+                    merged = list(finding.get("policy_issues") or []) + list(offer.get("policy_issues") or [])
+                    finding["policy_issues"] = sorted(set(merged))
+                    if merged and not finding.get("compliance_issue"):
+                        finding["compliance_issue"] = finding["policy_issues"][0]
+                findings.append(finding)
+                drift = finding.get("key_drift") or {}
+                if drift.get("observed"):
+                    updated[endpoint] = {str(k): str(v) for k, v in drift["observed"].items()}
+            telemetry = ssh_probe_telemetry(findings)
+            result = persist_network(
+                db,
+                {
+                    "findings": findings,
+                    "known_host_keys": updated,
+                    "ssh_probe_telemetry": telemetry,
+                    "probe_telemetry": telemetry,
+                    "admission": admission,
+                },
+                run,
+                kind="ssh",
+                phase_admission=phases,
+                collection_metadata={
+                    "protocol": "ssh",
+                    "durable": True,
+                    "coverage": "HOST_KEY_AND_OPTIONAL_KEX_ONLY",
+                    "baseline_source": "CALLER_SUPPLIED_UNVERIFIED",
+                },
+            )
+            run.succeed(coverage={**network_coverage(result), "protocol": "ssh"})
+            return result
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(503, detail="SSH collection/receipt unavailable; inspect the durable job") from exc
 
 
 class AlertDispatchRequest(BaseModel):
@@ -596,15 +693,30 @@ def check_revocation(cert_id: str, user: str = Depends(get_current_user), db: Se
 
 
 @router.post("/network/scan")
-def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session), _ctx=Depends(network_context)):
+def scan_network(
+    body: HostScanRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+    _ctx=Depends(network_context),
+):
     hosts = checked_hosts(body.hosts)
     admission = admit_network(hosts)
     meter_network(db, hosts)
-    with network_run(db, user=user, target=",".join(hosts)[:2000], admission=admission, profile={**body.model_dump(exclude={"hosts"}), "workers": body.workers or 8}) as run:
+    with network_run(
+        db,
+        user=user,
+        target=",".join(hosts)[:2000],
+        admission=admission,
+        profile={**body.model_dump(exclude={"hosts"}), "workers": body.workers or 8},
+    ) as run:
         result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers or 8).scan_hosts(
-            hosts, sni=body.sni, starttls=body.starttls,
-            scan_versions=body.scan_versions, scan_ciphers=body.scan_ciphers,
-            check_renegotiation=body.check_renegotiation, check_chain_sent=body.check_chain_sent,
+            hosts,
+            sni=body.sni,
+            starttls=body.starttls,
+            scan_versions=body.scan_versions,
+            scan_ciphers=body.scan_ciphers,
+            check_renegotiation=body.check_renegotiation,
+            check_chain_sent=body.check_chain_sent,
             live_revocation=body.live_revocation,
         )
         result = persist_network(db, result, run)
@@ -621,8 +733,7 @@ def scan_path(body: FilesystemTlsRequest, user: str = Depends(get_current_user),
 
         safe_path = validate_source_target(body.path, label="path")
     except TargetValidationError as exc:
-        raise HTTPException(status_code=400, detail={"error": "invalid_target",
-                                                     "field": "path", "reason": str(exc)})
+        raise HTTPException(status_code=400, detail={"error": "invalid_target", "field": "path", "reason": str(exc)})
     result = NetworkTlsScanner(live=body.live).scan_filesystem(safe_path)
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)
@@ -639,6 +750,7 @@ def scan_path(body: FilesystemTlsRequest, user: str = Depends(get_current_user),
 # Structured network inventory (devices, topology, configuration, services,
 # controls, WAN, monitoring, wireless, firmware and documentation).
 # ---------------------------------------------------------------------------
+
 
 @router.get("/network/inventory/schema")
 def network_inventory_schema(user: str = Depends(get_current_user)):
@@ -669,11 +781,8 @@ def validate_network_inventory(
     approval_issues = inventory_approval_issues(document)
     return {
         "valid": True,
-        "status_allowed": body.status != "APPROVED" or (
-            completeness["status"] == "COMPLETE"
-            and not approval_issues
-            and body.reviewed_by == user
-        ),
+        "status_allowed": body.status != "APPROVED"
+        or (completeness["status"] == "COMPLETE" and not approval_issues and body.reviewed_by == user),
         "completeness": completeness,
         "approval_issues": approval_issues,
         "content_sha256": inventory_hash(document),
@@ -807,17 +916,25 @@ def network_inventory_risk(
     from network_scanner.inventory.network_inventory import NetworkInventoryDocument, inventory_risk, parse_inventory
 
     revision = NetworkInventoryRepository(db).latest(inventory_id)
-    document = parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    document = (
+        parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    )
     result = inventory_risk(document)
-    result.update({
-        "inventory_id": inventory_id,
-        "revision": revision.revision if revision else None,
-        "profile_status": revision.status if revision else "DRAFT",
-        "posture": "RED" if result["risk_score"] >= 70 or result["status"] == "INCOMPLETE" else "AMBER" if result["risk_score"] >= 30 else "GREEN",
-        "reasons": [factor["reason"] for factor in result["factors"]],
-        "unknowns": list(result["completeness"]["missing"]),
-        "next_actions": list(result["completeness"]["next_actions"]),
-    })
+    result.update(
+        {
+            "inventory_id": inventory_id,
+            "revision": revision.revision if revision else None,
+            "profile_status": revision.status if revision else "DRAFT",
+            "posture": "RED"
+            if result["risk_score"] >= 70 or result["status"] == "INCOMPLETE"
+            else "AMBER"
+            if result["risk_score"] >= 30
+            else "GREEN",
+            "reasons": [factor["reason"] for factor in result["factors"]],
+            "unknowns": list(result["completeness"]["missing"]),
+            "next_actions": list(result["completeness"]["next_actions"]),
+        }
+    )
     return result
 
 
@@ -837,7 +954,10 @@ def discover_network_inventory(
     # protocols after the initial plan. A generic admission is not a receipt
     # for those destinations. Keep imports/engine construction behind a hard
     # refusal until phase admission + metering + durable receipts are wired.
-    raise HTTPException(409, detail="Enterprise/plugin discovery is not qualified for bounded admission; use bounded network scan/discovery or import a reviewed inventory")
+    raise HTTPException(
+        409,
+        detail="Enterprise/plugin discovery is not qualified for bounded admission; use bounded network scan/discovery or import a reviewed inventory",
+    )
 
 
 @router.get("/network/inventory/topology")
@@ -851,7 +971,9 @@ def get_network_inventory_topology(
     from network_scanner.inventory.network_inventory import NetworkInventoryDocument, parse_inventory, topology_graph
 
     revision = NetworkInventoryRepository(db).latest(inventory_id)
-    document = parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    document = (
+        parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    )
     result = topology_graph(document)
     result.update({"inventory_id": inventory_id, "revision": revision.revision if revision else None})
     return result
@@ -889,10 +1011,16 @@ def get_network_configuration_drift(
     db: Session = Depends(get_db_session),
 ):
     from db.repositories.network_inventory_repository import NetworkInventoryRepository
-    from network_scanner.inventory.network_inventory import NetworkInventoryDocument, configuration_drift, parse_inventory
+    from network_scanner.inventory.network_inventory import (
+        NetworkInventoryDocument,
+        configuration_drift,
+        parse_inventory,
+    )
 
     revision = NetworkInventoryRepository(db).latest(inventory_id)
-    document = parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    document = (
+        parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    )
     result = configuration_drift(document)
     result.update({"inventory_id": inventory_id, "revision": revision.revision if revision else None})
     return result
@@ -932,7 +1060,9 @@ def get_network_inventory_coverage(
     )
 
     revision = NetworkInventoryRepository(db).latest(inventory_id)
-    document = parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    document = (
+        parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    )
     return {
         "inventory_id": inventory_id,
         "revision": revision.revision if revision else None,

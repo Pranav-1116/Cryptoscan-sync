@@ -13,7 +13,12 @@ from shared_config.base_settings import KNOWN_WEAK_SECRETS, BaseSettings
 # the production gate below.
 WEAK_SECRET_KEYS = set(KNOWN_WEAK_SECRETS)
 WEAK_PASSWORDS = {
-    "", "cryptoscan", "admin", "password", "changeme", "secret",
+    "",
+    "cryptoscan",
+    "admin",
+    "password",
+    "changeme",
+    "secret",
     "dev-stream-secret-0123456789abcdef",
     "dev-cbom-secret-0123456789abcdef",
     "dev-cbom-signing-secret-change-me-32ch",
@@ -137,7 +142,7 @@ class APISettings(BaseSettings):
     SAML_ACS_URL: str = ""
     SAML_IDP_ENTITY_ID: str = ""
     SAML_IDP_SSO_URL: str = ""
-    SAML_IDP_CERT: str = ""          # inline PEM (or single-line base64)
+    SAML_IDP_CERT: str = ""  # inline PEM (or single-line base64)
     SAML_IDP_CERT_PATH: str = ""
     SAML_ROLE_ATTRIBUTE: str = "groups"
     SAML_AUTO_PROVISION: bool = False
@@ -145,8 +150,8 @@ class APISettings(BaseSettings):
 
     # LDAP / Active Directory bind auth: off until LDAP_SERVER_URI is set.
     LDAP_ENABLED: bool = False
-    LDAP_SERVER_URI: str = ""        # e.g. ldaps://dc01.corp:636
-    LDAP_BIND_DN: str = ""           # service/bind account DN
+    LDAP_SERVER_URI: str = ""  # e.g. ldaps://dc01.corp:636
+    LDAP_BIND_DN: str = ""  # service/bind account DN
     LDAP_BIND_PASSWORD: str = ""
     LDAP_USER_SEARCH_BASE: str = ""
     LDAP_USER_SEARCH_FILTER: str = "(sAMAccountName={username})"
@@ -170,6 +175,11 @@ class APISettings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./data/cryptoscan.db"
     REDIS_URL: str = ""
+    REDIS_CA_CERTS: str = ""
+    REDIS_SENTINELS: str = ""  # JSON [[host, port], ...], TLS only
+    REDIS_SENTINEL_MASTER: str = ""
+    REDIS_SENTINEL_USERNAME: str = ""
+    REDIS_SENTINEL_PASSWORD: str = ""
     SCAN_JOB_QUEUE_KEY: str = "cryptoscan:jobs:queue"
     ALLOW_SQLITE: bool = False
 
@@ -238,7 +248,6 @@ class APISettings(BaseSettings):
     # is_production / redacted() / validate_for_production() come from the
     # shared enterprise base.
 
-
     @property
     def docs_enabled(self) -> bool:
         if self.DOCS_ENABLED is not None:
@@ -281,6 +290,15 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
         errors.append("DATABASE_URL must be PostgreSQL in production (or set ALLOW_SQLITE=true)")
     if not (settings.REDIS_URL or "").strip():
         errors.append("REDIS_URL must be configured in production for durable realtime events and shared scan state")
+    if settings.REDIS_URL:
+        from api.events.redis_backend import validate_realtime_redis, RedisConfigurationError
+
+        try:
+            validate_realtime_redis(settings)
+        except (RedisConfigurationError, ValueError):
+            errors.append(
+                "Realtime Redis requires verified TLS, dedicated ACL credentials and a valid Sentinel configuration"
+            )
     if float(settings.EVENT_TAILER_SECONDS or 0) <= 0:
         errors.append("EVENT_TAILER_SECONDS must be greater than zero in production")
     if settings.cors_origin_list == ["*"] and not settings.ALLOW_INSECURE_CORS:

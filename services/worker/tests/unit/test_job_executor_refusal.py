@@ -14,6 +14,7 @@ the row was never stamped with the gate reason. The operator saw a worker
 error, not a policy refusal, and the audit trail lost the one sentence that
 explains why the scan did not run.
 """
+
 from __future__ import annotations
 
 from sqlalchemy.exc import UnboundExecutionError
@@ -54,14 +55,23 @@ def test_refusal_stamps_the_row_failed_with_the_gate_reason(monkeypatch):
     stamped: list[tuple[str, str]] = []
 
     class _Session:
+        def execute(self, statement):
+            values = statement.compile().params
+            stamped.append((values["id_1"], values["error_message"]))
+
+        def commit(self):
+            pass
+
         def close(self) -> None:
             pass
 
-    monkeypatch.setattr("worker.core.job_executor.gate_job",
-                        lambda job, repository_target: (False, "repository target"))
+    monkeypatch.setattr(
+        "worker.core.job_executor.gate_job", lambda job, repository_target: (False, "repository target")
+    )
     monkeypatch.setattr("db.connection.session.SessionLocal", lambda: _Session())
-    monkeypatch.setattr("worker.core.job_reaper.fail_job",
-                        lambda session, job_id, message: stamped.append((job_id, message)))
+    monkeypatch.setattr(
+        "worker.core.job_reaper.fail_job", lambda session, job_id, message: stamped.append((job_id, message))
+    )
 
     executor = JobExecutor()
     assert executor._gated(_job(), repository_target=False, run=_never_runs) is False
@@ -71,20 +81,21 @@ def test_refusal_stamps_the_row_failed_with_the_gate_reason(monkeypatch):
 
 def test_refusal_stays_a_refusal_when_the_stamp_cannot_open_a_session(monkeypatch):
     """An unbound engine must not turn a policy refusal into a crash."""
-    monkeypatch.setattr("worker.core.job_executor.gate_job",
-                        lambda job, repository_target: (False, "unauthorized target"))
+    monkeypatch.setattr(
+        "worker.core.job_executor.gate_job", lambda job, repository_target: (False, "unauthorized target")
+    )
 
     def _boom():
         raise UnboundExecutionError(
-            "'Session' object not connected to an Engine, and no bind engine "
-            "was passed explicitly")
+            "'Session' object not connected to an Engine, and no bind engine was passed explicitly"
+        )
 
     monkeypatch.setattr("db.connection.session.SessionLocal", _boom)
     recorder = _Logger()
     monkeypatch.setattr("worker.core.job_executor.logger", recorder)
 
     executor = JobExecutor()
-    result = executor.execute(_job())  # must return, not raise
+    result = executor._gated(_job(), repository_target=False, run=_never_runs)  # stamp must not raise
 
     assert result is False
     # the refusal is still announced, and its cause is the gate's, not the DB's
@@ -101,14 +112,18 @@ def test_refusal_stays_a_refusal_when_the_stamp_fails_mid_transaction(monkeypatc
     closed: list[bool] = []
 
     class _Session:
+        def execute(self, statement):
+            raise RuntimeError("database is locked")
+
         def rollback(self) -> None:
             rolled_back.append(True)
 
         def close(self) -> None:
             closed.append(True)
 
-    monkeypatch.setattr("worker.core.job_executor.gate_job",
-                        lambda job, repository_target: (False, "target outside platform scope"))
+    monkeypatch.setattr(
+        "worker.core.job_executor.gate_job", lambda job, repository_target: (False, "target outside platform scope")
+    )
     monkeypatch.setattr("db.connection.session.SessionLocal", lambda: _Session())
 
     def _fail(*args, **kwargs):
@@ -119,7 +134,7 @@ def test_refusal_stays_a_refusal_when_the_stamp_fails_mid_transaction(monkeypatc
     monkeypatch.setattr("worker.core.job_executor.logger", recorder)
 
     executor = JobExecutor()
-    assert executor.execute(_job()) is False
+    assert executor._gated(_job(), repository_target=False, run=_never_runs) is False
     # the failed transaction is unwound and the connection is handed back
     assert rolled_back == [True]
     assert closed == [True]
@@ -129,11 +144,10 @@ def test_refusal_stays_a_refusal_when_the_stamp_fails_mid_transaction(monkeypatc
 def test_permitted_job_still_runs(monkeypatch):
     """The gate is a decision, not a dead end."""
     ran: list[str] = []
-    monkeypatch.setattr("worker.core.job_executor.gate_job",
-                        lambda job, repository_target: (True, None))
+    monkeypatch.setattr("worker.core.job_executor.claim", lambda job: None)
+    monkeypatch.setattr("worker.core.job_executor.gate_job", lambda job, repository_target: (True, None))
     executor = JobExecutor()
 
-    result = executor._gated(_job(), repository_target=False,
-                             run=lambda: ran.append("ok") or True)
+    result = executor._gated(_job(), repository_target=False, run=lambda: ran.append("ok") or True)
 
     assert result is True and ran == ["ok"]

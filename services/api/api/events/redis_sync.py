@@ -62,6 +62,7 @@ class RedisEventSync:
         self.durable_failures = 0
         self._thread: threading.Thread | None = None
         self._pubsub = None
+        self._stop = threading.Event()
         self.ready = False
 
     # ---------------------------------------------------------- durable journal
@@ -144,6 +145,7 @@ class RedisEventSync:
     def start(self) -> None:
         from api.events.redis_estate_journal import RedisEstateJournal
 
+        self._stop.clear()
         self._bus.set_estate_history(RedisEstateJournal(self._redis).page)
         try:
             self._redis.ping()
@@ -152,6 +154,9 @@ class RedisEventSync:
                 # replay exist, not merely that TCP/PING works.
                 self._redis.get(EVENT_SEQUENCE)
                 self._redis.xrange(EVENT_STREAM, min="-", max="+", count=1)
+                from api.events.redis_backend import probe_journal_commands
+
+                probe_journal_commands(self._redis)
             self._bus.set_durable_history(
                 next_id=self.next_id, recent=self.recent, latest=self.latest, oldest=self.oldest
             )
@@ -166,6 +171,7 @@ class RedisEventSync:
             self.ready = False
 
     def stop(self) -> None:
+        self._stop.set()
         self.ready = False
         try:
             if self._pubsub is not None:
@@ -181,25 +187,47 @@ class RedisEventSync:
             self._thread.join(timeout=2)
 
     def _run(self) -> None:
-        try:
-            for msg in self._pubsub.listen():
-                if msg.get("type") != "message":
-                    continue
-                try:
-                    frame = json.loads(msg["data"])
-                except (TypeError, ValueError):
-                    continue
-                # Ignore our own echo. The shared event id remains unchanged
-                # when a remote frame is injected, so every replica resumes
-                # from the same Last-Event-ID cursor.
-                if frame.get("node") == self._node_id:
-                    continue
-                self._bus.inject_remote(frame)
-        except Exception as _handler_exc:  # noqa: BLE001 — stop the thread quietly on Redis loss
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
-            pass
-        finally:
-            self.ready = False
+        delay = 0.1
+        while not self._stop.is_set():
+            try:
+                if self._pubsub is None:
+                    # Revalidate writes after credential/ACL changes, not just
+                    # subscription reachability. Missing notifications remain
+                    # recoverable through the authoritative retained journal.
+                    self._redis.ping()
+                    if self._required:
+                        from api.events.redis_backend import probe_journal_commands
+
+                        probe_journal_commands(self._redis)
+                    self._pubsub = self._redis.pubsub()
+                    self._pubsub.subscribe(CHANNEL)
+                self.ready = True
+                while not self._stop.is_set():
+                    # A quiet channel is not an outage. Bounded polling avoids
+                    # treating the client's socket timeout as subscriber loss.
+                    msg = self._pubsub.get_message(timeout=1.0)
+                    if msg is None:
+                        continue
+                    delay = 0.1
+                    if msg.get("type") != "message":
+                        continue
+                    try:
+                        frame = json.loads(msg["data"])
+                    except (TypeError, ValueError):
+                        continue
+                    if not isinstance(frame, dict) or frame.get("node") == self._node_id:
+                        continue
+                    self._bus.inject_remote(frame)
+            except Exception as exc:  # noqa: BLE001 — retry with bounded backoff
+                logger.warning("realtime_subscription_unavailable", extra={"error_type": type(exc).__name__})
+            finally:
+                self.ready = False
+                old, self._pubsub = self._pubsub, None
+                if old is not None:
+                    try:
+                        old.close()
+                    except Exception:  # noqa: BLE001 — already disconnected
+                        pass
+            if self._stop.wait(delay):
+                break
+            delay = min(delay * 2, 5.0)

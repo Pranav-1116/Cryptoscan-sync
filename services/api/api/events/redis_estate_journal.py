@@ -6,6 +6,7 @@ in one Redis transaction. This is not a DB/Redis distributed transaction.
 """
 
 import json
+import hashlib
 import random
 import time
 import uuid
@@ -91,6 +92,7 @@ class RedisEstateJournal:
                 try:
                     pipe.watch(meta, stream)
                     state = {self.text(k): self.text(v) for k, v in pipe.hgetall(meta).items()}
+                    bind_primary = getattr(self.redis, "replay_bind_primary_epoch", False) is True
                     first = pipe.xrange(stream, count=1)
                     if not state and first:
                         self._refuse_if_stable(pipe, "Event journal metadata missing")
@@ -111,11 +113,31 @@ class RedisEstateJournal:
                     end = latest if through is None else through
                     rows = pipe.xrange(stream, min=f"{max(1, after + 1)}-0", max=f"{max(0, end)}-0", count=limit + 1)
                     pipe.multi()
-                    pipe.execute()
+                    if bind_primary:
+                        # Evaluate the primary role on the SAME watched
+                        # connection at snapshot validation, not via discovery
+                        # or a second pooled connection that may hit a different
+                        # node. A demoted source cannot continue old cursors.
+                        pipe.info("replication")
+                        pipe.info("server")
+                    validation = pipe.execute()
+                    source_epoch = None
+                    if bind_primary:
+                        if validation[0].get("role") != "master":
+                            self.redis.connection_pool.disconnect()
+                            raise RuntimeError("Replay source is not the current primary; reconnect")
+                        source_epoch = validation[1]["run_id"]
                     records = []
                     for seq, fields in rows:
                         fields = {self.text(k): self.text(v) for k, v in fields.items()}
                         records.append((int(self.text(seq).split("-")[0]), json.loads(fields["frame"])))
+                    if source_epoch is not None and epoch is not None:
+                        public_epoch = hashlib.sha256((epoch + ":" + source_epoch).encode()).hexdigest()[:32]
+                        for _, frame in records:
+                            if frame.get("estate_epoch") != epoch:
+                                raise ReplayError("Estate journal epoch mismatch")
+                            frame["estate_epoch"] = public_epoch
+                        epoch = public_epoch
                     return epoch, oldest, latest, end, records
                 except WatchError:
                     # Bounded jitter prevents hot writers/readers spinning in
