@@ -3,6 +3,13 @@
 [Guide index](README.md) · [Bounded TCP discovery](39-bounded-tcp-monitor-discovery.md) ·
 [Enterprise backlog](33-international-bank-engineering-and-rollout.md)
 
+## Subsequent socket increment
+
+[Guide 41](41-exact-estate-websocket-history.md) subsequently qualifies the
+binary-progress and event WebSocket routes with exact-estate checks, fresh
+authority and filtered replay/queues. Other streams/exports and broad A02 remain
+open. This guide’s historical HTTP delivery/test evidence is unchanged.
+
 ## Status — 2026-10-21
 
 **Implemented locally: a bounded A02 history-isolation increment supporting A01.**

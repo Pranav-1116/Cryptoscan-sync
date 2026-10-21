@@ -61,7 +61,9 @@ adds explicit IPv4 CIDR/port monitor sweeps without automatic TLS/plugin follow-
 Unqualified scope/plugins remain refused. The
 [exact-estate HTTP history increment](docs/bank-environment/40-exact-estate-http-history.md)
 restricts job/run details, logs, retries, metrics and drift to the selected estate.
-A01 and A02 remain partial; production safety is
+[WebSocket history checkpoints](docs/bank-environment/41-exact-estate-websocket-history.md)
+add the boundary to binary progress and event sockets, including fresh authority
+and pre-queue filtering. A01 and A02 remain partial; production safety is
 not certified by these local changes.
 
 

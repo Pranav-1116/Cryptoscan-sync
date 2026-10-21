@@ -59,7 +59,10 @@ scope/plugins remain refused, not implicitly authorized.
 [Exact-estate HTTP history](40-exact-estate-http-history.md) additionally binds
 job lists/details/logs/retries and network-run lists/counts/results/metrics/drift
 to the selected estate, including NULL/platform. Internal dispatch is unchanged;
-other history, stream and export surfaces still need their own A02 review.
+[WebSocket history checkpoints](41-exact-estate-websocket-history.md) now also
+protect binary progress and event sockets with exact-estate replay/live queue
+filters and fresh authority. SSE/GraphQL/export and other surfaces still need
+their own A02 review; bounded replay is not a complete per-estate archive.
 
 This is **partial A01 delivery**, not uniformity across all collectors. The
 separate enterprise scope/plugin expansion still requires qualification;

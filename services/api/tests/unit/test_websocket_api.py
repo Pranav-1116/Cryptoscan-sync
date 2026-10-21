@@ -50,6 +50,8 @@ def ws_db(monkeypatch):
             SessionLocal.configure(bind=None)
 
 
+# Standalone NULL-owned job/event fixtures require platform identities. The
+# tenant-isolation case below retains ordinary member identities/memberships.
 def _session_token(session, username: str, roles: list[str]) -> str:
     UserRepository(session).create_user(username, "x", roles)
     token = SessionManager().create_session(username, roles=roles)
@@ -101,7 +103,7 @@ def test_an_unknown_api_key_is_refused_before_any_frame(ws_db):
 
 
 def test_a_query_token_can_authenticate_the_upgrade(ws_db):
-    token = _session_token(ws_db, "watcher", ["auditor"])
+    token = _session_token(ws_db, "watcher", ["superadmin"])
     client = TestClient(create_app())
     with client.websocket_connect(f"/api/v1/ws/events?token={token}") as socket:
         hello = json.loads(socket.receive_text())
@@ -130,7 +132,7 @@ def test_an_api_key_without_reader_roles_is_refused(ws_db):
 # --------------------------------------------------------- job progress --- #
 
 def test_an_unknown_job_says_so_and_closes_4404(ws_db):
-    token = _session_token(ws_db, "auditor1", ["auditor"])
+    token = _session_token(ws_db, "auditor1", ["superadmin"])
     client = TestClient(create_app())
     with client.websocket_connect(f"/api/v1/ws/binary/jobs/nope?token={token}") as socket:
         hello = _recv(socket)
@@ -150,7 +152,7 @@ def test_a_running_job_streams_a_snapshot_then_its_final_frame(ws_db):
     same row the pipeline writes (status + progress payload) and the socket is
     expected to notice, frame it, and close.
     """
-    token = _session_token(ws_db, "auditor2", ["auditor"])
+    token = _session_token(ws_db, "auditor2", ["superadmin"])
     job_id = _job(ws_db, n=2)
     client = TestClient(create_app())
     frames: list[dict] = []
@@ -193,7 +195,7 @@ def test_a_running_job_streams_a_snapshot_then_its_final_frame(ws_db):
 
 
 def test_the_poll_interval_is_clamped(ws_db):
-    token = _session_token(ws_db, "auditor3", ["readonly"])
+    token = _session_token(ws_db, "auditor3", ["superadmin"])
     _job_id = _job(ws_db, n=3)
     client = TestClient(create_app())
     with client.websocket_connect(
@@ -215,7 +217,7 @@ def test_the_event_socket_replays_then_streams(ws_db):
     from api.events.bus import reset_event_bus
 
     reset_event_bus()
-    token = _session_token(ws_db, "streamer", ["security_analyst"])
+    token = _session_token(ws_db, "streamer", ["superadmin"])
     _publish(2)
     client = TestClient(create_app())
     with client.websocket_connect(f"/api/v1/ws/events?token={token}") as socket:
@@ -232,7 +234,7 @@ def test_topics_filter_by_prefix_and_since_resumes(ws_db):
     from api.events.bus import get_event_bus, reset_event_bus
 
     reset_event_bus()
-    token = _session_token(ws_db, "streamer2", ["auditor"])
+    token = _session_token(ws_db, "streamer2", ["superadmin"])
     _publish(1, "scan.progress")
     marker = get_event_bus().latest_id()
     _publish(1, "binary.queued")
@@ -251,7 +253,7 @@ def test_a_live_event_reaches_a_connected_socket(ws_db):
     from api.events.bus import reset_event_bus
 
     reset_event_bus()
-    token = _session_token(ws_db, "streamer3", ["auditor"])
+    token = _session_token(ws_db, "streamer3", ["superadmin"])
     client = TestClient(create_app())
     with client.websocket_connect(f"/api/v1/ws/events?token={token}&topics=scan.") as socket:
         hello = json.loads(socket.receive_text())

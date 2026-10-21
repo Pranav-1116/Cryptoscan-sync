@@ -12,6 +12,9 @@ now implemented locally, followed by the
 [explicit bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md).
 The supporting [exact-estate HTTP history increment](40-exact-estate-http-history.md)
 closes the specific job/network-run platform-history gap, not all A02 surfaces.
+The subsequent [WebSocket history increment](41-exact-estate-websocket-history.md)
+adds binary/event socket authority checkpoints and pre-queue estate filtering,
+without certifying every streaming/export interface.
 A01 as a whole and the remaining enterprise items are
 still open. The prior ten steps
 are locally delivered as recorded in [guide 26](26-bank-negative-tests-and-backend-qualification.md).
