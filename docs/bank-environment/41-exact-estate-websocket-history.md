@@ -3,6 +3,13 @@
 [Guide index](README.md) · [HTTP history boundary](40-exact-estate-http-history.md) ·
 [Enterprise backlog](33-international-bank-engineering-and-rollout.md)
 
+**Subsequent delivery:** [Guide 42](42-estate-streams-graphql-and-exports.md)
+supersedes this increment's shared-window replay limitation with per-estate
+retained journals and opaque estate-local cursors. Its wire compatibility changes
+apply to current SSE/WS clients. The original implementation/results below remain
+a historical record; [guide 43](43-a01-a02-qualification-and-open-blockers.md)
+records current qualification and open blockers.
+
 ## Status — 2026-10-21
 
 **Implemented locally: a further bounded A02 history-isolation increment.**

@@ -30,8 +30,7 @@ EVENT_SEQUENCE = "zelinx:events:sequence"
 EVENT_STREAM_MAXLEN = 10_000
 
 
-def start_redis_federation(redis_client, bus, *, node_id: str | None = None,
-                           required: bool = False):
+def start_redis_federation(redis_client, bus, *, node_id: str | None = None, required: bool = False):
     """Attach a :class:`RedisEventSync` to ``bus`` and begin subscribing.
 
     Returns the sync handle, or ``None`` if the client is unusable. Always
@@ -83,7 +82,8 @@ class RedisEventSync:
         try:
             raw = {self._value(key): self._value(value) for key, value in fields.items()}
             return {
-                "id": int(raw["id"]), "ts": raw.get("ts", ""),
+                "id": int(raw["id"]),
+                "ts": raw.get("ts", ""),
                 "type": raw.get("type", "remote.event"),
                 "source": raw.get("source", "remote"),
                 "payload": json.loads(raw.get("payload", "{}")),
@@ -100,7 +100,7 @@ class RedisEventSync:
             row = self._decode_entry(fields)
             if row is not None and row["id"] > int(since_id):
                 rows.append(row)
-        return rows[-max(1, int(limit)):]
+        return rows[-max(1, int(limit)) :]
 
     def latest(self) -> int:
         return int(self._redis.get(EVENT_SEQUENCE) or 0)
@@ -124,39 +124,27 @@ class RedisEventSync:
     def publish(self, event: dict[str, Any]) -> None:
         """Write the durable journal and fan out immediately to other replicas."""
         try:
-            frame = {
-                "id": int(event["id"]), "node": self._node_id,
-                "type": event.get("type"),
-                "source": event.get("source"),
-                "payload": event.get("payload") or {},
-                "tenant_id": event.get("tenant_id"),
-                "ts": event.get("ts"),
-            }
-            try:
-                self._redis.xadd(
-                    EVENT_STREAM,
-                    {"id": str(frame["id"]), "ts": str(frame["ts"]),
-                     "type": str(frame["type"]), "source": str(frame["source"]),
-                     "tenant_id": str(frame["tenant_id"] or ""),
-                     "payload": json.dumps(frame["payload"], default=str)},
-                    maxlen=EVENT_STREAM_MAXLEN, approximate=True,
-                )
-            except Exception as exc:  # noqa: BLE001 — journal failure is health-visible
-                self.durable_failures += 1
-                logger.error("durable_event_append_failed", extra={"error_type": type(exc).__name__})
-                if self._required:
-                    raise RuntimeError("Redis realtime event journal is unavailable") from exc
-            self._redis.publish(CHANNEL, json.dumps(frame, default=str))
-        except RuntimeError:
-            raise
+            from api.events.redis_estate_journal import RedisEstateJournal
+
+            RedisEstateJournal(self._redis).append(
+                event,
+                global_stream=EVENT_STREAM,
+                channel=CHANNEL,
+                node=self._node_id,
+                global_retention=EVENT_STREAM_MAXLEN,
+            )
         except Exception as exc:  # noqa: BLE001
             self.durable_failures += 1
             logger.error("realtime_event_publish_failed", extra={"error_type": type(exc).__name__})
-            if self._required:
-                raise RuntimeError("Redis realtime event federation is unavailable") from exc
+            # Even optional federation must not describe an unjournaled live
+            # frame as durable. EventBus owns optional local fallback policy.
+            raise RuntimeError("Redis realtime estate journal is unavailable") from exc
 
     # ---------------------------------------------------------- subscribing
     def start(self) -> None:
+        from api.events.redis_estate_journal import RedisEstateJournal
+
+        self._bus.set_estate_history(RedisEstateJournal(self._redis).page)
         try:
             self._redis.ping()
             if self._required:
@@ -165,20 +153,20 @@ class RedisEventSync:
                 self._redis.get(EVENT_SEQUENCE)
                 self._redis.xrange(EVENT_STREAM, min="-", max="+", count=1)
             self._bus.set_durable_history(
-                next_id=self.next_id, recent=self.recent, latest=self.latest,
-                oldest=self.oldest)
+                next_id=self.next_id, recent=self.recent, latest=self.latest, oldest=self.oldest
+            )
             self._bus.set_durable_health(self.health)
             self._pubsub = self._redis.pubsub()
             self._pubsub.subscribe(CHANNEL)
-            self._thread = threading.Thread(target=self._run, daemon=True,
-                                            name="zelinx-redis-sync")
-            self._thread.start()
+            self._thread = threading.Thread(target=self._run, daemon=True, name="zelinx-redis-sync")
             self.ready = True
-        except Exception:  # noqa: BLE001 — no Redis => stay on the local bus
+            self._thread.start()
+        except Exception:  # noqa: BLE001 — configured journal stays fail-closed
             self._pubsub = None
             self.ready = False
 
     def stop(self) -> None:
+        self.ready = False
         try:
             if self._pubsub is not None:
                 self._pubsub.close()
@@ -188,6 +176,9 @@ class RedisEventSync:
                 extra={"error_type": type(_handler_exc).__name__},
             )
             pass
+
+        if self._thread is not None and self._thread is not threading.current_thread():
+            self._thread.join(timeout=2)
 
     def _run(self) -> None:
         try:
@@ -210,3 +201,5 @@ class RedisEventSync:
                 extra={"error_type": type(_handler_exc).__name__},
             )
             pass
+        finally:
+            self.ready = False

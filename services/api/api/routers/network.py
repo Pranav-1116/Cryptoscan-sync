@@ -379,8 +379,8 @@ def discover_subnet_endpoints(
 
 
 class SshScanRequest(BaseModel):
-    hosts: list[str] = Field(default_factory=list)
-    timeout: float = 8.0
+    hosts: list[str] = Field(default_factory=list, max_length=256)
+    timeout: float = Field(default=8.0, gt=0, le=30, allow_inf_nan=False)
     include_kex: bool = False  # also read each server's KEXINIT algorithm offer
     strict_kex: bool = False  # flag legacy (sha1/umac-64/ssh-rsa) offers too
     # baseline {endpoint: {key_type: fingerprint}} for TOFU drift; updated map is returned
@@ -388,7 +388,7 @@ class SshScanRequest(BaseModel):
 
 
 @router.post("/network/ssh-scan")
-def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user)):
+def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user), _ctx=Depends(network_context)):
     """SSH host-key scan with optional TOFU baselines (no DB state kept)."""
     from network_scanner.probing.ssh_kex import probe_ssh_kex_offer
     from network_scanner.probing.ssh_keyscan import scan_ssh_host_keys, split_ssh_target, ssh_probe_telemetry
@@ -397,13 +397,19 @@ def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="hosts required")
     # Banner/KEX reads are live probes: same admission as every other active
     # surface. Emergency stop and the OT passive boundary apply here too.
-    from api.security.scan_admission import admit_scan
-
-    admit_scan(active_probing_requested=True)
+    endpoints = []
+    try:
+        for item in body.hosts:
+            host, port = split_ssh_target(item)
+            endpoints.append(f"[{host}]:{port}" if ":" in host else f"{host}:{port}")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(422, detail="Invalid SSH target") from exc
+    endpoints = checked_hosts(endpoints)
+    admission = admit_network(endpoints, protocol="ssh")
     baselines = body.known_host_keys or {}
     findings = []
     updated: dict[str, dict[str, str]] = dict(baselines)
-    for item in body.hosts:
+    for item in endpoints:
         host, port = split_ssh_target(item)
         endpoint = f"{host}:{port}"
         finding = scan_ssh_host_keys(host, port, timeout=body.timeout, baseline=baselines.get(endpoint))
@@ -422,6 +428,9 @@ def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user)):
         "findings": findings,
         "ssh_probe_telemetry": ssh_probe_telemetry(findings),
         "known_host_keys": updated,
+        "admission": admission,
+        "collection": {"protocol": "ssh", "durable": False,
+                       "coverage": "HOST_KEY_AND_OPTIONAL_KEX_ONLY"},
     }
 
 
@@ -824,60 +833,11 @@ def discover_network_inventory(
     ownership, configuration correctness, topology, firmware currency, or
     control effectiveness; a reviewer must enrich and verify the inventory.
     """
-    from db.repositories.network_inventory_repository import NetworkInventoryRepository
-    from network_scanner.enterprise.engine import run_network_discovery
-    from network_scanner.inventory.network_inventory import inventory_completeness, inventory_hash
-    from network_scanner.inventory_adapter import inventory_from_discovery
-
-    try:
-        from api.security.target_validation import validate_network_target, validate_probe_target
-
-        # The enterprise parser supports many scope forms, but all concrete
-        # hosts/CIDRs still pass through the same SSRF and metadata guard used
-        # by the legacy network scanner routes.
-        for index, scope in enumerate(body.scope_specs):
-            if isinstance(scope, str):
-                target = scope.strip()
-                try:
-                    validate_network_target(target)
-                except ValueError:
-                    validate_probe_target(target, label=f"scope_specs[{index}]")
-            elif isinstance(scope, dict):
-                for network_index, network in enumerate(scope.get("networks") or []):
-                    validate_network_target(str(network))
-                for host_index, host in enumerate(scope.get("hosts") or []):
-                    validate_probe_target(str(host), label=f"scope_specs[{index}].hosts[{host_index}]")
-        report = run_network_discovery(
-            body.scope_specs,
-            plugins=body.plugins or ["none"],
-            authorization_scope=body.authorization_scope or f"tenant:{user}",
-        )
-        document = inventory_from_discovery(report, inventory_id=body.inventory_id)
-        completeness = inventory_completeness(document)
-        revision = NetworkInventoryRepository(db).create_revision(
-            body.inventory_id,
-            schema_version=document.inventory_schema,
-            status="DRAFT",
-            source="MIXED",
-            inventory_json=document.model_dump(mode="json", by_alias=True),
-            completeness_json=completeness,
-            content_sha256=inventory_hash(document),
-            captured_at=document.captured_at,
-            created_by=user,
-            review_notes="Generated from safe network discovery; verification required.",
-        )
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail={"error": "invalid_scope", "reason": str(exc)}) from exc
-    return {
-        "inventory_id": body.inventory_id,
-        "revision": revision.revision,
-        "status": revision.status,
-        "inventory": revision.inventory_json,
-        "completeness": completeness,
-        "scan_metadata": report.get("scan_metadata"),
-        "asset_summary": report.get("asset_summary"),
-        "network_inventory_summary": report.get("network_inventory_summary"),
-    }
+    # The enterprise engine can expand ranges and invoke plugins/secondary
+    # protocols after the initial plan. A generic admission is not a receipt
+    # for those destinations. Keep imports/engine construction behind a hard
+    # refusal until phase admission + metering + durable receipts are wired.
+    raise HTTPException(409, detail="Enterprise/plugin discovery is not qualified for bounded admission; use bounded network scan/discovery or import a reviewed inventory")
 
 
 @router.get("/network/inventory/topology")

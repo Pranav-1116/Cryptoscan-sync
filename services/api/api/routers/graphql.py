@@ -22,7 +22,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_db_session, require_roles
+from api.dependencies import TenantContext, get_db_session, require_roles
+from api.security.estate_history import history_context
 
 router = APIRouter(tags=["graphql"])
 
@@ -42,7 +43,7 @@ class GraphQLRequest(BaseModel):
 
 @router.post("/graphql")
 def graphql_post(body: GraphQLRequest, request: Request, db: Session = Depends(get_db_session),
-                 user: str = Depends(require_roles(*READER_ROLES))):
+                 user: str = Depends(require_roles(*READER_ROLES)), ctx: TenantContext = Depends(history_context)):
     """Run one read-only query. 200 with an ``errors`` array, or 400 for a non-query document.
 
     The status codes say which kind of problem it is: **400** when the document is
@@ -65,9 +66,8 @@ def graphql_post(body: GraphQLRequest, request: Request, db: Session = Depends(g
     # the same tenant resolution the REST artifact surface uses: a tenant-bound
     # key reads its own bucket, a session may name X-Tenant-ID with a membership,
     # anything else is the platform estate
-    from api.routers.devsecops import _artifact_tenant
 
-    tenant_id = _artifact_tenant(request, db, user)
+    tenant_id = ctx.tenant_id
     result = graphql_schema.query(body.query, variables=body.variables, session=db,
                                   tenant_id=tenant_id)
     result.setdefault("extensions", {})["surface"] = "/api/v1/graphql"
@@ -77,7 +77,7 @@ def graphql_post(body: GraphQLRequest, request: Request, db: Session = Depends(g
 @router.get("/graphql")
 def graphql_get(request: Request, query: str, variables: str | None = None,
                 db: Session = Depends(get_db_session),
-                user: str = Depends(require_roles(*READER_ROLES))):
+                user: str = Depends(require_roles(*READER_ROLES)), ctx: TenantContext = Depends(history_context)):
     """The same query over GET, for a browser address bar or a curl smoke test.
 
     ``variables`` is a JSON object in the query string. A malformed one is a 400
@@ -100,7 +100,7 @@ def graphql_get(request: Request, query: str, variables: str | None = None,
                                 content={"errors": [{"message": "variables must be a JSON object",
                                                      "extensions": {"code": "BAD_VARIABLES"}}],
                                          "data": None})
-    return graphql_post(GraphQLRequest(query=query, variables=bound), request=request, db=db, user=user)
+    return graphql_post(GraphQLRequest(query=query, variables=bound), request=request, db=db, user=user, ctx=ctx)
 
 
 @router.get("/graphql/schema")

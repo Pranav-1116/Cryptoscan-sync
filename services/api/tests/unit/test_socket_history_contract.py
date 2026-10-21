@@ -14,6 +14,8 @@ from test_software_supply_chain_api import banks as banks
 
 def receive(socket):
     message = socket.receive()
+    if message.get("text") and json.loads(message["text"]).get("type") == "checkpoint":
+        return receive(socket)
     if message["type"] == "websocket.close":
         return {"type": "close", "code": message["code"]}
     return json.loads(message["text"])
@@ -179,8 +181,10 @@ def test_key_bound_estate_revocation_and_one_quota_charge_per_connection(sockets
 
 def test_conflicting_event_owner_metadata_cannot_promote_payload_tenant(sockets):
     clients, _, bus, _ = sockets
-    bus.publish("scan.fake", {"tenant_id": "a", "private": "fake"}, tenant_id=None)
-    bus.publish("scan.fake", {"tenant_id": "b", "private": "fake"}, tenant_id="a")
+    from api.security.socket_history import visible_event
+
+    assert not visible_event({"tenant_id": None, "payload": {"tenant_id": "a"}}, "a")
+    assert not visible_event({"tenant_id": "a", "payload": {"tenant_id": "b"}}, "a")
     with clients["bank_a"].websocket_connect("/api/v1/ws/events") as socket:
         assert receive(socket)["replayed"] == 1
         assert receive(socket)["payload"] == {"private": "bank_a"}
@@ -293,10 +297,10 @@ def test_upgrade_rate_limit_is_not_a_per_frame_charge(sockets):
 def test_replay_failure_closes_and_unsubscribes(sockets, monkeypatch):
     clients, _, bus, _ = sockets
 
-    def fail(**kwargs):
+    def fail(*args, **kwargs):
         raise RuntimeError("private-durable-backend")
 
-    monkeypatch.setattr(bus, "recent", fail)
+    monkeypatch.setattr(bus, "estate_page", fail)
     with clients["bank_a"].websocket_connect("/api/v1/ws/events") as socket:
         assert receive(socket) == {"type": "close", "code": 1011}
     assert bus.subscriber_count() == 0
@@ -352,3 +356,32 @@ def test_platform_machine_key_cannot_select_a_bank(sockets):
         with clients["bank_a"].websocket_connect(f"/api/v1/ws/events?api_key={raw}&tenant=a"):
             pass
     assert refused.value.code == 1008
+
+
+def test_socket_replays_all_retained_estate_pages_despite_foreign_burst(sockets):
+    clients, _, bus, _ = sockets
+    for n in range(350):
+        bus.publish("scan.large", {"n": n}, tenant_id="a")
+    for n in range(700):
+        bus.publish("scan.foreign", {"secret": n}, tenant_id="b")
+    with clients["bank_a"].websocket_connect("/api/v1/ws/events?topics=scan.large") as socket:
+        assert receive(socket)["type"] == "hello"
+        events = [receive(socket) for _ in range(350)]
+        assert [e["payload"]["n"] for e in events] == list(range(350))
+        cursor = events[-1]["replay_cursor"]
+    with clients["bank_a"].websocket_connect("/api/v1/ws/events?cursor=" + cursor) as socket:
+        assert receive(socket)["replayed"] == 0
+        bus.publish("scan.new", {"new": True}, tenant_id="a")
+        frame = receive(socket)
+        while frame["type"] == "ping":
+            frame = receive(socket)
+        assert frame["payload"] == {"new": True}
+    assert bus.subscriber_count() == 0
+
+
+def test_socket_foreign_replay_cursor_is_not_an_access_grant(sockets):
+    clients, _, bus, _ = sockets
+    cursor = bus.estate_page("b")["next_cursor"]
+    with clients["bank_a"].websocket_connect("/api/v1/ws/events?cursor=" + cursor) as socket:
+        assert receive(socket) == {"type": "close", "code": 1008}
+    assert bus.subscriber_count() == 0

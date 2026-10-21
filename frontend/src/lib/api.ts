@@ -932,7 +932,7 @@ export interface LiveEnvironmentResponse {
   source: string;
   domains: LiveDomainCounts;
   graph: LiveGraphSummary;
-  events: { events: { id: number; ts: string; type: string; payload: Record<string, unknown> }[]; latest_id: number; subscribers: number };
+  events: { events: { id: number; ts: string; type: string; payload: Record<string, unknown> }[]; latest_sequence: number; oldest_sequence: number; next_cursor: string; has_more: boolean; retention_gap: boolean };
   scan: OrchestratorScan | null;
   runner: { running: boolean } | null;
 }

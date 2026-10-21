@@ -148,7 +148,7 @@ async def test_inventory_api_rejects_secret_and_approval_without_evidence(invent
 
 
 @pytest.mark.asyncio
-async def test_discovery_endpoint_persists_a_draft_without_raw_scan_data(inventory_app, monkeypatch):
+async def test_unqualified_enterprise_discovery_is_refused_before_execution(inventory_app, monkeypatch):
     import network_scanner.enterprise.engine as discovery_engine
 
     monkeypatch.setattr(discovery_engine, "run_network_discovery", lambda *args, **kwargs: {
@@ -164,7 +164,6 @@ async def test_discovery_endpoint_persists_a_draft_without_raw_scan_data(invento
             "inventory_id": "discovered-network",
         })
 
-    assert response.status_code == 200
-    assert response.json()["status"] == "DRAFT"
-    assert response.json()["inventory"]["evidence"][0]["status"] == "UNVERIFIED"
-    assert "assets" not in response.json()
+    assert response.status_code == 409
+    assert "not qualified" in response.json()["detail"]
+    assert _InventoryRepo.rows == []

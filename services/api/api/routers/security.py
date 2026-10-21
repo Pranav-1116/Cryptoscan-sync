@@ -32,6 +32,9 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from api.routers.events import stream_grant, _checkpoint
+from api.routers.audit_export import _platform_audit_scope
+from api.security.socket_history import SocketRefused
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -127,6 +130,8 @@ def get_security_posture(
 async def posture_stream(
     request: Request,
     interval: int = Query(30, ge=5, le=600),
+    grant=Depends(stream_grant),
+    _scope=Depends(_platform_audit_scope),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -137,12 +142,39 @@ async def posture_stream(
     """
     from control_plane.security_posture import build_security_posture, posture_delta
 
+    async def guard():
+        await _checkpoint(request, grant)
+        from db.connection.session import SessionLocal
+        from api.security.estate_history import assert_single_platform_estate
+        def single_estate():
+            with SessionLocal() as session:
+                try:
+                    assert_single_platform_estate(session)
+                except HTTPException as exc:
+                    raise SocketRefused("Aggregate posture stream is not estate partitioned") from exc
+        from starlette.concurrency import run_in_threadpool
+        try:
+            await run_in_threadpool(single_estate)
+        except SocketRefused:
+            raise
+        except Exception as exc:
+            raise SocketRefused("Aggregate authority unavailable", code=1011) from exc
+
+    def refusal(exc):
+        name = "events.unavailable" if exc.code == 1011 else "events.refused"
+        return f'event: {name}\ndata: {{"advice":"aggregate stream closed; check authority/backend"}}\n\n'
+
     async def gen():
         frame = 0
         repo = _repo(db)
         while True:
             if await request.is_disconnected():
                 break
+            try:
+                await guard()
+            except SocketRefused as exc:
+                yield refusal(exc)
+                return
             try:
                 posture = build_security_posture(db)
                 previous = repo.latest_security_posture()
@@ -163,22 +195,33 @@ async def posture_stream(
                 payload = {**posture, "snapshot_id": row.id,
                            "previous_score": drift["previous_score"],
                            "delta": drift["delta"], "dropped": drift["dropped"]}
+                await guard()
                 frame += 1
                 yield _sse(frame, "security.posture", payload)
                 if drift["dropped"]:
+                    await guard()
                     frame += 1
                     yield _sse(frame, "security.posture_drop", {
                         "score": posture["score"], "previous_score": drift["previous_score"],
                         "delta": drift["delta"], "ts": datetime.now(timezone.utc).isoformat(),
                     })
                     await _emit_drop_event(posture["score"], drift)
+            except SocketRefused as exc:
+                yield refusal(exc)
+                return
             except Exception:
                 # never kill the stream on a transient signal error
                 yield _sse(frame + 1, "error", {"detail": "signal unavailable"})
             # heartbeat comment (keeps proxies from closing the idle stream)
             yield f": heartbeat {datetime.now(timezone.utc).isoformat()}\n\n"
             try:
-                await asyncio.sleep(interval)
+                deadline = asyncio.get_running_loop().time() + interval
+                while asyncio.get_running_loop().time() < deadline:
+                    await asyncio.sleep(min(5, max(0, deadline - asyncio.get_running_loop().time())))
+                    await guard()
+            except SocketRefused as exc:
+                yield refusal(exc)
+                return
             except asyncio.CancelledError:
                 break
 

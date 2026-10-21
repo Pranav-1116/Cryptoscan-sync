@@ -37,10 +37,10 @@ def e2e():
     configure_session(engine)
     session = SessionLocal()
 
-    # one user, member of two orgs — the multi-membership case the picker
-    # exists for; a platform operator for the unscoped half
+    # One authorized writer, member of two orgs: membership must still pin
+    # each write/read even though the application role permits cascade edits.
     users = UserRepository(session)
-    users.create_user("dual_member", hash_password("x"), ["soc"])
+    users.create_user("dual_member", hash_password("x"), ["security_analyst"])
     session.add_all([
         Tenant(id="acme", name="Acme Bank", slug="acme"),
         Tenant(id="globex", name="Globex", slug="globex"),
@@ -95,7 +95,7 @@ def test_the_whole_tenant_chain(e2e):
     created = client.post("/api/v1/technology-bom/cascade/watch",
                           headers={"X-Tenant-ID": "acme"},
                           json={"target": "acme-core", "kind": "system"})
-    assert created.status_code == 200
+    assert created.status_code == 200, created.text
     watch_id = created.json()["id"]
     with platform_scope():
         row = session.query(CascadeWatch).filter_by(id=watch_id).one()

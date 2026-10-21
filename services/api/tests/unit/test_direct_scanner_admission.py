@@ -310,4 +310,4 @@ def test_network_scan_admitted_runs(client, monkeypatch):
     r = client.post("/api/v1/network-scans", headers=_auth(client),
                     json={"hosts": ["example.com"]})
     assert r.status_code == 200, r.text
-    assert calls == [("hosts", ["example.com"])]
+    assert calls == [("hosts", ["example.com:443"])]

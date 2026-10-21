@@ -24,7 +24,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, require_roles
+from api.dependencies import TenantContext, get_current_user, get_db_session, require_roles
+from api.security.estate_history import history_context
 from api.events.bus import get_event_bus
 from api.live_scan.orchestrator import collapse_scan_events, get_scan_orchestrator
 from api.routers.inventory import collect_inventory
@@ -165,6 +166,7 @@ def orchestrator_history(
 @router.get("/environment")
 def live_environment(
     user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(history_context),
     db: Session = Depends(get_db_session),
 ):
     """ONE live view of the whole estate.
@@ -206,13 +208,14 @@ def live_environment(
         graph_summary = {"note": "graph unavailable"}
     # live event stream (recent real events)
     bus = get_event_bus()
-    events = bus.recent(since_id=0, limit=30)
+    from api.routers.events import _page
+    events = _page(bus, ctx.tenant_id, None, 30)
     orch = get_scan_orchestrator().status()
     return {
         "source": "live_environment",
         "domains": domain_counts,
         "graph": graph_summary,
-        "events": {"events": events, "latest_id": bus.latest_id(), "subscribers": bus.subscriber_count()},
+        "events": events,
         "scan": orch.get("scan"),
         "runner": orch.get("runner"),
     }

@@ -1,15 +1,8 @@
-"""Real-time event stream: SSE for humans/tools, JSON recent for fallback.
+"""Exact-estate SSE, paginated retained replay and selected-estate metadata.
 
-- GET /events/stream  (text/event-stream; auth required; Last-Event-ID resume)
-- GET /events/recent  (JSON history — polling fallback for proxies that
-  buffer SSE)
-- GET /events/stats   (bus health: subscribers, buffered events)
-
-Production cross-process events use the Redis Stream/Pub/Sub federation
-installed during app startup. The DB tailer remains for monitor-worker audit
-rows and compatibility when a row has no Redis journal frame; it polls
-``monitor_events`` every ``EVENT_TAILER_SECONDS`` and republishes new rows as
-``monitor.*``. Redis Stream replay is the Last-Event-ID recovery authority.
+Pub/Sub is a wakeup path. The owner-partitioned journal is replay/live authority;
+no synthetic DB backlog, filtered global windows or local outage fallback.
+Monitor/telecom tailers below remain separate compatibility publishers.
 """
 
 from __future__ import annotations
@@ -19,11 +12,12 @@ import contextlib
 import json
 import logging
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from starlette.concurrency import run_in_threadpool
 
-from api.dependencies import get_current_user
+from api.events.estate_replay import ReplayError
+from api.security.socket_history import SocketRefused, resolve_socket, visible_event
 from api.events import platform_events
 from api.events.bus import get_event_bus
 
@@ -31,212 +25,147 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/events", tags=["events"])
 
 HEARTBEAT_SECONDS = 15.0
-BACKLOG_DEFAULT = 25
 
 
-def _request_tenant_id() -> str | None:
+AUTH_RECHECK_SECONDS = 5.0
+
+
+async def stream_grant(request: Request):
     try:
-        from db.tenancy import current_tenant
-
-        return current_tenant()
-    except ImportError:
-        # Keep pure event-bus tests usable without the database package. In the
-        # API deployment db.tenancy is installed and unexpected errors must not
-        # silently disable tenant filtering.
-        return None
+        return await run_in_threadpool(resolve_socket, request, admit=True, query_credentials=False)
+    except SocketRefused as exc:
+        raise HTTPException(
+            503 if exc.code == 1011 else exc.status_code,
+            detail="Stream authority unavailable" if exc.code == 1011 else str(exc),
+        ) from exc
 
 
-def _event_tenant_id(event: dict) -> str | None:
-    value = event.get("tenant_id")
-    if value:
-        return str(value)
-    payload = event.get("payload") or {}
-    return str(payload["tenant_id"]) if payload.get("tenant_id") else None
+async def _checkpoint(request, grant):
+    current = await run_in_threadpool(resolve_socket, request, query_credentials=False)
+    if current != grant:
+        raise SocketRefused("Selected estate or credential changed")
 
 
-def _visible_to_tenant(event: dict, tenant_id: str | None, is_platform_admin: bool) -> bool:
-    """Apply the same scope to replay and live delivery.
+def _page(bus, owner, cursor, limit):
+    try:
+        page = bus.estate_page(owner, cursor, limit)
+        if page["retention_gap"]:
+            from api.observability.operational_counters import incr
 
-    Unowned events are platform events and are visible to a selected tenant as
-    shared control-plane information, but never to a platform-admin connection
-    that has explicitly selected another tenant. Owned events require an exact
-    tenant match; no wildcard tenant is accepted from the client.
-    """
-    owner = _event_tenant_id(event)
-    if owner is None:
-        return True
-    if is_platform_admin and tenant_id is None:
-        return False
-    return tenant_id is not None and owner == str(tenant_id)
+            incr("event_replay_gap")
+        return page
+    except ReplayError as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(503, detail="Estate replay backend unavailable") from exc
 
 
 def format_sse(event: dict) -> str:
-    payload = json.dumps(
-        {"id": event["id"], "ts": event["ts"], "type": event["type"],
-         "source": event["source"], "tenant_id": event.get("tenant_id"),
-         "payload": event["payload"]},
-        default=str,
-        separators=(",", ":"),
-    )
-    return f"id: {event['id']}\nevent: {event['type']}\ndata: {payload}\n\n"
+    payload = json.dumps(event, default=str, separators=(",", ":"))
+    # Wire resume tokens and public event IDs are estate-local, never global counters.
+    return f"id: {event['replay_cursor']}\nevent: {event['type']}\ndata: {payload}\n\n"
 
 
-def _db_backlog(limit: int = 25) -> list[dict]:
-    """Seed the stream from the durable monitor_events table when the
-    in-memory bus has no history (e.g. right after an API restart)."""
-    try:
-        from api.events.platform_events import published_event_ids
-
-        rows = _fetch_recent_monitor_events(limit=limit)
-    except Exception as backlog_exc:
-        logger.warning("event_backlog_unavailable", extra={"error_type": type(backlog_exc).__name__})
-        return []
-    already = published_event_ids()
-    out: list[dict] = []
-    for row in reversed(rows):  # oldest first
-        if row["id"] in already:
-            continue
-        out.append(
-            {
-                "id": -len(out) - 1,  # negative: synthetic, never collides with bus ids
-                "ts": row["created_at"] or "",
-                "type": f"monitor.{row['event_type'].lower()}",
-                "source": "monitor",
-                "tenant_id": row.get("tenant_id"),
-                "payload": {
-                    "target": row["target_name"],
-                    "row_id": row.get("id"),
-                    "detail": row.get("detail"),
-                    "data": row.get("payload") or {},
-                    "occurred_at": row["created_at"],
-                },
-            }
-        )
-    return out
+class EstateStreamResponse(StreamingResponse):
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self.cleanup()
 
 
 @router.get("/stream")
 async def stream_events(
     request: Request,
-    last_event_id: int | None = Query(None, ge=0),
-    user: str = Depends(get_current_user),
+    last_event_id: str | None = Query(None, max_length=1024),
+    grant=Depends(stream_grant),
 ) -> StreamingResponse:
     bus = get_event_bus()
-    tenant_id = _request_tenant_id()
-    is_platform_admin = tenant_id is None
-    visible = lambda event: _visible_to_tenant(event, tenant_id, is_platform_admin)
-    # EventSource does not add a query parameter when it reconnects -- the SSE
-    # spec has it send the Last-Event-ID *header*, and this response's
-    # `retry: 3000` field is what tells the browser to reconnect in the first
-    # place. Reading only the query string meant every reconnect replayed the
-    # whole backlog and the client re-processed events it already had, which
-    # is the opposite of what the id/retry framing is for.
-    #
-    # The query parameter still wins: it is an explicit caller choice, and
-    # tools that resume by hand use it.
-    if last_event_id is None:
-        header_value = request.headers.get("last-event-id")
-        if header_value is not None:
-            try:
-                parsed = int(header_value.strip())
-            except (TypeError, ValueError):
-                # Spec: a malformed id is ignored, not an error. Treat it as a
-                # fresh connection rather than refusing to stream.
-                parsed = None
-            if parsed is not None and parsed >= 0:
-                last_event_id = parsed
-
-    requested_resume = last_event_id is not None
-    resume_id = last_event_id if last_event_id is not None else 0
-    if resume_id == 0:
-        # fresh connection: start from the tail of history, not the dawn of time
-        resume_id = max(0, bus.latest_id() - BACKLOG_DEFAULT)
-    backlog = [event for event in bus.recent(since_id=resume_id, limit=BACKLOG_DEFAULT * 4)
-               if visible(event)][: BACKLOG_DEFAULT * 2]
-    if not backlog and bus.latest_id() == 0:
-        backlog = [event for event in _db_backlog(limit=BACKLOG_DEFAULT) if visible(event)]
-
-    oldest_id = bus.oldest_id()
-    replay_gap = bool(requested_resume and oldest_id is not None and resume_id < oldest_id - 1)
-    if replay_gap:
-        from api.observability.operational_counters import incr
-
-        # A client asked to resume from before the retained window, so it
-        # has missed events it will never see. The gap event below tells
-        # that one client; the counter is how an operator learns the
-        # retention window is too short for how long clients disconnect.
-        incr("event_replay_gap")
-    sub = bus.subscribe(event_filter=visible)
-    bus.publish("events.subscribe", {"user": user}, source="events", tenant_id=tenant_id)
+    cursor = last_event_id if last_event_id is not None else request.headers.get("last-event-id")
+    # Subscribe before capturing the journal watermark. Queue frames are only
+    # wakeups: ordered replay is authoritative, also when Pub/Sub misses a
+    # message, the queue overflows or publishers finish out of order.
+    sub = bus.subscribe(event_filter=lambda event: visible_event(event, grant.tenant_id))
+    try:
+        first = await run_in_threadpool(_page, bus, grant.tenant_id, cursor, 100)
+        await _checkpoint(request, grant)
+    except BaseException:
+        bus.unsubscribe(sub)
+        raise
 
     async def gen():
+        page = first
+        next_heartbeat = asyncio.get_running_loop().time() + HEARTBEAT_SECONDS
         try:
             yield "retry: 3000\n\n"
-            if replay_gap:
-                yield (
-                    "event: events.gap\n"
-                    f"data: {{\"requested_after\": {resume_id}, "
-                    f"\"oldest_replayable_id\": {oldest_id}, "
-                    "\"advice\": \"perform a fresh snapshot or resync\"}}\n\n"
-                )
-            for event in backlog:
-                yield format_sse(event)
             while True:
-                if await request.is_disconnected():
-                    break
-                try:
-                    event = await asyncio.wait_for(sub.queue.get(), timeout=HEARTBEAT_SECONDS)
-                except (asyncio.TimeoutError, TimeoutError):
-                    yield f": ping {int(HEARTBEAT_SECONDS)}s\n\n"
+                await _checkpoint(request, grant)
+                if page["retention_gap"]:
+                    yield 'event: events.gap\ndata: {"advice":"retained history lost; resynchronize application state"}\n\n'
+                for event in page["events"]:
+                    await _checkpoint(request, grant)
+                    if visible_event(event, grant.tenant_id):
+                        yield format_sse(event)
+                cursor = page["next_cursor"]
+                if page["has_more"]:
+                    page = await run_in_threadpool(_page, bus, grant.tenant_id, cursor, 100)
                     continue
-                if sub.dropped:
-                    yield (
-                        f"event: events.dropped\ndata: {{\"dropped\": {sub.dropped},"
-                        f" \"advice\": \"reconnect with Last-Event-ID\"}}\n\n"
-                    )
-                    sub.dropped = 0
-                yield format_sse(event)
+                # Advance the client checkpoint only AFTER all events in the
+                # page have been yielded. Metadata contains selected-estate
+                # sequences, never global counts/subscriber activity.
+                await _checkpoint(request, grant)
+                metadata = {k: v for k, v in page.items() if k != "events"}
+                yield f"id: {cursor}\nevent: events.checkpoint\ndata: {json.dumps(metadata)}\n\n"
+                while True:
+                    if await request.is_disconnected():
+                        return
+                    try:
+                        await asyncio.wait_for(sub.queue.get(), timeout=AUTH_RECHECK_SECONDS)
+                        while not sub.queue.empty():
+                            sub.queue.get_nowait()
+                    except asyncio.TimeoutError:
+                        pass
+                    await _checkpoint(request, grant)
+                    page = await run_in_threadpool(_page, bus, grant.tenant_id, cursor, 100)
+                    if page["events"] or page["retention_gap"]:
+                        break
+                    if asyncio.get_running_loop().time() >= next_heartbeat:
+                        yield ": ping\n\n"
+                        next_heartbeat = asyncio.get_running_loop().time() + HEARTBEAT_SECONDS
+        except SocketRefused as exc:
+            name = "events.unavailable" if exc.code == 1011 else "events.refused"
+            advice = "backend unavailable; reconnect later" if exc.code == 1011 else "reauthenticate; stream closed"
+            yield f"event: {name}\ndata: {json.dumps({'advice': advice})}\n\n"
+        except Exception:  # noqa: BLE001 — do not leak backend/auth exception contents
+            yield 'event: events.unavailable\ndata: {"advice":"reconnect with last acknowledged cursor"}\n\n'
         finally:
             bus.unsubscribe(sub)
 
-    return StreamingResponse(
+    response = EstateStreamResponse(
         gen(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",  # ask proxies not to buffer the stream
-        },
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
     )
+    response.cleanup = lambda: bus.unsubscribe(sub)
+    return response
 
 
 @router.get("/recent")
 def recent_events(
+    cursor: str | None = Query(None, max_length=1024),
     since_id: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
-    user: str = Depends(get_current_user),
+    grant=Depends(stream_grant),
 ) -> dict:
-    tenant_id = _request_tenant_id()
-    is_platform_admin = tenant_id is None
-    visible = lambda event: _visible_to_tenant(event, tenant_id, is_platform_admin)
-    bus = get_event_bus()
-    events = [event for event in bus.recent(since_id=since_id, limit=limit * 4) if visible(event)][:limit]
-    if not events and bus.latest_id() == 0:
-        events = [event for event in _db_backlog(limit=min(limit, BACKLOG_DEFAULT)) if visible(event)]
-    oldest_id = bus.oldest_id()
-    return {
-        "events": events,
-        "latest_id": bus.latest_id(),
-        "oldest_replayable_id": oldest_id,
-        "replay_gap": bool(oldest_id is not None and since_id < oldest_id - 1),
-        "subscribers": bus.subscriber_count(),
-    }
+    if since_id:
+        raise HTTPException(409, detail="Global numeric event IDs cannot resume estate history; use next_cursor")
+    return _page(get_event_bus(), grant.tenant_id, cursor, limit)
 
 
 @router.get("/stats")
-def event_stats(user: str = Depends(get_current_user)) -> dict:
-    stats = get_event_bus().stats()
-    stats["tailer_running"] = getattr(app_state(), "event_tailer_running", False)
-    return stats
+def event_stats(grant=Depends(stream_grant)) -> dict:
+    page = _page(get_event_bus(), grant.tenant_id, None, 1)
+    return {k: v for k, v in page.items() if k not in ("events", "next_cursor", "has_more", "complete")}
 
 
 def app_state():
@@ -246,6 +175,7 @@ def app_state():
 
 
 # ------------------------------------------------------------------- tailer
+
 
 def _telecom_event_payload(ev: dict) -> dict:
     """Bus payload for one telecom drift event — full identity so automation
@@ -264,8 +194,7 @@ def _telecom_event_payload(ev: dict) -> dict:
     }
 
 
-def _drain_telecom_events(seen: set[str], publish, snapshot: dict | None,
-                          *, seed_only: bool = False) -> int:
+def _drain_telecom_events(seen: set[str], publish, snapshot: dict | None, *, seed_only: bool = False) -> int:
     """Publish not-yet-seen telecom drift events from a snapshot (pure apart
     from the publish callback). ``seed_only=True`` learns history without
     publishing — the tailer's first read after boot, so a restart never
@@ -274,8 +203,7 @@ def _drain_telecom_events(seen: set[str], publish, snapshot: dict | None,
         return 0
     published = 0
     for ev in snapshot.get("events") or []:
-        key = (f"telecom:{ev.get('kind')}:{ev.get('target')}:"
-               f"{ev.get('at')}:{ev.get('fingerprint')}")
+        key = f"telecom:{ev.get('kind')}:{ev.get('target')}:{ev.get('at')}:{ev.get('fingerprint')}"
         if key in seen:
             continue
         seen.add(key)
@@ -285,8 +213,7 @@ def _drain_telecom_events(seen: set[str], publish, snapshot: dict | None,
     if len(seen) > 2_000:
         seen.clear()
         for ev in (snapshot.get("events") or [])[-1_000:]:
-            seen.add(f"telecom:{ev.get('kind')}:{ev.get('target')}:"
-                     f"{ev.get('at')}:{ev.get('fingerprint')}")
+            seen.add(f"telecom:{ev.get('kind')}:{ev.get('target')}:{ev.get('at')}:{ev.get('fingerprint')}")
     return published
 
 
@@ -322,7 +249,9 @@ async def tail_monitor_events(interval: float = 2.0) -> None:
             try:
                 directly_published = platform_events.published_event_ids()
             except Exception as published_exc:
-                logger.warning("event_tail_published_ids_unavailable", extra={"error_type": type(published_exc).__name__})
+                logger.warning(
+                    "event_tail_published_ids_unavailable", extra={"error_type": type(published_exc).__name__}
+                )
                 directly_published = set()
             # A platform publisher writes the audit row and the Redis journal
             # in the same operation. On a different replica the DB tailer must
@@ -338,10 +267,9 @@ async def tail_monitor_events(interval: float = 2.0) -> None:
             except Exception as journal_exc:
                 logger.warning("event_journal_dedup_unavailable", extra={"error_type": type(journal_exc).__name__})
             fresh = [
-                r for r in rows
-                if r["id"] not in seen
-                and r["id"] not in directly_published
-                and str(r["id"]) not in journal_row_ids
+                r
+                for r in rows
+                if r["id"] not in seen and r["id"] not in directly_published and str(r["id"]) not in journal_row_ids
             ]
             if fresh:
                 for row in fresh:
@@ -404,7 +332,6 @@ def _fetch_recent_monitor_events(limit: int = 100) -> list[dict]:
         session.close()
 
 
-
 async def tail_telecom_snapshot(interval: float = 2.0) -> None:
     """Federate telecom drift events written by OTHER processes (the monitor
     daemon's TELECOM passes, CLI runs) onto the bus as `telecom.event` — a
@@ -428,17 +355,19 @@ async def tail_telecom_snapshot(interval: float = 2.0) -> None:
                     directly = set()
 
                 def publish(ev: dict) -> None:
-                    bus.publish("telecom.event", _telecom_event_payload(ev),
-                                source="telecom-scanner")
+                    bus.publish("telecom.event", _telecom_event_payload(ev), source="telecom-scanner")
 
                 if not seeded:
                     # first read after boot: learn history, publish nothing
                     _drain_telecom_events(seen, publish, snapshot, seed_only=True)
                     seeded = True
                 else:
-                    fresh = [ev for ev in (snapshot or {}).get("events") or []
-                             if (f"telecom:{ev.get('kind')}:{ev.get('target')}:"
-                                 f"{ev.get('at')}:{ev.get('fingerprint')}") not in directly]
+                    fresh = [
+                        ev
+                        for ev in (snapshot or {}).get("events") or []
+                        if (f"telecom:{ev.get('kind')}:{ev.get('target')}:{ev.get('at')}:{ev.get('fingerprint')}")
+                        not in directly
+                    ]
                     _drain_telecom_events(seen, publish, {"events": fresh})
         except Exception as snapshot_exc:  # snapshot unreadable / mid-write — retry
             logger.warning("telecom_event_snapshot_unavailable", extra={"error_type": type(snapshot_exc).__name__})
@@ -465,26 +394,35 @@ TELEMETRY_SECONDS = 15.0
 
 
 async def publish_telemetry(interval: float = TELEMETRY_SECONDS) -> None:
-    """Periodic `telemetry.snapshot` event so live subscribers get events/sec,
-    subscriber count and buffer depth without polling."""
+    """Only platform-estate telemetry belongs on a NULL-owned event.
+
+    Deployment-wide subscriber/rate counters are operator observability, not
+    private history metadata. Tenant streams never inherit these NULL events.
+    """
     bus = get_event_bus()
-    prev = bus.published_total()
+    previous = None
     while True:
         await asyncio.sleep(interval)
-        now = bus.published_total()
-        delta = now - prev
-        prev = now
-        bus.publish(
-            "telemetry.snapshot",
-            {
-                "events_per_sec": round(delta / interval, 1),
-                "published_total": now,
-                "subscribers": bus.subscriber_count(),
-                "events_buffered": len(bus.recent(limit=10_000)),
-                "latest_id": bus.latest_id(),
-            },
-            source="telemetry",
-        )
+        try:
+            page = await run_in_threadpool(bus.estate_page, None, None, 1)
+            now = page["latest_sequence"]
+            delta = now - previous[1] if previous and previous[0] == page["epoch"] else 0
+            previous = (page["epoch"], now)
+            await run_in_threadpool(
+                bus.publish,
+                "telemetry.snapshot",
+                {
+                    "events_per_sec": round(delta / interval, 1),
+                    "events_buffered": max(0, now - page["oldest_sequence"] + 1),
+                    "latest_sequence": now,
+                    "epoch": page["epoch"],
+                    "scope": "PLATFORM_ESTATE_ONLY",
+                },
+                source="telemetry",
+                tenant_id=None,
+            )
+        except Exception as exc:
+            logger.warning("estate_telemetry_unavailable", extra={"error_type": type(exc).__name__})
 
 
 def start_telemetry_heartbeat(interval: float = TELEMETRY_SECONDS) -> asyncio.Task | None:

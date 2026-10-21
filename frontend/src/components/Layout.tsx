@@ -398,7 +398,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             );
           })()}
           <span className="item">{t("head.lastEvent")} <b>{ticker.ago === null ? "—" : `${ticker.ago}s`}</b></span>
-          <span className="item">{t("head.eventsPerSec")} <b>{ticker.backend ? (ticker.eps || 0) : "—"}</b></span>
+          <span className="item">{t("head.eventsPerSec")} <b>{ticker.backend && ticker.eps !== null ? ticker.eps : "—"}</b></span>
           <span className="item">Scans <b>{st ? Number(st.total_scans ?? 0) : "—"}</b></span>
           <span className="item">Findings <b>{st ? Number(st.total_findings ?? 0) : "—"}</b></span>
           {abac && (

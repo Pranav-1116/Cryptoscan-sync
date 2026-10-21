@@ -27,6 +27,8 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.security.rbac import require_permission
+from api.dependencies import TenantContext
+from api.security.estate_history import history_context
 
 router = APIRouter(prefix="/telecom", tags=["telecom"])
 logger = logging.getLogger(__name__)
@@ -535,15 +537,15 @@ def telecom_posture(user: str = Depends(require_permission("findings.read"))):
 
 @router.get("/events")
 def telecom_events(limit: int = Query(50, ge=1, le=200),
+                   cursor: str | None = Query(None, max_length=1024),
+                   ctx: TenantContext = Depends(history_context),
                    user: str = Depends(require_permission("findings.read"))):
     from api.events.bus import get_event_bus
-
-    tenant_id = _active_tenant_id()
-    recent = get_event_bus().recent(since_id=0, limit=500)
-    events = [e for e in recent
-              if str(e.get("type")) == "telecom.event"
-              and (e.get("tenant_id") is None or e.get("tenant_id") == tenant_id)]
-    return {"count": len(events), "events": list(reversed(events))[:limit]}
+    from api.routers.events import _page
+    page = _page(get_event_bus(), ctx.tenant_id, cursor, limit)
+    events = [e for e in page["events"] if e["type"] == "telecom.event"]
+    return {**page, "count": len(events), "events": list(reversed(events)),
+            "count_scope": "THIS_PAGE_ONLY", "filtered_by_type": "telecom.event"}
 
 # ------------------------------------------------------- roadmap + roaming
 

@@ -9,6 +9,9 @@ from db.models.evidence_record import EvidenceRecord
 from db.repositories.base_repository import BaseRepository
 
 
+_UNSCOPED = object()
+
+
 class EvidenceRepository(BaseRepository[EvidenceRecord]):
     def __init__(self, session: Session):
         super().__init__(EvidenceRecord, session)
@@ -56,9 +59,13 @@ class EvidenceRepository(BaseRepository[EvidenceRecord]):
         page: int = 1,
         page_size: int = 50,
         include_deleted: bool = False,
+        owner=_UNSCOPED,
     ) -> tuple[list[EvidenceRecord], int]:
         stmt = select(EvidenceRecord)
         count_stmt = select(func.count()).select_from(EvidenceRecord)
+        if owner is not _UNSCOPED:
+            stmt = stmt.where(EvidenceRecord.tenant_id == owner)
+            count_stmt = count_stmt.where(EvidenceRecord.tenant_id == owner)
         if not include_deleted:
             alive = EvidenceRecord.deleted_at.is_(None)
             stmt = stmt.where(alive)
@@ -83,7 +90,7 @@ class EvidenceRepository(BaseRepository[EvidenceRecord]):
     def get_by_scan(self, scan_id: str) -> list[EvidenceRecord]:
         return self.get_all_for_scan(scan_id)
 
-    def get_all_for_scan(self, scan_id: str, *, include_deleted: bool = True) -> list[EvidenceRecord]:
+    def get_all_for_scan(self, scan_id: str, *, include_deleted: bool = True, owner=_UNSCOPED) -> list[EvidenceRecord]:
         """Chain-ordered rows for a scan.
 
         ``include_deleted`` defaults to **True** because the chain-hash
@@ -96,6 +103,8 @@ class EvidenceRepository(BaseRepository[EvidenceRecord]):
             .where(EvidenceRecord.scan_id == scan_id)
             .order_by(EvidenceRecord.chain_position)
         )
+        if owner is not _UNSCOPED:
+            stmt = stmt.where(EvidenceRecord.tenant_id == owner)
         if not include_deleted:
             stmt = stmt.where(EvidenceRecord.deleted_at.is_(None))
         return list(self.session.execute(stmt).scalars().all())

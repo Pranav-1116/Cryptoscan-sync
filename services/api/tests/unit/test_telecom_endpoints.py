@@ -184,7 +184,9 @@ async def test_scan_probes_registered_targets_and_publishes_events(app_db, monke
         kinds = [e["kind"] for e in body["events"]]
         assert "TELECOM_CERT_EXPIRING" in kinds
 
-        events = await client.get("/api/v1/telecom/events", headers=_auth(session, ["readonly"]))
+        # This standalone fixture publishes NULL-owned platform events. A
+        # platform identity is required; ordinary bank readers stay scoped.
+        events = await client.get("/api/v1/telecom/events", headers=_auth(session, ["superadmin"]))
         assert events.status_code == 200
         published = [e for e in events.json()["events"] if e["type"] == "telecom.event"]
         assert published, "scan events must reach the platform bus"

@@ -11,11 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response
 
 from api.dependencies import (
+    TenantContext,
     get_current_user,
     get_db_session,
     get_evidence_repository,
     get_scan_repository,
 )
+from api.security.estate_history import history_context
 from api.routers.evidence_disposition import export_refused_reason
 from api.security.evidence_projection import project_finding, public_evidence_row
 from sqlalchemy.orm import Session
@@ -32,19 +34,20 @@ router = APIRouter(tags=["export"])
 def export_scan(
     scan_id: str,
     user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(history_context),
     db: Session = Depends(get_db_session),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None:
+    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Scan not found")
     # §4.2 (round 40): an operator disposition can quarantine a scan's
     # exports until a re-issued chain exists. Refuse, citing the decision.
     refused = export_refused_reason(db, scan_id)
     if refused:
         raise HTTPException(status_code=409, detail=refused)
-    rows = evidence.get_all_for_scan(scan_id)
+    rows = evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id)
     payload = {
         "scan": {
             "scan_id": scan.id,
@@ -66,17 +69,18 @@ def export_scan(
 def export_scan_csv(
     scan_id: str,
     user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(history_context),
     db: Session = Depends(get_db_session),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None:
+    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Scan not found")
     refused = export_refused_reason(db, scan_id)
     if refused:
         raise HTTPException(status_code=409, detail=refused)
-    rows = evidence.get_all_for_scan(scan_id)
+    rows = evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id)
     buffer = io.StringIO()
     writer = csv.DictWriter(
         buffer,
@@ -124,15 +128,16 @@ def export_scan_csv(
 def export_verification_script(
     scan_id: str,
     user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(history_context),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None:
+    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Scan not found")
     from evidence.scripts.verification_script_generator import generate_verification_script
 
-    script = generate_verification_script(scan_id=scan_id, records=evidence.get_all_for_scan(scan_id))
+    script = generate_verification_script(scan_id=scan_id, records=evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id))
     return Response(
         content=script,
         media_type="text/x-python",
@@ -144,13 +149,14 @@ def export_verification_script(
 def export_cbom(
     scan_id: str,
     user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(history_context),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None:
+    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Scan not found")
-    rows = evidence.get_all_for_scan(scan_id)
+    rows = evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id)
     components = []
     for row in rows:
         normalized = row.normalized_crypto or {}
@@ -260,13 +266,14 @@ def _cascade_dependencies(root_ref: str, cascade: dict, rows) -> tuple[list[dict
 def verify_scan(
     scan_id: str,
     user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(history_context),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None:
+    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Scan not found")
-    verdict = verify_stored_scan(scan, evidence.get_all_for_scan(scan_id))
+    verdict = verify_stored_scan(scan, evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id))
     return {**verdict, "verified_by": user, "content_hasher": ContentHasher.ALGORITHM}
 
 
@@ -277,6 +284,7 @@ def export_findings_csv(
     scan_id: str | None = None,
     limit: int = 10000,
     user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(history_context),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     """Estate-wide findings export (W59-60): Excel-compatible CSV over all scans.
@@ -295,6 +303,7 @@ def export_findings_csv(
             algorithm=algorithm,
             compliance_status=compliance_status,
             scan_id=scan_id,
+            owner=ctx.tenant_id,
             page=page,
             page_size=page_size,
         )

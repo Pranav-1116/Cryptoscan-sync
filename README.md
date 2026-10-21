@@ -4,7 +4,7 @@ Production cryptographic inventory and compliance platform — **Full End-to-End
 
 **Current Stats (2026-10-16, measured):** 51 services (~389k lines of Python), 103 API router modules, **834 API paths / 920 operations** (regenerated reference: `docs/api-reference/rest-api.md`), 95 alembic migrations with schema-parity tests, 75 frontend page components with lazy-loaded routes, 783 backend test files (full local suite: 7,629 passed / 34 skipped) plus a 334-test Vitest frontend suite with clean `tsc --noEmit`. Deterministic policy — no AI in the decision path. Per-round build ledger: `audit_reports/00_ROUND_STATUS.md` (complete through round 80).
 
-**Real-Time System:** WebSocket hub per topic /ws/{topic} plus global /ws/global; SSE /events/{topic} and /events/global; in-process event bus (publish/subscribe/recent) with a DB tailer that federates cross-process monitor events; live dashboard at /live/dashboard with history replay and auto-reconnect. Deterministic and auditable.
+**Real-Time System:** Read-only binary-job WebSocket progress (`/api/v1/ws/binary/jobs/{id}`), event WebSocket (`/api/v1/ws/events`), SSE (`/api/v1/events/stream`) and paginated polling (`/api/v1/events/recent`). Unified event replay is owner-partitioned, retained and epoch/cursor-bound: local memory in development or Redis Streams when configured. Fresh stream authority and explicit gaps/reset/backend errors do not imply indefinite history, exactly-once delivery or production HA qualification. See [the estate replay contract](docs/bank-environment/42-estate-streams-graphql-and-exports.md).
 
 **Cryptographic Digital Twin (CDT):** A read-only replica of the cryptographic estate built from live scanner state (`crypto_live_states`, versioned CBOMs), an append-only event journal (`crypto_live_events`) for per-asset time-travel, stored network scan probes (the same wire derivation the NBOM uses, so the two can never disagree), dependency edges from the relational table or the latest graph snapshot, and the hardware fleet from the live hardware engine (HSM inventory with declared PQC capability). The `/digital-twin` surface reports what the twin holds and where each section came from, measures fidelity (staleness, coverage, journal depth, network observation) with honest unknowns where the estate is unscanned, diffs the twin's algorithm inventory against its own evidence store (`/digital-twin/reconciliation`), and runs ten deterministic scenario types (algorithm migration, certificate expiry, key rotation, HSM outage, vendor compromise, protocol deprecation, compliance change, attack path, PQC migration, agility drift) over the replica. Scenarios are heuristic projections, not vendor simulations, and never touch production — the same engine powers the what-if preview. Beta capability (see [docs/CAPABILITY-MATURITY.md](docs/CAPABILITY-MATURITY.md)).
 
@@ -63,8 +63,13 @@ Unqualified scope/plugins remain refused. The
 restricts job/run details, logs, retries, metrics and drift to the selected estate.
 [WebSocket history checkpoints](docs/bank-environment/41-exact-estate-websocket-history.md)
 add the boundary to binary progress and event sockets, including fresh authority
-and pre-queue filtering. A01 and A02 remain partial; production safety is
-not certified by these local changes.
+and pre-queue filtering. The subsequent
+[estate streams/GraphQL/export delivery](docs/bank-environment/42-estate-streams-graphql-and-exports.md)
+adds retained per-estate pagination and closes the reviewed cross-surface history
+reads. [Broader qualification](docs/bank-environment/43-a01-a02-qualification-and-open-blockers.md)
+records real standalone Redis evidence, restricted aggregates/plugin discovery,
+SSH preflight and two explicitly failing queued-authority controls.
+**A01 and A02 remain partial; production safety is not certified.**
 
 
 ## Scope & honest boundaries

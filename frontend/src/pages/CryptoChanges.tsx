@@ -52,7 +52,7 @@ export default function CryptoChanges() {
         right={
           <div className="row">
             <Badge tone={rt.connected ? "green" : "amber"}>
-              <span className="dot" /> {rt.connected ? `STREAMING · ${rt.eps} EVENTS/SEC` : "AWAITING LIVE STREAM · SIGN IN & CONNECT"}
+              <span className="dot" /> {rt.connected ? (rt.eps === null ? "ESTATE STREAMING" : `STREAMING · ${rt.eps} EVENTS/SEC`) : "AWAITING LIVE STREAM · SIGN IN & CONNECT"}
             </Badge>
           </div>
         }

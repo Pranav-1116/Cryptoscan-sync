@@ -139,7 +139,7 @@ class JobRepository(BaseRepository[ScanJob]):
         self.session.expire(current)
         return self.get_by_id(job_id)
 
-    def list_by_scan_option(self, key: str, value: str, limit: int = 500) -> list[ScanJob]:
+    def list_by_scan_option(self, key: str, value: str, limit: int = 500, *, owner=_UNSCOPED) -> list[ScanJob]:
         """Recent jobs whose stored ``scan_options[key]`` equals ``value``.
 
         A queued scan records its options (including an intake batch id) in
@@ -156,6 +156,8 @@ class JobRepository(BaseRepository[ScanJob]):
                 .order_by(desc(ScanJob.created_at))
                 .limit(window)
             )
+            if owner is not _UNSCOPED:
+                stmt = stmt.where(ScanJob.tenant_id == owner)
             return list(self.session.execute(stmt).scalars().all())
         except Exception:  # noqa: BLE001 — no JSON path support: filter the window instead
             try:
@@ -166,9 +168,10 @@ class JobRepository(BaseRepository[ScanJob]):
                     extra={"error_type": type(_handler_exc).__name__},
                 )
                 pass
-            rows = self.session.execute(
-                select(ScanJob).order_by(desc(ScanJob.created_at)).limit(window)
-            ).scalars().all()
+            stmt = select(ScanJob).order_by(desc(ScanJob.created_at)).limit(window)
+            if owner is not _UNSCOPED:
+                stmt = stmt.where(ScanJob.tenant_id == owner)
+            rows = self.session.execute(stmt).scalars().all()
             return [
                 row for row in rows
                 if str(((row.progress or {}).get("scan_options") or {}).get(key) or "") == str(value)

@@ -113,7 +113,7 @@ def test_emit_platform_event_persists_and_publishes(admin_client, db):
     assert event["payload"]["row_id"] in published_event_ids()
 
 
-def test_recent_seeds_from_db_when_bus_empty(admin_client, db):
+def test_recent_does_not_fabricate_replay_from_unjournaled_db_rows(admin_client, db):
     session = SessionLocal()
     try:
         repo = MonitorRepository(session)
@@ -124,9 +124,9 @@ def test_recent_seeds_from_db_when_bus_empty(admin_client, db):
         session.close()
 
     body = admin_client.get("/api/v1/events/recent").json()
-    assert body["events"], "DB backlog should seed an empty bus"
-    assert body["events"][0]["source"] == "monitor"
-    assert body["events"][0]["type"].startswith("monitor.")
+    assert body["events"] == []
+    assert body["historical_backfill"] is False
+    assert body["durable"] is False
 
 
 def test_platform_drift_and_whatif_emit_events(admin_client, db):
@@ -195,8 +195,8 @@ def test_bus_stats_expose_published_total(admin_client, db):
     emit_platform_event("PLATFORM_RISK_SCORED", "estate risk 58.2 (MEDIUM)",
                         {"score": 58.2, "level": "MEDIUM"})
     body = admin_client.get("/api/v1/events/stats").json()
-    assert body["published_total"] >= 1
-    assert body["events_buffered"] >= 1
+    assert body["latest_sequence"] >= 1
+    assert "published_total" not in body and "subscribers" not in body
 
 
 def test_persist_platform_event_durable_only_and_dedup(admin_client, db):

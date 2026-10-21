@@ -89,11 +89,11 @@ def test_format_sse_frames():
     from api.routers.events import format_sse
 
     frame = format_sse(
-        {"id": 7, "ts": "2026-08-30T00:00:00+00:00", "type": "scan.completed",
+        {"id": 7, "replay_cursor": "owner-bound-cursor", "ts": "2026-08-30T00:00:00+00:00", "type": "scan.completed",
          "source": "pipeline", "payload": {"findings": 12}}
     )
     lines = frame.splitlines()
-    assert lines[0] == "id: 7"
+    assert lines[0] == "id: owner-bound-cursor"
     assert lines[1] == "event: scan.completed"
     assert lines[2].startswith("data: ")
     payload = json.loads(lines[2][len("data: "):])

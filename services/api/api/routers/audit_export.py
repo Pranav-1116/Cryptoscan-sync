@@ -25,19 +25,23 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.dependencies import require_auditor, get_db_session
+from api.dependencies import TenantContext, require_auditor, get_db_session
+from api.security.estate_history import history_context, assert_single_platform_estate
 from db.tenancy import platform_scope
 
 router = APIRouter(prefix="/audit-export", tags=["audit-export"])
 
 
-def _platform_audit_scope():
+def _platform_audit_scope(ctx: TenantContext = Depends(history_context), db: Session = Depends(get_db_session)):
     """The audit pack is a platform-wide examiner artifact.
 
     ``require_auditor`` is the platform auditor gate; making the bypass an
     explicit dependency prevents a selected customer tenant from silently
     changing a full-estate review into a partial export (or vice versa).
     """
+    if not ctx.is_platform_admin or ctx.tenant_id is not None:
+        raise HTTPException(403, detail="Aggregate audit exports require the platform estate")
+    assert_single_platform_estate(db)
     with platform_scope():
         yield
 

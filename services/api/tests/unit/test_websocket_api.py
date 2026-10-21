@@ -236,16 +236,16 @@ def test_topics_filter_by_prefix_and_since_resumes(ws_db):
     reset_event_bus()
     token = _session_token(ws_db, "streamer2", ["superadmin"])
     _publish(1, "scan.progress")
-    marker = get_event_bus().latest_id()
+    marker = get_event_bus().estate_page(None)["next_cursor"]
     _publish(1, "binary.queued")
     _publish(1, "runtime.finding")
     client = TestClient(create_app())
     with client.websocket_connect(
-            f"/api/v1/ws/events?token={token}&topics=binary.,runtime.&since={marker}") as socket:
+            f"/api/v1/ws/events?token={token}&topics=binary.,runtime.&cursor={marker}") as socket:
         hello = json.loads(socket.receive_text())
         frames = [json.loads(socket.receive_text()) for _ in range(2)]
     assert hello["topics"] == ["binary.", "runtime."]
-    assert hello["since"] == marker and hello["replayed"] == 2
+    assert hello["since"] == 0 and hello["replayed"] == 2
     assert [frame["event_type"] for frame in frames] == ["binary.queued", "runtime.finding"]
 
 
@@ -261,6 +261,8 @@ def test_a_live_event_reaches_a_connected_socket(ws_db):
         _publish(1, "scan.queued")
         _publish(1, "binary.queued")  # filtered out: the socket only asked for scan.
         frame = json.loads(socket.receive_text())
+        while frame["type"] == "checkpoint":
+            frame = json.loads(socket.receive_text())
     assert frame["type"] == "event"
     assert frame["event_type"] == "scan.queued"
     assert frame["id"] > 0

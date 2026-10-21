@@ -47,7 +47,12 @@ specific job/network-run HTTP platform-history gap without changing internal
 worker dispatch or curated-inventory sharing; broader A02 remains open.
 [Guide 41 — WebSocket history checkpoints](41-exact-estate-websocket-history.md)
 adds selected-estate binary/event sockets, strict fresh credentials and queue
-privacy, while retaining explicit bounded-replay limitations.
+privacy. [Guide 42 — estate streams, GraphQL and exports](42-estate-streams-graphql-and-exports.md)
+supersedes the global-window replay limitation with paginated retained estate
+journals and explicit gaps/resets, and isolates the reviewed cross-surface reads.
+[Guide 43 — broader A01/A02 qualification](43-a01-a02-qualification-and-open-blockers.md)
+records local/real-Redis evidence, deliberate restrictions and two known queued
+authority failures. Neither guide declares enterprise deployment qualified.
 
 ## Read in order
 
@@ -94,6 +99,8 @@ privacy, while retaining explicit bounded-replay limitations.
 | [39 — Explicit bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md) | How are IPv4 CIDR/port sweeps bounded, authorized and recorded without inventing TLS/crypto evidence or enabling enterprise plugins? |
 | [40 — Exact-estate HTTP history](40-exact-estate-http-history.md) | How are job/run lists, logs, retries, metrics and drift isolated from other banks and platform history without breaking internal dispatch? |
 | [41 — Exact-estate WebSocket history](41-exact-estate-websocket-history.md) | How do binary/event sockets establish and recheck authority, filter before queueing and report bounded replay without exposing other estates? |
+| [42 — Estate streams, GraphQL, exports and replay](42-estate-streams-graphql-and-exports.md) | How do owner-partitioned cursors, handoff/recovery, exact GraphQL/export reads and fail-closed aggregates work? |
+| [43 — Broader A01/A02 qualification and blockers](43-a01-a02-qualification-and-open-blockers.md) | What passed locally/against standalone Redis, what is refused, and which queued/SSH/regional/HA controls remain unqualified? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

@@ -1,13 +1,17 @@
 """Realtime shared-state tests: event-bus Redis sync + current-run store.
 
 These use stubbed redis clients because no live Redis is available in CI here.
-They verify the wiring / fallback behaviour (a Redis outage must never break the
-local bus or the orchestrator) rather than distributed correctness.
+They verify wiring and explicit configured-journal refusal, not distributed
+correctness. An unconfigured memory bus remains independent of Redis; a
+configured journal must not claim a successful append during an outage.
 """
 
 from __future__ import annotations
 
 import json
+
+import fakeredis
+import pytest
 
 from api.events.bus import EventBus
 from api.events.redis_sync import RedisEventSync, start_redis_federation
@@ -63,14 +67,19 @@ def test_event_bus_in_memory_delivers_when_no_redis():
 
 def test_redis_sync_publishes_local_events():
     bus = EventBus()
-    redis = _FakeRedis("node-a")
+    redis = fakeredis.FakeRedis()
     sync = RedisEventSync(redis, bus, "node-a")
     bus.set_remote_publisher(sync.publish)
-    bus.publish("scan.started", {"scan_id": "S1"}, source="scan")
-    assert len(redis.published) == 1
-    frame = json.loads(redis.published[0])
+    from api.events.redis_sync import CHANNEL
+
+    with redis.pubsub() as subscriber:
+        subscriber.subscribe(CHANNEL)
+        subscriber.get_message()
+        bus.publish("scan.started", {"scan_id": "S1"}, source="scan")
+        frame = json.loads(subscriber.get_message()["data"])
     assert frame["node"] == "node-a"
     assert frame["type"] == "scan.started"
+    assert frame["estate_sequence"] == 1
 
 
 def test_redis_sync_injects_remote_and_ignores_own_echo():
@@ -82,20 +91,18 @@ def test_redis_sync_injects_remote_and_ignores_own_echo():
     sync._pubsub = redis.pubsub()
 
     # inject a remote event as if it arrived from another node
-    redis.inject(json.dumps({"node": "node-b", "type": "remote.evt",
-                             "source": "scan", "payload": {"a": 1}, "ts": "t"}))
+    redis.inject(json.dumps({"node": "node-b", "type": "remote.evt", "source": "scan", "payload": {"a": 1}, "ts": "t"}))
     sync._run()
     assert any(e["type"] == "remote.evt" for e in bus.recent(limit=10))
 
     # inject our OWN echo -> must be ignored (no local re-publish / no dup)
     before = len(bus.recent(limit=50))
-    redis.inject(json.dumps({"node": "node-a", "type": "scan.started",
-                             "source": "scan", "payload": {}, "ts": "t"}))
+    redis.inject(json.dumps({"node": "node-a", "type": "scan.started", "source": "scan", "payload": {}, "ts": "t"}))
     sync._run()
     assert len(bus.recent(limit=50)) == before
 
 
-def test_redis_federation_is_robust_when_redis_bad():
+def test_configured_redis_outage_refuses_publication_without_local_fallback():
     class BadRedis:
         def pubsub(self):
             raise RuntimeError("no redis")
@@ -105,11 +112,14 @@ def test_redis_federation_is_robust_when_redis_bad():
 
     bus = EventBus()
     sync = start_redis_federation(BadRedis(), bus)
-    # robust design: still return a sync handle; it swallows Redis errors and
-    # the local bus keeps working (publishing locally must not raise).
     assert sync is not None
-    ev = bus.publish("a.b", {}, source="test")
-    assert ev["type"] == "a.b"
+    assert not sync.ready
+    with pytest.raises(RuntimeError, match="durable realtime event publication failed"):
+        bus.publish("a.b", {}, source="test")
+    assert not bus._history
+    with pytest.raises((AttributeError, RuntimeError)):
+        bus.estate_page(None)
+    sync.stop()
 
 
 def test_current_run_memory_store():

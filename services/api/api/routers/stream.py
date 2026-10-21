@@ -19,13 +19,17 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_current_user
+from api.security.estate_history import history_context
+from api.security.socket_history import SocketRefused
+from api.routers.events import stream_grant, _checkpoint
 
-router = APIRouter(tags=["stream"])
+router = APIRouter(tags=["stream"], dependencies=[Depends(history_context)])
 
 
 def _tenant_key() -> str | None:
@@ -48,7 +52,8 @@ def _store_dir() -> str:
     from eventstream.partitions import tenant_partition_dir
 
     base = os.environ.get("CBOM_STORE_DIR") or os.path.join(
-        os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data"), "live_cbom")
+        os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data"), "live_cbom"
+    )
     return str(tenant_partition_dir(base, _tenant_key()))
 
 
@@ -132,8 +137,7 @@ def ingest(body: IngestBody, user: str = Depends(get_current_user)):
         "chain_hash": proc.chain_hash,
     }
     # verdicts produced by THIS ingestion = everything published after `before`
-    out["recent_detections"] = [e["payload"]
-                                for e in _bus().replay("attack-detections", from_seq=from_seq)]
+    out["recent_detections"] = [e["payload"] for e in _bus().replay("attack-detections", from_seq=from_seq)]
     events = _bus().read("normalized-events", f"ingest-{env['seq']}", limit=1)
     if events:
         out["dedup_key"] = events[0]["payload"].get("extra", {}).get("dedup_key")
@@ -141,8 +145,7 @@ def ingest(body: IngestBody, user: str = Depends(get_current_user)):
 
 
 @router.get("/stream/events")
-def stream_events(topic: str, limit: int = Query(20, ge=1, le=200),
-                  user: str = Depends(get_current_user)):
+def stream_events(topic: str, limit: int = Query(20, ge=1, le=200), user: str = Depends(get_current_user)):
     from eventstream.topics import validate_topic
 
     try:
@@ -153,8 +156,7 @@ def stream_events(topic: str, limit: int = Query(20, ge=1, le=200),
 
 
 @router.get("/attacks")
-def recent_attacks(limit: int = Query(20, ge=1, le=200),
-                   user: str = Depends(get_current_user)):
+def recent_attacks(limit: int = Query(20, ge=1, le=200), user: str = Depends(get_current_user)):
     proc = _processor()
     proc.drain()
     rows = _bus().latest("attack-detections", limit=limit)
@@ -184,8 +186,7 @@ def cbom_live(system_id: str, user: str = Depends(get_current_user)):
 
 
 @router.get("/cbom/versions/{system_id}")
-def cbom_versions(system_id: str, limit: int = Query(20, ge=1, le=200),
-                  user: str = Depends(get_current_user)):
+def cbom_versions(system_id: str, limit: int = Query(20, ge=1, le=200), user: str = Depends(get_current_user)):
     svc = _cbom_service()
     path = svc._path(system_id)
     if not path.exists():
@@ -195,9 +196,20 @@ def cbom_versions(system_id: str, limit: int = Query(20, ge=1, le=200),
         for line in fh:
             if line.strip():
                 rec = json.loads(line)
-                rows.append({k: rec[k] for k in
-                             ("system_id", "version_no", "generated_at", "version_hash",
-                              "prev_hash", "asset_count", "jws")})
+                rows.append(
+                    {
+                        k: rec[k]
+                        for k in (
+                            "system_id",
+                            "version_no",
+                            "generated_at",
+                            "version_hash",
+                            "prev_hash",
+                            "asset_count",
+                            "jws",
+                        )
+                    }
+                )
     return {"versions": rows[-limit:]}
 
 
@@ -210,8 +222,9 @@ def cbom_version(system_id: str, version_no: int, user: str = Depends(get_curren
 
 
 @router.get("/cbom/diff")
-def cbom_diff(system: str, from_v: int = Query(..., ge=1), to_v: int = Query(..., ge=1),
-              user: str = Depends(get_current_user)):
+def cbom_diff(
+    system: str, from_v: int = Query(..., ge=1), to_v: int = Query(..., ge=1), user: str = Depends(get_current_user)
+):
     result = _cbom_service().diff(system, from_v, to_v)
     if result is None:
         raise HTTPException(status_code=404, detail="unknown version pair")
@@ -224,19 +237,34 @@ def cbom_verify(system_id: str, user: str = Depends(get_current_user)):
 
 
 @router.get("/cbom/stream/{system_id}")
-def cbom_stream(system_id: str, user: str = Depends(get_current_user)):
+def cbom_stream(system_id: str, request: Request, grant=Depends(stream_grant)):
     """SSE: one event per new CBOM version (real-time channel)."""
     svc = _cbom_service()
-    rec = svc.current(system_id)
-    last_version = rec["version_no"] if rec else 0
+    try:
+        rec = svc.current(system_id)
+        last_version = rec["version_no"] if rec else 0
+    except Exception as exc:
+        raise HTTPException(503, detail="CBOM stream backend unavailable") from exc
 
     async def gen():
         nonlocal last_version
         for _ in range(600):  # bounded connection lifetime (~10 min)
-            rec = svc.current(system_id)
-            if rec and rec["version_no"] != last_version:
-                last_version = rec["version_no"]
-                yield f"data: {json.dumps({'system_id': system_id, 'version_no': last_version, 'version_hash': rec['version_hash']})}\n\n"
+            try:
+                await _checkpoint(request, grant)
+                rec = await run_in_threadpool(svc.current, system_id)
+                if rec and rec["version_no"] != last_version:
+                    # Recheck after storage I/O, not just before it. A revoked
+                    # reader must not get a version read during that revocation.
+                    await _checkpoint(request, grant)
+                    last_version = rec["version_no"]
+                    yield f"data: {json.dumps({'system_id': system_id, 'version_no': last_version, 'version_hash': rec['version_hash']})}\n\n"
+            except SocketRefused as exc:
+                name = "events.unavailable" if exc.code == 1011 else "events.refused"
+                yield f'event: {name}\ndata: {{"advice":"stream closed; check authority/backend"}}\n\n'
+                return
+            except Exception:
+                yield 'event: events.unavailable\ndata: {"advice":"CBOM backend unavailable; reconnect later"}\n\n'
+                return
             await asyncio.sleep(1)
         yield "event: done\ndata: {}\n\n"
 

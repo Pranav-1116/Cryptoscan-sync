@@ -16,17 +16,18 @@ import urllib.parse
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from api import dependencies
+from api.events.estate_replay import cursor_for
+from test_software_supply_chain_api import banks as banks
 from api.events.bus import reset_event_bus
-from api.main import create_app
 
 pytestmark = pytest.mark.asyncio
 
 
 @pytest.fixture()
-def app():
-    application = create_app()
-    application.dependency_overrides[dependencies.get_current_user] = lambda: "tester"
+def app(banks):
+    clients, _, _ = banks
+    application = clients["platform_admin"].app
+    application.state.test_sse_headers = {"Cookie": "cryptoscan_session=" + clients["platform_admin"].cookies.get("cryptoscan_session")}
     return application
 
 
@@ -37,7 +38,7 @@ def bus():
 
 @pytest.fixture()
 def plain_client(app):
-    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers=app.state.test_sse_headers)
 
 
 class ASGIStream:
@@ -48,7 +49,7 @@ class ASGIStream:
         self._app, self._path, self._params = app, path, params or {}
         # Needed to exercise the header path: EventSource resumes by sending
         # Last-Event-ID as a header, never as a query parameter.
-        self._extra_headers = headers or {}
+        self._extra_headers = {**getattr(app.state, "test_sse_headers", {}), **(headers or {})}
         self.status: int | None = None
         self.headers: dict[str, str] = {}
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -122,8 +123,7 @@ class ASGIStream:
 
 
 async def test_stream_requires_auth(app, plain_client):
-    app.dependency_overrides.pop(dependencies.get_current_user, None)
-    resp = await plain_client.get("/api/v1/events/stream")
+    resp = await plain_client.get("/api/v1/events/stream", headers={"Cookie": ""})
     assert resp.status_code == 401
     await plain_client.aclose()
 
@@ -160,7 +160,7 @@ async def test_stream_resumes_from_last_event_id(app, bus):
     first = bus.publish("t.keep", {"n": 1}, source="test")
     bus.publish("t.skip", {"n": 2}, source="test")
     async with ASGIStream(
-        app, "/api/v1/events/stream", params={"last_event_id": first["id"]}
+        app, "/api/v1/events/stream", params={"last_event_id": cursor_for(None, first["estate_epoch"], first["estate_sequence"])}
     ) as stream:
         types: list[str] = []
         async for line in stream.lines():
@@ -178,9 +178,9 @@ async def test_recent_endpoint_reports_history(plain_client, bus):
     body = (await plain_client.get("/api/v1/events/recent")).json()
     types = [e["type"] for e in body["events"]]
     assert "t.one" in types and "t.two" in types
-    assert body["latest_id"] >= 2
+    assert body["latest_sequence"] == 2
     since = (
-        await plain_client.get("/api/v1/events/recent", params={"since_id": body["latest_id"] - 1})
+        await plain_client.get("/api/v1/events/recent", params={"cursor": body["events"][0]["replay_cursor"]})
     ).json()
     assert [e["type"] for e in since["events"]] == [types[-1]]
     await plain_client.aclose()
@@ -188,7 +188,7 @@ async def test_recent_endpoint_reports_history(plain_client, bus):
 
 async def test_stats_endpoint(plain_client, bus):
     body = (await plain_client.get("/api/v1/events/stats")).json()
-    assert {"events_buffered", "subscribers", "latest_id", "tailer_running"} <= set(body)
+    assert {"oldest_sequence", "latest_sequence", "epoch", "durable"} <= set(body)
     await plain_client.aclose()
 
 
@@ -275,7 +275,7 @@ async def test_stream_resumes_from_the_last_event_id_header(app, bus):
     bus.publish("t.skip", {"n": 2}, source="test")
 
     async with ASGIStream(
-        app, "/api/v1/events/stream", headers={"Last-Event-ID": str(first["id"])}
+        app, "/api/v1/events/stream", headers={"Last-Event-ID": cursor_for(None, first["estate_epoch"], first["estate_sequence"])}
     ) as stream:
         types: list[str] = []
         async for line in stream.lines():
@@ -294,7 +294,7 @@ async def test_an_explicit_query_parameter_beats_the_header(app, bus):
 
     async with ASGIStream(
         app, "/api/v1/events/stream",
-        params={"last_event_id": first["id"]},
+        params={"last_event_id": cursor_for(None, first["estate_epoch"], first["estate_sequence"])},
         headers={"Last-Event-ID": "0"},
     ) as stream:
         types: list[str] = []
@@ -306,14 +306,7 @@ async def test_an_explicit_query_parameter_beats_the_header(app, bus):
         assert "t.a" not in types
 
 
-async def test_a_malformed_last_event_id_header_is_ignored_not_fatal(app, bus):
-    """The spec says ignore an unparseable id; refusing to stream is worse."""
+async def test_a_malformed_last_event_id_header_requires_explicit_resync(app, bus):
     bus.publish("t.one", {}, source="test")
-
-    async with ASGIStream(
-        app, "/api/v1/events/stream", headers={"Last-Event-ID": "not-a-number"}
-    ) as stream:
-        assert stream.status == 200
-        async for line in stream.lines():
-            if line.startswith("event: "):
-                break
+    async with ASGIStream(app, "/api/v1/events/stream", headers={"Last-Event-ID": "not-a-cursor"}) as stream:
+        assert stream.status == 409

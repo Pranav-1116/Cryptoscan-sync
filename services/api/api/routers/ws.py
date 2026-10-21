@@ -10,8 +10,8 @@ Two sockets, both read-only:
   in-process event bus does not cross that boundary. A WebSocket that claimed
   otherwise would be the same polling with a nicer name.
 * ``WS /ws/events`` — the same event bus the SSE stream uses, with ``topics``
-  filters and ``since``/``last_event_id`` resume, so a client that prefers one
-  socket for everything can have it.
+  filters, owner-bound ``cursor`` resume and retained journal checkpoints.
+  Numeric global resume IDs are no longer accepted.
 
 Both authenticate at connect: a session cookie (browsers send it), ``X-API-Key``
 (non-browser clients), or ``?api_key=``/``?token=`` for clients that cannot set a
@@ -198,14 +198,9 @@ def _read_job(job_id: str, owner: str | None) -> dict[str, Any] | None:
 
 @router.websocket("/ws/events")
 async def event_stream(websocket: WebSocket) -> None:
-    """The in-process event bus over a socket, with topic filters and resume.
+    """Ordered retained estate replay. Pub/Sub queues are wakeups, not authority."""
+    from api.events.estate_replay import ReplayError
 
-    ``topics=scan.,binary.,runtime.`` filters by prefix; ``since=<id>`` (or the
-    ``last_event_id`` query parameter) replays the bus history after that id. The
-    honesty note from the SSE stream carries over: this bus is **in-process**, so
-    events published in the worker or the monitor daemon are not here until the DB
-    tailer federates them.
-    """
     grant = await _accept_or_refuse(websocket)
     if grant is None:
         return
@@ -214,78 +209,76 @@ async def event_stream(websocket: WebSocket) -> None:
 
     bus = get_event_bus()
     topics = tuple(part.strip() for part in (websocket.query_params.get("topics") or "").split(",") if part.strip())
-    raw_since = websocket.query_params.get("since") or websocket.query_params.get("last_event_id")
-    try:
-        since = int(raw_since) if raw_since is not None else 0
-    except (TypeError, ValueError):
-        since = 0
+    cursor = websocket.query_params.get("cursor")
+    legacy = websocket.query_params.get("since") or websocket.query_params.get("last_event_id")
     visible = lambda event: visible_event(event, grant.tenant_id) and _matches(event, topics)
     subscription = bus.subscribe(event_filter=visible)
-    dropped_seen = 0
+    latest_visible = 0
     try:
-        replay = [event for event in bus.recent(since_id=since, limit=200) if visible(event)]
+        if legacy not in (None, "0"):
+            raise ReplayError("Numeric global event IDs cannot resume estate history; use cursor")
+        page = await asyncio.to_thread(bus.estate_page, grant.tenant_id, cursor, 100)
         await _checkpoint(websocket, grant)
-        latest_visible = max([since] + [int(e["id"]) for e in replay])
-        next_ping = asyncio.get_running_loop().time() + PING_SECONDS
+        replay = [e for e in page["events"] if visible(e)]
+        latest_visible = max([0] + [e["id"] for e in replay])
         await websocket.send_json(
             {
                 "type": "hello",
                 "topics": list(topics),
+                "since": 0,
                 "replayed": len(replay),
-                "since": since,
                 "latest_id": latest_visible,
-                "note": (
-                    "in-process bus: events published by other processes (worker, monitor "
-                    "daemon) reach here only after the DB tailer federates them; bounded global "
-                    "replay window filtered by selected estate, not complete tenant history"
-                ),
+                "note": "Retained per-estate journal; in-process memory in local mode, shared Redis when configured. Not an indefinite archive; acknowledge checkpoint cursors after consuming preceding frames.",
             }
         )
-        for event in replay:
-            if visible(event):
-                await websocket.send_json({"type": "event", **_event(event)})
+        next_ping = asyncio.get_running_loop().time() + PING_SECONDS
         while True:
-            try:
-                event = await asyncio.wait_for(
-                    subscription.queue.get(), timeout=min(PING_SECONDS, AUTH_RECHECK_SECONDS)
+            await _checkpoint(websocket, grant)
+            if page["retention_gap"]:
+                from api.observability.operational_counters import incr
+
+                incr("event_replay_gap")
+                await websocket.send_json(
+                    {
+                        "type": "warning",
+                        "retention_gap": True,
+                        "message": "Retained history lost; resynchronize application state",
+                    }
                 )
-            except asyncio.TimeoutError:
+            for event in page["events"]:
                 await _checkpoint(websocket, grant)
+                if visible(event):
+                    latest_visible = max(latest_visible, int(event["id"]))
+                    await websocket.send_json({"type": "event", **_event(event)})
+            cursor = page["next_cursor"]
+            await _checkpoint(websocket, grant)
+            await websocket.send_json({"type": "checkpoint", **{k: v for k, v in page.items() if k != "events"}})
+            if page["has_more"]:
+                page = await asyncio.to_thread(bus.estate_page, grant.tenant_id, cursor, 100)
+                continue
+            while True:
+                try:
+                    await asyncio.wait_for(subscription.queue.get(), timeout=min(PING_SECONDS, AUTH_RECHECK_SECONDS))
+                    while not subscription.queue.empty():
+                        subscription.queue.get_nowait()
+                except asyncio.TimeoutError:
+                    pass
+                await _checkpoint(websocket, grant)
+                page = await asyncio.to_thread(bus.estate_page, grant.tenant_id, cursor, 100)
+                if page["events"] or page["retention_gap"]:
+                    break
                 now = asyncio.get_running_loop().time()
                 if now >= next_ping:
                     await websocket.send_json({"type": "ping", "latest_id": latest_visible})
                     next_ping = now + PING_SECONDS
-                continue
-            await _checkpoint(websocket, grant)
-            if subscription.dropped > dropped_seen:
-                lost = subscription.dropped - dropped_seen
-                dropped_seen = subscription.dropped
-                await websocket.send_json(
-                    {
-                        "type": "warning",
-                        "dropped": lost,
-                        "total_dropped": dropped_seen,
-                        "message": (
-                            "this socket fell behind and the bus dropped the oldest events; "
-                            "reconnect with since=<the last id you saw> to request retained history; "
-                            "bounded replay does not guarantee recovery"
-                        ),
-                    }
-                )
-            if visible(event):
-                latest_visible = max(latest_visible, int(event["id"]))
-                await websocket.send_json({"type": "event", **_event(event)})
+    except ReplayError:
+        await _close(websocket, "Replay cursor or journal refused; resynchronize", code=CLOSE_UNAUTHORIZED)
     except SocketRefused as exc:
         await _close(websocket, str(exc), code=exc.code)
     except WebSocketDisconnect:
         return
-    except Exception as _handler_exc:  # noqa: BLE001
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
+    except Exception:
         await _close(websocket, "Event stream unavailable", code=CLOSE_SERVER_ERROR)
-        return
     finally:
         bus.unsubscribe(subscription)
 
@@ -304,6 +297,7 @@ def _event(event: dict[str, Any]) -> dict[str, Any]:
         "event_type": event.get("type"),
         "source": event.get("source"),
         "payload": event.get("payload") or {},
+        "replay_cursor": event.get("replay_cursor"),
     }
 
 

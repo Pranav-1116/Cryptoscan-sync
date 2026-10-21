@@ -61,12 +61,21 @@ job lists/details/logs/retries and network-run lists/counts/results/metrics/drif
 to the selected estate, including NULL/platform. Internal dispatch is unchanged;
 [WebSocket history checkpoints](41-exact-estate-websocket-history.md) now also
 protect binary progress and event sockets with exact-estate replay/live queue
-filters and fresh authority. SSE/GraphQL/export and other surfaces still need
-their own A02 review; bounded replay is not a complete per-estate archive.
+filters and fresh authority. The subsequent
+[estate streams/GraphQL/export contract](42-estate-streams-graphql-and-exports.md)
+adds authoritative SSE/CBOM-stream context, exact reviewed GraphQL/export reads
+and paginated per-estate retained journals. Mixed-source audit/access-review packs
+and aggregate posture SSE are refused on bank/mixed/orphaned estates. Retained
+replay is not an indefinite archive; other aggregate/inventory surfaces still
+need their own A02 review.
 
 This is **partial A01 delivery**, not uniformity across all collectors. The
-separate enterprise scope/plugin expansion still requires qualification;
-SSH/inventory plugins, distributed quotas, actual connection/QPS budgets, in-flight stop and production qualification remain separate work.
+enterprise inventory discovery API is now refused before engine/plugin execution.
+SSH now has bounded per-target/port/protocol preflight but explicitly no durable
+receipt. [Guide 43](43-a01-a02-qualification-and-open-blockers.md) records the
+additional evidence and two strict expected failures for generic queued authority.
+Durable SSH, granular/regional grants, distributed quotas, actual connection/QPS
+budgets, in-flight stop and production qualification remain separate work.
 Authentication, target validation, role/grant policy and collection persistence
 are different controls. Existing IT-window semantics and inventory-sharing
 policy are not silently replaced. See guide 35 for compatibility changes,

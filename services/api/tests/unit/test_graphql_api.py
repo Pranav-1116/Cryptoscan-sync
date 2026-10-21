@@ -81,7 +81,10 @@ def _viewer_app(tmp_path, monkeypatch):
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     from db.models.user import User
 
+    from db.models.tenant import Tenant, TenantMembership
     session.add(User(username="viewer1", password_hash="x", roles="readonly"))
+    session.add(Tenant(id="viewer-bank", name="Viewer bank", slug="viewer-bank"))
+    session.add(TenantMembership(tenant_id="viewer-bank", username="viewer1", tenant_role="member"))
     session.commit()
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: "viewer1"

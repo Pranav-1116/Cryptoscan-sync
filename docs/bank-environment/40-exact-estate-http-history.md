@@ -3,6 +3,13 @@
 [Guide index](README.md) · [Bounded TCP discovery](39-bounded-tcp-monitor-discovery.md) ·
 [Enterprise backlog](33-international-bank-engineering-and-rollout.md)
 
+**Subsequent delivery:** [Guide 41](41-exact-estate-websocket-history.md)
+extends the boundary to sockets; [guide 42](42-estate-streams-graphql-and-exports.md)
+adds reviewed SSE/GraphQL/export isolation and retained per-estate replay.
+[Guide 43](43-a01-a02-qualification-and-open-blockers.md) records the broader
+qualification evidence and remaining blockers. The results below describe the
+original HTTP increment, not a production-wide certification.
+
 ## Subsequent socket increment
 
 [Guide 41](41-exact-estate-websocket-history.md) subsequently qualifies the

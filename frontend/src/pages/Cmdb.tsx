@@ -22,7 +22,7 @@ const SEV_TONE: Record<string, string> = { CRITICAL: "red", HIGH: "amber", MEDIU
 function LiveActivity({ rt }: { rt: RealtimeState }) {
   const items = rt.events.filter((e) => !isSystemEvent(e.type)).slice(0, 6);
   return (
-    <Panel title="Live activity" sub={rt.connected ? `SSE live · ${rt.subscribers} subscribers · ${rt.eps} ev/s` : "no live events stream yet"} frame={false}>
+    <Panel title="Live activity" sub={rt.connected ? "Estate stream connected" : "no live events stream yet"} frame={false}>
       {items.length ? (
         <div className="feed">
           {items.map((e) => (

@@ -98,6 +98,26 @@ class EventBus:
         self._durable_latest: Any = None
         self._durable_health: Any = None
         self._durable_oldest: Any = None
+        from api.events.estate_replay import MemoryEstateJournal
+
+        self._estate_journal = MemoryEstateJournal(history_size)
+        self._estate_provider = None
+
+    def set_estate_history(self, provider):
+        self._estate_provider = provider
+
+    def estate_page(self, owner, cursor=None, limit=100):
+        from api.events.estate_replay import replay_page
+
+        if self._remote_publish_required and self._estate_provider is None:
+            raise RuntimeError("Required estate journal unavailable")
+        return replay_page(
+            self._estate_provider or self._estate_journal.page,
+            owner,
+            cursor,
+            limit,
+            durable=self._estate_provider is not None,
+        )
 
     def set_remote_publish_required(self, required: bool = True) -> None:
         """Make remote publication failures visible to the caller.
@@ -110,16 +130,18 @@ class EventBus:
         self._remote_publish_required = bool(required)
 
     def set_remote_publisher(self, fn: Any) -> None:
-        """Optional cross-process publisher (e.g. Redis pub/sub) invoked after
-        every local publish. Never mutates or throws into the local path."""
+        """Cross-process append/fanout invoked before local delivery.
+
+        A required or configured estate journal is fail-closed. A standalone
+        best-effort callback without an estate provider retains local semantics.
+        """
         self._remote_publisher = fn
 
     def set_durable_health(self, provider: Any) -> None:
         """Install a health callback for the shared realtime backend."""
         self._durable_health = provider
 
-    def set_durable_history(self, *, next_id: Any, recent: Any, latest: Any,
-                             oldest: Any = None) -> None:
+    def set_durable_history(self, *, next_id: Any, recent: Any, latest: Any, oldest: Any = None) -> None:
         """Install the production event journal adapter.
 
         ``next_id`` allocates one process-independent sequence, while ``recent``
@@ -142,29 +164,34 @@ class EventBus:
         source: str = "api",
         tenant_id: str | None = None,
     ) -> dict[str, Any]:
+        if self._remote_publisher is None and (self._remote_publish_required or self._estate_provider is not None):
+            raise RuntimeError("Configured estate journal publisher unavailable")
         event = {
-            "id": (self._id_factory() if self._id_factory is not None
-                    else next(self._counter)),
+            "id": (self._id_factory() if self._id_factory is not None else next(self._counter)),
             "ts": datetime.now(timezone.utc).isoformat(),
             "type": str(event_type),
             "source": str(source),
             "payload": payload or {},
             "tenant_id": tenant_id,
         }
+        # Persist before live fanout. Required-journal failure must never deliver
+        # an event that the caller has been told was refused.
+        if self._remote_publisher is not None:
+            try:
+                self._remote_publisher(event)
+            except Exception as exc:  # noqa: BLE001
+                self._remote_publish_failures += 1
+                logger.error("event_federation_publish_failed", extra={"error_type": type(exc).__name__})
+                if self._remote_publish_required or self._estate_provider is not None:
+                    raise RuntimeError("durable realtime event publication failed") from exc
         with self._lock:
+            if self._estate_provider is None:
+                self._estate_journal.append(event)
             self._history.append(event)
             self._published_total += 1
             subs = list(self._subs)
         for sub in subs:
             sub.deliver(event)
-        if self._remote_publisher is not None:
-            try:
-                self._remote_publisher(event)
-            except Exception as exc:  # noqa: BLE001 — health exposes the delivery fault
-                self._remote_publish_failures += 1
-                logger.error("event_federation_publish_failed", extra={"error_type": type(exc).__name__})
-                if self._remote_publish_required:
-                    raise RuntimeError("durable realtime event publication failed") from exc
         return event
 
     def inject_remote(self, frame: dict[str, Any]) -> dict[str, Any]:
@@ -182,7 +209,10 @@ class EventBus:
             "payload": frame.get("payload") or {},
             "tenant_id": frame.get("tenant_id"),
         }
+        event.update({k: frame[k] for k in ("estate_sequence", "estate_epoch") if k in frame})
         with self._lock:
+            if self._estate_provider is None:
+                self._estate_journal.append(event)
             self._history.append(event)
             self._published_total += 1
             subs = list(self._subs)
@@ -225,7 +255,7 @@ class EventBus:
             except Exception as _handler_exc:  # noqa: BLE001 — local history remains available
                 logger.warning("durable_event_history_unavailable", extra={"error_type": type(_handler_exc).__name__})
         rows = {int(e["id"]): e for e in snapshot if isinstance(e.get("id"), int) and e["id"] > since_id}
-        return [rows[key] for key in sorted(rows)[-max(1, limit):]]
+        return [rows[key] for key in sorted(rows)[-max(1, limit) :]]
 
     def latest_id(self) -> int:
         with self._lock:

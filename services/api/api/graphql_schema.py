@@ -324,9 +324,10 @@ def _binary_job(arguments: dict[str, Any], context: ExecutionContext) -> dict[st
     job_id = _text(arguments.get("id"))
     if not job_id:
         raise ValueError("binaryJob needs an id")
-    from api.job_view import job_snapshot  # one shape for REST, WebSocket and GraphQL
+    from db.repositories.job_repository import JobRepository
 
-    return job_snapshot(_session(context), job_id)
+    job = JobRepository(_session(context)).get_by_id(job_id, owner=_tenant(context))
+    return job_card(job) if job is not None else None
 
 
 def _binary_jobs(arguments: dict[str, Any], context: ExecutionContext) -> list[dict[str, Any]]:
@@ -344,7 +345,7 @@ def _jobs(context: ExecutionContext, limit: int) -> list[Any]:
     session = _session(context)
     if session is None:
         raise ValueError("this query needs a database session")
-    return list(JobRepository(session).list_recent(limit=min(limit, 200)))
+    return list(JobRepository(session).list_recent(limit=min(limit, 200), owner=_tenant(context)))
 
 
 def _iso(value: Any) -> str | None:
@@ -361,7 +362,7 @@ def _binary_batch(arguments: dict[str, Any], context: ExecutionContext) -> dict[
     session = _session(context)
     if session is None:
         raise ValueError("this query needs a database session")
-    jobs = JobRepository(session).list_by_scan_option("batch_id", batch_id, limit=BATCH_WINDOW)
+    jobs = JobRepository(session).list_by_scan_option("batch_id", batch_id, limit=BATCH_WINDOW, owner=_tenant(context))
     files, by_status, binaries, findings, matches = [], {}, 0, 0, 0
     for job in jobs:
         card = job_card(job)
@@ -424,8 +425,8 @@ def _runtime_findings(arguments: dict[str, Any], context: ExecutionContext) -> d
     limit = _limit(arguments, default=50)
     kind = _text(arguments.get("kind"))
     weak_only = bool(arguments.get("weakOnly") or False)
-    rows = RuntimeFindingRepository(session).list_recent(limit=limit, kind=kind, weak_only=weak_only)
-    summary = RuntimeFindingRepository(session).summary()
+    rows = RuntimeFindingRepository(session, owner=_tenant(context)).list_recent(limit=limit, kind=kind, weak_only=weak_only)
+    summary = RuntimeFindingRepository(session, owner=_tenant(context)).summary()
     return {
         "__type__": "RuntimeFindings",
         "items": [{

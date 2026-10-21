@@ -14,7 +14,11 @@ The supporting [exact-estate HTTP history increment](40-exact-estate-http-histor
 closes the specific job/network-run platform-history gap, not all A02 surfaces.
 The subsequent [WebSocket history increment](41-exact-estate-websocket-history.md)
 adds binary/event socket authority checkpoints and pre-queue estate filtering,
-without certifying every streaming/export interface.
+without certifying every streaming/export interface. The
+[estate streams/GraphQL/export delivery](42-estate-streams-graphql-and-exports.md)
+now extends those reviewed boundaries and adds retained per-estate pagination.
+[Broader qualification](43-a01-a02-qualification-and-open-blockers.md) records
+local/standalone-Redis evidence, explicit restrictions and known queued failures.
 A01 as a whole and the remaining enterprise items are
 still open. The prior ten steps
 are locally delivered as recorded in [guide 26](26-bank-negative-tests-and-backend-qualification.md).

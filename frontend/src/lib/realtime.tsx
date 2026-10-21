@@ -3,7 +3,7 @@
    with backoff, a stale-connection watchdog, network up/down awareness, and
    auth-change handling. There is NO simulated/fake event stream: when the
    backend is unreachable or the user is signed out, the store stays empty
-   (source: "off") and the UI shows zeros. Real scan/discovery events appear
+   (source: "off") and unavailable rates/counters stay unknown. Real scan/discovery events appear
    only when the platform actually emits them.
 
    Architecture per spec §42: Backend → SSE stream → frontend event store →
@@ -31,10 +31,10 @@ export interface StreamEvent {
 }
 
 export interface Telemetry {
-  eventsPerSec: number;
-  subscribers: number;
-  eventsBuffered: number;
-  latestId: number;
+  eventsPerSec: number | null;
+  subscribers: number | null;
+  eventsBuffered: number | null;
+  latestId: number | null;
 }
 
 export type StreamSource = "live" | "off";
@@ -49,14 +49,15 @@ export interface RealtimeState {
   events: StreamEvent[];        // newest first, capped
   latestId: number;
   lastEventAt: number | null;   // epoch ms of last real event frame
-  eps: number;
-  subscribers: number;
+  eps: number | null;
+  subscribers: number | null;
+  replayIssue: string | null;
   telemetry: Telemetry | null;
 }
 
 const EMPTY: RealtimeState = {
   connected: false, conn: "offline", source: "off", backend: null, events: [],
-  latestId: 0, lastEventAt: null, eps: 0, subscribers: 0, telemetry: null,
+  latestId: 0, lastEventAt: null, eps: null, subscribers: null, replayIssue: null, telemetry: null,
 };
 
 const Ctx = createContext<RealtimeState>(EMPTY);
@@ -91,13 +92,15 @@ export function RealtimeChip({ compact = false }: { compact?: boolean }) {
   const age = useSecondsSince(rt.lastEventAt);
 
   const tone =
-    rt.conn === "live" ? "green"
+    rt.replayIssue ? "amber"
+    : rt.conn === "live" ? "green"
     : rt.conn === "stalled" ? "amber"
     : rt.conn === "connecting" ? "slate"
     : "red";
 
   const state =
-    rt.conn === "live" ? "LIVE"
+    rt.replayIssue ? "RESYNC REQUIRED"
+    : rt.conn === "live" ? "LIVE"
     : rt.conn === "stalled" ? "STALLED"
     : rt.conn === "connecting" ? "CONNECTING"
     : rt.backend === false ? "OFFLINE"
@@ -118,9 +121,9 @@ export function RealtimeChip({ compact = false }: { compact?: boolean }) {
   return (
     <span
       className="badge"
-      title={rt.conn === "stalled"
+      title={rt.replayIssue || (rt.conn === "stalled"
         ? "The stream is connected but no events have arrived recently — figures on screen may be out of date."
-        : `Event stream: ${rt.conn}`}
+        : `Event stream: ${rt.conn}`)}
       style={{ borderColor: `var(--${tone})`, color: `var(--${tone})`, display: "inline-flex", alignItems: "center", gap: 5 }}
     >
       <span className="dot" style={{ background: `var(--${tone})` }} />
@@ -181,7 +184,7 @@ export function isSystemEvent(type: string): boolean {
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<RealtimeState>(EMPTY);
-  const lastIdRef = useRef(0);
+  const lastCursorRef = useRef<string | null>(null);
   const retryRef = useRef(0);
   const retryMsRef = useRef(BASE_BACKOFF_MS);
   const abortRef = useRef<AbortController | null>(null);
@@ -217,11 +220,18 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     let watchdog: ReturnType<typeof setInterval> | null = null;
     let misses = 0;
     try {
-      const resume = lastIdRef.current > 0 ? lastIdRef.current : 0;
-      const resp = await tenantFetch(`/api/v1/events/stream?last_event_id=${resume}`, {
+      const resume = lastCursorRef.current;
+      const path = "/api/v1/events/stream" + (resume ? `?last_event_id=${encodeURIComponent(resume)}` : "");
+      const resp = await tenantFetch(path, {
         headers: { Authorization: `Bearer ${token}` },
         signal: ac.signal,
       });
+      if (abortRef.current !== ac || ac.signal.aborted) return;
+      if (resp.status === 409) {
+        setState((s) => ({ ...s, connected: false, conn: "offline", source: "off",
+          replayIssue: "Retained replay cursor refused or reset. Resynchronize application state and reselect the estate to start a new stream." }));
+        return;
+      }
       if (!resp.ok || !resp.body) {
         setState((s) => ({ ...s, connected: false, conn: "offline", source: "off" }));
         throw new Error(`stream http ${resp.status}`);
@@ -243,14 +253,15 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       let buf = "";
 
       const handleFrame = (frame: string) => {
+        if (abortRef.current !== ac || ac.signal.aborted) return;
         let eventType = "message";
         let data = "";
-        let sseId: number | null = null;
+        let sseId: string | null = null;
         for (const line of frame.split("\n")) {
           if (line.startsWith(":")) continue; // comment / heartbeat ping
           if (line.startsWith("event:")) eventType = line.slice(6).trim();
           else if (line.startsWith("data:")) data += line.slice(5).trim();
-          else if (line.startsWith("id:")) sseId = parseInt(line.slice(3).trim(), 10);
+          else if (line.startsWith("id:")) sseId = line.slice(3).trim();
           else if (line.startsWith("retry:")) {
             const ms = parseInt(line.slice(6).trim(), 10);
             if (!Number.isNaN(ms) && ms > 0) retryMsRef.current = ms;
@@ -262,26 +273,33 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         if (!data) return;
         let parsed: StreamEvent;
         try { parsed = JSON.parse(data) as StreamEvent; } catch { return; }
-        if (sseId !== null && sseId > lastIdRef.current) lastIdRef.current = sseId;
-        misses = 0; // real data frame
+        if (sseId) lastCursorRef.current = sseId;
+        misses = 0;
+        if (eventType === "events.gap") {
+          setState((s) => ({ ...s, replayIssue: "Retained history was lost. Resynchronize application state; this stream is not a complete historical archive." }));
+          return;
+        }
+        if (eventType === "events.refused" || eventType === "events.unavailable") throw new Error(eventType);
+        if (eventType.startsWith("events.")) return;
+        if (!Number.isFinite(parsed.id) || !parsed.type) return;
         if (parsed.type === "telemetry.snapshot") {
           const p = (parsed.payload || {}) as Record<string, unknown>;
           setState((s) => ({
             ...s, conn: "live", connected: true,
-            eps: Number(p.events_per_sec ?? 0),
-            subscribers: Number(p.subscribers ?? 0),
+            eps: (typeof p.events_per_sec === "number" && Number.isFinite(p.events_per_sec) ? p.events_per_sec : null),
+            subscribers: (typeof p.subscribers === "number" ? p.subscribers : null),
             telemetry: {
-              eventsPerSec: Number(p.events_per_sec ?? 0),
-              subscribers: Number(p.subscribers ?? 0),
-              eventsBuffered: Number(p.events_buffered ?? 0),
-              latestId: Number(p.latest_id ?? 0),
+              eventsPerSec: (typeof p.events_per_sec === "number" && Number.isFinite(p.events_per_sec) ? p.events_per_sec : null),
+              subscribers: (typeof p.subscribers === "number" ? p.subscribers : null),
+              eventsBuffered: (typeof p.events_buffered === "number" ? p.events_buffered : null),
+              latestId: (typeof p.latest_sequence === "number" ? p.latest_sequence : null),
             },
           }));
           return;
         }
         setState((s) => ({
           ...s, connected: true, conn: "live",
-          events: [parsed, ...s.events].slice(0, EVENT_CAP),
+          events: [parsed, ...s.events.filter((old) => old.id !== parsed.id)].slice(0, EVENT_CAP),
           latestId: Math.max(s.latestId, parsed.id),
           lastEventAt: Date.now(),
         }));
@@ -289,17 +307,21 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
       while (true) {
         const { done, value } = await reader.read();
+        if (abortRef.current !== ac || ac.signal.aborted) return;
         if (done) break;
         misses = 0; // any inbound bytes (incl. heartbeat comments) = alive
         buf += decoder.decode(value, { stream: true });
+        if (buf.length > 1_048_576) throw new Error("SSE frame exceeds client buffer budget");
         const frames = buf.split("\n\n");
         buf = frames.pop() ?? "";
         for (const f of frames) handleFrame(f);
       }
+      if (abortRef.current !== ac) return;
       // stream closed cleanly by server
       setState((s) => ({ ...s, connected: false, conn: "connecting", source: "off" }));
       scheduleReconnect();
     } catch (err) {
+      if (abortRef.current !== ac) return;
       if ((err as Error)?.name === "AbortError") {
         // either superseded by a newer connect() or the watchdog fired; only
         // reconnect if this controller is still the active one.
@@ -324,7 +346,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     void connect();
 
     const onAuth = () => {
-      lastIdRef.current = 0;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      lastCursorRef.current = null;
+      setState(EMPTY); // clear private feed immediately on estate change/sign-out
       retryRef.current = 0;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       void connect();
@@ -360,7 +385,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   // No simulated fallback: when the backend is unreachable or the user is
   // signed out, the store stays empty (source: "off") and the console shows
-  // zeros until a real discovery/scan actually emits events.
+  // unknown counters until a measured estate-local value arrives.
 
   return <Ctx.Provider value={state}>{children}</Ctx.Provider>;
 }

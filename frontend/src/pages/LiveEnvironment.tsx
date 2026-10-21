@@ -151,7 +151,7 @@ export default function LiveEnvironment() {
           ) : (
             <div className="dim" style={{ fontSize: 13 }}>{rt.connected ? "No live events yet — run a scan." : "Backend offline — no event stream."}</div>
           )}
-          <div className="dim" style={{ fontSize: 11, marginTop: 8 }}>{env?.events ? `${env.events.latest_id} events buffered · ${env.events.subscribers} subscriber(s)` : ""}</div>
+          <div className="dim" style={{ fontSize: 11, marginTop: 8 }}>{env?.events ? `${env.events.events.length} retained estate events sampled${env.events.has_more ? " · more pages available" : ""}` : ""}</div>
         </Panel>
         <Panel title="Dependency topology" sub="interactive graph — click any asset for full detail">
           <Table

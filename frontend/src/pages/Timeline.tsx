@@ -34,7 +34,7 @@ export default function Timeline() {
         sub="One timeline across the entire platform — invaluable during audits and incidents"
         right={
           <div className="row">
-            {rt.connected && <Badge tone="green"><span className="dot" /> LIVE STREAM · {rt.eps} EVENTS/SEC</Badge>}
+            {rt.connected && <Badge tone="green"><span className="dot" /> LIVE STREAM{rt.eps === null ? "" : ` · ${rt.eps} EVENTS/SEC`}</Badge>}
             <span className="mono faint" style={{ fontSize: 12 }}>{rt.connected ? "REAL-TIME · UTC" : rows.length ? "SHOWING EVENT HISTORY" : "NO EVENTS YET"}</span>
           </div>
         }
