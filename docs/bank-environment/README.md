@@ -42,6 +42,9 @@ adds TLS/IPsec/explicit-resolver DNSSEC admission and linked jobs.
 adds an opt-in IPv4 CIDR/port monitor profile, exact-estate range authority and
 crypto-evidence separation; expanding scope/plugins remain refused. Other profiles, distributed enforcement,
 regional/vendor qualification and the rest of the backlog remain open.
+[Guide 40 — exact-estate HTTP history](40-exact-estate-http-history.md) closes the
+specific job/network-run HTTP platform-history gap without changing internal
+worker dispatch or curated-inventory sharing; broader A02 remains open.
 
 ## Read in order
 
@@ -86,6 +89,7 @@ regional/vendor qualification and the rest of the backlog remain open.
 | [37 — NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md) | How do owner context, acceptance/rollback, current projections and honest freshness work before protocol admission parity? |
 | [38 — Bounded monitor phase admission](38-monitor-network-phase-admission.md) | Which monitor profiles now receive per-phase admission/linked receipts, what is refused, and what remains unqualified? |
 | [39 — Explicit bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md) | How are IPv4 CIDR/port sweeps bounded, authorized and recorded without inventing TLS/crypto evidence or enabling enterprise plugins? |
+| [40 — Exact-estate HTTP history](40-exact-estate-http-history.md) | How are job/run lists, logs, retries, metrics and drift isolated from other banks and platform history without breaking internal dispatch? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

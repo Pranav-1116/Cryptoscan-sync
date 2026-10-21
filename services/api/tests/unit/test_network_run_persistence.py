@@ -53,17 +53,17 @@ class FakeRunRepo:
         FakeRunRepo.store.append(row)
         return row
 
-    def get_run(self, run_id):
+    def get_run(self, run_id, *, owner=None):
         return next((row for row in FakeRunRepo.store if row.id == run_id), None)
 
-    def list_runs(self, *, limit=20, target_kind=None):
+    def list_runs(self, *, limit=20, target_kind=None, owner=None):
         rows = [r for r in FakeRunRepo.store if target_kind is None or r.target_kind == target_kind]
         return sorted(rows, key=lambda r: r.created_at, reverse=True)[:limit]
 
-    def latest_runs(self, *, count=2, target_kind=None):
+    def latest_runs(self, *, count=2, target_kind=None, owner=None):
         return self.list_runs(limit=count, target_kind=target_kind)
 
-    def count_runs(self, *, target_kind=None):
+    def count_runs(self, *, target_kind=None, owner=None):
         return len(self.list_runs(limit=10**6, target_kind=target_kind))
 
 

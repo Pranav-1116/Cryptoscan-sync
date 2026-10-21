@@ -16,6 +16,9 @@ from db.models.scan_job import ScanJob
 from db.repositories.base_repository import BaseRepository
 
 
+_UNSCOPED = object()
+
+
 class JobRepository(BaseRepository[ScanJob]):
     def __init__(self, session: Session):
         super().__init__(ScanJob, session)
@@ -171,6 +174,23 @@ class JobRepository(BaseRepository[ScanJob]):
                 if str(((row.progress or {}).get("scan_options") or {}).get(key) or "") == str(value)
             ]
 
-    def list_recent(self, limit: int = 20) -> list[ScanJob]:
-        stmt = select(ScanJob).order_by(desc(ScanJob.created_at)).limit(max(1, min(int(limit or 20), 200)))
+    def get_by_id(self, id_value, *, owner=_UNSCOPED):
+        """API history supplies an exact owner, including None/platform.
+
+        Omission preserves the internal worker/reaper repository contract;
+        this is not an opt-out from an existing ORM tenant scope.
+        """
+        if owner is _UNSCOPED:
+            return super().get_by_id(id_value)
+        stmt = select(ScanJob).where(ScanJob.id == id_value, ScanJob.tenant_id == owner).limit(1)
+        return self.session.execute(stmt).scalars().first()
+
+    def list_recent(self, limit: int = 20, *, owner=_UNSCOPED) -> list[ScanJob]:
+        stmt = (
+            select(ScanJob)
+            .order_by(desc(ScanJob.created_at), desc(ScanJob.id))
+            .limit(max(1, min(int(limit or 20), 200)))
+        )
+        if owner is not _UNSCOPED:
+            stmt = stmt.where(ScanJob.tenant_id == owner)
         return list(self.session.execute(stmt).scalars().all())

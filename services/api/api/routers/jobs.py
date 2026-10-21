@@ -6,7 +6,8 @@ import inspect
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
-from api.dependencies import get_current_user, get_job_repository
+from api.dependencies import TenantContext, get_current_user, get_job_repository
+from api.security.estate_history import history_context
 from api.schemas.job_schemas import JobLogsResponse, JobStatusResponse
 from db.repositories.job_repository import JobRepository
 
@@ -42,8 +43,9 @@ def list_jobs(
     limit: int = Query(20, ge=1, le=100),
     user: str = Depends(get_current_user),
     repo: JobRepository = Depends(get_job_repository),
+    ctx: TenantContext = Depends(history_context),
 ):
-    rows = repo.list_recent(limit)
+    rows = repo.list_recent(limit, owner=ctx.tenant_id)
     return {"jobs": [_to_status(row).model_dump() for row in rows], "total_count": len(rows)}
 
 
@@ -52,8 +54,9 @@ async def get_job(
     job_id: str,
     user: str = Depends(get_current_user),
     repo: JobRepository = Depends(get_job_repository),
+    ctx: TenantContext = Depends(history_context),
 ):
-    job = repo.get_by_id(job_id)
+    job = repo.get_by_id(job_id, owner=ctx.tenant_id)
     if inspect.isawaitable(job):
         job = await job
     if job is None:
@@ -67,9 +70,10 @@ async def retry_job(
     background_tasks: BackgroundTasks = None,
     user: str = Depends(get_current_user),
     repo: JobRepository = Depends(get_job_repository),
+    ctx: TenantContext = Depends(history_context),
 ):
 
-    job = repo.get_by_id(job_id)
+    job = repo.get_by_id(job_id, owner=ctx.tenant_id)
     if inspect.isawaitable(job):
         job = await job
     if job is None:
@@ -109,8 +113,9 @@ async def get_job_logs(
     job_id: str,
     user: str = Depends(get_current_user),
     repo: JobRepository = Depends(get_job_repository),
+    ctx: TenantContext = Depends(history_context),
 ):
-    job = repo.get_by_id(job_id)
+    job = repo.get_by_id(job_id, owner=ctx.tenant_id)
     if inspect.isawaitable(job):
         job = await job
     if job is None:

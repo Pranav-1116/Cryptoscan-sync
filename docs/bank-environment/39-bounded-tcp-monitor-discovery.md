@@ -3,6 +3,13 @@
 [Guide index](README.md) · [Bounded phase contract](38-monitor-network-phase-admission.md) ·
 [Enterprise backlog](33-international-bank-engineering-and-rollout.md)
 
+## Subsequent HTTP history increment
+
+[Guide 40](40-exact-estate-http-history.md) subsequently closes the specific
+generic job/network-run **HTTP** platform-history gap recorded below. It does
+not qualify every stream/export/history surface or change this delivery’s
+historical implementation/test record.
+
 ## Status — 2026-10-21
 
 **Implemented locally; A01 remains partial.** NETWORK monitors can now explicitly

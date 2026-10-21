@@ -44,6 +44,8 @@ def test_owned_monitor_has_authenticated_actor_linkage_and_private_job_history(c
     assert response.json()["job_id"] == job.id and response.json()["run_id"] == ledger.id
     assert clients["bank_a"].get(f"/api/v1/jobs/{job.id}").status_code == 200
     assert clients["bank_b"].get(f"/api/v1/jobs/{job.id}").status_code == 404
+    assert clients["platform_admin"].get(f"/api/v1/jobs/{job.id}").status_code == 404
+    assert clients["platform_admin"].get(f"/api/v1/network/runs/{ledger.id}").status_code == 404
     assert clients["bank_a"].post(f"/api/v1/jobs/{job.id}/retry").status_code == 409
     assert state["calls"] == [["10.0.0.1:443"]]
 

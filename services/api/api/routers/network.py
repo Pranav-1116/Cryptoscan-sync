@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
 
-from api.dependencies import get_current_user, get_db_session, require_auditor
+from api.dependencies import TenantContext, get_current_user, get_db_session, require_auditor
+from api.security.estate_history import history_context
 from api.security.audit_diff import write_audited_diff
 from api.security.network_collection import (NetworkHostRequest, admit_network, checked_hosts, meter_network, network_run, persist_network, network_coverage, network_context)
 from db.tenancy import current_tenant
@@ -477,32 +478,43 @@ def list_scan_runs(
     target_kind: str | None = None,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
+    ctx: TenantContext = Depends(history_context),
 ):
     """Stored scan runs, newest first (metadata only — no result payloads)."""
-    rows = ScanRunRepository(db).list_runs(limit=limit, target_kind=target_kind)
+    rows = ScanRunRepository(db).list_runs(limit=limit, target_kind=target_kind, owner=ctx.tenant_id)
     return {
         "runs": [row.to_dict(exclude={"result"}) for row in rows],
-        "total": ScanRunRepository(db).count_runs(target_kind=target_kind),
+        "total": ScanRunRepository(db).count_runs(target_kind=target_kind, owner=ctx.tenant_id),
     }
 
 
 @router.get("/network/runs/{run_id}")
-def get_scan_run(run_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+def get_scan_run(
+    run_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+    ctx: TenantContext = Depends(history_context),
+):
     """Fetch one stored scan run (full result payload)."""
-    row = ScanRunRepository(db).get_run(run_id)
+    row = ScanRunRepository(db).get_run(run_id, owner=ctx.tenant_id)
     if row is None:
         raise HTTPException(status_code=404, detail="run not found")
     return row.to_dict()
 
 
 @router.get("/network/runs/{run_id}/metrics")
-def scan_run_metrics(run_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+def scan_run_metrics(
+    run_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+    ctx: TenantContext = Depends(history_context),
+):
     """Prometheus text for one stored run."""
     from fastapi.responses import Response
 
     from network_scanner.reports.metrics import CONTENT_TYPE, render_prometheus
 
-    row = ScanRunRepository(db).get_run(run_id)
+    row = ScanRunRepository(db).get_run(run_id, owner=ctx.tenant_id)
     if row is None:
         raise HTTPException(status_code=404, detail="run not found")
     return Response(content=render_prometheus(row.result or {}), media_type=CONTENT_TYPE)
@@ -514,11 +526,12 @@ def latest_scan_drift(
     expiry_warn_days: int = 7,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
+    ctx: TenantContext = Depends(history_context),
 ):
     """Drift between the two most recent stored runs — no caller bookkeeping."""
     from network_scanner.reports.scan_drift import diff_scans
 
-    runs = ScanRunRepository(db).latest_runs(count=2, target_kind=target_kind)
+    runs = ScanRunRepository(db).latest_runs(count=2, target_kind=target_kind, owner=ctx.tenant_id)
     if len(runs) < 2:
         return {
             "verdict": "UNCHANGED",

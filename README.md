@@ -58,7 +58,10 @@ adds owner/rollback/freshness guards. The
 adds admission and linked jobs for TLS/IPsec/explicit-resolver DNSSEC. The
 [bounded TCP discovery increment](docs/bank-environment/39-bounded-tcp-monitor-discovery.md)
 adds explicit IPv4 CIDR/port monitor sweeps without automatic TLS/plugin follow-up.
-Unqualified scope/plugins remain refused. A01 remains partial; production safety is
+Unqualified scope/plugins remain refused. The
+[exact-estate HTTP history increment](docs/bank-environment/40-exact-estate-http-history.md)
+restricts job/run details, logs, retries, metrics and drift to the selected estate.
+A01 and A02 remain partial; production safety is
 not certified by these local changes.
 
 

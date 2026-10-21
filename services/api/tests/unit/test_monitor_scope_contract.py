@@ -58,6 +58,8 @@ def test_authenticated_scope_job_linkage_quota_privacy_and_no_crypto(scope_contr
     assert ledger.verdict == "NOT_EVALUATED" and db.query(CryptoLiveState).count() == 0
     assert db.query(TenantUsageEvent).filter_by(kind="scan_run").one().amount == 2 and not state["calls"]
     assert clients["bank_b"].get(f"/api/v1/jobs/{job.id}").status_code == 404
+    assert clients["platform_admin"].get(f"/api/v1/jobs/{job.id}").status_code == 404
+    assert clients["platform_admin"].get(f"/api/v1/network/runs/{ledger.id}").status_code == 404
     assert clients["bank_b"].get(f"/api/v1/network/runs/{ledger.id}").status_code == 404
     assert clients["bank_a"].post(f"/api/v1/jobs/{job.id}/retry").status_code == 409
 

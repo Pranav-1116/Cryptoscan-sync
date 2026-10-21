@@ -56,6 +56,10 @@ for TLS, IPsec and explicit-resolver DNSSEC with linked ScanJob/probe receipts.
 a qualified opt-in IPv4 CIDR/port profile, without automatic follow-up or receipt-
 derived crypto. Shared range authority is exact estate. Unqualified expanding
 scope/plugins remain refused, not implicitly authorized.
+[Exact-estate HTTP history](40-exact-estate-http-history.md) additionally binds
+job lists/details/logs/retries and network-run lists/counts/results/metrics/drift
+to the selected estate, including NULL/platform. Internal dispatch is unchanged;
+other history, stream and export surfaces still need their own A02 review.
 
 This is **partial A01 delivery**, not uniformity across all collectors. The
 separate enterprise scope/plugin expansion still requires qualification;

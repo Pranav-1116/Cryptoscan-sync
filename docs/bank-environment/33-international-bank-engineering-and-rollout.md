@@ -10,6 +10,8 @@ now implemented locally, followed by the
 [NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md) and
 [bounded phase admission](38-monitor-network-phase-admission.md) and
 [explicit bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md).
+The supporting [exact-estate HTTP history increment](40-exact-estate-http-history.md)
+closes the specific job/network-run platform-history gap, not all A02 surfaces.
 A01 as a whole and the remaining enterprise items are
 still open. The prior ten steps
 are locally delivered as recorded in [guide 26](26-bank-negative-tests-and-backend-qualification.md).
