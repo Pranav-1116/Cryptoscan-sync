@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-21:
-**891 paths, 982 operations** across 105 tagged groups.
+**899 paths, 990 operations** across 105 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 Current [execution, SSH and replay contracts](execution-and-replay.md) describe
@@ -109,6 +109,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/assurance/evidence-blobs` | Evidence Blob |
 | `GET` | `/api/v1/assurance/evidence-blobs/{identifier}/content` | Blob Content |
 | `POST` | `/api/v1/assurance/findings/{identifier}/assessments` | Assessment |
+| `GET` | `/api/v1/assurance/operator-decisions` | Operator Inbox |
 | `GET` | `/api/v1/assurance/records` | Records |
 | `GET` | `/api/v1/assurance/records/{kind}/{identifier}` | History |
 | `POST` | `/api/v1/assurance/redis-measurements/{identifier}/review` | Review Redis Measurement |
@@ -123,6 +124,12 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/assurance/regressions/{identifier}/results` | Record Regression Result |
 | `POST` | `/api/v1/assurance/relationships` | Propose Relationship |
 | `POST` | `/api/v1/assurance/relationships/{identifier}/approve` | Approve Relationship |
+| `POST` | `/api/v1/assurance/remediation-changes` | Propose Change |
+| `POST` | `/api/v1/assurance/remediation-changes/{identifier}/approve` | Approve Change |
+| `POST` | `/api/v1/assurance/remediation-changes/{identifier}/report-complete` | Report Change |
+| `POST` | `/api/v1/assurance/remediation-changes/{identifier}/revoke` | Revoke Change |
+| `POST` | `/api/v1/assurance/remediation-changes/{identifier}/verify` | Verify Change |
+| `POST` | `/api/v1/assurance/remediation-tasks` | Assigned Remediation Task |
 | `POST` | `/api/v1/assurance/samples` | Propose Sample |
 | `POST` | `/api/v1/assurance/samples/{identifier}/approve` | Approve Sample |
 | `POST` | `/api/v1/assurance/samples/{identifier}/regressions` | Seed Regressions |
@@ -134,6 +141,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/assurance/supplier-evidence` | Supplier Upload |
 | `POST` | `/api/v1/assurance/supplier-evidence/{identifier}/approve` | Approve Supplier |
 | `POST` | `/api/v1/assurance/supplier-evidence/{identifier}/reject` | Reject Supplier |
+| `GET` | `/api/v1/assurance/workloads/jobs/{identifier}` | Job Workload |
 
 ## audit-export
 

@@ -40,6 +40,7 @@ class APISettings(BaseSettings):
     PORT: int = 8010
     API_PORT: int = 8010
     ENVIRONMENT: str = "development"
+    CRYPTOSCAN_DEPLOYMENT_PROFILE: str = ""
     LOG_LEVEL: str = "INFO"
     API_VERSION: str = "1.0.0"
     DOCS_ENABLED: bool | None = None
@@ -323,13 +324,21 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
         if len(candidate) < 32 or candidate.lower() in WEAK_PASSWORDS:
             errors.append(f"{name} must be a unique value of at least 32 characters")
 
-    # Production must not silently use the in-memory graph backend or the
-    # bundled Neo4j password.
-    if not (settings.NEO4J_URI or "").strip():
-        errors.append("NEO4J_URI must be configured in production")
-    neo4j_password = (settings.NEO4J_PASSWORD or "").strip()
-    if len(neo4j_password) < 24 or neo4j_password.lower() in WEAK_PASSWORDS:
-        errors.append("NEO4J_PASSWORD must be a unique value of at least 24 characters")
+    # The explicit operator profile refuses graph routes/projections; requiring
+    # fake graph credentials would make a supposedly graph-disabled install lie.
+    profile = settings.CRYPTOSCAN_DEPLOYMENT_PROFILE
+    operator_profile = profile == "kubernetes-external-services/local-source-v1"
+    if profile and not operator_profile:
+        errors.append("Unknown CRYPTOSCAN_DEPLOYMENT_PROFILE")
+    if operator_profile:
+        if (settings.NEO4J_URI or "").strip():
+            errors.append("Operator profile must leave NEO4J_URI empty; graph is not enabled")
+    else:
+        if not (settings.NEO4J_URI or "").strip():
+            errors.append("NEO4J_URI must be configured in production")
+        neo4j_password = (settings.NEO4J_PASSWORD or "").strip()
+        if len(neo4j_password) < 24 or neo4j_password.lower() in WEAK_PASSWORDS:
+            errors.append("NEO4J_PASSWORD must be a unique value of at least 24 characters")
     # Serving TLS (round 36): when configured at the app boundary it must
     # be valid — parse, key pairing, not expired. Unconfigured stays legal
     # (reverse-proxy termination is a deployment shape we cannot see).

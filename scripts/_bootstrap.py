@@ -36,6 +36,7 @@ _SERVICE_PACKAGES = (
     "network_scanner",
     "normalization",
     "ot_scanner",
+    "observability",
     "policy",
     "quantum",
     "remediation",

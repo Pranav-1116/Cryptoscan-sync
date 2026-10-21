@@ -21,3 +21,16 @@ def test_assurance_metadata_requires_region_policy_and_never_enables_legacy_acqu
     assert a.get(P + f"/registers/{rid}/coverage").status_code == 409
     assert a.post(P + "/registers", json=manifest()).status_code == 409
     assert state["db"].query(AssuranceRevision).count() == 1
+
+
+def test_operator_inbox_is_metadata_only_and_region_admitted(controlled, monkeypatch):
+    state = controlled
+    a = state["clients"]["bank_a"]
+    assert a.get(P + "/operator-decisions").status_code == 409
+    configure(state)
+    result = a.get(P + "/operator-decisions")
+    assert result.status_code == 200, result.text
+    assert result.json()["estate_id"] == "a"
+    assert a.post("/api/v1/network/tls-scan", json={"hosts": ["bank.example:443"]}).status_code == 409
+    monkeypatch.setenv("CRYPTOSCAN_EVIDENCE_REGION", "wrong-region")
+    assert a.get(P + "/operator-decisions").status_code == 409

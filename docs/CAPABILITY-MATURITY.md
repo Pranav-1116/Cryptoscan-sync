@@ -19,9 +19,9 @@ role-guarded actions.
 |---|---|---|
 | **GA** | Production-supported. Deterministic core, broad tests, in the burn-in. | 33 |
 | **Beta** | Real code and real data; thinner test coverage or short deployment history. | 32 |
-| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 10 |
+| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 11 |
 
-Total: 75 surfaces.
+Total: 76 surfaces.
 
 ## GA (33)
 
@@ -98,7 +98,7 @@ Total: 75 surfaces.
 | `/executive` | Overview | Executive summary over the same stats; presentation layer. |
 | `/role-dashboard` | Overview | Per-role landing view. |
 
-## Preview (10)
+## Preview (11)
 
 | Route | Area | Why this tier |
 |---|---|---|
@@ -111,6 +111,7 @@ Total: 75 surfaces.
 | `/security-intelligence` | Intelligence | Cross-scanner identity resolution + profiles; roadmap in SECURITY-INTELLIGENCE-ROADMAP.md. |
 | `/what-if` | Intelligence | Scenario simulation over the inventory; scenarios are fixed templates today. |
 | `/accuracy` | Overview | Detector precision/recall panel; needs labelled ground truth per estate. |
+| `/operator-decisions` | Overview | Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open. |
 | `/timeline` | Overview | Estate timeline; aggregates several beta sources. |
 
 ## Retired sidebar entries

@@ -277,3 +277,73 @@ def record_regression_result(identifier: Key, body: RegressionExecution, request
 def supplier_observations(identifier: Key, evidence_id: Key, user=Depends(get_current_user),
                           db: Session = Depends(get_db_session), ctx=Depends(estate)):
     return adapters.observations(db, ctx.tenant_id, identifier, evidence_id)
+
+
+# Operator decisions and independent remediation conditions use the same bounded,
+# residency-admitted, exact-estate metadata boundary as the other workflows.
+from api.assurance import operator as operator_decisions, remediation as conditions
+from shared_models.assurance import RemediationChange, ReportChange, VerifyChange
+
+
+@router.get("/operator-decisions")
+def operator_inbox(offset: int = Query(0, ge=0, le=1000000), limit: int = Query(25, ge=1, le=50),
+                   user=Depends(get_current_user), db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    return operator_decisions.inbox(db, ctx.tenant_id, offset, limit)
+
+
+@router.post("/remediation-changes", status_code=201)
+def propose_change(body: RemediationChange, request: Request, user=Depends(get_current_user),
+                   db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    return store.public(conditions.propose(db, ctx.tenant_id, body, author(db, request, user)))
+
+
+@router.post("/remediation-changes/{identifier}/approve", status_code=201)
+def approve_change(identifier: Key, body: Approval, request: Request, user=Depends(get_current_user),
+                   db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    return store.public(conditions.approve(db, ctx.tenant_id, identifier, body, author(db, request, user, "assurance.review")))
+
+
+@router.post("/remediation-changes/{identifier}/report-complete", status_code=201)
+def report_change(identifier: Key, body: ReportChange, request: Request, user=Depends(get_current_user),
+                  db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    return store.public(conditions.reported(db, ctx.tenant_id, identifier, body, author(db, request, user)))
+
+
+@router.post("/remediation-changes/{identifier}/verify", status_code=201)
+def verify_change(identifier: Key, body: VerifyChange, request: Request, user=Depends(get_current_user),
+                  db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    return store.public(conditions.verify(db, ctx.tenant_id, identifier, body, author(db, request, user, "assurance.review")))
+
+
+from shared_models.assurance import AssignedRemediationTask
+
+
+@router.post("/remediation-tasks", status_code=201)
+def assigned_remediation_task(body: AssignedRemediationTask, request: Request, user=Depends(get_current_user),
+                              db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    # Explicit exact-owner evidence check even for a platform administrator.
+    from db.models.evidence_record import EvidenceRecord
+    from api.routers.remediation import create_task, TaskCreateRequest
+    author(db, request, user)
+    store.exact(db, EvidenceRecord, ctx.tenant_id, body.evidence_id)
+    return create_task(TaskCreateRequest(evidence_id=body.evidence_id, owner=body.owner_ref, notes=body.notes), user=user, db=db)
+
+
+@router.get("/workloads/jobs/{identifier}")
+def job_workload(identifier: Key, user=Depends(get_current_user), db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    from db.models.scan_job import ScanJob
+    from db.models.base import utcnow
+    from db.repositories.execution_control import aware
+    job = store.exact(db, ScanJob, ctx.tenant_id, identifier)
+    return {"job_id": job.id, "estate_id": ctx.tenant_id, "status": job.status,
+            "queue_wait_seconds": max(0, (aware(job.started_at or utcnow()) - aware(job.created_at)).total_seconds()),
+            "execution_seconds": max(0, (aware(job.completed_at or utcnow()) - aware(job.started_at)).total_seconds()) if job.started_at else None,
+            "measurements": (job.progress or {}).get("performance"),
+            "measurement_state": "OBSERVED" if (job.progress or {}).get("performance") else "NOT_INSTRUMENTED_OR_LEGACY",
+            "capacity_qualified": False}
+
+
+@router.post("/remediation-changes/{identifier}/revoke", status_code=201)
+def revoke_change(identifier: Key, body: Approval, request: Request, user=Depends(get_current_user),
+                  db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    return store.public(conditions.revoke(db, ctx.tenant_id, identifier, body, author(db, request, user, "assurance.review")))

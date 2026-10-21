@@ -54,9 +54,9 @@ def test_original_algorithm_gone_file_fully_compliant_is_verified():
     assert out["result"] == VERIFIED
 
 
-def test_file_removed_from_rescan_is_verified():
+def test_file_missing_from_rescan_is_inconclusive():
     out = verify_remediation(ORIG, RULE, [_f("RSA-2048", file_path="other/File.java", line=1)])
-    assert out["result"] == VERIFIED
+    assert out["result"] == INCONCLUSIVE
     assert out["comparison"]["file_present_in_rescan"] is False
 
 
@@ -162,3 +162,8 @@ def test_job_scoped_dependency_paths_degrade_verified_to_regression():
     assert [v["file_path"] for v in out["comparison"]["new_violations"]] == [
         "data/workspaces/job-2/repo/pom.xml"]
     assert "new non-compliant crypto" in out["reason"]
+
+
+def test_unknown_policy_and_moved_site_do_not_verify():
+    for findings in [[_f("AES-256-GCM", status="UNKNOWN")], [_f("DES", status=None)], [_f("AES-256-GCM", line=99)]]:
+        assert verify_remediation(ORIG, RULE, findings)["result"] == INCONCLUSIVE

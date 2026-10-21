@@ -60,6 +60,7 @@ export const CAPABILITIES_JSON = {
   "network": "ga",
   "notifications": "beta",
   "onboarding": "beta",
+  "operator-decisions": "preview",
   "organization": "beta",
   "platform-p2": "preview",
   "pqc": "ga",

@@ -357,12 +357,20 @@ def _run_verification(
                 detail="Rescan target does not match the task's target — verification compares like with like")
     elif task.target_location:
         # proof must be newer evidence than the finding came from: the latest
-        # completed scan of the same target after the ORIGINAL scan (falling
-        # back to task creation when the original scan row was pruned)
+        # completed scan of the same target after the REPORTED ACTION (falling
+        # back conservatively for legacy tasks without completion metadata)
         original_scan = filtered_get(db, Scan, task.scan_id)
-        after = original_scan.scan_start if original_scan is not None else task.created_at
+        after = task.completed_at or (original_scan.scan_end if original_scan is not None else task.created_at)
         rescan = _task_repo(db).latest_completed_scan_after(task.target_location, after)
 
+    # Explicit IDs are not a bypass for completion, time or target checks.
+    from db.repositories.execution_control import aware
+    cutoff = aware(task.completed_at or task.created_at)
+    if rescan is not None and (rescan.id == task.scan_id or rescan.status != "COMPLETED"
+            or not rescan.scan_end or aware(rescan.scan_start) <= cutoff
+            or aware(rescan.scan_end) < aware(rescan.scan_start)
+            or aware(rescan.scan_end) > datetime.now(timezone.utc)):
+        rescan = None
     rescan_findings = None
     if rescan is not None:
         rescan_findings = [_finding_snapshot(r) for r in evidence_repo.get_all_for_scan(rescan.id)]
@@ -380,6 +388,9 @@ def _run_verification(
             "rescan produced no evidence for the target — scan may have failed "
             "or scanned nothing") + f" (rescan {rescan.id})"
 
+    if verdict["result"] == "VERIFIED":
+        verdict["result"] = "INCONCLUSIVE"
+        verdict["reason"] = "Candidate improvement only: use an approved assurance remediation change for condition-level verification"
     verification = _verification_repo(db).create(RemediationVerification(
         task_id=task.id,
         rescan_id=rescan.id if rescan is not None else rescan_id,
@@ -420,7 +431,7 @@ def complete_task(
     task = filtered_get(db, RemediationTask, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in ("ACCEPTED", "PROPOSED"):
+    if task.status != "ACCEPTED":
         raise HTTPException(status_code=409, detail=f"Task in status {task.status}; only ACCEPTED tasks can be completed")
     before_snapshot = {"status": task.status, "notes": task.notes}
     task.status = "COMPLETED"

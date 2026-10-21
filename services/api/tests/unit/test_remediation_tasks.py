@@ -87,7 +87,7 @@ def _client(app):
 
 
 @pytest.mark.asyncio
-async def test_full_lifecycle_verified_end_to_end():
+async def test_legacy_lifecycle_does_not_verify_pre_action_scan():
     app, session, events = _make_app(current_user="auditor-1")
     _scan(session, "scan-1", when=NOW - timedelta(hours=2))
     _scan(session, "scan-2", when=NOW - timedelta(hours=1))  # the rescan
@@ -112,10 +112,10 @@ async def test_full_lifecycle_verified_end_to_end():
         completed = await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete", json={})
         assert completed.status_code == 200, completed.text
         body = completed.json()
-        # auto-verification picked the later scan of the same target
-        assert body["status"] == "VERIFIED"
-        assert body["latest_verification"]["result"] == "VERIFIED"
-        assert body["latest_verification"]["rescan_id"] == "scan-2"
+        # Later than baseline is insufficient: this scan predates the action.
+        assert body["status"] == "COMPLETED"
+        assert body["latest_verification"]["result"] == "INCONCLUSIVE"
+        assert body["latest_verification"]["rescan_id"] is None
 
         listed = await client.get("/api/v1/remediation/verifications?task_id=" + task["id"])
         assert listed.status_code == 200
@@ -159,6 +159,7 @@ async def test_complete_without_rescan_is_inconclusive_and_keeps_completed():
     session.commit()
     async with _client(app) as client:
         task = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e1"})).json()
+        await client.post(f"/api/v1/remediation/tasks/{task['id']}/accept")
         completed = await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete", json={})
         body = completed.json()
         assert body["latest_verification"]["result"] == "INCONCLUSIVE"
@@ -177,8 +178,14 @@ async def test_regression_flips_verified_task_to_regression():
     session.commit()
     async with _client(app) as client:
         task = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e1"})).json()
+        await client.post(f"/api/v1/remediation/tasks/{task['id']}/accept")
         completed = await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete", json={})
         body = completed.json()
+        assert body["status"] == "COMPLETED"
+        scan = session.get(Scan, "scan-2")
+        scan.scan_start = scan.scan_end = datetime.now(timezone.utc)
+        session.commit()
+        body = (await client.post(f"/api/v1/remediation/tasks/{task['id']}/verify", json={"rescan_id": "scan-2"})).json()
         assert body["status"] == "REGRESSION"
         assert body["latest_verification"]["result"] == "REGRESSION"
         new_violations = (await client.get(
@@ -196,7 +203,12 @@ async def test_unchanged_finding_is_failed():
     session.commit()
     async with _client(app) as client:
         task = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e1"})).json()
-        body = (await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete", json={})).json()
+        await client.post(f"/api/v1/remediation/tasks/{task['id']}/accept")
+        await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete", json={})
+        scan = session.get(Scan, "scan-2")
+        scan.scan_start = scan.scan_end = datetime.now(timezone.utc)
+        session.commit()
+        body = (await client.post(f"/api/v1/remediation/tasks/{task['id']}/verify", json={"rescan_id": "scan-2"})).json()
         assert body["status"] == "FAILED"
         assert body["latest_verification"]["result"] == "FAILED"
 
@@ -232,16 +244,27 @@ async def test_reverify_after_fix_records_history():
     session.commit()
     async with _client(app) as client:
         task = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e1"})).json()
-        # verified against an explicitly chosen still-broken rescan first
+        await client.post(f"/api/v1/remediation/tasks/{task['id']}/accept")
+        # Old explicit rescan is inconclusive, not an action verification.
         first = (await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete",
                                    json={"rescan_id": "scan-2"})).json()
-        assert first["latest_verification"]["result"] == "FAILED"
-        # later re-verification against the fixed scan flips the verdict
+        assert first["latest_verification"]["result"] == "INCONCLUSIVE"
+        scan = session.get(Scan, "scan-2")
+        scan.scan_start = scan.scan_end = datetime.now(timezone.utc)
+        session.commit()
+        observed = (await client.post(f"/api/v1/remediation/tasks/{task['id']}/verify", json={"rescan_id": "scan-2"})).json()
+        assert observed["latest_verification"]["result"] == "FAILED"
+        scan = session.get(Scan, "scan-3")
+        scan.scan_start = scan.scan_end = datetime.now(timezone.utc)
+        session.commit()
+        # A later favorable comparison still lacks an approved condition.
         second = (await client.post(f"/api/v1/remediation/tasks/{task['id']}/verify",
                                     json={"rescan_id": "scan-3"})).json()
-        assert second["status"] == "VERIFIED"
+        assert second["status"] == "COMPLETED"
+        assert second["latest_verification"]["result"] == "INCONCLUSIVE"
+        assert "approved assurance" in second["latest_verification"]["reason"]
         history = await client.get(f"/api/v1/remediation/verifications?task_id={task['id']}")
-        assert history.json()["total"] == 2  # both proofs retained
+        assert history.json()["total"] == 3  # all comparisons retained
 
 
 @pytest.mark.asyncio
@@ -251,12 +274,14 @@ async def test_task_not_found_and_bad_transitions():
         assert (await client.get("/api/v1/remediation/tasks/nope")).status_code == 404
         assert (await client.post("/api/v1/remediation/tasks",
                                   json={"evidence_id": "nope"})).status_code == 404
-        # completing a task straight from PROPOSED is allowed (small teams) but
-        # accepting a COMPLETED task is not
+        # No proposed-task completion bypass; completed tasks cannot re-accept.
         _scan(session, "scan-1")
         _evidence(session, "e1", "scan-1", "DES", key_size=56)
         session.commit()
         task = (await client.post("/api/v1/remediation/tasks", json={"evidence_id": "e1"})).json()
+        denied = await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete", json={})
+        assert denied.status_code == 409
+        await client.post(f"/api/v1/remediation/tasks/{task['id']}/accept")
         await client.post(f"/api/v1/remediation/tasks/{task['id']}/complete", json={})
         again = await client.post(f"/api/v1/remediation/tasks/{task['id']}/accept")
         assert again.status_code == 409

@@ -50,6 +50,7 @@ TIERS: dict[str, dict[str, str]] = {
 #: route slug (as in frontend/src/App.tsx) -> tier + why
 CAPABILITIES: dict[str, dict[str, str]] = {
     # ── the deterministic core: scan → evidence → normalize → policy → CBOM ──
+    "operator-decisions": {"tier": "preview", "area": "Overview", "why": "Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open."},
     "command-center": {"tier": "ga", "area": "Overview", "why": "Reads the live stats/summary endpoints; empty until a scan runs."},
     "scanners": {"tier": "ga", "area": "Discovery", "why": "Source/network/cloud/container/OT scan triggers over the worker pipeline (12 stages, 29 test files)."},
     "live-scanners": {"tier": "ga", "area": "Discovery", "why": "Live scan runner status; same orchestrator as /scanners."},

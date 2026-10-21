@@ -269,3 +269,14 @@ Start with the [upgrade runbook](../runbooks/evidence-assurance-upgrade.md).
 - [50 — Customer-reviewed accuracy workflow](50-customer-reviewed-accuracy-workflow.md)
 - [51 — Purpose/applicability assessments](51-purpose-and-applicability-assessments.md)
 - [52 — Qualified adapters and supplier quarantine](52-qualified-adapters-and-supplier-quarantine.md)
+
+## Operator workflow, verification, measurements and release package — 4.1–4.4
+
+- [53 — Operator decision workflow](53-operator-decision-workflow.md)
+- [54 — Independent remediation verification](54-independent-remediation-verification.md)
+- [55 — Measured workloads and capacity limits](55-measured-workloads-and-capacity-limits.md)
+- [Install, upgrade and recovery package/runbook](../runbooks/operator-install-upgrade-recover.md)
+
+These are implemented engineering controls and repeatable local measurements,
+not customer capacity or witnessed deployment acceptance. Apply migration 0104;
+rebuild API/worker/frontend and the approved parser as the release requires.

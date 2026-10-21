@@ -73,6 +73,7 @@ class PipelineContext:
     system_id: str | None = None
     scan_persisted: bool = False
     scan_committed: bool = False
+    workload_meter: Any = field(default=None, repr=False)
 
     def update(self, **kwargs) -> "PipelineContext":
         for key, value in kwargs.items():
@@ -226,6 +227,9 @@ class PipelineRunner:
             system_id=system_id,
             trace_id=trace_id or trace_id_from_job(job),
         )
+        from observability.workload import measure
+        measurement = measure(session.get_bind())
+        ctx.workload_meter = measurement.__enter__()
         stage = "init"
         try:
             self._advance(session, ctx, "clone", status="RUNNING")
@@ -319,6 +323,7 @@ class PipelineRunner:
                     session.rollback()
             raise RuntimeError(public_error) from exc
         finally:
+            measurement.__exit__(None, None, None)
             if owns_session:
                 session.close()
             from db.repositories.execution_control import active_execution
@@ -451,6 +456,8 @@ class PipelineRunner:
         from db.repositories.execution_control import active_execution, checkpoint
         if active_execution() and status != "FAILED":
             checkpoint(stage)
+        if ctx.workload_meter is not None:
+            ctx.workload_meter.transition(stage, final=status in {"COMPLETED", "FAILED"})
         ctx.current_stage = stage
         entry = {
             "ts": utcnow(),
@@ -466,6 +473,8 @@ class PipelineRunner:
             current_stage=stage, status=status, logs=ctx.logs,
             extra={"scan_id": ctx.scan_id} if ctx.scan_committed else None,
         )
+        if ctx.workload_meter is not None:
+            progress["performance"] = ctx.workload_meter.report()
         kwargs: dict[str, Any] = {"progress": progress}
         if status == "COMPLETED" and ctx.scan_committed:
             kwargs["scan_id"] = ctx.scan_id

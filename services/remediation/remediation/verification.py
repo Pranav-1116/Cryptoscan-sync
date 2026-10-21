@@ -99,14 +99,16 @@ def verify_remediation(
     # -- 1) is the original violation still there? -------------------------- #
     if same_algo:
         still_bad = [f for f in same_algo if _is_non_compliant(f)]
-        if not still_bad:
+        if not still_bad and all(str(f.get("compliance_status") or "").upper() == "PASS" for f in same_algo):
             result, reason = VERIFIED, (
                 f"{original_algo} now passes policy at the original site "
                 "(parameters or policy changed)")
+        elif not still_bad:
+            result, reason = INCONCLUSIVE, "original site has unknown policy outcomes"
         else:
             improved = any(
                 (f.get("key_size") or 0) > (original.get("key_size") or 0)
-                or (f.get("is_hardcoded_key") and not original.get("is_hardcoded_key"))
+                or (original.get("is_hardcoded_key") and not f.get("is_hardcoded_key"))
                 for f in still_bad
             )
             if improved:
@@ -121,18 +123,23 @@ def verify_remediation(
         if any(_is_non_compliant(f) for f in replacement):
             result, reason = PARTIAL, (
                 f"replaced with {replace_with} but the replacement still fails policy")
+        elif not all(str(f.get("compliance_status") or "").upper() == "PASS" for f in replacement):
+            result, reason = INCONCLUSIVE, "replacement policy outcome is unknown"
         else:
             result, reason = VERIFIED, f"replaced with {replace_with} at the original site"
     elif in_file:
         # file still scanned, neither the old algorithm nor the suggested one
-        if all(not _is_non_compliant(f) for f in in_file):
+        if all(str(f.get("compliance_status") or "").upper() == "PASS" for f in in_file):
             result, reason = VERIFIED, (
                 "original algorithm gone and the file is fully compliant in the rescan")
         else:
             result, reason = PARTIAL, (
                 "original algorithm gone but the file still holds non-compliant crypto")
     else:
-        result, reason = VERIFIED, "original file no longer present in the rescan evidence"
+        result, reason = INCONCLUSIVE, "original file absent from rescan evidence; absence is not proof of removal"
+
+    if result == VERIFIED and not any(int(f.get("line_number") or 0) == int(original.get("line_number") or 0) for f in in_file):
+        result, reason = INCONCLUSIVE, "original site not independently identified at its original line"
 
     # -- 3) regression: new non-compliance that was not in the original scan - #
     if original_scan_findings is not None:

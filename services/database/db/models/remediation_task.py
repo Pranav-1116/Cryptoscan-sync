@@ -24,6 +24,7 @@ class RemediationTask(BaseModel, TenantScoped):
 
     __table_args__ = (
         Index("ix_remediation_tasks_status", "status"),
+        Index("ix_remediation_tasks_estate_page", "tenant_id", "created_at", "id"),
         Index("ix_remediation_tasks_scan", "scan_id"),
     )
 

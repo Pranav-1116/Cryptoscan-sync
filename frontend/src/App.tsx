@@ -25,6 +25,7 @@ const Cbom = lazy(() => import("./pages/Cbom"));
 const Certificates = lazy(() => import("./pages/Certificates"));
 const Cloud = lazy(() => import("./pages/Cloud"));
 const Cmdb = lazy(() => import("./pages/Cmdb"));
+const OperatorDecisions = lazy(() => import("./pages/OperatorDecisions"));
 const CommandCenter = lazy(() => import("./pages/CommandCenter"));
 const Compliance = lazy(() => import("./pages/Compliance"));
 const Crypto = lazy(() => import("./pages/Crypto"));
@@ -161,6 +162,7 @@ function RoutedPages() {
       <Route path="/certificates" element={<Certificates />} />
       <Route path="/cloud" element={<Cloud />} />
       <Route path="/cmdb" element={<Cmdb />} />
+      <Route path="/operator-decisions" element={<OperatorDecisions />} />
       <Route path="/command-center" element={<CommandCenter />} />
       <Route path="/compliance" element={<Compliance />} />
       <Route path="/crypto" element={<Crypto />} />

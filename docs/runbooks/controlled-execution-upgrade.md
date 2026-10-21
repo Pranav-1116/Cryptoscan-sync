@@ -70,7 +70,7 @@ residency proof, and launcher tests are not isolation qualification.
    python -m alembic -c services/database/migrations/alembic.ini upgrade head
    ```
 
-   Head is currently `0102`. The migration creates six empty control tables and a nullable original-user
+   Current head is `0104`; the original `0102` increment creates six empty control tables and a nullable original-user
    incarnation field on session records; it does **not** approve legacy jobs, move ownership, reinterpret NULL history as
    shared, release reservations or reset RUNNING rows. Existing sessions have no trusted
    original user ID and **must sign in again**; the migration never backfills an
@@ -198,3 +198,13 @@ and unconfirmed launcher cleanup similarly require reconciliation.
 
 The [root readiness gate](../../PRODUCTION-READINESS.md) remains authoritative.
 This engineering increment does not turn historical FAIL/SKIP artifacts into PASS.
+
+## Operator package follow-on (4.1–4.4)
+
+The newer [operator install/upgrade/recovery runbook](operator-install-upgrade-recover.md)
+defines an explicit graph-disabled deployment profile, offline full-package
+verification, dedicated dispatcher build/runtime recipe and current head 0104.
+0103 adds retained assurance history; 0104 adds only estate/page indexes. The
+ordinary legacy dashboard remains restricted; `/operator-decisions` is the new
+exact-estate assurance metadata view. It does not enable live TLS/SSH/cloud
+collection or restore the refused privileged fallback paths.

@@ -96,7 +96,7 @@ function TaskActions({ task, onChanged }: { task: RemediationTask; onChanged: ()
             {busy === "accept" ? "Accepting…" : "Accept (take ownership)"}
           </button>
         )}
-        {(task.status === "ACCEPTED" || task.status === "PROPOSED") && (
+        {(task.status === "ACCEPTED") && (
           <button className="btn sm" disabled={busy !== null} onClick={() => void run("complete")}>
             {busy === "complete" ? "Completing… (verifies against rescan)" : "Mark complete + verify"}
           </button>
@@ -113,7 +113,7 @@ function TaskActions({ task, onChanged }: { task: RemediationTask; onChanged: ()
           aria-label={`Rescan id for task ${task.id}`}
           style={{ fontSize: 12, padding: "4px 8px", minWidth: 260 }}
         />
-        {(task.status === "ACCEPTED" || task.status === "PROPOSED") && (
+        {(task.status === "ACCEPTED") && (
           <input
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -161,6 +161,7 @@ export default function Remediation() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      <p><Link to="/operator-decisions">Operator decisions: approved conditions and retained before / after verification</Link>. Legacy comparison alone cannot establish a verified fix.</p>
       <PageHead
         crumb="Remediation"
         title="Remediation Tasks"

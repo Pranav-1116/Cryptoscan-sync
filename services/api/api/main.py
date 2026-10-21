@@ -202,15 +202,16 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             raise
         if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
             init_db()
-            try:
-                from graph_engine.connection.neo4j_driver import get_driver
-                from graph_engine.core.store import Neo4jGraphStore
+            if settings.CRYPTOSCAN_DEPLOYMENT_PROFILE != "kubernetes-external-services/local-source-v1":
+                try:
+                    from graph_engine.connection.neo4j_driver import get_driver
+                    from graph_engine.core.store import Neo4jGraphStore
 
-                driver = get_driver()
-                if driver is not None:
-                    Neo4jGraphStore(driver).apply_schema()
-            except Exception:
-                logger.debug("neo4j_schema_skipped", exc_info=True)
+                    driver = get_driver()
+                    if driver is not None:
+                        Neo4jGraphStore(driver).apply_schema()
+                except Exception:
+                    logger.debug("neo4j_schema_skipped", exc_info=True)
             try:
                 from db.connection.session import SessionLocal
                 from api.security.auth import AuthService

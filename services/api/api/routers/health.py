@@ -86,7 +86,11 @@ def dependency_report() -> dict:
                      "detail": "REDIS_URL is required in production"}
     # A reachable Redis server is not enough: production readiness requires the
     # Stream/sequence adapter to have initialized as well.
-    if redis_required:
+    operator_profile = getattr(settings, "CRYPTOSCAN_DEPLOYMENT_PROFILE", "") == "kubernetes-external-services/local-source-v1"
+    if redis_required and operator_profile:
+        checks.append({"name": "realtime_events", "status": "skipped",
+                       "detail": "Explicit controlled operator profile disables realtime; decisions reconcile from SQL"})
+    if redis_required and not operator_profile:
         try:
             from api.events.bus import get_event_bus
 

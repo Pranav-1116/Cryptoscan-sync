@@ -277,3 +277,42 @@ class RedisMeasurement(Contract):
 class RegressionExecution(Contract):
     scan_id: ID
     evidence_ref: Text
+
+
+class RemediationChange(Contract):
+    freshness_seconds: int = Field(3600, ge=60, le=604800)
+    kind: Literal["SOURCE_SITE", "TLS_CERTIFICATE"]
+    owner_ref: Text
+    change_ref: Text
+    verification_criteria: Text
+    expires_at: datetime
+    task_id: Ref | None = None
+    before_run_id: Ref | None = None
+    endpoint: Text | None = None
+    expected_fingerprint_sha256: SHA | None = None
+    expected_algorithm: Annotated[str, StringConstraints(min_length=1, max_length=100)] | None = None
+
+    @model_validator(mode="after")
+    def complete_condition(self):
+        if self.kind == "SOURCE_SITE":
+            if not self.task_id or not self.expected_algorithm or any((self.before_run_id, self.endpoint, self.expected_fingerprint_sha256)):
+                raise ValueError("Source condition requires task and expected algorithm only")
+        elif not all((self.before_run_id, self.endpoint, self.expected_fingerprint_sha256)) or self.task_id or self.expected_algorithm:
+            raise ValueError("TLS condition requires before run, exact endpoint and replacement SHA256 only")
+        return self
+
+
+class ReportChange(Revision):
+    completed_at: datetime
+    evidence_ref: Text
+
+
+class VerifyChange(Revision):
+    rescan_id: Ref
+    expected_proof_revision: int = Field(0, ge=0)
+
+
+class AssignedRemediationTask(Contract):
+    evidence_id: Ref
+    owner_ref: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    notes: Text | None = None

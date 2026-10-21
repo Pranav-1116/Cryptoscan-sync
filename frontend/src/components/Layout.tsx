@@ -36,6 +36,7 @@ const PRIMARY_SECTIONS: NavSection[] = [
     title: "Overview",
     items: [
       { to: "/command-center", label: "Dashboard", icon: ChartLineUp },
+      { to: "/operator-decisions", label: "Operator decisions", icon: Pulse },
       { to: "/live-stream", label: "Activity", icon: Pulse },
     ],
   },
