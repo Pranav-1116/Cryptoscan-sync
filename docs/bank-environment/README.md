@@ -37,8 +37,10 @@ extends the contract to the leader-worker target rotation. A01 is partially
 delivered. [Guide 37 — NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md)
 adds owner, rollback and freshness guards.
 [Guide 38 — bounded monitor phase admission](38-monitor-network-phase-admission.md)
-adds TLS/IPsec/explicit-resolver DNSSEC admission and linked jobs; scope/plugins
-are refused pending qualification. Other profiles, distributed enforcement,
+adds TLS/IPsec/explicit-resolver DNSSEC admission and linked jobs.
+[Guide 39 — explicit bounded TCP discovery](39-bounded-tcp-monitor-discovery.md)
+adds an opt-in IPv4 CIDR/port monitor profile, exact-estate range authority and
+crypto-evidence separation; expanding scope/plugins remain refused. Other profiles, distributed enforcement,
 regional/vendor qualification and the rest of the backlog remain open.
 
 ## Read in order
@@ -83,6 +85,7 @@ regional/vendor qualification and the rest of the backlog remain open.
 | [36 — Scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) | How are owner batches admitted, metered and durably recorded without false schedule freshness? |
 | [37 — NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md) | How do owner context, acceptance/rollback, current projections and honest freshness work before protocol admission parity? |
 | [38 — Bounded monitor phase admission](38-monitor-network-phase-admission.md) | Which monitor profiles now receive per-phase admission/linked receipts, what is refused, and what remains unqualified? |
+| [39 — Explicit bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md) | How are IPv4 CIDR/port sweeps bounded, authorized and recorded without inventing TLS/crypto evidence or enabling enterprise plugins? |
 
 **CISO / bank sponsor:** start here, then 01, 04 and 07.<br>
 **Platform / infrastructure team:** 01, 02, 05 and 08.<br>

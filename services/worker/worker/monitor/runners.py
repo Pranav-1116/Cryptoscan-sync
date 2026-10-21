@@ -77,7 +77,7 @@ def network_runner(config: dict, session: Any) -> dict:
 
     from network_scanner.core.scanner import NetworkTlsScanner
 
-    from worker.monitor.network_collection import before_phase
+    from worker.monitor.network_collection import before_phase, current_execution
 
     timeout = float(config.get("timeout", 5.0))
     workers = config.get("workers", 8)
@@ -85,40 +85,56 @@ def network_runner(config: dict, session: Any) -> dict:
         raise ValueError("network monitor timeout must be finite, positive and at most 30 seconds")
     if type(workers) is not int or not 1 <= workers <= 32:
         raise ValueError("network monitor workers must be an integer between 1 and 32")
-    scanner = NetworkTlsScanner(live=True, timeout=timeout, workers=workers)
+    bounded_scope = config.get("scope_profile") == "bounded-tcp"
+    scope_execution = current_execution()
+    if bounded_scope and scope_execution is None:
+        return {"blocked_reason": "Bounded TCP scope requires an admitted monitor execution context"}
+    scanner = (NetworkTlsScanner(live=True, timeout=timeout, workers=workers)
+               if endpoints or config.get("ipsec") or config.get("dnssec") or not bounded_scope else None)
     issues: list[str] = list(ssrf_issues)
     ok = unreachable = 0
     scope_summary: dict | None = None
     observed: dict[str, Any] = {}
     phase_complete: list[bool] = [not ssrf_issues]
 
-    # Global Network Discovery scope: full enterprise pipeline (assets, protocol
-    # detection, dependency graph, PQC readiness, simulation) on each tick.
     if config.get("scope"):
-        # The legacy discovery report does not certify all expanded targets,
-        # plugins and truncated reads. Positive findings are still retained.
-        phase_complete.append(False)
-        issues.append("SCOPE_COVERAGE_NOT_ESTABLISHED")
-        try:
-            discovery = scanner.discover_network(
-                [config["scope"]] if isinstance(config["scope"], str) else list(config["scope"]),
-                mode=str(config.get("scan_mode", "SAFE")).upper(),
-                authorization_scope=str(config.get("authorization_scope", "")),
-                plugins=config.get("plugins"),
-            )
-            discovery_issues = _discovery_issues(discovery)
-            issues.extend(discovery_issues)
-            observed.update(discovery)
-            scope_summary = {
-                "specs": len(discovery.get("scope") or []),
-                "assets": len(discovery.get("assets") or []),
-                "observations": len(discovery.get("protocol_observations") or []),
-                "pqc_migration_required": (discovery.get("pqc_network_readiness") or {}).get("by_status", {}).get("MIGRATION_REQUIRED", 0),
-            }
-        except Exception as exc:
-            logger.debug("monitor_network_scope_skipped", exc_info=True)
-            # config errors (e.g. DEEP without authorization) surface as issues
-            issues.append(f"SCOPE_ERROR:{type(exc).__name__}:{str(exc)[:120]}")
+        if bounded_scope:
+            from worker.monitor.scope_discovery import collect
+            discoveries = collect(scope_execution)
+            observed["scope_discovery"] = discoveries
+            phase_complete.append(False)
+            issues.append("DISCOVERY_TLS_NOT_EVALUATED")
+            scope_summary = {"profile": "bounded-tcp", "ranges": len(discoveries),
+                             "candidates": sum(d["candidates"] for d in discoveries),
+                             "open_count": sum(d["open_count"] for d in discoveries),
+                             "tls_status": "NOT_EVALUATED"}
+        else:
+            # Internal legacy SDK adapter only; MonitorEngine refuses this
+            # expansion profile before execution. It is not an admitted path.
+            # The legacy discovery report does not certify all expanded targets,
+            # plugins and truncated reads. Positive findings are still retained.
+            phase_complete.append(False)
+            issues.append("SCOPE_COVERAGE_NOT_ESTABLISHED")
+            try:
+                discovery = scanner.discover_network(
+                    [config["scope"]] if isinstance(config["scope"], str) else list(config["scope"]),
+                    mode=str(config.get("scan_mode", "SAFE")).upper(),
+                    authorization_scope=str(config.get("authorization_scope", "")),
+                    plugins=config.get("plugins"),
+                )
+                discovery_issues = _discovery_issues(discovery)
+                issues.extend(discovery_issues)
+                observed.update(discovery)
+                scope_summary = {
+                    "specs": len(discovery.get("scope") or []),
+                    "assets": len(discovery.get("assets") or []),
+                    "observations": len(discovery.get("protocol_observations") or []),
+                    "pqc_migration_required": (discovery.get("pqc_network_readiness") or {}).get("by_status", {}).get("MIGRATION_REQUIRED", 0),
+                }
+            except Exception as exc:
+                logger.debug("monitor_network_scope_skipped", exc_info=True)
+                # config errors (e.g. DEEP without authorization) surface as issues
+                issues.append(f"SCOPE_ERROR:{type(exc).__name__}:{str(exc)[:120]}")
     if endpoints:
         execution = before_phase("tls")
         result = scanner.scan_hosts(endpoints)

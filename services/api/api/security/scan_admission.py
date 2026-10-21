@@ -160,23 +160,27 @@ def _ot_declared() -> bool:
 def _authorized_network_scope() -> list[str]:
     """Enabled network scope targets declared at onboarding (the authorization
     surface for network sweeps), plus currently registered due-scan targets.
-    Tenant-scoped by the ORM guard like every other read."""
+    Explicit exact-owner predicates are required here: readable curated
+    platform inventory is not execution permission, and an unscoped platform
+    operator must not inherit every tenant's grants."""
     from db.connection.session import SessionLocal
     from db.models.network_scan_target import NetworkScanTarget
     from db.models.onboarding import ScopeEntry
+    from db.tenancy import current_tenant
 
+    owner = current_tenant()
     session = SessionLocal()
     try:
         scope_targets = [
             str(row.target)
             for row in session.query(ScopeEntry)
-            .filter(ScopeEntry.kind == "network", ScopeEntry.enabled.is_(True))
+            .filter(ScopeEntry.kind == "network", ScopeEntry.enabled.is_(True), ScopeEntry.tenant_id == owner)
             .all()
         ]
         registered = [
             str(row.endpoint)
             for row in session.query(NetworkScanTarget)
-            .filter(NetworkScanTarget.enabled.is_(True))
+            .filter(NetworkScanTarget.enabled.is_(True), NetworkScanTarget.tenant_id == owner)
             .all()
         ]
         return scope_targets + registered

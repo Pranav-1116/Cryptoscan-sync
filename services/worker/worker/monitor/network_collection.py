@@ -1,7 +1,7 @@
 """Bounded monitor network plans and execution receipts (not plugin discovery).
 
 No executor is constructed during validation/admission. Destination validation
-is deliberately constrained to the address forms the underlying UDP SDKs use.
+is constrained to qualified TCP CIDRs and the address forms the UDP SDKs use.
 """
 
 from __future__ import annotations
@@ -45,12 +45,20 @@ class Plan:
     specs: dict
     units: list
 
-    def admit(self, phase=None):
+    def admit(self, phase=None, *, execution_range=None):
+        if "scope" in self.specs:
+            from worker.monitor.scope_discovery import authorize_scopes
+
+            authorize_scopes(
+                {**self.config, "scope": [execution_range]} if execution_range is not None else self.config
+            )
         decisions = []
         for name, specs in self.specs.items():
             if phase is not None and phase != name:
                 continue
             for spec in specs:
+                if name == "scope" and execution_range is not None:
+                    spec = {**spec, "targets": [execution_range]}
                 decision = admit_network(
                     spec["targets"], ports=spec.get("ports"), protocol=spec["protocol"], transport=spec["transport"]
                 )
@@ -80,16 +88,25 @@ def prepare(config):
         )
     ):
         _refuse("Requested mode/extended TLS option is not qualified for this bounded monitor profile")
-    if config.get("scope") or config.get("plugins"):
+    if config.get("plugins"):
         raise HTTPException(
             409,
-            detail="Monitor discovery scope/plugins are not qualified for bounded phase admission; no monitor probes executed",
+            detail="Monitor discovery plugins are not qualified for bounded phase admission; no monitor probes executed",
         )
     try:
         clean = Profile(**{k: config[k] for k in Profile.model_fields if k in config}).model_dump()
     except ValidationError as exc:
         raise HTTPException(422, detail="Invalid bounded network monitor profile") from exc
     specs, units = {}, []
+    if config.get("scope"):
+        from worker.monitor.scope_discovery import prepare_scope
+
+        scope_config, scope_spec, scope_units = prepare_scope(config)
+        clean.update(scope_config)
+        specs["scope"] = [scope_spec]
+        units.extend(scope_units)
+    elif config.get("scope_profile"):
+        _refuse("scope_profile requires a nonempty scope")
     endpoints = _items(config.get("endpoints", []), "endpoints")
     if config.get("endpoint"):
         if endpoints:
@@ -155,7 +172,7 @@ def prepare(config):
                 ]
             )
     if not units or len(units) > 256:
-        _refuse("Monitor requires 1-256 logical TLS hosts/IPsec hosts/DNS zones per pass")
+        _refuse("Monitor requires 1-256 combined TCP discovery candidates/TLS hosts/IPsec hosts/DNS zones per pass")
     return Plan(clean, specs, units)
 
 
@@ -164,7 +181,7 @@ class Execution:
         self.db, self.plan, self.run, self.target_id = db, plan, run, target_id
         self.receipts, self.result = [], None
 
-    def before_phase(self, phase):
+    def before_phase(self, phase, *, execution_range=None):
         owner = current_tenant()
         target = self.db.get(MonitorTarget, self.target_id, populate_existing=True)
         tenant = self.db.get(Tenant, owner, populate_existing=True) if owner is not None else None
@@ -180,7 +197,13 @@ class Execution:
             raise HTTPException(
                 409, detail="Monitor profile changed before phase execution; retry from current configuration"
             )
-        receipt = self.plan.admit(phase)
+        if execution_range is not None and (
+            phase != "scope" or execution_range not in self.plan.config.get("scope", [])
+        ):
+            raise RuntimeError("Scope execution range was not admitted")
+        receipt = self.plan.admit(phase, execution_range=execution_range)
+        if execution_range is not None:
+            receipt["execution_range"] = execution_range
         self.receipts.append(receipt)
         repo = JobRepository(self.db)
         job = repo.get_by_id(self.run.job_id)
@@ -197,6 +220,7 @@ class Execution:
             "tls": payload.get("probe_telemetry") or {},
             "ipsec": (payload.get("ipsec") or {}).get("probe_telemetry") or {},
             "dnssec": {"coverage": "NOT_ESTABLISHED"} if "dnssec" in self.plan.specs else {},
+            "scope": {"coverage": "TCP_CONNECT_ONLY_TLS_NOT_EVALUATED"} if "scope" in self.plan.specs else {},
         }
         payload["monitor"] = {
             "target_id": self.target_id,
@@ -207,6 +231,8 @@ class Execution:
             # Do not present one TLS subphase's counts/verdict as full mixed
             # coverage, or fabricate TLS counts for a UDP-only collection.
             payload["probe_telemetry"] = {"status": "OK" if complete and not result.get("degraded") else "PARTIAL"}
+            if set(self.plan.specs) == {"scope"}:
+                payload["probe_telemetry"] = {"status": "NOT_EVALUATED"}
         self.result = persist_network(self.db, payload, self.run, kind="monitor", phase_admission=list(self.receipts))
         result["data"] = self.result
         result["summary"] = {
@@ -230,3 +256,8 @@ def before_phase(phase):
     if execution is not None:
         execution.before_phase(phase)
     return execution
+
+
+def current_execution():
+    """Internal adapter hook; a bounded scope cannot execute without this context."""
+    return _ACTIVE.get()

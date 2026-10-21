@@ -187,8 +187,6 @@ def _tcp_probe(endpoint: str, timeout: float) -> str:
     except TimeoutError:
         return "filtered"
     except OSError as exc:
-        # EHOSTUNREACH/EHOSTDOWN/ENETUNREACH => host silent; anything else that
-        # is an explicit refusal still means the host answered.
-        if exc.errno in (errno.EHOSTUNREACH, errno.EHOSTDOWN, errno.ENETUNREACH, errno.EPIPE):
-            return "filtered"
-        return "closed"
+        # Only an explicit refusal proves a closed listener. Local permission,
+        # routing and unknown socket errors do not prove the host answered.
+        return "closed" if exc.errno == errno.ECONNREFUSED else "filtered"

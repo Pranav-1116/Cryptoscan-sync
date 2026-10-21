@@ -32,6 +32,11 @@ def persist_monitor_projection(target: Any, result: dict[str, Any], session: Any
     from sqlalchemy import delete
 
     scanner = str(result.get("scanner") or str(getattr(target, "target_type", "monitor")).lower())
+    if getattr(target, "target_type", None) == "NETWORK":
+        # Authorization, coverage and port-only discovery are not observed
+        # crypto. Never recursively project receipt protocol names/hints.
+        data = {key: value for key, value in data.items()
+                if key not in {"collection", "monitor", "scope_discovery", "job_id", "run_id"}}
     components = LiveScanRunner._scanner_cbom_components(scanner, data)
     findings: list[dict[str, Any]] = []
     for key in ("findings", "alerts", "policy_findings", "vulnerabilities"):

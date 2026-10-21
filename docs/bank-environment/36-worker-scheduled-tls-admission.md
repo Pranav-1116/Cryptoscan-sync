@@ -180,6 +180,8 @@ implements trusted owner context in sequential/threaded execution, rollback-safe
 status/event persistence and conservative blocked/incomplete freshness. It does
 not itself implement phase-specific admission/durable receipts. The subsequent
 [bounded monitor phase delivery](38-monitor-network-phase-admission.md) now adds
-those for TLS/IPsec/explicit-resolver DNSSEC, while refusing scope/plugins. Do not simply wrap TLS and imply scope/IPsec/DNSSEC
-parity. Other collectors, distributed enforcement, reaper behavior, exact-estate
+those for TLS/IPsec/explicit-resolver DNSSEC.
+[Explicit bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md)
+subsequently adds only IPv4 CIDR/port sweeps, with no automatic TLS/plugin
+expansion. Unqualified scope/plugins remain refused; do not infer wider parity. Other collectors, distributed enforcement, reaper behavior, exact-estate
 schema changes and live operational qualification remain separate obligations.

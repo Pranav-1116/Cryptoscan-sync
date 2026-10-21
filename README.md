@@ -55,8 +55,10 @@ extends that contract to the leader-worker target rotation. The subsequent
 [NETWORK monitor lifecycle isolation](docs/bank-environment/37-network-monitor-lifecycle-isolation.md)
 adds owner/rollback/freshness guards. The
 [bounded monitor phase delivery](docs/bank-environment/38-monitor-network-phase-admission.md)
-adds admission and linked jobs for TLS/IPsec/explicit-resolver DNSSEC, while
-refusing unqualified scope/plugins. A01 remains partial; production safety is
+adds admission and linked jobs for TLS/IPsec/explicit-resolver DNSSEC. The
+[bounded TCP discovery increment](docs/bank-environment/39-bounded-tcp-monitor-discovery.md)
+adds explicit IPv4 CIDR/port monitor sweeps without automatic TLS/plugin follow-up.
+Unqualified scope/plugins remain refused. A01 remains partial; production safety is
 not certified by these local changes.
 
 

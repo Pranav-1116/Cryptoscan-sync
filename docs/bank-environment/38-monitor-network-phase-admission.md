@@ -3,6 +3,15 @@
 [Guide index](README.md) · [Lifecycle groundwork](37-network-monitor-lifecycle-isolation.md) ·
 [Enterprise backlog](33-international-bank-engineering-and-rollout.md)
 
+## Subsequent scoped increment
+
+[Guide 39](39-bounded-tcp-monitor-discovery.md), delivered 2026-10-21, adds an
+explicit `scope_profile="bounded-tcp"` IPv4 CIDR/port monitor profile without TLS/
+UDP/plugin follow-up. It also enforces exact-estate range-authority reads and
+keeps admission/coverage metadata out of observed-crypto projection. It supersedes
+only the scope statements below for that explicit profile; ordinary expanding
+scope/plugins remain refused. The historical delivery/test record below is unchanged.
+
 ## Status and important compatibility change
 
 **Implemented locally, 2026-10-19. A01 remains partial.** The NETWORK monitor

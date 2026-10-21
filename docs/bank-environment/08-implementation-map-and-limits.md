@@ -2,7 +2,7 @@
 
 [Guide index](README.md) · Previous: [Operations](07-operations-and-acceptance.md)
 
-**Baseline inspected 2026-10-18; A01 API/worker/monitor-phase update 2026-10-19.** This map is deliberately more precise than a
+**Baseline inspected 2026-10-18; A01 API/worker/monitor-phase update 2026-10-19; bounded-TCP update 2026-10-21.** This map is deliberately more precise than a
 feature checklist. “Implemented” means code exists for the described behavior;
 it does not mean a real bank/provider/production deployment was qualified here.
 The original guide was documentation-only. Subsequent A01 implementation
@@ -52,10 +52,13 @@ owner batches, bounded settings and durable schedule freshness.
 adds owner context, rollback-safe acceptance and honest observation freshness,
 followed by [bounded monitor phase admission](38-monitor-network-phase-admission.md)
 for TLS, IPsec and explicit-resolver DNSSEC with linked ScanJob/probe receipts.
-Automatic scope/plugins are now refused, not implicitly authorized.
+[Explicit bounded TCP discovery](39-bounded-tcp-monitor-discovery.md) now adds
+a qualified opt-in IPv4 CIDR/port profile, without automatic follow-up or receipt-
+derived crypto. Shared range authority is exact estate. Unqualified expanding
+scope/plugins remain refused, not implicitly authorized.
 
 This is **partial A01 delivery**, not uniformity across all collectors. The
-separate monitor scope/plugin expansion still requires qualification;
+separate enterprise scope/plugin expansion still requires qualification;
 SSH/inventory plugins, distributed quotas, actual connection/QPS budgets, in-flight stop and production qualification remain separate work.
 Authentication, target validation, role/grant policy and collection persistence
 are different controls. Existing IT-window semantics and inventory-sharing

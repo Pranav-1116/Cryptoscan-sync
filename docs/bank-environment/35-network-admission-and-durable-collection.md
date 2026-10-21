@@ -188,8 +188,10 @@ contract to the leader-worker `network_scan_targets` rotation. Next
 qualify/migrate the separate `monitor_targets` network runner. Its
 [owner/rollback/freshness groundwork](37-network-monitor-lifecycle-isolation.md)
 is now implemented, followed by [bounded phase admission/receipts](38-monitor-network-phase-admission.md)
-for TLS/IPsec/explicit-resolver DNSSEC; scope/plugins are refused pending
-qualification. Also pending are
+for TLS/IPsec/explicit-resolver DNSSEC. The subsequent
+[bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md) qualifies
+only explicit IPv4 CIDR/port sweeps without dynamic follow-up; shared range grants
+are now exact estate. Expanding scope/plugins remain refused. Also pending are
 other active network profiles (SSH and inventory plugins), retry/reaper behavior
 and non-API execution paths. Current direct-host role/grant policy, region/legal-
 entity restrictions, platform-inventory sharing and export boundaries remain

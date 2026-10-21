@@ -8,7 +8,8 @@ The [A01 first API delivery](35-network-admission-and-durable-collection.md) is
 now implemented locally, followed by the
 [scheduled TLS worker delivery](36-worker-scheduled-tls-admission.md) and
 [NETWORK monitor lifecycle isolation](37-network-monitor-lifecycle-isolation.md) and
-[bounded phase admission](38-monitor-network-phase-admission.md).
+[bounded phase admission](38-monitor-network-phase-admission.md) and
+[explicit bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md).
 A01 as a whole and the remaining enterprise items are
 still open. The prior ten steps
 are locally delivered as recorded in [guide 26](26-bank-negative-tests-and-backend-qualification.md).
@@ -74,8 +75,10 @@ scheduled TLS worker owner batches. The
 [third supporting delivery](37-network-monitor-lifecycle-isolation.md) isolates
 the separate monitor lifecycle. The
 [bounded phase delivery](38-monitor-network-phase-admission.md) now admits and
-records TLS/IPsec/explicit-resolver DNSSEC monitor plans; scope/plugins are
-refused until their expansion is qualified.
+records TLS/IPsec/explicit-resolver DNSSEC monitor plans. The subsequent
+[bounded TCP delivery](39-bounded-tcp-monitor-discovery.md) admits explicit IPv4
+CIDR/port monitor sweeps, tightens range grants to exact estate and separates
+receipt metadata from crypto observations. Expanding scope/plugins remain refused.
 A01 remains partial: other executors, granular grants, real budget enforcement
 and deployment qualification are not implied. The current
 [guide 08 matrix](08-implementation-map-and-limits.md) records this update.

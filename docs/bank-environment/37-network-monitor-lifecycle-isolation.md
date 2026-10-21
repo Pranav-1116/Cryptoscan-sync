@@ -10,6 +10,8 @@ linked jobs for bounded monitor TLS/IPsec/explicit-resolver DNSSEC. Automatic
 scope/plugins are refused before execution. This guide records the preceding
 lifecycle delivery and its then-open boundary; guide 38 supersedes those profile
 execution/admission statements, without changing its historical test evidence.
+[Guide 39](39-bounded-tcp-monitor-discovery.md) subsequently qualifies an explicit
+bounded IPv4 TCP discovery profile only; expanding scope/plugins remain blocked.
 
 ## Status: supporting A01 delivery, not protocol admission parity
 
