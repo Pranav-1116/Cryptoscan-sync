@@ -79,9 +79,10 @@ class WorkerPool:
     def _run(self, job: ScanJob) -> bool:
         self.stats.begin()
         try:
-            self.handler(job)
-            self.stats.end(ok=True)
-            return True
+            result = self.handler(job)
+            ok = result is not False
+            self.stats.end(ok=ok)
+            return ok
         except Exception:
             logger.exception("job_execution_failed", extra={"job_id": job.job_id})
             self.stats.end(ok=False)

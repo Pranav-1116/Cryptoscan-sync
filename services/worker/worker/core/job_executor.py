@@ -6,7 +6,7 @@ import logging
 
 from worker.core.execution_gate import gate_job
 from worker.core.job_consumer import ScanJob
-from worker.core.queued_authority import QueueRefused, reconcile, claim
+from worker.core.queued_authority import QueueRefused, QueueDeferred, reconcile, claim
 from worker.pipeline.pipeline_runner import PipelineRunner
 
 logger = logging.getLogger(__name__)
@@ -79,12 +79,24 @@ class JobExecutor:
             self._stamp_refusal(job, message)
             return False
         try:
-            claim(job)
+            attempt = claim(job)
+        except QueueDeferred:
+            from db.repositories.execution_outbox import defer
+            defer(job.job_id, job.tenant_id)
+            logger.info("controlled_job_deferred", extra={"job_id": job.job_id})
+            return False
         except QueueRefused as exc:
             logger.warning("queue_authority_refused", extra={"job_id": job.job_id, "reason": str(exc)})
             self._stamp_refusal(job, "execution authority: " + str(exc))
             return False
-        return run()
+        from db.repositories.execution_control import execution_scope, finish_attempt
+        try:
+            with execution_scope(attempt):
+                outcome = bool(run())
+        except BaseException:
+            finish_attempt(attempt, False)
+            raise
+        return bool(finish_attempt(attempt, outcome))
 
     @staticmethod
     def _stamp_refusal(job: ScanJob, message: str) -> None:

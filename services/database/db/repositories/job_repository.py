@@ -108,6 +108,9 @@ class JobRepository(BaseRepository[ScanJob]):
         current = self.get_by_id(job_id)
         if current is None:
             return None
+        controlled = (current.progress or {}).get("execution_control") is not None
+        if controlled and current.status == "UNKNOWN":
+            return None
         if not force and current.status in self.TERMINAL_STATUSES:
             logger.warning(
                 "job_status_conflict_terminal",
@@ -128,6 +131,13 @@ class JobRepository(BaseRepository[ScanJob]):
         if scan_id is not None:
             values["scan_id"] = scan_id
         if progress is not None:
+            progress = dict(progress)
+            if ((current.progress or {}).get("execution_authority") or {}).get("v") == 2:
+                for name in ("execution_authority", "execution_control", "scan_options"):
+                    if name in current.progress:
+                        progress[name] = current.progress[name]
+                    else:
+                        progress.pop(name, None)
             values["progress"] = progress
         rowcount = (
             self.session.query(ScanJob)

@@ -112,6 +112,9 @@ class MonitorEngine:
         (``watch_triggered`` vs ``due``) and ``report_ran`` so operators can
         see why the daemon did work.
         """
+        from db.repositories.execution_control import required, ExecutionDenied
+        if required():
+            raise ExecutionDenied("Monitor watch/acquisition/projection adapters are not qualified for controlled execution")
         now = self._now()
         triggered: list[MonitorTarget] = []
         if self.watch_enabled:
@@ -383,6 +386,9 @@ class MonitorEngine:
             logger.debug("monitor_pass_publish_failed", extra={"target": target.name}, exc_info=True)
 
     def run_target(self, target: MonitorTarget) -> dict[str, Any]:
+        from db.repositories.execution_control import required, ExecutionDenied
+        if required():
+            raise ExecutionDenied("Monitor execution requires a qualified controlled adapter")
         if target.target_type == "NETWORK":
             return self._run_network_target(target)
         return self._run_target(target)

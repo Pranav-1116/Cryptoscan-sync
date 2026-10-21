@@ -1,12 +1,14 @@
 # REST API reference
 
 Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-21:
-**848 paths, 936 operations** across 103 tagged groups.
+**857 paths, 947 operations** across 104 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 Current [execution, SSH and replay contracts](execution-and-replay.md) describe
 owner-bound cursors, fresh execution authority, durable receipts and explicit refusals.
-This schema snapshot does not certify a deployed production topology.
+The [controlled-execution contract](controlled-execution.md) documents approvals,
+SQL budgets, fenced attempts and the deliberately restricted production allowlist.
+This schema snapshot does not certify a deployed production topology or route availability.
 
 ## Conventions
 
@@ -620,6 +622,22 @@ This schema snapshot does not certify a deployed production topology.
 | `POST` | `/api/v1/exceptions/{exception_id}/reject` | Reject Exception |
 | `POST` | `/api/v1/exceptions/{exception_id}/review` | Review Exception |
 | `POST` | `/api/v1/exceptions/{exception_id}/revoke` | Revoke Exception |
+
+## execution-controls
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/execution-controls/approvals` | Approvals |
+| `POST` | `/api/v1/execution-controls/approvals` | Create Approval |
+| `POST` | `/api/v1/execution-controls/approvals/{approval_id}/revoke` | Revoke |
+| `GET` | `/api/v1/execution-controls/attempts` | Attempts |
+| `POST` | `/api/v1/execution-controls/attempts/{attempt_id}/reconcile` | Reconcile |
+| `POST` | `/api/v1/execution-controls/emergency-stop` | Emergency Stop |
+| `GET` | `/api/v1/execution-controls/events` | Events |
+| `GET` | `/api/v1/execution-controls/ownership-register` | Ownership Register |
+| `GET` | `/api/v1/execution-controls/policy` | Get Policy |
+| `PUT` | `/api/v1/execution-controls/policy` | Put Policy |
+| `PUT` | `/api/v1/execution-controls/provider-budget` | Provider Budget |
 
 ## export
 

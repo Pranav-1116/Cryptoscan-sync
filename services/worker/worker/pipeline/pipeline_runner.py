@@ -192,6 +192,9 @@ class PipelineRunner:
         trace_id: str | None = None,
         **kwargs,
     ):
+        from db.repositories.execution_control import required, active_execution, ExecutionDenied
+        if required() and active_execution() is None:
+            raise ExecutionDenied("Pipeline invocation requires a controlled execution lease")
         if job is not None:
             job_id = job_id or getattr(job, "job_id", None) or getattr(job, "id", None)
             target_repo = target_repo or getattr(job, "target_repo", None)
@@ -318,8 +321,13 @@ class PipelineRunner:
         finally:
             if owns_session:
                 session.close()
-            if settings.CLEANUP_WORKSPACE and workspace is None and workspace_dir is None:
-                self.workspaces.cleanup(workspace_path)
+            from db.repositories.execution_control import active_execution
+            if (settings.CLEANUP_WORKSPACE or active_execution()) and workspace is None and workspace_dir is None:
+                if active_execution():
+                    from worker.core.controlled_source import cleanup_workspace
+                    cleanup_workspace(workspace_path, self.workspaces.base_temp_dir)
+                else:
+                    self.workspaces.cleanup(workspace_path)
 
     def _set_job_status(self, session, job_id: str, status: str, *, defer_to_session: bool = False, **kwargs) -> None:
         """Publish job status/progress so it is visible WHILE the job runs.
@@ -440,6 +448,9 @@ class PipelineRunner:
     ) -> None:
         from worker.pipeline.progress import build_progress, utcnow
 
+        from db.repositories.execution_control import active_execution, checkpoint
+        if active_execution() and status != "FAILED":
+            checkpoint(stage)
         ctx.current_stage = stage
         entry = {
             "ts": utcnow(),
@@ -471,6 +482,9 @@ class PipelineRunner:
         extra: dict[str, Any] | None,
     ) -> None:
         """Real-time stream (no-op outside the API process / when bus absent)."""
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return  # Destination contract is SQL, not an unreviewed event store.
         try:
             from api.events.bus import get_event_bus
 
@@ -510,6 +524,9 @@ class PipelineRunner:
         *,
         context: str = "cryptoscan/compliance",
     ) -> None:
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return  # This profile grants no notification/provider egress.
         token = getattr(settings, "GITHUB_TOKEN", "") or ""
         if not token:
             return
@@ -532,6 +549,14 @@ class PipelineRunner:
 
     def _clone(self, ctx: PipelineContext) -> None:
         dest = Path(ctx.workspace_dir) / "repo"
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            from worker.core.controlled_source import stage
+            ctx.repo_path = stage(ctx.target_repo, dest)
+            ctx.target_branch = None
+            ctx.target_commit = None
+            # No Git execution or invented commit identity for staged files.
+            return
         commit = self.cloner.clone(
             repo_url=ctx.target_repo,
             branch=ctx.target_branch,
@@ -544,6 +569,9 @@ class PipelineRunner:
         logger.info("stage_clone_done", extra={"path": ctx.repo_path, "commit": ctx.target_commit})
 
     def _language_detect(self, ctx: PipelineContext) -> None:
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return  # Host does not parse untrusted acquisition inputs.
         from worker.pipeline.stage_language_detect import execute as detect
 
         detect(ctx)
@@ -608,10 +636,15 @@ class PipelineRunner:
             "statistics": stats,
             "languages": languages,
         }
-        self._container(ctx)
-        self._tls(ctx)
-        self._cloud(ctx)
-        self._ot_findings(ctx)
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            stats["controlled_coverage"] = {"profile": "local-source/v1", "not_requested": ["container", "tls", "cloud", "ot", "inventory", "graph", "facts", "business", "drift", "quantum"],
+                                            "notification_egress": "NOT_AUTHORIZED"}
+        else:
+            self._container(ctx)
+            self._tls(ctx)
+            self._cloud(ctx)
+            self._ot_findings(ctx)
         logger.info("stage_scan_done", extra={"findings": len(ctx.findings)})
 
     def _note_optional_failure(self, ctx: PipelineContext, stage: str, detail: str,
@@ -753,6 +786,9 @@ class PipelineRunner:
         )
         ctx.scan_id = scan.id
         ctx.scan_persisted = True
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return  # No unreviewed inventory/materialized-store projection.
         if ctx.container_result:
             try:
                 from db.models.container_scan import ContainerScan
@@ -897,6 +933,9 @@ class PipelineRunner:
             row.policy_evaluation = evaluation.model_dump(mode="json")
             row.compliance_status = evaluation.overall_status
         session.flush()
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return  # Inventory/graph/facts/business consumers are not this adapter.
         self._dedup(ctx, session, rows)
         self._facts(ctx, session)
         self._graph(ctx, session)
@@ -956,6 +995,17 @@ class PipelineRunner:
             logger.debug("system_repo_unavailable")
             return
         repo = SystemRepository(session)
+        from db.repositories.execution_control import active_execution, ExecutionDenied
+        active = active_execution()
+        if active:
+            if ctx.system_id:
+                from sqlalchemy import select
+                from db.models.system import System
+                system = session.execute(select(System).where(System.id == ctx.system_id, System.tenant_id == active["owner"])).scalar_one_or_none()
+                if system is None:
+                    raise ExecutionDenied("Selected system does not belong to execution estate")
+                ctx.compliance_scopes = list(system.compliance_scopes or [])
+            return  # Do not auto-adopt NULL/legacy systems by display name.
         system = repo.get_by_id(ctx.system_id) if ctx.system_id else None
         if system is None:
             name = system_name_from_repo(ctx.target_repo)
@@ -976,6 +1026,9 @@ class PipelineRunner:
         logger.info("stage_systems_resolved", extra={"system": system.name, "scopes": ctx.compliance_scopes})
 
     def _stamp_coverage(self, ctx: PipelineContext, session, *, status: str = "CURRENT") -> None:
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return  # Local source evidence is not complete system coverage.
         if not ctx.system_id:
             self._resolve_system(ctx, session)
         if not ctx.system_id:
@@ -1249,6 +1302,9 @@ class PipelineRunner:
         logger.info("stage_declared_systems_synced", extra={"systems": len(by_name)})
 
     def _quantum(self, ctx: PipelineContext, session) -> None:
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return
         try:
             from worker.pipeline.stage_quantum import execute as quantum_stage
 
@@ -1419,6 +1475,9 @@ class PipelineRunner:
         worker and the API endpoint cannot disagree. Bounded and fail-soft
         by contract of its caller.
         """
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return
         from sqlalchemy import select
 
         from db.models.evidence_record import EvidenceRecord
@@ -1451,6 +1510,11 @@ class PipelineRunner:
             )
 
     def _drift(self, ctx: PipelineContext, session) -> None:
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            ctx.scan_meta["baseline_comparison"] = "NOT_REQUESTED_CONTROLLED_PROFILE"
+            ctx.drift_events = []
+            return
         from sqlalchemy import select
 
         from db.models.evidence_record import EvidenceRecord
@@ -1671,6 +1735,9 @@ class PipelineRunner:
         logger.info("stage_gate_done", extra={"decision": gate["decision"]})
 
     def _alert(self, ctx: PipelineContext, session=None) -> None:
+        from db.repositories.execution_control import active_execution
+        if active_execution():
+            return  # Notification destination must have a separately qualified adapter.
         quantum = ctx.scan_meta.get("quantum") or {}
         mosca_verdict = (quantum.get("mosca") or {}).get("verdict")
         if quantum.get("overall_hndl_risk") == "CRITICAL" or mosca_verdict in {"ALREADY_LATE", "AT_RISK"}:

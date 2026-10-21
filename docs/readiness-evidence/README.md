@@ -42,3 +42,11 @@ never be copied into an approval package. For a release approval, also pass
 `--require-readiness-closure --readiness-closure-manifest ...` to
 `scripts/release_check.py`; pre-release checks leave this external requirement
 opt-in so local development does not fabricate approval evidence.
+
+## Controlled-execution engineering record (2026-10-21)
+
+[Scoped execution-controls tests](execution-controls-engineering-2026-10-21.md)
+record migration 0102, approvals/provenance, SQL budgets/fairness, stop, hostile
+local staging and unknown/outbox recovery. **This is not a bank acceptance or a
+new unified-gate PASS**: only local source is supported in the controlled profile;
+other consumers and deployment qualification remain explicitly incomplete.

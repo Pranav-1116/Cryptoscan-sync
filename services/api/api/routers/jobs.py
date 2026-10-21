@@ -79,6 +79,9 @@ async def retry_job(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     progress = getattr(job, "progress", None) or {}
+    from db.repositories.execution_control import required
+    if (required() or progress.get("execution_control")) and job.status in {"QUEUED", "RUNNING", "UNKNOWN"}:
+        raise HTTPException(409, "Unsettled execution cannot be retried; reconcile its external outcome first")
     if (isinstance(progress, dict) and progress.get("execution") == "synchronous"
             and getattr(job, "job_type", None) in {"NETWORK_SCAN", "NETWORK_DISCOVERY"}):
         raise HTTPException(

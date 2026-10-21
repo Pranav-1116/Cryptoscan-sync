@@ -52,6 +52,9 @@ class Worker:
                     running_timeout=timedelta(minutes=int(getattr(self.settings, "JOB_RUNNING_TIMEOUT_MINUTES", 90))),
                     queued_timeout=timedelta(minutes=int(getattr(self.settings, "JOB_QUEUED_TIMEOUT_MINUTES", 10))),
                 )
+            if self.consumer:
+                from db.repositories.execution_outbox import dispatch_pending
+                dispatch_pending(self.consumer.enqueue)
             if any(stats.values()):
                 logger.warning("job_reaper_sweep", extra=stats)
 

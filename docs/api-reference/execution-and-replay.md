@@ -4,6 +4,17 @@
 an OpenAPI operation table does not convey. [Generated routes](rest-api.md) are a
 schema snapshot, not proof that every profile is enabled or production-qualified.
 
+## New controlled-profile availability boundary
+
+Migration `0102` adds the [controlled-execution API](controlled-execution.md) and
+[coordinated upgrade](../runbooks/controlled-execution-upgrade.md). Production
+now enforces a local-source-only API/worker support boundary: unqualified SSH,
+network, remote acquisition, monitor, graph/export and realtime/WebSocket paths
+are refused. The contracts below describe their existing non-controlled
+implementation, **not permission to enable those paths in the controlled profile**.
+Positive approvals, typed original credentials, shared budgets, fenced attempts
+and outbox recovery have distinct scope/qualification limits in the new guide.
+
 ## Authentication and ownership
 
 Use the route's current permissions, session/Bearer or supported API-key

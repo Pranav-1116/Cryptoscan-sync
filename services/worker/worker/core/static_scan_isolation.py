@@ -87,7 +87,12 @@ def _exchange(command: list[str], request: dict, *, timeout: float, limit: int =
             stream = getattr(process, name)
             os.set_blocking(stream.fileno(), False)
             selector.register(stream, selectors.EVENT_WRITE if name == "stdin" else selectors.EVENT_READ, name)
+        last_check = 0.0
         while selector.get_map():
+            from db.repositories.execution_control import active_execution, checkpoint
+            if active_execution() and time.monotonic() - last_check >= 1:
+                checkpoint("isolated-parser")
+                last_check = time.monotonic()
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise StaticScanIsolationError("static parser exceeded its wall-clock budget")
@@ -138,6 +143,13 @@ def scan_static(*, root_path, exclude_test_dirs=False, **metadata):
     from scanner.models.scan_result import ScanResult, ScanTarget
 
     config = _configuration()
+    from db.repositories.execution_control import active_execution, checkpoint, required, ExecutionDenied
+    if required() and active_execution() is None:
+        raise ExecutionDenied("Static parsing requires a controlled execution lease")
+    if active_execution():
+        from worker.core.controlled_source import preflight
+        preflight()
+        checkpoint("parser-launch", request=True)
     if execution_mode(config) == "inline":
         from scanner.core.scanner import Scanner
 
@@ -166,6 +178,10 @@ def scan_static(*, root_path, exclude_test_dirs=False, **metadata):
     # read it. Metadata is reattached by the credentialed parent afterwards.
     git_mask = ["--tmpfs", "/scan/.git:ro,noexec,nosuid,nodev,size=1m,mode=000"] if git_path.is_dir() else []
     timeout = _budget(config)
+    if active_execution():
+        timeout = min(timeout, active_execution()["deadline_unix"] - time.time())
+        if timeout < 1:
+            raise StaticScanIsolationError("approval execution deadline is exhausted")
     name = f"cryptoscan-static-{uuid.uuid4().hex}"
     command = [runtime, "run", "--rm", "--init", "--pull=never", "--name", name,
                "--network=none", "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
@@ -195,6 +211,8 @@ def scan_static(*, root_path, exclude_test_dirs=False, **metadata):
     request = {"schema": "cryptoscan.static-parser/1", "scan_id": metadata.get("scan_id") or str(uuid.uuid4()),
                "exclude_test_dirs": bool(exclude_test_dirs), "timeout_s": timeout,
                "source_marker": marker.name, "source_token": nonce}
+    if active_execution():
+        request["deadline_unix"] = active_execution()["deadline_unix"]
     try:
         raw = _exchange(command, request, timeout=timeout + 5)
         envelope = json.loads(raw)

@@ -118,6 +118,9 @@ def run_due_network_targets(
     ``scanner_factory`` is the controlled executor seam. Policy, tenant and
     persistence checks remain mandatory even when the executor is injected.
     """
+    from db.repositories.execution_control import required, ExecutionDenied
+    if required():
+        raise ExecutionDenied("Scheduled network collection has no controlled execution adapter")
     stamp = now or datetime.now(timezone.utc)
     caller = current_tenant()
     rows = NetworkScanTargetRepository(session).list_targets()

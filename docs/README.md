@@ -231,3 +231,12 @@ crypto engine.
 | [Demo script](proposals/fab-demo-script.md) | meeting-ready walkthrough |
 | [Security questionnaire](security-questionnaire.md) | bank procurement answers |
 | `deploy/poc/` | compose stack, env template, day-by-day operator checklist |
+
+### Controlled execution (0102)
+
+Read the [breaking controlled-execution upgrade](runbooks/controlled-execution-upgrade.md)
+and [API examples](api-reference/controlled-execution.md) before deploying this
+increment. It implements approvals, typed provenance, shared SQL budgets/fairness,
+stop checks, ownership/residency admission and fenced/outbox recovery for a
+**local-source-only support profile**. Production refuses other unqualified
+surfaces; it does not certify physical residency, isolation or all P0 acceptance.

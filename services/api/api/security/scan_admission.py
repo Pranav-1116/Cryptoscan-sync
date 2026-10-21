@@ -260,6 +260,7 @@ def sweep_is_authorized(cidr: str, authorized_targets: list[str]) -> tuple[bool,
 def admit_scan(
     *,
     scan_mode: str | None = None,
+    queued: bool = False,
     active_probing_requested: bool = False,
     is_ot_trusted: bool | None = None,
     asset: str | None = None,
@@ -278,8 +279,18 @@ def admit_scan(
     """
     from control_plane.orchestrator import emergency_engaged
     from control_plane.safety import evaluate_scan
+    from db.repositories.execution_control import required, active_execution, profile_for, ExecutionDenied
 
     try:
+        if required():
+            try:
+                profile_for(asset)
+                if protocol not in (None, "file") or active_probing_requested or str(scan_mode or "").lower() not in ("", "safe", "passive"):
+                    raise ExecutionDenied("No controlled adapter for this acquisition or method")
+                if not queued and active_execution() is None:
+                    raise ExecutionDenied("Synchronous/import/probe execution is not qualified; use an approved queued source scan")
+            except ExecutionDenied as exc:
+                raise HTTPException(409, detail=str(exc)) from exc
         events, policy = _control_plane_state()
         if emergency_engaged(events):
             raise HTTPException(

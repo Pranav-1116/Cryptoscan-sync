@@ -295,6 +295,9 @@ def _session_store_allows(token: str, username: str) -> bool:
             user = repo.get_by_username(username)
             if user is not None and not user.is_active:
                 return False
+            if row is not None and (strict or row.user_id is not None):
+                if user is None or row.user_id != user.id:
+                    return False
             return True
         finally:
             session.close()

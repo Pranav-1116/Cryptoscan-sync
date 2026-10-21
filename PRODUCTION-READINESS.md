@@ -11,7 +11,26 @@ qualification. A deployment must not be described as production-ready until
 the unified gate contains retained, attributable evidence for every required
 category.
 
-## Latest execution/replay engineering increment — not a gate rerun
+## Controlled-execution increment — not full-product approval
+
+Migration `0102` introduces versioned positive approvals, typed original HTTP
+credentials, SQL-shared capacity/launch budgets and ready-estate scheduling,
+regional/destination admission, bounded local-source staging/parser checkpoints,
+fenced attempts, UNKNOWN-outcome settlement and a publication outbox. See the
+[breaking upgrade and remaining acceptance matrix](docs/runbooks/controlled-execution-upgrade.md).
+
+**Production now refuses unqualified API/monitor/WebSocket/collector surfaces;
+only the reviewed local-source adapter is implemented.** This is not six fully
+closed P0 acceptance criteria or unchanged full-product availability. Physical
+residency/ownership audit, actual approved isolation runtime/escape tests,
+PostgreSQL/Redis crash/partition/load exercises, hard stop SLO and additional
+adapters remain required. Local tests do not substitute for those results. The retained
+[scoped engineering record](docs/readiness-evidence/execution-controls-engineering-2026-10-21.md)
+reports **295 passed / 1 skipped** for the final changed paths and an earlier
+**1323 passed / 17 skipped / 8 deselected** broader regression; counts overlap.
+No external qualification or unified-gate rerun is implied.
+
+## Prior execution/replay engineering increment — not a gate rerun
 
 Implementation `e9bfbef7` adds persisted queue-descriptor reconciliation, current
 pinned execution authority and a QUEUED-only CAS claim; durable SSH job/result
@@ -29,7 +48,7 @@ fresh real TLS/Sentinel plus unit run. Coverage overlaps. See
 Those results do not regenerate the gate below, qualify every collector/Redis
 consumer, prove lossless replication or certify a deployed bank. Historical
 2026-10-04/16 artifact decisions remain bound to their original environment.
-This documentation refresh adds no new runtime qualification evidence.
+The prior documentation refresh added no new runtime qualification evidence.
 
 ## Run the gate
 

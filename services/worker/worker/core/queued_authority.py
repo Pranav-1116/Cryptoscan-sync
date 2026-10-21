@@ -12,9 +12,14 @@ from sqlalchemy import select, update
 
 from db.models.scan_job import ScanJob as JobRow
 from db.tenancy import platform_scope
+from db.repositories.execution_control import BudgetBusy
 
 
 class QueueRefused(Exception):
+    pass
+
+
+class QueueDeferred(QueueRefused):
     pass
 
 
@@ -69,6 +74,14 @@ def claim(job):
                 and not set(normalize_roles(roles)) & PERMISSION_MATRIX["scan.trigger"]
             ):
                 raise QueueRefused("Initiating authority no longer permits scan execution")
+            from db.repositories.execution_control import claim_attempt, required, ExecutionDenied
+            if (row.progress or {}).get("execution_control") or required():
+                from worker.core.controlled_source import preflight
+                preflight()
+                from worker.core.static_scan_isolation import _configuration
+                if _configuration().ENVIRONMENT.strip().lower() in {"prod", "production"} and session.bind.dialect.name != "postgresql":
+                    raise ExecutionDenied("Controlled production execution requires PostgreSQL")
+            attempt = claim_attempt(session, row)
             result = session.execute(
                 update(JobRow)
                 .where(
@@ -82,6 +95,9 @@ def claim(job):
             if result.rowcount != 1:
                 raise QueueRefused("Job claim lost a concurrent transition")
             session.commit()
+            return attempt
+    except BudgetBusy as exc:
+        raise QueueDeferred(str(exc)) from exc
     except QueueRefused:
         raise
     except Exception as exc:

@@ -15,13 +15,15 @@ import secrets
 import stat
 import sys
 import threading
+import time
 from pathlib import Path
 
 SCHEMA = "cryptoscan.static-parser/1"
 
 
 def validate_request(request: dict) -> None:
-    if not isinstance(request, dict) or set(request) != {"schema", "scan_id", "exclude_test_dirs", "timeout_s", "source_marker", "source_token"}:
+    fields = {"schema", "scan_id", "exclude_test_dirs", "timeout_s", "source_marker", "source_token"}
+    if not isinstance(request, dict) or set(request) not in (fields, fields | {"deadline_unix"}):
         raise ValueError("invalid static parser request fields")
     if request["schema"] != SCHEMA:
         raise ValueError("invalid static parser protocol version")
@@ -36,6 +38,19 @@ def validate_request(request: dict) -> None:
     budget = request["timeout_s"]
     if type(budget) not in (int, float) or not math.isfinite(budget) or not 1 <= budget <= 3600:
         raise ValueError("invalid parser time budget")
+    parser_budget(request)
+
+
+def parser_budget(request):
+    budget = request["timeout_s"]
+    if "deadline_unix" in request:
+        deadline = request["deadline_unix"]
+        if type(deadline) not in (int, float) or not math.isfinite(deadline) or deadline <= time.time():
+            raise ValueError("invalid or expired execution deadline")
+        budget = min(budget, deadline - time.time())
+        if budget <= 0:
+            raise ValueError("execution deadline expired before parser start")
+    return budget
 
 
 def verify_runtime() -> dict:
@@ -106,7 +121,7 @@ def main() -> int:
         # Independent of SIGALRM used by individual detectors. If discovery,
         # constants, cascade or a non-main-thread parser hangs, the container's
         # main process exits even when per-file signal budgets cannot fire.
-        watchdog = threading.Timer(request["timeout_s"], lambda: os._exit(124))
+        watchdog = threading.Timer(parser_budget(request), lambda: os._exit(124))
         watchdog.daemon = True
         watchdog.start()
         try:

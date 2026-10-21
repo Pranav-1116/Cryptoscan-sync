@@ -74,6 +74,9 @@ class UserSession(BaseModel):
     __tablename__ = "user_sessions"
 
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    # Original user incarnation. Legacy NULL sessions must reauthenticate for
+    # controlled execution; a username lookup cannot safely backfill identity.
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     created_at_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

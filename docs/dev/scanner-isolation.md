@@ -4,6 +4,20 @@ Implemented locally on 2026-10-17. **Real Docker execution and target-platform
 security qualification are NOT yet evidenced.** Unit tests cover the command,
 protocol, runtime guards and failure paths; they are not a container escape test.
 
+## Controlled execution update (2026-10-21)
+
+The [0102 controlled profile](../runbooks/controlled-execution-upgrade.md) is
+production-required and intentionally narrower than the legacy pipeline described
+below. It stages only approved local directories without Git execution, skips
+host language parsing and unreviewed optional consumers, and requires typed SQL
+approval/attempt authority before parser launch. Staging and parser I/O poll
+fresh stop/credential/approval state. Controlled requests also carry an
+absolute attempt/approval deadline used by the child watchdog; deploy the newly
+built approved scanner image, because older images refuse that request field. Other acquisition/import/report processors
+are refused, **not covered by the parser's isolation claim**. The actual runtime,
+image and deployment/escape qualification still must be provisioned externally;
+none was fabricated in the implementation sandbox.
+
 ## Policy and scope
 
 Both source scan entry points (`PipelineRunner._scan` and `stage_scan.execute`)

@@ -48,11 +48,20 @@ def reap_stale_jobs(
     from db.repositories.job_repository import JobRepository
 
     now = now or datetime.now(timezone.utc)
+    from db.repositories.execution_control import recover_expired
+    recover_expired(session, now=now)
     repo = JobRepository(session)
     stats = {"failed_running": 0, "requeued": 0, "failed_queued": 0}
     rows = session.query(ScanJob).filter(ScanJob.status.in_(ACTIVE)).all()
     visible = set(queued_ids) if queued_ids is not None else None
     for job in rows:
+        if (job.progress or {}).get("execution_control"):
+            if job.status == "QUEUED" and visible is not None and job.id not in visible and now - (_aware(job.updated_at) or now) > queued_timeout:
+                from sqlalchemy import update
+                from db.models.execution_control import ExecutionOutbox
+                session.execute(update(ExecutionOutbox).where(ExecutionOutbox.job_id == job.id,
+                    ExecutionOutbox.tenant_id == job.tenant_id, ExecutionOutbox.state == "PUBLISHED").values(state="PENDING", lease_until=None))
+            continue  # Controlled RUNNING is never reset or inferred FAILED.
         touched = _aware(job.updated_at) or _aware(job.created_at) or now
         age = now - touched
         if job.status == "RUNNING":
@@ -120,5 +129,15 @@ def fail_job(session: Any, job_id: str, reason: str) -> None:
     """Dead-letter callback: mark the DB row FAILED."""
     from db.repositories.job_repository import JobRepository
 
-    JobRepository(session).update_status(job_id, "FAILED", error_message=reason)
+    from sqlalchemy import select, update
+    from db.models.scan_job import ScanJob
+    from db.models.execution_control import ExecutionAttempt
+    job = session.execute(select(ScanJob).where(ScanJob.id == job_id)).scalar_one_or_none()
+    if job and (job.progress or {}).get("execution_control") and job.status == "RUNNING":
+        session.execute(update(ExecutionAttempt).where(ExecutionAttempt.job_id == job.id,
+            ExecutionAttempt.tenant_id == job.tenant_id, ExecutionAttempt.status == "RUNNING").values(status="UNKNOWN", version=ExecutionAttempt.version + 1))
+        session.execute(update(ScanJob).where(ScanJob.id == job.id, ScanJob.tenant_id == job.tenant_id,
+            ScanJob.status == "RUNNING").values(status="UNKNOWN", version=ScanJob.version + 1, error_message="Delivery exhausted while execution outcome is unknown"))
+    else:
+        JobRepository(session).update_status(job_id, "FAILED", error_message=reason)
     session.commit()

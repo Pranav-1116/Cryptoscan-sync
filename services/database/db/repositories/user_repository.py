@@ -416,7 +416,9 @@ class UserRepository:
     # --------------------------------------------------------------- sessions
 
     def create_session(self, token: str, username: str, expires_at: datetime, ip: str | None = None) -> UserSession:
+        user = self.get_by_username(username)
         row = UserSession(
+            user_id=user.id if user is not None else None,
             token_hash=token_hash(token),
             username=username,
             created_at_ts=datetime.now(timezone.utc),

@@ -192,3 +192,16 @@ All six BOMs remain distinct: SBOM package/release evidence, NBOM network
 observations, CBOM crypto facts, TechBOM technology relationships, HBOM hardware/
 firmware and VBOM supplier evidence. Neither a durable SSH receipt nor Redis
 replay upgrades missing evidence, changes ownership or supplies bank approval.
+
+## Controlled-execution increment (2026-10-21, migration 0102)
+
+The [upgrade/acceptance matrix](runbooks/controlled-execution-upgrade.md) and
+[API contract](api-reference/controlled-execution.md) document the new approvals,
+original credential provenance, shared budgets/fairness, stop/checkpoint,
+region/destination, hostile-source staging, attempt and SQL-outbox controls.
+Production availability is deliberately **local-source only**; other API/monitor/
+WebSocket/collector paths are refused. This is a breaking supported-profile
+restriction, not an assertion that all six P0 gaps or external qualifications are
+closed. The 75 console-surface maturity inventory is unchanged; this increment
+adds no qualified console UI. The generated REST schema includes all development
+routes and must not be read as the production enablement list.

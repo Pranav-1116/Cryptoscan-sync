@@ -25,6 +25,7 @@ from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
     accuracy,
     software_supply_chain,
+    execution_controls,
     relationship_lifecycle,
     agility,
     analytics,
@@ -224,6 +225,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         redis_sync = None
         if (
             settings.EVENT_TAILER_SECONDS > 0
+            and not (settings.is_production or required())
             and settings.ENVIRONMENT.lower() not in {"test", "testing"}
             and not _under_test()
         ):
@@ -305,6 +307,14 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    from db.repositories.execution_control import ExecutionDenied, required
+    from api.middleware.controlled_surface import ControlledSurfaceMiddleware
+
+    @app.exception_handler(ExecutionDenied)
+    async def execution_denied(_request, exc):
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    app.add_middleware(ControlledSurfaceMiddleware, production=settings.is_production)
 
     origins = settings.cors_origin_list
     app.add_middleware(
@@ -421,6 +431,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     prefix = "/api/v1"
     app.include_router(auth.router, prefix=prefix)
+    app.include_router(execution_controls.router, prefix=prefix)
     app.include_router(site_security.router, prefix=prefix)
     app.include_router(chatops.router, prefix=prefix)
     app.include_router(facts.router, prefix=prefix)

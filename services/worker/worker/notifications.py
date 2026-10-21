@@ -91,6 +91,9 @@ class NotificationLoop:
         self.stop.set()
 
     def run_once(self):
+        from db.repositories.execution_control import required, ExecutionDenied
+        if required():
+            raise ExecutionDenied("Notification dispatch has no controlled execution adapter")
         from db.models.control_plane import Tenant
         from db.tenancy import TenantScopeViolation, current_tenant, tenant_scope
 

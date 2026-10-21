@@ -78,7 +78,11 @@ def _publish_job(payload: dict) -> None:
         from worker.core.job_consumer import enqueue_job
 
         settings = get_settings()
-        enqueue_job(payload, redis_url=settings.REDIS_URL, queue_name=settings.SCAN_JOB_QUEUE_KEY)
+        if (payload.get("progress") or {}).get("execution_control"):
+            from db.repositories.execution_outbox import dispatch_one
+            dispatch_one(payload["job_id"], lambda persisted: enqueue_job(persisted, redis_url=settings.REDIS_URL, queue_name=settings.SCAN_JOB_QUEUE_KEY))
+        else:
+            enqueue_job(payload, redis_url=settings.REDIS_URL, queue_name=settings.SCAN_JOB_QUEUE_KEY)
     except Exception:
         logger.exception("queue_publish_failed")
 
@@ -95,8 +99,16 @@ def _run_inline(payload: dict) -> None:
     from worker.core.job_consumer import ScanJob
 
     try:
-        job = ScanJob(**{key: payload[key] for key in ScanJob.__dataclass_fields__ if key in payload})
-        JobExecutor().execute(job)
+        controlled = bool((payload.get("progress") or {}).get("execution_control"))
+        def execute(descriptor):
+            job = ScanJob(**{key: descriptor[key] for key in ScanJob.__dataclass_fields__ if key in descriptor})
+            if not JobExecutor().execute(job):
+                raise RuntimeError("Inline execution refused")
+        if controlled:
+            from db.repositories.execution_outbox import dispatch_one
+            dispatch_one(payload["job_id"], execute)
+        else:
+            execute(payload)
     except Exception:
         logger.exception("inline_pipeline_failed", extra={"job_id": payload.get("job_id")})
 
@@ -126,7 +138,7 @@ def enqueue_scan_job(
     # when the decision cannot be made.
     from api.security.scan_admission import admit_scan
 
-    admit_scan(scan_mode=scan_mode, asset=repo_url)
+    admit_scan(scan_mode=scan_mode, asset=repo_url, queued=True)
 
     if is_cloud_target(repo_url) and str(job_type).upper() != "CLOUD":
         job_type = "CLOUD"
@@ -207,7 +219,7 @@ def enqueue_scan_job(
         "tenant_id": getattr(created, "tenant_id", None),
         "sector": effective_sector,
         "scan_mode": scan_mode,
-        "progress": progress,
+        "progress": getattr(created, "progress", None),
         # distributed tracing (report 02 P2#7): the request's trace context
         # crosses the queue boundary with the payload
         "trace_id": (active_trace()[0] if active_trace()[0] else None),
@@ -218,13 +230,14 @@ def enqueue_scan_job(
     else:
         background_tasks.add_task(_run_inline, payload)
     try:  # real-time stream: announce the queued scan the moment it is accepted
-        from api.events.bus import get_event_bus
+        if not ((getattr(created, "progress", None) or {}).get("execution_control")):
+            from api.events.bus import get_event_bus
 
-        get_event_bus().publish(
-            "scan.queued",
-            {"job_id": str(job_id), "repo": repo_url, "branch": branch or "main", "triggered_by": triggered_by},
-            source="api",
-        )
+            get_event_bus().publish(
+                "scan.queued",
+                {"job_id": str(job_id), "repo": repo_url, "branch": branch or "main", "triggered_by": triggered_by},
+                source="api",
+            )
     except Exception as _handler_exc:
         logger.warning(
             "exception_suppressed",
@@ -257,7 +270,7 @@ async def trigger_manual_scan(
     # here and a client could not have been trusted to declare it anyway.
     from api.security.scan_admission import admit_scan
 
-    admit_scan(scan_mode=getattr(request_body, "scan_mode", None), asset=request_body.repo_url)
+    admit_scan(scan_mode=getattr(request_body, "scan_mode", None), asset=request_body.repo_url, queued=True)
 
     # Same containment as _queue_scan_job below and as the SBOM route: a
     # local target must resolve inside CRYPTOSCAN_SOURCE_ROOTS. Without it
@@ -320,6 +333,7 @@ async def trigger_manual_scan(
         "tenant_id": getattr(created, "tenant_id", None),
         "sector": effective_sector,
         "scan_mode": getattr(request_body, "scan_mode", None),
+        "progress": getattr(created, "progress", None),
     }
     settings = get_settings()
     if settings.REDIS_URL:

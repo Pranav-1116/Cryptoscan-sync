@@ -156,7 +156,7 @@ class AuthMiddleware:
                 return
             scope.setdefault("state", {})["user_id"] = api_key[0]
             scope.setdefault("state", {})["api_key_auth"] = api_key
-            await self.app(scope, receive, send)
+            await self._authenticated(scope, receive, send, request, key_id=api_key[2])
             return
         if not token:
             await send_json(send, 401, {"detail": "Missing Authorization header",
@@ -179,4 +179,27 @@ class AuthMiddleware:
         # scope["state"] is the shared dict backing request.state for every
         # Request built from this scope (starlette wraps it in a State view).
         scope.setdefault("state", {})["user_id"] = username
-        await self.app(scope, receive, send)
+        await self._authenticated(scope, receive, send, request, username=username, token=token)
+
+    async def _authenticated(self, scope, receive, send, request, **identity):
+        from db.repositories.execution_control import authenticated_principal, request_principal, required, ExecutionDenied
+        from db.connection.session import SessionLocal
+        from db.tenancy import platform_scope
+        from api.security.client_ip import client_ip
+        import uuid
+
+        def resolve():
+            with platform_scope(), SessionLocal() as session:
+                return authenticated_principal(session, **identity, path=request.url.path, method=request.method,
+                    request_id=str(uuid.uuid4()), client_ip=client_ip(request))
+        try:
+            principal = await run_in_threadpool(resolve)
+            principal["correlation_id"] = str(getattr(request.state, "request_id", ""))[:128]
+        except Exception as exc:
+            if required():
+                code = 401 if isinstance(exc, ExecutionDenied) else 503
+                await send_json(send, code, {"detail": "Typed authentication provenance unavailable"})
+                return
+            principal = None  # Legacy development/test authentication only.
+        with request_principal(principal):
+            await self.app(scope, receive, send)

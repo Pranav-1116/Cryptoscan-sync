@@ -10,6 +10,10 @@ from db.models.repo_configuration import RepoConfiguration
 
 
 def current_authority(session, job):
+    pinned = (job.progress or {}).get("execution_authority") or {}
+    if pinned.get("v") == 2:
+        from db.repositories.execution_control import typed_authority
+        return typed_authority(session, job, pinned)
     owner = job.tenant_id
     if owner is not None:
         tenant = session.get(Tenant, owner)
@@ -95,3 +99,5 @@ def pin_authority(session, job):
         progress = dict(job.progress or {})
         progress["execution_authority"] = authority
         job.progress = progress
+    from db.repositories.execution_control import pin_controls
+    pin_controls(session, job, authority)

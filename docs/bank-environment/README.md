@@ -244,3 +244,14 @@ not a legal/region approval, and a new complete retained snapshot is not proof
 of lossless replication. SBOM, NBOM, CBOM, TechBOM, HBOM and VBOM keep their
 separate provenance and evidence meanings. The 2026-10-21 documentation refresh
 adds no bank target, deployment approval or new runtime qualification result.
+
+## Controlled-execution upgrade (0102)
+
+The [implementation/remaining acceptance matrix](../runbooks/controlled-execution-upgrade.md)
+and [practical API sequence](../api-reference/controlled-execution.md) cover P0
+2.1–2.6. **The production-supported adapter is local source only**; broader
+acquisition, monitor, graph/export/realtime and notification consumers remain
+refused pending their own adapters/review. Earlier guides describe legacy/development
+contracts, not an instruction to bypass this new production boundary. Deployment
+qualification, physical residency, full ownership review and hard stop/recovery
+SLO evidence remain open.
