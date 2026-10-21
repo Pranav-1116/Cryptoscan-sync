@@ -18,7 +18,12 @@ without certifying every streaming/export interface. The
 [estate streams/GraphQL/export delivery](42-estate-streams-graphql-and-exports.md)
 now extends those reviewed boundaries and adds retained per-estate pagination.
 [Broader qualification](43-a01-a02-qualification-and-open-blockers.md) records
-local/standalone-Redis evidence, explicit restrictions and known queued failures.
+historical local/standalone-Redis evidence and the originally failing queue
+controls. [Guide 44](44-queued-authority-and-durable-ssh.md) subsequently implements
+persisted descriptor/current authority checks and durable SSH receipts;
+[Guide 45](45-redis-tls-sentinel-qualification.md) adds verified TLS/Sentinel local
+qualification, not production acceptance. A01/A02/A04 still need the remaining
+positive/regional grant, distributed-budget and deployment-specific evidence.
 A01 as a whole and the remaining enterprise items are
 still open. The prior ten steps
 are locally delivered as recorded in [guide 26](26-bank-negative-tests-and-backend-qualification.md).

@@ -1,4 +1,4 @@
-# Network TLS scanning
+# Network TLS and durable SSH scanning
 
 CryptoScan can:
 
@@ -55,3 +55,36 @@ endpoints (`/network/discover`, `/network/run-due`, `/network/ssh-scan`).
 
 **OT is derived, never declared by clients.** Requests cannot claim (or
 deny) OT status; the gate reads the estate's trusted declarations.
+
+## Durable SSH host-key and optional KEX scans
+
+`POST /api/v1/network/ssh-scan` accepts up to 256 authorized endpoints, a bounded
+`timeout`, `include_kex`, `strict_kex` and optional `known_host_keys`. For example,
+under a provisioned bank A session and approved network scope:
+
+```json
+{"hosts":["10.21.0.10:22"],"timeout":8,"include_kex":true,"strict_kex":true,"known_host_keys":{}}
+```
+
+Initial target/admission checks precede a committed RUNNING job. Admission is
+rechecked before each host-key/KEX phase. Successful recording returns `job_id`
+and `run_id`; retrieve them with `GET /api/v1/jobs/{job_id}` and
+`GET /api/v1/network/runs/{run_id}` or list `/api/v1/network/runs?target_kind=ssh`.
+Foreign estate IDs remain 404. A body field cannot grant another estate's scope.
+
+The stored collection declares `protocol=ssh`, `durable=true`,
+`coverage=HOST_KEY_AND_OPTIONAL_KEX_ONLY` and
+`baseline_source=CALLER_SUPPLIED_UNVERIFIED`. It stores findings, telemetry,
+admission decisions and the returned TOFU map. It does not establish trusted
+host identity, log into the device, inspect firmware or create TLS evidence.
+
+COMPLETED means the attempt/result was recorded; TIMEOUT/FAILED observations
+remain failed in its verdict and telemetry. Initial receipt storage failure
+prevents collectors (and may return 500); later collector/ledger/completion
+failure gives no durable-success result, rolls back staged success and attempts
+a FAILED stamp. Admission errors retain their policy status; other failures
+inside the collection boundary return generic 503. A crash can leave RUNNING.
+Generic job retry is 409: resubmit the explicit SSH profile through this route.
+
+This is bounded NBOM/CBOM evidence, not SBOM, TechBOM, HBOM or VBOM completeness.
+See [durable SSH details](../bank-environment/44-queued-authority-and-durable-ssh.md).

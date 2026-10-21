@@ -116,3 +116,17 @@ Vite proxying `/api` to `:8010`; `make api` prints exactly that.
 See [dev/TESTING.md](../dev/TESTING.md) for the test doctrine and
 [platform-boundaries.md](platform-boundaries.md) for what the platform
 deliberately does not do.
+
+## Current execution and realtime boundaries
+
+The worker now includes `core/queued_authority.py`: persisted envelope matching
+before scope, fresh pinned principal/config checks and a QUEUED-only SQL claim.
+Repository monitor provenance is `MONITOR_REPOSITORY`; lease recovery is delivery,
+not permission to rerun a RUNNING job. SSH uses durable job/network-run receipts.
+
+The API's `events/redis_backend.py` provides verified TLS/ACL/Sentinel routing for
+realtime/current-run clients, actual command readiness and primary-bound epochs.
+It does not migrate all Redis consumers. Reviewed SSE/WS/polling and GraphQL/
+exports retain exact-estate/fresh-authority restrictions. Source counts above are
+historical measurements, not recounted by this refresh. See the
+[upgrade runbook](../runbooks/execution-and-replay-upgrade.md).

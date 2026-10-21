@@ -149,3 +149,16 @@ blind corpus waves and real open-source repositories only — it is stated as su
 | **Scan pipeline (clone → scan → evidence → CBOM → policy → alert)** | ~92 % | PostgreSQL + Redis end-to-end, at-least-once queue + reaper, soak evidence; per-file process pool measured on a 3M-LOC synthetic monorepo (71.7 kLOC/s on 2 cores, deterministic, flat RSS → 10M LOC ≈ 2.3 min); API capacity measured honestly (~180 authenticated rps per worker) and three defects fixed in the process. The test suites now run on PostgreSQL too (whole worker suite, Alembic chain, three estate runs, API read-back — `scripts/postgres_parity.sh`), not only SQLite. Still not run for 7 days on a real estate; the `kill -9` of a worker against a *real* Redis and the HA compose fail-over need a host with Redis/Docker (runbooks: `docs/runbooks/job-queue.md`). |
 | **Bank operating requirements** (air-gap install, RBAC/SSO, audit chain, backup/PITR, HA, SBOM of the product itself) | ~75 % | unchanged: air-gap + backup + PITR drills documented and run once; HA compose exists but not drilled; SSO/SAML beta; ITSM/SIEM connectors and the product's own SOC 2 / pen-test are company actions, not sandbox work. |
 | **Overall for a first bank pilot** | **~87 %** | Ready for a *pilot on the payments switch, the mobile channel packages and the ICSF COBOL modules with the triage loop* — not yet for an unattended, audit-grade inventory across the whole estate. |
+
+## Later operational controls — not detector/field evidence
+
+As of 2026-10-21, queue descriptors reconcile against persisted authority, SSH
+has durable owned job/result receipts, and realtime/current-run Redis has a
+verified TLS/Sentinel local harness with explicit primary-bound cursor reset.
+See [current controls](../api-reference/execution-and-replay.md) and the
+[upgrade runbook](../runbooks/execution-and-replay-upgrade.md).
+
+These controls do not change historical corpus precision, turn NO_FIELD_DATA
+into bank validation, or update the historical percentage table above. Neither
+consumer lease recovery nor a local replay failover is an end-to-end RUNNING-job
+restart qualification. The root evidence gate still owns deployment acceptance.

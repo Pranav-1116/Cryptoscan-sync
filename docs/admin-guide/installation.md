@@ -38,3 +38,16 @@ bash scripts/deploy_prod.sh -d
 ```
 
 Set `SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `GITHUB_WEBHOOK_SECRET`, `POSTGRES_PASSWORD`, `NEO4J_PASSWORD`, and an explicit `CORS_ORIGINS` list from a secrets manager. Never ship the development defaults.
+
+## Execution and replay upgrade (2026-10-21)
+
+Production also requires verified TLS Redis with named ACL credentials and a
+mounted CA bundle; a plain Compose Redis URL is not sufficient. Optional
+Sentinel covers realtime/current-run clients, not all Redis consumers. Review
+[production configuration](production.md) before launching the example above.
+
+Both queued and inline/background jobs require persisted current authority;
+legacy unpinned work must be approved and resubmitted, not backfilled from old
+usernames. Follow the [upgrade runbook](../runbooks/execution-and-replay-upgrade.md).
+Development memory replay is bounded/non-durable; production primary changes
+require explicit cursor resynchronization.

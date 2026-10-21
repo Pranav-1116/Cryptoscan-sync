@@ -16,7 +16,33 @@ Set strong `POSTGRES_PASSWORD` and `NEO4J_PASSWORD`. Leave `ADMIN_PASSWORD` empt
 
 The API and worker refuse to start if demo secrets, SQLite, or `CORS_ORIGINS=*` are still present.
 
-## 2. Start
+## 2. Required Redis transport and coordinated upgrade
+
+Before executing the launch commands, provision a verified TLS Redis service
+and named non-default ACL account. Set `REDIS_URL=rediss://...`, mount the approved
+CA bundle in the API and set `REDIS_CA_CERTS` to that container path. Do not use
+placeholder secrets or disable certificate/hostname checks. Edge nginx HTTPS
+does not configure Redis TLS, and the Compose Redis template alone does not
+satisfy this requirement.
+
+Optional Sentinel requires three distinct TLS discovery host/port pairs,
+`REDIS_SENTINEL_MASTER`, `REDIS_SENTINEL_USERNAME` and
+`REDIS_SENTINEL_PASSWORD`. Discovered data endpoints also need valid certificate
+SANs. The factory covers realtime/current-run state only; independently review
+queue, rate-limit and health clients and their ACL/CA options.
+
+Production readiness exercises scratch journal writes/replay/cleanup, including
+INCRBY, WATCH/MULTI, XADD and INFO for primary-bound snapshots. PING-only or
+read-only ACLs cannot prove readiness. A required failure is not local fallback.
+
+Coordinate producer/worker rollout: persisted authority pins are mandatory for
+new queued work; approved legacy unpinned jobs must be resubmitted. Recovered
+RUNNING deliveries cannot bypass the QUEUED-only claim. Follow
+[upgrade/recovery](../runbooks/execution-and-replay-upgrade.md) and
+[TLS/Sentinel qualification](../bank-environment/45-redis-tls-sentinel-qualification.md).
+No production deployment is certified by these launch commands.
+
+## 2a. Start
 
 ```bash
 bash scripts/deploy_prod.sh -d           # plain HTTP edge on :80
@@ -52,7 +78,7 @@ plain-HTTP edge.
 ## 4. Health
 
 - `GET /health` — process up
-- `GET /ready` — database reachable
+- `GET /ready` — readiness probe; inspect dependency/federation state, not just process liveness
 - `GET /api/v1/meta` — `environment=production`, `docs_enabled=false`
 
 OpenAPI (`/api/docs`) is off unless you set `DOCS_ENABLED=true`.

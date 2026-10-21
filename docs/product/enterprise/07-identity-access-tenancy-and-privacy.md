@@ -141,3 +141,18 @@ A break-glass account or path must be:
 
 Do not use an emergency path to bypass customer authorization or contractual
 scope.
+
+## Current execution and reviewed history boundary
+
+Enqueue identity is pinned in SQL and revalidated immediately before a QUEUED-only
+execution claim. Users must remain active/authorized, owned keys current and
+unambiguous, and monitor/webhook configurations owned and enabled. Typed monitor
+provenance prevents a human named monitor inheriting internal authority; reserved
+actor-string collisions refuse. Original API-key HTTP request provenance and
+mid-collector atomic revocation are not fully implemented by this increment.
+
+Reviewed jobs/runs, unified SSE/WS/polling, GraphQL and export reads use exact
+estate ownership; platform-unselected is NULL-only. Curated inventory sharing
+does not grant history or execution, and restricted mixed-source aggregate packs
+remain refused. This is not a product-wide ABAC/residency certification. See
+[execution/replay contracts](../../api-reference/execution-and-replay.md).

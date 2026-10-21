@@ -1,10 +1,17 @@
 # CryptoScan — end-to-end product capabilities
 
+**2026-10-21 correction:** the numerical table below is a dated snapshot, not a
+current census or production claim. The regenerated [API reference](api-reference/rest-api.md)
+now reports **848 paths / 936 operations / 103 groups**. Current queue authority,
+durable SSH and TLS/Sentinel replay controls are summarized in the
+[API contract companion](api-reference/execution-and-replay.md); production
+acceptance remains the [root gate](../PRODUCTION-READINESS.md).
+
 **What this is:** the whole product described as one loop, from connecting an
 environment to producing a signed, regulator-ready artefact — with the code,
 endpoint or console page that implements each step.
 
-**Measured today** (counted from the repository, not from a plan):
+**Historical repository snapshot** (2026-09-25; not recounted by this refresh):
 
 | | |
 |---|---|

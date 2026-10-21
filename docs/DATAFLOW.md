@@ -272,17 +272,22 @@ Every operation emits a **deterministic platform event**. The pipeline is:
 4. **Tailer** — `api.routers.events.tail_monitor_events` (default ~2s) picks up
    rows from **other** processes and republishes them locally.
 5. **Redis federation** — when `REDIS_URL` is set, `RedisEventSync` publishes
-   local events to `zelixin:events` and re-injects remote events into the local
+   local events to `zelinx:events` and re-injects remote events into the local
    bus (ignoring its own, no echo loop).
 
-**Delivery to the browser** (`GET /api/v1/events/stream`, auth required):
-- Fresh connection seeds from the ring-buffer history (or DB backlog if empty),
-  resuming via `Last-Event-ID`.
-- Live events stream with heartbeat pings; `events.dropped` advice on overflow
-  (drop-oldest semantics; a slow browser never blocks the pipeline).
-- Frontend `useLive<T>(path, fallback)` polls live endpoints; `useLiveTicker`
-  drives the SSE tick. On the Live Asset Intelligence page the event feed
-  renders as it arrives — **no full-page refresh**.
+**Delivery to the browser** (`GET /api/v1/events/stream`):
+- Fresh credentials and selected-estate authority are checked before replay and
+  live/idle delivery. Foreign events are filtered before subscription queueing.
+- Ordered retained estate pages are authoritative; source DB tailing is separate,
+  not a synthetic historical backlog. Queues/Pub/Sub are wakeups only.
+- Resume with opaque Last-Event-ID tokens or `/events/recent?cursor=...` pages.
+  Numeric global IDs cannot resume estate history; nonzero since_id returns 409.
+- Retention gaps, invalid/changed epochs and backend unavailability are explicit,
+  not successful emptiness. Production primary/process changes require a fresh
+  snapshot; they do not promise lossless replication.
+- Development memory is non-durable; production factory Redis requires verified
+  TLS/ACLs and command readiness. Sentinel covers realtime/current-run clients,
+  not every Redis consumer. See [current replay guide](user-guide/realtime.md).
 
 ### Technology BOM events (target_name = `technology-bom`)
 | Event type | payload |

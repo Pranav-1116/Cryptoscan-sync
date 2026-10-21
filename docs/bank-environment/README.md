@@ -229,3 +229,18 @@ documents real-session denial tests, exact-estate derived history/replay,
 writer-only watches, unchanged rejected-write state, backend semantic negatives
 and the no-Bolt bank boundary. The ten local implementation steps are delivered;
 live PostgreSQL/Neo4j and actual bank deployment certification remain open.
+
+### Current operating instructions and historical evidence
+
+Guides 35–45 record successive bounded implementations; earlier failure counts
+are retained with superseding notes rather than rewritten as newer passes.
+For the current rollout, use the
+[execution/replay upgrade runbook](../runbooks/execution-and-replay-upgrade.md)
+and [API contract companion](../api-reference/execution-and-replay.md).
+
+Queued legacy pins, RUNNING unknown outcomes, SSH failed observations and Redis
+primary-change cursors need explicit reconciliation. A current user grant is
+not a legal/region approval, and a new complete retained snapshot is not proof
+of lossless replication. SBOM, NBOM, CBOM, TechBOM, HBOM and VBOM keep their
+separate provenance and evidence meanings. The 2026-10-21 documentation refresh
+adds no bank target, deployment approval or new runtime qualification result.

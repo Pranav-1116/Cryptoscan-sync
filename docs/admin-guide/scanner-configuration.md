@@ -11,7 +11,7 @@ worker's environment (`docker-compose.yml` → `worker.environment`, systemd uni
 | `CRYPTOSCAN_CASCADE` | `1` | dependency & cascade analysis after every scan (providers, waves, libraries, shared keys, weak sizes, systems) — [CASCADE-ANALYSIS.md](../accuracy/CASCADE-ANALYSIS.md) | keep on; adds ≈ 2 s per 1 000 files; report persisted in `Scan.statistics.cascade`, served by `GET /api/v1/scans/{id}/cascade` |
 | `CRYPTOSCAN_RUNTIME_LOGS` | unset | `1` also scans `.log/.trc/.audit/.syslog` as runtime evidence (ICSF SMF-82, RACDCERT, payShield, JSSE, openssl, nginx, sshd, AT-TLS) — [RUNTIME-EVIDENCE.md](../runtime/RUNTIME-EVIDENCE.md) | off for source repos; on for the dedicated log-drop repository/share |
 | `CRYPTOSCAN_KEY_INVENTORY` | unset | `1` also ingests HSM / KMS / keystore / certificate exports (content-sniffed `.txt/.lst/.out/.json/.csv/.rpt/.prt/.list/.dump`) — [KEY-INVENTORY.md](../accuracy/KEY-INVENTORY.md) | off for source repos; on for the key-export drop |
-| `JOB_LEASE_TTL_SECONDS` / `JOB_MAX_REDELIVERIES` / `JOB_RUNNING_TIMEOUT_MINUTES` / `JOB_QUEUED_TIMEOUT_MINUTES` | 60 / 3 / 240 / 30 | at-least-once queue and reaper — [runbooks/job-queue.md](../runbooks/job-queue.md) | defaults; drill with `scripts/queue_kill9_drill.py` |
+| `JOB_LEASE_TTL_SECONDS` / `JOB_MAX_REDELIVERIES` / `JOB_RUNNING_TIMEOUT_MINUTES` / `JOB_QUEUED_TIMEOUT_MINUTES` | 60 / 3 / 90 / 10 | at-least-once queue and reaper — [runbooks/job-queue.md](../runbooks/job-queue.md) | transport defaults; the kill drill does not exercise SQL authority or resume RUNNING jobs |
 
 ## Recommended layout for a bank estate
 
@@ -34,3 +34,12 @@ evidence chain, CBOM, policy and alerting as code findings.
 * Scan throughput ≈ 18.5 kLOC/s per core on real repositories; a 10 MLOC monorepo ≈ 2.3 min on 4 cores.
 * API ≈ 180 authenticated DB-backed requests/s per uvicorn worker (`docs/load-soak.md`).
 * Archives up to 200 MB are opened; runtime logs above 200 MB and inventories above 100 MB are skipped with a warning.
+
+## Authority is not a scanner flag
+
+No environment setting bypasses persisted owner/target/options reconciliation,
+current initiating authority, existing admission or the QUEUED-only SQL claim.
+Repository monitors now persist `MONITOR_REPOSITORY` provenance; a human named
+`monitor` does not gain configuration authority. Reserved actor-string collisions
+fail closed. Legacy unpinned jobs need current approved resubmission. See the
+[queue runbook](../runbooks/job-queue.md).

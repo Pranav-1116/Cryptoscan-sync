@@ -9,8 +9,9 @@
 > any readiness figure in this tree.** A 2026-09-28 audit ran the code rather
 > than reading the docs and found several controls described here as enforced
 > that were not — most seriously, tenant isolation on the scan surface. Where
-> that file and anything here disagree, that file is what the code does. It
-> also records what is now fixed (CI, PostgreSQL parity, tenant isolation,
+> that file and later implementation disagree, current code/tests and the dated
+> superseding guides take precedence; the audit is historical evidence. It
+> also records what was then fixed (CI, PostgreSQL parity, tenant isolation,
 > frontend route guards) and what is still open.
 >
 > **Supported topology: one deployment per customer.** Self-serve tenant
@@ -35,7 +36,7 @@
 > [the root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md). It reports
 > explicit PASS/FAIL/SKIP evidence and does not turn percentages or synthetic
 > estates into a production approval.
-> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every classified console surface is GA, beta or preview (33 / 30 / 10), labelled in the UI and served at `GET /api/v1/platform/capabilities`. The documentation audit and remaining gaps are tracked in [DOCUMENTATION-STATUS.md](DOCUMENTATION-STATUS.md).
+> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every classified console surface is GA, beta or preview (33 / 32 / 10), labelled in the UI and served at `GET /api/v1/platform/capabilities`. The documentation audit and remaining gaps are tracked in [DOCUMENTATION-STATUS.md](DOCUMENTATION-STATUS.md).
 
 Production cryptographic inventory and compliance platform: deterministic
 scanners, hashed evidence, YAML policy, drift, and a dashboard. Policy is
@@ -72,6 +73,12 @@ Recent bank-boundary engineering is documented in
 and [Redis TLS/ACL/Sentinel qualification](bank-environment/45-redis-tls-sentinel-qualification.md).
 The latter includes executable destructive disposable-lab instructions and an
 explicit production acceptance checklist; passing local fixtures is not bank certification.
+For coordinated producer/worker migration, legacy pins, RUNNING-job recovery and
+cursor resets, use the [execution/replay upgrade runbook](runbooks/execution-and-replay-upgrade.md).
+For endpoint semantics, use the [API contract companion](api-reference/execution-and-replay.md).
+The generated API reference was refreshed in-process on 2026-10-21: **848 paths,
+936 operations, 103 tagged groups**. No server/deployment was started by schema
+generation; route availability and qualification remain separate.
 
 ## Start here
 

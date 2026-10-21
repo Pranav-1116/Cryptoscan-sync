@@ -353,46 +353,49 @@ compliance (total / expired / expiring / self_signed / revoked) + `content_sha25
 The scanner → event bus → live state → SSE → frontend pipeline, **no full-page
 refresh**.
 
-### 11.1 EventBus (in-process, thread-safe)
-`api.events.bus.EventBus`:
-- `publish()` is **synchronous + thread-safe** (scanner/runtime threads call it).
-- Subscribers are asyncio queues owned by an SSE connection's event loop;
-  delivery hops loops via `call_soon_threadsafe`.
-- Bounded queues with **drop-oldest** + a `dropped` counter, so a stalled browser
-  never blocks the pipeline.
-- In-memory ring buffer (`HISTORY_SIZE = 500`) for **Last-Event-ID resume**.
-- History survives disconnects but **not** a restart, and events do **not** cross
-  process boundaries (federated by the DB tailer + Redis).
+### 11.1 In-process bus and estate journals
 
-### 11.2 Durable platform events
-`api.events.platform_events.emit_platform_event(event_type, detail, payload)`:
-1. **Persists** the row to `monitor_events` (durable, DB-backed log).
-2. **Publishes** immediately onto the in-process bus (zero tailer latency).
+The local bus fans out to bounded subscriber queues. Unified SSE/WS history is
+an independent per-estate retained journal, not a filtered global ring buffer.
+Development memory journals are non-durable; configured Redis streams are the
+replay authority. Public IDs/sequences are estate-local and continuation tokens
+are opaque and owner-bound.
 
-It is **best-effort** (never raises): if the DB is unavailable the bus still
-delivers. A shared `published_event_ids` registry on `app.state` dedups rows so
-nothing is delivered twice (direct publisher + DB tailer).
+### 11.2 Platform event persistence
+
+`emit_platform_event` and the database tailer remain source publishers. Source
+DB persistence is distinct from acceptance into the retained replay journal;
+a best-effort source emitter is not a DB/Redis distributed transaction. Required
+Redis append failures must not be represented as durable local success.
 
 ### 11.3 DB tailer
-`api.routers.events.tail_monitor_events` polls the durable table (default ~2s)
-and republishes rows originating in **other** processes. This is how the monitor
-daemon and other API workers federate into a node's local bus.
 
-### 11.4 Redis federation (cross-instance)
-`api.events.redis_sync.start_redis_federation`:
-- **Opt-in** — only when `REDIS_URL` is set.
-- Publishes every local event to channel `zelinx:events` and subscribes,
-  re-injecting **remote** events into the local bus.
-- A node ignores its own messages (no echo loop); each node keeps its own
-  monotonic local ids so Last-Event-ID resume stays per-node consistent.
-- **Graceful** — a Redis outage never breaks the local bus.
+`tail_monitor_events` polls eligible owned source rows (default about two seconds)
+and republishes them. Unified replay does not synthesize a historical DB backlog
+when the retained estate journal is empty. Tailer clocks and source observation
+clocks are not interchangeable.
+
+### 11.4 Redis federation and primary-bound replay
+
+Federation journals owner-partitioned streams and uses `zelinx:events` Pub/Sub
+as a wakeup path. Production requires verified TLS, named ACL credentials and an
+actual scratch append/replay command probe. Optional Sentinel provides verified
+realtime/current-run discovery; not all queue/rate-limit/health clients use it.
+Listener reconnect uses bounded backoff and command revalidation. A production
+primary/process change changes public epochs and explicitly refuses old cursors;
+a new complete snapshot cannot certify lossless asynchronous replication.
 
 ### 11.5 SSE stream
-`GET /api/v1/events/stream` (`text/event-stream`):
-- Auth required; `Last-Event-ID` resume.
-- Seeds from the ring-buffer history (or DB backlog for a fresh connection),
-  then streams events with heartbeats and `events.dropped` advice.
-- Headers `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`.
+
+`GET /api/v1/events/stream` rechecks live authority and selected estate before
+replay and live/idle checkpoints. It subscribes before reading the estate journal;
+queues only wake readers, so overflow or missed notification is recovered through
+retained pages. Resume with opaque Last-Event-ID/last_event_id tokens, not numeric
+IDs. Initial invalid/reset cursors return 409; backend failures return 503.
+Midstream gap/unavailable/refused events direct recovery. There is no guaranteed
+indefinite history, exactly-once delivery or production HA certification.
+See [client semantics](user-guide/realtime.md) and
+[TLS/Sentinel qualification](bank-environment/45-redis-tls-sentinel-qualification.md).
 
 ### 11.6 Technology BOM events
 Every BOM operation emits a typed event on `target_name="technology-bom"`:

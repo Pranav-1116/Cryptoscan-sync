@@ -1,5 +1,11 @@
 # 6. Scope, maturity and readiness
 
+**Current engineering note (2026-10-21):** [Guides 44–45](../bank-environment/44-queued-authority-and-durable-ssh.md)
+add queue authority, durable SSH and verified TLS/Sentinel local qualification.
+They do not change historical staging results below or certify the current
+production topology. The [root evidence gate](../../PRODUCTION-READINESS.md)
+was not rerun by this documentation refresh.
+
 _Which surfaces are production-supported, how ready the whole thing is, and
 what is still open. Sources: `shared_models/capability_maturity.py`
 (generated into [CAPABILITY-MATURITY.md](../CAPABILITY-MATURITY.md)), the
@@ -91,7 +97,7 @@ database said otherwise.
 | **The soak is ~20 minutes, not 7 days.** Leaks and stalls show over days; one was found in 20 minutes. | largest | `scripts/soak.py --hours 168` on a host that stays up; pass criteria in [soak-evidence/README.md](../soak-evidence/README.md) |
 | **No true capacity number.** Every virtual user shared one identity, so the rate limit was the ceiling; the API held but its capacity is unmeasured. | medium | re-run `load_test.py` with one API key per virtual user |
 | **Neo4j, cloud, container never burned live.** Skipped honestly where the host lacked them; also exactly the beta surfaces. | medium | `burn_in.py --target all` on a host with all three |
-| **Queue recovery needs target-host qualification.** Lease/requeue and stale-row recovery are implemented, but a real Redis kill/recovery drill remains operational evidence. | small–medium | run `scripts/queue_kill9_drill.py` against the target stack and attach the artifact to the root readiness gate |
+| **Queue recovery needs target-host qualification.** Delivery recovery does not restart RUNNING jobs or bypass current pinned authority. | explicit reconciliation required | Separate the consumer kill drill from SQL/executor/side-effect recovery; use the [upgrade runbook](../runbooks/execution-and-replay-upgrade.md) |
 | **Single api / worker process tested.** `deploy/ha/` exists, not exercised in this pass. | small | HA drill on the target host |
 | **External attestation** (SOC 2 / ISO 27001 of the product), independent pen test, multi-site DR, 24/7 on-call | — | company actions; [soc2-readiness-gap-analysis.md](../soc2-readiness-gap-analysis.md) |
 

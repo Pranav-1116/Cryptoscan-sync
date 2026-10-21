@@ -110,3 +110,14 @@ page conflicts with the running product, use this order of authority:
 
 This order prevents an attractive documentation portal from becoming a source
 of unsupported commitments.
+
+## Latest execution/replay operating contract
+
+The enterprise pages now incorporate the 2026-10-21 queue/SSH/Redis increment.
+Use the [API contract companion](../../api-reference/execution-and-replay.md)
+for exact-estate replay and receipt semantics, and the
+[upgrade runbook](../../runbooks/execution-and-replay-upgrade.md) for coordinated
+rollout, legacy jobs and explicit failover cursor resets. The
+[documentation coverage map](../../DOCUMENTATION-STATUS.md) separates refreshed
+instructions, regenerated schema and historical evidence; it is not a new
+production qualification or company assurance attestation.

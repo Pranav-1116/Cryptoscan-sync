@@ -18,9 +18,12 @@ The supported worker image ships the API/shared service packages and root
 requirements; this is not a newly independent worker-only distribution.
 No schema migration, workflow or existing historical-record rewrite is needed.
 
-**Not delivered:** admission/durable parity for `network_runner`, its scope,
-IPsec or DNSSEC phases, SSH/plugins, or every other monitor adapter. Their known
-gaps remain open; installing this patch does not make those paths bank-qualified.
+**Not delivered by this original increment:** parity for `network_runner`,
+IPsec/DNSSEC, SSH/plugins or every adapter. Subsequent guides 37–39 add bounded
+monitor ownership/phase/TCP controls; [Guide 44](44-queued-authority-and-durable-ssh.md)
+adds durable SSH receipts and queued authority. Expanding inventory plugins and
+other unqualified profiles remain refused; these local increments are not bank
+or all-protocol certification. The original test evidence below is historical.
 
 ## 1. Reproduced defects and regression approach
 

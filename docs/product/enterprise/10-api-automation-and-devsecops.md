@@ -133,3 +133,12 @@ Clients should group errors into:
 
 Never retry an unsafe mutation indefinitely or use retries to bypass a quota,
 scope restriction, or approval gate.
+
+## Updated job and stream integration contract
+
+Consumers must use [current execution/SSH/replay semantics](../../api-reference/execution-and-replay.md):
+opaque owner-bound cursors replace numeric global resume; primary/process changes
+require an explicit reset; backend/refusal is not empty success. Queue payloads
+cannot grant owner/target/actor authority. Retry creates a new admitted attempt;
+synchronous network/SSH generic retry returns 409. A received event, HTTP 200 or
+COMPLETED receipt does not by itself prove all observations succeeded.

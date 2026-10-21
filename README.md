@@ -74,6 +74,12 @@ now close those two controls locally and add stored SSH results/status.
 adds command readiness, subscriber recovery, primary-bound replay resets and a
 destructive disposable lab, not production deployment certification.
 **A01 and A02 remain partial; production safety is not certified.**
+For current compatibility and recovery steps, use the
+[execution/replay upgrade runbook](docs/runbooks/execution-and-replay-upgrade.md).
+The regenerated [API reference](docs/api-reference/rest-api.md) has a dedicated
+[contract companion](docs/api-reference/execution-and-replay.md); the
+[documentation status map](docs/DOCUMENTATION-STATUS.md) distinguishes current
+instructions from historical measurements.
 
 
 ## Scope & honest boundaries

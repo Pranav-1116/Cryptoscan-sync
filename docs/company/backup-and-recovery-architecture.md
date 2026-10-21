@@ -99,3 +99,16 @@ Customer-managed infrastructure, cloud accounts, database, HSM/KMS, network,
 DNS, certificates, and backups remain Customer responsibilities unless the
 Order Form explicitly assigns them to Vendor. The SLA must reflect that
 boundary.
+
+## Current execution/replay reconciliation requirements
+
+Fill the Redis row above separately from the SQL/evidence backup: retained
+journals, queues and current-run state are not included in a database dump.
+Primary/process changes invalidate production replay cursors; a complete new
+snapshot is not proof that every previously acknowledged write survived.
+
+Account for unknown RUNNING attempts before resubmission; do not reset terminal
+rows, invent legacy authority pins or rewrite historical ownership. SSH job and
+result IDs provide owned read-back, but a COMPLETED receipt can preserve failed
+observations. Use the [upgrade/recovery procedure](../runbooks/execution-and-replay-upgrade.md)
+and attach deployment-specific restore evidence, not the disposable lab result.

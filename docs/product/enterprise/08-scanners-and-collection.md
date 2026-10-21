@@ -160,3 +160,13 @@ Before onboarding a source type, use a fixture with:
 The acceptance record should include scanner version, fixture hash, test
 command, result, and limitations. It should never claim that fixture coverage
 is customer-estate coverage.
+
+## Current durable SSH boundary
+
+SSH host-key/optional-KEX collection commits a RUNNING attempt before packets,
+rechecks each phase and stores an owned result ledger with completion. Retain
+job_id/run_id and inspect failed observation verdicts independently of COMPLETED
+recording. Caller known-host baselines remain unverified. Generic job retry is
+409 for synchronous network work; resubmit the original admitted profile.
+This can contribute bounded NBOM/CBOM facts, not SBOM/TechBOM/HBOM/VBOM completeness.
+See the [network/SSH user guide](../../user-guide/network-scanning.md).

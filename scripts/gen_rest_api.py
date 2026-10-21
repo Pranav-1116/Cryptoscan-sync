@@ -1,4 +1,4 @@
-"""Regenerate docs/api-reference/rest-api.md from the live OpenAPI schema.
+"""Regenerate docs/api-reference/rest-api.md from the application OpenAPI schema (without starting a server).
 
 Usage (repo root):
     PYTHONPATH="$(find services shared -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')" \
@@ -41,9 +41,13 @@ from datetime import date as _date
 lines = [
     "# REST API reference",
     "",
-    f"Generated from the live OpenAPI schema (`GET /api/openapi.json`) on {_date.today().isoformat()}:",
+    f"Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on {_date.today().isoformat()}:",
     f"**{len(paths)} paths, {op_count} operations** across {len(groups)} tagged groups.",
     "Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.",
+    "",
+    "Current [execution, SSH and replay contracts](execution-and-replay.md) describe",
+    "owner-bound cursors, fresh execution authority, durable receipts and explicit refusals.",
+    "This schema snapshot does not certify a deployed production topology.",
     "",
     "## Conventions",
     "",
@@ -56,8 +60,8 @@ lines = [
     "- Multi-tenant SaaS: tenant-scoped requests resolve the organization from the session's",
     "  memberships or `X-Tenant-ID`; API keys minted inside a tenant are bound to it. See",
     "  [architecture/multi-tenancy.md](../architecture/multi-tenancy.md).",
-    "- Every list endpoint is paginated and every export carries SHA-256 verification",
-    "  (`/verify` siblings) — see [user-guide/evidence-pack.md](../user-guide/evidence-pack.md).",
+    "- Pagination and export-integrity metadata are endpoint-specific; do not infer them",
+    "  from this operation table. See [evidence packs](../user-guide/evidence-pack.md).",
     "- Export manifests are signed with compact JWS (`signature_jws`, RFC 7515; legacy",
     "  `signature_hmac` retained).",
     "",

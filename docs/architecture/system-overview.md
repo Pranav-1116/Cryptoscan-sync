@@ -104,11 +104,13 @@ renders as an amber "observation incomplete" marker. A COMPLETED scan never
 implies complete observation (§4.8, round 39; the source guard
 `test_optional_stage_disclosure.py` counts the sites).
 
-**Authorization is checked twice.** Admission at request time
-(`scan_admission.py`) and again at execution time by the round-46 gate
-(`worker/core/execution_gate.py`), which fails **closed**: if it cannot read
-the control plane, the job is refused with a reason rather than run. A refusal
-stamps the job FAILED with that reason and never raises (round 80).
+**Admission and initiating authority are separate checks.** The worker first
+reconciles the untrusted descriptor against SQL before choosing scope, then
+runs current execution policy, revalidates the pinned initiating user/key/config
+and commits an exact-owner/version QUEUED-to-RUNNING claim. A forgery/duplicate
+cannot fail a victim or RUNNING claimant. A matching queued policy/authority
+refusal gets a best-effort FAILED stamp. Store outages never permit collection.
+See [authority details](../bank-environment/44-queued-authority-and-durable-ssh.md).
 
 ## Processes
 
@@ -122,8 +124,8 @@ stamps the job FAILED with that reason and never raises (round 80).
 A scan request becomes work in one of two ways: `api/routers/trigger.py`
 publishes the job to Redis (`enqueue_job` → the worker's list, with a
 dead-letter key), or — when no queue is configured — runs the pipeline
-in-process as a background task, re-entering the tenant scope first so results
-cannot land unscoped. `scripts/trigger_scan.py --inline` is the operator-facing
+in-process as a background task through the same reconciling JobExecutor, then
+enters the persisted estate so queue payloads cannot choose ownership. `scripts/trigger_scan.py --inline` is the operator-facing
 version of that second path.
 
 ## What this overview replaced

@@ -1,5 +1,13 @@
 # Backend & database — what was wrong, what is fixed, what is left
 
+> **Later bounded engineering update (2026-10-21):** this audit retains its
+> original observations. [Guide 44](docs/bank-environment/44-queued-authority-and-durable-ssh.md)
+> supersedes the reproduced queued-authority and response-only SSH gaps;
+> [Guide 45](docs/bank-environment/45-redis-tls-sentinel-qualification.md) adds
+> verified realtime/current-run Redis TLS/Sentinel local evidence. Current
+> code/tests and dated superseding guides take precedence for those boundaries;
+> this does not close every product-wide isolation or deployment acceptance gap.
+
 **Audited:** 2026-09-28 · implementation review; this is not a production
 qualification report. The current decision is owned by
 [`PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md) and

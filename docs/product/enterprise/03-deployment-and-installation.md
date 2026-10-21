@@ -141,3 +141,17 @@ A deployment is ready for pilot use only after:
 - logs and metrics reach the approved destination;
 - alert and support contacts are tested; and
 - the owner records what remains SKIP, BLOCKED, or environment-dependent.
+
+## Execution/replay rollout requirements (2026-10-21)
+
+Follow the [coordinated upgrade runbook](../../runbooks/execution-and-replay-upgrade.md)
+before production launch. New queued jobs must capture current authority pins;
+legacy unpinned jobs need approved resubmission. Inline execution is not a bypass.
+RUNNING recovered deliveries do not automatically resume under the QUEUED-only
+claim, so account for unknown effects before creating a new attempt.
+
+Provision named rediss ACL credentials, a mounted approved CA bundle and valid
+SANs for all data/discovery endpoints. Edge HTTPS does not configure Redis TLS.
+Optional Sentinel covers realtime/current-run factory clients, not every queue,
+rate-limit or health client. Template manifests and local lab results do not
+establish deployed HA/security or independent failure zones.

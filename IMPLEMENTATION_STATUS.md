@@ -1,5 +1,13 @@
 # CryptoScan Implementation Status
 
+> **Historical status record:** the branch/date and local results below describe
+> the original 2026-10-12 work, not the active session or a current deployment.
+> The later `e9bfbef7` queue/SSH/Redis increment is documented in
+> [Guides 44–45](docs/bank-environment/44-queued-authority-and-durable-ssh.md), with
+> [current upgrade instructions](docs/runbooks/execution-and-replay-upgrade.md).
+> Old measurements and branch provenance are retained rather than silently
+> reassigned to this release.
+
 **Date:** 2026-10-12  
 **Branch:** `arena/01a106c8-cryproscan`  
 **Scope:** 17 implementation commits after `aab86c39`, plus this status record; local verification, **not** a production qualification.  

@@ -79,6 +79,11 @@ execution path by this API gate.
 
 ## 2. Executable controls versus known gaps
 
+**Historical matrix at `b70072ad`, not the current implementation verdict.**
+Guide 44 supersedes the SSH response-only and two queued-authority gaps;
+Guide 45 supersedes the absence of verified TLS/Sentinel engineering evidence.
+The original reproduced failures and counts below remain unchanged.
+
 | Boundary | Evidence present | Qualification status / restriction |
 |---|---|---|
 | API TLS aliases/due/discovery | Existing shared preflight, durable job/ledger and bank-negative suites from guides 35–40 | Locally tested bounded profiles; not all live protocols/vendors |
@@ -276,6 +281,13 @@ explicit bounded-contention refusal and reconciles every accepted payload and
 sequence. Incomplete/stopped earlier test processes are not completed evidence.
 
 ## 6. Bank release gates still open
+
+**Historical release-gate list for this increment.** Durable SSH and the two
+queue controls listed below are implemented by Guide 44. Verified transport,
+command readiness and disposable Sentinel evidence are added by Guide 45.
+Positive/regional grants, distributed budgets, remaining profiles, product-wide
+segregation and deployed production qualification remain open; these later
+increments are not a declaration that A01/A02 are closed.
 
 1. **A01 admission and receipts:** implement durable SSH collection and all
    remaining execution profiles, positive scoped grants/expiry, actual QPS and

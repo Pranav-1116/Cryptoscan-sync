@@ -93,16 +93,20 @@ For every request, the effective order is:
 9. audit record for sensitive action; and
 10. response with a stable identifier and status.
 
-For every queued job, the effective order is:
+For supported queued execution, distinguish transport from authority:
 
-1. deserialize and validate the payload;
-2. verify owner and scope;
-3. acquire lease and concurrency budget;
-4. run the scanner/processor;
-5. persist progress and evidence;
-6. release or renew the lease;
-7. emit completion/failure event; and
-8. retain retry and dead-letter context.
+1. consume the untrusted descriptor using configured delivery/lease handling;
+2. reconcile owner, target, actor, type, system and scan options against SQL
+   **before** selecting scope; replace progress with database progress;
+3. enter the persisted estate and run current execution-policy admission;
+4. re-read the pinned current initiating user/key/config authority;
+5. commit an exact-owner/version QUEUED-to-RUNNING claim;
+6. invoke the collector and persist progress/evidence/outcomes; and
+7. retain acknowledgement/dead-letter context without treating delivery recovery
+   as permission to replay RUNNING side effects.
+
+This is not a global distributed concurrency reservation or exactly-once external
+execution guarantee. See [authority design](../../bank-environment/44-queued-authority-and-durable-ssh.md).
 
 ## 5. Storage model
 
@@ -146,3 +150,14 @@ When a dependency fails:
 - do not convert missing data into zero or PASS;
 - retry only when the action is safe and idempotent; and
 - record recovery and any period of incomplete coverage.
+
+## Retained replay and primary changes
+
+Unified streams read independent exact-estate journals; Pub/Sub/queues are only
+wakeups. Opaque cursors freeze retained snapshot bounds and fresh authority is
+checked on replay/live/idle paths. Production factory/Sentinel clients bind epochs
+to the actual primary process. Promotion/restart requires explicit old-cursor
+resynchronization, not silent frozen-snapshot continuation. Verified TLS/ACLs,
+command readiness and subscriber reconnect are implemented for realtime/current
+run; they do not migrate every Redis consumer or certify lossless replication.
+See [current API semantics](../../api-reference/execution-and-replay.md).

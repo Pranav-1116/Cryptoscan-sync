@@ -6,6 +6,25 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Security and durability — execution/replay (2026-10-21)
+
+- Reconcile untrusted queue descriptors against persisted jobs before scope;
+  revalidate pinned current initiating authority and claim QUEUED rows with CAS.
+  Type monitor provenance and refuse reserved actor-name ambiguities.
+- Persist SSH RUNNING attempts before collectors and commit owner-bound findings,
+  telemetry, phase admission and result IDs with completion. Preserve failed
+  observations and caller-unverified baseline meaning.
+- Add verified Redis TLS/ACL/Sentinel realtime/current-run routing, actual command
+  readiness, bounded subscriber reconnect and explicit primary-bound cursor
+  resets. Other Redis consumers and production qualification remain separate.
+- Add detailed design/lab guides and reconcile user, administrator, architecture,
+  API, bank, enterprise and recovery documentation. Remove unsafe terminal-row
+  reset and automatic RUNNING-job resume instructions. Refresh the generated API
+  snapshot and add a semantic companion and coordinated upgrade runbook.
+- Local implementation evidence and limits remain in
+  [Guides 44–45](docs/bank-environment/44-queued-authority-and-durable-ssh.md).
+  This documentation refresh adds no production evidence or readiness approval.
+
 ### Security — frontend development toolchain (2026-10-18)
 
 - Coordinate exact Vite 8.3.4, Vitest/coverage 5.0.5 and React plugin 6.1.2

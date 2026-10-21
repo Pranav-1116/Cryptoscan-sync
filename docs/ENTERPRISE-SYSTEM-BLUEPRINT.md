@@ -1,5 +1,12 @@
 # CryptoScan enterprise system blueprint
 
+**Later implemented slice (2026-10-21):** persisted/current queue authority,
+durable SSH receipts and verified realtime/current-run Redis TLS/Sentinel are
+now documented in [Guides 44–45](bank-environment/44-queued-authority-and-durable-ssh.md).
+They are bounded local controls, not the full positive/regional grant,
+distributed-budget or production qualification architecture proposed below.
+Use the [upgrade runbook](runbooks/execution-and-replay-upgrade.md) for rollout.
+
 **Decision document · 2026-10-04 · status: implementation guide, not a production attestation**
 
 This document explains the next stage for CryptoScan: turning the existing crypto-discovery and evidence platform into an enterprise operating system for cryptographic risk. It is deliberately split between **what the repository already demonstrates** and **what must still be qualified**. A route, scanner, connector, policy pack or UI badge is not evidence of production readiness by itself.
@@ -10,7 +17,7 @@ CryptoScan should become the system of record for an organisation's cryptographi
 
 1. **Discover** applications, infrastructure, networks, clouds, hardware, vendors, certificates and crypto services through authorised, tenant-scoped collection.
 2. **Normalize** observations into stable assets, algorithms, protocols, keys, certificates, libraries, providers and dependencies without inventing facts when evidence is absent.
-3. **Materialize** SBOM, CBOM, HBOM, NBOM and VBOM views from the same evidence-backed model.
+3. **Materialize** SBOM, NBOM, CBOM, TechBOM, HBOM and VBOM views from the same evidence-backed model.
 4. **Evaluate** policy, vulnerability, compliance, PQC exposure, crypto agility, drift and business impact using deterministic rules.
 5. **Prove** every important answer with immutable evidence references, provenance, timestamps, hashes, actor identity and policy version.
 6. **Operate** the estate continuously: queue scans, watch live sources, detect change, route findings, approve exceptions and verify remediation.

@@ -104,3 +104,16 @@ SOC wallboard (the dashboard view polls it every 5 s).
 state — it is not a packet-capture IDS. For passive traffic observation of
 production TLS handshakes, deploy the runtime TLS tap
 (`services/runtime/README.md`) and ingest via `/runtime` findings.
+
+## Repository monitor authority
+
+Repository monitor jobs now persist `MONITOR_REPOSITORY` provenance and pin the
+owned enabled repository configuration. The worker rechecks that configuration,
+active estate and descriptor before collection; the literal actor name `monitor`
+is not a human-user privilege bypass. Legacy unpinned work must be approved and
+resubmitted. Recovery of a queue delivery does not rerun an already RUNNING job.
+See [execution/replay upgrade](../runbooks/execution-and-replay-upgrade.md).
+
+Event history for the selected estate uses opaque retained replay cursors, not a
+global numeric offset. Primary/process changes require explicit resynchronization;
+see [the realtime guide](realtime.md).

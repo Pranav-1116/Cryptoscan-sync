@@ -1,5 +1,11 @@
 # Enterprise and International-Bank Readiness Gap Register
 
+**Implementation update, 2026-10-21:** [queue/SSH controls](bank-environment/44-queued-authority-and-durable-ssh.md)
+and [Redis TLS/Sentinel local qualification](bank-environment/45-redis-tls-sentinel-qualification.md)
+now exist. They narrow engineering gaps; they do not supply independent customer
+attestations, region binding, distributed budgets or actual cross-zone recovery.
+This planning register is not a freshly executed production evidence gate.
+
 **Reviewed:** 2026-09-29 UTC
 **Audience:** product leadership, security, engineering, operations, legal,
 procurement, and a prospective bank's third-party-risk team

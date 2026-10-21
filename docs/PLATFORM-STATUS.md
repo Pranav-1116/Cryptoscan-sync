@@ -1,5 +1,12 @@
 # CryptoScan platform status — the full plan vs. what ships here
 
+> **2026-10-21 execution/replay increment:** [Guide 44](bank-environment/44-queued-authority-and-durable-ssh.md)
+> records persisted queue matching/current authority and durable SSH receipts;
+> [Guide 45](bank-environment/45-redis-tls-sentinel-qualification.md) records
+> verified TLS/ACL/Sentinel engineering and the fresh disposable lab. Historical
+> measurements below are not refreshed by this note. Local results are not a
+> deployed production approval; see the [upgrade runbook](runbooks/execution-and-replay-upgrade.md).
+
 Honest accounting, capability by capability, for every week in the plan
 (Part 4: W37–48, Part 5: W49–60). "Built" means code + tests in this repo.
 "Partial (honest)" means the testable core is built and the gaps are named.

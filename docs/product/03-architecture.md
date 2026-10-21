@@ -58,7 +58,7 @@ independently.
 |---|---|---|
 | **nginx** | TLS termination, serves the SPA, proxies `/api` and the event stream. The only port published in the production overlay. | compose `nginx` service |
 | **api** | uvicorn + FastAPI. Handles every request, enqueues scan jobs, emits platform events, serves SSE. 2 workers in production. | compose `api`; `staging-up.sh api_up` |
-| **worker** | `BRPOP` on the Redis job queue; runs the 14-stage pipeline in a per-job workspace; writes progress to `scan_jobs.progress` after every stage. | compose `worker`; `python -m worker.main` |
+| **worker** | Reliable queue delivery where supported; persisted reconciliation, current authority and QUEUED-only claim before the pipeline; per-job workspace and stored progress. | compose `worker`; `python -m worker.main` |
 | **monitor** | watch-list daemon: scheduled scans of repos, hosts and endpoints; alert-once with cooldown. | compose `monitor`; `scripts/run_monitor.py` |
 | **automation / control plane** | evaluates WHEN/IF/THEN plans against events; holds actions at human approval gates; delivers to connectors. Runs inside the api process by default, separable. | `automation`, `control_plane` |
 
@@ -208,11 +208,14 @@ pages.
 monitor would never reach a browser connected to the API — the DB tailer
 closes that gap by reading `monitor_events`. Several API instances behind
 nginx would each see only their own bus — Redis federation closes that one.
-Persisting first means a disconnected client can resume with `Last-Event-ID`
-and the Activity page can replay history.
+Unified replay reads independent retained estate journals, not arbitrary DB
+backfill. Resume with opaque owner-bound cursors; production primary changes
+explicitly require resynchronization. A complete retained page is not proof of
+indefinite history or lossless replication.
 
-**Overflow is explicit.** A slow subscriber gets an `events.dropped` advice
-and reconnects with resume rather than silently missing events. Cooldown
+**Recovery is explicit.** Queues/Pub/Sub wake journal readers; retention loss,
+epoch changes, authorization changes and backend failures are not empty success.
+See [current client contract](../user-guide/realtime.md). Cooldown
 dedup keeps recoveries from spamming. Event families: `scan.*`,
 `job.*/stage.*`, `finding.*`, `drift.*`, `alerts.*`, `live_scan.*`,
 `technology_bom.*`, `automation.*`.
@@ -276,3 +279,16 @@ both stored artifacts are binary scans.
 Full list: [decisions/](../decisions/).
 
 Next: [4. Data flow](04-dataflow.md)
+
+## Execution and Redis update — 2026-10-21
+
+Queued descriptors cannot supply authority: SQL owner/target/options/actor
+matching precedes scope, policy and fresh pinned authority precede an atomic
+QUEUED-only claim. Inline execution uses the same boundary. SSH commits a RUNNING
+receipt before probes and an owned result ledger with completion.
+
+Production realtime requires named rediss credentials, CA/hostname checks and
+actual command readiness. Optional Sentinel covers realtime/current-run clients
+only; direct queue/rate-limit/health consumers still need review. The
+[upgrade runbook](../runbooks/execution-and-replay-upgrade.md) supersedes older
+seamless-recovery/fallback descriptions in historical diagrams and traces.

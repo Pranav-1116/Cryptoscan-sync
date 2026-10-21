@@ -1,6 +1,6 @@
 # CryptoScan production readiness — current evidence gate
 
-**Current as of:** 2026-10-17 UTC
+**Documentation reviewed:** 2026-10-21 UTC (retained gate artifacts have their own dates)
 **Source of truth:** `scripts/bank_readiness.py` → `docs/readiness-evidence/bank-readiness.{json,md}`
 **Scope:** repository controls plus customer/provider qualification evidence.
 
@@ -10,6 +10,26 @@ are useful engineering evidence, but they are not proof of production
 qualification. A deployment must not be described as production-ready until
 the unified gate contains retained, attributable evidence for every required
 category.
+
+## Latest execution/replay engineering increment — not a gate rerun
+
+Implementation `e9bfbef7` adds persisted queue-descriptor reconciliation, current
+pinned execution authority and a QUEUED-only CAS claim; durable SSH job/result
+receipts; verified TLS/ACL/Sentinel realtime/current-run routing; actual journal
+command readiness; subscriber reconnect; and primary-bound replay resets.
+The [upgrade runbook](docs/runbooks/execution-and-replay-upgrade.md) includes
+legacy unpinned-job resubmission and safe unknown-outcome recovery.
+
+Local evidence: **1315 passed / 4 skipped** in the broad affected run, **205
+passed** after the final small provenance increment, and **28 passed** in the
+fresh real TLS/Sentinel plus unit run. Coverage overlaps. See
+[Guide 44](docs/bank-environment/44-queued-authority-and-durable-ssh.md) and
+[Guide 45](docs/bank-environment/45-redis-tls-sentinel-qualification.md).
+
+Those results do not regenerate the gate below, qualify every collector/Redis
+consumer, prove lossless replication or certify a deployed bank. Historical
+2026-10-04/16 artifact decisions remain bound to their original environment.
+This documentation refresh adds no new runtime qualification evidence.
 
 ## Run the gate
 

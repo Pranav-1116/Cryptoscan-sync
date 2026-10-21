@@ -72,7 +72,19 @@ bash scripts/deploy_prod.sh -d
 
 Details: `docs/admin-guide/production.md`.
 
-The API refuses to start in production if demo secrets, SQLite, or `CORS_ORIGINS=*` are still configured. Postgres/Redis/Neo4j are not published on the host.
+The API refuses production startup with demo secrets, SQLite, wildcard CORS or
+an unusable required realtime journal. Provision a named non-default Redis ACL
+user, `rediss://`, hostname-valid certificates and an approved CA bundle mounted
+inside the API container. Startup tests actual journal commands, not just PING.
+The edge TLS overlay does not configure Redis TLS; the checked-in Compose Redis
+service is not automatically a verified TLS/Sentinel deployment.
+
+Optional `REDIS_SENTINELS`/`REDIS_SENTINEL_MASTER` and dedicated discovery
+credentials apply to realtime/current-run factory clients, not every worker
+queue or rate-limit consumer. Review each consumer before starting. Follow the
+[coordinated upgrade runbook](docs/runbooks/execution-and-replay-upgrade.md),
+including resubmission of unpinned legacy work. Postgres/Redis/Neo4j are not
+published on the host by the production overlay.
 
 ## Development credentials
 

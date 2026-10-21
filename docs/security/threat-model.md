@@ -46,3 +46,21 @@ credentials and shell metacharacters; it allows public hosts and RFC1918 ranges
 asks). Monitor NETWORK configs are additionally re-checked at execution time in
 the daemon runner (defense in depth for configs that predate the API gate):
 blocked targets are never probed and surface as `SSRF_BLOCKED:*` issues.
+
+## Execution and replay threats — reviewed 2026-10-21
+
+| Threat | Implemented control | Residual boundary |
+|---|---|---|
+| Forged queue owner/target/actor/options | Persisted descriptor reconciliation before scope; database progress replaces queue claims | Trusted SQL/producers remain part of the boundary; direct unpinned writers fail closed |
+| Initiator revoked after enqueue | Pinned incarnation, current user/key/config authority and QUEUED-only versioned claim | No atomic mid-collector revocation; original API-key request provenance is not fully pinned |
+| Reserved human actor name acquires machine authority | Typed MONITOR_REPOSITORY origin; ambiguous scheduler:/apikey: literal names refuse | Full typed credential envelope is still future work |
+| SSH response disappears without outcome history | RUNNING receipt before collectors; atomic result ledger/completion; owner-only read-back | Initial storage failure may leave no job; crash/partial observations need reconciliation |
+| Redis endpoint spoof or ACL deny | Verified TLS/hostname, named accounts, separate Sentinel discovery credentials, actual command probe | CA rotation/service ACL administration and other direct clients need deployment review |
+| Replay snapshot silently changes after promotion | Actual-primary role/run-ID bound public epoch and explicit old-cursor reset | Async lost writes, split brain and full restore correctness are not solved by a new snapshot |
+| Cross-estate stream/history disclosure | Exact-estate pages and fresh stream grants; pre-queue filtering | Not a product-wide inventory/export/region authorization certification |
+
+The older table records its original monitor/payment scope; its single-scheduler/
+no-quota statements are not a current global platform description. Per-host
+metering and leader leases exist, but distributed reservation and every collector
+profile are not uniformly qualified. See [current controls](../bank-environment/44-queued-authority-and-durable-ssh.md)
+and [upgrade/recovery](../runbooks/execution-and-replay-upgrade.md).

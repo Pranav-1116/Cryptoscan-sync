@@ -1,5 +1,14 @@
 # What to do next (reconciled 2026-09-27)
 
+**2026-10-21 priority update:** persisted queue authority and SSH receipts are
+implemented; do not plan them as wholly absent. Next qualify coordinated legacy
+resubmission, crash/unknown-side-effect recovery, original request provenance,
+positive regional grants and distributed budgets. Redis TLS/ACL/Sentinel is
+locally exercised for realtime/current-run clients; other consumers and deployed
+CA/partition/load/restore evidence remain open. Start with the
+[upgrade runbook](runbooks/execution-and-replay-upgrade.md) and
+[qualification checklist](bank-environment/45-redis-tls-sentinel-qualification.md).
+
 The current deployment decision is owned by the root
 [`PRODUCTION-READINESS.md`](../PRODUCTION-READINESS.md) and the generated
 `docs/readiness-evidence/bank-readiness.{json,md}`. The accuracy page

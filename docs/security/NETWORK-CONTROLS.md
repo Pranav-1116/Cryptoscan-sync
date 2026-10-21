@@ -17,7 +17,7 @@ like a CI runner plus an internal web application. There is no vendor SaaS, no t
 |---|---|---|---|---|---|---|
 | 1 | Worker → source-control (Bitbucket / GitLab / GitHub Enterprise / Azure DevOps) | HTTPS 443 or SSH 22 | outbound, internal | one `git clone --depth` per job; sequential per worker | code scanning | read-only deploy token or SSH key; one allow rule from the worker subnet |
 | 2 | Worker → file share / mainframe export (NFS, SMB, FTP/S drop, PDS unload) | as provided | outbound, internal | read once per scan | mainframe / vendor code, runtime logs | read-only mount or drop folder — no reverse connection |
-| 3 | API / worker ↔ PostgreSQL, Redis | 5432 / 6379 | internal, same segment | continuous | job queue, findings, audit | 3-tier segmentation; TLS profile available (`docker-compose.tls.yml`) |
+| 3 | API / worker ↔ PostgreSQL, Redis | 5432 / 6379 | internal, same segment | continuous | job queue, findings, audit | 3-tier segmentation; configure DB transport separately; production realtime Redis requires verified TLS/ACLs (edge TLS overlay is insufficient) |
 | 4 | Users / CI → API | HTTPS 443 via nginx (`deploy/ha/nginx.conf`) | inbound, internal | interactive + CI webhooks | UI, API, exports | behind the bank's WAF / reverse proxy; SSO |
 | 5 | API → identity provider | HTTPS 443 | outbound, internal | at login + JWKS refresh | OIDC / SAML / LDAP | https enforced; JWKS URL restricted to the issuer host (`api/security/oidc.py:_validate_jwks_uri`); **or** `OIDC_JWKS_FILE` = no call at all |
 | 6 | API → ITSM / SIEM / SCM status (ServiceNow, Jira, Splunk, Sentinel, GitHub status) | HTTPS 443 | outbound | one call per event | optional connectors | **off unless a token/URL is configured** (`pipeline_runner._post_github` returns with no `GITHUB_TOKEN`); route through the bank proxy |
@@ -96,3 +96,18 @@ requests/s per API worker (2 vCPU sandbox) so the bank can size workers behind i
 | Traffic matrix, guardrails, rate limiter, SSRF guards | implemented and unit-tested in this repository |
 | Default-deny egress operation | supported by design (air-gap install documented and run once) |
 | Behaviour under a specific bank's IDS / WAF | **not yet observed** — first engagement step: review §2 with security architecture, deploy static-only, enable live modules target by target |
+
+## Redis discovery and authority boundary — current increment
+
+Allow only approved TLS data/discovery endpoints. Optional Sentinel uses separate
+discovery credentials and hostname-verified TLS on all discovered primaries;
+three addresses alone do not establish independent failure domains. Review CA
+mounts and ACL commands/prefixes per service: realtime/current-run factory support
+does not migrate every queue/rate-limit/health client.
+
+A permitted network path or authorized hostname is not job authority. Before
+collection, descriptors reconcile against SQL, current initiating identity is
+checked and a QUEUED-only claim commits. SSH stores a RUNNING attempt before
+packets and rechecks each host-key/KEX phase, but this is not positive bank scope
+grants, distributed connection/QPS reservation or an in-flight kill switch.
+See [security/HA qualification](../bank-environment/45-redis-tls-sentinel-qualification.md).

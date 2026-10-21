@@ -1,5 +1,14 @@
 # Enterprise readiness — what the platform has, what a bank will ask for
 
+**Current delta, 2026-10-21:** queue descriptors now reconcile against persisted
+jobs before scope; current pinned authority and a QUEUED-only claim precede
+collectors. SSH has owned durable jobs/results. Realtime/current-run Redis now
+supports verified TLS/ACL/Sentinel with explicit primary-change cursor resets.
+See the [current contract](api-reference/execution-and-replay.md).
+Older numerical snapshots and broad availability labels below remain contextual,
+not a current bank production certification. The generated API header and root
+evidence gate take precedence.
+
 Status of the evidence set: the generated API snapshot dated 2026-09-25 contains
 **659 OpenAPI paths / 725 operations** across 86 tagged groups. The repository
 also contains 60 ordered migrations and 4,808 backend test functions (hermetic,

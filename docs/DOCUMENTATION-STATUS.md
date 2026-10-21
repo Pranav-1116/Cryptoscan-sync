@@ -1,6 +1,6 @@
 # Documentation status and coverage map
 
-**Review date:** 2026-10-16
+**Review date:** 2026-10-21
 **Repository:** CryptoScan
 **Purpose:** identify which documentation is authoritative, which material is historical, and which product areas still require evidence or deeper guides.
 
@@ -10,7 +10,7 @@ every documented capability is generally available.
 
 ## 1. Repository-wide inventory
 
-The `docs/` tree currently contains **346 files**, including **286 Markdown
+The `docs/` tree currently contains **403 files**, including **343 Markdown
 files**, plus generated diagrams, JSON/CSV evidence, templates, and scoped
 qualification artifacts. The files cover product behavior, architecture, user
 workflows, deployment, security, operations, company diligence, commercial
@@ -42,9 +42,10 @@ When two documents disagree, use this order:
    planning or templates. They must not be read as proof of revenue, valuation,
    certification, customer count, market share, or production qualification.
 
-The current API reference snapshot is generated on **2026-09-25** and reports
-**659 paths / 725 operations** across 86 tagged groups. The current maturity
-snapshot reports **33 GA, 30 Beta, and 10 Preview surfaces** (73 classified
+The current API reference was generated **in-process on 2026-10-21** and reports
+**848 paths / 936 operations** across **103 tagged groups**. No application server
+or deployment was started for schema generation. The current maturity
+snapshot reports **33 GA, 32 Beta, and 10 Preview surfaces** (75 classified
 console surfaces). The dates and scope matter: do not merge historical counts
 with the current snapshot.
 
@@ -78,10 +79,12 @@ unverified; it must not be described as GA.
 
 ### 4.2 Structured vendor and network workflows
 
-The generated API reference snapshot predates or does not enumerate the
-structured network-inventory endpoint family. The dedicated
-[user guide](user-guide/vendor-network-inventory.md) now documents the vendor
-profile and network inventory contracts while the API reference is regenerated.
+The refreshed generated reference now enumerates the structured network-inventory
+family. The dedicated [user guide](user-guide/vendor-network-inventory.md)
+describes its provenance contract. An operation's presence in OpenAPI does not
+mean its execution profile is enabled: expanding inventory discovery remains
+refused until qualified. The [API contract companion](api-reference/execution-and-replay.md)
+adds semantics not visible in the operation table.
 The implementation still requires authorized sources, evidence, tenant scope,
 and reviewer qualification; a schema or endpoint is not proof of complete
 network visibility or vendor assurance.
@@ -139,8 +142,9 @@ When a capability changes:
 3. Update the navigation reference if a route or sidebar item changed.
 4. Update the relevant user guide, admin/runbook, architecture, and enterprise
    documentation, not only the release note.
-5. Add or update evidence under `docs/readiness-evidence/` with a timestamp and
-   explicit PASS/FAIL/SKIP result.
+5. When qualification actually runs, retain a new timestamped PASS/FAIL/SKIP
+   artifact in the approved evidence store. A docs-only refresh must not
+   rewrite historical evidence or imply the deployment gate was rerun.
 6. Run a repository-local Markdown link check and `git diff --check`.
 7. Review claims for tenant scope, provenance, no-secret behavior, unknown
    handling, and production qualification before publishing.
@@ -148,3 +152,43 @@ When a capability changes:
 The documentation index is [docs/README.md](README.md). This status file should
 be updated when a review discovers a new family, source-of-truth conflict, or
 material documentation gap.
+
+## 7. Execution/replay reconciliation — 2026-10-21
+
+The Markdown corpus was searched for queue-authority, SSH receipt, Redis TLS/ACL/
+Sentinel, numeric resume, ring-buffer and recovery claims. Related root/product,
+architecture, API, user/admin, security, bank, enterprise, recovery and Kubernetes
+instructions were reconciled with implementation `e9bfbef7`. Unrelated documents,
+original test artifacts, archived audits, dated benchmark numbers and image
+binaries were not mechanically rewritten or requalified.
+
+| Current documentation | Purpose |
+|---|---|
+| [API contract companion](api-reference/execution-and-replay.md) | Ownership, retry 409, SSH results and opaque replay wire behavior |
+| [Upgrade/recovery](runbooks/execution-and-replay-upgrade.md) | Coordinated producers/workers, legacy pins, RUNNING reconciliation, TLS/CA and cursor resets |
+| [Queue runbook](runbooks/job-queue.md) | Transport recovery versus SQL claim; no unsafe terminal-row reset instructions |
+| [Realtime user guide](user-guide/realtime.md) | Estate pages, error/control events and primary-bound reset behavior |
+| [Network/SSH user guide](user-guide/network-scanning.md) | Durable attempt/result IDs, failed observations and unverified baselines |
+| [Guide 44](bank-environment/44-queued-authority-and-durable-ssh.md) | Implemented queue/SSH design, local tests and remaining authority limits |
+| [Guide 45](bank-environment/45-redis-tls-sentinel-qualification.md) | Verified transport, command readiness, subscriber recovery and destructive disposable lab |
+
+The REST generator's conventions now link to the companion and no longer assert
+that every list is paginated or every export has the same integrity contract.
+The schema was regenerated from the application without startup or network probes.
+
+Recorded implementation evidence remains **1315 passed / 4 skipped**, followed
+by **205 focused passes** after final provenance changes, plus **28 real TLS/
+Sentinel and unit passes**. Counts overlap; this refresh does not rerun those
+suites, certify PostgreSQL parity or change the external production gate.
+Documentation validation passed for all **64 changed Markdown documents**:
+relative file links and heading anchors, exact generated schema/route agreement
+(**848 paths, 936 operations, 103 groups**), idempotent generation, the new SSH
+JSON example against its Pydantic model, edited Bash syntax, generator lint and
+whitespace. No application source or CI workflow changes are part of this
+refresh; the only Python change is the documentation generator template.
+These checks are not new runtime or deployment qualification evidence.
+
+All six BOMs remain distinct: SBOM package/release evidence, NBOM network
+observations, CBOM crypto facts, TechBOM technology relationships, HBOM hardware/
+firmware and VBOM supplier evidence. Neither a durable SSH receipt nor Redis
+replay upgrades missing evidence, changes ownership or supplies bank approval.

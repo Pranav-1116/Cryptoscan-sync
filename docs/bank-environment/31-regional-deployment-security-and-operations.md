@@ -190,3 +190,14 @@ integration. Support access must be time-bound and auditable; source/evidence
 bundles must not be sent to external support by default. International banks
 need follow-the-sun coordination without turning global convenience into global
 unrestricted access.
+
+## Implemented increment versus regional authority
+
+[Guide 44](44-queued-authority-and-durable-ssh.md) now rechecks persisted queue
+ownership/options and current initiating authority before a QUEUED-only claim;
+it does not yet bind every job to a legal entity, execution region, positive
+scope revision or original authenticated request provenance.
+[Guide 45](45-redis-tls-sentinel-qualification.md) supplies verified realtime TLS/
+Sentinel controls and local fault evidence, not multi-region residency or DR
+acceptance. The regional controls and approval evidence proposed above remain
+necessary.

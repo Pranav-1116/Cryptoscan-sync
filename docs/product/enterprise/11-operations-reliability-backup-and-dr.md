@@ -133,3 +133,16 @@ Retain:
 
 The [DR recovery runbook](../../runbooks/dr-recovery.md), backup/restore guide,
 and production checklist provide the repository-specific commands.
+
+## Current recovery constraints
+
+Use the [execution/replay upgrade runbook](../../runbooks/execution-and-replay-upgrade.md).
+Reconcile SQL separately from Redis backups. Legacy unpinned work requires
+approved resubmission; RUNNING recovered deliveries cannot be reclaimed or
+resumed by changing a terminal row. Preserve unknown side effects and old IDs.
+
+Promotion/process restart resets primary-bound production cursors, even if the
+stored data survived. A complete new retained snapshot is not proof of lossless
+asynchronous replication. The [TLS/Sentinel lab](../../bank-environment/45-redis-tls-sentinel-qualification.md)
+is destructive/disposable local qualification, not evidence of your topology's
+RPO/RTO, credential rotation, partitions, restore or failback.

@@ -60,3 +60,20 @@ are the only available release inputs.
 - **Backups:** see `docs/admin-guide/backup-restore.md`; run as a CronJob mounting the same image.
 - **Scaling:** API is stateless (scale freely). Workers: one replica per ~`MAX_CONCURRENT_JOBS`
   concurrent scans; SQLite is dev-only — use Postgres before scaling workers.
+
+## Required execution/replay configuration
+
+The manifests are templates, not a qualified Redis topology. Mount an approved
+CA bundle into the API, set `REDIS_CA_CERTS`, and supply a named non-default ACL
+`rediss://` URL through the secret manager. Optional Sentinel needs three distinct
+TLS discovery endpoints, a service name and dedicated discovery credentials;
+discovered data addresses need matching certificate SANs. Edge ingress TLS does
+not provide Redis TLS.
+
+The Sentinel factory covers realtime/current-run state only. Queue/rate-limit/
+health clients and service-specific ACLs still require review. Coordinate new
+pinning producers/workers and approved legacy-job resubmission. Primary changes
+invalidate production replay cursors rather than promising seamless frozen
+snapshot continuation. See [upgrade/recovery](../docs/runbooks/execution-and-replay-upgrade.md)
+and [qualification boundaries](../docs/bank-environment/45-redis-tls-sentinel-qualification.md).
+No manifest, probe or local lab certifies production security/HA.

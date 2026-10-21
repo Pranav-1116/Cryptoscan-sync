@@ -1,5 +1,19 @@
 # Production qualification runbook
 
+## Current execution/replay prerequisites
+
+Before running customer phases, apply the
+[coordinated producer/worker and replay-client upgrade](runbooks/execution-and-replay-upgrade.md).
+Legacy unpinned work must be resubmitted through admission; a RUNNING recovered
+delivery is not automatically re-executed. Check owned SSH job/result retrieval,
+failed observations and generic-retry 409 behavior.
+
+The [Redis TLS/ACL/Sentinel lab](bank-environment/45-redis-tls-sentinel-qualification.md)
+is a separate destructive disposable exercise, not an automatically satisfied
+phase of this coordinator. Its WAIT-barrier promotion fixture does not qualify
+normal asynchronous acknowledgements, cross-zone DR or all Redis consumers.
+Retain bank-specific TLS/ACL/rotation/load/restore and region evidence separately.
+
 This runbook turns the remaining readiness work into executable phases. It is
 an evidence-collection procedure, not a claim that repository code, mocks, or
 local Docker automatically qualifies a customer deployment.

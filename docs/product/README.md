@@ -124,3 +124,13 @@ inventory, source-of-truth order, stale-count reconciliation, and known gaps,
 see [Documentation status and coverage](../DOCUMENTATION-STATUS.md).
 
 Regenerate the images: `python scripts/gen_docs_diagrams.py` (01–09) and `python scripts/gen_docs_posters.py` (10–21), `python scripts/gen_docs_posters2.py` (22–31) — matplotlib only, no browser or Graphviz.
+
+## Current execution/replay documentation (2026-10-21)
+
+The original diagrams and counts above are dated explanatory snapshots. Current
+queue authority, durable SSH, estate-local cursors and verified Redis/Sentinel
+limits are described in [the API companion](../api-reference/execution-and-replay.md)
+and [operator upgrade runbook](../runbooks/execution-and-replay-upgrade.md).
+Do not infer automatic RUNNING-job restart, numeric/global replay, production
+local fallback or deployed HA certification from an older diagram. All six BOM
+provenance boundaries remain distinct; a replayed event does not refresh evidence.

@@ -1,8 +1,12 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-16:
-**834 paths, 920 operations** across 101 tagged groups.
+Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-21:
+**848 paths, 936 operations** across 103 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
+
+Current [execution, SSH and replay contracts](execution-and-replay.md) describe
+owner-bound cursors, fresh execution authority, durable receipts and explicit refusals.
+This schema snapshot does not certify a deployed production topology.
 
 ## Conventions
 
@@ -15,8 +19,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 - Multi-tenant SaaS: tenant-scoped requests resolve the organization from the session's
   memberships or `X-Tenant-ID`; API keys minted inside a tenant are bound to it. See
   [architecture/multi-tenancy.md](../architecture/multi-tenancy.md).
-- Every list endpoint is paginated and every export carries SHA-256 verification
-  (`/verify` siblings) — see [user-guide/evidence-pack.md](../user-guide/evidence-pack.md).
+- Pagination and export-integrity metadata are endpoint-specific; do not infer them
+  from this operation table. See [evidence packs](../user-guide/evidence-pack.md).
 - Export manifests are signed with compact JWS (`signature_jws`, RFC 7515; legacy
   `signature_hmac` retained).
 
@@ -687,6 +691,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/graph/edges/adopt` | Adopt Edges |
 | `GET` | `/api/v1/graph/edges/discovered` | Discovered Edges |
 | `DELETE` | `/api/v1/graph/edges/{parent_id}/{child_id}` | Delete Dependency Edge |
+| `PATCH` | `/api/v1/graph/edges/{parent_id}/{child_id}/operational-dependency` | Update Operational Dependency |
 | `GET` | `/api/v1/graph/explain` | Graph Explain |
 | `GET` | `/api/v1/graph/export` | Export Graph |
 | `GET` | `/api/v1/graph/hardware-links` | List Hardware Links |
@@ -930,6 +935,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/notifications/catalog` | Get Catalog |
+| `GET` | `/api/v1/notifications/deliveries` | Notification Deliveries |
+| `GET` | `/api/v1/notifications/delivery-summary` | Notification Delivery Summary |
 | `POST` | `/api/v1/notifications/dispatch` | Dispatch Notifications |
 | `GET` | `/api/v1/notifications/feed` | Notification Feed |
 | `GET` | `/api/v1/notifications/routing` | Get Routing |
@@ -1071,6 +1078,17 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/readiness/summary` | Readiness Summary |
+
+## relationship-lifecycle
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/relationship-lifecycle/{kind}/sources/{source_id}/collections` | Collections |
+| `POST` | `/api/v1/relationship-lifecycle/{kind}/sources/{source_id}/collections` | Reconcile |
+| `GET` | `/api/v1/relationship-lifecycle/{kind}/{identifier}` | Detail |
+| `POST` | `/api/v1/relationship-lifecycle/{kind}/{identifier}/claim` | Claim |
+| `GET` | `/api/v1/relationship-lifecycle/{kind}/{identifier}/events` | Events |
+| `POST` | `/api/v1/relationship-lifecycle/{kind}/{identifier}/state` | Change |
 
 ## remediation
 
@@ -1261,6 +1279,18 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `POST` | `/api/v1/sla/evaluate` | Evaluate |
 | `GET` | `/api/v1/sla/policy` | Sla Policy |
+
+## software-supply-chain
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/software-supply-chain/artifacts` | List Artifacts |
+| `POST` | `/api/v1/software-supply-chain/artifacts` | Register Artifact |
+| `POST` | `/api/v1/software-supply-chain/artifacts/measure` | Measure Artifact |
+| `GET` | `/api/v1/software-supply-chain/artifacts/{artifact_id}` | Get Artifact |
+| `POST` | `/api/v1/software-supply-chain/artifacts/{artifact_id}/deployments` | Bind Deployment |
+| `POST` | `/api/v1/software-supply-chain/artifacts/{artifact_id}/sboms` | Bind Sbom |
+| `POST` | `/api/v1/software-supply-chain/sboms` | Store Sbom |
 
 ## sso
 

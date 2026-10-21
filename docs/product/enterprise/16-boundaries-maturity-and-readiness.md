@@ -93,3 +93,16 @@ The correct customer statement is:
 > deployment, operational commitments, external assurance, and customer
 > approvals are specific to the contracted version, topology, scope, and
 > evidence package.
+
+## Latest engineering delta and evidence scope
+
+Implementation `e9bfbef7` adds persisted/fresh queued execution authority, durable
+SSH receipts and verified realtime/current-run Redis TLS/ACL/Sentinel behavior.
+Recorded local runs: 1315 passes/4 skips broad, then 205 focused passes after the
+final provenance increment, plus 28 TLS/Sentinel/unit passes. Counts overlap;
+this documentation refresh does not rerun them or amend external attestations.
+Remaining positive/regional grants, distributed budgets, all-consumer HA and
+production CA/partition/load/restore acceptance must not be marked closed.
+[Guides 44–45](../../bank-environment/44-queued-authority-and-durable-ssh.md) and
+[upgrade/recovery](../../runbooks/execution-and-replay-upgrade.md) define the
+implemented scope, compatibility changes and outstanding work.

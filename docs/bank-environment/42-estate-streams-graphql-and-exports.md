@@ -163,10 +163,18 @@ Important limits:
   not arbitrary ACL/server failure sequences.
 - The present cross-key transaction assumes a standalone/Sentinel-compatible
   deployment. Redis Cluster/hash-slot support is **not qualified**.
-- Production needs correct ACLs for INCR, TYPE, EXISTS, hash reads/writes,
-  WATCH/MULTI/EXEC, stream reads/writes and Pub/Sub, appropriate persistence,
-  capacity/retention controls and restore tests. A PING is not proof of all of
-  those capabilities. Startup readiness does not fully exercise every write ACL.
+- Production needs correct ACLs including **INCRBY** (redis-py's increment wire
+  command), TYPE, EXISTS, hash reads/writes, WATCH/MULTI/EXEC, stream operations,
+  Pub/Sub, scratch DEL and INFO for primary-bound snapshots. The subsequent
+  [TLS/Sentinel delivery](45-redis-tls-sentinel-qualification.md) adds verified
+  transport and actual scratch journal-command readiness. PING is insufficient;
+  startup success still cannot guarantee future runtime permissions, persistence,
+  capacity/retention or restore correctness.
+- Production factory and Sentinel clients bind public epochs to the actual
+  primary process in the watched snapshot validation. Promotion/process restart
+  explicitly resets old cursors, even if data survived. A new complete retained
+  snapshot cannot establish lossless asynchronous replication. The factory does
+  not migrate all queue/rate-limit/health Redis consumers.
 - Pub/Sub health is separate from journal completeness. An unavailable listener
   does not make polling a different source of history.
 

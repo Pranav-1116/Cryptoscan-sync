@@ -8,7 +8,11 @@ supersedes this increment's shared-window replay limitation with per-estate
 retained journals and opaque estate-local cursors. Its wire compatibility changes
 apply to current SSE/WS clients. The original implementation/results below remain
 a historical record; [guide 43](43-a01-a02-qualification-and-open-blockers.md)
-records current qualification and open blockers.
+records the historical qualification ledger. Current queue/SSH and Redis
+increments are [Guide 44](44-queued-authority-and-durable-ssh.md) and
+[Guide 45](45-redis-tls-sentinel-qualification.md); production primary changes
+explicitly invalidate old replay cursors rather than guaranteeing seamless
+continuation of a frozen snapshot.
 
 ## Status — 2026-10-21
 

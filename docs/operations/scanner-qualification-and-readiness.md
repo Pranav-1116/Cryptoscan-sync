@@ -52,3 +52,18 @@ unresolved relationship records. The existing source import/call graph,
 shared key references, business-system map, weak parameters, and migration
 waves remain separate evidence sections. Bounded worker/API projections expose
 truncation and unresolved counts instead of silently dropping relationships.
+
+## Additional real Redis evidence — separate from the protocol double
+
+The deterministic `realtime_replica_drill.py` above remains a simulation. The
+separate [TLS/ACL/Sentinel harness](../bank-environment/45-redis-tls-sentinel-qualification.md)
+uses six actual disposable Redis processes and checks verified transport, denied
+ACLs, runtime write refusal, planned promotion, primary shutdown and explicit
+old-cursor reset. Its recorded run is 28 passes (20 units + 8 real-server cases),
+not a production/HA certification. Both destructive opt-ins are required; never
+point it at customer Redis.
+
+The SQL queue/SSH contracts use real auth/SQLite and controlled collectors, not
+bank packets. Historical broad/focused results overlap and are not rerun by this
+documentation refresh. Read the [operator upgrade](../runbooks/execution-and-replay-upgrade.md)
+for legacy pins, typed monitor origin and non-restartable RUNNING deliveries.

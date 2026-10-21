@@ -203,3 +203,13 @@ context and uncertain/potential paths separately.
 A verified remediation needs a new permitted observation for the changed target,
 a supported exact identity and compatible scope—not just a closed ticket, new
 vendor questionnaire or automatically recomputed historical answer.
+
+## Subsequent bounded receipt delivery
+
+The enterprise completeness receipt proposed above remains broader than current
+implementation. Guides 35–39 add bounded network lifecycle/phase records, and
+[Guide 44](44-queued-authority-and-durable-ssh.md) adds SSH jobs/results and
+persisted queue authority. A COMPLETED SSH receipt can contain failed network
+observations. It does not establish positive regional scope grants, complete
+enterprise collection or successful observation of all assets. All six BOM
+provenance distinctions above remain unchanged.

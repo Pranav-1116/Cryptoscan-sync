@@ -192,8 +192,9 @@ for TLS/IPsec/explicit-resolver DNSSEC. The subsequent
 [bounded TCP monitor discovery](39-bounded-tcp-monitor-discovery.md) qualifies
 only explicit IPv4 CIDR/port sweeps without dynamic follow-up; shared range grants
 are now exact estate. Expanding scope/plugins remain refused. Also pending are
-other active network profiles (SSH and inventory plugins), retry/reaper behavior
-and non-API execution paths. Current direct-host role/grant policy, region/legal-
+inventory plugins, full retry/reaper/side-effect recovery and remaining non-API
+execution profiles. [SSH durable receipts and queued authority](44-queued-authority-and-durable-ssh.md)
+are now implemented locally; that does not qualify all live devices or protocols. Current direct-host role/grant policy, region/legal-
 entity restrictions, platform-inventory sharing and export boundaries remain
 separate A02/A04/A13 obligations. Do not infer their closure from these tests.
 

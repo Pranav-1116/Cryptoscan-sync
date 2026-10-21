@@ -11,7 +11,10 @@ _Figure 4 — one scan job from trigger to verifiable result: clone, language de
 
 ## 0. Trigger
 
-Four things can start a scan; all of them end in the same queue.
+Several sources can request repository work through the job producer below.
+Synchronous specialized collections, including SSH, use durable receipts rather
+than this repository queue. The original 2026-09-23 trace is historical; current
+execution/recovery semantics are clarified below.
 
 | Trigger | Path |
 |---|---|
@@ -27,14 +30,17 @@ curl -s -X POST http://127.0.0.1:8010/api/v1/scans/trigger \
 # → {"job_id":"b5e5c286-…","status":"QUEUED"}
 ```
 
-What happened: a `scan_jobs` row was inserted with `status=QUEUED`, and the
-job id was `LPUSH`ed to `cryptoscan:jobs:queue` in Redis. A `job.queued`
-event was emitted.
+What happens now: a `scan_jobs` row with persisted ownership/options and pinned
+initiating authority is committed QUEUED, then its descriptor is published to
+Redis (`RPUSH` FIFO where configured). DB commit and Redis publication are not
+one distributed transaction; the reaper reconciles eligible missing deliveries.
 
 ## 1–14. The pipeline
 
-The worker `BRPOP`s the queue, creates a workspace under `WORKSPACE_BASE_PATH`,
-and runs `PipelineRunner.run(job_id)`. After each stage it writes
+The worker consumes the descriptor (BLMOVE/processing-list semantics on supported
+Redis), reconciles it with SQL before scope selection, checks policy/current
+pinned authority and commits a QUEUED-only claim. Only then does it create the
+workspace and run the pipeline. After each stage it writes
 `scan_jobs.progress` (stage list, percent, a log line) and emits a `stage.*`
 event, so `GET /api/v1/jobs/{id}` and the Activity page show live progress.
 
@@ -111,8 +117,9 @@ verified `PASS` — and the evidence directory records it per cycle.
 | A stage raises | job → `FAILED` with `error_message="Pipeline failed at stage <name>: …"`; evidence already loaded stays and still verifies; GitHub status "failure" if configured | `POST /api/v1/jobs/{id}/retry` creates a **new** job for the same input |
 | Repository unreachable | fails at `clone` with the reason | fix credentials / URL, retry |
 | Parser error in one file | recorded as a `parse_error` finding with the file; the scan continues (0 parse errors on the 10k-file benchmark) | — |
-| Redis unavailable at trigger time | trigger returns 503; no `scan_jobs` row is left dangling | retry the trigger |
-| **Worker process dies mid-run** | Redis processing-list/lease recovery requeues or dead-letters the job; the DB reaper handles stale rows | **implemented, target-host qualification still required** — run `scripts/queue_kill9_drill.py` against real Redis and attach the artifact to the root readiness gate |
+| SQL commit fails at trigger time | No job may be published/reported accepted | Fix storage; resubmit through admission |
+| Redis publication fails after SQL commit | Commit/publication are not atomic; a persisted QUEUED job can remain for reconciliation | Inspect its ID/reaper state before creating another attempt |
+| **Worker process dies mid-run** | Lease recovery can republish delivery, but an already RUNNING SQL job cannot pass the QUEUED-only claim; stale jobs need reaper/operator reconciliation | Investigate unknown side effects before an approved new attempt; the kill drill proves transport, not executor restart |
 | Workspace cleanup | one directory per job under `WORKSPACE_BASE_PATH`, removed after the job | a path-resolution bug leaked every workspace until 2026-09-23; fixed with regression tests |
 
 ## Other job kinds

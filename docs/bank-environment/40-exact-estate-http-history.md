@@ -7,8 +7,11 @@
 extends the boundary to sockets; [guide 42](42-estate-streams-graphql-and-exports.md)
 adds reviewed SSE/GraphQL/export isolation and retained per-estate replay.
 [Guide 43](43-a01-a02-qualification-and-open-blockers.md) records the broader
-qualification evidence and remaining blockers. The results below describe the
-original HTTP increment, not a production-wide certification.
+historical qualification evidence. [Guide 44](44-queued-authority-and-durable-ssh.md)
+subsequently closes the demonstrated queue controls and adds SSH receipts;
+[Guide 45](45-redis-tls-sentinel-qualification.md) adds verified TLS/Sentinel local
+qualification. The results below describe the original HTTP increment, not a
+production-wide certification.
 
 ## Subsequent socket increment
 

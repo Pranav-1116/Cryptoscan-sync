@@ -120,9 +120,9 @@ re-hash it.
 Every meaningful operation calls `emit_platform_event(kind, payload)`:
 
 1. **Persist** — a `monitor_events` row (durable; this is the source of truth
-   for the Activity page and for replay).
+   as source history; unified replay is a separate retained estate journal).
 2. **Publish** — on the in-process `EventBus` (thread-safe, per-subscriber
-   queues with overflow → `events.dropped` advice to reconnect).
+   queues as low-latency wakeups; ordered journal reads recover missed wakeups).
 3. **Cross-process** — a **DB tailer** in the api process polls
    `monitor_events` for rows written by the worker and monitor processes and
    republishes them on the api's bus.
@@ -217,3 +217,20 @@ t10  monitor: nightly schedule run-due → same export → export_runs row + eve
 ```
 
 Next: [5. A scan, step by step](05-scan-walkthrough.md)
+
+## Authority, receipts and retained replay checkpoints
+
+Before the queued flow reaches any collector, a persisted descriptor match
+selects the estate; current policy and pinned initiating authority are checked,
+then a versioned QUEUED-only claim commits. Queue JSON is not ownership authority.
+Repository monitor origin is typed; inline fallback does not skip the boundary.
+
+SSH's committed RUNNING job precedes packets. Its findings/telemetry/admission
+ledger and completion commit together. A recorded failed observation is not a
+successful connection; a storage error cannot become durable success.
+
+Public unified events use estate-local IDs and opaque cursors. Redis Streams,
+not Pub/Sub or synthetic DB backlog, are replay authority when configured.
+Promotion/process restart resets production primary-bound epochs. See
+[API semantics](../api-reference/execution-and-replay.md) and
+[recovery](../runbooks/execution-and-replay-upgrade.md).

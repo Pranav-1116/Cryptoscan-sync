@@ -68,3 +68,24 @@ Use `--force` only for forensics on partially damaged files.
   evidence is immutable per scan, so older evidence is never lost retroactively).
 - **RTO:** minutes for SQLite (file swap + restart); ~15 min for Postgres
   (restore + migration check `alembic -c migrations/alembic.ini current`).
+
+## Redis, queue authority and SSH receipt reconciliation
+
+The database backup above does **not** back up Redis journals, queues or current
+run state. Retain them through a separate approved persistence/backup procedure;
+record per-estate retention and acknowledgement ambiguity. DB receipts/results
+remain authoritative for collection outcomes; an event snapshot is not a backup
+of the whole evidence database.
+
+After restore, coordinate producers/workers and reconcile QUEUED/RUNNING/terminal
+jobs before resuming. Unpinned legacy jobs and recovered RUNNING deliveries do not
+become executable by resetting a status or guessing an enqueue pin. An eligible
+retry creates a new admitted attempt; synchronous SSH/network work returns 409
+at generic retry and must be resubmitted through its original route.
+
+Production factory replay epochs bind to the actual Redis primary process.
+Process restart/promotion requires explicit old-cursor resynchronization, even
+with restored data. Never report a complete new retained snapshot as proof that
+all prior acknowledged writes survived. Preserve immutable historical ownership
+and reconcile owned SSH job/result IDs and failed observations separately.
+Follow [upgrade/recovery](../runbooks/execution-and-replay-upgrade.md).
