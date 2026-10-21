@@ -92,6 +92,12 @@ PERMISSION_MATRIX: dict[str, frozenset[str]] = {
     "audit.read": frozenset({"superadmin", "ciso", "auditor"}),
     "platform.configure": frozenset({"superadmin"}),
     "monitor.manage": frozenset({"superadmin", "ciso"}),
+    # Evidence assurance is metadata-only; trust changes and independent
+    # review require human sessions in addition to these durable role checks.
+    "assurance.manage": frozenset({"superadmin", "ciso", "security_analyst"}),
+    "assurance.review": frozenset({"superadmin", "ciso", "auditor", "business_owner"}),
+    "assurance.raw": frozenset({"superadmin", "ciso"}),
+    "assurance.trust": frozenset({"superadmin", "ciso"}),
     # scanning
     "scan.trigger": frozenset({"superadmin", "ciso", "security_analyst", "developer", "scanner"}),
     "scan.manage": frozenset({"superadmin", "ciso", "security_analyst"}),

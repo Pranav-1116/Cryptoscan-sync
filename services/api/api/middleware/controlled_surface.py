@@ -29,6 +29,7 @@ class ControlledSurfaceMiddleware:
         tail = path[len(self.prefix):] if path.startswith(self.prefix + "/") else None
         allowed = tail is not None and (
             (tail.startswith("/auth/") and not tail.startswith("/auth/audit")) or tail.startswith("/execution-controls/")
+            or tail.startswith("/assurance/") and method in {"GET", "POST", "PUT"}
             or tail == "/scans/trigger" and method == "POST"
             or method in {"GET", "HEAD"} and (
                 re.fullmatch(r"/jobs(?:/[0-9a-f-]{36}(?:/logs)?)?", tail)

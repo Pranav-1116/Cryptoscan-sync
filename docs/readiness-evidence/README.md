@@ -50,3 +50,13 @@ record migration 0102, approvals/provenance, SQL budgets/fairness, stop, hostile
 local staging and unknown/outbox recovery. **This is not a bank acceptance or a
 new unified-gate PASS**: only local source is supported in the controlled profile;
 other consumers and deployment qualification remain explicitly incomplete.
+
+
+## Evidence assurance 3.1–3.7 engineering record (2026-10-21)
+
+[Scoped assurance tests and open acceptance](assurance-engineering-2026-10-21.md)
+cover migration 0103, partial SSH receipts, expected-register denominators,
+reviewed six-BOM paths, immutable/byte-bound accuracy review and regressions,
+purpose-aware assessments, verified Redis consumers and signed supplier offline
+quarantine/profile exercises. **No external closure or bank-readiness PASS is
+issued.** Read the [upgrade runbook](../runbooks/evidence-assurance-upgrade.md).

@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-21:
-**857 paths, 947 operations** across 104 tagged groups.
+**891 paths, 982 operations** across 105 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 Current [execution, SSH and replay contracts](execution-and-replay.md) describe
@@ -94,6 +94,46 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/assets` | List Assets |
 | `GET` | `/api/v1/assets/libraries/identity` | Library Identities |
 | `GET` | `/api/v1/assets/{asset_id}` | Get Asset |
+
+## assurance
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/assurance/adapters` | Create Adapter |
+| `GET` | `/api/v1/assurance/adapters/{identifier}` | Adapter Status |
+| `PUT` | `/api/v1/assurance/adapters/{identifier}` | Revise Adapter |
+| `POST` | `/api/v1/assurance/adapters/{identifier}/qualifications` | Qualify Adapter |
+| `GET` | `/api/v1/assurance/adapters/{identifier}/supplier-evidence/{evidence_id}/observations` | Supplier Observations |
+| `GET` | `/api/v1/assurance/applications/{identifier}/trace` | Application Trace |
+| `GET` | `/api/v1/assurance/collections/{identifier}` | Collection |
+| `POST` | `/api/v1/assurance/evidence-blobs` | Evidence Blob |
+| `GET` | `/api/v1/assurance/evidence-blobs/{identifier}/content` | Blob Content |
+| `POST` | `/api/v1/assurance/findings/{identifier}/assessments` | Assessment |
+| `GET` | `/api/v1/assurance/records` | Records |
+| `GET` | `/api/v1/assurance/records/{kind}/{identifier}` | History |
+| `POST` | `/api/v1/assurance/redis-measurements/{identifier}/review` | Review Redis Measurement |
+| `POST` | `/api/v1/assurance/redis-objectives` | Redis Objectives |
+| `PUT` | `/api/v1/assurance/redis-objectives/{identifier}` | Revise Redis Objectives |
+| `POST` | `/api/v1/assurance/redis-objectives/{identifier}/measurements` | Redis Measurement |
+| `GET` | `/api/v1/assurance/redis-objectives/{identifier}/qualification` | Redis Qualification |
+| `POST` | `/api/v1/assurance/registers` | Create Register |
+| `PUT` | `/api/v1/assurance/registers/{identifier}` | Revise Register |
+| `GET` | `/api/v1/assurance/registers/{identifier}/coverage` | Coverage Report |
+| `PUT` | `/api/v1/assurance/registers/{identifier}/observations/{target_id}` | Coverage Observation |
+| `POST` | `/api/v1/assurance/regressions/{identifier}/results` | Record Regression Result |
+| `POST` | `/api/v1/assurance/relationships` | Propose Relationship |
+| `POST` | `/api/v1/assurance/relationships/{identifier}/approve` | Approve Relationship |
+| `POST` | `/api/v1/assurance/samples` | Propose Sample |
+| `POST` | `/api/v1/assurance/samples/{identifier}/approve` | Approve Sample |
+| `POST` | `/api/v1/assurance/samples/{identifier}/regressions` | Seed Regressions |
+| `POST` | `/api/v1/assurance/samples/{identifier}/repeat` | Repeat Sample |
+| `POST` | `/api/v1/assurance/samples/{identifier}/reviews` | Publish Review |
+| `GET` | `/api/v1/assurance/samples/{identifier}/workbook` | Workbook |
+| `POST` | `/api/v1/assurance/signers` | Create Signer |
+| `PUT` | `/api/v1/assurance/signers/{identifier}` | Revise Signer |
+| `POST` | `/api/v1/assurance/supplier-evidence` | Supplier Upload |
+| `POST` | `/api/v1/assurance/supplier-evidence/{identifier}/approve` | Approve Supplier |
+| `POST` | `/api/v1/assurance/supplier-evidence/{identifier}/reject` | Reject Supplier |
 
 ## audit-export
 

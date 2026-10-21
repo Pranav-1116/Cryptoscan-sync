@@ -481,6 +481,8 @@ def scan_ssh_hosts(
         profile={**body.model_dump(exclude={"known_host_keys"}), "baseline_source": "CALLER_SUPPLIED_UNVERIFIED"},
     ) as run:
         try:
+            run.plan([(item, phase) for item in endpoints
+                      for phase in (["host_keys", "kex"] if body.include_kex else ["host_keys"])])
             meter_network(db, endpoints, detail="admitted SSH host-key/KEX collection attempt")
             baselines = body.known_host_keys or {}
             findings = []
@@ -489,11 +491,16 @@ def scan_ssh_hosts(
             for item in endpoints:
                 host, port = split_ssh_target(item)
                 endpoint = f"{host}:{port}"
-                phases.append({"phase": "host_keys", "admission": admit_network([item], protocol="ssh")})
-                finding = scan_ssh_host_keys(host, port, timeout=body.timeout, baseline=baselines.get(endpoint))
+                finding, decision = run.collect_phase(
+                    item, "host_keys",
+                    lambda: scan_ssh_host_keys(host, port, timeout=body.timeout, baseline=baselines.get(endpoint)),
+                    lambda: admit_network([item], protocol="ssh"))
+                phases.append({"endpoint": item, "phase": "host_keys", "admission": decision})
                 if body.include_kex:
-                    phases.append({"phase": "kex", "admission": admit_network([item], protocol="ssh")})
-                    offer = probe_ssh_kex_offer(host, port, timeout=body.timeout, strict=body.strict_kex)
+                    offer, decision = run.collect_phase(
+                        item, "kex", lambda: probe_ssh_kex_offer(host, port, timeout=body.timeout, strict=body.strict_kex),
+                        lambda: admit_network([item], protocol="ssh"))
+                    phases.append({"endpoint": item, "phase": "kex", "admission": decision})
                     finding["kex_offer"] = offer
                     merged = list(finding.get("policy_issues") or []) + list(offer.get("policy_issues") or [])
                     finding["policy_issues"] = sorted(set(merged))
@@ -511,6 +518,7 @@ def scan_ssh_hosts(
                     "known_host_keys": updated,
                     "ssh_probe_telemetry": telemetry,
                     "probe_telemetry": telemetry,
+                    "collection_conclusions": run.conclusions(),
                     "admission": admission,
                 },
                 run,

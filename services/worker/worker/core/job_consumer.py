@@ -239,18 +239,15 @@ class JobConsumer:
         return False
 
     def _connect_redis(self) -> None:
-        if not self.redis_url:
-            self._handle_redis_unavailable("REDIS_URL not configured", phase="startup")
-            return
         try:
-            import redis
-
-            client = redis.from_url(
-                self.redis_url,
-                decode_responses=True,
-                socket_connect_timeout=3,
-                socket_timeout=self.poll_interval_seconds + 2,
-            )
+            from worker.config.settings import get_settings
+            from shared_models.redis_connection import connection_settings, verified_redis_client
+            config = connection_settings(get_settings(), "queue", url=self.redis_url)
+            if not config.REDIS_URL:
+                self._handle_redis_unavailable("REDIS_URL not configured", phase="startup")
+                return
+            client = verified_redis_client(config, decode_responses=True,
+                                           socket_timeout=self.poll_interval_seconds + 2)
             client.ping()
             self.redis_client = client
             logger.info("redis_connected", extra={"queue": self.queue_name})

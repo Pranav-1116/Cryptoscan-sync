@@ -138,6 +138,9 @@ def score_workbook(wb: dict[str, Any], *, reviewer: str | None = None, notes: st
 class FieldAccuracy(BaseModel):
     """Pooled field number across every published triage (what BANK-READINESS cites)."""
 
+    measurement_basis: str = "LEGACY_SUBMITTED_TRIAGE_NOT_APPROVED_FROZEN_SAMPLE"
+    approved_customer_sample: bool = False
+    global_accuracy_claim: bool = False
     triages: int = 0
     repos: int = 0
     reviewers: int = 0

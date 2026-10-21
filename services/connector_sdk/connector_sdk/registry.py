@@ -46,7 +46,9 @@ def available(scope: str | None = None) -> list[dict[str, Any]]:
     for key, cls in _REGISTRY.items():
         if scope and scope not in key:
             continue
-        desc = cls().describe()
+        desc = {**cls().describe(), "support_status": "REGISTERED_NOT_QUALIFIED"}
+        # Discovery cannot self-issue exercised support, including subclasses
+        # overriding describe(). Estate qualification is a separate receipt.
         ident = (desc["kind"], desc["method"])
         if ident in seen:
             continue

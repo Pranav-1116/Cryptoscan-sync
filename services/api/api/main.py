@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -26,6 +25,7 @@ from api.routers import (
     accuracy,
     software_supply_chain,
     execution_controls,
+    assurance,
     relationship_lifecycle,
     agility,
     analytics,
@@ -150,16 +150,16 @@ def _under_test() -> bool:
 
 def _shared_rate_limit_backend():
     """Redis client for cluster-wide rate limits; None (in-process) when unset/down."""
-    url = os.environ.get("REDIS_URL", "")
-    if not url:
-        return None
     try:
-        import redis
-
-        return redis.Redis.from_url(url, socket_timeout=1, socket_connect_timeout=1)
+        from api.config.settings import get_settings
+        from shared_models.redis_connection import connection_settings, verified_redis_client
+        config = connection_settings(get_settings(), "rate_limit")
+        if not config.REDIS_URL:
+            return None
+        return verified_redis_client(config, socket_timeout=1)
     except Exception as exc:
         logger.exception("shared_rate_limit_backend_unavailable", extra={"error_type": type(exc).__name__})
-        return None
+        return None  # production middleware fails closed, never local quotas
 
 
 def create_app(settings: APISettings | None = None) -> FastAPI:
@@ -255,7 +255,9 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                     from api.events.bus import get_event_bus
                     from api.events.redis_sync import start_redis_federation
 
-                    rclient = realtime_redis_client(settings)
+                    from shared_models.redis_connection import connection_settings, verified_redis_client, connection_fingerprint
+                    realtime_config = connection_settings(settings, "realtime")
+                    rclient = realtime_redis_client(realtime_config)
                     redis_sync = start_redis_federation(rclient, get_event_bus(), required=settings.is_production)
                     if redis_sync is None or not getattr(redis_sync, "ready", False):
                         if settings.is_production:
@@ -268,8 +270,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                     from api.live_scan.current_run import get_current_run_store
                     from api.live_scan.orchestrator import get_scan_orchestrator
 
+                    current_config = connection_settings(settings, "current_run")
+                    current_client = rclient if connection_fingerprint(current_config) == connection_fingerprint(realtime_config) else verified_redis_client(current_config)
                     get_scan_orchestrator().set_status_store(
-                        get_current_run_store(settings.REDIS_URL, required=settings.is_production, client=rclient)
+                        get_current_run_store(current_config.REDIS_URL, required=settings.is_production, client=current_client)
                     )
             except Exception as exc:  # noqa: BLE001 — production must not run realtime-degraded
                 if settings.is_production:
@@ -315,6 +319,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
     app.add_middleware(ControlledSurfaceMiddleware, production=settings.is_production)
+    from api.middleware.assurance_body_limit import AssuranceBodyLimit
+    app.add_middleware(AssuranceBodyLimit, prefix="/api/v1/assurance/")
 
     origins = settings.cors_origin_list
     app.add_middleware(
@@ -432,6 +438,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     prefix = "/api/v1"
     app.include_router(auth.router, prefix=prefix)
     app.include_router(execution_controls.router, prefix=prefix)
+    app.include_router(assurance.router, prefix=prefix)
     app.include_router(site_security.router, prefix=prefix)
     app.include_router(chatops.router, prefix=prefix)
     app.include_router(facts.router, prefix=prefix)

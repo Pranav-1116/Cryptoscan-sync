@@ -926,11 +926,14 @@ def control_health(user: str = Depends(get_current_user), db: Session = Depends(
     try:
         from api.config.settings import get_settings
 
-        url = (get_settings().REDIS_URL or "").strip()
-        if url:
-            import redis as redis_client
-
-            redis_client.Redis.from_url(url, socket_connect_timeout=2).ping()
+        from shared_models.redis_connection import connection_settings, verified_redis_client
+        config = connection_settings(get_settings(), "health")
+        if config.REDIS_URL:
+            client = verified_redis_client(config)
+            try:
+                client.ping()
+            finally:
+                client.close()
         else:
             redis_up = None  # not configured (SQLite/inline mode)
     except Exception:  # noqa: BLE001

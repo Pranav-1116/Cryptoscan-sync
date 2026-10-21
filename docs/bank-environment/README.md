@@ -255,3 +255,17 @@ refused pending their own adapters/review. Earlier guides describe legacy/develo
 contracts, not an instruction to bypass this new production boundary. Deployment
 qualification, physical residency, full ownership review and hard stop/recovery
 SLO evidence remain open.
+
+## Evidence assurance implementation — authoritative sections 3.1–3.7
+
+This sequence implements the separately supplied seven-item scope; it does not
+remap the earlier A08–A15 proposal into seven items or declare external acceptance.
+Start with the [upgrade runbook](../runbooks/evidence-assurance-upgrade.md).
+
+- [46 — Partial-progress evidence](46-partial-progress-evidence.md)
+- [47 — Redis consumers and recovery evidence](47-redis-consumer-and-recovery-evidence.md)
+- [48 — Expected-estate coverage ledger](48-expected-estate-coverage-ledger.md)
+- [49 — Six-BOM evidence paths](49-six-bom-evidence-paths.md)
+- [50 — Customer-reviewed accuracy workflow](50-customer-reviewed-accuracy-workflow.md)
+- [51 — Purpose/applicability assessments](51-purpose-and-applicability-assessments.md)
+- [52 — Qualified adapters and supplier quarantine](52-qualified-adapters-and-supplier-quarantine.md)

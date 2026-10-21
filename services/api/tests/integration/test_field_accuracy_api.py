@@ -31,6 +31,9 @@ def _make_app():
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
+    from db.models.tenant import Tenant
+    session.add(Tenant(id="review-bank", name="Synthetic review bank", slug="review-bank"))
+    session.commit()
     app = create_app()
     app.dependency_overrides[get_db_session] = lambda: (yield session)
     return app, session
@@ -43,12 +46,16 @@ def _act_as(client, session, username: str, roles: str):
     if UserRepository(session).get_by_username(username) is None:
         UserRepository(session).create_user(username, "x", roles=[roles])
         session.commit()
+    from db.models.tenant import TenantMembership
+    if session.query(TenantMembership).filter_by(tenant_id="review-bank", username=username).first() is None:
+        session.add(TenantMembership(tenant_id="review-bank", username=username, tenant_role="member"))
+        session.commit()
     client.headers["Authorization"] = f"Bearer {SessionManager().create_session(username, roles=[roles])}"
 
 
 def _scan(session, sid: str, target: str) -> Scan:
     now = datetime.now(timezone.utc)
-    s = Scan(id=sid, status="COMPLETED", target_location=target, target_type="GIT_REPOSITORY", scanner_id="static", scanner_version="1.4.0",
+    s = Scan(id=sid, tenant_id="review-bank", status="COMPLETED", target_location=target, target_type="GIT_REPOSITORY", scanner_id="static", scanner_version="1.4.0",
              operator="pilot", scan_start=now, scan_end=now, statistics={"files_scanned": 10}, manifest_hash="h" * 64)
     session.add(s)
     session.commit()
@@ -104,6 +111,7 @@ async def test_field_accuracy_loop():
         got = (await client.get("/api/v1/scans/scan-a/triage")).json()
         assert got["reviewer"] == "bank-a crypto CoE" and got["fp_examples"][0]["note"] == "log checksum"
         agg = (await client.get("/api/v1/accuracy/field")).json()
+        assert agg["approved_customer_sample"] is False and agg["global_accuracy_claim"] is False
         assert agg["status"] == "MEASURED" and agg["triages"] == 2 and agg["repos"] == 2 and agg["files_scanned"] == 160
         assert (agg["tp"], agg["fp"], agg["fn"]) == (32, 2, 3)
         assert agg["precision"] == round(32 / 34, 4) and agg["recall"] == round(32 / 35, 4)
@@ -113,4 +121,6 @@ async def test_field_accuracy_loop():
             assert agg["gap"] == round(agg["corpus_f1"] - agg["f1"], 4)
         only = (await client.get("/api/v1/accuracy/field", params={"repo": "bank-a/core"})).json()
         assert only["triages"] == 1 and only["tp"] == 30
+    from db.models.assurance import AssuranceRevision
+    assert session.query(AssuranceRevision).filter_by(kind="legacy_triage").count() == 2
     session.close()

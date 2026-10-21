@@ -155,6 +155,8 @@ class Scanner:
                 commit_message=git_meta.commit_message,
             )
 
+        from scanner.core.file_receipts import capture, finish
+        byte_identity_before = capture(path, source_files)
         constant_index = ConstantIndex.build(source_files)
 
         for source_file, file_findings, error in _scan_files(source_files, path):
@@ -246,6 +248,8 @@ class Scanner:
             parse_errors=parse_errors,
             status="COMPLETED",
         )
+        result.statistics.file_observation_receipts = finish(path, source_files, byte_identity_before, scanned_paths)
+        result.statistics.file_receipts_complete = len(result.statistics.file_observation_receipts) == len(source_files)
         result.statistics.files_scanned = len(source_files)
         result.statistics.files_with_errors = len(parse_errors)
         result.statistics.resolved_cross_file = resolved_cross_file

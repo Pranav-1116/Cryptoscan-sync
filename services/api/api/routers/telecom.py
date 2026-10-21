@@ -86,19 +86,12 @@ def _is_production() -> bool:
 def _redis_snapshot_client():
     """Return the shared realtime store in production, never a process-local
     cache. Development keeps the file fallback for offline scanner work."""
-    import os
-    try:
-        from api.config.settings import get_settings
-
-        url = (get_settings().REDIS_URL or "").strip()
-    except Exception:
-        url = os.environ.get("REDIS_URL", "").strip()
-    if not url:
+    from api.config.settings import get_settings
+    from shared_models.redis_connection import connection_settings, verified_redis_client
+    config = connection_settings(get_settings(), "telecom")
+    if not config.REDIS_URL:
         return None
-    import redis
-
-    client = redis.Redis.from_url(url, socket_timeout=2, socket_connect_timeout=2,
-                                  decode_responses=True)
+    client = verified_redis_client(config, decode_responses=True)
     client.ping()
     return client
 

@@ -219,3 +219,4 @@ from db.models.relationship_lifecycle import (  # noqa: E402,F401
 from db.models.execution_control import (  # noqa: E402,F401
     EstateExecutionPolicy, ScanApproval, ExecutionBudget, ExecutionAttempt, ExecutionOutbox, ExecutionControlEvent,
 )
+from db.models.assurance import AssuranceRevision, AssuranceBlob, CollectionPhaseReceipt  # noqa: E402,F401

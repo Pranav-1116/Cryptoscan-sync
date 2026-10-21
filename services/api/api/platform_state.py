@@ -52,24 +52,25 @@ def _production() -> bool:
 
 def _client():
     global _REDIS, _REDIS_URL
-    _, configured_url = _settings_values()
-    url = configured_url.strip()
-    if not url:
+    from api.config.settings import get_settings
+    from shared_models.redis_connection import connection_settings, connection_fingerprint, verified_redis_client
+    config = connection_settings(get_settings(), "platform_state")
+    identity = connection_fingerprint(config)
+    if not config.REDIS_URL:
         if _production():
             raise RuntimeError("REDIS_URL is required for platform state")
         return None
-    if _REDIS is not None and _REDIS_URL == url:
+    if _REDIS is not None and _REDIS_URL == identity:
         return _REDIS
     try:
-        import redis
-
-        client = redis.Redis.from_url(
-            url, socket_timeout=2, socket_connect_timeout=2, decode_responses=True
-        )
+        client = verified_redis_client(config, decode_responses=True)
         client.ping()
-        _REDIS, _REDIS_URL = client, url
+        previous = _REDIS
+        _REDIS, _REDIS_URL = client, identity
+        if previous is not None:
+            previous.close()
         return client
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         if _production():
             raise RuntimeError("Redis platform state is unavailable") from exc
         return None

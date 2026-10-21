@@ -52,11 +52,8 @@ def dependency_report() -> dict:
         return health.get("dialect", "database")
 
     def _redis():
-        import redis
-
-        client = redis.Redis.from_url(
-            settings.REDIS_URL, socket_timeout=1, socket_connect_timeout=1
-        )
+        from shared_models.redis_connection import connection_settings, verified_redis_client
+        client = verified_redis_client(connection_settings(settings, "health"), socket_timeout=1)
         try:
             client.ping()
             return "pong"
@@ -76,7 +73,8 @@ def dependency_report() -> dict:
         driver.verify_connectivity()
         return "connected"
 
-    redis_configured = bool((getattr(settings, "REDIS_URL", "") or "").strip())
+    from shared_models.redis_connection import connection_settings
+    redis_configured = bool(connection_settings(settings, "health").REDIS_URL.strip())
     redis_required = bool(getattr(settings, "is_production", False))
     checks = [
         _probe("database", True, _db),

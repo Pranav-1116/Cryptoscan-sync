@@ -56,7 +56,9 @@ class BaseConnector(ABC):
         return [_as_observation(o) for o in observations]
 
     def describe(self) -> dict[str, Any]:
-        return {"kind": self.kind, "method": self.method, "mode": self.mode, "name": self.name}
+        return {"kind": self.kind, "method": self.method, "mode": self.mode, "name": self.name,
+                "support_status": "REGISTERED_NOT_QUALIFIED",
+                "note": "Registry presence is implementation discovery, not exercised vendor/product/version/profile support."}
 
 
 def _as_observation(o: Any) -> Observation:

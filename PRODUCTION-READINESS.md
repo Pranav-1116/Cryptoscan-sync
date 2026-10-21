@@ -11,6 +11,20 @@ qualification. A deployment must not be described as production-ready until
 the unified gate contains retained, attributable evidence for every required
 category.
 
+## Evidence assurance increment — 3.1–3.7, not external closure
+
+Migration `0103` adds partial phase evidence and append-only selected-estate
+assurance/quarantine workflows. Redis consumers share verified routing; target
+coverage, reviewed six-BOM assertions, frozen customer-review/held-out/regression
+receipts and purpose/applicability assessments have explicit code contracts.
+The only newly exercised adapter lane is bounded offline JSON, **not live vendor
+support**. Actual customer samples/review, whole-bank inventory completeness,
+runtime/deployment/firmware/supplier truth, regional encrypted/quota-controlled
+storage and deployed Redis fault/recovery objectives remain external acceptance.
+See the [upgrade/runbook](docs/runbooks/evidence-assurance-upgrade.md) and
+[scoped evidence/limits](docs/readiness-evidence/assurance-engineering-2026-10-21.md).
+This does not replace the unified readiness or external closure gate below.
+
 ## Controlled-execution increment — not full-product approval
 
 Migration `0102` introduces versioned positive approvals, typed original HTTP

@@ -126,8 +126,31 @@ class DurableScanRun:
         progress = self._job.progress if isinstance(self._job.progress, dict) else {}
         return dict(progress)
 
+    def plan(self, items):
+        from api.security.partial_progress import plan
+        plan(self, items)
+
+    def collect_phase(self, endpoint, phase, operation, admission):
+        from api.security.partial_progress import collect
+        return collect(self, endpoint, phase, operation, admission)
+
+    def conclusions(self):
+        from db.models.assurance import CollectionPhaseReceipt
+        phases = self._db.query(CollectionPhaseReceipt).filter_by(job_id=self.job_id, tenant_id=self._tenant_id).all()
+        if not phases:
+            return None
+        return {"recording_completed": True,
+                "observation_succeeded": all(p.observation_succeeded is True for p in phases),
+                "collection_complete": all(p.state == "COMPLETED" for p in phases),
+                "posture_acceptable": None, "posture_reason": "SEPARATE_POLICY_EVALUATION_REQUIRED"}
+
     def succeed(self, *, coverage: dict | None = None, scan_id: str | None = None) -> None:
         progress = self._progress()
+        conclusions = self.conclusions()
+        if conclusions is not None:
+            if not conclusions["collection_complete"]:
+                raise RuntimeError("Interrupted/partial scope cannot finalize as a completed batch")
+            progress["collection_conclusions"] = conclusions
         if coverage is not None:
             progress["coverage"] = coverage
         updated = self._repo.update_status(self._job.id, "COMPLETED", scan_id=scan_id, progress=progress)

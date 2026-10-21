@@ -19,6 +19,11 @@ class ScanTarget(BaseModel):
 
 
 class ScanStatistics(BaseModel):
+    # Bounded source-file receipts enable held-out/regression byte identity.
+    # Missing/truncated/failed files cannot establish a negative observation.
+    file_observation_receipts: list[dict] = Field(default_factory=list)
+    file_receipts_complete: bool = False
+    file_receipts_scope: str = "PRIMARY_DISCOVERED_SOURCE_FILES_ONLY"
     files_scanned: int = 0
     files_with_crypto: int = 0
     files_skipped: int = 0

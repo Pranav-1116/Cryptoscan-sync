@@ -24,7 +24,7 @@ def ssh(banks, monkeypatch):
             raise RuntimeError("private collector path")
         if state["fault"] == "stop":
             state["policy"] = {"emergency_stop": True}
-        return {"endpoint": f"{host}:{port}", "status": state["status"], "keys": []}
+        return {"endpoint": f"{host}:{port}", "status": state["status"], "keys": state.get("keys", [])}
 
     def kex(*args, **kwargs):
         state["calls"].append("kex")

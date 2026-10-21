@@ -131,13 +131,10 @@ def get_current_run_store(url: str | None, *, required: bool = False, client=Non
             raise RuntimeError("REDIS_URL is required for realtime current-run state")
         return MemoryCurrentRun()
     try:
-        import redis as _redis
-
-        client = (
-            client
-            if client is not None
-            else _redis.Redis.from_url(url, socket_timeout=2, socket_connect_timeout=2, decode_responses=True)
-        )
+        if client is None:
+            from api.config.settings import get_settings
+            from shared_models.redis_connection import connection_settings, verified_redis_client
+            client = verified_redis_client(connection_settings(get_settings(), "current_run", url=url), decode_responses=True)
         client.ping()
         return RedisCurrentRun(client, strict=required)
     except Exception as exc:  # noqa: BLE001
