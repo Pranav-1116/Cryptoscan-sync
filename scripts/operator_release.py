@@ -24,6 +24,7 @@ from verify_release_attestation import verify_attestation
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = "kubernetes-external-services/local-source-v1"
+MIGRATION_HEAD = "0105"
 IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 EXAMPLE_NAMES = {"15-secret.example.yaml"}
 DOCS = ["docs/readiness-evidence/launch-engineering-2026-10-22.md", "docs/runbooks/launch-assurance-handoff.md",
@@ -189,7 +190,7 @@ def build(source, out, registry, digests, parser_image, release):
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, target)
         contract = {"schema": "cryptoscan.operator-package/1", "release": release, "profile": PROFILE,
-            "migration_head": "0104", "producer_worker_policy": "QUIESCE_AND_REPLACE_TOGETHER_NO_MIXED_VERSIONS",
+            "migration_head": MIGRATION_HEAD, "producer_worker_policy": "QUIESCE_AND_REPLACE_TOGETHER_NO_MIXED_VERSIONS",
             "legacy_jobs": "READ_ONLY_UNPINNED_JOBS_REQUIRE_APPROVED_NEW_SUBMISSION",
             "replay": "GAPS_RESET_FULL_SQL_RECONCILIATION_NO_CURSOR_REWRITE",
             "parser_image": parser_image, "images": images,
@@ -222,7 +223,7 @@ def verify(root, public_key, attestation):
     if actual_inventory != lock["files_sha256"]:
         raise ValueError("Package inventory mismatch: changed, missing or extra files")
     contract = json.loads((root / "operator-package.json").read_text())
-    if contract.get("schema") != "cryptoscan.operator-package/1" or contract.get("migration_head") != "0104" or contract.get("profile") != PROFILE:
+    if contract.get("schema") != "cryptoscan.operator-package/1" or contract.get("migration_head") != MIGRATION_HEAD or contract.get("profile") != PROFILE:
         raise ValueError("Unsupported package/schema/migration profile")
     images = validate_site(root / "manifests", lock["parser_image"], lock)
     if contract.get("images") != images or contract.get("parser_image") != lock["parser_image"]:

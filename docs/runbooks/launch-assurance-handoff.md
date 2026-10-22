@@ -8,8 +8,9 @@ certification, bank deployment qualification or contractual SLA.
 
 - Follow [operator install/upgrade/recover](operator-install-upgrade-recover.md)
   and [evidence assurance upgrade](evidence-assurance-upgrade.md). Existing
-  migration **0104** remains required; launch records reuse the existing
-  assurance revisions/blob tables and require no new migration.
+  migration head **0105** is required for this build. Launch records reuse the
+  existing assurance revisions/blob tables; 0105 separately widens the monitor
+  event type and is not a new launch-approval mechanism.
 - Rebuild/deploy API and frontend together with the shared models package.
   Existing worker/parser/profile dependencies remain unchanged. No collector,
   production private key, seed owner, default customer or fake report is added.

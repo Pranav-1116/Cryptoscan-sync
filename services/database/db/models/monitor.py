@@ -73,7 +73,7 @@ class MonitorEvent(BaseModel, TenantScoped):
         String(36), ForeignKey("monitor_targets.id", ondelete="SET NULL"), nullable=True, index=True
     )
     target_name: Mapped[str] = mapped_column(String(200), nullable=False)  # survives deletion
-    event_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    # SCAN_OK | SCAN_DEGRADED | SCAN_FAILED | BLOCKED | ALERT | NOTE
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    # Monitor outcomes and platform event names (e.g. cascade.operational_conditions_changed).
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     payload: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)

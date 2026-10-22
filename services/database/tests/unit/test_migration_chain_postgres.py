@@ -133,6 +133,36 @@ def test_fact_identity_is_tenant_local_and_null_safe_on_postgres(migrated):
         conn.rollback()
 
 
+def test_migrated_monitor_events_accepts_long_platform_types(migrated):
+    """Exercise the real VARCHAR, not SQLite's unenforced declared length."""
+    from sqlalchemy.orm import Session
+
+    from db.models.monitor import MonitorEvent
+    from db.repositories.monitor_repository import MonitorRepository
+
+    column = next(col for col in sa.inspect(migrated).get_columns("monitor_events")
+                  if col["name"] == "event_type")
+    assert column["type"].length == MonitorEvent.__table__.c.event_type.type.length == 120
+
+    with migrated.connect() as connection:
+        transaction = connection.begin()
+        try:
+            with Session(connection) as session:
+                row = MonitorRepository(session).add_event(
+                    target=None,
+                    event_type="remediation.drift_tasks_created",
+                    detail="Drift acknowledgement opened remediation tasks",
+                )
+                assert connection.execute(sa.text(
+                    "SELECT event_type FROM monitor_events WHERE id = :id"
+                ), {"id": row.id}).scalar_one() == "remediation.drift_tasks_created"
+                MonitorRepository(session).add_event(
+                    target=None, event_type="cascade.operational_conditions_changed"
+                )
+        finally:
+            transaction.rollback()
+
+
 def test_downgrade_one_and_back(migrated):
     down = _alembic("downgrade", "-1")
     assert down.returncode == 0, down.stderr[-2000:]

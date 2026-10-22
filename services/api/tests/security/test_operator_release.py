@@ -47,6 +47,15 @@ def sign(root, tmp_path):
     return public, att
 
 
+def test_package_migration_contract_matches_alembic_head():
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    config = Config(str(ROOT / "services/database/migrations/alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "services/database/migrations"))
+    assert release.MIGRATION_HEAD == ScriptDirectory.from_config(config).get_current_head()
+
+
 def test_offline_full_inventory_verified_without_claiming_site_ready(site, tmp_path):
     root = package(site, tmp_path / "package")
     public, att = sign(root, tmp_path)

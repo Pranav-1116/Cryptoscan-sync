@@ -1,6 +1,7 @@
 # Operator package: install, coordinated upgrade and recovery
 
-Engineering increment: **2026-10-21**, migration **0104**. This is an executable
+Original engineering increment: **2026-10-21**, migration **0104**; current build
+head **0105**. This is an executable
 package-integrity/preflight boundary and a reference site profile, **not a signed
 release, bank capacity result, supported vendor certification, or witnessed site
 recovery acceptance**. No real registry digests, signing authority or site
@@ -175,8 +176,10 @@ available; inspect/pull the exact immutable reference from the approved mirror.
    `scripts/restore_evidence.py` and `scripts/verify_evidence_chain.py`.
 4. Using the **new API image** with the migration account, run
    `python -m alembic -c services/database/migrations/alembic.ini upgrade head`.
-   Expected head is **0104**: 0103 supplies immutable assurance storage; 0104
-   adds two estate/page indexes without rewriting jobs, approvals or evidence.
+   Expected head for this build is **0105**: 0103 supplies assurance storage,
+   0104 adds estate/page indexes, and 0105 widens `monitor_events.event_type`
+   so recorded remediation/cascade events fit PostgreSQL. The migration does
+   not rewrite existing job, approval or evidence rows.
 5. Apply only the verified `manifests/` with `kubectl apply -R -f`. Roll API and
    workers as one coordinated maintenance change; do not expose new producers
    to legacy workers. Confirm rollout image digests, schema head and health.
@@ -209,7 +212,7 @@ available; inspect/pull the exact immutable reference from the approved mirror.
   outbox, runtime and retained evidence. Fence/reconcile through the existing
   human control endpoints. A timeout is not proof a parser stopped. Do not free
   capacity or retry until its actual outcome is reconciled.
-- **Rollback-forward:** after any new writes, keep schema 0104 and deploy a tested
+- **Rollback-forward:** after any new writes, keep schema 0105 and deploy a tested
   compatible application fix forward. Reverting image bytes alone does not undo
   evidence, approvals or external effects. Do not drop assurance history.
 - **Pre-write rollback:** only with witnessed proof no new work/writes occurred,
@@ -217,9 +220,10 @@ available; inspect/pull the exact immutable reference from the approved mirror.
   in an isolated environment first; verify chains, owner scope and grants before
   cutover. Reconcile queued effects separately. Record actual RPO/RTO—this
   repository provides no promised values.
-- **0104 downgrade** removes only the two page indexes. It is not a data recovery
-  operation and does not reverse 0103 history. Do not run a destructive older
-  downgrade as an emergency shortcut.
+- **0105 downgrade** refuses to narrow `monitor_events.event_type` while any
+  recorded value exceeds 30 characters. **0104 downgrade** removes only the
+  two page indexes. Neither is data recovery or a reversal of 0103 assurance
+  history. Do not run an older downgrade as an emergency shortcut.
 
 ## 7. Package acceptance checklist
 
@@ -236,7 +240,8 @@ performed in the engineering sandbox.
 
 The [launch assurance runbook](launch-assurance-handoff.md) covers independent
 assessment procurement/intake and signed retests, accountable operational duties
-and one bounded payments pilot. No new migration beyond 0104 is introduced;
-rebuild API/shared models/frontend together. Actual external assessment, owners,
+and one bounded payments pilot. Those launch workflows added no migration;
+this build additionally requires 0105 for the monitor event schema. Rebuild
+API/shared models/frontend and the worker together. Actual external assessment, owners,
 site exercises and customer acceptance remain external blockers. These workflows
 do not authorize an SLA, certify the product or re-enable refused live collectors.
