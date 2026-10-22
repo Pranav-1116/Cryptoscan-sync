@@ -118,6 +118,8 @@ int EVP_CipherInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl,
                        const unsigned char *, const unsigned char *, int) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "EVP_CipherInit_ex");
     int rc = real(ctx, type, impl, key, iv, enc);
+    /* Resolve metadata symbols before the first intercepted operation is logged. */
+    if (trace_fd == -1) trace_init();
     const char *name = NULL;
     if (type && sym_EVP_CIPHER_get0_name) name = sym_EVP_CIPHER_get0_name(type);
     long keylen = 0;
@@ -132,6 +134,7 @@ int EVP_CipherInit_ex2(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, const unsign
                        const unsigned char *, int, const OSSL_PARAM *) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "EVP_CipherInit_ex2");
     int rc = real(ctx, type, key, iv, enc, params);
+    if (trace_fd == -1) trace_init();
     const char *name = NULL;
     if (type && sym_EVP_CIPHER_get0_name) name = sym_EVP_CIPHER_get0_name(type);
     long keylen = 0;
@@ -146,6 +149,7 @@ int EVP_DigestInit_ex(EVP_MD_CTX *ctx, const EVP_MD *type, ENGINE *impl) {
     static int (*real)(EVP_MD_CTX *, const EVP_MD *, ENGINE *) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "EVP_DigestInit_ex");
     int rc = real(ctx, type, impl);
+    if (trace_fd == -1) trace_init();
     const char *name = NULL;
     if (type && sym_EVP_MD_get0_name) name = sym_EVP_MD_get0_name(type);
     trace_line("EVP_DigestInit_ex", name, NULL, 0, NULL);
@@ -156,6 +160,7 @@ int EVP_DigestInit_ex2(EVP_MD_CTX *ctx, const EVP_MD *type, const OSSL_PARAM *pa
     static int (*real)(EVP_MD_CTX *, const EVP_MD *, const OSSL_PARAM *) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "EVP_DigestInit_ex2");
     int rc = real(ctx, type, params);
+    if (trace_fd == -1) trace_init();
     const char *name = NULL;
     if (type && sym_EVP_MD_get0_name) name = sym_EVP_MD_get0_name(type);
     trace_line("EVP_DigestInit_ex2", name, NULL, 0, NULL);

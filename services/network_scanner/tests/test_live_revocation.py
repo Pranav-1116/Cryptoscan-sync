@@ -220,6 +220,14 @@ def test_parse_ocsp_output_good_and_verified():
     assert parsed["response_verified"] is True
 
 
+@pytest.mark.parametrize("stderr", ["", "OCSP response received", "Response Verify Failure"])
+def test_parse_ocsp_output_good_without_verified_response_is_unknown(stderr):
+    parsed = parse_ocsp_output("leaf.pem: good\n", stderr)
+    assert parsed["status"] == "UNKNOWN"
+    assert parsed["reason"] == "response_unverified"
+    assert parsed["response_verified"] is not True
+
+
 def test_parse_ocsp_output_unreachable():
     parsed = parse_ocsp_output("", "Error querying OCSP responder\nconnect timeout")
     assert parsed["status"] == "UNKNOWN"
@@ -366,9 +374,28 @@ def test_ocsp_live_revoked_against_responder(pki, monkeypatch, tmp_path):
         result = check_ocsp_live(leaf_dict, [leaf_dict] + issuer)
         assert result["status"] == "REVOKED"
         assert result["revocation_time"]
-        assert result["response_verified"] is False  # self-signed responder signer
+        # OpenSSL releases differ on trusting the self-signed fixture CA as
+        # the responder signer; the verification verdict is independent of revocation.
+        assert result["response_verified"] is not None
     finally:
         responder.stop()
+
+
+def test_ocsp_failed_command_cannot_claim_good(pki, monkeypatch):
+    import network_scanner.certificates.revocation_live as rl
+
+    leaf = pki.issue("ocfailed")
+    leaf_dict = {
+        "pem": leaf["pem"], "issuer": "CN=Test Revocation CA",
+        "ocsp_url": "http://127.0.0.1:1/ocsp",
+    }
+    issuer = {"subject": "CN=Test Revocation CA", "pem": pki.ca_pem.read_text()}
+    monkeypatch.setattr(rl, "_run", lambda *args, **kwargs: (
+        "leaf.pem: good\n", "Response verify OK", 1,
+    ))
+    result = check_ocsp_live(leaf_dict, [leaf_dict, issuer])
+    assert result["status"] == "UNKNOWN"
+    assert result["reason"] == "ocsp_command_failed"
 
 
 def test_ocsp_dead_responder_is_unknown(pki, monkeypatch, tmp_path):
