@@ -1,0 +1,33 @@
+{
+  "expected_revision": 0,
+  "workflow": "PAYMENTS_RELEASE_REMEDIATION_V1",
+  "title": "REPLACE: one payments application release",
+  "business_value": "REPLACE: one valuable evidence-to-remediation decision",
+  "customer_owner_user_id": "<CUSTOMER_OWNER_USER_ID>",
+  "technical_owner_user_id": "<TECHNICAL_OWNER_USER_ID>",
+  "system_id": "<PAYMENTS_SYSTEM_ID>",
+  "register_id": "<EXPECTED_TARGET_REGISTER_ID>",
+  "source_scan_id": "<SOURCE_SCAN_ID>",
+  "artifact_id": "<RELEASE_ARTIFACT_ID>",
+  "sbom_binding_id": "<RELEASE_SBOM_BINDING_ID>",
+  "deployment_id": "<KNOWN_DEPLOYMENT_ID>",
+  "source_build_binding_blob_id": "<SOURCE_BUILD_ASSERTION_BLOB_ID>",
+  "tls_run_id": "<ADMITTED_TLS_RUN_ID>",
+  "tls_endpoint": "REPLACE: exact approved host:port",
+  "tls_permission_ref": "REPLACE: exact register permission reference",
+  "ssh_receipt_id": "<SUCCESSFUL_SSH_RECEIPT_ID>",
+  "ssh_permission_ref": "REPLACE: exact register permission reference",
+  "hardware_id": "<HARDWARE_ID>",
+  "vendor_id": "<VENDOR_ID>",
+  "supplier_evidence_id": "<APPROVED_SUPPLIER_EVIDENCE_ID>",
+  "remediation_change_id": "<CURRENT_REMEDIATION_CHANGE_ID>",
+  "engagement_id": "<APPROVED_ENGAGEMENT_ID>",
+  "success_criteria": [
+    "REPLACE: exact condition, useful decision, evidence freshness and customer outcome"
+  ],
+  "exclusions": [
+    "Other bank systems/releases; no whole-bank visibility, certification or contractual SLA"
+  ],
+  "evidence_max_age_seconds": 3600,
+  "expires_at": "2026-11-22T00:00:00Z"
+}

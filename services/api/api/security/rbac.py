@@ -96,6 +96,7 @@ PERMISSION_MATRIX: dict[str, frozenset[str]] = {
     # review require human sessions in addition to these durable role checks.
     "assurance.manage": frozenset({"superadmin", "ciso", "security_analyst"}),
     "assurance.review": frozenset({"superadmin", "ciso", "auditor", "business_owner"}),
+    "assurance.operate": frozenset({"superadmin", "ciso", "security_analyst", "developer", "auditor", "business_owner"}),
     "assurance.raw": frozenset({"superadmin", "ciso"}),
     "assurance.trust": frozenset({"superadmin", "ciso"}),
     # scanning

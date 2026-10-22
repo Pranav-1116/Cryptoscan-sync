@@ -1,11 +1,10 @@
 """Seven evidence-assurance workflows; bounded metadata/bytes, no live acquisition."""
 import hashlib
-import uuid
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from sqlalchemy.orm import Session
-from api.dependencies import get_current_user, get_db_session, TenantContext
-from api.security.estate_history import history_context
+from api.dependencies import get_current_user, get_db_session
+from api.routers.assurance_boundary import estate, author, Key, new_id
 from api.assurance import store, coverage, accuracy, relationships, applicability, adapters, infrastructure
 from db.models.assurance import AssuranceRevision, AssuranceBlob
 from shared_models.assurance import (Register, CoverageObservation, Sample, Approval, Review, Repeat, Context,
@@ -13,22 +12,6 @@ from shared_models.assurance import (Register, CoverageObservation, Sample, Appr
 from shared_models.software_identity import scope_key
 
 router = APIRouter(prefix="/assurance", tags=["assurance"])
-Key = Annotated[str, Path(min_length=1, max_length=36)]
-
-
-async def estate(ctx: TenantContext = Depends(history_context), db: Session = Depends(get_db_session)):
-    store.residency(db, ctx.tenant_id)
-    return ctx
-
-
-def author(db, request, user, permission="assurance.manage"):
-    return store.actor(db, request, user, permission)
-
-
-def new_id():
-    return str(uuid.uuid4())
-
-
 @router.get("/records")
 def records(kind: str = Query(min_length=1, max_length=30), limit: int = Query(100, ge=1, le=200),
             offset: int = Query(0, ge=0, le=1000000), user=Depends(get_current_user),
@@ -347,3 +330,7 @@ def job_workload(identifier: Key, user=Depends(get_current_user), db: Session = 
 def revoke_change(identifier: Key, body: Approval, request: Request, user=Depends(get_current_user),
                   db: Session = Depends(get_db_session), ctx=Depends(estate)):
     return store.public(conditions.revoke(db, ctx.tenant_id, identifier, body, author(db, request, user, "assurance.review")))
+
+
+from api.routers.launch_readiness import router as launch_router
+router.include_router(launch_router)

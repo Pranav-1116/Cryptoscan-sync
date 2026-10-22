@@ -26,7 +26,15 @@ ROOT = Path(__file__).resolve().parents[1]
 PROFILE = "kubernetes-external-services/local-source-v1"
 IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 EXAMPLE_NAMES = {"15-secret.example.yaml"}
-DOCS = ["docs/runbooks/operator-install-upgrade-recover.md", "docs/runbooks/controlled-execution-upgrade.md",
+DOCS = ["docs/readiness-evidence/launch-engineering-2026-10-22.md", "docs/runbooks/launch-assurance-handoff.md",
+        "docs/bank-environment/56-independent-security-assurance.md",
+        "docs/bank-environment/57-operational-ownership-and-demonstrated-service.md",
+        "docs/bank-environment/58-focused-payments-customer-pilot.md",
+        "docs/templates/launch/README.md", "docs/templates/launch/engagement.json",
+        "docs/templates/launch/assessment-report.json", "docs/templates/launch/operating-assignment.json",
+        "docs/templates/launch/operating-exercise.json", "docs/templates/launch/payments-pilot.json",
+        "docs/templates/launch/review.json", "docs/templates/launch/finding-plan.json",
+        "docs/templates/launch/finding-completion.json", "scripts/independent_report.py", "docs/runbooks/operator-install-upgrade-recover.md", "docs/runbooks/controlled-execution-upgrade.md",
         "docs/runbooks/evidence-assurance-upgrade.md", "docs/dev/scanner-isolation.md",
         "docs/readiness-evidence/operator-workload-mixed-2026-10-21-run1.json",
         "docs/readiness-evidence/operator-workload-mixed-2026-10-21-run2.json"]

@@ -416,3 +416,18 @@ advisories (3 moderate / 2 high / 3 critical). Production-only npm audit reports
 zero, not general security approval. Vite/Vitest-related major upgrades and
 source-map-js remediation remain an explicit hardening task; no blind force
 upgrade was used to manufacture a clean result.
+
+
+## Launch evidence workflow 5.1–5.3 (2026-10-22, Preview)
+
+[Launch handoff](docs/runbooks/launch-assurance-handoff.md) implements exact-estate
+independent assessment scope review, externally signed reports and finding/retest
+history; nine operating-duty assignments/acknowledgements/reviewed exercises; and
+one bounded payments pilot with technical/customer review and dynamic blockers.
+No assessor, actual operating people, completed site exercises or real customer
+acceptance are supplied by the implementation. Infrastructure certification does
+not certify the product; reviewed exercise assertions do not establish an SLA;
+feature demonstrations do not establish whole-bank visibility or acceptance.
+External procurement, testing/retests, site recovery/capacity/browser qualification
+and customer/legal sign-off remain OPEN. Existing local-source/v1 acquisition
+restrictions and earlier readiness verdicts are unchanged.

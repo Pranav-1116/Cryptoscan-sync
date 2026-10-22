@@ -280,3 +280,17 @@ Start with the [upgrade runbook](../runbooks/evidence-assurance-upgrade.md).
 These are implemented engineering controls and repeatable local measurements,
 not customer capacity or witnessed deployment acceptance. Apply migration 0104;
 rebuild API/worker/frontend and the approved parser as the release requires.
+
+
+## Launch evidence and external acceptance — 5.1–5.3
+
+- [56 — Independent security assurance and signed retests](56-independent-security-assurance.md)
+- [57 — Operational ownership and demonstrated service capability](57-operational-ownership-and-demonstrated-service.md)
+- [58 — Focused payments customer pilot](58-focused-payments-customer-pilot.md)
+- [Launch handoff runbook](../runbooks/launch-assurance-handoff.md)
+- [Editable procurement, operating and pilot templates](../templates/launch/README.md)
+
+Preview workflows retain real external evidence when supplied; they do not hire an
+assessor, assign actual people, run site exercises or establish customer acceptance.
+Certified infrastructure does not certify the product, an exercise assertion is
+not an SLA, and one bounded workflow is not whole-bank visibility.

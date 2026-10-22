@@ -34,3 +34,18 @@ def test_operator_inbox_is_metadata_only_and_region_admitted(controlled, monkeyp
     assert a.post("/api/v1/network/tls-scan", json={"hosts": ["bank.example:443"]}).status_code == 409
     monkeypatch.setenv("CRYPTOSCAN_EVIDENCE_REGION", "wrong-region")
     assert a.get(P + "/operator-decisions").status_code == 409
+
+
+def test_launch_metadata_preserves_residency_and_refuses_live_collection(controlled, monkeypatch):
+    state = controlled
+    a = state["clients"]["bank_a"]
+    path = P + "/launch/operations"
+    assert a.get(path).status_code == 409
+    configure(state)
+    response = a.get(path)
+    assert response.status_code == 200, response.text
+    assert len(response.json()["duties"]) == 9
+    assert response.json()["sla_authorized"] is False
+    assert a.post("/api/v1/network/ssh-scan", json={"hosts": ["10.1.2.3"]}).status_code == 409
+    monkeypatch.setenv("CRYPTOSCAN_EVIDENCE_REGION", "wrong-region")
+    assert a.get(path).status_code == 409

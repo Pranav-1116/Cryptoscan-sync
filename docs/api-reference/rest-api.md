@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-21:
-**899 paths, 990 operations** across 105 tagged groups.
+Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-22:
+**917 paths, 1008 operations** across 105 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 Current [execution, SSH and replay contracts](execution-and-replay.md) describe
@@ -109,6 +109,24 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/assurance/evidence-blobs` | Evidence Blob |
 | `GET` | `/api/v1/assurance/evidence-blobs/{identifier}/content` | Blob Content |
 | `POST` | `/api/v1/assurance/findings/{identifier}/assessments` | Assessment |
+| `POST` | `/api/v1/assurance/launch/assignments` | Assignment |
+| `POST` | `/api/v1/assurance/launch/assignments/{identifier}/acknowledge` | Acknowledge |
+| `POST` | `/api/v1/assurance/launch/assignments/{identifier}/exercises` | Exercise |
+| `POST` | `/api/v1/assurance/launch/assignments/{identifier}/review-exercise` | Review Exercise |
+| `POST` | `/api/v1/assurance/launch/engagements` | Engagement |
+| `POST` | `/api/v1/assurance/launch/engagements/{identifier}/approve` | Review Engagement |
+| `POST` | `/api/v1/assurance/launch/engagements/{identifier}/reports` | Report |
+| `GET` | `/api/v1/assurance/launch/engagements/{identifier}/status` | Security Status |
+| `POST` | `/api/v1/assurance/launch/engagements/{identifier}/withdraw` | Withdraw Engagement |
+| `POST` | `/api/v1/assurance/launch/findings/{identifier}/approve` | Approve Finding |
+| `POST` | `/api/v1/assurance/launch/findings/{identifier}/plan` | Plan Finding |
+| `POST` | `/api/v1/assurance/launch/findings/{identifier}/report-complete` | Complete Finding |
+| `GET` | `/api/v1/assurance/launch/operations` | Operations Status |
+| `POST` | `/api/v1/assurance/launch/pilots` | Pilot |
+| `PUT` | `/api/v1/assurance/launch/pilots/{identifier}` | Revise Pilot |
+| `POST` | `/api/v1/assurance/launch/pilots/{identifier}/accept` | Accept Pilot |
+| `GET` | `/api/v1/assurance/launch/pilots/{identifier}/status` | Pilot Status |
+| `POST` | `/api/v1/assurance/launch/pilots/{identifier}/technical-review` | Review Pilot |
 | `GET` | `/api/v1/assurance/operator-decisions` | Operator Inbox |
 | `GET` | `/api/v1/assurance/records` | Records |
 | `GET` | `/api/v1/assurance/records/{kind}/{identifier}` | History |

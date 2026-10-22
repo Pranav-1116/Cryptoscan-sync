@@ -49,6 +49,7 @@ export const CAPABILITIES_JSON = {
   "identity": "ga",
   "integrations": "ga",
   "invite-accept": "beta",
+  "launch-readiness": "preview",
   "libraries": "ga",
   "live-asset-intelligence": "ga",
   "live-environment": "beta",

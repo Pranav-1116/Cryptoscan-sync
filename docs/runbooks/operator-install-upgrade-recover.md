@@ -230,3 +230,13 @@ restore/unknown-outcome recovery and measured site limits. Any missing check
 remains **NOT_RUN / BLOCKED**, not an inferred PASS. This increment supplies the
 package/tooling/runbook; no actual customer installation/upgrade/recovery has been
 performed in the engineering sandbox.
+
+
+## Launch evidence handoff (5.1–5.3, Preview)
+
+The [launch assurance runbook](launch-assurance-handoff.md) covers independent
+assessment procurement/intake and signed retests, accountable operational duties
+and one bounded payments pilot. No new migration beyond 0104 is introduced;
+rebuild API/shared models/frontend together. Actual external assessment, owners,
+site exercises and customer acceptance remain external blockers. These workflows
+do not authorize an SLA, certify the product or re-enable refused live collectors.

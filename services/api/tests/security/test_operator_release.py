@@ -54,10 +54,13 @@ def test_offline_full_inventory_verified_without_claiming_site_ready(site, tmp_p
     assert result["package_inventory"] == "PASS" and result["site_qualified"] is False
     assert result["site_preflight"] == "NOT_RUN"
     assert (root / "docs/runbooks/operator-install-upgrade-recover.md").is_file()
+    assert (root / "docs/runbooks/launch-assurance-handoff.md").is_file()
+    assert (root / "scripts/independent_report.py").is_file()
+    assert (root / "docs/templates/launch/assessment-report.json").is_file()
     assert len(json.loads((root / "operator-package.json").read_text())["images"]) == 4
 
 
-@pytest.mark.parametrize("case", ["manifest", "runbook", "missing", "extra", "nested_lock", "symlink", "lock"])
+@pytest.mark.parametrize("case", ["manifest", "runbook", "launch-template", "signing-tool", "missing", "extra", "nested_lock", "symlink", "lock"])
 def test_any_tamper_fails(site, tmp_path, case):
     root = package(site, tmp_path / "package")
     public, att = sign(root, tmp_path)
@@ -65,6 +68,10 @@ def test_any_tamper_fails(site, tmp_path, case):
         path = root / "manifests/site.yaml"; path.write_text(path.read_text().replace("replicas: 1", "replicas: 2"))
     elif case == "runbook":
         (root / "docs/runbooks/operator-install-upgrade-recover.md").write_text("invented approval")
+    elif case == "launch-template":
+        (root / "docs/templates/launch/assessment-report.json").write_text("invented PASS")
+    elif case == "signing-tool":
+        (root / "scripts/independent_report.py").write_text("signature bypass")
     elif case == "missing":
         (root / "operator-package.json").unlink()
     elif case == "extra":
