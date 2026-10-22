@@ -44,6 +44,23 @@ def test_weighted_view_keeps_external_evidence_unverified():
     assert report["production_qualification"] == "BLOCKED_UNTIL_EXTERNAL_EVIDENCE"
 
 
+def test_frontend_boundary_allows_public_docs_but_not_direct_api_navigation(tmp_path):
+    readiness = _module(SCRIPT, "operational_deployment_readiness_frontend")
+    source = tmp_path / "frontend" / "src"
+    api = source / "lib" / "api.ts"
+    api.parent.mkdir(parents=True)
+    api.write_text("tenantFetch credentials", encoding="utf-8")
+    page = source / "pages" / "Readiness.tsx"
+    page.parent.mkdir()
+    page.write_text('<a href="/api/docs">API schemas</a>', encoding="utf-8")
+    assert readiness._frontend_boundary(tmp_path)[0] is True
+
+    page.write_text('<a href="/api/v1/scans">Bypass tenantFetch</a>', encoding="utf-8")
+    passed, detail = readiness._frontend_boundary(tmp_path)
+    assert passed is False
+    assert "Readiness.tsx" in detail
+
+
 def test_rollback_plan_is_metadata_only_and_requires_immutable_release_lock(tmp_path):
     rollback = _module(ROLLBACK, "rollback_plan")
     target = tmp_path / "v1.2.3"

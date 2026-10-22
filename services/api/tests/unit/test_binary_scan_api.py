@@ -838,10 +838,22 @@ def test_the_job_row_carries_the_scan_options_into_the_queue(app_db, monkeypatch
     assert published["progress"]["scan_options"]["yara_rules"] == ["/tmp/rules"]
 
 
-def test_the_inline_fallback_runs_queued_binary_scans(monkeypatch):
-    """Without Redis the job still runs — through the same binary job code."""
+def test_the_inline_fallback_runs_queued_binary_scans(app_db, monkeypatch):
+    """Without Redis a persisted, authorized binary job uses the same worker path."""
     from api.routers import trigger
+    from db.models.user import User
+    from db.repositories.job_repository import JobRepository
 
+    _application, session, tmp_path = app_db
+    target = tmp_path / "target"
+    target.mkdir()
+    session.add(User(username="operator", password_hash="x", roles="admin"))
+    session.commit()
+    repo = JobRepository(session)
+    row = repo.create(job_type="BINARY", target_repo=f"binary://{target}",
+                      target_branch="main", triggered_by="operator",
+                      progress={"scan_options": {"format": "spdx"}})
+    session.commit()
     called = {}
 
     def _fake_run(job):
@@ -849,11 +861,17 @@ def test_the_inline_fallback_runs_queued_binary_scans(monkeypatch):
         return True
 
     monkeypatch.setattr("worker.pipeline.binary_job.run_binary_job", _fake_run)
-    trigger._run_inline({"job_id": "job-7", "target_repo": "binary:///tmp/target",
-                         "triggered_by": "operator", "progress": {"scan_options": {"format": "spdx"}}})
-    assert called["job"].job_id == "job-7"
-    assert called["job"].target_repo == "binary:///tmp/target"
+    trigger._run_inline({"job_id": row.id, "job_type": row.job_type,
+                         "target_repo": row.target_repo, "target_branch": row.target_branch,
+                         "target_commit": row.target_commit, "triggered_by": row.triggered_by,
+                         "tenant_id": row.tenant_id, "system_id": row.system_id,
+                         "progress": row.progress})
+    assert called["job"].job_id == row.id
+    assert called["job"].target_repo == f"binary://{target}"
     assert called["job"].scan_options == {"format": "spdx"}
+    session.expire_all()
+    # The test collector records dispatch only; it does not create a scan receipt.
+    assert repo.get_by_id(row.id).status == "RUNNING"
 
 
 @pytest.mark.asyncio

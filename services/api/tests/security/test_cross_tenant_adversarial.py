@@ -324,40 +324,46 @@ def test_own_scan_subresources_remain_reachable(db_session):
 
 
 # --------------------------------------------------------------------- #
-# SSE visibility predicate
+# SSE selected-estate visibility predicate (shared with socket history)
 # --------------------------------------------------------------------- #
 
-def _sse_visible(event, tenant_id, is_platform_admin=False):
-    from api.routers.events import _visible_to_tenant
-
-    return _visible_to_tenant(event, tenant_id, is_platform_admin)
-
-
 def test_owned_event_is_invisible_to_another_tenant():
+    from api.security.socket_history import visible_event
+
     event = {"type": "scan.completed", "tenant_id": BANK_B, "payload": {}}
-    assert _sse_visible(event, BANK_A) is False
-    assert _sse_visible(event, BANK_B) is True
+    assert visible_event(event, BANK_A) is False
+    assert visible_event(event, BANK_B) is True
 
 
-def test_unowned_platform_event_is_visible_to_every_tenant():
+def test_unowned_platform_event_is_visible_only_to_platform_estate():
+    from api.security.socket_history import visible_event
+
     event = {"type": "graph.updated", "tenant_id": None, "payload": {}}
-    assert _sse_visible(event, BANK_A) is True
-    assert _sse_visible(event, BANK_B) is True
+    assert visible_event(event, BANK_A) is False
+    assert visible_event(event, BANK_B) is False
+    assert visible_event(event, None) is True
 
 
 def test_owned_event_is_hidden_from_an_unscoped_admin_connection():
     """An admin who has not selected a tenant sees platform traffic only."""
+    from api.security.socket_history import visible_event
+
     event = {"type": "scan.completed", "tenant_id": BANK_B, "payload": {}}
-    assert _sse_visible(event, None, is_platform_admin=True) is False
+    assert visible_event(event, None) is False
 
 
 def test_payload_level_tenant_claim_cannot_spoof_visibility():
-    """Ownership falls back to the payload only when the frame is unowned."""
+    """Conflicting payload ownership is rejected, never used as a fallback."""
+    from api.security.socket_history import visible_event
+
     owned = {"type": "e", "tenant_id": BANK_A, "payload": {"tenant_id": BANK_B}}
-    assert _sse_visible(owned, BANK_B) is False, "payload must not override the frame's owner"
+    assert visible_event(owned, BANK_A) is False
+    assert visible_event(owned, BANK_B) is False, "payload must not override the frame's owner"
     unowned = {"type": "e", "tenant_id": None, "payload": {"tenant_id": BANK_B}}
-    assert _sse_visible(unowned, BANK_B) is True
-    assert _sse_visible(unowned, BANK_A) is False
+    assert visible_event(unowned, BANK_B) is False
+    assert visible_event(unowned, None) is False
+    matching = {"type": "e", "tenant_id": BANK_B, "payload": {"tenant_id": BANK_B}}
+    assert visible_event(matching, BANK_B) is True
 
 
 def test_injected_remote_frame_is_filtered_before_the_queue():
@@ -366,13 +372,16 @@ def test_injected_remote_frame_is_filtered_before_the_queue():
     import asyncio
 
     from api.events.bus import EventBus
+    from api.security.socket_history import visible_event
 
     async def scenario() -> list[dict]:
         bus = EventBus()
-        sub = bus.subscribe(lambda event: _sse_visible(event, BANK_A))
+        sub = bus.subscribe(lambda event: visible_event(event, BANK_A))
         try:
             bus.inject_remote({"type": "scan.completed", "tenant_id": BANK_B, "payload": {}})
             bus.inject_remote({"type": "graph.updated", "tenant_id": None, "payload": {}})
+            bus.inject_remote({"type": "scan.spoofed", "tenant_id": None, "payload": {"tenant_id": BANK_A}})
+            bus.inject_remote({"type": "scan.owned", "tenant_id": BANK_A, "payload": {"tenant_id": BANK_A}})
             await asyncio.sleep(0)  # let call_soon_threadsafe callbacks run
             await asyncio.sleep(0)
             queued = []
@@ -383,6 +392,6 @@ def test_injected_remote_frame_is_filtered_before_the_queue():
             bus.unsubscribe(sub)
 
     queued = asyncio.run(scenario())
-    assert [e["type"] for e in queued] == ["graph.updated"], (
-        "another tenant's federated event reached a subscriber queue"
+    assert [e["type"] for e in queued] == ["scan.owned"], (
+        "foreign, platform or spoofed federated event reached a tenant subscriber queue"
     )

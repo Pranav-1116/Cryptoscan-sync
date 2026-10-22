@@ -226,8 +226,8 @@ class RedisEventSync:
                 if old is not None:
                     try:
                         old.close()
-                    except Exception:  # noqa: BLE001 — already disconnected
-                        pass
+                    except Exception as exc:  # noqa: BLE001 — already disconnected
+                        logger.warning("realtime_subscription_cleanup_failed", extra={"error_type": type(exc).__name__})
             if self._stop.wait(delay):
                 break
             delay = min(delay * 2, 5.0)

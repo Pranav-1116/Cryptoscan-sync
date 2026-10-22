@@ -52,6 +52,7 @@ AUTH_QUALIFIED_NAMES = (
     "api.dependencies.get_tenant_context",
     "api.dependencies.get_optional_user",
     "api.dependencies.resolve_tenant_for_request",
+    "api.routers.events.stream_grant",  # resolves and rechecks the durable selected-estate credential
 )
 
 #: inline authentication markers searched in the handler's source
@@ -159,6 +160,15 @@ def test_every_api_route_has_an_authentication_seam():
         "dependency, rbac factory or inline check):\n  "
         + "\n  ".join(f"{m:7s} {p} ({mod})" for mod, m, p in sorted(gaps))
     )
+
+
+def test_event_routes_refuse_anonymous_requests_without_session_middleware():
+    """The shared stream grant is an authentication seam, not a name-only allowlist."""
+    from fastapi.testclient import TestClient
+
+    with TestClient(create_app()) as client:
+        for path in ("/api/v1/events/recent", "/api/v1/events/stats", "/api/v1/events/stream"):
+            assert client.get(path).status_code == 401, path
 
 
 def test_billing_webhook_is_exempt_from_the_session_gate():

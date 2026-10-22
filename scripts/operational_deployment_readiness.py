@@ -180,8 +180,9 @@ def _frontend_boundary(root: Path) -> tuple[bool, str]:
         relative = str(path.relative_to(root))
         if relative != "frontend/src/lib/api.ts" and re.search(r"\bfetch\s*\(", text):
             direct_fetch.append(relative)
-        if re.search(r"(?:href|src)\s*=\s*['\"]/?api/", text):
-            direct_navigation.append(relative)
+        for destination in re.findall(r"(?:href|src)\s*=\s*['\"](/?api/[^'\"?#]*)", text):
+            if "/" + destination.lstrip("/") not in {"/api/docs", "/api/redoc", "/api/openapi.json"}:
+                direct_navigation.append(relative)
     good = "tenantFetch" in api and "credentials" in api and not direct_fetch and not direct_navigation
     detail = "all frontend requests use the authenticated API boundary" if good else f"direct fetch files={direct_fetch}; direct API navigations={direct_navigation}"
     return good, detail
