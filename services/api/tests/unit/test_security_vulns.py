@@ -314,9 +314,9 @@ def header_client(monkeypatch, tmp_path):
     # would make the test slow and about the wrong thing.
     monkeypatch.setattr("db.connection.session.migration_status",
                         lambda engine: {"status": "current", "applied": [], "heads": []})
-    # Production readiness is fail-closed for durable realtime state. The
-    # lifespan is skipped by the pytest harness, so no live Redis is required.
-    monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")
+    # Validate the production Redis transport shape without connecting to a
+    # live service; pytest suppresses the background federation in this test.
+    monkeypatch.setenv("REDIS_URL", "rediss://ci_acl_user:ci-only-redis-password@redis.example.invalid:6379/0")
     from api.config.settings import get_settings
     get_settings.cache_clear()
     from db.connection import engine as engine_mod

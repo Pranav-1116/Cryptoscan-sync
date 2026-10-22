@@ -248,7 +248,7 @@ def cbom_stream(system_id: str, request: Request, grant=Depends(stream_grant)):
 
     async def gen():
         nonlocal last_version
-        for _ in range(600):  # bounded connection lifetime (~10 min)
+        for tick in range(600):  # bounded connection lifetime (~10 min)
             try:
                 await _checkpoint(request, grant)
                 rec = await run_in_threadpool(svc.current, system_id)
@@ -258,6 +258,10 @@ def cbom_stream(system_id: str, request: Request, grant=Depends(stream_grant)):
                     await _checkpoint(request, grant)
                     last_version = rec["version_no"]
                     yield f"data: {json.dumps({'system_id': system_id, 'version_no': last_version, 'version_hash': rec['version_hash']})}\n\n"
+                if tick == 0:
+                    # Flush headers even when no new version exists. This is a
+                    # protocol comment, not a fabricated CBOM observation.
+                    yield ": connected\n\n"
             except SocketRefused as exc:
                 name = "events.unavailable" if exc.code == 1011 else "events.refused"
                 yield f'event: {name}\ndata: {{"advice":"stream closed; check authority/backend"}}\n\n'

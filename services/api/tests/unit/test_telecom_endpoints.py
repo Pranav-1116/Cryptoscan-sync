@@ -184,12 +184,23 @@ async def test_scan_probes_registered_targets_and_publishes_events(app_db, monke
         kinds = [e["kind"] for e in body["events"]]
         assert "TELECOM_CERT_EXPIRING" in kinds
 
-        # This standalone fixture publishes NULL-owned platform events. A
-        # platform identity is required; ordinary bank readers stay scoped.
-        events = await client.get("/api/v1/telecom/events", headers=_auth(session, ["superadmin"]))
-        assert events.status_code == 200
-        published = [e for e in events.json()["events"] if e["type"] == "telecom.event"]
-        assert published, "scan events must reach the platform bus"
+        # This fixture publishes NULL-owned platform events. The endpoint
+        # filters each estate-journal page, so earlier non-telecom events may
+        # fill the first page; follow the owner-bound cursor to the new event.
+        published = []
+        cursor = None
+        for _ in range(3):  # the local journal retains at most 500 events
+            params = {"limit": 200}
+            if cursor is not None:
+                params["cursor"] = cursor
+            events = await client.get("/api/v1/telecom/events", headers=_auth(session, ["superadmin"]), params=params)
+            assert events.status_code == 200
+            page = events.json()
+            published.extend(e for e in page["events"] if e["type"] == "telecom.event")
+            if not page["has_more"]:
+                break
+            cursor = page["next_cursor"]
+        assert published, "scan events must reach the platform estate journal"
 
         unknown = await client.post("/api/v1/telecom/scan", headers=headers,
                                     json={"only": ["does-not-exist"]})

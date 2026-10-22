@@ -242,11 +242,14 @@ async def test_cbom_sse_is_pinned_and_rechecks_membership_without_middleware(str
         assert a.post("/api/v1/stream/ingest", json={"payload": payload}).status_code == 200
         assert a.get("/api/v1/cbom/live/same-system").status_code == 200
         assert b.get("/api/v1/cbom/live/same-system").status_code == 404
-    async with ASGIStream(app, "/api/v1/cbom/stream/same-system", headers=headers(clients["bank_a"])) as stream:
-        assert stream.status == 200
-        db.query(TenantMembership).filter_by(username="bank_a").delete()
-        db.commit()
-        await event(stream.lines(), "events.refused")
+    async with asyncio.timeout(10):
+        async with ASGIStream(app, "/api/v1/cbom/stream/same-system", headers=headers(clients["bank_a"])) as stream:
+            assert stream.status == 200
+            lines = stream.lines()
+            assert await asyncio.wait_for(anext(lines), 5) == ": connected"
+            db.query(TenantMembership).filter_by(username="bank_a").delete()
+            db.commit()
+            await event(lines, "events.refused")
     router.reset_stream_singletons()
 
 
