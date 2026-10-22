@@ -307,6 +307,24 @@
           "title": "Duration Seconds",
           "type": "number"
         },
+        "file_observation_receipts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "File Observation Receipts",
+          "type": "array"
+        },
+        "file_receipts_complete": {
+          "default": false,
+          "title": "File Receipts Complete",
+          "type": "boolean"
+        },
+        "file_receipts_scope": {
+          "default": "PRIMARY_DISCOVERED_SOURCE_FILES_ONLY",
+          "title": "File Receipts Scope",
+          "type": "string"
+        },
         "files_scanned": {
           "default": 0,
           "title": "Files Scanned",
