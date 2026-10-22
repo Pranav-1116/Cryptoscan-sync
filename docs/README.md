@@ -4,9 +4,12 @@
 
 See the [step-by-step implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md)
 for reproduced defects, bounded code corrections, actual regression results and
-remaining independent/site acceptance. The first increment strengthens source
-coverage proof and removes known external font bootstrap dependencies; it does
-not add features or declare the product bank-production approved.
+remaining independent/site acceptance. Three bounded increments are published
+in `2fd8fc8f`: source coverage proof/font bootstrap, unresolved package identity,
+and role-store failure/selected probe privacy. See the
+[upgrade handoff](runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f)
+for changed refusals and requalification. This is not feature expansion, a tagged
+release, bank deployment or production approval.
 
 ## Deploy directly inside a bank
 
@@ -31,11 +34,13 @@ baseline/priorities, all six BOMs and correctness, security/privacy/isolation,
 reliability/performance/recovery, operator/frontend usability, testing and
 maintainability, exact releases, actual bank operations/qualification, an ordered
 execution roadmap and a worked example with review templates. This is a
-quality-only recommended program, not completed implementation or production approval.
+quality-only program with three published bounded corrections, not completion
+of the whole roadmap or production approval.
 
-> **Latest reading — 2026-10-22 (`698beb38`):**
+> **Latest published implementation — 2026-10-22 (`2fd8fc8f`):**
 > [Current implementation status](CURRENT-IMPLEMENTATION-STATUS.md) reconciles migration
-> **0105**, active CI, **77** classified surfaces and launch Preview boundaries.
+> **0105**, the published quality corrections and CI/launch Preview boundaries.
+> The inherited **77**-surface and REST snapshots retain their original review scope.
 > Use the [CI/product-build plan](CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) for configured
 > checks versus remaining release work. Old evidence retains its original run/date;
 > this refresh is not a new production or all-suite passing verdict.

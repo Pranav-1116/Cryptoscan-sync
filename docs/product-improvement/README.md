@@ -1,12 +1,15 @@
 # Improve the existing product — no feature expansion
 
 **Prepared:** 2026-10-22 UTC
-**Repository baseline:** `bfc42df0` on `arena/bb4b80dd-cryproscan`; the preceding
-implementation review is against `698beb38`. The intervening commit is docs-only.
+**Original planning baseline:** `bfc42df0` on `arena/bb4b80dd-cryproscan`, with
+original broad implementation review against `698beb38`.
+**Published quality implementation:** `2fd8fc8f` (2026-10-22); see the
+[publication ledger](IMPLEMENTATION-STATUS.md#published-engineering-snapshot).
 **Audience:** product owner, engineering, QA, security, operators and bank reviewers.
-**Status:** recommended improvement program, not completed work or release approval.
+**Status:** three bounded engineering increments published; the full program,
+independent review and bank release acceptance are not complete.
 
-## Implementation has started
+## Three bounded increments are published
 
 The first bounded changes and exact before/after results are tracked in
 [implementation status](IMPLEMENTATION-STATUS.md) and the
@@ -16,7 +19,7 @@ references. The [second increment](../readiness-evidence/quality-package-identit
 keeps unresolved package versions out of exact SBOM/cascade/crypto paths, including
 legacy current reads. The [third increment](../readiness-evidence/quality-authority-privacy-2026-10-22.md)
 strengthens role-store failure refusal and selected public probe/log privacy;
-all accumulated changes are prepared for the user-requested source PR push.
+all three accumulated increments were pushed in `2fd8fc8f` to open PR #34.
 They do not mark this whole program or bank qualification complete.
 
 ## The recommendation in one sentence

@@ -6,6 +6,36 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — quality-only evidence, authority and browser hardening (2026-10-22)
+
+Published in [`2fd8fc8f`](https://github.com/ZKChainForge/CryproScan/commit/2fd8fc8fba255333f605202ebb68d04c4029c610) on the current PR branch;
+this is source publication, not a tagged/signed release or bank rollout.
+
+- Validate bounded source-file/parser/hash/job/scan proof at coverage intake and
+  current read. Invalid backing proof returns 409; immutable history and partial
+  source uncertainty remain intact. Batch current proof queries per register.
+- Keep known build-variable, wildcard and interval package versions unresolved
+  across SBOM imports, current legacy crypto traces and cascade identity/count
+  projections. Preserve original documents, snapshots and reviewed history.
+- Refuse role-store unavailability with 503 and disabled/deleted or missing
+  production identities with 403, rather than legacy authority or stale token
+  fallback. Keep affirmative non-production legacy compatibility.
+- Remove raw driver/connection/SQL exception payloads from selected public health
+  and lookup failure-log paths, retaining status and safe failure categories.
+- Remove Google Fonts bootstrap/preconnects and external font/style CSP allowances;
+  retain existing local/system fallback fonts. Actual bank-browser checks remain required.
+- Add negative/compatibility regressions and dated engineering records. Final
+  selected checks: **641 API passed**, **1,146 library/package passed / 1 skipped**,
+  **398 frontend passed**, **7 toolchain passed**; typecheck/build/lint passed.
+  The skipped disposable-PostgreSQL fixture requires `pg_virtualenv`; it is not waived.
+- No new feature/profile/collector, workflow, dependency lock or migration;
+  schema head stays **0105**. Old engine-bound offline qualifications need actual
+  re-exercise. Source commits use `[skip ci]`; no green Actions verdict is inferred.
+
+See [implementation status](docs/product-improvement/IMPLEMENTATION-STATUS.md)
+and [upgrade notes](docs/runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f)
+for source identities, original adverse results, compatibility and open acceptance.
+
 ### Security and durability — execution/replay (2026-10-21)
 
 - Reconcile untrusted queue descriptors against persisted jobs before scope;

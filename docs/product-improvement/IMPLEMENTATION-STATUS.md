@@ -7,6 +7,37 @@
 [quality-only roadmap](08-execution-roadmap-and-acceptance.md). No new collectors,
 BOM types, pages, services or deployment profiles.
 
+## Published engineering snapshot
+
+**Published source:** [`2fd8fc8fba255333f605202ebb68d04c4029c610`](https://github.com/ZKChainForge/CryproScan/commit/2fd8fc8fba255333f605202ebb68d04c4029c610)
+**Published:** 2026-10-22 UTC, commit message includes `[skip ci]`.
+**PR:** [#34](https://github.com/ZKChainForge/CryproScan/pull/34), open at this documentation update;
+not merged into main and not deployed to a bank.
+
+All three increments below are committed and pushed. The current docs-only
+follow-up corrects publication/operating guidance; it changes no implementation,
+workflow, dependency lock or schema and does not rerun the application tests.
+
+| Final checks retained for the published source | Actual result |
+|---|---|
+| Selected API/auth/estate/queue/assurance/six-BOM suites | **641 passed**, 12 warnings |
+| Shared-model/full-CBOM/selected-SBOM/package/database-gate suites | **1,146 passed / 1 skipped**, 26 warnings |
+| Full frontend DOM suite | **398 passed / 45 files** |
+| Toolchain | **7 passed** |
+| Typecheck, production bundle, Python lint and dependency consistency | Passed |
+
+The skipped disposable-PostgreSQL case requires `pg_virtualenv` and explicit
+opt-in. It is not evidence of a passed PostgreSQL exercise. These scoped local
+results are not all-repository, GitHub Actions, real-browser/site, independent
+security or bank-production qualification. Counts from earlier incremental runs
+below overlap and retain their original scope; do not add them together.
+
+For upgrade consequences and safe operator responses, use the
+[current handoff](../runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f).
+The next bounded engineering work is interruption, duplicate-delivery and durable
+UNKNOWN recovery checks; it is **planned, not implemented by this docs update**.
+Different-human review and real site/customer acceptance remain pending.
+
 ## 1. Sequence actually followed
 
 1. Freeze the current controlled local-source/v1 → registered coverage → existing
@@ -70,7 +101,7 @@ Exact conditions, original red results and warnings are in the dated record.
 | B1/B4 | Source coverage defect corrected with focused and related regressions | Remaining six-BOM correctness matrix and independent review |
 | B3/C3 | Known external browser bootstrap dependency removed; role-store failure and selected public probe/log privacy corrected with negative regressions | Full critical security/accessibility/user/browser acceptance matrix and different review |
 | C1/C2/C4 | No broad recovery/refactor/capacity work claimed | Intended-site fault, recovery, capacity and maintainability work packages |
-| D | User authorizes source PR push with `[skip ci]`; no workflow changes, signed release or site update | Actual required checks, signed full package, migration/recovery rehearsal |
+| D | All three increments pushed in `2fd8fc8f` with `[skip ci]`; no workflow changes, signed release or site update | Actual required checks, signed full package, migration/recovery rehearsal |
 | E/F | Not performed | Real independent assessor/owners/site/customer evidence and current approval |
 
 The user retains responsibility for the earlier unspecified workflow failure.
@@ -151,7 +182,7 @@ end-to-end login exploit or bank-site qualification. This is not an all-log audi
 
 Details, original failures, exact check scope and source identities are in
 [increment 3's engineering record](../readiness-evidence/quality-authority-privacy-2026-10-22.md).
-The user requests publishing all three accumulated increments to the current PR
+All three accumulated increments were published in `2fd8fc8f` to the current PR
 branch with `[skip ci]`, without workflow edits or resolving the earlier CI lane.
 A source push does not update a bank installation or sign a full operator release.
 Different review and all actual site/security/customer acceptance remain open.

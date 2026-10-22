@@ -393,8 +393,37 @@ retains the role-store failure reproduction, probe/log privacy corrections,
 actual scoped tests and disposable-PostgreSQL skip. The
 [implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md) separates all
 three increments and their actual evidence from external review/site acceptance.
-All accumulated code/docs are prepared for the user's requested PR-branch push
+All three accumulated increments were pushed in `2fd8fc8f` to the current PR branch
 using `[skip ci]`, with no workflow, dependency lock, schema or deployment change.
 Frontend/typecheck/build/toolchain checks are actually rerun for this publication;
 prior dated records keep their original scope/results rather than being rewritten.
 A source publication is not a signed full release, bank upgrade or customer acceptance.
+
+
+## 16. Published-source documentation reconciliation — 2026-10-22
+
+The current-reading pages now identify **`2fd8fc8fba255333f605202ebb68d04c4029c610`**
+as the published quality implementation, with original broad-review and dated
+test baselines kept separate. PR #34 is open at this update, not merged or deployed.
+The [publication ledger](product-improvement/IMPLEMENTATION-STATUS.md#published-engineering-snapshot)
+records actual source publication and retained test/skip scope, not another test run.
+
+The Unreleased changelog, quality index/roadmap, on-premises/support guides and
+[evidence-assurance runbook](runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f)
+now explain changed refusals, offline supplier engine re-exercise, safe health
+categories and rebuilt frontend rollout. The runbook explicitly marks its original
+0103 sequence historical; 2fd8fc8f still targets 0105 and adds no migration.
+The next interruption/duplicate-delivery/UNKNOWN recovery work remains planned.
+
+This follow-up changes documentation only. No application test, schema/API/maturity
+regeneration, workflow dispatch, migration, image build/signing or site exercise is
+performed. The three dated engineering records and historical readiness artifacts
+are not rewritten. No new all-suite/Actions/production approval is inferred.
+
+
+Documentation-only validation: **490 Markdown / 1,784 local links**, zero missing
+relative targets or unresolved heading anchors; **10 changed Markdown files**
+with balanced fences and **5 labeled shell examples** syntax checked. **53 external
+links** were not fetched. Patch whitespace passes. Read-only checks confirm all
+**20 retained source/lock hashes** still match; application tests are not rerun.
+No example's mutating deployment command is executed.

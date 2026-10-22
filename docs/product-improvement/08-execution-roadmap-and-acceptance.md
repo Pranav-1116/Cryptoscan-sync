@@ -3,9 +3,11 @@
 [Pack index](README.md) · [Previous: operations](07-operations-and-bank-qualification.md) ·
 [Next: worked example/templates](09-worked-example-and-review-templates.md)
 
-The first engineering increment is now tracked separately in
-[implementation status](IMPLEMENTATION-STATUS.md), with reproduced defects,
-local test results and explicitly open site/review requirements. The roadmap
+Three bounded engineering increments are published in `2fd8fc8f` and tracked in
+[implementation status](IMPLEMENTATION-STATUS.md#published-engineering-snapshot),
+with reproduced defects, local test results and open site/review requirements.
+Interruption, duplicate-delivery and durable UNKNOWN recovery checks are the next
+bounded work, not completed by this documentation refresh. The roadmap
 below remains the full target, not a claim that every work package has finished.
 
 ## 8.1 Program rules

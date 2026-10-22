@@ -676,6 +676,21 @@ reuse the short historical development DR results as a promise for this bank.
 
 ## 20. Upgrades, failed rollout and UNKNOWN outcomes
 
+**Published quality-source update:** `2fd8fc8f` contains the three bounded
+engineering corrections, not a new deployment profile or bank-installed image.
+There is no new migration in that commit; the reviewed head stays 0105. Include
+the [quality-source handoff](runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f)
+in staging: invalid current source proof may now return 409; unresolved package
+versions cannot fill exact crypto paths; unreadable role storage refuses with 503
+and invalid production identity authority with 403. Old offline supplier engine
+qualifications need actual re-exercise. Keep history and evidence immutable.
+
+Health failure diagnostics intentionally expose safe categories instead of raw
+connection/SQL exceptions. Use approved restricted diagnostics, not public dumps.
+The font change reaches browsers only after the reviewed new frontend is built,
+verified and installed; actual browser/no-egress acceptance is still required.
+
+
 - Review exact image/dependency/schema compatibility and package signatures for
   every release. Back up and coordinate producers/workers; no unreviewed mixed versions.
 - Legacy unpinned jobs remain history. Newly approved work is submitted as a new

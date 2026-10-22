@@ -273,6 +273,21 @@ Emergency changes follow the approved expedited process; urgency does not remove
 bank authorization, independent review, evidence retention or post-change checks.
 Air-gapped updates use the same reviewed offline transfer/signature/digest discipline.
 
+### Published quality patch to assess, not auto-install
+
+The quality corrections in source commit `2fd8fc8f` are available on the current
+PR branch. They are **not** a signed operator release or a bank deployment. During
+weekly review, assess the [current quality-source handoff](runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f)
+against the bank's actual version and evidence; use the urgent incident path
+instead of waiting a week if active security/integrity impact is suspected.
+
+Plan for explicit source-proof/package refusal, role-store 503 and invalid-identity
+403, safe health categories, actual offline-profile requalification, and the rebuilt
+frontend's system-font fallback. Do not patch history to clear a refusal, request
+raw connection/SQL logs or bypass current authority. Preserve the normal signed
+package, staging, bank approval and independent validation process above. This
+source update adds no migration beyond the existing 0105 contract and no SLA.
+
 ## 11. Remote support and sensitive evidence
 
 Default to bank-controlled diagnosis and approved sanitized evidence. If remote

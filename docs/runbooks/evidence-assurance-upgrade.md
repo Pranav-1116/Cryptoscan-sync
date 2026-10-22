@@ -1,6 +1,45 @@
-# Evidence assurance upgrade — sections 3.1–3.7
+# Evidence assurance upgrade and published quality-source handoff
 
-## Status and support boundary
+## Current quality-source handoff (2fd8fc8f)
+
+**Published source:** `2fd8fc8fba255333f605202ebb68d04c4029c610`, current PR branch,
+2026-10-22. The three quality increments are pushed, not merely proposed. See the
+[publication ledger](../product-improvement/IMPLEMENTATION-STATUS.md#published-engineering-snapshot)
+for actual local checks and the remaining review/site boundary.
+
+This source change adds **no migration**; its release contract remains head
+**0105**. The 0103 foundation sequence later in this document is historical and
+must not be mistaken for the complete current upgrade target. Use the
+[current operator upgrade/recovery procedure](operator-install-upgrade-recover.md)
+and [on-premises guide](../BANK-ON-PREMISES-DEPLOYMENT.md) for the exact reviewed
+0105 package, coordinated images, backups and guarded event-history downgrade.
+Do not use a Git commit SHA as an image digest or skip external package signing.
+
+### Changed behavior to include in the bank's staging/change checklist
+
+| Current behavior | Operator response | Do not do |
+|---|---|---|
+| Source coverage/read-dependent operator summary returns 409 when eligible backing parser/file/hash/job/scan proof is invalid or missing | Inspect retained history, current target/estate and actual SQL proof; obtain a new authorized eligible observation where needed | Keep old green counts, patch receipts, reset job states or infer a successful empty collection |
+| Known variable/wildcard/interval package versions remain unresolved; legacy PACKAGE_CRYPTO review can refuse with 409 and current trace has no eligible path | Obtain an actual resolved build/SBOM and separately reviewed exact package mapping | Guess from package names, edit old SBOM rows or rewrite historical approvals/counts |
+| Role storage unavailable returns 503; disabled/deleted or missing production identities refuse privileged role lookup with 403 | Restore authorized dependency access or correct current durable account/session/membership under the bank's identity process | Fall back to stale token roles, create implicit production admins or bypass scope |
+| Dependency health remains down/degraded; readiness remains 503 on failure; safe category replaces raw exception details | Use status/down/error category and approved restricted diagnostics; liveness alone does not establish readiness | Request connection passwords, raw SQL or unredacted exception/traceback dumps in public logs or support tickets |
+| Old offline supplier qualifications no longer match the package-validation engine fingerprint | Actually re-exercise the approved exact offline profile and retain its result/review | Patch qualification hashes, call NOT_QUALIFIED a pass or infer live vendor support |
+| New frontend entrypoint/CSP no longer requests/allows known remote Google Fonts bootstrap assets | Build the reviewed new image, verify its digest/approved CSP and actual browser network/fallback-font behavior | Assume an old installed image changed or claim whole-application zero egress from source inspection |
+
+Original documents, raw stored projections, snapshots and reviewed history remain
+unchanged. Current derived views re-evaluate eligibility; historical stored counts
+are not a substitute for current proof. Partial primary-source observation still
+does not establish complete source, deployment, invocation or whole-bank coverage.
+
+Before rollout, stage the coordinated signed package and check both allowed and
+refused cases. Preserve the existing exact-condition remediation predicate and
+current authority. Source publication performs no bank installation or automatic
+update. Independent review, actual PostgreSQL/browser/fault/restore/operator
+exercises and customer acceptance remain open; the disposable-PostgreSQL local
+fixture skip is not a passed site exercise.
+
+## Original foundation support boundary
+
 
 This increment implements durable partial progress, registered denominators,
 reviewed six-BOM assertions, immutable customer-review workflows, contextual
@@ -17,7 +56,13 @@ background job or privileged import. The existing controlled-surface refusal of
 unqualified acquisition APIs remains. Development SSH uses the new receipts;
 that does not make SSH a qualified production execution profile.
 
-## Upgrade order
+## Original foundation upgrade order (0103)
+
+The sequence below describes the original receipt/assurance-table introduction.
+It is retained for provenance and compatibility review, **not** permission to stop
+an installation of `2fd8fc8f` at 0103. Its later release requirements include 0104
+and 0105 under the current operator procedure; this documentation does not run
+migrations or authorize destructive downgrade.
 
 1. Back up and rehearse restore of the exact regional SQL estate. Quiesce API
    writes and drain synchronous collectors before migration. An old collector
