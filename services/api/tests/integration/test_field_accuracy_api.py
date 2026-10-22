@@ -62,6 +62,32 @@ def _scan(session, sid: str, target: str) -> Scan:
     return s
 
 
+@pytest.mark.asyncio
+async def test_platform_field_accuracy_requires_platform_operator():
+    from api.security.session_manager import SessionManager
+    from db.repositories.user_repository import UserRepository
+
+    app, session = _make_app()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            # Both principals are provisioned without tenant membership.
+            for username, role in (("supervisor-no-membership", "supervisor"), ("platform-operator", "superadmin")):
+                UserRepository(session).create_user(username, "x", roles=[role])
+            session.commit()
+            client.headers["Authorization"] = f"Bearer {SessionManager().create_session('supervisor-no-membership', roles=['supervisor'])}"
+            denied = await client.get("/api/v1/accuracy/field")
+            assert denied.status_code == 403
+
+            client.headers["Authorization"] = f"Bearer {SessionManager().create_session('platform-operator', roles=['superadmin'])}"
+            response = await client.get("/api/v1/accuracy/field")
+            assert response.status_code == 200, response.text
+            assert response.json()["status"] == "NO_FIELD_DATA"
+            assert response.json()["f1"] is None
+            assert response.json()["triages"] == 0
+    finally:
+        session.close()
+
+
 WORKBOOK = {
     "repo": "bank-a/payments-switch", "files_scanned": 120,
     "findings": [

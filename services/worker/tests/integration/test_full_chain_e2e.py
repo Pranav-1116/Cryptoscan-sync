@@ -16,10 +16,11 @@ authenticated API:
   run 2  weak crypto introduced (3DES)      → NEW drift event, FAIL policy,
             remediation task auto-opened from the acknowledgement
   resolve the event administratively (honest: not verified remediation)
+  report remediation complete after fixing source, before run 3
   run 3  condition fixed (3DES → AES-GCM)   → drift verification hook stamps
-            the RESOLVED event VERIFIED from run 3's evidence (§4.7), the
-            remediation task verifies against the same rescan, reports and
-            the audit ledger tell the whole story
+            the RESOLVED event VERIFIED from run 3's evidence (§4.7); the
+            legacy task records a candidate comparison, not an approved
+            assurance proof. Reports and the audit ledger tell the story
 
 Round 60 extends the SAME loop with the newer product links: the two-scan
 CBOM snapshot diff is spine-keyed (the 3DES fact is REMOVED, the fixed AES
@@ -204,30 +205,41 @@ def chain(request, tmp_path_factory):
         assert resp.status_code == 200, resp.text
         explain_weak = resp.json()
 
-    # ---- run 3: condition fixed ---------------------------------------------
-    (estate / "src" / "LegacyPad.java").write_text(AES_JAVA.replace("PaymentCrypto", "LegacyPad"))
-    scan3 = run("e2e-job-3")
-
-    # the operator loop closes through the task: accept → complete → verify
-    # against run 3's evidence
-    task_id = None
-    if task_ids:
-        task_id = task_ids[0]
-    else:  # fallback: open the task directly from the failing evidence
+    # ---- report action, then observe it in a later independent scan ---------
+    task_id = task_ids[0] if task_ids else None
+    if task_id is None:  # fallback: open the task directly from the failing evidence
         created = _call(app, "POST", "/api/v1/remediation/tasks",
                         {"evidence_id": weak.id})
         assert created.status_code == 200, created.text
         task_id = created.json()["id"]
-    for method, path, body in (
-        ("POST", f"/api/v1/remediation/tasks/{task_id}/accept", None),
-        ("POST", f"/api/v1/remediation/tasks/{task_id}/complete",
-         {"rescan_id": scan3, "notes": "replaced 3DES with AES-GCM"}),
-        ("POST", f"/api/v1/remediation/tasks/{task_id}/verify", {"rescan_id": scan3}),
-    ):
-        resp = _call(app, method, path, body)
-        assert resp.status_code == 200, (path, resp.text)
-        if path.endswith("/verify"):
-            verify_response = resp.json()
+    accepted = _call(app, "POST", f"/api/v1/remediation/tasks/{task_id}/accept")
+    assert accepted.status_code == 200, accepted.text
+    with factory() as db:
+        assert accepted.json()["target_location"] == db.get(Scan, scan2).target_location
+    # Preserve the original source site (including the line) so the rescan
+    # observes the changed algorithm, rather than a different invocation.
+    (estate / "src" / "LegacyPad.java").write_text(
+        TRIPLE_DES_JAVA.replace("DESede/CBC/PKCS5Padding", "AES/GCM/NoPadding"))
+    completed = _call(app, "POST", f"/api/v1/remediation/tasks/{task_id}/complete",
+                      {"notes": "replaced 3DES with AES-GCM"})
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["latest_verification"]["result"] == "INCONCLUSIVE"
+    scan3 = run("e2e-job-3")
+    with factory() as db:
+        original_scan = db.get(Scan, scan2)
+        rescan = db.get(Scan, scan3)
+        replacement = db.scalar(select(EvidenceRecord).where(
+            EvidenceRecord.scan_id == scan3,
+            EvidenceRecord.file_path == weak.file_path,
+            EvidenceRecord.line_number == weak.line_number,
+            EvidenceRecord.algorithm == "AES"))
+        assert original_scan.target_location == rescan.target_location
+        assert replacement is not None and replacement.compliance_status == "PASS", (
+            "the same source site must contain compliant replacement evidence")
+    verified = _call(app, "POST", f"/api/v1/remediation/tasks/{task_id}/verify",
+                     {"rescan_id": scan3})
+    assert verified.status_code == 200, verified.text
+    verify_response = verified.json()
 
     yield {
         "app": app, "factory": factory, "estate": estate,
@@ -357,20 +369,30 @@ async def test_link_drift_operator_loop_and_condition_verification(chain):
 
 
 @pytest.mark.asyncio
-async def test_link_remediation_task_verified_by_rescan(chain):
-    """The remediation task closes with a persisted, evidence-backed proof."""
+async def test_link_remediation_task_candidate_requires_approved_proof(chain):
+    """Rescan verification retains a candidate comparison, not approved proof."""
     async with AsyncClient(transport=ASGITransport(app=chain["app"]), base_url="http://t") as ac:
         r = await ac.get(f"/api/v1/remediation/tasks/{chain['task_id']}")
         assert r.status_code == 200, r.text
         task = r.json()
-        assert task["status"] in ("VERIFIED", "COMPLETED"), chain["task_verify"]
+        assert task["status"] == "COMPLETED", chain["task_verify"]
         v = await ac.get(f"/api/v1/remediation/verifications?task_id={chain['task_id']}")
         assert v.status_code == 200
-        proofs = v.json().get("verifications") or v.json().get("tasks") or []
-        assert proofs, "a verification proof must be persisted for the task"
+        proofs = v.json()["verifications"]
+        assert len(proofs) == 2, "completion and post-action rescan each retain a verdict"
+        assert proofs[1]["rescan_id"] is None
+        assert proofs[1]["result"] == "INCONCLUSIVE"
+        assert "no rescan evidence available" in proofs[1]["reason"]
         latest = proofs[0]
-        assert latest["result"] == "VERIFIED", latest
-        assert latest.get("rescan_id") == chain["scan3"]
+        assert latest["rescan_id"] == chain["scan3"]
+        assert latest["result"] == "INCONCLUSIVE", latest
+        assert "approved assurance remediation change" in latest["reason"]
+        comparison = latest["comparison"]
+        assert comparison["rescan_record_count"] >= 2
+        assert comparison["file_present_in_rescan"] is True
+        assert comparison["same_algorithm_remaining"] == []
+        assert comparison["new_violations"] == []
+        assert task["latest_verification"]["id"] == latest["id"]
 
 
 @pytest.mark.asyncio

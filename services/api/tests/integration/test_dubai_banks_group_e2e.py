@@ -61,6 +61,8 @@ def test_dubai_banks_end_to_end(tmp_path, monkeypatch, backend):
         assert set(x["cascade_systems_via_api"]) == set(e2e.BANKS[bank]["systems"])
     assert api["readonly_triage_post_status"] == 403
     assert api["field_accuracy_status"] == "NO_FIELD_DATA"
+    assert api["field_accuracy_f1"] is None
+    assert api["field_accuracy_triages"] == 0
 
     sup = api["supervisor"]
     assert sup["registry_count"] == len(e2e.ENTITIES)

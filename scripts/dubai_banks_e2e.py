@@ -12,7 +12,8 @@ Bank of Dubai, Emirates Islamic, Commercial Bank International — plus ENBD's D
 3. runs every estate through ``PipelineRunner`` into ONE database (SQLite or PostgreSQL);
 4. scores each bank's evidence rows against the labels (precision / recall / F1, same unit as the corpus benchmark);
 5. reads everything back through the real HTTP API — bank analyst: scans, findings, cascade systems; supervisor:
-   ``/banking/group``, ``/banking/group/supervisor-pack``, ``/banking/group/roadmap``; readonly cannot publish triage;
+   ``/banking/group``, ``/banking/group/supervisor-pack``, ``/banking/group/roadmap``; a platform operator:
+   ``/accuracy/field``; readonly cannot publish triage;
 6. writes a Markdown + JSON report.
 
 **Honesty.** These are synthetic estates written from public standards — not the banks' code, configuration or key
@@ -308,8 +309,16 @@ def run(backend: str = "sqlite", workdir: Path | None = None) -> dict[str, Any]:
                     "roadmap_summary": roadmap.get("summary") or roadmap.get("migration_roadmap_summary"),
                     "systems_total": systems_list.get("total_count"),
                 }
-                field = (await c.get("/api/v1/accuracy/field")).json()
-                out["field_accuracy_status"] = field.get("status")
+                # Field accuracy is tenant-scoped history. These synthetic scans live in the
+                # platform estate, so a separate platform operator reads it; a supervisor
+                # without tenant membership must not gain history access by role alone.
+                c.headers["Authorization"] = f"Bearer {token('field-operator', 'superadmin')}"
+                field_response = await c.get("/api/v1/accuracy/field")
+                field_response.raise_for_status()
+                field = field_response.json()
+                out["field_accuracy_status"] = field["status"]
+                out["field_accuracy_f1"] = field["f1"]
+                out["field_accuracy_triages"] = field["triages"]
             return out
 
         report["api"] = asyncio.run(readback())
@@ -381,7 +390,7 @@ def render_md(rep: dict[str, Any]) -> str:
     L += ["", "## Through the API", "", "| bank | scan status | findings via API | cascade systems via API |", "|---|---|---|---|"]
     for bank, x in (api.get("per_bank") or {}).items():
         L.append(f"| {bank} | {x['status']} | {x['findings_via_api']} | {len(x['cascade_systems_via_api'])} |")
-    L += ["", f"Readonly session posting a triage → HTTP {api.get('readonly_triage_post_status')}. Field accuracy endpoint → `{api.get('field_accuracy_status')}` (no bank has published a review; nothing is invented).", "",
+    L += ["", f"Readonly session posting a triage → HTTP {api.get('readonly_triage_post_status')}. Platform operator reading field accuracy → `{api.get('field_accuracy_status')}` (no bank has published a review; nothing is invented).", "",
           "## Supervisor view (`/api/v1/banking/group`, `/group/supervisor-pack`, `/group/roadmap`, role `supervisor`)", "",
           f"Registry entities: {sup.get('registry_count')} · systems total: {sup.get('systems_total')} · unassigned to an entity: {sup.get('unassigned_systems')} · pack: `{sup.get('pack_kind')}` over {sup.get('pack_entities')} entities", "",
           "| entity | regulator | systems | crypto instances | weak / legacy | quantum-vulnerable public-key | worst system | top families |", "|---|---|---|---|---|---|---|---|"]
