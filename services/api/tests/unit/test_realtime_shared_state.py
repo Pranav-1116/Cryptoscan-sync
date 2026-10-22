@@ -22,13 +22,21 @@ class _FakePub:
     def __init__(self):
         self.messages: list[dict] = []
         self.subscribed: list[str] = []
+        self.on_message = None
 
     def subscribe(self, channel: str) -> None:
         self.subscribed.append(channel)
 
-    def listen(self):
-        while self.messages:
-            yield self.messages.pop(0)
+    def get_message(self, timeout: float = 1.0):
+        if not self.messages:
+            return None
+        message = self.messages.pop(0)
+        if self.on_message is not None:
+            self.on_message()
+        return message
+
+    def close(self) -> None:
+        pass
 
 
 class _FakeRedis:
@@ -87,8 +95,9 @@ def test_redis_sync_injects_remote_and_ignores_own_echo():
     redis = _FakeRedis("node-a")
     sync = RedisEventSync(redis, bus, "node-a")
     bus.set_remote_publisher(sync.publish)
-    # drive the reader synchronously (no background thread) for a deterministic test
+    # Drive the reader synchronously, stopping after each delivered frame.
     sync._pubsub = redis.pubsub()
+    redis._pub.on_message = sync._stop.set
 
     # inject a remote event as if it arrived from another node
     redis.inject(json.dumps({"node": "node-b", "type": "remote.evt", "source": "scan", "payload": {"a": 1}, "ts": "t"}))
@@ -98,6 +107,8 @@ def test_redis_sync_injects_remote_and_ignores_own_echo():
     # inject our OWN echo -> must be ignored (no local re-publish / no dup)
     before = len(bus.recent(limit=50))
     redis.inject(json.dumps({"node": "node-a", "type": "scan.started", "source": "scan", "payload": {}, "ts": "t"}))
+    sync._stop.clear()
+    sync._pubsub = redis.pubsub()
     sync._run()
     assert len(bus.recent(limit=50)) == before
 
