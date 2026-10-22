@@ -36,7 +36,12 @@ def package_identity(purl: Any, version: Any = None) -> str | None:
     if not match:
         return None
     resolved = unquote(match.group(1))
-    if (not resolved or re.search(r"[\s^~<>=*|]", resolved)
+    # Decode before checking: percent-encoded build variables and range syntax
+    # are still unresolved, not concrete versions. Keep these checks in the
+    # function so the existing supplier engine fingerprint binds their meaning.
+    if (not resolved or re.search(r"[\s^~<>=*|\[\](),]", resolved)
+            or re.search(r"\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|@[A-Za-z_][A-Za-z0-9_]*@", resolved)
+            or re.search(r"(?:^|\.)x(?:\.|$)", resolved, re.IGNORECASE)
             or resolved.lower() in {"latest", "main", "master", "head", "x"}):
         return None
     if version is not None and str(version) != resolved:

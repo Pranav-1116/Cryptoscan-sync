@@ -35,6 +35,16 @@ def software_context(snapshot, *, purl=None, artifact_id=None, system_id=None, n
     artifacts = {a["id"]: a for a in snapshot.get("software_artifacts") or []}
     bindings = [b for b in snapshot.get("software_sbom_bindings") or []
                 if b.get("artifact_id") in artifacts and _same_scope(b, artifacts[b["artifact_id"]])]
+    # Normalize only this current projection, never the captured snapshot or
+    # stored SBOM. Old derived counts/identities cannot grandfather unresolved
+    # versions into exact joins after the identity contract is corrected.
+    projected = []
+    for binding in bindings:
+        components = [{**c, "package_identity": package_identity(c.get("package_identity"))}
+                      for c in binding.get("components") or []]
+        projected.append({**binding, "components": components,
+                          "unresolved_component_count": sum(c["package_identity"] is None for c in components)})
+    bindings = projected
     deployments = [d for d in snapshot.get("software_deployments") or []
                    if d.get("artifact_id") in artifacts and _same_scope(d, artifacts[d["artifact_id"]])]
     if purl is not None:

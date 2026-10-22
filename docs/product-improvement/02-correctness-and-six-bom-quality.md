@@ -144,3 +144,20 @@ IDs and bytes; all six BOMs disclose provenance and unresolved paths; coverage
 reconciles to an independently registered scope; original evidence is immutable;
 negative cases cannot produce false PASS/VERIFIED. The API, browser and export
 must agree on those meanings. Missing external truth stays a named limitation.
+
+
+## 2.8 Implemented bounded package-identity correction
+
+The [second quality increment](../readiness-evidence/quality-package-identity-2026-10-22.md)
+reproduced known unresolved build variables, wildcard version segments and
+interval versions being treated as exact package identities. The existing helper
+now keeps these unknown after PURL decoding. CycloneDX/SPDX import/binding,
+current legacy relationship review/trace and cascade identity/count projections
+use that correction without modifying original documents or approved history.
+A valid supplier signature does not resolve an unknown package version.
+
+Concrete coordinate labels/encoding/qualifiers remain supported; artifact bytes,
+deployment, invocation and independent truth retain their own evidence burdens.
+This is not a full Package URL/range parser, new version resolver, complete
+six-BOM matrix or independent bank accuracy qualification. Actual results and
+open review/site work are in the [implementation ledger](IMPLEMENTATION-STATUS.md).

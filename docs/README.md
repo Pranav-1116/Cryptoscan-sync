@@ -1,5 +1,13 @@
 # CryptoScan documentation
 
+## Quality implementation progress
+
+See the [step-by-step implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md)
+for reproduced defects, bounded code corrections, actual regression results and
+remaining independent/site acceptance. The first increment strengthens source
+coverage proof and removes known external font bootstrap dependencies; it does
+not add features or declare the product bank-production approved.
+
 ## Deploy directly inside a bank
 
 Read [Bank on-premises deployment](BANK-ON-PREMISES-DEPLOYMENT.md) for the direct,

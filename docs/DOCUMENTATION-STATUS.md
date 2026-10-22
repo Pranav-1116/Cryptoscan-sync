@@ -10,14 +10,14 @@ every documented capability is generally available.
 
 ## 1. Repository-wide inventory
 
-The `docs/` tree currently contains **451 files**, including **381 Markdown
+The `docs/` tree currently contains **455 files**, including **385 Markdown
 files**, plus generated diagrams, JSON/CSV evidence, templates, and scoped
 qualification artifacts. The files cover product behavior, architecture, user
 workflows, deployment, security, operations, company diligence, commercial
 planning, and historical evidence.
 
-Counts are a documentation snapshot. At this refresh there are **486 Markdown
-files repository-wide**, including 381 under `docs/`. The all-repository inventory
+Counts are a documentation snapshot. At this refresh there are **490 Markdown
+files repository-wide**, including 385 under `docs/`. The all-repository inventory
 uses tracked `*.md` plus this change’s new guides; the `docs/` total counts actual
 files. Regenerate these counts rather than copying them into product claims.
 
@@ -352,3 +352,49 @@ Publication validation: **486 Markdown files / 1,736 local links**, zero missing
 relative targets or unresolved heading anchors; **16 pending Markdown files**
 with balanced fences; **7 labeled shell examples** pass `bash -n`; patch whitespace
 passes. External URLs are not fetched, and no example mutating command is executed.
+
+
+## 13. Quality implementation starts — 2026-10-22
+
+The [implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md) and
+[dated engineering record](readiness-evidence/quality-increment-2026-10-22.md)
+track the first bounded code changes after `69faec96`. Existing source coverage
+now validates actual parser receipts and coherent job/scan intervals at intake
+and rechecks backing evidence on current reads, without per-target SQL growth or
+rewriting immutable history. Known external frontend font bootstrap/CSP origins
+are removed with existing system fallback fonts. No new feature/profile/collector,
+workflow definition, dependency lock or migration is added.
+
+Unlike the preceding docs-only publications, this increment actually runs
+selected backend source/assurance regressions, package/migration checks and the
+full frontend DOM/typecheck/build/toolchain sequence. Exact counts and limitations
+are retained in the dated record, not merged into historical evidence or a
+readiness percentage. Independent review, actual PostgreSQL/browser/site/recovery,
+assessor/operations/customer qualification remain open. The user's unspecified
+workflow failure is not fixed or waived here.
+
+
+## 14. Second bounded quality correction — 2026-10-22
+
+The [dated package-identity record](readiness-evidence/quality-package-identity-2026-10-22.md)
+retains the next actual baseline, red reproduction and accepted local regressions.
+Known unresolved package versions no longer fill exact SBOM/cascade/crypto paths;
+legacy current projections are re-evaluated without changing historical evidence.
+The [implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md) keeps
+first/second-increment results, review/rollout limits and next work distinct.
+No frontend check is falsely described as rerun, no dependency/workflow/schema
+change is made and no whole-product/site readiness percentage is granted.
+
+
+## 15. Third quality increment and accumulated source publication — 2026-10-22
+
+The [authority/privacy engineering record](readiness-evidence/quality-authority-privacy-2026-10-22.md)
+retains the role-store failure reproduction, probe/log privacy corrections,
+actual scoped tests and disposable-PostgreSQL skip. The
+[implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md) separates all
+three increments and their actual evidence from external review/site acceptance.
+All accumulated code/docs are prepared for the user's requested PR-branch push
+using `[skip ci]`, with no workflow, dependency lock, schema or deployment change.
+Frontend/typecheck/build/toolchain checks are actually rerun for this publication;
+prior dated records keep their original scope/results rather than being rewritten.
+A source publication is not a signed full release, bank upgrade or customer acceptance.

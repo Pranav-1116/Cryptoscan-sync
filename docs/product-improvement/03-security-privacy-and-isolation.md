@@ -142,3 +142,26 @@ Exit requires critical negative regressions on the exact candidate, appropriatel
 independent security results for its real scope, addressed/reviewed findings and
 post-fix retests. A responsible exception must follow the actual gate/policy;
 it cannot rename mandatory FAIL/SKIP as PASS or waive bank authority.
+
+
+## 3.9 Implemented authority/dependency-failure correction
+
+The [third quality increment](../readiness-evidence/quality-authority-privacy-2026-10-22.md)
+reproduced a role-store failure entering legacy empty-role/admin compatibility,
+missing production identity/scope handling and selected public health/log paths
+exposing synthetic exception canaries. Existing role dependencies now refuse
+unavailable storage with 503, rather than infer privilege from unreadable rows or
+stale token claims. Disabled/deleted current rows cannot provide those roles;
+affirmatively missing non-production legacy identities retain compatibility.
+
+Public dependency/readiness failure details and selected role/tenant/database
+failure logs retain status and safe categories without raw driver/connection/SQL
+payloads. Liveness and readiness-drain semantics remain distinct. Forty new cases
+include isolated post-auth role gates and four actual artifact-route checks with
+real durable synthetic sessions and targeted role-stage faults. Original adverse
+results and exact broader checks are retained, not represented as a live outage,
+independent assessment, full secret scrub or complete race matrix.
+
+See [implementation status](IMPLEMENTATION-STATUS.md). Remaining independent
+security and site/operating evidence is still required; no CI failure is waived,
+production permission added or customer acceptance granted by the source push.

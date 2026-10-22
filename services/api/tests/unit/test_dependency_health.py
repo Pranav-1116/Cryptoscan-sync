@@ -12,7 +12,8 @@ def test_probe_statuses():
     assert ok["status"] == "ok" and ok["detail"] == "fine" and "latency_ms" in ok
 
     down = _probe("y", True, lambda: (_ for _ in ()).throw(RuntimeError("boom")))
-    assert down["status"] == "down" and "boom" in down["detail"]
+    assert down["status"] == "down" and down["detail"] == "Dependency probe failed"
+    assert down["error_type"] == "RuntimeError" and "boom" not in str(down)
 
     skipped = _probe("z", False, lambda: "never")
     assert skipped["status"] == "skipped"

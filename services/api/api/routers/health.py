@@ -35,7 +35,8 @@ def _probe(name: str, configured: bool, fn) -> dict:
         return {"name": name, "status": "ok", "detail": detail,
                 "latency_ms": round((time.perf_counter() - start) * 1000, 1)}
     except Exception as exc:  # a dependency outage must never 500 the health call
-        return {"name": name, "status": "down", "detail": str(exc)[:200],
+        return {"name": name, "status": "down", "detail": "Dependency probe failed",
+                "error_type": type(exc).__name__,
                 "latency_ms": round((time.perf_counter() - start) * 1000, 1)}
 
 
@@ -189,7 +190,9 @@ def readyz():
         })
     except Exception as exc:
         pool.shutdown(wait=False)
-        return JSONResponse(status_code=503, content={"status": "not_ready", "database": str(exc)[:200]})
+        logger.warning("readiness_database_probe_failed", extra={"error_type": type(exc).__name__})
+        return JSONResponse(status_code=503, content={"status": "not_ready", "database": "Database probe failed",
+                                                     "error_type": type(exc).__name__})
     settings = get_settings()
     migration = None
     if getattr(settings, "is_production", False):

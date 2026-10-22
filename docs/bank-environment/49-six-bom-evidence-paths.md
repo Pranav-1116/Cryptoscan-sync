@@ -65,3 +65,27 @@ The new bounded supplier export lane emits typed facts for all six layers but
 **never automatically materializes identity joins**. Actual proprietary/vendor
 formats, runtime logs and independent deployment/firmware/supplier verification
 remain profile-specific acceptance work. See [3.7](52-qualified-adapters-and-supplier-quarantine.md).
+
+
+## Quality correction: unresolved version labels stay unknown
+
+The [second quality increment](../readiness-evidence/quality-package-identity-2026-10-22.md)
+removes an exact-package false join. Known `${...}`, `$name`, `@NAME@` build
+variables, wildcard version segments and interval ranges do not become resolved
+versions because they appear inside a version-bearing PURL. Percent encoding does
+not change that rule. CycloneDX/SPDX imports retain raw version/PURL metadata and
+count those components unresolved; the correction does not guess actual versions.
+
+Current review/trace paths re-evaluate legacy derived identities. A pre-upgrade
+reviewed assertion cannot resolve an unknown coordinate; an old proposal refuses
+new approval with 409. Current cascade projections correct derived package identity
+and unresolved counts without editing the captured snapshot or prior run result.
+Explicit artifact/deployment relations stay available with their declared/measured
+basis and existing runtime limitations. Historical SBOM/review records remain
+unchanged; use actual resolved build evidence rather than patching old rows.
+
+The existing offline supplier package validator also applies the rule. A valid
+signature over an unresolved package fact stays origin-verified but quarantined,
+not independently true. Old engine-bound offline qualifications require actual
+re-exercise after this helper change. No live supplier adapter, new collector,
+schema migration or whole-bank qualification is introduced.

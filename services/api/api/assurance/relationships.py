@@ -9,6 +9,7 @@ from db.models.software_supply_chain import SoftwareArtifact, SoftwareDeployment
 from db.models.system import System
 from db.models.vendor import Vendor
 from db.repositories.execution_control import aware
+from shared_models.software_identity import package_identity
 from . import store
 
 MODELS = {"sbom_binding": ReleaseSbomBinding, "phase_receipt": CollectionPhaseReceipt,
@@ -36,7 +37,7 @@ def validate(db, owner, value):
     if value["object_type"] == "evidence" and value["object_id"] not in value["evidence_ids"]:
         raise HTTPException(422, "Object observation must be among the explicit supporting evidence")
     if value["relation"] == "PACKAGE_CRYPTO":
-        if not value["package_identity"] or value["package_identity"] not in {c.get("package_identity") for c in a.components}:
+        if not value["package_identity"] or value["package_identity"] not in {package_identity(c.get("package_identity")) for c in a.components}:
             raise HTTPException(409, "Exact versioned package is not resolved by this release SBOM binding")
     elif value["package_identity"]:
         raise HTTPException(422, "Package identity only belongs on a PACKAGE_CRYPTO assertion")
@@ -97,7 +98,9 @@ def trace(db, owner, system_id):
                 if row.revision > getattr(newest.get(row.subject_id), "revision", 0):
                     newest[row.subject_id] = row
             for component in binding.components:
-                purl = component.get("package_identity")
+                # Re-evaluate legacy derived identities without rewriting the
+                # stored SBOM or historical reviewed assertion.
+                purl = package_identity(component.get("package_identity"))
                 links = [r for r in newest.values() if r.payload.get("package_identity") == purl and purl]
                 resolved = False
                 for link in links:

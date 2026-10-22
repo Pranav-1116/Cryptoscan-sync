@@ -6,6 +6,19 @@ implementation review is against `698beb38`. The intervening commit is docs-only
 **Audience:** product owner, engineering, QA, security, operators and bank reviewers.
 **Status:** recommended improvement program, not completed work or release approval.
 
+## Implementation has started
+
+The first bounded changes and exact before/after results are tracked in
+[implementation status](IMPLEMENTATION-STATUS.md) and the
+[dated engineering record](../readiness-evidence/quality-increment-2026-10-22.md).
+They strengthen existing source coverage and remove known remote font bootstrap
+references. The [second increment](../readiness-evidence/quality-package-identity-2026-10-22.md)
+keeps unresolved package versions out of exact SBOM/cascade/crypto paths, including
+legacy current reads. The [third increment](../readiness-evidence/quality-authority-privacy-2026-10-22.md)
+strengthens role-store failure refusal and selected public probe/log privacy;
+all accumulated changes are prepared for the user-requested source PR push.
+They do not mark this whole program or bank qualification complete.
+
 ## The recommendation in one sentence
 
 **Stop expanding the product's surface; make one supported evidence-to-remediation

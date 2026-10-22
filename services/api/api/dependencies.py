@@ -305,39 +305,43 @@ def _session_store_allows(token: str, username: str) -> bool:
         return not strict
 
 
-def _user_roles(username: str, token: str | None, db: Session | None = None) -> list[str]:
-    """Fresh roles from the users table; falls back to token claims.
+def _current_user_roles(user) -> list[str]:
+    """An unreadable, disabled or deleted identity is not an authority grant."""
+    if user is None:
+        if _get_settings().is_production:
+            raise HTTPException(403, "Current user identity unavailable")
+        return []
+    if not getattr(user, "is_active", True) or getattr(user, "deleted_at", None):
+        raise HTTPException(403, "Current user identity unavailable")
+    return user.role_list
 
-    Uses the request's DB session when given (tests override it), else a
-    fresh connection.
+
+def _user_roles(username: str, token: str | None, db: Session | None = None) -> list[str]:
+    """Read current durable roles; never substitute stale token claims on failure.
+
+    The token argument remains for call compatibility, not role authority.
+    Only affirmatively absent non-production rows return no roles. Missing
+    production and disabled/deleted identities refuse, so compatibility callers
+    cannot interpret them as legacy grants. Unavailable storage refuses with 503.
     """
     try:
         from db.repositories.user_repository import UserRepository
 
         if db is not None:
-            user = UserRepository(db).get_by_username(username)
-            if user is not None:
-                return user.role_list
-        else:
-            from db.connection.session import SessionLocal
+            return _current_user_roles(UserRepository(db).get_by_username(username))
+        from db.connection.session import SessionLocal
 
-            session = SessionLocal()
-            try:
-                user = UserRepository(session).get_by_username(username)
-                if user is not None:
-                    return user.role_list
-            finally:
-                session.close()
-    except Exception as exc:  # pragma: no cover - DB unavailable
-        # The session-token role snapshot is a degraded fallback, but the
-        # database failure remains visible to operators and never becomes an
-        # implicit admin grant.
-        logger.exception("principal_roles_database_lookup_failed", extra={"error_type": type(exc).__name__})
-    if token:
-        session = SessionManager().get_session(token)
-        if session:
-            return list(session.roles)
-    return []
+        session = SessionLocal()
+        try:
+            return _current_user_roles(UserRepository(session).get_by_username(username))
+        finally:
+            session.close()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Driver errors can include URLs, credentials, SQL and parameters.
+        logger.error("principal_roles_database_lookup_failed", extra={"error_type": type(exc).__name__})
+        raise HTTPException(503, "Authorization role store unavailable") from None
 
 
 def require_roles(*allowed: str):
@@ -345,9 +349,9 @@ def require_roles(*allowed: str):
 
     Roles are normalized through the 8-role catalog (api.security.rbac), so
     legacy ``admin``/``viewer`` values are equivalent to ``superadmin``/
-    ``readonly`` everywhere. Tokens without any known role (e.g. legacy
-    env-admin sessions) are treated as admins to stay backward compatible
-    with single-admin deployments.
+    ``readonly`` everywhere. Only an affirmatively absent non-production
+    legacy identity may use the single-admin compatibility path. Unavailable
+    storage and missing production identities never confer roles.
     """
     from api.security.rbac import normalize_roles
 
@@ -401,9 +405,10 @@ def require_roles(*allowed: str):
                     db is not None
                     and UserRepository(db).get_by_username(user) is not None
                 )
-            except Exception:  # pragma: no cover - store unavailable
-                provisioned = False
-            if not provisioned:
+            except Exception as exc:
+                logger.error("principal_provisioning_lookup_failed", extra={"error_type": type(exc).__name__})
+                raise HTTPException(503, "Authorization role store unavailable") from None
+            if not provisioned and not _get_settings().is_production:
                 return user
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -530,9 +535,9 @@ def _resolve_tenant_context(
     if not memberships:
         from db.repositories.user_repository import UserRepository
 
-        if UserRepository(db).get_by_username(user) is None:
-            # legacy single-tenant principal (env-admin before bootstrap,
-            # or a test harness identity): platform estate, as before SaaS
+        if UserRepository(db).get_by_username(user) is None and not _get_settings().is_production:
+            # Affirmatively absent non-production legacy principal only.
+            # Missing production identity is not a platform-estate grant.
             return TenantContext(username=user, tenant_id=None, tenant_role=None,
                                  is_platform_admin=True)
         raise HTTPException(
@@ -579,20 +584,20 @@ def _principal_roles(request: Request, user: str, db: Session | None = None) -> 
 
         if db is not None:
             row = UserRepository(db).get_by_username(user)
-            return row.role_list if row else []
+            return _current_user_roles(row)
         from db.connection.session import SessionLocal
 
         session = SessionLocal()
         try:
             row = UserRepository(session).get_by_username(user)
-            return row.role_list if row else []
+            return _current_user_roles(row)
         finally:
             session.close()
-    except Exception:
-        # This helper feeds authorization decisions. An unreadable user row
-        # must fail closed, but it must also be visible to operators rather
-        # than looking like an ordinary user with no roles.
-        logger.exception("principal_roles_lookup_failed", extra={"user": user})
+    except HTTPException:
+        return []
+    except Exception as exc:
+        # Fail closed, with a category rather than driver text/SQL/credentials.
+        logger.error("principal_roles_lookup_failed", extra={"error_type": type(exc).__name__})
         return []
 
 
@@ -688,7 +693,7 @@ def resolve_tenant_for_request(request: Request) -> str | None:
     except Exception as exc:
         # Unexpected (e.g. the tenancy tables are unreachable). Fail closed:
         # an unscoped read here is a cross-tenant disclosure.
-        logger.exception("tenant_scope_resolution_failed")
+        logger.error("tenant_scope_resolution_failed", extra={"error_type": type(exc).__name__})
         raise TenantResolutionRefused(503, "Tenant scope unavailable") from exc
     finally:
         session.close()

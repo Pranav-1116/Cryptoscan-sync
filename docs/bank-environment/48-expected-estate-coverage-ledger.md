@@ -91,3 +91,28 @@ inventory. `whole_bank_verified` is always false: even an owner-attested complet
 register is not independently proven to represent the whole bank.
 
 See the [upgrade runbook](../runbooks/evidence-assurance-upgrade.md).
+
+
+## Quality increment: validate source proof at intake and current read
+
+The first quality increment after `69faec96` removes a false-coverage path:
+a nonempty receipt value alone can no longer establish OBSERVED source evidence.
+Eligible source proof needs a bounded list (at most 1,000) of unambiguous relative
+primary-file identities, valid lowercase SHA-256 and typed parser outcomes, with
+at least one actual completed parser. Job/scan/target identity and completed
+nonfuture intervals must agree. Submission time cannot fill missing execution times.
+
+Current source coverage reads recheck the exact-estate SQL job/scan evidence with
+batched lookups. Invalid/missing/changed backing proof produces **409**, including
+a dependent operator summary, rather than false green counts or a fabricated
+empty success. Original immutable coverage revisions and hashes remain unchanged.
+Read history and obtain an actual valid current observation; never repair a green
+status by editing old receipts or resetting job states. Partial primary-file
+observation still leaves `collection_complete` unknown and does not prove whole
+source/bank coverage or runtime/deployment truth.
+
+See [implementation status](../product-improvement/IMPLEMENTATION-STATUS.md) and
+[actual local validation](../readiness-evidence/quality-increment-2026-10-22.md).
+This is source-proof hardening, not a new collector, schema migration or bank-site
+acceptance. Historical observations without eligible backing evidence are not
+silently grandfathered into current qualified coverage.

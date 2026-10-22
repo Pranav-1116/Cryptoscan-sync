@@ -25,3 +25,25 @@ def test_purl_version_and_ecosystem_are_preserved(purl):
 
 def test_package_version_conflict_is_not_silently_repaired():
     assert package_identity("pkg:pypi/crypto@1.0", "2.0") is None
+
+
+@pytest.mark.parametrize("version", [
+    "${crypto.version}", "$cryptoVersion", "@VERSION@", "${revision}-SNAPSHOT",
+    "1.0-${buildNumber}", "1.x", "1.2.X", "[1.0,2.0)", "(,1.5]",
+])
+def test_quality_increment_unresolved_build_variables_and_ranges_are_not_exact(version):
+    from urllib.parse import quote
+    purl = "pkg:maven/org.bank/crypto@" + quote(version, safe="")
+    assert package_identity(purl, version) is None
+    assert package_identity(purl) is None  # persisted identities and supplier facts
+
+
+@pytest.mark.parametrize("purl,version", [
+    ("pkg:pypi/pkg@1%2Blocal", "1+local"),
+    ("pkg:npm/%40bank/pay@2.0.0", "2.0.0"),
+    ("pkg:maven/org.bank/crypto@1.0.Final?type=jar", "1.0.Final"),
+    ("pkg:maven/org.bank/crypto@1.0-SNAPSHOT", "1.0-SNAPSHOT"),
+])
+def test_quality_increment_concrete_labels_qualifiers_and_encoding_remain_exact(purl, version):
+    # This conservative identity check does not claim immutable artifact bytes.
+    assert package_identity(purl, version) == purl

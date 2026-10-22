@@ -111,3 +111,55 @@ Historical readiness artifacts remain attributed to their original command,
 commit and environment. Existing diagrams and broader integration examples are
 conceptual/development material where they exceed the supported controlled
 profile; they are not installation approval for that topology.
+
+
+## 7. First quality-only source changes after 69faec96
+
+The [implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md) records
+bounded source-coverage proof hardening and removal of known remote frontend font
+bootstrap/CSP allowances. Its [dated engineering evidence](readiness-evidence/quality-increment-2026-10-22.md)
+contains actual local before/after results. The source snapshot at the top of this
+file remains the original reviewed baseline, not a new complete-system approval.
+
+Current source coverage now fails with 409 if eligible backing parser/job/scan
+proof is missing or invalidated; historical revisions remain untouched. Frontend
+hardening requires a rebuilt/reviewed new image before any deployed bank gains it.
+No API routes, collector/profile scope, schema head, SLA or external gates change.
+No new GitHub Actions verdict or full bank-site/no-egress result is claimed.
+
+
+## 8. Second quality increment: exact package identity
+
+The [second bounded correction](readiness-evidence/quality-package-identity-2026-10-22.md)
+keeps known build variables, wildcard segments and interval ranges unknown rather
+than eligible exact-package identities. Current legacy assurance/cascade reads
+re-evaluate derived identity/count claims without rewriting documents/history.
+Original explicit artifact/deployment assertions remain separate from runtime
+verification. The local selected broad runs pass **1,113 library** and **256 API**
+checks, with their exact scope/warnings retained in the evidence record.
+
+Old offline supplier qualifications bind the prior engine fingerprint and need
+actual re-exercise. No new collector, range resolver, route, schema migration,
+workflow change, published release, site upgrade or bank acceptance is claimed.
+Independent review and the remaining negative/recovery/site work remain open.
+
+
+## 9. Third quality increment: role-store failure and probe privacy
+
+The [third bounded correction](readiness-evidence/quality-authority-privacy-2026-10-22.md)
+prevents unreadable role storage from entering a legacy authority fallback and
+removes raw dependency exception payloads from selected public health and lookup
+failure-log paths. Current disabled/deleted identities do not supply those roles;
+missing production identities cannot use non-production compatibility grants.
+Original status/down/readiness semantics are retained, not changed into success.
+
+Forty new local regressions pass, including real-session artifact-route checks.
+The accumulated publication checks pass **641 API** and **1,146 library/package**
+cases; one existing disposable-PostgreSQL test is skipped because `pg_virtualenv`
+is not available. **398 frontend** and **7 toolchain** checks, typecheck/build and
+lint pass. These are scoped engineering results, not all-repository or site proof.
+
+The user requests all accumulated code/docs pushed to the current PR branch with
+`[skip ci]`; workflows and the earlier user-owned CI failure remain untouched.
+No signed operator release, site deployment, migration, independent assessor
+approval or production/customer acceptance is performed by that publication.

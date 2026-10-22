@@ -116,3 +116,36 @@ test("real dev HTTP serves approved hosts, blocks rebinding and denies env files
     finally { await unlink(path); }
   }
 });
+
+test("on-prem console entrypoint uses only same-origin or embedded assets", async () => {
+  const { JSDOM } = await import("jsdom");
+  const html = await readFile(new URL("index.html", root), "utf8");
+  const origin = "https://console.bank.example";
+  const dom = new JSDOM(html, { url: origin });
+  try {
+    for (const element of dom.window.document.querySelectorAll("[src], [href]")) {
+      const value = element.getAttribute("src") ?? element.getAttribute("href");
+      if (element.tagName === "LINK" && element.rel === "icon" && value.startsWith("data:image/svg+xml,")) continue;
+      assert.equal(new URL(value, origin).origin, origin, `Remote bootstrap asset: ${value}`);
+    }
+    assert.equal(dom.window.document.querySelectorAll('link[rel="preconnect"], link[rel="dns-prefetch"]').length, 0);
+  } finally {
+    dom.window.close();
+  }
+  const css = await readFile(new URL("src/styles/global.css", root), "utf8");
+  assert.doesNotMatch(css, /@import\b|url\(\s*["']?\s*(?:https?:)?\/\//i);
+  assert.match(css, /--sans:[^;]*system-ui/);
+  assert.match(css, /--mono:[^;]*ui-monospace/);
+});
+
+test("on-prem runtime CSP does not permit external font or stylesheet origins", async () => {
+  const nginx = await readFile(new URL("../.docker/frontend/nginx.conf", root), "utf8");
+  const policy = nginx.match(/add_header Content-Security-Policy "([^"]+)" always;/)?.[1];
+  assert.ok(policy, "Runtime must retain an explicit CSP");
+  const directives = Object.fromEntries(policy.split(";").filter((part) => part.trim()).map((part) => {
+    const [name, ...values] = part.trim().split(/\s+/);
+    return [name, values];
+  }));
+  assert.deepEqual(directives["font-src"], ["'self'"]);
+  assert.deepEqual(directives["style-src"], ["'self'", "'unsafe-inline'"]);
+});

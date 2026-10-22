@@ -114,3 +114,25 @@ def test_truncated_package_inputs_remain_unknown_even_when_no_target_matches():
     result = run(data, "pkg:pypi/missing@1.0")
     assert result["verdict"] == "NOT_FOUND"
     assert any("truncated" in unknown for unknown in result["honest_unknowns"])
+
+
+@pytest.mark.parametrize("version", ["${crypto.version}", "1.x", "[1.0,2.0)"])
+@pytest.mark.parametrize("target_kind", ["package", "artifact"])
+def test_quality_increment_legacy_unresolved_identity_does_not_create_exact_exposure(version, target_kind):
+    from urllib.parse import quote
+    purl = "pkg:maven/org.bank/crypto@" + quote(version, safe="")
+    data = snapshot()
+    data["software_sbom_bindings"][0]["components"] = [
+        {"package_identity": purl, "purl": purl, "version": version}]
+    data["software_sbom_bindings"][0]["unresolved_component_count"] = 0  # pre-upgrade projection
+    if target_kind == "package":
+        result = run(data, purl, "package")
+        assert result["verdict"] == "NOT_FOUND"
+        assert result["impact"]["affected_system_count"] == 0
+    else:
+        result = run(data, DIGEST, "artifact")
+        # The explicit artifact/deployment relation remains available, but the
+        # old projection cannot turn a build variable into an exact package.
+        assert result["verdict"] == "AFFECTED"
+        assert result["layers"]["software"]["packages"][0]["package_identity"] is None
+        assert result["layers"]["software"]["sbom_bindings"][0]["unresolved_component_count"] == 1

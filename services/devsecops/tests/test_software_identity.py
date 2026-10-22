@@ -26,3 +26,32 @@ def test_conflicting_version_is_preserved_but_ineligible_for_exact_exposure_join
         {"name": "crypto", "version": "2.0", "purl": "pkg:pypi/crypto@1.0"}]})
     assert rows[0]["version"] == "2.0"
     assert rows[0]["package_identity"] is None
+
+
+def quality_document(fmt, version):
+    from urllib.parse import quote
+    purl = "pkg:maven/org.bank/crypto@" + quote(version, safe="")
+    if fmt == "cyclonedx":
+        return {"bomFormat": "CycloneDX", "components": [
+            {"name": "crypto", "version": version, "purl": purl, "bom-ref": "crypto"}]}
+    return {"spdxVersion": "SPDX-2.3", "packages": [{
+        "name": "crypto", "versionInfo": version, "SPDXID": "SPDXRef-crypto",
+        "externalRefs": [{"referenceType": "purl", "referenceLocator": purl}]}]}
+
+
+@pytest.mark.parametrize("fmt", ["cyclonedx", "spdx"])
+@pytest.mark.parametrize("version", ["${crypto.version}", "1.x", "[1.0,2.0)"])
+def test_quality_increment_sbom_keeps_unresolved_version_and_document(fmt, version):
+    doc = quality_document(fmt, version)
+    before = deepcopy(doc)
+    component = sbom_components(doc)[0]
+    assert component["package_identity"] is None
+    assert component["version"] == version
+    assert doc == before
+
+
+@pytest.mark.parametrize("fmt", ["cyclonedx", "spdx"])
+def test_quality_increment_concrete_sbom_version_stays_resolved(fmt):
+    doc = quality_document(fmt, "1.0.Final")
+    component = sbom_components(doc)[0]
+    assert component["package_identity"] == "pkg:maven/org.bank/crypto@1.0.Final"

@@ -483,19 +483,21 @@ On receipt:
    `cryptography==50.0.1`, `PyYAML==6.0.3` and approved transitive dependencies.
 7. Re-run verification on the bank side, then perform site preflight/qualification.
 
-### Important current frontend limitation: external fonts
+### Frontend font hardening and offline verification
 
-The reviewed `frontend/index.html` requests Google Fonts and contains external
-preconnects. Do **not** repeat the older legacy-dashboard claim that the current
-frontend performs zero external font/network requests.
+The original reviewed baseline at `69faec96` requested Google Fonts and external
+preconnects. The first [quality implementation increment](product-improvement/IMPLEMENTATION-STATUS.md)
+removes those entrypoint references and the runtime CSP's external font/stylesheet
+allowances, using existing local/system fallback stacks. Static bootstrap/CSP
+regressions and a local production build check the corrected source/bundle.
 
-For a truly isolated bank browser environment, remove/self-host the existing font
-assets or use approved system fallbacks as a reviewed deployment hardening change,
-rebuild/re-sign that frontend release, and verify real browser network traces.
-Blocking those destinations at the firewall does not by itself prove the page
-never attempts them or that typography/layout remains acceptable. Review CSP and
-all other runtime/browser requests for the exact bundle. No such frontend change
-or no-egress qualification is performed by this documentation.
+An older deployed frontend still has the original behavior until the reviewed
+new image is rebuilt, verified, externally signed and installed. Verify real bank
+browser network traces, font fallback/RTL/zoom/layout and the exact deployment's
+CSP/firewall. Removing known remote font references is not proof that every runtime
+path has no egress or that site isolation is accepted. The older legacy-dashboard
+zero-CDN claim is not a substitute for checking the current actual frontend.
+Blocking internet destinations alone does not prove no attempted requests.
 
 ## 15. Bank-side preflight: before creating application workloads
 
@@ -751,7 +753,7 @@ No operational SLA or demonstrated site availability is granted by this text.
 | Queued work refuses | Current policy, independent grant, original credential incarnation and estate/region/destination | Inventing legacy approval or impersonating another owner |
 | A normal development route returns 409 | Controlled allowlist and declared supported workflow | Turning off execution controls to enable unqualified features |
 | Job timeout/UNKNOWN | Actual attempt/runtime/outbox state and approved human reconciliation | SQL status reset or blind retry/freeing reservations |
-| Browser requests internet fonts | Exact frontend HTML/assets/CSP and real network trace | Claiming fully offline behavior because the page still renders |
+| Browser requests internet fonts | Confirm reviewed corrected frontend digest, no old entry HTML/cache, actual assets/CSP and browser trace | Claiming fully offline behavior because the page still renders |
 | New proof does not verify | Later completed observation, exact original site/purpose, changed bytes, receipts and current revision | Ticket-as-proof, empty-scan-as-safe or loosening predicate |
 | Restore starts unexpected work | Isolation/admissions, schedules, credentials and retained queue effect history | Connecting a drill restore directly to live collectors/services |
 
@@ -823,7 +825,7 @@ stores, not in this repository or a public release artifact.
 
 The guide explains **how to prepare, deliver, install, operate and qualify the
 existing controlled product inside a bank**. It does not create infrastructure,
-change frontend fonts, enable features, sign a release, run migrations/CI or
+itself apply frontend hardening, enable features, sign a release, run migrations/CI or
 perform any bank installation/fault/security exercise. Those remain authorized
 work with actual evidence and owners.
 

@@ -165,11 +165,13 @@ def set_engine(engine: Engine) -> None:
 
 
 def check_db_health(engine: Engine | None = None) -> dict[str, Any]:
-    engine = engine or get_engine()
     try:
+        engine = engine or get_engine()
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return {"status": "healthy", "dialect": engine.dialect.name}
     except Exception as exc:
-        logger.exception("database_health_failed")
-        return {"status": "unhealthy", "error": str(exc)}
+        # Health surfaces are public; driver messages/tracebacks can expose
+        # connection credentials and SQL. Keep failure visible, not its payload.
+        logger.error("database_health_failed", extra={"error_type": type(exc).__name__})
+        return {"status": "unhealthy", "error": "Database health probe failed", "error_type": type(exc).__name__}
