@@ -10,7 +10,6 @@ permissions:
   contents: read
 
 env:
-  PIP_NO_CACHE_DIR: "1"
   PYTHONDONTWRITEBYTECODE: "1"
   ENVIRONMENT: test
   SECRET_KEY: test-secret-key-for-sessions-min-32-chars

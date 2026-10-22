@@ -195,6 +195,16 @@ def test_workflows_are_active_read_only_and_do_not_run_privileged_pr_code():
             assert "push" not in workflow["on"]
 
 
+def test_setup_python_cache_is_not_disabled_by_environment():
+    for name in ("ci.yml", "scanner-tests.yml", "db-migration.yml"):
+        workflow = _workflow(name)
+        for job in workflow["jobs"].values():
+            if not any(step.get("with", {}).get("cache") == "pip" for step in job.get("steps", [])):
+                continue
+            assert workflow.get("env", {}).get("PIP_NO_CACHE_DIR") not in ("1", "true")
+            assert job.get("env", {}).get("PIP_NO_CACHE_DIR") not in ("1", "true")
+
+
 def test_reusable_scanner_lane_discovers_and_proves_offline_suites():
     jobs = _workflow("scanner-tests.yml")["jobs"]
     assert "scripts/ci_suites.py --scanners-only" in json.dumps(jobs["discover"])

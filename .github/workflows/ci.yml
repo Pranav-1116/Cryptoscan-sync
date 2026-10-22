@@ -16,7 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PIP_NO_CACHE_DIR: "1"
   PYTHONDONTWRITEBYTECODE: "1"
 
 jobs:
