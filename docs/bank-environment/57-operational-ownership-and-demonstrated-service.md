@@ -109,3 +109,21 @@ record FAILED/INCONCLUSIVE and escalate; do not check a “ready” box to satis
 presentation. Reassignment starts a new acknowledgement/exercise cycle. Preserve
 historical evidence under the approved retention policy and record why prior
 records are no longer current.
+
+
+## Proposed 24/7 bank operation and weekly vendor review
+
+The [continuous-operation and weekly-support guide](../BANK-24X7-OPERATIONS-AND-WEEKLY-SUPPORT.md)
+explains the intended operating model: bank-hosted service runs continuously;
+bank SOC/security and infrastructure on-call owners monitor/respond; our team
+conducts an agreed weekly health/error/update review and prepares tested fixes.
+Urgent incidents use the bank's immediate escalation path rather than waiting
+for the next weekly call. Vendor after-hours coverage requires an actual staffed
+agreement; weekly review is not itself 24/7 vendor support or a guaranteed uptime.
+
+This is a proposed procedure, not evidence that real operators, alert routing,
+remote access, automatic updates or a service contract exist. The existing nine
+duties, distinct humans, acknowledgements, procedure hashes and independently
+reviewed fresh exercises still apply. Continuous operation does not enable refused
+collector/monitor/notification interfaces. The API and **`sla_authorized=false`**
+contract are unchanged; no production acceptance is manufactured.

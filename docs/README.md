@@ -1,5 +1,30 @@
 # CryptoScan documentation
 
+## Deploy directly inside a bank
+
+Read [Bank on-premises deployment](BANK-ON-PREMISES-DEPLOYMENT.md) for the direct,
+detailed walkthrough: bank-owned infrastructure, supported topology, data flows,
+network rules, identities/secrets, isolated runtime, signed/offline delivery,
+installation, upgrades, recovery and actual bank acceptance. It explicitly separates
+the controlled local-source profile from unqualified development features.
+
+## Operate continuously with bank monitoring and weekly support
+
+Read [24/7 bank operations and weekly vendor support](BANK-24X7-OPERATIONS-AND-WEEKLY-SUPPORT.md):
+bank security monitoring and on-call responsibilities, our weekly health/error/
+update review, immediate incident escalation, tested fixes, bank-approved changes
+and restricted remote support. Continuous operation is a service objective, not
+100% uptime, an enabled live collector or an automatic contractual SLA.
+
+## Improve product quality without adding features
+
+Read the new [end-to-end product-improvement pack](product-improvement/README.md):
+baseline/priorities, all six BOMs and correctness, security/privacy/isolation,
+reliability/performance/recovery, operator/frontend usability, testing and
+maintainability, exact releases, actual bank operations/qualification, an ordered
+execution roadmap and a worked example with review templates. This is a
+quality-only recommended program, not completed implementation or production approval.
+
 > **Latest reading — 2026-10-22 (`698beb38`):**
 > [Current implementation status](CURRENT-IMPLEMENTATION-STATUS.md) reconciles migration
 > **0105**, active CI, **77** classified surfaces and launch Preview boundaries.

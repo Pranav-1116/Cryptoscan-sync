@@ -11,6 +11,20 @@ review: 2026-10-22 at `698beb38`; older images retain their original scope._
 
 _Figure 1 — CryptoScan in one picture. Each block is explained in depth in the pages below and in the explanatory posters (images 10–31)._
 
+## Improve the product without expanding it
+
+The [quality-only improvement program](../product-improvement/README.md) explains
+how to strengthen the existing evidence-to-remediation journey end to end:
+correctness of SBOM/CBOM/NBOM/TechBOM/HBOM/VBOM, security, reliable execution,
+measured performance, current-screen usability, maintainable tests/releases and
+real operator/customer qualification. It proposes no new collectors, dashboards,
+AI, services or support topology, and makes no new readiness-percentage claim.
+
+For the bank-hosted service operating model, read
+[24/7 bank monitoring and weekly vendor support](../BANK-24X7-OPERATIONS-AND-WEEKLY-SUPPORT.md).
+It separates continuous bank operation, weekly preventive review and immediate
+incident response; updates and access remain bank-approved, not automatic.
+
 ## Enterprise documentation center
 
 For a vendor-style documentation experience covering product, deployment,

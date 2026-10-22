@@ -10,14 +10,14 @@ every documented capability is generally available.
 
 ## 1. Repository-wide inventory
 
-The `docs/` tree currently contains **439 files**, including **369 Markdown
+The `docs/` tree currently contains **451 files**, including **381 Markdown
 files**, plus generated diagrams, JSON/CSV evidence, templates, and scoped
 qualification artifacts. The files cover product behavior, architecture, user
 workflows, deployment, security, operations, company diligence, commercial
 planning, and historical evidence.
 
-Counts are a documentation snapshot. At this refresh there are **474 Markdown
-files repository-wide**, including 369 under `docs/`. The all-repository inventory
+Counts are a documentation snapshot. At this refresh there are **486 Markdown
+files repository-wide**, including 381 under `docs/`. The all-repository inventory
 uses tracked `*.md` plus this change’s new guides; the `docs/` total counts actual
 files. Regenerate these counts rather than copying them into product claims.
 
@@ -237,7 +237,10 @@ returned HTTP 403 to this session; no lane/run identity or independent green
 verdict is claimed, and no workflows are changed or dispatched by this refresh.
 
 
-## 9. Validation performed for this refresh
+## 9. Validation retained from the preceding documentation refresh
+
+The results below belong to the docs refresh published as `bfc42df0`. They are
+not fresh runtime test results for the quality-program addition in section 10.
 
 | Check | Result | Scope / limits |
 |---|---|---|
@@ -254,3 +257,98 @@ verdict is claimed, and no workflows are changed or dispatched by this refresh.
 No GitHub Actions run, CI dispatch, deployment, release signing/publication,
 full frontend/backend test run or readiness-gate execution was performed by this
 refresh. The reported remaining workflow failure is left for the user.
+
+
+## 10. Quality-only product-improvement pack — 2026-10-22
+
+The new [product-improvement pack](product-improvement/README.md) contains **10 new
+Markdown files**: an index and nine detailed guides. It is based on checkout
+`bfc42df0` (docs-only successor to reviewed implementation `698beb38`). It
+recommends deeper quality of existing behavior, not more product features.
+
+Coverage: baseline and priorities; correctness and all six BOMs; security,
+privacy and isolation; durable execution, measured performance and recovery;
+existing operator/frontend workflow and accessibility; test reliability,
+maintainability, dependency and release discipline; real nine-duty operations,
+independent security/site/customer qualification; dependency-ordered work packages,
+acceptance/stop criteria; and a fictional end-to-end example with deliberately
+unexecuted review/evidence templates.
+
+Recommendations are distinguished from observed defects, retained results and
+external acceptance. No collector/profile, API, menu or feature is added. Existing
+local-source/v1 refusals, history/CAS, original evidence, independent review and
+UNKNOWN/INCONCLUSIVE semantics are preserved. The user's remaining workflow
+failure is left untouched. No new percentage, certification, SLA or site result
+is claimed.
+
+The inventory at the top includes this addition. The preceding section's 474-file
+check remains historical. Validation for this addition is documentation-only:
+repository-local Markdown targets/heading anchors, new shell-example syntax,
+linked source/test-path checks and patch whitespace. Application/runtime suites,
+CI, site drills and external assessments are **not run** by this documentation task.
+
+
+Quality-pack validation results: **484 Markdown files / 1,692 local links**,
+zero missing targets or unresolved heading anchors; **2 labeled shell examples**
+pass `bash -n`; **13 changed/new Markdown files** have balanced fences; referenced
+existing source/test paths resolve; `git diff --check` passes. External URLs are
+not fetched, and syntax checking does not execute installation or test commands.
+
+
+## 11. Direct bank on-premises deployment guide — 2026-10-22
+
+[Bank on-premises deployment](BANK-ON-PREMISES-DEPLOYMENT.md) is a new standalone
+end-to-end explanation based on `bfc42df0` / application review `698beb38`.
+It covers bank-owned Kubernetes/VM infrastructure, external-to-workload (not
+external-to-bank) PostgreSQL/Redis, dedicated dispatcher/parser isolation,
+source/evidence and six-BOM boundaries, sizing limits, network and identity,
+secret/CA/storage custody, signed full packages, offline transfer, guarded cluster
+preflight, coordinated migration through 0105, installation, actual smoke and
+negative checks, daily operation, backup/recovery and independent site acceptance.
+
+Specific deployment caveats are explicit: no generic Compose production approval,
+no shared hostile-tenant Docker-daemon boundary, no live-collector activation,
+no implicit SSO/HA qualification, no false readiness from an HTML response, and
+no current-frontend zero-egress claim while external font references remain.
+Examples are guarded operator procedures, not executed bank commands or fabricated
+credentials/digests. No runtime/workflow or frontend hardening change is performed.
+
+The inventory above includes this file. Earlier validation records retain their
+own counts and dates. This addition is checked for local links/anchors, balanced
+fences, shell syntax, referenced implementation paths and whitespace only; actual
+installation, image builds, migrations, CI and site qualification are not run.
+
+Validation after adding the on-premises guide: **485 Markdown files / 1,721 local
+links**, no missing targets or unresolved heading anchors. All **7 labeled shell
+blocks** across the pending docs (5 in the deployment guide, 2 in the improvement
+pack) pass `bash -n`; fences, referenced implementation spot checks and
+`git diff --check` pass. These are documentation checks, not deployment execution.
+
+
+## 12. Continuous operation and weekly support model — 2026-10-22
+
+The new [24/7 bank operation and weekly vendor-support procedure](BANK-24X7-OPERATIONS-AND-WEEKLY-SUPPORT.md)
+documents the user's intended operating model: continuously running on-premises
+service; bank security/SOC monitoring with accountable bank infrastructure owners;
+weekly product-team health/error/advisory/update reviews; tested corrections and
+bank-authorized changes. Urgent incidents do not wait for weekly meetings.
+Actual vendor after-hours coverage, objective times, staffing and service terms
+must be agreed—not inferred from a weekly calendar or successful installation.
+
+The on-premises guide, quality/qualification manual, operating-ownership guide
+and navigation cross-reference this procedure. It includes monitoring/daily/weekly
+responsibilities, incident routing, error-to-fix verification, controlled updates,
+restricted remote support, a deliberately unexecuted review template and operating
+model acceptance exercises. It does not enable collectors/monitor loops, implement
+alerts or auto-updates, promise HA/100% uptime, or change `sla_authorized=false`.
+
+All pending quality-pack, on-premises and operating-model docs are included in
+the requested documentation publication. Earlier dated validation counts remain
+historical; the inventory above includes the new support guide. Only documentation
+checks run for this addition—no application test suite, CI dispatch, deployment,
+migration or actual operating/incident exercise is represented as executed.
+
+Publication validation: **486 Markdown files / 1,736 local links**, zero missing
+relative targets or unresolved heading anchors; **16 pending Markdown files**
+with balanced fences; **7 labeled shell examples** pass `bash -n`; patch whitespace
+passes. External URLs are not fetched, and no example mutating command is executed.
