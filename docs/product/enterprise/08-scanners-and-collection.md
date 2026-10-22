@@ -170,3 +170,11 @@ recording. Caller known-host baselines remain unverified. Generic job retry is
 409 for synchronous network work; resubmit the original admitted profile.
 This can contribute bounded NBOM/CBOM facts, not SBOM/TechBOM/HBOM/VBOM completeness.
 See the [network/SSH user guide](../../user-guide/network-scanning.md).
+
+## Current-reading update — 2026-10-22
+
+Only local-source/v1 is the reviewed controlled production adapter. Live TLS/SSH/network/cloud/runtime examples require separate authorized qualification. OCSP GOOD now requires verified response + successful command; absent verification is UNKNOWN, not good.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

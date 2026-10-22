@@ -1,5 +1,13 @@
 # CryptoScan Product Vision and Missing Pieces
 
+> **Current-reading update — 2026-10-22:**
+> [implementation status](docs/CURRENT-IMPLEMENTATION-STATUS.md) and
+> [CI contract](docs/dev/release-automation.md) supersede older CI descriptions.
+> The current aggregate is **`ci-required`**, reusable PostgreSQL lanes cover
+> **15/16**, six-image builds do not publish, and the separate preflight is unsigned.
+> The user reports one outstanding workflow failure; historical per-round passing
+> totals below do not establish a green result for `698beb38`.
+
 **Working-tree snapshot:** 2026-10-13 · branch `arena/01a106c8-cryproscan` · committed rounds 41–48 (see `audit_reports/00_ROUND_STATUS.md` for the per-round ledger; `docs/api-reference/rest-api.md` regenerated 2026-10-13 at 815 paths / 901 operations).  
 **Purpose:** Define the enterprise Cryptography Threat Intelligence product being built, describe what the repository actually does today, and identify the remaining implementation and qualification work. This is a product/delivery brief, **not** an audit certificate or a declaration of production readiness.
 

@@ -91,3 +91,16 @@ No lossless replication, exactly-once delivery or deployed HA SLA is promised.
 - [Queue authority and SSH](../bank-environment/44-queued-authority-and-durable-ssh.md)
 - [Redis TLS/Sentinel engineering and local evidence](../bank-environment/45-redis-tls-sentinel-qualification.md)
 - [Operator upgrade and recovery](../runbooks/execution-and-replay-upgrade.md)
+
+## Latest transport/security clarification — 2026-10-22
+
+CBOM SSE sends an initial `: connected` comment to flush an idle connection;
+clients must ignore it as data. It is not a CBOM observation or completeness
+receipt. Estate/credential checks and membership-revocation handling still apply.
+Unified event streams/history exclude foreign estates, platform frames in a
+selected bank and spoofed owner envelopes; unauthenticated event-route access is
+401. Platform-unselected history is not an all-estates administrative feed.
+
+The [current status](../CURRENT-IMPLEMENTATION-STATUS.md) distinguishes these
+engineering contracts from controlled-profile route availability. Migration head
+is now **0105**, not the 0104 head in earlier retained engineering records.

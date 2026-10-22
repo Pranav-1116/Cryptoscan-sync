@@ -146,3 +146,11 @@ stored data survived. A complete new retained snapshot is not proof of lossless
 asynchronous replication. The [TLS/Sentinel lab](../../bank-environment/45-redis-tls-sentinel-qualification.md)
 is destructive/disposable local qualification, not evidence of your topology's
 RPO/RTO, credential rotation, partitions, restore or failback.
+
+## Current-reading update — 2026-10-22
+
+The current upgrade head is **0105**. Its downgrade refuses while monitor event types exceed 30 characters; preserve history rather than truncate. Nine-duty ownership/exercise records and local fixtures do not establish a staffed service, RPO/RTO or SLA.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

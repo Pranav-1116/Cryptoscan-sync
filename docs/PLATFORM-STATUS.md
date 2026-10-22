@@ -1,5 +1,13 @@
 # CryptoScan platform status — the full plan vs. what ships here
 
+> **Current-reading authority — 2026-10-22, `698beb38`:**
+> [Implementation status](CURRENT-IMPLEMENTATION-STATUS.md): migration **0105**;
+> generated REST **917 paths / 1,008 operations / 105 groups**; maturity **33 GA /
+> 32 Beta / 12 Preview** (77 surfaces); sidebar **41 placements / 40 unique routes**.
+> Discovered CI and unsigned preflight are configured, not release/site approval.
+> The user reports one unresolved workflow failure; Actions results were not
+> independently accessible here. The dated tables below remain historical.
+
 > **2026-10-21 execution/replay increment:** [Guide 44](bank-environment/44-queued-authority-and-durable-ssh.md)
 > records persisted queue matching/current authority and durable SSH receipts;
 > [Guide 45](bank-environment/45-redis-tls-sentinel-qualification.md) records
@@ -19,7 +27,7 @@ real infrastructure or credentials.
 > commits; they are retained for traceability and should not be read as the
 > current state.
 
-> **Current documentation state (2026-10-03):** **60 migrations** (0001–0060),
+> **Historical documentation state (2026-10-03):** **60 migrations** (0001–0060),
 > **74 frontend page components / 73 classified surfaces**, **4,808 backend test
 > functions** running hermetically in parallel (`make test`, ~8 min) plus a vitest
 > frontend suite, and **33 GA / 30 Beta /
@@ -31,7 +39,7 @@ real infrastructure or credentials.
 > and [soak-evidence/](soak-evidence/README.md) for what was found and fixed). The
 > paragraphs below record earlier measurements and dated implementation updates.
 
-> **Current documentation state (2026-10-13, rounds 41–48):** **91 migrations**
+> **Historical documentation state (2026-10-13, rounds 41–48):** **91 migrations**
 > (0001–0091), **88 frontend page components**, and the full local backend suite at
 > **7,421 passed / 31 skipped** (SQLite lane, per-round gate before push) plus a
 > **259-test** Vitest frontend suite with clean `tsc --noEmit`. The regenerated API

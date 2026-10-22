@@ -1,125 +1,593 @@
-# CryptoScan CI Workflow and Product Build Plan
+# CryproScan — product build plan and CI workflow
 
-**Status:** Implementation plan and local validation snapshot; GitHub Actions execution, required checks, release publication and production approval must be evidenced separately
+**Reviewed:** 2026-10-22 UTC
+**Repository baseline reviewed:** `698beb38`
+**Purpose:** explain what we want to build, how the product should work end to end,
+what CI checks today, and the workflow needed to move safely from a code change
+to a reviewed release and a bounded customer pilot.
 
-**Baseline before local implementation:** `arena/01a106c8-cryproscan` at `8915806f` (2026-10-22)
+> This is a documentation/design guide, not a new GitHub Actions implementation.
+> “Current” below means present in repository files, not that the latest GitHub
+> checks have passed. “Proposed” means work still to be implemented or qualified.
+> This document does not change or execute CI, deploy infrastructure, or declare
+> production approval.
 
-**Audience:** engineering, security, release, operations and customer-assurance owners
+## 1. What we want to build
 
-## 1. Purpose and release boundary
+We want **an evidence-driven cryptographic inventory, exposure and remediation
+platform for a bank**, beginning with one useful, bounded application workflow.
+The platform should help a customer answer:
 
-Build one reproducible route from a changed source file to a tested, attributable product artifact, then to a separately qualified customer deployment. The delivery chain is:
+1. Which application, release, package, endpoint, hardware and supplier identities
+   are actually in the agreed scope?
+2. What cryptography is observed, where is it used, and what is its purpose?
+3. Which relationships are directly evidenced, customer-reviewed assertions,
+   supplier declarations or still unknown?
+4. Which conditions are applicable risks rather than just algorithm-name matches?
+5. Who owns the work, who approved it, and what exact replacement is intended?
+6. Was work merely reported complete, or did a later independent observation
+   verify the intended condition?
+7. What has not been collected, tested, reviewed or accepted?
+
+The goal is **not** a dashboard that treats empty results as safety, joins assets
+by similar names, or claims whole-bank visibility after a feature demonstration.
+
+### 1.1 All six BOM layers are required
+
+| Layer | What we want it to explain | Evidence boundary |
+|---|---|---|
+| **SBOM — Software Bill of Materials** | Which versioned software components belong to a specific release? | Preserve the SBOM document hash separately from the executable/image artifact digest. Unresolved component versions remain unresolved. |
+| **CBOM — Cryptographic Bill of Materials** | Which algorithms, keys, modes, sizes and purposes are observed at which locations? | An import or algorithm name is not proof of security use, runtime invocation or an exploitable condition. |
+| **NBOM — Network Bill of Materials** | Which approved endpoints and protocol/cryptographic observations are known? | Successful exact-endpoint receipts matter. An open port is not application identity or proof that every path/node was tested. |
+| **TechBOM — Technology Bill of Materials** | How do application, deployment, artifact, package and service identities relate? | Use explicit typed identity links and their evidence, not matching names or invented runtime dependencies. |
+| **HBOM — Hardware Bill of Materials** | Which hardware, firmware and cryptographic capabilities support the scoped workflow? | Metadata and supplier assertions do not automatically prove actual operating mode, attestation or certification. |
+| **VBOM — Vendor Bill of Materials** | Which suppliers/products contribute evidence or dependencies for the release? | A valid supplier signature establishes origin/integrity, not independent factual truth or vendor certification. |
+
+The six layers complement one another; adding SBOM does not replace the other
+five. Each relationship must retain its estate, provenance, observation/review
+time, validity, uncertainty and supporting evidence.
+
+### 1.2 Start with one valuable payments pilot
+
+The first customer workflow should cover:
+
+- One payments application and a known release/deployment.
+- Approved local source evidence and an actual release-bound SBOM.
+- Separately approved TLS and SSH endpoint evidence.
+- Meaningful hardware metadata and attributable supplier evidence.
+- One finding → owner → approved change → reported completion → later exact proof.
+- Independent security records, operating ownership and explicit exclusions.
+- Technical-owner review and a different designated customer-owner acceptance.
+
+This demonstrates a useful evidence-to-remediation loop. It does not establish
+whole-bank coverage, commercial rollout approval, infrastructure qualification,
+product certification or an SLA.
+
+## 2. Keep three different workflows separate
+
+| Workflow | What it checks | What it cannot establish alone |
+|---|---|---|
+| **CryproScan repository CI** | Whether changes to this platform satisfy automated engineering checks. | The safety of a customer's application, actual deployment readiness, assessor independence or customer acceptance. |
+| **Customer application CI integration** | Whether an authorized scan of a specific customer change/release violates an agreed cryptographic policy or baseline. | Full customer-estate coverage, production invocation or permission to scan arbitrary systems. |
+| **Release/site acceptance** | Whether the exact package, intended environment, operating capability and externally supplied evidence satisfy the release/customer gate. | It cannot be inferred solely from a green pull request or a hosting provider's certificate. |
+
+**CI** means continuous integration: validate a change before integration.
+**CD** means continuous delivery/deployment: package or promote a validated
+release. We should automate evidence collection and delivery safely, but not
+silently turn a CI result into production deployment or customer approval.
+
+## 3. Product workflow we want to support
 
 ```text
-reviewed commit → hermetic tests → real PostgreSQL migration/parity checks
-→ frontend contract and browser checks → scanner/evidence security checks
-→ digest-pinned images + SBOM/provenance → controlled deployment rehearsal
-→ site/provider exercises + independent reviews → strict readiness decision
+Customer agrees one application/release and explicit exclusions
+    ↓
+Register expected targets independently of scanner discoveries
+    ↓
+Select exact estate + verify current identity, permissions and residency
+    ↓
+Approve the specific collection scope/method/window where required
+    ↓
+Admit work → durable job → isolated/bounded collection and parsing
+    ↓
+Retain observations, failures, refusals, UNKNOWN outcomes and evidence hashes
+    ↓
+Build six-BOM views using explicit typed identities and reviewed links
+    ↓
+Evaluate purpose/applicability, freshness, coverage and uncertainty
+    ↓
+Assign accountable owner → different authorized reviewer approves change
+    ↓
+Owner reports actual completion, with evidence
+    ↓
+A later independent collector/retest observes the exact intended condition
+    ↓
+Record VERIFIED / failed / inconclusive, without rewriting history
+    ↓
+Review independent security records and operational capability
+    ↓
+Technical review → separate bounded customer acceptance
 ```
 
-A green unit suite, a built image, a generated SBOM, a signed document and a running local stack each answer **different** questions. None alone proves that CryptoScan is safe for unattended regulated production. CI must fail on missing required checks, never transform `SKIP`, unavailable providers, absent evidence or partial scanner coverage into PASS. Do not remove failing tests or invent customer attestations to obtain green status.
+### Current production support boundary
 
-The product target remains the deterministic, tenant-scoped observation → sanitized verifiable evidence → fact/asset/BOM/graph → policy/risk/drift → authorized remediation → independent rescan/condition proof → pinned report and UI chain described in [Product Vision and Gaps](../PRODUCT-VISION-AND-GAPS.md). That document is dated and must be checked against source before using its gap labels. This plan describes **how to build and verify** changes, not a claim that every collector is already approved.
+The reviewed reference profile is
+`kubernetes-external-services/local-source-v1`. It uses API/worker/frontend,
+external PostgreSQL, verified-TLS Redis and the approved isolated parser runtime.
+The controlled production acquisition boundary remains local source; unqualified
+legacy live TLS/SSH/cloud/vendor collection and other unsupported surfaces stay
+refused. Retained qualified receipts can be reviewed as metadata, but that does
+not qualify a live collector or grant new collection permission.
 
-### Critical distinction: development product versus controlled production profile
+Broader collection is part of the desired product direction and requires its
+own adapter, authorization, isolation, negative tests and site qualification.
+The CI plan must not bypass those restrictions merely to make a demo work.
 
-The repository contains broad source, network, cloud, container, OT, telecom, hardware, BOM, graph and UI capabilities. In the current controlled production profile the **reviewed execution adapter is `local-source/v1` only**. Other collector/monitor/GraphQL/export/realtime/notification surfaces are refused until separately adapted and qualified; a development-mode pass must never silently enable them in production (`services/api/api/middleware/controlled_surface.py:18-45`; `docs/runbooks/controlled-execution-upgrade.md:13-40`). Plan separate gates for (a) development integration and (b) the smaller deployable controlled profile. No workflow should imply parity between them without evidence.
+## 4. What GitHub Actions CI actually contains today
 
-## 2. Pre-implementation repository baseline: what ran versus what was parked
+Source of truth: [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and its
+reusable workflows at `698beb38`. They are active definitions, no longer empty
+placeholders. This section describes configuration, not independently observed
+successful Actions runs.
 
-The table describes the baseline commit `8915806f`, **not** the CI definitions added after it. The implementation populates three formerly empty workflows as reusable lanes called by `ci.yml` and adds a manual **unsigned** release preflight. Source-controlled YAML is only configured CI; actual checks, required branch rules and release publication need separately observed GitHub evidence.
+### 4.1 Triggers, permissions and concurrency
 
-| Surface | Current checked-in state | Planning consequence |
+- `ci.yml`: pull requests, pushes to `main` **and** `arena/bb4b80dd-cryproscan`,
+  and manual dispatch.
+- Read-only `contents: read` permissions; checkout does not persist credentials.
+- Third-party Actions are pinned by full commit SHA.
+- Concurrency uses source repository plus branch identity, so a branch push and
+  its PR run can coalesce; older in-progress runs in the same group are cancelled.
+- The workflow does not use production registry/signing credentials or publish images.
+
+```text
+PR / main push / integration-branch push / manual dispatch
+    ├── lint
+    ├── discover non-scanner services/shared → backend matrix
+    ├── reusable scanner discovery → scanner matrix
+    ├── reusable PostgreSQL 15/16 migration + parity
+    ├── reusable six-image build-only matrix
+    ├── frontend typecheck / Vitest / coverage smoke / build / toolchain
+    └── production configuration guard
+             ↓ all required lane results
+         ci-required (always evaluated; only success is accepted)
+
+Separate manual tagged dispatch → release-review → unsigned preflight artifacts
+```
+
+### 4.2 Main and reusable jobs
+
+| Configured lane | Actual work | Limit |
 |---|---|---|
-| `.github/workflows/ci.yml` | The one substantive active workflow. Configured triggers: PRs, pushes to `main`, manual dispatch. Jobs: Ruff; a **fixed 15-service** Python 3.11 matrix; frontend Node 22 `npm ci`, typecheck and build (**no Vitest/toolchain test**); production Compose/config guard; PostgreSQL 16 parity. There is no final aggregate gate. | Keep existing check contexts stable while adding discovered suites, frontend tests and fail-closed artifacts. Check actual GitHub runs before saying a configured job executed. |
-| `.github/workflows/{db-migration,docker-build,scanner-tests}.yml` | Tracked as **zero-byte** blobs. | Do not cite them as executing jobs; publishing replacements requires a workflow-scoped change and review. |
-| `.github/workflows-pending/` and `deploy/ci-workflows/` | Staged **alternatives**, not active Actions. The pending `ci.yml`/DB smoke is SQLite metadata bootstrap, not Alembic parity; pending scanner matrix is fixed and PR path-filtered; pending image workflow publishes only API/worker on tags/manual runs with `provenance: false`. The deploy image proposal covers six images but has an nginx build-context mismatch. | Treat as design inputs, not passed gates or drop-in replacements. Design separate unprivileged build-only and approved publisher jobs. |
-| Local commands | `make test` discovers service/shared suites; `make test-frontend` runs typecheck + Vitest; `scripts/postgres_parity.sh`, `scripts/check_prod_compose.py`, frontend `npm run test:toolchain`, `make release-check` and `make security-scan` exist. The last two are **not active CI jobs**. | Use the same reviewed commands with pinned inputs and JUnit/artifact retention. A local target existing is not a required GitHub status check. |
-| Release and site tooling | Compose overlays, digest-rendered operator packages, SBOM/release checks and strict bank-readiness scripts exist. | Distinguish build-only, published digest, verified external signature, dry-run, deployed site and independent acceptance. |
+| `lint` | Python 3.11; Ruff F/E9 across services, scripts and shared, constrained by the lockfile. | Not every lint rule or an independent security assessment. |
+| `discover` → `backend` | `scripts/ci_suites.py --non-scanners` discovers outermost tests under services/shared; matrix max parallelism 10; pytest non-live with socket restrictions and JUnit. API unit fixture directory is added only for the API suite. | Imports do not themselves prove tests executed; failures and missing reports must remain visible. |
+| `scanner-offline` | Calls `scanner-tests.yml`; discovers all declared scanner families, rejects missing families, runs offline pytest shards with max parallelism 3 and retains JUnit. | Fixtures do not qualify authorized live collectors or container escape resistance. |
+| `db-migration` | Calls `db-migration.yml`; disposable PostgreSQL **15 and 16**; explicit URL/major checks; actual Alembic chain, PostgreSQL worker/API parity and focused migration JUnit. | Not a customer backup/restore, HA or capacity result. Migration fixtures are destructive to their designated disposable databases. |
+| `images-build-only` | Calls `docker-build.yml`; builds API, worker, scanner, frontend, legacy dashboard and nginx with their declared contexts. `push:false`, no registry credentials. | No published registry digest, runtime/site health, vulnerability qualification or signed release. |
+| `frontend` | Node **22.22.3**, `npm ci`, typecheck, **all Vitest tests**, V8 coverage instrumentation smoke on `src/lib/api.test.ts`, production build and toolchain tests. | The smoke is not full-suite coverage measurement or a percentage threshold; DOM tests are not real-browser/site endurance. |
+| `prod-config-guard` | Compose exposure check; reject a known weak secret; accept structurally valid controlled-profile configuration using synthetic values, TLS Redis shape and disabled graph. | Not connectivity, actual secret provisioning, certificate validity or deployment acceptance. |
+| `ci-required` | `if: always()`; requires lint, discovery, backend, scanner, migration, images, frontend and production guard to report success. | Must still be configured/verified as required in GitHub rulesets. A YAML name does not enforce merge policy. |
 
-A recent local engineering record reports **157 focused passes** and **398 frontend tests**, while a broader selected backend/worker run recorded **1 failure / 1,864 passes / 16 skips / 1 deselection**, and another wider run was stopped after a separate reproducible failure (`docs/readiness-evidence/launch-engineering-2026-10-22.md:46-105`). Those counts overlap and are not a new green full-suite gate. Many recent commit subjects include `[skip ci]`; do not infer that GitHub validated those revisions. Branch protection and GitHub Administration permissions were **not** verified in this document.
+Suite discovery partitions the reviewed tree into **54 test roots: 48 non-scanner
+and 6 scanner roots**. The matrix is generated, not a fixed 15-service list.
+This count is a source inventory, not passed tests. Discovery searches only
+`services/` and `shared/`: **`scripts/tests/test_ci_suites.py` is outside that
+selection**, and no current workflow explicitly runs that directory. Add an
+explicit required invocation in a separately reviewed CI change if intended.
 
-**Local implementation checkpoint (not GitHub execution):** four CI workflow files now contain a `ci.yml` PR/main/requested `arena/bb4b80dd-cryproscan` push entrypoint plus reusable scanner, database and build-only lanes; `release-preflight.yml` is manual and unsigned. Suite discovery partitions 54 test directories (48 non-scanner, 6 scanner). CI contract/discovery tests **31 passed**; all six standard images built locally without push; Ruff passed. The first PG15 parity run found a real `monitor_events.event_type` width error. Forward migration `0105` fixed that schema boundary; the disposable PG15 rerun passed **6 migration tests, 959 worker tests (1 deselected), and 2 API estate tests**. PG16 full parity and actual GitHub runs remain unverified. Local Node 22.22.0 is below the committed transitive lock's 22.22.2 floor; `npm ci` and the strict local frontend lane are blocked here, although an isolated frontend image build completed. An earlier local npm audit query reported no advisories, but a later permission decision blocked sending private dependency metadata to an external registry: no automatic npm audit or historical secret scanner is installed as a required CI check. Those checks need an explicitly approved dependency-audit service/tool. These are scoped observations, not branch-required checks or site qualification.
+### 4.3 Non-live selection, skips and retained evidence
 
-## 3. Required CI architecture
+Backend/scanner commands exclude live-marked tests, disable xdist inside shards,
+and use pytest-socket restrictions with loopback and Unix sockets allowed.
+Relevant live-provider switches are disabled. Dependency installation/build steps
+still need approved registries/network; this is not a completely networkless runner.
 
-### 3.1 Pull-request checks: fast, complete and fail-closed
+`scripts/check_junit.py --allow-skips` permits reported optional skips but rejects
+failures/errors, no testcases and **all-skipped** reports. Its default mode rejects
+any skipped case; the focused required migration proof uses this strict mode.
+An ordinary suite having at least one executed test is not proof that every
+required behavior ran. Review skips, including missing platform tools, explicitly.
 
-1. **Repository hygiene:** check formatting/lint, import/test collection, dependency resolution from committed manifests/locks, workflow YAML/schema and changed-file policy. Fail if a requested test module is missing or a job is skipped without a documented environmental reason. Publish a machine-readable test inventory and JUnit reports so the job cannot pass after silently omitting service trees.
-2. **Backend unit and integration lanes:** enumerate every tracked `services/**/tests` and `shared/**/tests` directory instead of relying on the current selected 15-service matrix (54 test directories are present). Reuse `scripts/ci_suites.py`/`--scanners-only` or `make test`, then compare the emitted inventory with disk and capture JUnit from every shard. `scripts/check_junit.py` rejects *any* skip as well as missing/empty XML; apply it only to lanes whose contract forbids skips, and give optional live-provider lanes an explicit reviewed skip policy. Pin Python/dependency versions, isolate DB/Redis/network access and retain timeouts. Put scanner-heavy suites in a separately required lane, **not** `continue-on-error`. Report per-suite passed/failed/skipped/deselected and failed node IDs.
-3. **Frontend lane:** install from `frontend/package-lock.json` using `npm ci` under the declared engine policy (project floor Node `^22.12.0 || ^24.0.0 || >=26.0.0`, npm ≥10; the committed transitive lock currently needs at least Node 22.22.2, so pin CI to Node 22.22.3 or another verified compatible version). Run `npm run typecheck`, `npm test`, `npm run build`, `npm run test:toolchain`. Mocked/jsdom page tests are necessary for fast regression, but they are not a browser/live-API qualification. Require route, auth/tenant switch, actual data/unknown states, reduced-motion/keyboard and a separately labeled browser integration lane.
-4. **Database lane:** start an ephemeral PostgreSQL service; existing `scripts/postgres_parity.sh` already runs the full Alembic chain, worker-on-PostgreSQL and API estate readback. Extend it with previous supported revision → `head` on a disposable populated schema, model/index/constraint parity, tenant-local NULL/uniqueness semantics and downgrade only where supported. Make PostgreSQL 15 the required shipping-parity lane (`docker-compose.yml` pins `postgres:15-alpine`) and retain PostgreSQL 16 as a separately required compatibility lane; do not silently substitute the current PG16-only CI result or change the shipping image as a side effect. Never drop, stamp or mutate a developer/customer DB in CI; name disposable databases explicitly.
-5. **Collector/evidence lane:** test deterministic scanner fixtures and hostile input bounds (archives, symlinks, file/CPU/time limits, source admission and parser isolation). Verify rejected targets launch no collector. Execute a real fixture source → observation → pre-hash sanitation → stored chain/manifest verification → facts → pinned BOM/graph/policy/drift → rescan proof. Test negative/partial/unknown outcomes and both tenant-owner and wrong-tenant requests. External network/provider scans are separate approved integration jobs, never hidden in a routine PR lane.
-6. **Security and configuration:** check committed secrets, vulnerable dependencies, production-settings refusal, Compose merged ingress (only nginx published), non-root/capability/seccomp expectations, API authorization/resource ownership and safe error/log boundaries. A static pass does not claim actual runtime confinement.
+Backend/scanner JUnit uploads use `if: always()` and 14-day retention; focused
+migration reports use 7 days. A setup failure/missing report is not fabricated as
+success. The aggregate rejects failed, skipped and cancelled upstream job results.
 
-**Merge rule:** every required lane above must complete for the exact PR head SHA. A timeout, canceled job, collection error, `continue-on-error`, skipped required matrix shard or missing JUnit is **not PASS**. Add one stable, `always()`-evaluated final check that fails if any required upstream job is absent, skipped, canceled or failed; path-filtered jobs must not make unrelated PRs appear green. Keep fixtures synthetic and non-secret; retained logs must not contain tokens, key bytes or source snippets.
+### 4.4 Build and dependency policy
 
-**Proposed lane map (not installed today):**
+Python CI and API/worker/scanner images install `requirements.txt` constrained by
+`requirements.lock.txt`. Pip caching is no longer disabled globally in workflows
+using setup-python cache support. Frontend uses its committed npm lockfile.
 
-| Required check | Suggested repository mechanism | Result to retain |
+These are version constraints, **not hash-verified cross-platform reproducibility**.
+Python minor/tool dependencies, mutable base images and PostgreSQL tags still need
+an explicit reviewed pin/update policy. Do not force dependency upgrades or add
+unapproved external audit uploads just to obtain a clean report. No automated
+required historical-secret scanner or dependency-audit service is established by
+these changes.
+
+### 4.5 Manual release preflight, not publishing or site-package acceptance
+
+`release-preflight.yml` is manual only. It uses `environment: release-review`,
+requires `CRYPTOSCAN_RELEASE_REVIEW_READY=true` and a selected `v*` tag, and takes
+reviewed API, worker and **Neo4j** digest inputs. It renders **unsigned** manifests
+and explicitly writes `signed:false`, `site_qualified:false` and
+`production_approved:false`.
+
+This is the older three-image rendering contract, **not** the complete controlled
+API/worker/frontend/parser package; Neo4j remains disabled in that controlled
+profile. It does not verify registry ownership, sign/publish images, deploy a
+cluster or validate the strict customer gate. Use the separate operator-package
+procedure for the actual site topology. The environment variable/tag prefix alone
+cannot prove configured reviewers, trusted tag policy or independent approval.
+
+### 4.6 Current run status is reported, not independently confirmed here
+
+The user reports all workflows passing except one unresolved failure, to be fixed
+later. This session's GitHub Actions/check-result API access returned HTTP 403;
+we do not know the failing lane/run SHA from the report. The remaining failure is
+not fixed or waived in this documentation change. See
+[current implementation status](CURRENT-IMPLEMENTATION-STATUS.md).
+
+## 5. CI/release target and remaining hardening work
+
+The discovered test lanes, frontend checks, reusable migration/scanner/image
+workflows and final aggregate are now configured. The sections below describe
+the target acceptance depth; they are not a claim that every test/security/release
+requirement is implemented. Keep protected release/site decisions separate.
+Workflows should produce clear evidence rather than a single misleading
+“bank ready” badge.
+
+```text
+Untrusted PR / feature change
+    ↓
+Fast hermetic checks: lint + contracts + affected unit tests + frontend tests/build
+    ↓
+Broader scanner/security/database/Redis integration checks
+    ↓
+Human review + verified required branch checks
+    ↓
+Approved trusted revision / release candidate
+    ↓
+Build exact API, worker, frontend and parser images
+    ↓
+Image/dependency checks + release inventory + external signing verification
+    ↓
+Protected delivery approval — not automatic customer deployment
+    ↓
+Customer-site preflight, migration/install and witnessed recovery/capacity checks
+    ↓
+Independent security evidence + operating capability + scoped pilot review
+    ↓
+Explicit authorized release/customer decision
+```
+
+### 5.1 Lane A — fast pull-request engineering gate
+
+**Current foundation:** lint, discovered service/shared suites and frontend
+tests/build/toolchain are configured. **Remaining target:** dependency-aware fast
+selection, generated-output gates and explicitly required script-directory tests,
+without production secrets or customer targets.
+
+Required checks should include:
+
+1. Existing whole-repository F/E9 lint; ratchet additional rules through reviewed
+   cleanups rather than broad ignores.
+2. Shared Pydantic contracts, schema serialization, unknown/extra fields, explicit
+   timestamps and validation boundaries.
+3. Changed service tests plus an explicit shared-model test lane. Shared imports
+   alone do not execute shared tests.
+4. Frontend `npm run typecheck`, `npm test`, `npm run build`, and the existing
+   `npm run test:toolchain` where relevant.
+5. Generated schema/OpenAPI/maturity consistency checks. Regeneration must leave
+   tracked generated outputs unchanged for a correct change.
+6. Secret/sensitive-output checks and safe configuration assertions.
+7. An explicit aggregate engineering result that cannot silently pass when a
+   required lane was cancelled, skipped, failed or never scheduled.
+
+Path-based selection can make checks faster, but shared contract, authentication,
+estate, parser and migration changes need dependency-aware expansion. A changed
+shared model must not run only the test file that directly changed.
+
+### 5.2 Lane B — deterministic scanners and six-BOM contracts
+
+The scanner-family discovery/offline workflow is configured. Extend its
+deterministic approved fixtures and acceptance depth as needed; do not describe
+its mere presence as completed hostile-input or live qualification. Also exercise the cross-layer joins:
+
+- Release artifact → exact SBOM → versioned package → crypto evidence.
+- Endpoint receipt → reviewed application/service assertion.
+- Application → deployment → release artifact.
+- Hardware metadata → firmware/crypto evidence, with declared provenance.
+- Supplier signature → exact estate/build/product evidence → reviewed assertion.
+
+Check unsupported inputs, empty results, partial extraction, parser failures,
+resource exhaustion, stale evidence and unresolved relationships. Do not convert
+an empty result, missing dependency or unavailable scanner into a successful scan.
+The fixture report helper `scripts/scanner_qualification.py` explicitly leaves
+external authorization/sign-off unresolved; a fixture run is not live scanner
+qualification.
+
+### 5.3 Lane C — mandatory security and trust regression tests
+
+At minimum, retain the negative categories required by the independent-assurance
+scope:
+
+| Area | Automated tests to require |
+|---|---|
+| Tenant/estate isolation | Cross-read, cross-write, guessed foreign IDs, NULL/platform scope, stale estate replies and cross-estate raw evidence downloads. |
+| Identity and authorization | Expired/revoked sessions, deactivated users, removed roles, machine credential versus human approval, and different-human review. |
+| Upload/parser isolation | Traversal, symlinks, expansion/nesting limits, oversized/duplicate-key JSON, bounded CPU/memory/output and no privileged parser fallback. |
+| Secrets and evidence | No private keys/source secrets in outputs; blob digest integrity; immutable history; failed writes do not leave partial report/finding success. |
+| Supply/deployment | Tampered payloads/digests, wrong estate/release, untrusted/withdrawn keys, report replay, stale authority and misconfigured secrets/CA mounts. |
+
+Test launch-specific lifecycle rules as well: a ticket is not resolution,
+completion must precede retest, a retest must bind the approved replacement and
+current finding, assignment changes invalidate exercises, and changed evidence
+invalidates current pilot acceptance.
+
+Automated regression checks support an independent assessment; they do not
+replace one or establish genuine assessor independence.
+
+### 5.4 Lane D — database, Redis and recovery integration
+
+- Exercise migrations on a clean and representative populated database, verify
+  migration head/model parity, and retain data-preservation results.
+- Keep SQLite tests for fast feedback **and** PostgreSQL coverage for SQL behavior,
+  concurrency, exact-estate uniqueness, transaction rollback and revision CAS.
+- Use isolated disposable Redis configurations for TLS/ACL/reconnect/replay tests;
+  never connect ordinary unit suites to a persistent shared rate-limit store.
+- Test job claims/fencing, interruption, UNKNOWN outcomes, reconciliation, outbox
+  publication and replay reset. A restarted healthy snapshot is not evidence that
+  earlier acknowledgements or events survived.
+- Treat real site restore, contention, failover and recovery-time/data-loss
+  measurement as a separate authorized acceptance lane.
+
+Tests requiring containers, network or external systems need a clearly declared
+runner and failure policy. A missing required service should be BLOCKED/FAIL for
+its required gate, not an unnoticed optional SKIP.
+
+### 5.5 Lane E — trusted release-candidate build and package integrity
+
+Six-image build-only CI is configured. Publication, signed production provenance,
+registry verification and site-package promotion remain separate work; the
+manual unsigned preflight does not implement this complete lane.
+
+1. Build from the reviewed exact revision, using approved dependency/build inputs.
+2. Build the coordinated API, worker, frontend and isolated parser images needed
+   by the selected support profile. Do not enable an optional service merely
+   because an old development topology includes it.
+3. Record immutable image digests, release identity, migration compatibility,
+   component/SBOM information, dependency findings and declared exceptions.
+4. Verify the complete operator-package inventory, including manifests, runbooks,
+   templates and retained scoped evidence. Detect extra, missing and modified files.
+5. Obtain the approved external release attestation/signature and verify against
+   a separately trusted public key. Never generate production signing authority
+   inside an untrusted PR job or store a private key in repository files.
+6. Publish only from a trusted protected context with minimum permissions and
+   explicit approval. OIDC/short-lived credentials are a design option, not a
+   configured capability claimed by this document.
+7. Retain exact build/package verification evidence. Artifact expiry or deletion
+   must not leave a release “approved” without required evidence.
+
+The existing `scripts/operator_release.py`, `scripts/pin_release_images.py` and
+`scripts/verify_release_attestation.py` provide package/pinning/verification
+building blocks. Their presence does not mean GitHub Actions currently builds,
+signs or publishes production images.
+
+### 5.6 Lane F — external site and customer acceptance
+
+Do not require every ordinary PR to have bank credentials or real HSM access.
+Instead, bind the final release/site decision to attributable evidence for the
+exact build and intended environment:
+
+- Independent security scope/report, tracked remediation and later signed retests.
+- Actual active primary/backup owners, procedures, acknowledgements and reviewed
+  fresh exercises for all nine operating duties.
+- Witnessed install/upgrade/restore, realistic capacity/fault tests and browser
+  qualification for the intended deployment.
+- Real bounded customer pilot with exclusions, current proof and separate
+  technical/customer review.
+- Approved residency, infrastructure controls and commercial/legal decisions.
+
+The existing readiness orchestrator `scripts/bank_readiness.py` supports strict
+failure on required SKIP/FAIL states. It is not invoked by the current main CI
+workflow. Its report categories and the newer launch record API are distinct
+surfaces: do **not** assume launch acceptance automatically feeds or closes the
+unified readiness gate. Any bridge needs an explicit, reviewed evidence adapter
+with build/environment/freshness binding.
+
+A green repository CI result must never automatically set “certified”, “SLA
+achieved”, “whole bank covered” or “customer accepted”.
+
+## 6. Customer application CI integration — the second CI workflow
+
+The desired customer-facing loop is:
+
+```text
+Customer opens an application PR / prepares a release
+    ↓
+Approved pipeline identifies exact source/release and agreed baseline/policy
+    ↓
+Authorized CryproScan scan is admitted and finishes with durable evidence
+    ↓
+Evaluate purpose-aware findings and changes against that baseline
+    ↓
+Return policy decision and evidence references to the customer pipeline
+    ↓
+Owner fixes the relevant condition
+    ↓
+Fresh authorized rescan proves the exact replacement, or remains inconclusive
+```
+
+There is an existing client helper, `scripts/ci_gate.py`, for the `/ci/gate`
+contract. It requires a scan ID and an authenticated token, can require a baseline,
+select a policy profile and emit JSON/PR-oriented output or SARIF. Its current
+exit behavior returns zero for `PASS` **or `WARN`**; do not assume every warning
+blocks a merge. Review and test profile-specific policy before making it a
+customer's required check.
+
+This helper is **not invoked by the repository's current GitHub Actions workflow**.
+It does not create collection permission, ensure a scan completed on the intended
+release, manage customer token custody or configure customer branch protection.
+Its availability must also respect the deployed support profile; do not enable a
+refused legacy API route as a shortcut to integration.
+
+Before onboarding a customer pipeline, explicitly implement/verify:
+
+- Exact tenant/estate, release/source identity, current credential authority and
+  permitted source/collection scope.
+- Protected baseline creation/change approval; no untrusted PR can replace its
+  own baseline to hide a regression.
+- Real job completion, evidence integrity and agreed freshness before policy
+  evaluation; HTTP acknowledgement alone is not scan completion.
+- Agreed PASS/WARN/FAIL/UNKNOWN/unavailable behavior. Required coverage or unavailable
+  proof must not quietly become a successful customer check.
+- Least-privilege, revocable automation credentials with safe secret injection;
+  automation must never impersonate a human reviewer or accept its own risk.
+- Scrubbed output/SARIF and controlled access to sensitive detailed evidence.
+- Required-check configuration and an audited, expiring human exception process
+  where the customer's policy permits one.
+
+## 7. Change and release decision rules
+
+| Observed result | Honest interpretation | Required behavior |
 |---|---|---|
-| `lint-and-collection` | Ruff + full test inventory from `scripts/ci_suites.py`; compare with disk | inventory, linter output, collection errors |
-| `backend-all` / `scanner-offline` | Discovered service/shared matrix, offline scanner fixtures, pytest/JUnit | per-shard XML and fail/skip/deselect counts |
-| `frontend` | `npm ci` + typecheck + Vitest + build + toolchain test | test XML/summary, build manifest, tool versions |
-| `postgres-parity` | `bash scripts/postgres_parity.sh` + explicit prior-revision upgrade fixture | Alembic heads, schema/index assertions, JUnit |
-| `security-config` | secret/dependency gate, production guard and `scripts/check_prod_compose.py` | policy result; no leaked secrets |
-| `images-build-only` | reviewed Docker contexts with `push: false` | image build digests/logs, no registry publication |
-| `ci-required` | final unconditional aggregate over required lane statuses/artifacts | a stable branch-protection status for the exact SHA |
+| PASS with retained evidence | The specified check passed on the stated revision/environment. | Continue only for that check's scope. |
+| FAIL | A required check failed. | Block the relevant integration/promotion; fix or follow a documented approved exception process. |
+| SKIP / unavailable / unconfigured | Required behavior was not exercised. | Never relabel as PASS. Block a gate that requires that evidence. |
+| Cancelled run | No completed verdict for that execution. | Require a completed check for the revision being accepted. |
+| UNKNOWN / INCONCLUSIVE | Evidence cannot establish success or failure of the intended condition. | Retain the state and request usable independent evidence. |
+| Reported complete | An owner declared that an action happened. | Require later exact-condition verification/retest for resolution. |
+| Historical acceptance, evidence now stale/changed | Acceptance happened previously, but its current evidence basis no longer holds. | Recompute blockers and obtain the appropriate fresh reviews. |
+| `[skip ci]` publication | Code/docs were published without the normal automatic check result. | Do not call it CI-validated or production-approved; required-check enforcement must be reviewed separately. |
 
-These names are proposals, **not** current GitHub check contexts. Validate action syntax, action digest pins, fork permissions, concurrency/cancellation and artifact retention before installing them; do not mark the final check required until it exists and a deliberately red PR proves it blocks merge.
+No `continue-on-error`, `|| true`, hidden exclusion or changed assertion should be
+used merely to manufacture a green required gate. If a test is stale, correct
+its fixture/expectation against the intended security contract and retain evidence;
+do not weaken the contract to satisfy the old fixture.
 
-### 3.2 Main-branch and release-candidate checks
+Branch protection/rulesets, required check names, reviewer policy and bypass
+permissions must be verified in GitHub. They are not established by a workflow
+file or by this document. A skipped required workflow can leave a PR waiting for
+a check rather than providing a successful status.
 
-- Rerun the full backend/shared/frontend/real-PostgreSQL set after merge. Do not rely only on the last PR result or a matrix assembled from an earlier commit.
-- Build every shipping image from an exact clean commit and pinned base/toolchain versions; build the reviewed parser and API/worker/frontend images with a recorded build graph. The staged six-image build proposal needs nginx context `.docker/nginx` (not repo root), and the separately reviewed worker-runtime Dockerfile has its own digest inputs; correct/decide both before requiring a build lane. Run container smoke tests against the built digests, not rebuilt mutable tags. Check that the controlled profile actually **refuses** unqualified API/WS/collector routes.
-- Generate the platform SBOM from the built artifacts, bind source commit, dependencies, image digests, release identity and deployment assertion separately, and retain provenance. A build-only job with `push: false` cannot supply registry digests; only a reviewed release/publish job with scoped credentials may do that.
-- Reserve `scripts/release_check.py` for a release candidate with its required digest-rendered manifests and optional strict evidence flags; its default evidence runner can legitimately report skips outside a prepared production environment. `scripts/security_scan.sh` is a local helper (pin audit, Ruff F/E9 and tracked-file grep), not a required history-aware secret-scanning gate.
-- The locally added `release-preflight.yml` is a **manual, read-only, unsigned handoff**. It requires a tag-selected dispatch and a configured `release-review` variable, validates supplied digest syntax and renders templates with `site_qualified:false`. It does **not** verify the registry's ownership, publish images, sign an operator package or deploy. Image publication was not authorized in this session and needs separate review outside auto mode. Verify an eventual signed operator package with approved public keys and exact hashes; a dry-run or `site_qualified:false` package is not bank approval.
-- Run a production-shaped local integration rehearsal: migrations; PostgreSQL/Redis; API/worker; approved parser runtime; supported source scan; evidence verification; one bounded report; negative authorization/admission; safe shutdown/restart. Label any optional dependency not present and gate its qualification separately.
+## 8. What CI must retain as evidence
 
-### 3.3 External/site qualification: never synthesized by CI
+For each relevant lane retain, with appropriate classification and retention:
 
-Release approval must separately obtain approved topology and residency, customer/provider target authorization, real HSM/cloud/network/SSH/OT evidence where claimed, independent penetration/escape testing, measured PostgreSQL/Redis crash/partition/recovery and target-scale soak, real customer-reviewed accuracy, staffed operator exercises, independently signed assessor retests, and technical/customer/legal acceptance of the bounded pilot. These are attributable artifacts bound to **the exact release digest, estate, environment, operator, reviewer, timestamp and scope**. Synthetic fixtures, SoftHSM, a local browser screenshot or a generated template cannot fill their slots.
+- Commit SHA, test/build revision, runner environment, dependency/tool versions,
+  command, start/end and exit status.
+- Test totals **including failures, skips, deselections and cancellations**;
+  results from overlapping suites must not be summed as independent coverage.
+- Structured test reports and sanitized logs; no customer source secrets, private
+  keys, tokens or production credentials.
+- Artifact/image/SBOM/package hashes and schema/migration compatibility.
+- Explicit synthetic-fixture versus authorized live/site evidence labels.
+- Unresolved blockers, known failed tests, approved exceptions with owner/expiry,
+  exclusions and links to supporting evidence.
+- Separate authorized identities for release, security, operational and customer
+  decisions; a CI bot cannot manufacture those human approvals.
 
-The unified strict readiness gate must receive all required categories—including readiness closure—and return PASS with **no mandatory FAIL/SKIP**. Until then, describe the deployment as supervised pilot/pre-production at most (`PRODUCTION-READINESS.md:7-12,180-185`; `docs/production-qualification-runbook.md:188-218`).
+A displayed green badge without this scope and attribution is insufficient for
+a banking release decision.
 
-## 4. Workflow rollout sequence and ownership
+## 9. Practical implementation order
 
-| Stage | Repository change and owner | Exit criterion |
+| Step | Deliverable | Done when |
 |---|---|---|
-| **0 — Baseline truth** | Engineering + CI owner inventory all service tests, active Actions, current red tests, required workflow permissions/status names and runtime versions. | A reviewed matrix of *actual* jobs, skips and failed tests; no claim of all-green from partial results. |
-| **1 — Restore red tests** | The local changes now preserve the remediation `INCONCLUSIVE` assurance gate and correct the Dubai field-accuracy reader to use an authorized platform operator; both formerly red SQLite cases passed focused reruns. Test owner must still rerun the wider backend/worker suites and review any further failures. | Both cases and neighboring tests pass without invented evidence; a complete required CI run, not two focused reruns, supplies the release check. |
-| **2 — Expand PR gates** | CI owner incrementally adds full suite discovery, frontend Vitest/toolchain, database migration and scanner/security lanes. | Clean PR reports all required shards with JUnit/artifact retention; intentional skips documented and reviewed. |
-| **3 — Publish workflow files** | Repo administrator obtains normal repository write plus GitHub workflow-file permission (e.g. applicable `workflow` scope or GitHub App Workflows write), reviews parked proposals, installs active workflow files, and inspects actual Actions runs before setting branch protection/rulesets and required checks. | An ordinary PR, main push and applicable manual/tag/scheduled jobs run under the intended permissions; a deliberately failing required check blocks merge. No permission workaround through another credential/session. |
-| **4 — Reproducible artifact** | Release/security owners build without publishing on PR; reviewed release path publishes immutable digests, SBOM/provenance and externally verified signatures. | Exact source→image→SBOM→operator manifest mapping can be independently checked and reproduced; no mutable tag in deployment input. |
-| **5 — Controlled rehearsal** | Platform/SRE and DB owners deploy the **supported** local-source/v1 profile into a disposable production-shaped environment, including parser staging/runtime, backup/restore, replay and failure drills. | Admit/deny/stop/recover/verify cases and service metrics pass with retained logs and no secret leakage. |
-| **6 — Target acceptance** | Customer, operator, provider and independent assessor supply site evidence and separately approve scope, duties, retests and one bounded pilot. | Strict gate PASS for the exact clean release/site; any unavailable category remains open, not waived by CI. |
+| 1 | Reconcile active workflow contracts, historical copies and remaining failures. | Executed coverage matches documentation; unresolved failures have owners and are not suppressed. |
+| 2 | Maintain configured frontend/shared checks; add missing explicit script tests. | Relevant suites actually execute and their failure blocks the engineering result. |
+| 3 | Qualify and extend the configured scanner/security lanes. | Every declared family and cross-BOM contract has an explicit result; missing coverage is visible. |
+| 4 | Strengthen database/Redis/concurrency and generated-output checks. | Required integration dependencies exist and failures/corruption do not produce success. |
+| 5 | Agree and adopt reproducible build inputs and safe dependency updates. | Exact tools/dependencies/actions/images are attributable and updates pass compatibility checks. |
+| 6 | Implement trusted image/package build and attestation verification. | Exact release artifacts are inventoried, verified and published only from approved contexts. |
+| 7 | Configure/verify required checks and protected release decisions. | Merge/promotion rules and bypass authority are reviewed, enforced and auditable. |
+| 8 | Qualify the intended customer site and complete the bounded pilot. | Real external evidence and separate accountable reviews satisfy the scoped release/customer gate. |
+| 9 | Add new applications/adapters gradually. | Every expansion has explicit scope, permission, evidence, negative tests and fresh acceptance. |
 
-**Change control:** do not copy a parked workflow verbatim into `.github/workflows/` without checking current suite names, environment variables, GitHub permissions, third-party action pinning, artifact retention, exit-code behavior and product profile. Never enable a disallowed production API to make a smoke job pass. Keep PR and release publishing credentials separate; review all outward-facing releases before publication.
+Some foundation steps above are now configured in source; their remaining
+acceptance depth and GitHub enforcement must still be verified. This document
+does not change GitHub Actions definitions.
 
-## 5. Product-build workstreams tied to these gates
+## 10. Existing local verification entry points
 
-1. **Execution and tenant authority:** one source of truth for original actor, selected estate, target/mode, positive approval, queue claim, shared budgets, stop and bounded recovery. Finish exact-owner history/GraphQL/stream/export negative tests; a legacy platform-NULL inventory row is not automatically a private-history grant.
-2. **Observations and evidence:** each collector must report attempted/observed/failed/not-attempted sources and parsed-file/target receipts. Hash only sanitized authoritative payloads; retain tenant-bound evidence IDs, verifier outcomes and historical tombstones. Reconcile current source observations, facts and assets without introducing a second hand-edited truth.
-3. **Six BOMs and graph:** SBOM/NBOM/CBOM/TechBOM/HBOM/VBOM keep distinct source semantics, versioning and content addresses. Pin scan-run CBOM and report to exact verified evidence; keep independent estate HBOM separate from TechBOM's HBOM layer. Cross-BOM algorithm matches are associations, never proof of physical key identity. Graph edges label observed/declared/inferred source and bounded traversal witness.
-4. **Risk, drift and remediation:** deterministic policy and explainable risk cite evidence and confidence; approved same-estate baseline comparisons are idempotent; administrative dispositions are not independently verified condition clearance. A work item closes only at the appropriate authorized rescan/proof boundary; missing coverage yields INCONCLUSIVE/UNKNOWN.
-5. **Operator UI:** display real tenant-scoped API rows, pagination, observation freshness and explicit unmeasured states. Keep the enterprise CTI console accessible, non-chatbot and reduced-motion safe. A route existing, a mocked Vitest page mounting or a 202 accepted response is not a completed operator workflow.
-6. **Operational controls:** measured queue/job/DB/scanner/dependency SLOs, origin-qualified notifications, site backups/recovery, signed operator decisions and independently reviewed launch duties. An at-least-once HTTP notification receipt is not exactly-once delivery; ambiguous ACKs require reconciliation.
+These are repository commands to run deliberately in an appropriately prepared
+development/test environment, **not commands executed by this documentation
+change**. Use a supported Node version and the project's Python virtual environment.
 
-Each workstream should add positive and negative automated tests, retain exact source/coverage provenance, and be admitted to the **controlled production allowlist only after** its runtime and operator evidence pass. Building a broad development image does not widen the supported production adapter.
+```bash
+# Repository-managed Python environment and dependencies.
+make setup
 
-## 6. Concrete verification checklist for the plan itself
+# Broad non-live backend/shared test collection; includes integration tests
+# whose disposable local dependencies must be provisioned as their harnesses require.
+make test JOBS=2
 
-- [ ] Enumerate active workflows and zero-byte placeholders directly from Git; reconcile `.github/workflows-pending/README.md` with what GitHub actually executes.
-- [ ] Capture a baseline full local suite and exact failing node IDs; do not infer the status of `8915806f` from older engineering records.
-- [ ] Run workflow syntax and permissions review in a PR; test one deliberate red case to prove required checks block merge.
-- [ ] Run the ephemeral PostgreSQL fresh/upgrade tests, and the full frontend typecheck/Vitest/build/toolchain sequence under pinned versions.
-- [ ] Build images on a PR without pushing; inspect SBOM and digest/provenance chain after an approved release publication.
-- [ ] Deploy the supported controlled profile to a disposable environment and verify unsupported endpoints refuse, approved source scan persists verifiable evidence, and site recovery keeps exact owner/history boundaries.
-- [ ] Capture real provider/customer/assessor/operator evidence and rerun the strict unified gate for that exact release and site. Do not change this plan's checkboxes to DONE from repository text alone.
+# Frontend checks, matching the commands now configured in the Actions frontend job.
+cd frontend
+npm ci
+npm run typecheck
+npm test
+npm run build
+npm run test:toolchain
+```
 
-## 7. Non-goals and open decisions
+Ruff and generated-contract checks, from the repository root after environment
+setup:
 
-This document does **not** activate GitHub workflows, change branch protection, run CI, install tools, publish an image, deploy a site or approve a bank. Decisions requiring actual owners: protected-branch required checks and workflow-file permissions; registry/signing authority and retention; supported Python/Node/runtime matrix; approved customer topology/region; specific collector adapters beyond local-source/v1; acceptance thresholds for workload/soak/DR; external HSM/provider/assessor contracts; and pilot/SLA/legal scope. Record each decision as a dated, attributable artifact rather than interpreting silence as approval.
+```bash
+export PYTHONPATH="$(find services shared -mindepth 1 -maxdepth 1 -type d | paste -sd:)"
+.venv/bin/ruff check services scripts shared
+.venv/bin/python scripts/gen_rest_api.py
+.venv/bin/python scripts/gen_capability_maturity.py
+# Inspect generated changes; a check lane should fail on unexpected tracked diff.
+git diff --exit-code -- docs/api-reference/rest-api.md docs/CAPABILITY-MATURITY.md frontend/src/lib/maturity.ts
+```
 
-**Primary references:** `.github/workflows/ci.yml`, `.github/workflows-pending/README.md`, `Makefile`, `scripts/postgres_parity.sh`, `scripts/check_prod_compose.py`, `scripts/bank_readiness.py`, `scripts/operator_release.py`, `docs/runbooks/controlled-execution-upgrade.md`, `docs/readiness-evidence/launch-engineering-2026-10-22.md`, `PRODUCTION-READINESS.md` and `docs/production-qualification-runbook.md`. Current source and actual job logs take precedence over these written descriptions.
+The generation scripts intentionally write files and may update date metadata;
+review changes instead of treating regeneration itself as proof of correctness.
+Database parity, live qualification, release publication and strict customer
+readiness require their own provisioned environment/evidence and should not be
+launched casually from an untrusted PR.
+
+## 11. Validation state and later corrections
+
+The [launch engineering record](readiness-evidence/launch-engineering-2026-10-22.md)
+retains its original scoped results: 157 final changed-code passes, 398 frontend
+passes and the broader failures encountered at that revision. Later commits
+corrected the field-accuracy operator identity and the exact-site/post-action
+legacy remediation fixtures while preserving INCONCLUSIVE without approved proof.
+Those fixture corrections do not rewrite the historical test record or prove a
+new full-suite green result.
+
+The GitHub-side implementation guide previously reported local CI contract tests
+(31 passes), six local non-published image builds, and disposable PostgreSQL 15
+checks (6 migration tests, 959 worker passes with 1 deselected, 2 API estate tests).
+Those counts are **retained author-reported local observations**. This docs
+refresh separately ran 43 focused CI-discovery/workflow-contract, maturity and
+0105 migration tests (all passed); it did not rerun the image builds, full worker
+parity or live PostgreSQL tests. PostgreSQL 16 and actual Actions status require
+their own current records.
+The author also reported a local Node 22.22.0 limitation; CI pins 22.22.3. Do not
+confuse a previous local environment limitation with the later user-reported
+workflow status.
+
+The user now reports one outstanding workflow failure. Actions/check APIs remain
+403 for this session, and the failed lane/run SHA is unspecified. No repair,
+workflow dispatch, all-green claim or site qualification is part of this refresh.
+
+## 12. Related implementation and acceptance guides
+
+- [Current production-readiness decision boundary](../PRODUCTION-READINESS.md)
+- [Six-BOM evidence paths](bank-environment/49-six-bom-evidence-paths.md)
+- [Independent remediation verification](bank-environment/54-independent-remediation-verification.md)
+- [Measured workloads and capacity limits](bank-environment/55-measured-workloads-and-capacity-limits.md)
+- [Independent security assurance](bank-environment/56-independent-security-assurance.md)
+- [Operational ownership and demonstrated service](bank-environment/57-operational-ownership-and-demonstrated-service.md)
+- [Focused payments customer pilot](bank-environment/58-focused-payments-customer-pilot.md)
+- [Operator install/upgrade/recovery](runbooks/operator-install-upgrade-recover.md)
+- [Launch assurance handoff](runbooks/launch-assurance-handoff.md)
+- [Editable launch templates](templates/launch/README.md)
+
+**In one sentence:** build a traceable six-BOM evidence-to-remediation platform,
+use CI to prove scoped engineering behavior, and require real independent,
+operational and customer evidence before claiming a qualified release.

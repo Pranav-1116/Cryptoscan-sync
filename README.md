@@ -1,5 +1,12 @@
 # CryptoScan
 
+> **Current source review (2026-10-22, `698beb38`):**
+> [implementation / CI / migration / six-BOM boundaries](docs/CURRENT-IMPLEMENTATION-STATUS.md),
+> [CI and product-build plan](docs/CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md),
+> [operator installation and recovery](docs/runbooks/operator-install-upgrade-recover.md).
+> Older dated tables/diagrams are historical; configured CI does not mean a signed
+> release or site approval. The user reports one remaining workflow failure.
+
 Production cryptographic inventory and compliance platform — **Full End-to-End Product**.
 
 **Current Stats (2026-10-16, measured):** 51 services (~389k lines of Python), 103 API router modules, **834 API paths / 920 operations** (regenerated reference: `docs/api-reference/rest-api.md`), 95 alembic migrations with schema-parity tests, 75 frontend page components with lazy-loaded routes, 783 backend test files (full local suite: 7,629 passed / 34 skipped) plus a 334-test Vitest frontend suite with clean `tsc --noEmit`. Deterministic policy — no AI in the decision path. Per-round build ledger: `audit_reports/00_ROUND_STATUS.md` (complete through round 80).
@@ -124,7 +131,7 @@ Nozomi, SAST), see
 
 | Capability | Where |
 |---|---|
-| **CI** — active `ci.yml`: ruff + backend unit tests (core services), frontend typecheck + build (Vitest runs locally per change, not yet in CI), production config guard, PostgreSQL parity. Named scanner/migration/docker workflows are staged in `.github/workflows-pending/` (three zero-byte placeholders remain active-side) | `.github/workflows/`, `.github/workflows-pending/` |
+| **CI** — discovered backend/shared + offline scanner matrices; PostgreSQL 15/16 migration/parity; frontend typecheck, Vitest, coverage smoke, build/toolchain; six-image **build-only** lane; fail-closed `ci-required`. Manual unsigned release preflight is separate. Actual run status and release/site approval are not implied. | [Current CI contract](docs/dev/release-automation.md), [product-build plan](docs/CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) |
 | **Multi-user auth** — `users` / `user_sessions` / `audit_log` tables, roles (`admin`/`auditor`/`viewer`), persistent lockout, server-side token revocation, admin user management (`GET/POST/PATCH /api/v1/auth/users`), audit trail (`GET /api/v1/auth/audit`) | `services/api/api/security/`, `services/database/db/models/user.py`, migration `0019` |
 | **RBAC** — scan trigger + baseline approve + drift ack/resolve require auditor/admin; reads need any role | `api/dependencies.py` (`require_roles`) |
 | **Concurrent worker** — `MAX_CONCURRENT_JOBS` thread pool with backpressure and graceful drain | `services/worker/worker/core/pool.py` |

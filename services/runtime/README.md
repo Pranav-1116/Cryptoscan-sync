@@ -25,7 +25,8 @@ From `/proc/<pid>/maps`, `comm`, `cmdline` and the system TCP tables:
 - **Listening TCP ports** per process (potential TLS endpoints).
 - **Containerization** (docker / containerd / kubernetes / lxc markers).
 
-Results appear in the platform under **Operate → Runtime hosts**.
+Results are available through the authenticated **`/runtime`** page where its
+API/profile is enabled; it is a deep link, not an Operate sidebar placement.
 
 ## Quick start (Linux)
 
@@ -116,3 +117,17 @@ prints locally and exits non-zero only on a hard scan error.
   command lines and listening socket metadata.
 - Secrets/credentials are never stored in findings; only the vault-referenced
   API token is used for transport auth.
+
+## Current evidence and deployment boundary — 2026-10-22
+
+Loaded-library/process inventory is not proof that every advertised algorithm ran.
+The separate C shim initializes OpenSSL metadata lookup before the first
+intercepted EVP call, so a one-call process can retain available cipher/digest
+metadata. That does not establish complete runtime coverage or authorize collection.
+
+The console runtime page is the authenticated **`/runtime` deep link**, not an
+“Operate” sidebar section. There are six current sidebar sections; use the
+[navigation reference](../../docs/NAVIGATION-FEATURE-REFERENCE.md).
+The supported controlled production adapter remains **local-source/v1**; host
+agent/live ingestion examples require their own approved profile/qualification.
+See [current implementation status](../../docs/CURRENT-IMPLEMENTATION-STATUS.md).

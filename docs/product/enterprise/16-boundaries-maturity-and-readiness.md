@@ -106,3 +106,11 @@ production CA/partition/load/restore acceptance must not be marked closed.
 [Guides 44–45](../../bank-environment/44-queued-authority-and-durable-ssh.md) and
 [upgrade/recovery](../../runbooks/execution-and-replay-upgrade.md) define the
 implemented scope, compatibility changes and outstanding work.
+
+## Current-reading update — 2026-10-22
+
+Current maturity is **77 surfaces: 33 GA / 32 Beta / 12 Preview**. Launch readiness and Operator decisions remain Preview. Signatures prove origin/integrity, not assessor independence; tests, unsigned preflight and operating assertions do not establish production qualification or an SLA.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

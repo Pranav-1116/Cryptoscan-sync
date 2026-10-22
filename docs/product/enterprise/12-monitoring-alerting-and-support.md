@@ -132,3 +132,11 @@ Monthly or quarterly service review should cover:
 Use the [support handbook](../../company/support-handbook-and-escalation.md),
 [on-call guide](../../ops/on-call-and-comms.md), and incident policy for
 customer-facing operations.
+
+## Current-reading update — 2026-10-22
+
+Current monitor event types support 120 characters after migration **0105**. A CBOM SSE connection comment is transport readiness, not a new observation. Ownership/exercise gates require real people and independently reviewed evidence; **sla_authorized remains false**.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

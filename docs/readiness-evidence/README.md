@@ -1,5 +1,22 @@
 # Readiness evidence directory
 
+## Current reading versus immutable evidence
+
+**2026-10-22 source review: `698beb38`.** Dated records in this directory retain
+their original commands, commits, results and hashes. They are not rewritten as
+fresh execution by a documentation update. In particular,
+[launch engineering](launch-engineering-2026-10-22.md) records migration **0104**
+at its original 5.x run; the subsequent current chain ends at **0105**. The
+[operator engineering record](operator-engineering-2026-10-21.md) likewise keeps
+its original 0104 measurements. Follow the current
+[operator upgrade/recovery runbook](../runbooks/operator-install-upgrade-recover.md)
+for today's migration requirements.
+
+The [current source/CI status](../CURRENT-IMPLEMENTATION-STATUS.md) separates
+configured lanes, retained historical observations, local docs checks and the
+user-reported remaining workflow failure. No historical green result overrides
+an outstanding current failure or supplies external/customer approval.
+
 This directory is the default output location for the current bank-readiness
 gate. Artifacts must be retained with their commands, UTC timestamps, commit,
 environment, provider/database logs and operator/customer attestation where

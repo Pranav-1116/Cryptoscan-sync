@@ -47,7 +47,7 @@ Read the layers top to bottom:
 | **Export + evidence package** | Six formats, each signed; audit pack, exit report, engagement archive; schedules | `reporting`, `governance` |
 | **Real-time** | Every operation emits a platform event: persisted, fanned out in-process, tailed across processes, federated across nodes over Redis, delivered by SSE | `eventstream`, `api/events` |
 | **API gateway** | FastAPI `/api/v1`, GraphQL, auth, RBAC, rate limits, audit, metrics | `api`, `control_plane`, `automation`, `observability` |
-| **Console** | React SPA with six sidebar sections, 31 menu slots / 30 unique primary routes, deep-linked pages, live feed, EN + AR, and GA / beta / preview badges | `frontend/` · [navigation reference](../NAVIGATION-FEATURE-REFERENCE.md) |
+| **Console** | React SPA with six sidebar sections, 41 menu slots / 40 unique primary routes, deep-linked pages, live feed, EN + AR, and GA / beta / preview badges | `frontend/` · [navigation reference](../NAVIGATION-FEATURE-REFERENCE.md) |
 
 ## Who it is for
 

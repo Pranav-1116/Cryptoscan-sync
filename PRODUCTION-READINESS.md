@@ -1,6 +1,21 @@
 # CryptoScan production readiness — current evidence gate
 
-**Documentation reviewed:** 2026-10-21 UTC (retained gate artifacts have their own dates)
+## Current implementation review — not a gate rerun
+
+The [2026-10-22 current-state companion](docs/CURRENT-IMPLEMENTATION-STATUS.md)
+records source `698beb38`, migration **0105**, the active discovered CI/reusable
+lanes and the manual **unsigned** preflight. The user reports one remaining
+workflow failure; this session cannot independently read Actions/check results.
+Configured jobs and locally generated schema are not an all-green run or release
+approval. No retained readiness verdict is changed by this documentation refresh.
+
+The [Preview launch handoff](docs/runbooks/launch-assurance-handoff.md) covers
+independent security report/retest records, nine-duty human ownership/exercises
+and one scoped six-BOM payments pilot. It requires actual external evidence and
+separate technical/customer acceptance; it neither supplies that evidence nor
+authorizes an SLA, whole-bank claim or production deployment.
+
+**Documentation reviewed:** 2026-10-22 UTC (retained gate artifacts have their own dates)
 **Source of truth:** `scripts/bank_readiness.py` → `docs/readiness-evidence/bank-readiness.{json,md}`
 **Scope:** repository controls plus customer/provider qualification evidence.
 

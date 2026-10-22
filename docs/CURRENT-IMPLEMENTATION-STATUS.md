@@ -1,0 +1,113 @@
+# Current implementation, CI and documentation status
+
+**Reviewed:** 2026-10-22 UTC
+**Source baseline:** `698beb3831b44d3c514b1918aab1f0cffd99e0ee` on
+`arena/bb4b80dd-cryproscan` (PR #34, open at review).
+
+This is the current-reading companion for the repository's manuals. Historical
+benchmarks, audit reports, generated evidence and diagrams retain their original
+revision/date. A documentation refresh does not re-run those measurements or
+turn them into evidence for a newer build.
+
+## 1. Current facts and their limits
+
+| Topic | Current repository state | Qualification boundary |
+|---|---|---|
+| Schema | Alembic head **0105**, following 0104. `monitor_events.event_type` is widened from 30 to 120 characters. | Upgrade through the normal reviewed migration procedure. Downgrade refuses while values longer than 30 remain; never truncate audit history to force rollback. |
+| Controlled deployment | `kubernetes-external-services/local-source-v1`: API, coordinated worker, frontend, isolated digest-pinned parser, regional external PostgreSQL and verified-TLS Redis. | Local-source acquisition is the reviewed adapter. Other unqualified collection/realtime/graph/export/notification surfaces remain refused in the controlled profile. Development API availability does not qualify an adapter. |
+| CI | Active main workflow plus reusable scanner, PostgreSQL migration/parity and six-image build-only workflows; manual unsigned release preflight. | A source-controlled workflow is not evidence of its execution or branch protection. |
+| Frontend checks | Node 22.22.3, frozen npm install, typecheck, Vitest, coverage instrumentation smoke, build and toolchain checks are configured. | DOM/mock tests and an image build do not establish site/browser endurance. |
+| Console | **77 classified surfaces: 33 GA, 32 Beta, 12 Preview**; six sidebar sections, 41 menu placements, 40 unique primary routes. | Labels describe individual engineering surfaces, not approval of the complete platform or their availability under every deployment profile. |
+| REST reference | **917 paths / 1,008 operations / 105 tagged groups** in the reviewed generated schema snapshot. | Route registration does not guarantee production-profile availability or current user's authorization. |
+| Launch evidence | Preview independent-report/retest, nine-duty operating ownership and bounded payments-pilot records. | Real assessor procurement/testing, actual owners/site exercises and customer acceptance must be supplied externally. |
+| Supply chain | Python CI and API/worker/scanner images use committed version constraints; third-party workflow Actions are SHA-pinned. | A constraints file is not a hash-verified cross-platform lock. Build-only image checks do not publish registry digests or prove a signed release. |
+
+See [capability maturity](CAPABILITY-MATURITY.md), [navigation](NAVIGATION-FEATURE-REFERENCE.md),
+[REST reference](api-reference/rest-api.md) and [operator handoff](runbooks/operator-install-upgrade-recover.md).
+
+## 2. CI status: distinguish configuration, reports and observations
+
+The user reported on 2026-10-22 that workflows pass except one remaining failure,
+which they intend to resolve separately. **The failing lane/run/commit was not
+identified in that report.** GitHub Actions/check-results API requests returned
+HTTP 403 to this session. Therefore this documentation does not independently
+confirm an all-green run, identify the outstanding failure or declare it fixed.
+No CI dispatch or repair of that failure is part of this documentation refresh.
+
+`ci-required` intentionally fails if a required upstream lane is failed, skipped,
+cancelled or incomplete. An aggregate failure can reflect an underlying lane;
+it is not necessarily an additional independent defect. Required branch rules
+and protected-environment reviewers still need verification in GitHub.
+
+The [CI workflow/build plan](CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) describes exact
+configured jobs, test selection, skip policy and remaining release work.
+
+## 3. Changes since the launch implementation at 8915806f
+
+1. Migration **0105** and matching model/package compatibility fix for long
+   monitor event types, including guarded downgrade tests.
+2. Correct field-accuracy test identity: a platform operator reads platform data;
+   supervisor role alone does not grant estate-history access.
+3. Remediation integration fixtures report completion before the later exact-site
+   scan. A legacy candidate comparison remains INCONCLUSIVE without an approved
+   assurance proof; the verifier was not weakened to close a ticket.
+4. Discovered backend/shared and scanner CI lanes, PostgreSQL 15/16 parity,
+   non-publishing six-image builds, locked Python constraints and frontend tests.
+5. Pip caching no longer conflicts with setup-python caching; API sibling-test
+   fixtures are importable; branch push/PR concurrency groups are coalesced.
+6. Runtime tracing initializes metadata before the first intercepted EVP call;
+   regression tests exercise a fresh process making one crypto call.
+7. OCSP GOOD requires explicit successful response verification and a successful
+   command. Unverified/failed GOOD becomes UNKNOWN. An unverified REVOKED signal
+   remains conservatively labeled with its separate verification state.
+8. Scanner schema now exposes file observation receipts, completeness and primary
+   discovered-source scope; these fields do not prove whole-estate completeness.
+9. Redis federation fixtures terminate deterministically. Cleanup failures log
+   the error type rather than being silently swallowed.
+10. CBOM SSE sends an initial `: connected` protocol comment so an otherwise idle
+    connection can flush. This is not a synthetic CBOM observation; current
+    selected-estate authority and membership are still rechecked.
+11. API fixtures check durable job/result storage, owner-bound event pagination,
+    stricter platform/tenant event isolation and anonymous event-route refusal.
+
+## 4. Product workflow and six-BOM boundary
+
+```text
+One scoped application/release and independent expected-target register
+→ exact estate / current authority / residency / approved collection
+→ durable bounded job and isolated parser / explicit partial or UNKNOWN results
+→ retained sanitized evidence and distinct artifact/SBOM checksums
+→ SBOM + CBOM + NBOM + TechBOM + HBOM + VBOM with typed, attributed links
+→ purpose/applicability, coverage, freshness and unresolved relationships
+→ accountable owner / different change reviewer / reported completion
+→ later exact-condition observation or externally signed retest
+→ current operating/security gates / technical review / different customer review
+```
+
+An SBOM digest is not an executable digest. Supplier signatures prove origin and
+integrity, not factual independence. A source/build or deployment association is
+not automatically runtime/reproducible-build proof. Ticket closure is not fix
+verification; historical acceptance is not current acceptance after evidence
+changes. One payments pilot is not whole-bank visibility.
+
+## 5. Documents that must be read together
+
+- [Product and CI build plan](CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md)
+- [Current release-automation contract](dev/release-automation.md)
+- [Controlled execution upgrade](runbooks/controlled-execution-upgrade.md)
+- [Operator install, coordinated upgrade and recovery](runbooks/operator-install-upgrade-recover.md)
+- [Independent security testing and retests](bank-environment/56-independent-security-assurance.md)
+- [Operating ownership and demonstrated capability](bank-environment/57-operational-ownership-and-demonstrated-service.md)
+- [Bounded payments pilot](bank-environment/58-focused-payments-customer-pilot.md)
+- [Launch handoff](runbooks/launch-assurance-handoff.md)
+- [Production-readiness gate](../PRODUCTION-READINESS.md)
+- [Documentation status and inventory](DOCUMENTATION-STATUS.md)
+
+## 6. What is not changed by this refresh
+
+No certification, SLA, live-collector qualification, site capacity/restore result,
+customer acceptance, new test total or green GitHub verdict is manufactured.
+Historical readiness artifacts remain attributed to their original command,
+commit and environment. Existing diagrams and broader integration examples are
+conceptual/development material where they exceed the supported controlled
+profile; they are not installation approval for that topology.

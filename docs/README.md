@@ -1,5 +1,12 @@
 # CryptoScan documentation
 
+> **Latest reading — 2026-10-22 (`698beb38`):**
+> [Current implementation status](CURRENT-IMPLEMENTATION-STATUS.md) reconciles migration
+> **0105**, active CI, **77** classified surfaces and launch Preview boundaries.
+> Use the [CI/product-build plan](CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) for configured
+> checks versus remaining release work. Old evidence retains its original run/date;
+> this refresh is not a new production or all-suite passing verdict.
+
 > **What to do next:** [ROADMAP-TO-ENTERPRISE.md](../ROADMAP-TO-ENTERPRISE.md)
 > — the sequenced plan to enterprise grade, and what deliberately not to
 > build. Its first phase is evidence, not features: this product has never
@@ -36,7 +43,7 @@
 > [the root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md). It reports
 > explicit PASS/FAIL/SKIP evidence and does not turn percentages or synthetic
 > estates into a production approval.
-> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every classified console surface is GA, beta or preview (33 / 32 / 10), labelled in the UI and served at `GET /api/v1/platform/capabilities`. The documentation audit and remaining gaps are tracked in [DOCUMENTATION-STATUS.md](DOCUMENTATION-STATUS.md).
+> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every classified console surface is GA, beta or preview (33 / 32 / 12), labelled in the UI and served at `GET /api/v1/platform/capabilities`. The documentation audit and remaining gaps are tracked in [DOCUMENTATION-STATUS.md](DOCUMENTATION-STATUS.md).
 
 Production cryptographic inventory and compliance platform: deterministic
 scanners, hashed evidence, YAML policy, drift, and a dashboard. Policy is
@@ -76,8 +83,8 @@ explicit production acceptance checklist; passing local fixtures is not bank cer
 For coordinated producer/worker migration, legacy pins, RUNNING-job recovery and
 cursor resets, use the [execution/replay upgrade runbook](runbooks/execution-and-replay-upgrade.md).
 For endpoint semantics, use the [API contract companion](api-reference/execution-and-replay.md).
-The generated API reference was refreshed in-process on 2026-10-21: **848 paths,
-936 operations, 103 tagged groups**. No server/deployment was started by schema
+The generated API reference was refreshed in-process on 2026-10-22: **917 paths,
+1,008 operations, 105 tagged groups**. No server/deployment was started by schema
 generation; route availability and qualification remain separate.
 
 ## Start here

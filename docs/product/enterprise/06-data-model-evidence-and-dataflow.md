@@ -154,3 +154,11 @@ Every collection and analysis path should be able to express:
 
 Consumers must preserve these states. Replacing them with zero, empty, or
 PASS makes a report less reliable than the underlying scan.
+
+## Current-reading update — 2026-10-22
+
+Keep SBOM, CBOM, NBOM, TechBOM, HBOM and VBOM distinct. Source receipt completeness applies only to primary discovered files, not the whole estate. Migration **0105** widens monitor event types; it does not change launch-approval or evidence truth semantics.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

@@ -1,5 +1,11 @@
 # CryptoScan enterprise system blueprint
 
+> **2026-10-22 reconciliation:** [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md)
+> supersedes old numerical/topology snapshots. Migration **0105**, controlled
+> local-source/v1, discovered CI and the Preview launch gates are current source
+> contracts; independent site/security/customer qualification remains external.
+> The proposed broader target architecture below is not newly activated.
+
 **Later implemented slice (2026-10-21):** persisted/current queue authority,
 durable SSH receipts and verified realtime/current-run Redis TLS/Sentinel are
 now documented in [Guides 44–45](bank-environment/44-queued-authority-and-durable-ssh.md).
@@ -162,14 +168,14 @@ Before a release is promoted:
 
 The console has six primary sections and follows a command-to-proof workflow:
 
-1. **Overview** — Command Center, Live Asset Intelligence, Activity.
-2. **Discovery** — Scan, Assets, Network, Cloud, Applications, Hardware, Certificates, Vendors.
-3. **Intelligence** — CBOM, HBOM, NBOM, Dependency Graph, Crypto Inventory, PQC Readiness, Crypto Agility, Crypto Drift.
-4. **Governance** — Banking & SWIFT, Policies, Compliance, Evidence, Audit Log.
-5. **Output** — Reports, What-If Analysis.
+1. **Overview** — Dashboard, Launch readiness, Operator decisions, Activity.
+2. **Discovery** — Scan, Live Scanners, Assets, Network, Cloud, Applications, Hardware, Certificates, Vendors.
+3. **Intelligence** — Cryptography, Crypto Inventory (CBOM), Algorithm Catalog, Technology BOM, HBOM, NBOM, Dependencies, Graph Explorer, Findings, PQC Readiness, Crypto Agility, Crypto Drift.
+4. **Governance** — Banking & SWIFT, Policies, Compliance, Evidence, Audit Log, Remediation Tasks, Remediation Priorities, Migration.
+5. **Output** — Reports, What-If Analysis, Digital Twin.
 6. **Administration** — System Health, Settings & Org, Security Center, Users & Teams, Integrations & API.
 
-The six sections contain 31 sidebar slots (3 + 8 + 8 + 5 + 2 + 5) and 30 unique primary paths. The duplicate Security Center placement is intentional: the governance placement is an audit workflow; the administration placement is a platform-control entry point. It remains one route and one permission model. Other authenticated pages may remain deep-link routes reached from cards, search and reports; a deep link is not implied to be a primary navigation slot.
+The six sections contain 41 sidebar slots (4 + 9 + 12 + 8 + 3 + 5) and 40 unique primary paths. The duplicate Security Center placement is intentional: the governance placement is an audit workflow; the administration placement is a platform-control entry point. It remains one route and one permission model. Other authenticated pages may remain deep-link routes reached from cards, search and reports; a deep link is not implied to be a primary navigation slot.
 
 ### 5.1 Navigation behavior
 

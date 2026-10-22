@@ -3,7 +3,7 @@
 ## Development
 
 1. Python 3.11+
-2. `pip install -r requirements.txt`
+2. Python 3.11 locked environment: `python -m pip install -r requirements.txt -c requirements.lock.txt`
 3. Copy `.env.example` to `.env`
 4. Start the empty stack with `bash scripts/run_stack.sh`; no source data is seeded.
 5. `bash scripts/run_api.sh`
@@ -27,17 +27,19 @@ If the API logs `could not translate host name "postgres"`:
 - Do not start `docker-compose.prod.yml` without `docker-compose.yml`.
 - A process on the laptop must use `127.0.0.1:55432`, not `postgres`.
 
-## Production
+## Controlled production installation
 
-Do not use `.env.example` as-is. Follow `docs/admin-guide/production.md`.
+Do not promote `.env.example` or the development Compose stack unchanged. Use
+[operator install/upgrade/recover](../runbooks/operator-install-upgrade-recover.md)
+for the reviewed local-source/v1 topology, external regional PostgreSQL,
+verified-TLS Redis, isolated parser and exact immutable package inputs. Apply the
+full migration chain through **0105** and coordinate API/worker/frontend/shared
+models. Never truncate monitor history to force 0105 downgrade.
 
-```bash
-cp .env.production.example .env
-python3 scripts/hash_admin_password.py
-bash scripts/deploy_prod.sh -d
-```
-
-Set `SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `GITHUB_WEBHOOK_SECRET`, `POSTGRES_PASSWORD`, `NEO4J_PASSWORD`, and an explicit `CORS_ORIGINS` list from a secrets manager. Never ship the development defaults.
+Provision secrets, CA bundles, permissions, regional storage and actual site
+qualification through the approved operator/customer process. Legacy
+[Compose production examples](production.md) do not establish that qualification.
+The manual unsigned release preflight does not publish or install this package.
 
 ## Execution and replay upgrade (2026-10-21)
 

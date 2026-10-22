@@ -1,5 +1,13 @@
 # Production deploy
 
+> **Current supported-profile boundary — 2026-10-22:** use the
+> [operator install/upgrade/recover runbook](../runbooks/operator-install-upgrade-recover.md)
+> for the controlled **local-source/v1** package, external PostgreSQL/TLS Redis,
+> parser isolation and migration **0105**. The Compose commands below are retained
+> legacy/development deployment patterns, not a newly approved production topology.
+> Do not enable Neo4j, live collectors or plaintext Redis to make old examples boot.
+> See [current implementation status](../CURRENT-IMPLEMENTATION-STATUS.md).
+
 Use this on a **dedicated host**. Do not run the production overlay on a laptop that already binds `:80`, `:5432`, `:6379`, or `:7687`.
 
 ## 1. Secrets

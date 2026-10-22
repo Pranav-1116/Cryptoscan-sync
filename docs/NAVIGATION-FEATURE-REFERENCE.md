@@ -5,7 +5,7 @@
 > route changes, update this page in the same change. This is documentation of
 > the current repository, not a product promise or an external assurance claim.
 
-The console has **six primary sidebar sections**, **31 menu slots** and **30
+The console has **six primary sidebar sections**, **41 menu slots** and **40
 unique primary route paths**. `Security Center` intentionally appears twice:
 it is available as **Audit Log** under Governance and as **Security Center**
 under Administration, but both labels open `/security-center`. The application
@@ -17,12 +17,16 @@ routes are authentication flows, not primary navigation entries.
 
 ## Primary sidebar
 
+**Reviewed 2026-10-22 at `698beb38`.** The table below matches every current
+sidebar placement, including intentionally duplicated Security Center.
+
 ### Overview
 
 | Sidebar label | Route | Component | Purpose |
 |---|---|---|---|
 | Dashboard | `/command-center` | `CommandCenter` | Current estate summary, scan state, risk and live activity entry points. |
-| Live Asset Intelligence | `/live-asset-intelligence` | `LiveAssetIntelligence` | Materialize, compare, export and review the unified Technology BOM state. |
+| Launch readiness | `/launch-readiness` | `LaunchReadiness` | Gated independent-report, operational-duty and bounded-pilot records; real assessor execution, site exercises and customer acceptance require external evidence. |
+| Operator decisions | `/operator-decisions` | `OperatorDecisions` | Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open. |
 | Activity | `/live-stream` | `LiveStream` | Durable activity and event stream with live updates. |
 
 ### Discovery
@@ -30,6 +34,7 @@ routes are authentication flows, not primary navigation entries.
 | Sidebar label | Route | Component | Purpose |
 |---|---|---|---|
 | Scan | `/scanners` | `Scanners` | Start and monitor authorized collection jobs. |
+| Live Scanners | `/live-scanners` | `LiveScanners` | Live scan runner status; same orchestrator as /scanners. |
 | Assets | `/assets` | `Assets` | Browse the unified asset inventory; detail carries identity spine, facts, blast radius and the remediation tasks bound to the asset's evidence. |
 | Network | `/network` | `Network` | Review network inventory and authorized network-scan results. |
 | Cloud | `/cloud` | `Cloud` | Review connected AWS, Azure and GCP inventory. |
@@ -37,17 +42,20 @@ routes are authentication flows, not primary navigation entries.
 | Hardware | `/hardware` | `Hardware` | Hardware, HSM, TPM and firmware inventory. |
 | Certificates | `/certificates` | `Certificates` | Live TLS-scan view plus the persisted estate: fingerprint-deduped rows, where observed, honest revocation checks and ownership assignment. |
 | Vendors | `/vendor` | `Vendor` | Vendor, product and supply-chain relationships. |
-| Vendor Due Diligence | `/vendor-due-diligence` | `VendorDueDiligence` | Strict, versioned supplier profile, completeness, evidence provenance and due-diligence risk review. |
 
 ### Intelligence
 
 | Sidebar label | Route | Component | Purpose |
 |---|---|---|---|
-| CBOM | `/cbom` | `Cbom` | Cryptographic assets, algorithms, libraries, protocols and CBOM views. |
+| Cryptography | `/crypto` | `Crypto` | Algorithm registry + normalized crypto view (114 normalization tests). |
+| Crypto Inventory (CBOM) | `/cbom` | `Cbom` | Cryptographic assets, algorithms, libraries, protocols and CBOM views. |
+| Algorithm Catalog | `/crypto-assets` | `CryptoAssets` | Normalized cryptographic asset inventory. |
+| Technology BOM | `/live-asset-intelligence` | `LiveAssetIntelligence` | Materialize, compare, export and review the unified Technology BOM state. |
 | HBOM | `/hbom` | `Hbom` | Live-scan BOM plus the independent unified estate HBOM — content-addressed pins with pin-to-pin diff. |
 | NBOM | `/nbom` | `Nbom` | Network BOM view; static binary capability candidates remain separate from live network observations. |
-| Dependency Graph | `/graph` | `Graph` | Relationships, dependencies and blast-radius exploration. |
-| Crypto Inventory | `/crypto-assets` | `CryptoAssets` | Normalized cryptographic asset inventory. |
+| Dependencies | `/dependency-graph` | `DependencyGraph` | Same graph engine as /graph. |
+| Graph Explorer | `/graph` | `Graph` | Relationships, dependencies and blast-radius exploration. |
+| Findings | `/findings` | `Findings` | Policy-evaluated findings with evidence links. |
 | PQC Readiness | `/pqc` | `Pqc` | Quantum-vulnerability classification and migration readiness. |
 | Crypto Agility | `/agility` | `Agility` | Deterministic replaceability and migration-planning signals. |
 | Crypto Drift | `/drift` | `Drift` | Approved-baseline changes and drift events. |
@@ -60,7 +68,10 @@ routes are authentication flows, not primary navigation entries.
 | Policies | `/security-policy` | `SecurityPolicy` | Deterministic policy packs, scope and policy decisions. |
 | Compliance | `/compliance` | `Compliance` | Framework mappings and compliance evidence. |
 | Evidence | `/evidence` | `Evidence` | Hashes, manifests, scan and per-record verification (with an X-of-Y coverage line), and the filterable, exportable audit ledger. |
-| Audit Log | `/security-center` | `SecurityCenter` | Audit and platform-security review from the governance context. |
+| Audit Log | `/security-center` | `SecurityCenter` | Platform security posture and operational controls. |
+| Remediation Tasks | `/remediation` | `Remediation` | Owned task lifecycle with machine verification against rescan evidence; new surface over the full task API. |
+| Remediation Priorities | `/priorities` | `Priorities` | Deterministic prioritisation over findings + business context. |
+| Migration | `/migration` | `Migration` | Scan → project → tasks → velocity forecast; forecast model is simple. |
 
 ### Output
 
@@ -68,6 +79,7 @@ routes are authentication flows, not primary navigation entries.
 |---|---|---|---|
 | Reports | `/reports` | `Reports` | Reports, exports and report delivery status. |
 | What-If Analysis | `/what-if` | `WhatIf` | Read-only migration and scenario analysis. |
+| Digital Twin | `/digital-twin` | `DigitalTwin` | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
 
 ### Administration
 
@@ -95,20 +107,56 @@ routes are authentication flows, not primary navigation entries.
 
 ## Routed pages reached by deep link
 
-These routes are real pages in `App.tsx`, but are not current primary sidebar
-slots. They should be linked from a relevant page, search result, alert, report,
-or role workspace rather than reintroduced as a second competing sidebar.
+These actual page routes are not current sidebar placements. Some were formerly
+deep links and now have sidebar entries; use the primary table rather than an old
+menu screenshot. Listed routes are not an assertion of production-profile enablement.
 
-| Area | Routes |
-|---|---|
-| Overview and role workspaces | `/accuracy`, `/executive`, `/role-dashboard`, `/search-results`, `/timeline` |
-| Discovery and collection | `/admin`, `/catalog`, `/cmdb`, `/live-environment`, `/live-scanners`, `/onboarding`, `/runtime`, `/sectors`, `/telecom` |
-| Intelligence and analysis | `/crypto`, `/crypto-assurance`, `/crypto-changes`, `/dependency-graph`, `/findings`, `/libraries`, `/migration`, `/priorities`, `/pqc-map`, `/protocols`, `/remediation`, `/risk`, `/security-intelligence` (`/remediation`: the task lifecycle view — server-side status filtering across the full state machine, per-task verification verdicts, accept/complete/re-verify with API refusals surfaced verbatim) |
-| Governance and administration | `/alerts`, `/automation`, `/governance`, `/notifications`, `/organization`, `/platform-p2`, `/resilience`, `/security`, `/scope`, `/supervision`, `/tenancy`, `/trust` |
+| Route | Component | Maturity |
+|---|---|---|
+| `/accuracy` | `Accuracy` | Preview |
+| `/admin` | `Admin` | GA |
+| `/alerts` | `Alerts` | GA |
+| `/automation` | `Automation` | Beta |
+| `/catalog` | `Catalog` | Beta |
+| `/cmdb` | `Cmdb` | Beta |
+| `/crypto-assurance` | `CryptoAssurance` | Beta |
+| `/crypto-changes` | `CryptoChanges` | Beta |
+| `/executive` | `Executive` | Beta |
+| `/governance` | `Governance` | Beta |
+| `/libraries` | `Libraries` | GA |
+| `/live-environment` | `LiveEnvironment` | Beta |
+| `/notifications` | `Notifications` | Beta |
+| `/onboarding` | `Onboarding` | Beta |
+| `/organization` | `Organization` | Beta |
+| `/platform-p2` | `PlatformP2` | Preview |
+| `/pqc-map` | `PqcMap` | Preview |
+| `/protocols` | `Protocols` | Beta |
+| `/resilience` | `Resilience` | Beta |
+| `/risk` | `Risk` | Beta |
+| `/role-dashboard` | `RoleDashboard` | Beta |
+| `/runtime` | `Runtime` | Beta |
+| `/scope` | `Scope` | GA |
+| `/search-results` | `SearchResults` | GA |
+| `/sectors` | `Sectors` | Beta |
+| `/security` | `Security` | Beta |
+| `/security-intelligence` | `SecurityIntelligence` | Preview |
+| `/supervision` | `Supervision` | Preview |
+| `/telecom` | `Telecom` | Beta |
+| `/tenancy` | `Tenancy` | Beta |
+| `/timeline` | `Timeline` | Preview |
+| `/trust` | `Trust` | Preview |
+| `/vendor-due-diligence` | `VendorDueDiligence` | Preview |
 
-Authentication and entry flows are also routed but are not sidebar pages:
-`/login`, `/register`, `/reset-password` and `/invite-accept`. Unknown routes
-fall back to `/command-center`.
+Authentication/entry routes are `/login`, `/register`, `/reset-password` and
+`/invite-accept`; self-serve registration is not enabled merely by a route existing.
+The root `/` and unknown authenticated paths redirect to `/command-center`.
+`/audit` redirects to `/security-center`; `/techbom` redirects to
+`/live-asset-intelligence`. The backend still controls authorization and availability.
+
+**Launch readiness** and **Operator decisions** remain **Preview**. Launch records
+track independent reports/retests, nine-duty ownership/exercises and a bounded
+six-BOM payments pilot; no page manufactures an assessor, SLA or customer acceptance.
+See [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md).
 
 ## Feature ownership by navigation area
 

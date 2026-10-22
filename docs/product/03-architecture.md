@@ -249,8 +249,8 @@ from `shared_models/capability_maturity.py`) that puts a **Beta** or
 **Preview** badge in the sidebar and page header for anything not GA.
 
 The sidebar has the six sections **Overview, Discovery, Intelligence,
-Governance, Output and Administration**. It currently exposes 31 menu slots
-across 30 unique primary route paths; the remaining routed pages are reached
+Governance, Output and Administration**. It currently exposes 41 menu slots
+across 40 unique primary route paths; the remaining routed pages are reached
 from role workspaces, search, alerts, reports or deep links. The exact route
 map is maintained in the [Navigation & Feature Reference](../NAVIGATION-FEATURE-REFERENCE.md)
 and must be updated with `Layout.tsx` or `App.tsx`. Every page surface is

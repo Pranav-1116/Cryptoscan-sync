@@ -1,5 +1,14 @@
 # ZELNX CryptoScan — End-to-End Architecture
 
+> **Current deployment boundary (2026-10-22):** broad service/collector/graph
+> diagrams describe repository architecture, not the supported production allowlist.
+> The controlled topology is **local-source/v1** with regional external PostgreSQL,
+> verified-TLS Redis and an isolated parser. See
+> [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md) and
+> [operator installation/recovery](runbooks/operator-install-upgrade-recover.md).
+> The current schema head is **0105**; registered development routes do not enable
+> otherwise refused adapters.
+
 > A precise, implementation-accurate description of the whole platform's
 > architecture, from the scanners that gather facts to the dashboard a human
 > reads. It is grounded in the code as it exists in this repository (not a wish
@@ -89,7 +98,7 @@
   ┌──────────────────────────── DASHBOARD ──────────────────────────────┐
   │  Vite/React SPA (Live Asset Intelligence, CBOM, HBOM, graph, ...)   │
   │  live SSE feed · no full-page refresh · 6 sidebar sections          │
-  │  31 menu slots / 30 unique primary routes + deep-linked pages       │
+  │  41 menu slots / 40 unique primary routes + deep-linked pages       │
   └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -432,7 +441,7 @@ Every BOM operation emits a typed event on `target_name="technology-bom"`:
 - `frontend/src/pages/LiveAssetIntelligence.tsx` — the unified BOM page with
   **6 tabs**: Overview, Components, Compare, Export, Schedules, Evidence & Vendor.
 - Six primary sidebar sections — Overview / Discovery / Intelligence /
-  Governance / Output / Administration — with 31 menu slots, 30 unique
+  Governance / Output / Administration — with 41 menu slots, 40 unique
   primary route paths and additional deep-linked pages. See
   `docs/NAVIGATION-FEATURE-REFERENCE.md` for the exact current map.
 
@@ -497,5 +506,5 @@ scan source/network/cloud/container/hardware/runtime/OT
   described here. Use it to follow a single fact from scanner → evidence →
   inventory → BOM → snapshot → export → SSE, plus the scheduled-export flow.
 - **[NAVIGATION-FEATURE-REFERENCE.md](./NAVIGATION-FEATURE-REFERENCE.md)** — the
-  current six-section sidebar, 31 menu slots, deep-linked routes, role guards
+  current six-section sidebar, 41 menu slots, deep-linked routes, role guards
   and the pipeline each primary page consumes.

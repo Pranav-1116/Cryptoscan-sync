@@ -113,3 +113,11 @@ Deliver:
 - backup/restore and access-review record;
 - open risks and expiries; and
 - expand/remediate/stop/no-decision record.
+
+## Current-reading update — 2026-10-22
+
+The Preview bounded payments-pilot workflow binds one source/SBOM/release/deployment, approved TLS/SSH receipts, meaningful hardware/supplier evidence and exact remediation proof. Technical approval precedes a different customer-owner acceptance, which is invalidated by changed evidence. It is not whole-bank/commercial acceptance.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

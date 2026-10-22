@@ -131,3 +131,11 @@ scale, and availability must be measured and contracted separately.
 Record it as unsupported or not available, identify the required adapter or
 external evidence, and create a scoped plan. Do not fill the gap with a
 placeholder that looks like a completed control.
+
+## Current-reading update — 2026-10-22
+
+Use the current **0105** coordinated upgrade/recovery runbook, not a dated migration-head snapshot. An upstream failed/skipped/cancelled required CI lane makes **ci-required** fail; that is not automatically a second independent defect. The user will address the remaining failure separately.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

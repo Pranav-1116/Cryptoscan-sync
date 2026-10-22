@@ -155,3 +155,11 @@ SANs for all data/discovery endpoints. Edge HTTPS does not configure Redis TLS.
 Optional Sentinel covers realtime/current-run factory clients, not every queue,
 rate-limit or health client. Template manifests and local lab results do not
 establish deployed HA/security or independent failure zones.
+
+## Current-reading update — 2026-10-22
+
+The controlled profile is local-source/v1 with external regional PostgreSQL, verified-TLS Redis, coordinated API/worker/frontend and a networkless digest-pinned parser. Apply the full migration chain through **0105**; the Compose examples below are development/legacy patterns, not site acceptance.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

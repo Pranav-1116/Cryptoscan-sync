@@ -121,3 +121,16 @@ Rules, stated plainly:
   tenants' events or a claim every scanner is qualified.
 - Mixed-source aggregate/export surfaces can be deliberately refused until their
   estate contract is qualified; a refusal is not a successful bank archive.
+
+## CBOM connection comments and estate authority — 2026-10-22
+
+The CBOM SSE endpoint sends an initial **`: connected`** comment so connection
+headers can flush even when no observation arrives. SSE comments are protocol
+traffic, **not CBOM records, scan evidence, coverage or a fabricated heartbeat
+observation**. Keep the observation view empty until real events are received.
+
+Credential and selected-estate authority remain required; reconnecting does not
+restore revoked membership. Unified events still exclude foreign/platform or
+spoofed owner frames and reject anonymous access. This transport change does
+not enable the refused realtime surfaces in the controlled production profile.
+See [current implementation status](../CURRENT-IMPLEMENTATION-STATUS.md).

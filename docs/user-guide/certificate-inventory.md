@@ -24,3 +24,18 @@ Each estate row opens a drawer with:
 
 Remediation tasks bind to evidence records, not to certificates — the drawer
 says so explicitly instead of inventing a task linkage.
+
+## Verified OCSP status — 2026-10-22
+
+An OCSP `good` line alone is insufficient. The current live-check classifier
+requires explicit OpenSSL `Response verify OK`, and the executing command must
+succeed, before returning **GOOD**. Missing/failed verification or a failed
+command downgrades GOOD to **UNKNOWN** with a reason. An unverified REVOKED
+response remains a conservative signal with its separate `response_verified`
+state; do not call it independently authenticated revocation evidence.
+Missing issuer/OpenSSL/AIA or an unreachable responder is not proof of good
+standing. CRL freshness/serial checks remain separate.
+
+This is a classifier/runtime contract, not activation of live certificate
+collection under the controlled local-source/v1 profile. See
+[current implementation status](../CURRENT-IMPLEMENTATION-STATUS.md).

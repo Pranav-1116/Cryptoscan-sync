@@ -1,8 +1,8 @@
 # CryptoScan — end-to-end product capabilities
 
-**2026-10-21 correction:** the numerical table below is a dated snapshot, not a
+**2026-10-22 correction:** the numerical table below is a dated snapshot, not a
 current census or production claim. The regenerated [API reference](api-reference/rest-api.md)
-now reports **848 paths / 936 operations / 103 groups**. Current queue authority,
+now reports **917 paths / 1,008 operations / 105 groups**. Current queue authority,
 durable SSH and TLS/Sentinel replay controls are summarized in the
 [API contract companion](api-reference/execution-and-replay.md); production
 acceptance remains the [root gate](../PRODUCTION-READINESS.md).

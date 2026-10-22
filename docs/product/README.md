@@ -4,7 +4,8 @@ _This folder is the complete description of the product: what it is, what it
 does, how it is built, how data moves through it, and how ready it is. Every
 diagram is rendered from `scripts/gen_docs_diagrams.py` so it can be
 regenerated when the code changes; every number is counted from the
-repository, not from a plan. Version 1.0.0, 2026-09-23._
+repository, not from a plan. Original illustrated baseline: version 1.0.0, 2026-09-23. Current-reading
+review: 2026-10-22 at `698beb38`; older images retain their original scope._
 
 ![What the product does](img/01-product-overview.png)
 
@@ -34,14 +35,14 @@ pages in `frontend/src/App.tsx`, and the server-verified role guard on the
 | 3 | [Architecture](03-architecture.md) | The layers, the runtime processes, the stores, the security model — with diagrams |
 | 4 | [Data flow](04-dataflow.md) | How a finding becomes evidence, inventory, BOM, export and a live event — with diagrams |
 | 5 | [A scan, step by step](05-scan-walkthrough.md) | One job traced through all fourteen pipeline stages, with the rows it writes and how to verify it afterwards |
-| 6 | [Scope, maturity and readiness](06-scope-and-readiness.md) | Which of the 73 classified surfaces are GA / beta / preview, how production-ready the whole thing is, and what is still open |
+| 6 | [Scope, maturity and readiness](06-scope-and-readiness.md) | Which of the 77 classified surfaces are GA / beta / preview, how production-ready the whole thing is, and what is still open |
 | 7 | [Glossary](07-glossary.md) | CBOM, HBOM, VBOM, evidence chain, drift, baseline, gate, PQC, HNDL … |
 | 8 | [The engines behind the pages](08-platform-engines.md) | Scanner gate and orchestrator, privacy and data controls, normalisation/identity/dedup, PQC planning and agility, remediation/SLA/exceptions, KeyAssure, dependency graph and blast radius, tenancy/billing/marketplace/data lake/connectors/workload identity, sectors/anomaly/observability |
 | 9 | [End to end — one finding, every subsystem](09-end-to-end.md) | A hard-coded 3DES key followed through all fifteen steps from push to regulator, with the artefact each step leaves |
 
 ## The product in five sentences
 
-**CryptoScan** discovers every use of cryptography across an organisation's
+**CryptoScan** inventories observed cryptography across authorized parts of an organisation's
 estate — source code, dependencies, binaries and firmware, TLS endpoints,
 certificates, cloud key services, containers, OT/ICS networks, telecom cores,
 hardware security modules and payment systems — and turns it into one
@@ -58,20 +59,23 @@ verifiable by the intended reviewer. Policy is never decided by
 AI, unknowns are reported as unknown with the reason, and nothing on any page
 is fabricated: it is empty until a real scan produces evidence.
 
-## Measured today
+## Current reference snapshot — 2026-10-22
 
-| | |
-|---|---|
-| Backend services | 51 packages under `services/` |
-| REST surface | 659 paths / 725 operations across 86 tag groups in the 2026-09-25 API snapshot, plus GraphQL and SSE/WebSocket ([reference](../api-reference/rest-api.md)) |
-| Console | 74 page components, 73 classified surfaces, 6 sidebar sections, 31 menu slots / 30 unique primary routes, English + Arabic |
-| Scanners | 6 first-class languages (Python, Java, C#, JS/TS, Go, Rust) + Kotlin, PHP, Ruby, config/IaC; 10 lockfile formats; ELF/PE/Mach-O/WASM/mobile/archive/firmware parsing; TLS; AWS/Azure/GCP; containers; OT; telecom; hardware; payment |
-| Policy packs | baseline · PCI-DSS · NIST · CNSA 2.0 · FIPS · HIPAA · UAE (`services/policy/rule_definitions`) |
-| Export formats | json · csv · cyclonedx · cyclonedx-xml · spdx · xml · pdf — each with content hash + HMAC + RFC 7515 JWS |
-| Database | PostgreSQL 15/16 in production (SQLite for development), 60 Alembic migrations, 102 tables |
-| Identity | local + TOTP MFA, OIDC (relay / auth-code / PKCE), SAML 2.0, LDAP/AD, SCIM 2.0, API keys; 9 RBAC roles |
-| Tests | 4,808 backend test functions, hermetic and parallel (~8 min); frontend vitest suite; live PostgreSQL migration test |
-| Readiness | Explicit PASS/FAIL/SKIP gate — [root PRODUCTION-READINESS.md](../../PRODUCTION-READINESS.md) |
+| Area | Current reading | Boundary |
+|---|---|---|
+| REST | **917 paths / 1,008 operations / 105 tagged groups**, regenerated in-process. | Registered development schema, not all routes enabled in production. |
+| Console | **77 classified surfaces: 33 GA / 32 Beta / 12 Preview**; 6 sections, 41 placements / 40 unique primary routes. | See [current navigation](../NAVIGATION-FEATURE-REFERENCE.md); badges are not full-platform approval. |
+| Database | Alembic head **0105**; 0104 page indexes followed by 0105 event-type widening. | Guarded downgrade, backup and coordinated upgrade are required. |
+| Collection | Reviewed controlled profile is **local-source/v1**, with approved bounded input, retained authority and isolated parser. | Other described adapters/topologies are development or separately qualified examples, not activated bank collection. |
+| BOMs | **SBOM, CBOM, NBOM, TechBOM, HBOM and VBOM** remain distinct evidence views; vulnerability findings are additional. | Source receipt completeness, signatures and supplier assertions are not whole-estate/runtime truth. |
+| CI | Discovered backend/scanner suites, PG 15/16 migration/parity, frontend tests/build and six non-published image builds are configured. | User reports one unresolved workflow failure; Actions results were not independently accessible in this review. |
+| Release | Manual **unsigned** preflight plus a separate full operator-package procedure. | No registry publication, site approval, external certification or SLA is implied. |
+
+Historical test totals/service counts in the original diagrams are not recounted
+by this refresh. Consult [current implementation status](../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI build plan](../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md),
+[launch handoff](../runbooks/launch-assurance-handoff.md) and the
+[production-readiness gate](../../PRODUCTION-READINESS.md).
 
 ## Image index
 

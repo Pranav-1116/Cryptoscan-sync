@@ -1,5 +1,13 @@
 # CryptoScan Enterprise Documentation Center
 
+> **Reviewed 2026-10-22 (`698beb38`):** begin with
+> [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+> [CI/product-build plan](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+> [launch handoff](../../runbooks/launch-assurance-handoff.md).
+> Current schema head is **0105**; the generated inventory has **77** surfaces
+> (33 GA / 32 Beta / 12 Preview). Development collection examples are not a
+> production allowlist, and the user's remaining CI failure is not waived.
+
 **Purpose:** provide an enterprise documentation experience with the breadth and
 navigation discipline expected from large platform vendors. This is a
 repository-backed product manual for CryptoScan; it is not a claim of IBM,

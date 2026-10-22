@@ -1,6 +1,6 @@
 # Documentation status and coverage map
 
-**Review date:** 2026-10-21
+**Review date:** 2026-10-22
 **Repository:** CryptoScan
 **Purpose:** identify which documentation is authoritative, which material is historical, and which product areas still require evidence or deeper guides.
 
@@ -10,14 +10,16 @@ every documented capability is generally available.
 
 ## 1. Repository-wide inventory
 
-The `docs/` tree currently contains **403 files**, including **343 Markdown
+The `docs/` tree currently contains **439 files**, including **369 Markdown
 files**, plus generated diagrams, JSON/CSV evidence, templates, and scoped
 qualification artifacts. The files cover product behavior, architecture, user
 workflows, deployment, security, operations, company diligence, commercial
 planning, and historical evidence.
 
-Counts are a documentation snapshot. They should be regenerated rather than
-copied into a product claim when files change.
+Counts are a documentation snapshot. At this refresh there are **474 Markdown
+files repository-wide**, including 369 under `docs/`. The all-repository inventory
+uses tracked `*.md` plus this change’s new guides; the `docs/` total counts actual
+files. Regenerate these counts rather than copying them into product claims.
 
 ## 2. Source-of-truth order
 
@@ -42,10 +44,10 @@ When two documents disagree, use this order:
    planning or templates. They must not be read as proof of revenue, valuation,
    certification, customer count, market share, or production qualification.
 
-The current API reference was generated **in-process on 2026-10-21** and reports
-**848 paths / 936 operations** across **103 tagged groups**. No application server
+The current API reference was generated **in-process on 2026-10-22** and reports
+**917 paths / 1,008 operations** across **105 tagged groups**. No application server
 or deployment was started for schema generation. The current maturity
-snapshot reports **33 GA, 32 Beta, and 10 Preview surfaces** (75 classified
+snapshot reports **33 GA, 32 Beta, and 12 Preview surfaces** (77 classified
 console surfaces). The dates and scope matter: do not merge historical counts
 with the current snapshot.
 
@@ -202,6 +204,53 @@ region/destination, hostile-source staging, attempt and SQL-outbox controls.
 Production availability is deliberately **local-source only**; other API/monitor/
 WebSocket/collector paths are refused. This is a breaking supported-profile
 restriction, not an assertion that all six P0 gaps or external qualifications are
-closed. The 75 console-surface maturity inventory is unchanged; this increment
+closed. At that increment the 75 console-surface maturity inventory was unchanged; it
 adds no qualified console UI. The generated REST schema includes all development
 routes and must not be read as the production enablement list.
+
+
+## 8. Complete documentation refresh — 2026-10-22
+
+Source reviewed: **698beb38**, on `arena/bb4b80dd-cryproscan`. Start with
+[current implementation status](CURRENT-IMPLEMENTATION-STATUS.md). This adds
+the latest 0105 migration, active/reusable CI, unsigned release preflight,
+first-call runtime metadata, OCSP verification, file receipts and CBOM SSE
+connection behavior to the current-reading map. The detailed
+[CI/product-build guide](CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) reconciles the older
+long-form six-BOM plan with the subsequently tracked CI implementation guide;
+already configured checks are separated from remaining hardening work.
+
+Active root/product/navigation/enterprise, developer/CI, administration, runtime,
+API and bank/launch handoffs are reconciled with current code. Historical image
+assets, generated machine evidence and dated audit/test results retain their
+original revision and qualification limits. A file outside the affected behavior
+is not needlessly rewritten just to change its date.
+
+The repository-wide Markdown inventory and relative-link check include all
+tracked Markdown, not just edited guides. Generated API and maturity outputs
+are checked against source and regenerated twice to check idempotence. These are
+documentation/source checks, not a new full backend/frontend run or external
+deployment qualification. See the validation record below for actual results.
+
+The user reports one remaining failing workflow. Actions/check-result access
+returned HTTP 403 to this session; no lane/run identity or independent green
+verdict is claimed, and no workflows are changed or dispatched by this refresh.
+
+
+## 9. Validation performed for this refresh
+
+| Check | Result | Scope / limits |
+|---|---|---|
+| Focused source contracts | **43 passed**, 7 existing Alembic deprecation warnings, 3.42 s | `scripts/tests/test_ci_suites.py`, `services/devsecops/tests/test_ci_workflow_contract.py`, `shared/shared_models/tests/test_capability_maturity.py`, `services/database/tests/unit/test_monitor_event_type_migration.py`; local Python 3.11.2, locked requirements. Not a full-suite/live-PostgreSQL rerun. |
+| API regeneration | **917 paths / 1,008 operations / 105 groups** | In-process OpenAPI; no application server or provider probes. Existing reference already matches this baseline. |
+| Maturity regeneration | **33 GA / 32 Beta / 12 Preview** | Shared source, generated Markdown and frontend artifact match; no tier promotion. |
+| Repeated generation | Byte-for-byte identical API/maturity outputs | Includes `frontend/src/lib/maturity.ts`; no frontend source change. |
+| Navigation reconciliation | **6 sections / 41 placements / 40 unique primary routes** | Every current sidebar label/route/component matched against Layout/App; deep-link table refreshed. |
+| Repository-wide local Markdown links | **474 files**, no missing relative targets or unresolved local heading anchors | Static local check; external URLs are not fetched. Fenced-code examples are excluded from link interpretation. |
+| Edited shell examples | **18 labeled shell blocks**, all pass `bash -n` | Syntax only, not execution of installation/destructive examples. |
+| Installed Python constraints | `pip check` passes | Local environment only; not a cross-platform or hash-locked reproducibility proof. |
+| Patch integrity | `git diff --check` passes; documentation-only changes | No runtime code, workflow definitions, lockfiles, dated machine evidence or image assets changed. |
+
+No GitHub Actions run, CI dispatch, deployment, release signing/publication,
+full frontend/backend test run or readiness-gate execution was performed by this
+refresh. The reported remaining workflow failure is left for the user.

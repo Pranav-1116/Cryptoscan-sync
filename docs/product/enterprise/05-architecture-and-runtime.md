@@ -161,3 +161,11 @@ resynchronization, not silent frozen-snapshot continuation. Verified TLS/ACLs,
 command readiness and subscriber reconnect are implemented for realtime/current
 run; they do not migrate every Redis consumer or certify lossless replication.
 See [current API semantics](../../api-reference/execution-and-replay.md).
+
+## Current-reading update — 2026-10-22
+
+Broad repository service diagrams are not the controlled production enablement list. Current local-source/v1 execution, isolated parser, external PostgreSQL and verified-TLS Redis are the operator-package contract; graph/other unqualified adapters remain refused.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

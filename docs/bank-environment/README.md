@@ -1,5 +1,13 @@
 # How CryptoScan enters a bank and produces six BOMs
 
+> **Current implementation reading — 2026-10-22:**
+> [status and qualification limits](../CURRENT-IMPLEMENTATION-STATUS.md),
+> [operator package/upgrade through 0105](../runbooks/operator-install-upgrade-recover.md)
+> and [CI/product-build plan](../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md).
+> The controlled shipping collection adapter remains **local-source/v1**; broader
+> collector scenarios below need separate qualification. Guides **56–58** retain
+> Preview external-assurance, operating-duty and bounded payments-pilot contracts.
+
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 
 The practical answer is: **the bank installs and authorizes the platform inside
@@ -278,7 +286,8 @@ Start with the [upgrade runbook](../runbooks/evidence-assurance-upgrade.md).
 - [Install, upgrade and recovery package/runbook](../runbooks/operator-install-upgrade-recover.md)
 
 These are implemented engineering controls and repeatable local measurements,
-not customer capacity or witnessed deployment acceptance. Apply migration 0104;
+not customer capacity or witnessed deployment acceptance. Apply the complete migration chain through **0105** (0104 adds page indexes;
+0105 widens monitor event types and guards lossy downgrade);
 rebuild API/worker/frontend and the approved parser as the release requires.
 
 

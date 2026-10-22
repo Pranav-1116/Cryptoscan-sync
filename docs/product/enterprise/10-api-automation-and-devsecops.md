@@ -142,3 +142,11 @@ require an explicit reset; backend/refusal is not empty success. Queue payloads
 cannot grant owner/target/actor authority. Retry creates a new admitted attempt;
 synchronous network/SSH generic retry returns 409. A received event, HTTP 200 or
 COMPLETED receipt does not by itself prove all observations succeeded.
+
+## Current-reading update — 2026-10-22
+
+The regenerated schema is **917 paths / 1,008 operations / 105 tagged groups**. Discovered backend/scanner, PG 15/16, frontend tests/build and six non-publishing image builds are configured; **ci-required** is the aggregate. The separate manual preflight is unsigned and is not deployment.
+
+See [current implementation status](../../CURRENT-IMPLEMENTATION-STATUS.md),
+[CI/build contract](../../CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) and
+[operator install/upgrade/recover](../../runbooks/operator-install-upgrade-recover.md).

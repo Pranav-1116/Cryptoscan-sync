@@ -57,3 +57,17 @@ bank has not handed over — the discovery gap made visible), and in source but 
 * It cannot see algorithms a log does not print (e.g. an application that logs only
   "encrypted OK"). Enable the vendor's crypto audit level (ICSF `SMF 82`, payShield audit
   trail, `javax.net.debug=ssl:handshake`) for the capture window.
+
+## First-call C-shim metadata — 2026-10-22
+
+The separate `services/runtime/cshim/cryptoscan_trace.c` interceptor resolves
+OpenSSL metadata symbols **before logging the first intercepted EVP operation**.
+A fresh process making only one cipher/digest initialization can therefore retain
+its available algorithm name/type metadata, instead of needing a later call to
+initialize lookup functions. The regression uses a one-call fresh process; it is
+not an endurance, full-library/version or whole-estate observation claim.
+
+Do not confuse opt-in instrumentation with approved bank runtime collection.
+Mapped libraries, runtime logs and intercepted operations are distinct evidence
+classes; no key bytes should be collected. The controlled production collector
+remains local-source/v1. See [current status](../CURRENT-IMPLEMENTATION-STATUS.md).
