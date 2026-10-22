@@ -10,7 +10,7 @@ import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, defer
 

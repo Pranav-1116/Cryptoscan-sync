@@ -1,22 +1,25 @@
 # Historical workflow proposals — not the active CI source
 
-As of the 2026-10-17 release-automation work, the executable definitions are in
+As of the 2026-10-22 CI/CD implementation, the configured definitions are in
 `.github/workflows/`:
 
-- `ci.yml`: automatic discovery of every service/shared suite, frontend
-  typecheck + Vitest + build, lint, production config guard, PostgreSQL parity,
-  and a fail-closed aggregate check named `ci`.
-- `scanner-tests.yml`: focused timeout/seccomp/hostile-archive regressions.
-- `db-migration.yml`: real Alembic chain/schema tests on SQLite and PostgreSQL;
-  required migration proof fails if the tests are skipped.
-- `docker-build.yml`: all six checked-in Dockerfiles plus Compose validation,
-  with read-only permissions and **no publishing or deployment**.
+- `ci.yml`: PR/main/requested integration-branch/manual entrypoint, disjoint discovery of every service/shared suite,
+  frontend typecheck/Vitest/build/toolchain, lint, production config guard,
+  and the fail-closed `ci-required` aggregate. It calls all three lanes below.
+- `scanner-tests.yml`: reusable/manual offline scanner matrix, six suites in five
+  scanner families with JUnit and no path-filtered PR bypass.
+- `db-migration.yml`: reusable/manual PostgreSQL 15 **shipping** and 16 compatibility
+  parity, plus no-skip live Alembic migration proof against disposable databases.
+- `docker-build.yml`: reusable/manual six standard image builds, with nginx's own
+  context, read-only permissions, and **no publishing or deployment**. The separate
+  worker-runtime image requires operator-reviewed base digests and is not built here.
 
-These are local implementation changes, not evidence that GitHub accepted or
-executed them. Workflow installation, check results and branch-protection
-configuration still need verification through the repository's GitHub connection.
-Previous attempts were permission-blocked; no new successful installation is
-claimed here.
+These definitions in a checkout are not evidence that GitHub executed them.
+Workflow-file push permissions, successful PR/main check results, and required
+branch-protection/ruleset contexts must be verified in GitHub. None of these
+jobs publishes release images. The separate manual `release-preflight.yml`
+only renders an unsigned, explicitly unqualified handoff from supplied digests;
+there is no automatic registry publication or site deployment.
 
 ## Why these files remain
 
@@ -30,7 +33,9 @@ that should be copied over the active workflows. In particular:
 - `secret-scan.yml` is still a proposal here, not an enabled secret-scanning
   workflow. Do not describe secret scanning as installed based on its presence.
 - The older database proposal initializes models; that alone is not a migration
-  test. The active database workflow applies the Alembic chain instead.
+  test. The reusable database lane applies Alembic against PostgreSQL instead.
+- The worker-runtime Dockerfile is not included in the six-image build: it needs
+  two reviewed `image@sha256:` inputs and a separate operator runtime review.
 
 See `docs/dev/release-automation.md` for the current contract, local validation
 commands, required checks and the remaining evidence boundary. The other older

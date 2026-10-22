@@ -16,8 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin cryptoscan
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+COPY requirements.txt requirements.lock.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements.txt -c /app/requirements.lock.txt
 
 COPY shared   /app/shared
 COPY services /app/services
