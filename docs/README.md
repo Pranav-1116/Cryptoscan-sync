@@ -11,6 +11,14 @@ and role-store failure/selected probe privacy. See the
 for changed refusals and requalification. This is not feature expansion, a tagged
 release, bank deployment or production approval.
 
+## Binary-oriented delivery and IP protection
+
+Read the [end-to-end binary/on-premises delivery design](BINARY-ON-PREMISES-DELIVERY.md)
+for the native-core build options, current Dockerfile gaps, private build/release
+pipeline, architecture/dataflow images and bank-side acceptance checklist.
+**Proposed, not implemented:** native binaries increase reverse-engineering effort;
+they cannot prevent it, and browser JavaScript remains inspectable.
+
 ## Deploy directly inside a bank
 
 Read [Bank on-premises deployment](BANK-ON-PREMISES-DEPLOYMENT.md) for the direct,
