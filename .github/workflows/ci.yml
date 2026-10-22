@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -81,7 +81,15 @@ jobs:
             requirements.lock.txt
       - run: python -m pip install -r requirements.txt -c requirements.lock.txt
       - name: Build PYTHONPATH from every service and shared package
-        run: echo "PYTHONPATH=$(find services shared -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')" >> "$GITHUB_ENV"
+        env:
+          TEST_SUITE: ${{ matrix.suite }}
+        run: |
+          packages="$(find services shared -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')"
+          # API unit tests deliberately reuse fixtures from sibling test modules.
+          if [ "$TEST_SUITE" = "services/api/tests" ]; then
+            packages="${packages}${PWD}/services/api/tests/unit"
+          fi
+          printf 'PYTHONPATH=%s\n' "$packages" >> "$GITHUB_ENV"
       - name: Run ${{ matrix.suite }} with JUnit
         run: |
           mkdir -p test-results

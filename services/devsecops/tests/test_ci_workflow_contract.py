@@ -154,6 +154,7 @@ def test_main_ci_uses_discovery_and_a_fail_closed_aggregate():
     assert "-p no:xdist" in json.dumps(backend)
     assert "-c requirements.lock.txt" in json.dumps(backend)
     assert "scripts/check_junit.py --allow-skips" in json.dumps(backend)
+    assert "${PWD}/services/api/tests/unit" in json.dumps(backend)
     assert any(
         step.get("uses", "").startswith("actions/upload-artifact@") and step.get("if") == "always()"
         for step in backend["steps"]
@@ -182,6 +183,8 @@ def test_workflows_are_active_read_only_and_do_not_run_privileged_pr_code():
     assert "pull_request" in main["on"]
     assert main["on"]["push"] == {"branches": ["main", "arena/bb4b80dd-cryproscan"]}
     assert "workflow_dispatch" in main["on"]
+    assert "github.head_ref || github.ref_name" in main["concurrency"]["group"]
+    assert main["concurrency"]["cancel-in-progress"] == "true"
     for name in ("ci.yml", "scanner-tests.yml", "db-migration.yml", "docker-build.yml"):
         workflow = _workflow(name)
         assert workflow["jobs"]
