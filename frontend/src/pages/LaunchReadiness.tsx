@@ -1,3 +1,4 @@
+import PrivateScope, { usePrivateScopeCurrent } from "../components/PrivateScope";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHead, Panel } from "../components/ui.jsx";
@@ -24,6 +25,11 @@ const style = { width: "100%", padding: 8, color: "inherit", background: "var(--
 const prefix = "/api/v1/assurance/launch/";
 
 export default function LaunchReadiness() {
+  return <PrivateScope><LaunchReadinessPage /></PrivateScope>;
+}
+
+function LaunchReadinessPage() {
+  const scopeCurrent = usePrivateScopeCurrent();
   const [operations, setOperations] = useState<unknown>(null);
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState("");
@@ -36,6 +42,7 @@ export default function LaunchReadiness() {
   const [recordOffset, setRecordOffset] = useState(0);
   const generation = useRef(0);
   const controller = useRef<AbortController | null>(null);
+  const requestLock = useRef(false);
 
   useEffect(() => {
     const reset = () => {
@@ -56,26 +63,28 @@ export default function LaunchReadiness() {
     tenantFetch(prefix + "operations", { signal: abort.signal }).then(async response => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const body: unknown = await response.json();
-      if (live && current === generation.current && estate === activeTenantId()) setOperations(body);
+      if (live && scopeCurrent() && current === generation.current && estate === activeTenantId()) setOperations(body);
     }).catch(err => { if (live && !abort.signal.aborted && current === generation.current) setError(String(err)); });
     return () => { live = false; abort.abort(); };
   }, [epoch]);
 
   async function request(path: string, method = "GET", payload?: unknown, base = prefix) {
-    if (busy) return;
+    if (!scopeCurrent() || requestLock.current) return;
+    requestLock.current = true;
     controller.current?.abort();
     const abort = new AbortController(); controller.current = abort;
-    const current = ++generation.current; const estate = activeTenantId();
+    const current = generation.current; const estate = activeTenantId();
+    const deadline = window.setTimeout(() => abort.abort(), 20000);
     setBusy(true); setError(""); setResult(null);
     try {
       const response = await tenantFetch(base + path, { method, signal: abort.signal,
         ...(payload === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }) });
       const body: unknown = await response.json();
-      if (current !== generation.current || estate !== activeTenantId()) return;
+      if (!scopeCurrent() || current !== generation.current || estate !== activeTenantId() || abort.signal.aborted) return;
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${JSON.stringify(body)}`);
       setResult(body); setEpoch(x => x + 1);
-    } catch (err) { if (!abort.signal.aborted && current === generation.current) setError(String(err)); }
-    finally { if (current === generation.current) setBusy(false); }
+    } catch (err) { if (scopeCurrent() && current === generation.current) setError(method === "GET" ? String(err) : `Action outcome not confirmed: ${String(err)}. Reconcile current history before retrying; the server may already have retained the write.`); }
+    finally { window.clearTimeout(deadline); if (scopeCurrent() && current === generation.current && controller.current === abort) { requestLock.current = false; setBusy(false); } }
   }
   function submit(event: React.FormEvent) {
     event.preventDefault();

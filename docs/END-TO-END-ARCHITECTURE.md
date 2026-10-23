@@ -6,7 +6,7 @@
 > verified-TLS Redis and an isolated parser. See
 > [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md) and
 > [operator installation/recovery](runbooks/operator-install-upgrade-recover.md).
-> The current schema head is **0105**; registered development routes do not enable
+> The current schema head is **0106**; registered development routes do not enable
 > otherwise refused adapters.
 
 > A precise, implementation-accurate description of the whole platform's

@@ -2,11 +2,11 @@
 
 ## Current reading versus immutable evidence
 
-**2026-10-22 source review: `698beb38`.** Dated records in this directory retain
+**Current 2026-10-23 review: ninth increment from `78d4df91`.** Dated records in this directory retain
 their original commands, commits, results and hashes. They are not rewritten as
 fresh execution by a documentation update. In particular,
 [launch engineering](launch-engineering-2026-10-22.md) records migration **0104**
-at its original 5.x run; the subsequent current chain ends at **0105**. The
+at its original 5.x run; the subsequent current chain ends at **0106**. The
 [operator engineering record](operator-engineering-2026-10-21.md) likewise keeps
 its original 0104 measurements. Follow the current
 [operator upgrade/recovery runbook](../runbooks/operator-install-upgrade-recover.md)
@@ -32,6 +32,16 @@ The JSON and Markdown reports are generated outputs. A generated report with a
 verdict by hand. Use the root `PRODUCTION-READINESS.md` for interpretation.
 External artifacts remain outside the repository when they contain sensitive
 customer/provider information; pass their controlled paths to the gate.
+
+## Latest bounded engineering evidence
+
+The [ninth workflow record](quality-workflow-qualification-2026-10-23.md),
+[actual PostgreSQL record](quality-postgres-workflow-2026-10-23.md),
+[real-browser record](quality-critical-browser-2026-10-23.md) and
+[results/input hashes](quality-workflow-results-2026-10-23.json) retain actual local
+runs and their exclusions. They do not rewrite generated bank-readiness verdicts,
+close unrelated skipped tests, supply external ownership/approval or establish
+site/SSO/TLS/HA acceptance. Prior dated increments retain their original results.
 
 ## P0/P1 closure envelope
 

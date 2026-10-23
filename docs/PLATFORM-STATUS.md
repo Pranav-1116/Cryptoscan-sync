@@ -1,7 +1,7 @@
 # CryptoScan platform status — the full plan vs. what ships here
 
 > **Current-reading authority — 2026-10-22, `698beb38`:**
-> [Implementation status](CURRENT-IMPLEMENTATION-STATUS.md): migration **0105**;
+> [Implementation status](CURRENT-IMPLEMENTATION-STATUS.md): migration **0106**;
 > generated REST **917 paths / 1,008 operations / 105 groups**; maturity **33 GA /
 > 32 Beta / 12 Preview** (77 surfaces); sidebar **41 placements / 40 unique routes**.
 > Discovered CI and unsigned preflight are configured, not release/site approval.

@@ -47,6 +47,15 @@ estate/auth private state, ignore superseded reads/actions, lock same-turn dupli
 submissions and disclose uncertain outcomes. Local DOM checks are not real-browser,
 backend authorization, all-console or bank acceptance.
 
+The [ninth increment](readiness-evidence/quality-workflow-qualification-2026-10-23.md)
+connects the supported source workflow on actual PostgreSQL16.14, hardens three more
+private browser surfaces/downloads, and records 16 native database and nine built
+Chromium checks. Migration head is now **0106**. The browser uses synthetic HTTP;
+this is not bank-workstation, Docker/Redis, HA/PITR or customer acceptance. See the
+[database](readiness-evidence/quality-postgres-workflow-2026-10-23.md),
+[browser](readiness-evidence/quality-critical-browser-2026-10-23.md) and
+[results](readiness-evidence/quality-workflow-results-2026-10-23.json) records.
+
 ## Binary-oriented delivery and IP protection
 
 Read the [end-to-end binary/on-premises delivery design](BINARY-ON-PREMISES-DELIVERY.md)
@@ -83,7 +92,7 @@ of the whole roadmap or production approval.
 
 > **Original three-increment published snapshot — 2026-10-22 (`2fd8fc8f`):**
 > [Current implementation status](CURRENT-IMPLEMENTATION-STATUS.md) reconciles migration
-> **0105**, the published quality corrections and CI/launch Preview boundaries.
+> **0106**, the published quality corrections and CI/launch Preview boundaries.
 > The inherited **77**-surface and REST snapshots retain their original review scope.
 > Use the [CI/product-build plan](CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) for configured
 > checks versus remaining release work. Old evidence retains its original run/date;

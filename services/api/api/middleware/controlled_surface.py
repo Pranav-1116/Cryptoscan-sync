@@ -33,7 +33,8 @@ class ControlledSurfaceMiddleware:
             or tail == "/scans/trigger" and method == "POST"
             or method in {"GET", "HEAD"} and (
                 re.fullmatch(r"/jobs(?:/[0-9a-f-]{36}(?:/logs)?)?", tail)
-                or re.fullmatch(r"/scans(?:/[0-9a-f-]{36})?", tail)
+                or re.fullmatch(r"/scans(?:/[0-9a-f-]{36}(?:/(?:verify|export))?)?", tail)
+                or re.fullmatch(r"/findings(?:/[0-9a-f-]{36}(?:/verify)?)?", tail)
                 or tail in {"/health", "/healthz", "/readyz", "/livez"}
             )
             or method == "POST" and re.fullmatch(r"/jobs/[0-9a-f-]{36}/retry", tail)
@@ -44,20 +45,27 @@ class ControlledSurfaceMiddleware:
             await response(scope, receive, send)
             return
         with enforced_profile():
-            if method in {"GET", "HEAD"} and tail.startswith(("/jobs", "/scans", "/execution-controls/approvals", "/execution-controls/attempts", "/execution-controls/events")):
+            if method in {"GET", "HEAD"} and tail.startswith(("/jobs", "/scans", "/findings", "/execution-controls/approvals", "/execution-controls/attempts", "/execution-controls/events")):
                 # Storage-region assertions are also checked before disclosing
                 # private history, not only before executing new work. A stop
                 # does not prevent incident/history access in the right region.
                 from db.connection.session import SessionLocal
-                from db.tenancy import current_tenant
+                from db.tenancy import tenant_scope
                 from db.repositories.execution_control import policy_for, ExecutionDenied
+                from api.dependencies import resolve_tenant_for_request, TenantResolutionRefused
                 from starlette.concurrency import run_in_threadpool
-                owner = current_tenant()
+                from starlette.requests import Request
                 def admit_history():
-                    with SessionLocal() as session:
+                    # Do not infer NULL/platform ownership merely because an
+                    # optional outer middleware has not set a ContextVar yet.
+                    owner = resolve_tenant_for_request(Request(scope))
+                    with tenant_scope(owner), SessionLocal() as session:
                         policy_for(session, owner, allow_stopped=True)
                 try:
                     await run_in_threadpool(admit_history)
+                except TenantResolutionRefused as exc:
+                    await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(scope, receive, send)
+                    return
                 except ExecutionDenied as exc:
                     await JSONResponse({"detail": str(exc)}, status_code=409)(scope, receive, send)
                     return

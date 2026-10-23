@@ -37,6 +37,38 @@ def live_findings(db, owner, findings):
         EvidenceRecord.deleted_at.is_(None)).count() == len(identifiers)
 
 
+def exact_algorithm(finding, expected):
+    actual = str(finding.get("algorithm") or "").upper()
+    expected = expected.upper()
+    if actual == expected:
+        return True
+    # The real normalizer retains SHA-2 as family SHA2 + digest bits. Do not
+    # mistake that representation for absence of an explicitly approved
+    # SHA-256 (or accept another SHA-2 width as equivalent). Preserve raw proof
+    # snapshots and commitments; this only compares the existing predicate.
+    bits = finding.get("key_size")
+    return actual == "SHA2" and type(bits) is int and bits in {224, 256, 384, 512} and expected == f"SHA-{bits}"
+
+
+def lock_source_evidence(db, owner, before, after):
+    """Serialize positive publication with soft withdrawal of either snapshot.
+
+    The task lock alone does not protect evidence rows. Lock the bounded union
+    in a stable order, then recheck deletion state using scalar columns (not a
+    possibly cached ORM identity). PostgreSQL retains these locks until the
+    proof/task transaction commits. A later withdrawal invalidates current
+    eligibility without rewriting the retained historical proof.
+    """
+    identifiers = {f.get("evidence_id") for snapshot in (before, after)
+                   for f in (snapshot or {}).get("findings", [])}
+    if not identifiers or None in identifiers or len(identifiers) > 10000:
+        return False
+    rows = db.query(EvidenceRecord.id, EvidenceRecord.deleted_at).filter(
+        EvidenceRecord.tenant_id == owner, EvidenceRecord.id.in_(identifiers)
+    ).order_by(EvidenceRecord.id).with_for_update().all()
+    return len(rows) == len(identifiers) and all(row.deleted_at is None for row in rows)
+
+
 def observation_current(db, owner, row, after):
     return (row.payload["kind"] != "SOURCE_SITE"
             or bool(after and live_findings(db, owner, after.get("findings"))))
@@ -228,13 +260,15 @@ def verify(db, owner, identifier, body, actor):
             result, reason = verdict["result"], verdict["reason"]
             f = p["original_finding"]
             site = [x for x in after["findings"] if x["file_path"] == f["file_path"] and x["line_number"] == f["line_number"]
-                    and x["purpose"] == f["purpose"] and x["algorithm"].upper() == p["expected_algorithm"].upper()]
+                    and x["purpose"] == f["purpose"] and exact_algorithm(x, p["expected_algorithm"])]
             if result == "VERIFIED" and (len(site) != 1 or site[0]["compliance_status"] != "PASS"
                     or after["receipt"]["sha256"] == p["before"]["receipt"]["sha256"]):
                 result, reason = "INCONCLUSIVE", "Expected compliant replacement at exact file/line/purpose and changed source content required"
     except HTTPException as exc:
         # Failed lookups do not become successful fixes. Do not reveal foreign IDs.
         reason = "Independent observation unavailable" if exc.status_code == 404 else str(exc.detail)
+    if result == "VERIFIED" and p["kind"] == "SOURCE_SITE" and not lock_source_evidence(db, owner, p["before"], after):
+        result, reason = "INCONCLUSIVE", "Source evidence was withdrawn before proof publication"
     if result == "VERIFIED" and (not current(db, owner, row) or not observation_current(db, owner, row, after)):
         result, reason = "INCONCLUSIVE", "Approval or source evidence changed or expired during verification"
     proof = store.append(db, owner, "condition_proof", proof_id, body.expected_proof_revision,

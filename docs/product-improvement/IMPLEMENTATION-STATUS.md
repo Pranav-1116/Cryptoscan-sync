@@ -7,7 +7,31 @@
 [quality-only roadmap](08-execution-roadmap-and-acceptance.md). No new collectors,
 BOM types, pages, services or deployment profiles.
 
-## Current PR update — eighth increment: remediation browser scope
+## Current PR update — ninth increment: coordinated existing-product hardening
+
+From published `78d4df91`, connect the supported source workflow on actual native
+PostgreSQL, harden Operator Decisions/Launch Readiness/Evidence/shared downloads,
+and retain bounded concurrency/migration/recovery evidence. Migration **0106**
+adds native uncertain-job identities; exact SHA2-width comparison and narrow
+estate/residency-safe history reads close observed workflow defects. Sorted
+before/after evidence-member locks fence the tested concurrent withdrawals.
+
+Final: **16 native PostgreSQL passed**, **507 selected API/security passed**,
+**480 frontend passed** (including 53 new regressions), **nine real-Chromium checks
+passed** with synthetic HTTP. Libraries: **929 passed / 1 skipped / 8 deselected**;
+typecheck/build and seven toolchain tests pass. Warnings, failed diagnostics,
+old pg_virtualenv skip and exact scopes remain explicit in the
+[ninth record](../readiness-evidence/quality-workflow-qualification-2026-10-23.md),
+[PostgreSQL record](../readiness-evidence/quality-postgres-workflow-2026-10-23.md),
+[browser record](../readiness-evidence/quality-critical-browser-2026-10-23.md) and
+[results/hashes](../readiness-evidence/quality-workflow-results-2026-10-23.json).
+
+Not one real browser→bank backend journey, universal serializability, six-BOM
+completion, Docker/Redis/site/HA/PITR acceptance or a readiness gate rerun. No new
+feature/collector/profile/service/dependency/workflow. Review and external acceptance
+remain open; source publication uses `[skip ci]`, not a claimed CI pass.
+
+## Eighth published increment: remediation browser scope
 
 Continue guide 5 / roadmap C3 with bounded B3/B4 regressions from published
 `e5469967`. The existing Remediation page now clears private rows, counts,
@@ -364,8 +388,10 @@ are unchanged. Exact results and the deliberately scoped pilot tests are in the
    source/runtime identities. No independent approval is invented here.
 2. Continue observed-defect-first six-BOM wrong-build/version/estate/stale-evidence
    and authority/privacy regressions, not new collectors or feature breadth.
-3. Run the approved disposable PostgreSQL/TLS Redis/actual parser/daemon/fence/
-   orphan/restore fault exercises and representative browser/capacity measurements.
+3. Extend the executed bounded native PostgreSQL matrix to approved deployment
+   versions/TLS/concurrent authority changes; run actual TLS Redis/parser-isolation/
+   daemon/fence/orphan and full DB-plus-evidence restore exercises, intended-bank
+   browser and capacity measurements.
    Skipped or mocked checks do not close these requirements.
 4. Have real site/operating owners arrange independent assessment and distinct
    technical/customer acceptance under the existing nine-duty process.

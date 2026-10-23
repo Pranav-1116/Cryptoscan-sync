@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { downloadAuthenticatedResource } from "../lib/api.js";
 
 /**
@@ -22,15 +22,22 @@ export default function AuthenticatedDownload({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => {
+    setBusy(false); setError(null);
+    return () => { request.current?.abort(); request.current = null; };
+  }, [path]);
+
   const download = async () => {
-    setBusy(true);
-    setError(null);
+    if (request.current) return;
+    const controller = new AbortController(); request.current = controller;
+    setBusy(true); setError(null);
     try {
-      await downloadAuthenticatedResource(path, filename);
+      await downloadAuthenticatedResource(path, filename, controller.signal);
     } catch (e) {
-      setError(String(e));
+      if (request.current === controller && !controller.signal.aborted) setError(String(e));
     } finally {
-      setBusy(false);
+      if (request.current === controller) { request.current = null; setBusy(false); }
     }
   };
 

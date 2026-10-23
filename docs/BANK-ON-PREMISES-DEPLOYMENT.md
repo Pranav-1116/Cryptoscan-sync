@@ -560,11 +560,13 @@ python -m alembic -c services/database/migrations/alembic.ini upgrade head
 python -m alembic -c services/database/migrations/alembic.ini current
 ```
 
-For this baseline, expected head is **0105**. Migration 0103 adds assurance
-storage, 0104 adds page indexes and 0105 widens monitor event types from 30 to
-120 characters. The migration does not approve old jobs or manufacture evidence.
-If a later release has a different compatibility contract, review that contract
-instead of blindly assuming `head` means 0105 forever.
+For this build, expected head is **0106**. Migration0103 adds assurance storage,
+0104 page indexes, 0105 long monitor event types, and 0106 native PostgreSQL
+UNKNOWN/DEFERRED/CANCELLED identities. No old job/approval/evidence is rewritten.
+PostgreSQL0106 downgrade refuses while UNKNOWN remains; additive labels remain
+even on permitted downgrade. Never relabel uncertainty/release reservations to
+force rollback. See the [native qualification record](readiness-evidence/quality-postgres-workflow-2026-10-23.md).
+Review the actual release contract rather than assuming `head` is fixed forever.
 
 5. With actual change approval, apply **only** the verified package manifests:
 

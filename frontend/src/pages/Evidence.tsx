@@ -1,3 +1,4 @@
+import PrivateScope, { usePrivateScopeCurrent } from "../components/PrivateScope";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Button } from "../components/ui";
@@ -22,6 +23,10 @@ const failure = (result: ApiResult<unknown>, subject: string) => {
 const validCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 
 export default function Evidence() {
+  return <PrivateScope><EvidencePage /></PrivateScope>;
+}
+
+function EvidencePage() {
   const [tab, setTab] = useState<"scan" | "audit">("scan");
   const [auditVisited, setAuditVisited] = useState(false);
   const [session, setSession] = useState(0);
@@ -58,6 +63,7 @@ export default function Evidence() {
 }
 
 function ScanEvidence({ tenant }: { tenant: string | null }) {
+  const scopeCurrent = usePrivateScopeCurrent();
   const [scans, setScans] = useState<ScanSummaryRow[]>([]);
   const [scanTotal, setScanTotal] = useState<number | null>(null);
   const [scanPage, setScanPage] = useState(1);
@@ -85,22 +91,30 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
    * unverified records are never claimed sealed. */
   const [recordVerdicts, setRecordVerdicts] = useState<Record<string, { busy?: boolean; verdict?: FindingVerifyVerdict; error?: string }>>({});
 
+  const recordRequests = useRef(new Map<string, symbol>());
   function verifyRecord(evidenceId: string) {
-    if (recordVerdicts[evidenceId]?.busy) return;
+    if (!scopeCurrent() || recordRequests.current.has(evidenceId)) return;
+    const request = Symbol();
+    const epoch = requestEpoch.current;
+    recordRequests.current.set(evidenceId, request);
     setRecordVerdicts(prev => ({ ...prev, [evidenceId]: { busy: true } }));
     void apiFindingVerify(evidenceId).then(res => {
+      if (!scopeCurrent() || !mounted.current || epoch !== requestEpoch.current) return;
       setRecordVerdicts(prev => {
         const next = { ...prev };
         if (res.source !== "live" || !res.data
           || res.data.evidence_id !== evidenceId
-          || !["PASS", "FAIL"].includes(res.data.result)) {
+          || !["PASS", "FAIL"].includes(res.data.result)
+          || ![res.data.content_intact, res.data.chain_intact, res.data.hash_format_valid].every(x => typeof x === "boolean")
+          || !Array.isArray(res.data.errors) || !res.data.errors.every(x => typeof x === "string")
+          || (res.data.result === "PASS" && (!res.data.content_intact || !res.data.chain_intact || !res.data.hash_format_valid || res.data.errors.length))) {
           next[evidenceId] = { error: failure(res, "verify this record") };
         } else {
           next[evidenceId] = { verdict: res.data };
         }
         return next;
       });
-    });
+    }).finally(() => { if (recordRequests.current.get(evidenceId) === request) recordRequests.current.delete(evidenceId); });
   }
 
   useEffect(() => {
@@ -122,13 +136,14 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
 
   useEffect(() => {
     const epoch = ++requestEpoch.current;
+    recordRequests.current.clear(); setRecordVerdicts({});
     verifyEpoch.current++;
     setVerification(null); setVerifyError(null); setVerifying(false);
     setFindings([]); setFindingTotal(null); setFindingPage(1); setFindingError(null);
     if (!selected) { setFindingLoading(false); return; }
     setFindingLoading(true);
     void apiFindings({ scan_id: selected, page: 1, page_size: PAGE_SIZE }).then(res => {
-      if (!mounted.current || epoch !== requestEpoch.current) return;
+      if (!scopeCurrent() || !mounted.current || epoch !== requestEpoch.current) return;
       if (res.source !== "live" || !res.data) { setFindingError(failure(res, "list scan evidence")); return; }
       const data = res.data;
       if (!Array.isArray(data.findings) || !validCount(data.total_count) || !data.findings.every(f => present(f?.evidence_id) && f.scan_id === selected) || (data.total_count > 0 && !data.findings.length)) {
@@ -145,7 +160,7 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
     const next = scanPage + 1;
     try {
       const res = await apiScansPage(next, SCAN_PAGE_SIZE);
-      if (!mounted.current) return;
+      if (!scopeCurrent() || !mounted.current) return;
       if (res.source !== "live" || !res.data) { setScanError(failure(res, "load more scans")); return; }
       if (!Array.isArray(res.data.scans) || !validCount(res.data.total_count) || !res.data.scans.every(s => present(s?.scan_id)) || !res.data.scans.length || res.data.scans.every(s => scans.some(r => r.scan_id === s.scan_id))) { setScanError("Scan page response is incomplete or repeated."); return; }
       setScans(rows => [...rows, ...res.data!.scans.filter(s => !rows.some(r => r.scan_id === s.scan_id))]);
@@ -160,7 +175,7 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
     const next = findingPage + 1;
     try {
       const res = await apiFindings({ scan_id: selected, page: next, page_size: PAGE_SIZE });
-      if (!mounted.current || epoch !== requestEpoch.current) return;
+      if (!scopeCurrent() || !mounted.current || epoch !== requestEpoch.current) return;
       if (res.source !== "live" || !res.data) { setFindingError(failure(res, "load more scan evidence")); return; }
       if (!Array.isArray(res.data.findings) || !res.data.findings.length || !res.data.findings.every(f => present(f?.evidence_id) && f.scan_id === selected) || !validCount(res.data.total_count) || res.data.findings.every(f => findings.some(r => r.evidence_id === f.evidence_id))) { setFindingError("Scan evidence page response is incomplete or repeated."); return; }
       setFindings(rows => [...rows, ...res.data!.findings.filter(f => !rows.some(r => r.evidence_id === f.evidence_id))]);
@@ -173,7 +188,7 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
     const epoch = ++verifyEpoch.current;
     setVerification(null); setVerifyError(null); setVerifying(true);
     const res = await apiVerifyStoredScan(selected);
-    if (!mounted.current || epoch !== verifyEpoch.current) return;
+    if (!scopeCurrent() || !mounted.current || epoch !== verifyEpoch.current) return;
     if (res.source !== "live" || !res.data) setVerifyError(failure(res, "verify this scan"));
     else {
       const v = res.data;
@@ -277,6 +292,7 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
 }
 
 function AuditLedger() {
+  const scopeCurrent = usePrivateScopeCurrent();
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -303,14 +319,14 @@ function AuditLedger() {
     const epoch = ++verifyEpoch.current;
     setLoading(true);
     void apiAuditList({ page: 1, page_size: PAGE_SIZE, ...(applied.actor ? { actor: applied.actor } : {}), ...(applied.action ? { action: applied.action } : {}) }).then(res => {
-      if (!mounted.current || epoch !== verifyEpoch.current) return;
+      if (!scopeCurrent() || !mounted.current || epoch !== verifyEpoch.current) return;
       if (res.source !== "live" || !res.data) { setError(failure(res, "view audit ledger")); return; }
       if (!Array.isArray(res.data.events) || !res.data.events.every(e => present(e?.id))) { setError("Audit response is incomplete; ledger entries are unknown."); return; }
       setEvents(res.data.events); setSelectedId(res.data.events[0]?.id ?? null); setHasMore(res.data.events.length === PAGE_SIZE); setPage(1);
     }).finally(() => { if (mounted.current && epoch === verifyEpoch.current) setLoading(false); });
     const verifyChainEpoch = epoch;
     void apiAuditVerify().then(res => {
-      if (!mounted.current || verifyChainEpoch !== verifyEpoch.current) return;
+      if (!scopeCurrent() || !mounted.current || verifyChainEpoch !== verifyEpoch.current) return;
       if (res.source !== "live" || !res.data) { setVerifyError(failure(res, "verify audit chain")); return; }
       if (!["OK", "TAMPERED"].includes(res.data.status) || !validCount(res.data.checked)) { setVerifyError("Audit verification response is incomplete; verdict unavailable."); return; }
       setVerify(res.data);
@@ -324,7 +340,7 @@ function AuditLedger() {
     const next = page + 1;
     try {
       const res = await apiAuditList({ page: next, page_size: PAGE_SIZE, ...(applied.actor ? { actor: applied.actor } : {}), ...(applied.action ? { action: applied.action } : {}) });
-      if (!mounted.current) return;
+      if (!scopeCurrent() || !mounted.current) return;
       if (res.source !== "live" || !res.data) { setError(failure(res, "load more audit events")); return; }
       if (!Array.isArray(res.data.events) || !res.data.events.every(e => present(e?.id))) { setError("Audit page response is incomplete."); return; }
       setEvents(rows => [...rows, ...res.data!.events.filter(e => !rows.some(r => r.id === e.id))]);
@@ -337,7 +353,7 @@ function AuditLedger() {
     const epoch = ++verifyEpoch.current;
     setVerifying(true); setVerify(null); setVerifyError(null);
     const res = await apiAuditVerify();
-    if (!mounted.current || epoch !== verifyEpoch.current) return;
+    if (!scopeCurrent() || !mounted.current || epoch !== verifyEpoch.current) return;
     if (res.source !== "live" || !res.data) setVerifyError(failure(res, "verify audit chain"));
     else if (!["OK", "TAMPERED"].includes(res.data.status) || !validCount(res.data.checked)) setVerifyError("Audit verification response is incomplete; verdict unavailable.");
     else setVerify(res.data);

@@ -15,6 +15,7 @@ from api.dependencies import (
     get_tenant_context,
     require_auditor,
 )
+from api.security.estate_history import history_context
 from api.schemas.job_schemas import TriggerScanResponse
 from api.schemas.scan_schemas import ScanListResponse, ScanResponse
 from db.repositories.job_repository import JobRepository
@@ -61,8 +62,9 @@ def list_scans(
     status: str | None = None,
     user: str = Depends(get_current_user),
     repo: ScanRepository = Depends(get_scan_repository),
+    ctx: TenantContext = Depends(history_context),
 ):
-    scans, total = repo.list_scans(status=status, page=page, page_size=page_size)
+    scans, total = repo.list_scans(status=status, page=page, page_size=page_size, owner=ctx.tenant_id)
     return ScanListResponse(
         scans=[_to_response(s) for s in scans],
         total_count=total,
@@ -76,9 +78,10 @@ def get_scan(
     scan_id: str,
     user: str = Depends(get_current_user),
     repo: ScanRepository = Depends(get_scan_repository),
+    ctx: TenantContext = Depends(history_context),
 ):
     scan = repo.get_by_id(scan_id)
-    if scan is None:
+    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Scan not found")
     return _to_response(scan)
 

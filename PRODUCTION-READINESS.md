@@ -2,8 +2,8 @@
 
 ## Current implementation review — not a gate rerun
 
-The [2026-10-22 current-state companion](docs/CURRENT-IMPLEMENTATION-STATUS.md)
-records source `698beb38`, migration **0105**, the active discovered CI/reusable
+The [2026-10-23 current-state companion](docs/CURRENT-IMPLEMENTATION-STATUS.md)
+records the ninth increment from `78d4df91`, migration **0106**, active discovered CI/reusable
 lanes and the manual **unsigned** preflight. The user reports one remaining
 workflow failure; this session cannot independently read Actions/check results.
 Configured jobs and locally generated schema are not an all-green run or release
@@ -15,7 +15,7 @@ and one scoped six-BOM payments pilot. It requires actual external evidence and
 separate technical/customer acceptance; it neither supplies that evidence nor
 authorizes an SLA, whole-bank claim or production deployment.
 
-**Documentation reviewed:** 2026-10-22 UTC (retained gate artifacts have their own dates)
+**Documentation reviewed:** 2026-10-23 UTC (retained gate artifacts have their own dates)
 **Source of truth:** `scripts/bank_readiness.py` → `docs/readiness-evidence/bank-readiness.{json,md}`
 **Scope:** repository controls plus customer/provider qualification evidence.
 

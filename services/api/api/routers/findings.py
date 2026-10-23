@@ -12,11 +12,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import (
+    TenantContext,
     get_current_user,
     get_db_session,
     get_evidence_repository,
     require_auditor,
 )
+from api.security.estate_history import history_context
 from api.schemas.finding_schemas import FindingListResponse, FindingResponse
 from api.security.evidence_projection import project_finding
 from db.models.evidence_record import EvidenceRecord
@@ -94,11 +96,13 @@ def list_all_findings(
     scan_id: str | None = Query(None, description="Restrict to a single scan"),
     user: str = Depends(get_current_user),
     repo: EvidenceRepository = Depends(get_evidence_repository),
+    ctx: TenantContext = Depends(history_context),
 ):
     rows, total = repo.list_all(
         algorithm=algorithm,
         compliance_status=compliance_status,
         scan_id=scan_id,
+        owner=ctx.tenant_id,
         page=page,
         page_size=page_size,
     )
@@ -369,9 +373,10 @@ def get_finding(
     evidence_id: str,
     user: str = Depends(get_current_user),
     repo: EvidenceRepository = Depends(get_evidence_repository),
+    ctx: TenantContext = Depends(history_context),
 ):
     row = repo.get_by_id(evidence_id)
-    if row is None:
+    if row is None or row.tenant_id != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Finding not found")
     return _to_response(row, include_raw=True)
 
@@ -381,6 +386,7 @@ def verify_finding(
     evidence_id: str,
     user: str = Depends(require_auditor),
     db: Session = Depends(get_db_session),
+    ctx: TenantContext = Depends(history_context),
 ):
     """§4.2 (round 42): per-record evidence verification.
 
@@ -394,11 +400,11 @@ def verify_finding(
     from evidence.verification.stored_scan import verify_stored_record
 
     row = db.execute(
-        select(EvidenceRecord).where(EvidenceRecord.id == evidence_id)
+        select(EvidenceRecord).where(EvidenceRecord.id == evidence_id, EvidenceRecord.tenant_id == ctx.tenant_id)
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Finding not found")
-    scan = db.execute(select(Scan).where(Scan.id == row.scan_id)).scalar_one_or_none()
+    scan = db.execute(select(Scan).where(Scan.id == row.scan_id, Scan.tenant_id == ctx.tenant_id)).scalar_one_or_none()
     if scan is None:
         raise HTTPException(status_code=404, detail="Owning scan not found")
     predecessor = None
@@ -406,6 +412,7 @@ def verify_finding(
         predecessor = db.execute(
             select(EvidenceRecord).where(
                 EvidenceRecord.scan_id == row.scan_id,
+                EvidenceRecord.tenant_id == ctx.tenant_id,
                 EvidenceRecord.chain_position == row.chain_position - 1,
             )
         ).scalar_one_or_none()

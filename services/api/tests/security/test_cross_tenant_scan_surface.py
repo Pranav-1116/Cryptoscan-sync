@@ -51,12 +51,17 @@ def _seed(session, target: str, tenant_id: str) -> Scan:
 def _client(db_session, tenant_id: str | None):
     """An API client whose requests are scoped as the middleware would scope them."""
     from api.config.settings import get_settings
-    from api.dependencies import get_current_user, get_db_session
+    from api.dependencies import get_current_user, get_db_session, get_tenant_context, TenantContext
     from api.main import create_app
 
     get_settings.cache_clear()
     app = create_app()
     app.dependency_overrides[get_current_user] = lambda: "analyst"
+    # This fixture doubles the trusted request context as well as identity.
+    # Real credential/membership resolution is covered by the PG/API journey.
+    app.dependency_overrides[get_tenant_context] = lambda: TenantContext(
+        username="analyst", tenant_id=tenant_id, tenant_role="member" if tenant_id else None,
+        is_platform_admin=tenant_id is None)
     app.dependency_overrides[get_db_session] = lambda: (yield db_session)
     return TestClient(app)
 
@@ -100,8 +105,8 @@ def test_fetching_another_tenants_scan_by_id_is_absence_not_a_403(db_session):
     assert "bank-b-core" not in r.text
 
 
-def test_platform_estate_rows_remain_visible(db_session):
-    """Pre-tenancy rows (NULL tenant_id) must not vanish when tenancy is enabled."""
+def test_platform_scan_history_is_visible_only_in_explicit_platform_context(db_session):
+    """Curated NULL inventory is not an entitlement to private scan history."""
     _seed(db_session, "legacy-estate", None)
     _seed(db_session, "bank-b-core", BANK_B)
 
@@ -109,5 +114,9 @@ def test_platform_estate_rows_remain_visible(db_session):
     with client, tenant_scope(BANK_A):
         r = client.get("/api/v1/scans", headers={"Authorization": "Bearer t"})
 
-    assert "legacy-estate" in r.text
+    assert "legacy-estate" not in r.text
     assert "bank-b-core" not in r.text
+    platform = _client(db_session, None)
+    with platform:
+        response = platform.get("/api/v1/scans", headers={"Authorization": "Bearer t"})
+    assert "legacy-estate" in response.text and "bank-b-core" not in response.text

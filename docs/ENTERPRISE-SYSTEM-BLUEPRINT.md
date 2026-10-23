@@ -1,7 +1,7 @@
 # CryptoScan enterprise system blueprint
 
 > **2026-10-22 reconciliation:** [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md)
-> supersedes old numerical/topology snapshots. Migration **0105**, controlled
+> supersedes old numerical/topology snapshots. Migration **0106**, controlled
 > local-source/v1, discovered CI and the Preview launch gates are current source
 > contracts; independent site/security/customer qualification remains external.
 > The proposed broader target architecture below is not newly activated.

@@ -1,9 +1,10 @@
 # CryptoScan
 
-> **Current source review (2026-10-22, `698beb38`):**
+> **Current source review (2026-10-23, ninth increment from `78d4df91`):**
 > [implementation / CI / migration / six-BOM boundaries](docs/CURRENT-IMPLEMENTATION-STATUS.md),
 > [CI and product-build plan](docs/CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md),
 > [operator installation and recovery](docs/runbooks/operator-install-upgrade-recover.md).
+> [workflow / real PostgreSQL / built-browser qualification](docs/readiness-evidence/quality-workflow-qualification-2026-10-23.md), migration **0106**.
 > Older dated tables/diagrams are historical; configured CI does not mean a signed
 > release or site approval. The user reports one remaining workflow failure.
 

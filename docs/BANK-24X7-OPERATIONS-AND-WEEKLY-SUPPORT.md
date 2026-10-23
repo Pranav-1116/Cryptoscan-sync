@@ -267,7 +267,9 @@ For any accepted update:
    integrity and the relevant critical workflow before resuming work.
 8. Retain bank acceptance, unresolved issues and requalification triggers.
 
-For the reviewed build, migration head is **0105**; do not truncate event history
+For the current reviewed build, migration head is **0106**; never relabel UNKNOWN
+or release its reservations to force downgrade. The earlier0105 long-event guard
+also remains: do not truncate event history
 to force a downgrade. Use tested compatible forward recovery where required.
 Emergency changes follow the approved expedited process; urgency does not remove
 bank authorization, independent review, evidence retention or post-change checks.

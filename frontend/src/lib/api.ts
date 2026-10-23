@@ -3,6 +3,8 @@
    fallback dataset: when the backend is unreachable the result is tagged
    source:"offline" with data:null and the UI renders zeros/empty. */
 
+import { watchPrivateScope } from "./privateScope";
+
 export type ApiSource = "live" | "offline";
 
 export interface ApiResult<T = unknown> {
@@ -142,21 +144,36 @@ export function tenantFetch(input: RequestInfo | URL, init: RequestInit = {}): P
 }
 
 /** Download a browser-facing resource only through the authenticated tenant path. */
-export async function downloadAuthenticatedResource(path: string, fallbackFilename: string): Promise<void> {
-  const response = await tenantFetch(path, { signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const disposition = response.headers.get("content-disposition") || "";
-  const advertised = disposition.match(/filename="?([^";]+)"?/i)?.[1];
-  const filename = (advertised || fallbackFilename).replace(/[^a-zA-Z0-9._-]/g, "_");
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+export async function downloadAuthenticatedResource(path: string, fallbackFilename: string, signal?: AbortSignal): Promise<void> {
+  const token = getToken(), estate = activeTenantId();
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  const stop = watchPrivateScope(abort);
+  const timeout = setTimeout(abort, 30000);
+  signal?.addEventListener("abort", abort, { once: true });
+  const guard = () => {
+    if (controller.signal.aborted || signal?.aborted || token !== getToken() || estate !== activeTenantId())
+      throw new Error("Download context changed or expired; request current evidence again.");
+  };
+  try {
+    guard();
+    const response = await tenantFetch(path, { signal: controller.signal });
+    guard();
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const disposition = response.headers.get("content-disposition") || "";
+    const advertised = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+    const filename = (advertised || fallbackFilename).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const blob = await response.blob();
+    guard(); // Fetch/body readers may ignore abort. Never release old-context bytes.
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    try {
+      anchor.href = url; anchor.download = filename;
+      document.body.appendChild(anchor); anchor.click();
+    } finally { anchor.remove(); URL.revokeObjectURL(url); }
+  } finally {
+    clearTimeout(timeout); stop(); signal?.removeEventListener("abort", abort);
+  }
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {

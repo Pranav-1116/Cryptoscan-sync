@@ -1,3 +1,4 @@
+import PrivateScope, { usePrivateScopeCurrent } from "../components/PrivateScope";
 import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHead, Panel } from "../components/ui.jsx";
@@ -10,6 +11,11 @@ const names: Record<string, string> = { tasks: "Findings & accountable owners", 
 const inputStyle = { width: "100%", padding: 8, background: "var(--surface-2, #171f2c)", color: "inherit", border: "1px solid #526074", borderRadius: 4 };
 
 export default function OperatorDecisions() {
+  return <PrivateScope><OperatorDecisionsPage /></PrivateScope>;
+}
+
+function OperatorDecisionsPage() {
+  const scopeCurrent = usePrivateScopeCurrent();
   const stream = useRealtime();
   const [data, setData] = useState<Inbox | null>(null);
   const [error, setError] = useState("");
@@ -31,6 +37,7 @@ export default function OperatorDecisions() {
   const [loadingProof, setLoadingProof] = useState(false);
   const detailAbort = useRef<AbortController | null>(null);
   const mutationAbort = useRef<AbortController | null>(null);
+  const mutationLock = useRef(false);
   const field = (name: string, label: string, type = "text") => <label key={name} style={{ display: "block", margin: "8px 0" }}>{label}<input required type={type} aria-label={label} style={inputStyle} value={fields[name] || (name === "freshness" ? "3600" : "")} onChange={e => setFields(f => ({ ...f, [name]: e.target.value }))} /></label>;
 
   // One in-flight poll. No localStorage cache, no polling while hidden. Every
@@ -50,9 +57,9 @@ export default function OperatorDecisions() {
         const response = await tenantFetch(`/api/v1/assurance/operator-decisions?offset=${offset}&limit=25`, { signal: next.signal });
         if (!response.ok) throw new Error(`Decision read failed (${response.status}); no cached success substituted.`);
         const body = await response.json() as Inbox;
-        if (!stopped && mine === generation.current) { setData(body); setError(""); }
+        if (!stopped && scopeCurrent() && mine === generation.current) { setData(body); setError(""); }
       } catch (e) {
-        if (!stopped && mine === generation.current) { setError(e instanceof Error ? e.message : "Decision read unavailable"); setData(null); }
+        if (!stopped && scopeCurrent() && mine === generation.current) { setError(e instanceof Error ? e.message : "Decision read unavailable"); setData(null); }
       } finally {
         clearTimeout(timeout); controller = null;
         if (!stopped) { setBusy(false); timer = setTimeout(poll, 30000); }
@@ -73,9 +80,10 @@ export default function OperatorDecisions() {
     lastReplay.current = stream.replayIssue;
     setReplayAcknowledged(false); setData(null); setEpoch(e => e + 1);
   }, [stream.replayIssue]);
-  useEffect(() => () => { detailAbort.current?.abort(); mutationAbort.current?.abort(); }, []);
+  useEffect(() => () => { generation.current++; detailAbort.current?.abort(); mutationAbort.current?.abort(); }, []);
 
   async function showEvidence(section: string, id: string) {
+    if (!scopeCurrent()) return;
     detailAbort.current?.abort(); const controller = new AbortController(); detailAbort.current = controller;
     const mine = generation.current; setLoadingProof(true); setProof(null);
     try {
@@ -83,13 +91,14 @@ export default function OperatorDecisions() {
       const response = await tenantFetch(path, { signal: controller.signal });
       if (!response.ok) throw new Error(`Evidence read failed (${response.status})`);
       const body = await response.json();
-      if (mine === generation.current && !controller.signal.aborted) setProof(body);
+      if (scopeCurrent() && mine === generation.current && !controller.signal.aborted) setProof(body);
     } catch (e) { if (!controller.signal.aborted && mine === generation.current) setMutation(String(e)); }
     finally { if (detailAbort.current === controller) setLoadingProof(false); }
   }
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); if (mutating) return;
-    setMutating(true); setMutation(""); const mine = generation.current;
+    e.preventDefault(); if (!scopeCurrent() || mutationLock.current) return;
+    mutationLock.current = true;
+    setMutating(true); setMutation("");
     const controller = new AbortController(); mutationAbort.current = controller;
     const timeout = setTimeout(() => controller.abort(), 20000);
     try {
@@ -105,12 +114,12 @@ export default function OperatorDecisions() {
       }
       const response = await tenantFetch(action === "create-task" ? "/api/v1/assurance/remediation-tasks" : `/api/v1/assurance/remediation-changes${suffix}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
       const result = await response.json();
-      if (mine !== generation.current || controller.signal.aborted) return;
+      if (!scopeCurrent() || mutationAbort.current !== controller || controller.signal.aborted) return;
       if (!response.ok) throw new Error(JSON.stringify(result.detail || result));
       setMutation(`Retained ${result.kind || "task"} ${result.subject_id || result.id}, revision ${result.revision || "initial"}. ${result.payload?.result || result.payload?.state || ""}`);
       setProof(result); setEpoch(n => n + 1);
-    } catch (e) { if (mine === generation.current) setMutation(`Action outcome not assumed successful: ${String(e)}. Refresh history before retrying an interrupted request.`); }
-    finally { clearTimeout(timeout); setMutating(false); }
+    } catch (e) { if (scopeCurrent() && mutationAbort.current === controller) setMutation(`Action outcome not assumed successful: ${String(e)}. Refresh history before retrying an interrupted request.`); }
+    finally { clearTimeout(timeout); if (scopeCurrent() && mutationAbort.current === controller) { mutationLock.current = false; setMutating(false); } }
   }
   const page = data?.sections[tab];
   return <div>
