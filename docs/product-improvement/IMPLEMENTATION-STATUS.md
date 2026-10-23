@@ -7,7 +7,28 @@
 [quality-only roadmap](08-execution-roadmap-and-acceptance.md). No new collectors,
 BOM types, pages, services or deployment profiles.
 
-## Current PR update — ninth increment: coordinated existing-product hardening
+## Current PR update — tenth increment: shared private GET reads
+
+From published `8c1b2bcf`, harden the existing `useLive` read-state lifecycle,
+not feature breadth: scope/path/reload invalidation, late headers/body fences,
+null/unmount cancellation, bounded12-second loading and safe HTTP/refusal meanings.
+The generic `useApi` callback is deliberately not replayed on scope changes because
+it may perform an action. Hook-owned reads do not qualify caller forms/exports.
+
+**36 new cases** pass within **516 frontend tests / 49 files**. Original-source
+comparison: **27 failures / 9 passes**. **Eleven actual built-Chromium checks**
+pass with synthetic HTTP, including two added read-only estate transitions. The
+original-hook build passed the prior nine checks and failed Organization; Reports
+was not reached in that red run. Typecheck/build/seven toolchain checks pass;
+20 pre-existing act diagnostics remain explicit. No backend/schema/dependency or
+workflow change; head remains0106. Native/API results are not rerun here.
+
+See the [tenth record](../readiness-evidence/quality-shared-private-reads-2026-10-23.md)
+and [results/hashes](../readiness-evidence/quality-shared-private-reads-results-2026-10-23.json).
+Next: page-local forms/actions/bespoke exports, read/action classification, then
+actual deployment/browser/TLS/SSO/endurance and independent acceptance evidence.
+
+## Ninth published increment: coordinated existing-product hardening
 
 From published `78d4df91`, connect the supported source workflow on actual native
 PostgreSQL, harden Operator Decisions/Launch Readiness/Evidence/shared downloads,

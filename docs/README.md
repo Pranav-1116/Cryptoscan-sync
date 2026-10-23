@@ -56,6 +56,12 @@ this is not bank-workstation, Docker/Redis, HA/PITR or customer acceptance. See 
 [browser](readiness-evidence/quality-critical-browser-2026-10-23.md) and
 [results](readiness-evidence/quality-workflow-results-2026-10-23.json) records.
 
+The [tenth increment](readiness-evidence/quality-shared-private-reads-2026-10-23.md)
+hardens the shared GET hook's private scope, stale responses, disabled/timeout
+states and refusal meanings. All516 frontend tests and11 actual built-browser
+checks pass; the browser uses synthetic HTTP, not a live bank backend. Caller
+forms/actions/bespoke exports and external acceptance remain separate gaps.
+
 ## Binary-oriented delivery and IP protection
 
 Read the [end-to-end binary/on-premises delivery design](BINARY-ON-PREMISES-DELIVERY.md)

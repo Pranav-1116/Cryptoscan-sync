@@ -2,7 +2,7 @@
 
 ## Current reading versus immutable evidence
 
-**Current 2026-10-23 review: ninth increment from `78d4df91`.** Dated records in this directory retain
+**Current 2026-10-23 review: tenth increment from `8c1b2bcf`.** Dated records in this directory retain
 their original commands, commits, results and hashes. They are not rewritten as
 fresh execution by a documentation update. In particular,
 [launch engineering](launch-engineering-2026-10-22.md) records migration **0104**
@@ -34,6 +34,12 @@ External artifacts remain outside the repository when they contain sensitive
 customer/provider information; pass their controlled paths to the gate.
 
 ## Latest bounded engineering evidence
+
+The [tenth shared-read record](quality-shared-private-reads-2026-10-23.md) and
+[results/input hashes](quality-shared-private-reads-results-2026-10-23.json) retain
+36 new regressions, original-source failures and11 actual built-browser checks.
+Only GET-owned state is hardened; caller actions/forms/exports and site acceptance
+are not inferred. The prior native database/API results below remain historical.
 
 The [ninth workflow record](quality-workflow-qualification-2026-10-23.md),
 [actual PostgreSQL record](quality-postgres-workflow-2026-10-23.md),

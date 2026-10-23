@@ -22,6 +22,7 @@ if (!executablePath) {
   args = chromium.args.filter(flag => !["--disable-web-security", "--allow-running-insecure-content", "--disable-site-isolation-trials", "--single-process"].includes(flag));
 }
 const browser = await playwright.launch({ executablePath, args, headless: true });
+const browserVersion = await browser.version();
 const base = "http://cryptoscan-quality.invalid";
 const results = [];
 const errors = [];
@@ -43,9 +44,10 @@ async function fixture(routePath, work) {
     assert.equal(url.origin, base, "No external network is authorized by this browser exercise");
     const owner = request.headers()["x-tenant-id"] || "platform";
     const p = url.pathname;
+    if (!["GET", "HEAD", "OPTIONS"].includes(request.method())) state.posts.push({ path: p, owner, method: request.method() });
     if (p === "/api/v1/auth/me") return route.fulfill(state.expired ? { ...json({ detail: "synthetic expired session" }), status: 401 } : json({ username: "synthetic-browser-user", roles: ["superadmin"] }));
     if (request.method() === "POST" && p.startsWith("/api/v1/assurance/")) {
-      state.posts.push({ path: p, owner }); state.writeSeen.resolve();
+      state.writeSeen.resolve();
       if (state.hold) await state.hold.promise;
       await route.fulfill(state.failWrite ? { ...json({ detail: "synthetic dependency failure" }), status: 503 } : json({ kind: "task", id: "synthetic-old-write", receipt: "synthetic-old-write" }));
       state.done.resolve(); return;
@@ -59,6 +61,10 @@ async function fixture(routePath, work) {
     const api = {
       "/api/v1/assurance/operator-decisions": inbox(owner),
       "/api/v1/assurance/launch/operations": { marker: marker(owner) },
+      "/api/v1/onboarding/state": { organization: { name: marker(owner) }, environments: [{ id: "synthetic-environment", name: marker(owner), region: "synthetic-region" }], scope: { entries: [] } },
+      "/api/v1/report-snapshots": { snapshots: [] },
+      "/api/v1/report-schedules": { schedules: [{ id: "synthetic-schedule", name: marker(owner), frequency: "quarterly" }] },
+      "/api/v1/report-templates": { templates: [] },
       "/api/v1/scans": { scans: [{ scan_id: marker(owner), status: "COMPLETED", target_location: "synthetic-source" }], total_count: 1, page: 1, page_size: 20 },
       "/api/v1/findings": { findings: [], total_count: 0, page: 1, page_size: 50 },
       "/api/v1/auth/audit": { events: [], page: 1, page_size: 50 },
@@ -89,7 +95,12 @@ async function fixture(routePath, work) {
 }
 async function exercise(name, action) {
   const start = Date.now();
-  await action(); results.push({ name, status: "PASS", milliseconds: Date.now() - start });
+  try {
+    await action(); results.push({ name, status: "PASS", milliseconds: Date.now() - start });
+  } catch (error) {
+    results.push({ name, status: "FAIL", milliseconds: Date.now() - start, error: String(error) });
+    throw error;
+  }
 }
 async function form(page, name) {
   if (name === "operator") {
@@ -99,6 +110,7 @@ async function form(page, name) {
     await page.getByLabel("Task context").fill("Synthetic browser exercise only");
   } else await page.getByLabel("Typed JSON body").fill("{}");
 }
+let failure;
 try {
   for (const route of ["/operator-decisions", "/launch-readiness", "/evidence"])
     await exercise(`${route}: real cross-window storage clears old estate`, () => fixture(route, async ({ page, changeEstate }) => {
@@ -137,7 +149,18 @@ try {
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(downloads.length, 0);
   }));
+  for (const route of ["/organization", "/reports"])
+    await exercise(`${route}: shared GET hook revalidates after real cross-window estate change`, () => fixture(route, async ({ page, state, changeEstate }) => {
+      await changeEstate();
+      assert.equal(await page.getByText(marker("a"), { exact: false }).count(), 0);
+      assert.equal(state.posts.length, 0, "Scope revalidation must not perform an action");
+    }));
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ schema: "cryptoscan.local-browser-exercise/1", browser: await browser.version(),
-    scope: "Built console + stubbed HTTP, synthetic identities; not site acceptance", results, page_errors: errors }, null, 2));
-} finally { await browser.close(); }
+} catch (error) { failure = error; }
+finally {
+  await browser.close();
+  console.log(JSON.stringify({ schema: "cryptoscan.local-browser-exercise/1", browser: browserVersion,
+    status: failure ? "FAIL" : "PASS", scope: "Built console + stubbed HTTP, synthetic identities; not site acceptance",
+    results, page_errors: errors }, null, 2));
+}
+if (failure) throw failure;
