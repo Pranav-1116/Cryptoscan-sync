@@ -12,6 +12,8 @@ INPUT the caller estimates — it is never invented here.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import math
+from numbers import Real
 from typing import Any, Iterable, Mapping
 
 from quantum.risk import QUANTUM_THREAT_YEAR, CALC_VERSION, analyze_quantum_risk
@@ -27,10 +29,21 @@ def mosca(
     today: date | None = None,
 ) -> dict[str, Any]:
     """Evaluate Mosca's inequality x + y > z for one data category."""
+    if retention_years is not None and (type(retention_years) is not int or not 0 <= retention_years <= 1000):
+        raise ValueError("retention_years must be a nonnegative integer no greater than1000")
+    if migration_years is not None and (isinstance(migration_years, bool) or not isinstance(migration_years, Real)
+            or not math.isfinite(migration_years) or not 0 <= migration_years <= 1000):
+        raise ValueError("migration_years must be finite and between0 and1000")
+    if type(threat_year) is not int or not 1 <= threat_year <= 9999:
+        raise ValueError("threat_year must be an integer calendar year")
+    scenario = {"scenario_only": True,
+        "threat_year_basis": "ASSUMPTION_NOT_FORECAST_OR_REGULATORY_DEADLINE",
+        "time_resolution": "calendar_year"}
     today = today or datetime.now(timezone.utc).date()
     z = threat_year - today.year
     if retention_years is None:
         return {
+            **scenario,
             "computable": False,
             "reason": "no retention data — shelf-life (x) unknown",
             "threat_year": threat_year,
@@ -55,6 +68,7 @@ def mosca(
     if y is not None:
         slack = round(z - x - y, 2)
     return {
+        **scenario,
         "computable": True,
         "verdict": verdict,
         "x_shelf_life_years": x,
@@ -68,6 +82,10 @@ def mosca(
 
 
 def _family(algorithm: str | None) -> str:
+    from shared_models.algorithm_registry import parse_algorithm
+
+    if parse_algorithm(algorithm or "").family == "kem-hybrid-pqc":
+        return "PQC"
     algo = str(algorithm or "").upper().replace("_", "-")
     if algo.startswith("RSA"):
         return "RSA"
@@ -97,10 +115,11 @@ def build_migration_plan(
 ) -> dict[str, Any]:
     """Group quantum-vulnerable sites into replacement workstreams and waves."""
     today = today or datetime.now(timezone.utc).date()
+    # Multiple consumers below must see the same cohort, including generators.
+    findings, systems = list(findings), list(systems or [])
     report = analyze_quantum_risk(findings, systems=systems, today=today)
     assets = report["assets"]
 
-    {str(row.get("id") or ""): row for row in (systems or [])}
     retentions: list[int] = []
     for system in systems or []:
         extra = system.get("extra") or {}
@@ -181,6 +200,8 @@ def build_migration_plan(
             "total_sites": len(assets),
             "vulnerable_sites": report["vulnerable_count"],
             "pqc_ready_sites": report["pqc_ready_count"],
+            "pqc_candidate_sites": report["pqc_candidate_count"],
+            "deployment_readiness": "NOT_ESTABLISHED",
             "by_family": dict(sorted(by_family.items())),
             "by_threat_type": dict(sorted(by_threat.items())),
         },

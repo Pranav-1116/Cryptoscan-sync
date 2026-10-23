@@ -78,6 +78,13 @@ def _norm(value: Any) -> str:
 
 def quantum_vulnerability(algorithm: str, key_size: int | None = None) -> dict[str, Any]:
     """Classify one algorithm (+ optional key size) per NIST IR 8547."""
+    from shared_models.quantum_classify import quantum_verdict
+
+    parsed = quantum_verdict(algorithm)
+    if not parsed["recognized"] or (parsed["family"].endswith("-pqc") and parsed["status"] != "ALLOWED"):
+        return {"family": parsed["algorithm"] or "UNKNOWN", "quantum_vulnerable": None,
+            "transition": "unknown", "deadline": None, "requires_review": True,
+            "note": "Unrecognized or nonapproved algorithm; neither resistance nor deployment readiness established"}
     alg = _norm(algorithm)
     # Signature bundles: "SHA256WITHRSA" / "SHA1WITHECDSA" — the family is the
     # tail; a weak hash head (SHA-1/MD5) is itself disqualifying today.
@@ -179,12 +186,18 @@ def hndl_register(
     cbom = (layers.get("cbom") or {}).get("components") or []
     classes = list(data_classes or [])
     entries: list[dict[str, Any]] = []
+    unassessed: list[dict[str, Any]] = []
 
     for comp in cbom:
         vuln = quantum_vulnerability(comp.get("algorithm"), comp.get("key_size"))
+        if vuln["quantum_vulnerable"] is None:
+            unassessed.append({"bom_ref": comp.get("bom-ref") or "", "algorithm": comp.get("algorithm"), "reason": vuln["note"]})
+            continue
         if not vuln["quantum_vulnerable"] or vuln["transition"] == GROVER_IMPACTED:
             continue
         purpose = comp.get("purpose") or ""
+        if _norm(purpose) in {"SIGNATURE", "SIGNING", "VERIFY", "VERIFICATION"}:
+            continue  # authenticity migration remains in roadmap, not HNDL ciphertext
         years = _horizon_for(purpose, classes)
         if years < horizon_years:
             continue
@@ -213,7 +226,11 @@ def hndl_register(
                    for level in ("critical", "high")}
     return {
         "threshold_years": horizon_years,
-        "at_risk": bool(entries),
+        "at_risk": True if entries else None if unassessed or not cbom else False,
+        "assessment_complete": bool(cbom) and not unassessed,
+        "unassessed": unassessed,
+        "completeness_proven": False,
+        "horizon_basis": "MODEL_DEFAULTS_UNLESS_CALLER_SUPPLIES_CLASSIFICATION",
         "total": len(entries),
         "by_exposure": by_exposure,
         "entries": entries,
@@ -323,7 +340,9 @@ def migration_roadmap(state: Mapping[str, Any], *, today: date | None = None) ->
         phases.append({**template, "items": items, "instance_count": sum(i["instances"] for i in items)})
 
     return {
-        "anchor": "NIST IR 8547 (deprecation after 2030 / disallowed after 2035)",
+        "anchor": "Historical NIST IR 8547 draft planning model; current applicability requires review",
+        "deadline_basis": "HISTORICAL_DRAFT_PLANNING_REFERENCE_REVIEW_REQUIRED",
+        "regulatory_approval": False,
         "generated_for_year": this_year,
         "phases": phases,
         "weak_legacy_instances": weak_count,
@@ -354,7 +373,7 @@ def fips_validation(
     algorithm: str | None = None,
     supplied: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """FIPS 140 validation status for a module (family-level, conservative)."""
+    """Family/supplied lookup leads only; exact validation is not verified here."""
     mod = (module or "").strip().lower()
     if not mod:
         mod = "unknown"
@@ -364,7 +383,9 @@ def fips_validation(
             return {
                 "module": module,
                 "algorithm": (algorithm or "").upper(),
-                "status": rule.get("status", "review"),
+                "status": "declared_not_verified",
+                "declared_status": rule.get("status", "review"),
+                "validation_verified": False,
                 "cert": rule.get("cert", ""),
                 "note": rule.get("note", ""),
                 "source": "supplied",
@@ -374,15 +395,18 @@ def fips_validation(
             return {
                 "module": module,
                 "algorithm": (algorithm or "").upper(),
-                "status": rule["status"],
+                "status": "unknown",
+                "family_match": True,
+                "validation_verified": False,
                 "cert": "",
-                "note": rule["note"],
+                "note": "Family match only. Confirm exact module, firmware, operational environment, certificate scope and current CMVP status; validation not established.",
                 "source": "builtin",
             }
     return {
         "module": module,
         "algorithm": (algorithm or "").upper(),
         "status": "unknown",
+        "validation_verified": False,
         "cert": "",
         "note": "not in the built-in table — look up the exact module version at CMVP/GFIPSearch and record the certificate",
         "source": "none",
@@ -394,11 +418,11 @@ def fips_validation(
 # --------------------------------------------------------------------------- #
 
 def _pqc_declared(hsm_info: Mapping[str, Any], capabilities: Mapping[str, Any]) -> tuple[str, str]:
-    """(pqc_status, evidence) — only 'ready' when the asset itself declares ML-*."""
+    """A declaration/roadmap is a review lead, never verified readiness."""
     hay = " ".join(str(v) for v in (*hsm_info.values(), *capabilities.values())).upper()
     for marker in ("ML-KEM", "ML-DSA", "KYBER", "DILITHIUM", "FALCON", "SPHINCS", "LATTICE"):
         if marker in hay:
-            return "ready", f"declares {marker}"
+            return "declared_not_verified", f"unverified record mentions {marker}; capability/firmware/implementation not established"
     if hay.strip():
         return "not_declared", "hsm capabilities present but no PQC algorithm declared"
     return "unknown", "no capability data on the asset record"
@@ -436,7 +460,7 @@ def assess_hsm_fleet(
             "pqc_status": pqc_status,
             "pqc_evidence": pqc_evidence,
             "gap": (
-                "PQC-capable firmware/attestation not declared — request vendor roadmap + firmware plan"
+                "PQC capability unverified — obtain vendor evidence for exact firmware/mechanisms and a reviewed runtime exercise; declarations are not readiness"
                 if pqc_status != "ready" else ""
             ),
         })
@@ -447,9 +471,11 @@ def assess_hsm_fleet(
         "total": len(rows),
         "pqc_ready": ready,
         "pqc_gap": len(rows) - ready,
+        "pqc_declared_not_verified": sum(r["pqc_status"] == "declared_not_verified" for r in rows),
+        "readiness_basis": "DECLARATIONS_ONLY_NO_RUNTIME_OR_CERTIFICATION_PROOF",
         "fips_validated_family": validated,
         "fips_unknown": len(rows) - validated,
-        "ready_share": round(ready / len(rows), 4) if rows else 0.0,
+        "ready_share": None,
         "hsms": rows,
     }
 
@@ -568,15 +594,23 @@ def banking_overview(
     fleet = assess_hsm_fleet(hsms or [])
     mf = list(mainframe_assets or [])
     return {
-        "hndl": {"at_risk": hndl["at_risk"], "total": hndl["total"], "by_exposure": hndl["by_exposure"]},
+        "bank_acceptance": False,
+        "discovery_completeness_proven": False,
+        "hndl": {"at_risk": hndl["at_risk"], "total": hndl["total"], "by_exposure": hndl["by_exposure"],
+                 "assessment_complete": hndl["assessment_complete"], "unassessed": hndl["unassessed"],
+                 "horizon_basis": hndl["horizon_basis"]},
         "roadmap": {
             "anchor": roadmap["anchor"],
+            "deadline_basis": roadmap["deadline_basis"],
+            "regulatory_approval": False,
             "total_in_scope": roadmap["total_in_scope"],
             "weak_legacy_instances": roadmap["weak_legacy_instances"],
             "phases": [{"phase": p["phase"], "title": p["title"], "deadline": p["deadline"],
                         "instance_count": p["instance_count"]} for p in roadmap["phases"]],
         },
-        "hsm": {"total": fleet["total"], "pqc_ready": fleet["pqc_ready"], "pqc_gap": fleet["pqc_gap"]},
+        "hsm": {"total": fleet["total"], "pqc_ready": fleet["pqc_ready"], "pqc_gap": fleet["pqc_gap"],
+                "pqc_declared_not_verified": fleet["pqc_declared_not_verified"],
+                "readiness_basis": fleet["readiness_basis"]},
         "mainframe": {"total": len(mf),
                       "by_source": {s: sum(1 for a in mf if a.get("source") == s)
                                     for s in ("racf", "icsf") if any(a.get("source") == s for a in mf)}},

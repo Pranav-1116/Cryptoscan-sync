@@ -101,7 +101,8 @@ def test_plan_inventory_counts():
     inv = plan["inventory"]
     assert inv["total_sites"] == 5
     assert inv["vulnerable_sites"] == 3  # RSA + ECDSA + AES-128
-    assert inv["pqc_ready_sites"] == 1
+    assert inv["pqc_ready_sites"] == 0
+    assert inv["pqc_candidate_sites"] == 1
     assert inv["by_family"] == {"AES": 2, "ECC": 1, "PQC": 1, "RSA": 1}
     assert inv["by_threat_type"]["SHOR_VULNERABLE"] == 2
     assert inv["by_threat_type"]["GROVER_WEAKENED"] == 1
@@ -128,10 +129,12 @@ def test_plan_workstreams_grouped_by_replacement_target():
 def test_plan_waves_hndl_first():
     plan = build_migration_plan(_findings(), systems=_systems(), today=date(2026, 8, 28))
     waves = plan["waves"]
-    # pay retains data 10y -> RSA/ECDSA are HNDL HIGH -> wave 1; AES-128 is Grover-marginal -> wave 3
-    assert waves["1"]["site_count"] == 2
-    assert {site["algorithm"] for site in waves["1"]["sites"]} == {"RSA-2048", "ECDSA-P256"}
-    assert waves["2"]["site_count"] == 0
+    # RSA key exchange is harvestable -> wave1; ECDSA signature still requires
+    # authenticity migration -> wave2; AES-128 sizing remains wave3.
+    assert waves["1"]["site_count"] == 1
+    assert {site["algorithm"] for site in waves["1"]["sites"]} == {"RSA-2048"}
+    assert waves["2"]["site_count"] == 1
+    assert waves["2"]["sites"][0]["algorithm"] == "ECDSA-P256"
     assert waves["3"]["site_count"] == 1
     assert waves["3"]["sites"][0]["algorithm"] == "AES-128"
     assert "harvest" in waves["1"]["focus"]
@@ -176,7 +179,7 @@ def test_cli_plan_with_mosca(tmp_path, capsys):
     )
     result = json.loads((tmp_path / "out.json").read_text())
     assert result["inventory"]["vulnerable_sites"] == 3
-    assert result["waves"]["1"]["site_count"] == 2
+    assert result["waves"]["1"]["site_count"] == 1
     captured = capsys.readouterr()
     assert "vulnerable=3/5" in captured.err
     assert "mosca: ALREADY_LATE" in captured.err

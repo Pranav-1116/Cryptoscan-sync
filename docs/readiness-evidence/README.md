@@ -106,3 +106,10 @@ issued.** Read the [upgrade runbook](../runbooks/evidence-assurance-upgrade.md).
 records local542 frontend/15 browser/92 selected backend/248 broader/19 native
 checks, adverse failures and warning debt. Human acceptance, actual staffing,
 independent RC review and required release CI remain open; no SLA/readiness claim.
+
+## Bank PQC vendor questionnaire (2026-10-23)
+
+[Executed bank-questionnaire fixes and57-item gap register](bank-vendor-questionnaire-2026-10-23.md)
+map all45 original questions plus12 missing controls, with source references and
+actual remaining acceptance.648 selected Python/548 frontend tests pass locally;
+no bank readiness, corporate certification, new collector or SLA is inferred.

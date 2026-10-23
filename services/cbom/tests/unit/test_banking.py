@@ -84,12 +84,11 @@ def test_hndl_skips_short_horizon_and_symmetric():
         {"bom-ref": "crypto:1", "algorithm": "RSA", "key_size": 2048, "purpose": "authentication"},
         {"bom-ref": "crypto:2", "algorithm": "ECDSA", "key_size": 256, "purpose": "signature"},
     ])
-    # authentication default horizon is 5y; with threshold 5 the RSA entry stays,
-    # but data_classes can shorten it below the threshold.
+    # Short authentication retention is filtered; signature-only ECDSA is
+    # an authenticity-migration concern, not harvested ciphertext.
     reg = hndl_register(state, data_classes=[{"purpose": "authentication", "years": 1}],
                         horizon_years=5)
-    assert reg["total"] == 1
-    assert reg["entries"][0]["algorithm"] == "ECDSA"
+    assert reg["total"] == 0
 
 
 # --------------------------------------------------------------------------- #
@@ -128,7 +127,7 @@ def test_roadmap_marks_past_deadlines_overdue():
 
 def test_fips_family_lookup_and_conservative_default():
     got = fips_validation("OpenSSL FIPS Provider 3.0")
-    assert got["status"] == "validated" and got["source"] == "builtin"
+    assert got["status"] == "unknown" and got["source"] == "builtin"
     unk = fips_validation("libwhatever 0.9")
     assert unk["status"] == "unknown" and "CMVP" in unk["note"]
 
@@ -136,11 +135,12 @@ def test_fips_family_lookup_and_conservative_default():
 def test_fips_supplied_table_overrides_builtin():
     supplied = {"z": {"match": "icsf", "status": "validated", "cert": "1234", "note": "bank-recorded"}}
     got = fips_validation("z/OS ICSF HCR77C0", supplied=supplied)
-    assert got["status"] == "validated"
+    assert got["status"] == "declared_not_verified"
+    assert got["declared_status"] == "validated"
     assert got["cert"] == "1234" and got["source"] == "supplied"
 
 
-def test_hsm_fleet_pqc_ready_only_when_declared():
+def test_hsm_fleet_declarations_do_not_establish_readiness():
     hsms = [
         {"asset_id": "hsm-1", "manufacturer": "Thales", "model": "Luna Network HSM",
          "firmware": {"version": "7.8.9"}, "hsm": {"algorithms": ["ML-KEM"]}},
@@ -149,12 +149,13 @@ def test_hsm_fleet_pqc_ready_only_when_declared():
     ]
     fleet = assess_hsm_fleet(hsms)
     assert fleet["total"] == 2
-    assert fleet["pqc_ready"] == 1
-    assert fleet["hsms"][0]["pqc_status"] == "ready"
+    assert fleet["pqc_ready"] == 0
+    assert fleet["pqc_declared_not_verified"] == 1
+    assert fleet["hsms"][0]["pqc_status"] == "declared_not_verified"
     assert fleet["hsms"][1]["pqc_status"] == "not_declared"
     assert "vendor" in fleet["hsms"][1]["gap"].lower()
-    # family-level FIPS from the builtin table
-    assert fleet["hsms"][0]["fips"]["status"] == "validated"
+    # A family lookup does not establish exact module/firmware validation
+    assert fleet["hsms"][0]["fips"]["status"] == "unknown"
 
 
 # --------------------------------------------------------------------------- #
@@ -228,6 +229,7 @@ def test_banking_overview_aggregates_all_layers():
                           today=date(2026, 9, 10))
     assert ov["hndl"]["total"] == 1 and ov["hndl"]["at_risk"] is True
     assert ov["roadmap"]["total_in_scope"] == 2
-    assert ov["hsm"]["pqc_ready"] == 1
+    assert ov["hsm"]["pqc_ready"] == 0
+    assert ov["hsm"]["pqc_declared_not_verified"] == 1
     assert ov["mainframe"]["total"] == 6
     assert ov["mainframe"]["by_source"] == {"racf": 2, "icsf": 4}

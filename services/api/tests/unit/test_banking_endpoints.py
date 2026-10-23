@@ -66,7 +66,7 @@ async def test_banking_overview_returns_regulatory_surface(app_db):
     ov = body["overview"]
     assert ov["hndl"]["at_risk"] is True          # RSA-2048 key exchange
     assert ov["hsm"]["total"] == 1
-    assert ov["hsm"]["pqc_ready"] == 1            # declares ML-KEM
+    assert ov["hsm"]["pqc_ready"] == 0            # declaration is not deployment proof
     assert ov["roadmap"]["total_in_scope"] >= 1
 
 
@@ -108,8 +108,9 @@ async def test_banking_hsm_fleet_endpoint(app_db):
         resp = await client.get("/api/v1/banking/hsm")
     assert resp.status_code == 200
     fleet = resp.json()["fleet"]
-    assert fleet["total"] == 1 and fleet["pqc_ready"] == 1
-    assert fleet["hsms"][0]["fips"]["status"] == "validated"  # Thales Luna family
+    assert fleet["total"] == 1 and fleet["pqc_ready"] == 0
+    assert fleet["pqc_declared_not_verified"] == 1
+    assert fleet["hsms"][0]["fips"]["status"] == "unknown"  # family != exact validation
 
 
 RACDCERT = """Digital certificate information for site certificate PAYGW:

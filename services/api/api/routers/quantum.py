@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
@@ -34,9 +34,10 @@ def quantum_plan(
 
 
 class MoscaRequest(BaseModel):
-    retention_years: int | None = None
-    migration_years: float | None = None
-    threat_year: int | None = None
+    model_config = ConfigDict(extra="forbid")
+    retention_years: int | None = Field(None, ge=0, le=1000, strict=True)
+    migration_years: float | None = Field(None, ge=0, le=1000, strict=True, allow_inf_nan=False)
+    threat_year: int | None = Field(None, ge=1, le=9999, strict=True)
 
 
 @router.post("/quantum/mosca")

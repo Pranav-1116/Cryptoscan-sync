@@ -55,16 +55,20 @@ _TYPE_LABEL = {
     "NetworkTarget": "NetworkTarget",
 }
 
-_VULNERABLE = ("RSA", "ECDSA", "DSA", "DH", "ED25519", "ED448", "X25519", "X448", "P-256", "P-384", "P-521")
-_PQC_SAFE = ("ML-KEM", "ML-DSA", "KYBER", "DILITHIUM", "AES-256-GCM", "SHA-3")
-
-
 def _pqc(algorithm: str | None) -> str:
-    a = str(algorithm or "").upper()
-    if any(k in a for k in _VULNERABLE):
+    # A parsed algorithm is not evidence of negotiation, correct implementation,
+    # approved policy or deployment. Never label inventory names "ready".
+    from shared_models.quantum_classify import quantum_verdict
+
+    result = quantum_verdict(algorithm)
+    if result["verdict"] == "SHOR_VULNERABLE":
         return "vulnerable"
-    if any(k in a for k in _PQC_SAFE):
-        return "ready"
+    if result["status"] != "ALLOWED":
+        return "unknown"
+    if result["verdict"] == "PQC_RESISTANT":
+        return "hybrid_candidate" if result["family"] == "kem-hybrid-pqc" else "pqc_candidate"
+    if result["verdict"] == "QUANTUM_RESISTANT":
+        return "symmetric_candidate"
     return "unknown"
 
 
@@ -315,7 +319,7 @@ def list_inventory(
                 or q in str(r.get("algorithm") or "").lower()
                 or q in str(r.get("host") or r.get("endpoint") or "").lower()
                 or q in str(r.get("serial_reference") or "").lower()]
-    return {"assets": rows, "count": len(rows), "source": "unified_inventory"}
+    return {"assets": rows, "count": len(rows), "source": "unified_inventory", "pqc_basis": "ALGORITHM_SCREENING_NOT_DEPLOYMENT_READINESS"}
 
 
 @router.get("/summary")
@@ -340,6 +344,7 @@ def inventory_summary(
         "by_type": by_type,
         "by_risk": by_risk,
         "by_pqc": by_pqc,
+        "pqc_basis": "ALGORITHM_SCREENING_NOT_DEPLOYMENT_READINESS",
         "source": "unified_inventory",
     }
 

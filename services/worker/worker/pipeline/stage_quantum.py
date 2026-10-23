@@ -24,6 +24,9 @@ def _summary(report: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "overall_hndl_risk": report.get("overall_hndl_risk"),
         "vulnerable_count": report.get("vulnerable_count"),
         "pqc_ready_count": report.get("pqc_ready_count"),
+        "pqc_candidate_count": report.get("pqc_candidate_count"),
+        "deployment_readiness": report.get("deployment_readiness"),
+        "model_assumptions": report.get("model_assumptions"),
         "total_sites": (plan.get("inventory") or {}).get("total_sites"),
         "hndl_counts": report.get("counts"),
         "by_threat_type": (plan.get("inventory") or {}).get("by_threat_type"),
@@ -45,6 +48,8 @@ def _summary(report: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
             "y_migration_years": mosca.get("y_migration_years"),
             "z_years_to_crqc": mosca.get("z_years_to_crqc"),
             "slack_years": mosca.get("slack_years"),
+            "scenario_only": mosca.get("scenario_only"),
+            "threat_year_basis": mosca.get("threat_year_basis"),
         },
         "calculation_version": plan.get("calculation_version") or report.get("calculation_version"),
     }

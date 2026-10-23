@@ -3139,8 +3139,11 @@ export interface BankHndlEntry {
   exposure?: "critical" | "high"; reason?: string;
 }
 export interface BankHndl {
-  threshold_years?: number; at_risk?: boolean; total?: number;
+  threshold_years?: number; at_risk?: boolean | null; total?: number;
   by_exposure?: Record<string, number>; entries?: BankHndlEntry[]; source?: string;
+  assessment_complete?: boolean; completeness_proven?: false;
+  unassessed?: Array<{ bom_ref: string; algorithm: string | null; reason: string }>;
+  horizon_basis?: string;
 }
 export interface BankRoadmapItem {
   family?: string; key_size?: number | null; transition?: string; instances?: number;
@@ -3153,15 +3156,17 @@ export interface BankRoadmapPhase {
 export interface BankRoadmap {
   anchor?: string; generated_for_year?: number; phases?: BankRoadmapPhase[];
   weak_legacy_instances?: number; total_in_scope?: number; source?: string;
+  deadline_basis?: string; regulatory_approval?: false;
 }
 export interface BankHsmRow {
   asset_id?: string; manufacturer?: string; model?: string; firmware?: string | { version?: string } | null;
   pqc_status?: string; pqc_evidence?: string; gap?: string;
-  fips?: { module?: string; algorithm?: string; status?: string; cert?: string; note?: string; source?: string };
+  fips?: { module?: string; algorithm?: string; status?: string; declared_status?: string; validation_verified?: boolean; cert?: string; note?: string; source?: string };
 }
 export interface BankHsmFleet {
   total?: number; pqc_ready?: number; pqc_gap?: number;
-  fips_validated_family?: number; fips_unknown?: number; ready_share?: number; hsms?: BankHsmRow[];
+  fips_validated_family?: number; fips_unknown?: number; ready_share?: number | null; hsms?: BankHsmRow[];
+  pqc_declared_not_verified?: number; readiness_basis?: string;
 }
 export interface BankMainframeAsset {
   algorithm?: string; key_size?: number | null; purpose?: string; location?: string;
@@ -3170,7 +3175,7 @@ export interface BankMainframeAsset {
 export interface BankOverview {
   source?: string; environment?: string; snapshot_id?: string; generated_at?: string;
   overview?: {
-    hndl?: { at_risk?: boolean; total?: number; by_exposure?: Record<string, number> };
+    hndl?: { at_risk?: boolean | null; total?: number; by_exposure?: Record<string, number> };
     roadmap?: { anchor?: string; total_in_scope?: number; weak_legacy_instances?: number;
                 phases?: BankRoadmapPhase[] };
     hsm?: { total?: number; pqc_ready?: number; pqc_gap?: number };
@@ -3186,7 +3191,7 @@ export interface BankActionPlan {
   assessment?: {
     total_crypto_instances?: number;
     admission?: { decision?: string; blocking?: number; warnings?: number };
-    hndl?: { at_risk?: boolean; total?: number; by_exposure?: Record<string, number> };
+    hndl?: { at_risk?: boolean | null; total?: number; by_exposure?: Record<string, number> };
     hsm_fleet?: { total?: number; pqc_ready?: number; pqc_gap?: number };
     mainframe_inventory?: { total?: number; by_source?: Record<string, number> };
   };

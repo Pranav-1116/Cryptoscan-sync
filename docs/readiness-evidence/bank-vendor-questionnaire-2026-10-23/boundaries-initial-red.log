@@ -1,0 +1,484 @@
+FFFFFF..FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF                                  [100%]
+=================================== FAILURES ===================================
+________ test_unrecognized_algorithm_is_not_reported_quantum_safe[None] ________
+
+algorithm = None
+
+    @pytest.mark.parametrize("algorithm", [None, "private-bank-cipher", "ML-KEM-MAGIC", "AES-MAGIC"])
+    def test_unrecognized_algorithm_is_not_reported_quantum_safe(algorithm):
+        result = quantum_vulnerability(algorithm)
+>       assert result["quantum_vulnerable"] is None
+E       assert False is None
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:17: AssertionError
+_ test_unrecognized_algorithm_is_not_reported_quantum_safe[private-bank-cipher] _
+
+algorithm = 'private-bank-cipher'
+
+    @pytest.mark.parametrize("algorithm", [None, "private-bank-cipher", "ML-KEM-MAGIC", "AES-MAGIC"])
+    def test_unrecognized_algorithm_is_not_reported_quantum_safe(algorithm):
+        result = quantum_vulnerability(algorithm)
+>       assert result["quantum_vulnerable"] is None
+E       assert False is None
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:17: AssertionError
+____ test_unrecognized_algorithm_is_not_reported_quantum_safe[ML-KEM-MAGIC] ____
+
+algorithm = 'ML-KEM-MAGIC'
+
+    @pytest.mark.parametrize("algorithm", [None, "private-bank-cipher", "ML-KEM-MAGIC", "AES-MAGIC"])
+    def test_unrecognized_algorithm_is_not_reported_quantum_safe(algorithm):
+        result = quantum_vulnerability(algorithm)
+>       assert result["quantum_vulnerable"] is None
+E       assert False is None
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:17: AssertionError
+_____ test_unrecognized_algorithm_is_not_reported_quantum_safe[AES-MAGIC] ______
+
+algorithm = 'AES-MAGIC'
+
+    @pytest.mark.parametrize("algorithm", [None, "private-bank-cipher", "ML-KEM-MAGIC", "AES-MAGIC"])
+    def test_unrecognized_algorithm_is_not_reported_quantum_safe(algorithm):
+        result = quantum_vulnerability(algorithm)
+>       assert result["quantum_vulnerable"] is None
+E       assert False is None
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:17: AssertionError
+____ test_nonapproved_algorithm_name_cannot_make_inventory_ready[Kyber768] _____
+
+algorithm = 'Kyber768'
+
+    @pytest.mark.parametrize("algorithm", ["Kyber768", "Dilithium", "SIKE", "HQC-128"])
+    def test_nonapproved_algorithm_name_cannot_make_inventory_ready(algorithm):
+>       assert _pqc(algorithm) != "ready"
+E       AssertionError: assert 'ready' != 'ready'
+E        +  where 'ready' = _pqc('Kyber768')
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:24: AssertionError
+____ test_nonapproved_algorithm_name_cannot_make_inventory_ready[Dilithium] ____
+
+algorithm = 'Dilithium'
+
+    @pytest.mark.parametrize("algorithm", ["Kyber768", "Dilithium", "SIKE", "HQC-128"])
+    def test_nonapproved_algorithm_name_cannot_make_inventory_ready(algorithm):
+>       assert _pqc(algorithm) != "ready"
+E       AssertionError: assert 'ready' != 'ready'
+E        +  where 'ready' = _pqc('Dilithium')
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:24: AssertionError
+_ test_hybrid_is_recognized_without_claiming_deployment_readiness[X25519MLKEM768] _
+
+algorithm = 'X25519MLKEM768'
+
+    @pytest.mark.parametrize("algorithm", ["X25519MLKEM768", "mlkem768x25519-sha256", "SecP256r1MLKEM768"])
+    def test_hybrid_is_recognized_without_claiming_deployment_readiness(algorithm):
+>       assert _pqc(algorithm) == "hybrid_candidate"
+E       AssertionError: assert 'vulnerable' == 'hybrid_candidate'
+E
+E         - hybrid_candidate
+E         + vulnerable
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:29: AssertionError
+_ test_hybrid_is_recognized_without_claiming_deployment_readiness[mlkem768x25519-sha256] _
+
+algorithm = 'mlkem768x25519-sha256'
+
+    @pytest.mark.parametrize("algorithm", ["X25519MLKEM768", "mlkem768x25519-sha256", "SecP256r1MLKEM768"])
+    def test_hybrid_is_recognized_without_claiming_deployment_readiness(algorithm):
+>       assert _pqc(algorithm) == "hybrid_candidate"
+E       AssertionError: assert 'vulnerable' == 'hybrid_candidate'
+E
+E         - hybrid_candidate
+E         + vulnerable
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:29: AssertionError
+_ test_hybrid_is_recognized_without_claiming_deployment_readiness[SecP256r1MLKEM768] _
+
+algorithm = 'SecP256r1MLKEM768'
+
+    @pytest.mark.parametrize("algorithm", ["X25519MLKEM768", "mlkem768x25519-sha256", "SecP256r1MLKEM768"])
+    def test_hybrid_is_recognized_without_claiming_deployment_readiness(algorithm):
+>       assert _pqc(algorithm) == "hybrid_candidate"
+E       AssertionError: assert 'unknown' == 'hybrid_candidate'
+E
+E         - hybrid_candidate
+E         + unknown
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:29: AssertionError
+_ test_family_name_does_not_establish_exact_module_fips_validation[Thales Luna unknown firmware] _
+
+module = 'Thales Luna unknown firmware'
+
+    @pytest.mark.parametrize("module", ["Thales Luna unknown firmware", "OpenSSL FIPS Provider 999", "Utimaco", "TPM unknown SKU"])
+    def test_family_name_does_not_establish_exact_module_fips_validation(module):
+        result = fips_validation(module)
+>       assert result["status"] == "unknown"
+E       AssertionError: assert 'validated' == 'unknown'
+E
+E         - unknown
+E         + validated
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:36: AssertionError
+_ test_family_name_does_not_establish_exact_module_fips_validation[OpenSSL FIPS Provider 999] _
+
+module = 'OpenSSL FIPS Provider 999'
+
+    @pytest.mark.parametrize("module", ["Thales Luna unknown firmware", "OpenSSL FIPS Provider 999", "Utimaco", "TPM unknown SKU"])
+    def test_family_name_does_not_establish_exact_module_fips_validation(module):
+        result = fips_validation(module)
+>       assert result["status"] == "unknown"
+E       AssertionError: assert 'validated' == 'unknown'
+E
+E         - unknown
+E         + validated
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:36: AssertionError
+__ test_family_name_does_not_establish_exact_module_fips_validation[Utimaco] ___
+
+module = 'Utimaco'
+
+    @pytest.mark.parametrize("module", ["Thales Luna unknown firmware", "OpenSSL FIPS Provider 999", "Utimaco", "TPM unknown SKU"])
+    def test_family_name_does_not_establish_exact_module_fips_validation(module):
+        result = fips_validation(module)
+>       assert result["status"] == "unknown"
+E       AssertionError: assert 'validated' == 'unknown'
+E
+E         - unknown
+E         + validated
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:36: AssertionError
+_ test_family_name_does_not_establish_exact_module_fips_validation[TPM unknown SKU] _
+
+module = 'TPM unknown SKU'
+
+    @pytest.mark.parametrize("module", ["Thales Luna unknown firmware", "OpenSSL FIPS Provider 999", "Utimaco", "TPM unknown SKU"])
+    def test_family_name_does_not_establish_exact_module_fips_validation(module):
+        result = fips_validation(module)
+>       assert result["status"] == "unknown"
+E       AssertionError: assert 'validated' == 'unknown'
+E
+E         - unknown
+E         + validated
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:36: AssertionError
+____ test_supplied_fips_assertion_is_retained_but_not_promoted_to_verified _____
+
+    def test_supplied_fips_assertion_is_retained_but_not_promoted_to_verified():
+        result = fips_validation("ICSF", supplied={"claim": {"match": "icsf", "status": "validated", "cert": "test-only"}})
+>       assert result["status"] == "declared_not_verified"
+E       AssertionError: assert 'validated' == 'declared_not_verified'
+E
+E         - declared_not_verified
+E         + validated
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:42: AssertionError
+____ test_hsm_declaration_cannot_inflate_verified_readiness[capabilities0] _____
+
+capabilities = {'algorithms': ['ML-KEM']}
+
+    @pytest.mark.parametrize("capabilities", [{"algorithms": ["ML-KEM"]}, {"supports_ml_kem": False}, {"notes": "ML-KEM not supported"}, {"roadmap": "ML-KEM next year"}])
+    def test_hsm_declaration_cannot_inflate_verified_readiness(capabilities):
+        result = assess_hsm_fleet([{"asset_id": "synthetic-hsm", "manufacturer": "Thales", "model": "Luna", "hsm": capabilities}])
+>       assert result["pqc_ready"] == 0
+E       assert 1 == 0
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:51: AssertionError
+____ test_hsm_declaration_cannot_inflate_verified_readiness[capabilities1] _____
+
+capabilities = {'supports_ml_kem': False}
+
+    @pytest.mark.parametrize("capabilities", [{"algorithms": ["ML-KEM"]}, {"supports_ml_kem": False}, {"notes": "ML-KEM not supported"}, {"roadmap": "ML-KEM next year"}])
+    def test_hsm_declaration_cannot_inflate_verified_readiness(capabilities):
+        result = assess_hsm_fleet([{"asset_id": "synthetic-hsm", "manufacturer": "Thales", "model": "Luna", "hsm": capabilities}])
+        assert result["pqc_ready"] == 0
+>       assert result["fips_validated_family"] == 0
+E       assert 1 == 0
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:52: AssertionError
+____ test_hsm_declaration_cannot_inflate_verified_readiness[capabilities2] _____
+
+capabilities = {'notes': 'ML-KEM not supported'}
+
+    @pytest.mark.parametrize("capabilities", [{"algorithms": ["ML-KEM"]}, {"supports_ml_kem": False}, {"notes": "ML-KEM not supported"}, {"roadmap": "ML-KEM next year"}])
+    def test_hsm_declaration_cannot_inflate_verified_readiness(capabilities):
+        result = assess_hsm_fleet([{"asset_id": "synthetic-hsm", "manufacturer": "Thales", "model": "Luna", "hsm": capabilities}])
+>       assert result["pqc_ready"] == 0
+E       assert 1 == 0
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:51: AssertionError
+____ test_hsm_declaration_cannot_inflate_verified_readiness[capabilities3] _____
+
+capabilities = {'roadmap': 'ML-KEM next year'}
+
+    @pytest.mark.parametrize("capabilities", [{"algorithms": ["ML-KEM"]}, {"supports_ml_kem": False}, {"notes": "ML-KEM not supported"}, {"roadmap": "ML-KEM next year"}])
+    def test_hsm_declaration_cannot_inflate_verified_readiness(capabilities):
+        result = assess_hsm_fleet([{"asset_id": "synthetic-hsm", "manufacturer": "Thales", "model": "Luna", "hsm": capabilities}])
+>       assert result["pqc_ready"] == 0
+E       assert 1 == 0
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:51: AssertionError
+_ test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[retention_years--1] _
+
+field = 'retention_years', value = -1
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0), ("threat_year", True)])
+    def test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs(field, value):
+>       with pytest.raises(ValidationError):
+E       Failed: DID NOT RAISE ValidationError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:60: Failed
+_ test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[retention_years-True] _
+
+field = 'retention_years', value = True
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0), ("threat_year", True)])
+    def test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs(field, value):
+>       with pytest.raises(ValidationError):
+E       Failed: DID NOT RAISE ValidationError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:60: Failed
+_ test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[migration_years--1] _
+
+field = 'migration_years', value = -1
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0), ("threat_year", True)])
+    def test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs(field, value):
+>       with pytest.raises(ValidationError):
+E       Failed: DID NOT RAISE ValidationError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:60: Failed
+_ test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[migration_years-nan] _
+
+field = 'migration_years', value = nan
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0), ("threat_year", True)])
+    def test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs(field, value):
+>       with pytest.raises(ValidationError):
+E       Failed: DID NOT RAISE ValidationError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:60: Failed
+_ test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[migration_years-inf] _
+
+field = 'migration_years', value = inf
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0), ("threat_year", True)])
+    def test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs(field, value):
+>       with pytest.raises(ValidationError):
+E       Failed: DID NOT RAISE ValidationError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:60: Failed
+_ test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[migration_years-True] _
+
+field = 'migration_years', value = True
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0), ("threat_year", True)])
+    def test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs(field, value):
+>       with pytest.raises(ValidationError):
+E       Failed: DID NOT RAISE ValidationError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:60: Failed
+__ test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[threat_year-0] __
+
+field = 'threat_year', value = 0
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0), ("threat_year", True)])
+    def test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs(field, value):
+>       with pytest.raises(ValidationError):
+E       Failed: DID NOT RAISE ValidationError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:60: Failed
+_ test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[threat_year-True] _
+
+field = 'threat_year', value = True
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0), ("threat_year", True)])
+    def test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs(field, value):
+>       with pytest.raises(ValidationError):
+E       Failed: DID NOT RAISE ValidationError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:60: Failed
+_ test_mosca_direct_calls_cannot_bypass_scenario_validation[retention_years--1] _
+
+field = 'retention_years', value = -1
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0)])
+    def test_mosca_direct_calls_cannot_bypass_scenario_validation(field, value):
+        body = {"retention_years": 1, "migration_years": 1, "threat_year": 2035}
+        body[field] = value
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:68: Failed
+_ test_mosca_direct_calls_cannot_bypass_scenario_validation[retention_years-True] _
+
+field = 'retention_years', value = True
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0)])
+    def test_mosca_direct_calls_cannot_bypass_scenario_validation(field, value):
+        body = {"retention_years": 1, "migration_years": 1, "threat_year": 2035}
+        body[field] = value
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:68: Failed
+_ test_mosca_direct_calls_cannot_bypass_scenario_validation[migration_years--1] _
+
+field = 'migration_years', value = -1
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0)])
+    def test_mosca_direct_calls_cannot_bypass_scenario_validation(field, value):
+        body = {"retention_years": 1, "migration_years": 1, "threat_year": 2035}
+        body[field] = value
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:68: Failed
+_ test_mosca_direct_calls_cannot_bypass_scenario_validation[migration_years-nan] _
+
+field = 'migration_years', value = nan
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0)])
+    def test_mosca_direct_calls_cannot_bypass_scenario_validation(field, value):
+        body = {"retention_years": 1, "migration_years": 1, "threat_year": 2035}
+        body[field] = value
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:68: Failed
+_ test_mosca_direct_calls_cannot_bypass_scenario_validation[migration_years-inf] _
+
+field = 'migration_years', value = inf
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0)])
+    def test_mosca_direct_calls_cannot_bypass_scenario_validation(field, value):
+        body = {"retention_years": 1, "migration_years": 1, "threat_year": 2035}
+        body[field] = value
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:68: Failed
+_ test_mosca_direct_calls_cannot_bypass_scenario_validation[migration_years-True] _
+
+field = 'migration_years', value = True
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0)])
+    def test_mosca_direct_calls_cannot_bypass_scenario_validation(field, value):
+        body = {"retention_years": 1, "migration_years": 1, "threat_year": 2035}
+        body[field] = value
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:68: Failed
+___ test_mosca_direct_calls_cannot_bypass_scenario_validation[threat_year-0] ___
+
+field = 'threat_year', value = 0
+
+    @pytest.mark.parametrize("field,value", [("retention_years", -1), ("retention_years", True), ("migration_years", -1), ("migration_years", float("nan")), ("migration_years", float("inf")), ("migration_years", True), ("threat_year", 0)])
+    def test_mosca_direct_calls_cannot_bypass_scenario_validation(field, value):
+        body = {"retention_years": 1, "migration_years": 1, "threat_year": 2035}
+        body[field] = value
+>       with pytest.raises(ValueError):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:68: Failed
+__ test_mosca_exposes_threat_year_as_assumption_not_prediction_or_regulation ___
+
+    def test_mosca_exposes_threat_year_as_assumption_not_prediction_or_regulation():
+        result = mosca(retention_years=1, migration_years=1, threat_year=2035, today=date(2026, 1, 1))
+>       assert result["scenario_only"] is True
+               ^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'scenario_only'
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:74: KeyError
+__ test_missing_algorithm_or_retention_does_not_become_no_hndl_risk[None-10] ___
+
+algorithm = None, retention = 10
+
+    @pytest.mark.parametrize("algorithm,retention", [(None, 10), ("custom-bank-cipher", 10), ("RSA", None)])
+    def test_missing_algorithm_or_retention_does_not_become_no_hndl_risk(algorithm, retention):
+>       assert hndl_risk(algorithm=algorithm, retention_years=retention)["hndl_risk"] == "UNKNOWN"
+E       AssertionError: assert 'NONE' == 'UNKNOWN'
+E
+E         - UNKNOWN
+E         + NONE
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:81: AssertionError
+_ test_missing_algorithm_or_retention_does_not_become_no_hndl_risk[custom-bank-cipher-10] _
+
+algorithm = 'custom-bank-cipher', retention = 10
+
+    @pytest.mark.parametrize("algorithm,retention", [(None, 10), ("custom-bank-cipher", 10), ("RSA", None)])
+    def test_missing_algorithm_or_retention_does_not_become_no_hndl_risk(algorithm, retention):
+>       assert hndl_risk(algorithm=algorithm, retention_years=retention)["hndl_risk"] == "UNKNOWN"
+E       AssertionError: assert 'NONE' == 'UNKNOWN'
+E
+E         - UNKNOWN
+E         + NONE
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:81: AssertionError
+__ test_missing_algorithm_or_retention_does_not_become_no_hndl_risk[RSA-None] __
+
+algorithm = 'RSA', retention = None
+
+    @pytest.mark.parametrize("algorithm,retention", [(None, 10), ("custom-bank-cipher", 10), ("RSA", None)])
+    def test_missing_algorithm_or_retention_does_not_become_no_hndl_risk(algorithm, retention):
+>       assert hndl_risk(algorithm=algorithm, retention_years=retention)["hndl_risk"] == "UNKNOWN"
+E       AssertionError: assert 'LOW' == 'UNKNOWN'
+E
+E         - UNKNOWN
+E         + LOW
+
+services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py:81: AssertionError
+=============================== warnings summary ===============================
+services/api/api/routers/auth.py:87
+  /home/user/CryproScan/services/api/api/routers/auth.py:87: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(BaseModel):
+
+services/api/api/routers/network.py:326
+  /home/user/CryproScan/services/api/api/routers/network.py:326: UserWarning: Field name "register" in "SubnetDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class SubnetDiscoverRequest(BaseModel):
+
+services/api/api/routers/cloud.py:40
+  /home/user/CryproScan/services/api/api/routers/cloud.py:40: UserWarning: Field name "register" in "CloudOrgDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class CloudOrgDiscoverRequest(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_unrecognized_algorithm_is_not_reported_quantum_safe[None]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_unrecognized_algorithm_is_not_reported_quantum_safe[private-bank-cipher]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_unrecognized_algorithm_is_not_reported_quantum_safe[ML-KEM-MAGIC]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_unrecognized_algorithm_is_not_reported_quantum_safe[AES-MAGIC]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_nonapproved_algorithm_name_cannot_make_inventory_ready[Kyber768]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_nonapproved_algorithm_name_cannot_make_inventory_ready[Dilithium]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_hybrid_is_recognized_without_claiming_deployment_readiness[X25519MLKEM768]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_hybrid_is_recognized_without_claiming_deployment_readiness[mlkem768x25519-sha256]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_hybrid_is_recognized_without_claiming_deployment_readiness[SecP256r1MLKEM768]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_family_name_does_not_establish_exact_module_fips_validation[Thales Luna unknown firmware]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_family_name_does_not_establish_exact_module_fips_validation[OpenSSL FIPS Provider 999]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_family_name_does_not_establish_exact_module_fips_validation[Utimaco]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_family_name_does_not_establish_exact_module_fips_validation[TPM unknown SKU]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_supplied_fips_assertion_is_retained_but_not_promoted_to_verified
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_hsm_declaration_cannot_inflate_verified_readiness[capabilities0]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_hsm_declaration_cannot_inflate_verified_readiness[capabilities1]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_hsm_declaration_cannot_inflate_verified_readiness[capabilities2]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_hsm_declaration_cannot_inflate_verified_readiness[capabilities3]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[retention_years--1]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[retention_years-True]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[migration_years--1]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[migration_years-nan]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[migration_years-inf]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[migration_years-True]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[threat_year-0]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_api_rejects_invalid_or_nonfinite_scenario_inputs[threat_year-True]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_direct_calls_cannot_bypass_scenario_validation[retention_years--1]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_direct_calls_cannot_bypass_scenario_validation[retention_years-True]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_direct_calls_cannot_bypass_scenario_validation[migration_years--1]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_direct_calls_cannot_bypass_scenario_validation[migration_years-nan]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_direct_calls_cannot_bypass_scenario_validation[migration_years-inf]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_direct_calls_cannot_bypass_scenario_validation[migration_years-True]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_direct_calls_cannot_bypass_scenario_validation[threat_year-0]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_mosca_exposes_threat_year_as_assumption_not_prediction_or_regulation
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_missing_algorithm_or_retention_does_not_become_no_hndl_risk[None-10]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_missing_algorithm_or_retention_does_not_become_no_hndl_risk[custom-bank-cipher-10]
+FAILED services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py::test_missing_algorithm_or_retention_does_not_become_no_hndl_risk[RSA-None]
+37 failed, 2 passed, 3 warnings in 1.03s

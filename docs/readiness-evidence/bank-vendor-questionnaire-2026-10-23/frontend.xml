@@ -1,0 +1,1500 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="548" failures="0" errors="0" time="39.883195708">
+    <testsuite name="src/App.navigation.test.tsx" timestamp="2026-10-23T16:57:24.494Z" hostname="e2b.local" tests="4" failures="0" errors="0" skipped="0" time="0.278599958">
+        <testcase classname="src/App.navigation.test.tsx" name="authenticated legacy deep links &gt; redirects /audit to /security-center without a duplicate implementation" time="0.207123148">
+        </testcase>
+        <testcase classname="src/App.navigation.test.tsx" name="authenticated legacy deep links &gt; redirects /techbom to /live-asset-intelligence without a duplicate implementation" time="0.034350381">
+        </testcase>
+        <testcase classname="src/App.navigation.test.tsx" name="authenticated legacy deep links &gt; serves /remediation as its own workspace, not a priorities redirect" time="0.01588119">
+        </testcase>
+        <testcase classname="src/App.navigation.test.tsx" name="authenticated legacy deep links &gt; does not expose the retired Merkle screen as a working route" time="0.018259539">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/App.test.tsx" timestamp="2026-10-23T16:57:24.497Z" hostname="e2b.local" tests="10" failures="0" errors="0" skipped="0" time="1.057373329">
+        <testcase classname="src/App.test.tsx" name="app shell &gt; renders the layout around a page while offline" time="0.165413096">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="app shell &gt; navigation links use in-app routes only (no external hrefs)" time="0.09952053">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="app shell &gt; exposes the real threat-intelligence workspaces across six sections" time="0.074079663">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="app shell &gt; exposes global search as a keyboard-focusable button" time="0.228491492">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="app shell &gt; supports keyboard navigation, browser history, and a direct workspace entry" time="0.16426669">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="app shell &gt; keeps public auth pages focused on live account operations" time="0.040426086">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="app shell &gt; boots App: shows the loading gate, then the router" time="0.064502306">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="maturity labelling in the shell &gt; a beta page shows the beta banner; a GA page shows none" time="0.122069555">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="maturity labelling in the shell &gt; a preview page is labelled preview" time="0.048852323">
+        </testcase>
+        <testcase classname="src/App.test.tsx" name="maturity labelling in the shell &gt; header counters show — instead of invented numbers while offline" time="0.046659224">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/Accessibility.test.tsx" timestamp="2026-10-23T16:57:24.499Z" hostname="e2b.local" tests="16" failures="0" errors="0" skipped="0" time="0.818042803">
+        <testcase classname="src/components/Accessibility.test.tsx" name="keyboard: skip link and main landmark &gt; renders the skip link as the first focusable element, targeting a focusable main" time="0.355851224">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="screen readers: navigation state &gt; marks the active nav link with aria-current=page and only that link" time="0.197993883">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="theme: the OS preference is honored on first visit &gt; defaults to light when the OS prefers light and nothing is stored" time="0.082241248">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="theme: the OS preference is honored on first visit &gt; an explicit stored choice beats the OS preference" time="0.065138269">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="contrast: every text token passes WCAG AA in both themes &gt; has the expected tokens in both effective themes" time="0.000732726">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="contrast: every text token passes WCAG AA in both themes &gt; dark theme: text/dim/faint hold 4.5:1 on every surface" time="0.000937385">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="contrast: every text token passes WCAG AA in both themes &gt; light theme: text/dim/faint hold 4.5:1 on every surface" time="0.000432093">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="contrast: every text token passes WCAG AA in both themes &gt; dark theme: status hues hold 4.5:1 as text on the base surfaces" time="0.000778844">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="contrast: every text token passes WCAG AA in both themes &gt; light theme: status hues hold 4.5:1 as text on the base surfaces" time="0.000891216">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="contrast: every text token passes WCAG AA in both themes &gt; dark theme: text on the accent meets 4.5:1" time="0.000508609">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="contrast: every text token passes WCAG AA in both themes &gt; light theme: text on the accent meets 4.5:1" time="0.00030173">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="stylesheet contracts &gt; keeps the un-overridable keyboard focus ring" time="0.000406414">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="stylesheet contracts &gt; keeps the skip-link styles (hidden until focused)" time="0.000206608">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="stylesheet contracts &gt; declares color-scheme for both themes so native controls follow" time="0.000169059">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="stylesheet contracts &gt; collapses to a single column with a horizontal nav bar at phone width (&lt;=560px)" time="0.000229244">
+        </testcase>
+        <testcase classname="src/components/Accessibility.test.tsx" name="existing console locale control &gt; exposes the existing Arabic switcher inside the authenticated shell without changing the estate" time="0.107987859">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/AnalysisCoveragePanel.test.tsx" timestamp="2026-10-23T16:57:24.502Z" hostname="e2b.local" tests="5" failures="0" errors="0" skipped="0" time="0.159169217">
+        <testcase classname="src/components/AnalysisCoveragePanel.test.tsx" name="prominent coverage qualifications &gt; does not reconstruct old stored coverage" time="0.033484364">
+        </testcase>
+        <testcase classname="src/components/AnalysisCoveragePanel.test.tsx" name="prominent coverage qualifications &gt; separates source omission and lower bounds from exact totals" time="0.011449704">
+        </testcase>
+        <testcase classname="src/components/AnalysisCoveragePanel.test.tsx" name="prominent coverage qualifications &gt; keeps native horizon unknown rather than showing zero additional systems" time="0.00597861">
+        </testcase>
+        <testcase classname="src/components/AnalysisCoveragePanel.test.tsx" name="prominent coverage qualifications &gt; distinguishes explanation-only limits and individual missing-link denominators" time="0.100585319">
+        </testcase>
+        <testcase classname="src/components/AnalysisCoveragePanel.test.tsx" name="prominent coverage qualifications &gt; remains visible when no impact analysis was performed" time="0.004803399">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/AuthenticatedDownload.scope.test.tsx" timestamp="2026-10-23T16:57:24.503Z" hostname="e2b.local" tests="12" failures="0" errors="0" skipped="0" time="0.702867203">
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after cryptoscan_tenant, even if fetch ignores abort" time="0.059517632">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after zelinx_token, even if fetch ignores abort" time="0.053553927">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after zelinx_roles, even if fetch ignores abort" time="0.053718059">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after zelinx_user, even if fetch ignores abort" time="0.053350268">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after null, even if fetch ignores abort" time="0.053492027">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after auth, even if fetch ignores abort" time="0.052594364">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after tenant, even if fetch ignores abort" time="0.053390753">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after resume, even if fetch ignores abort" time="0.053751724">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not release old bytes after bfcache, even if fetch ignores abort" time="0.054339412">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; blocks a same-turn double click before the busy render" time="0.144062707">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; does not download after leaving the page while response bytes are pending" time="0.062376095">
+        </testcase>
+        <testcase classname="src/components/AuthenticatedDownload.scope.test.tsx" name="Authenticated export privacy &gt; allows unchanged-scope downloads and cleans up the object URL" time="0.005764433">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/EdgeManagerPanel.test.tsx" timestamp="2026-10-23T16:57:24.505Z" hostname="e2b.local" tests="4" failures="0" errors="0" skipped="0" time="0.44371148">
+        <testcase classname="src/components/EdgeManagerPanel.test.tsx" name="requires retirement evidence and sends a revision instead of erasing rows" time="0.251247139">
+        </testcase>
+        <testcase classname="src/components/EdgeManagerPanel.test.tsx" name="does not offer to silently reactivate or re-delete terminal evidence" time="0.064872915">
+        </testcase>
+        <testcase classname="src/components/EdgeManagerPanel.test.tsx" name="saves a manually-owned operational annotation with revision and reason, without refreshing evidence" time="0.095439696">
+        </testcase>
+        <testcase classname="src/components/EdgeManagerPanel.test.tsx" name="does not allow operational edits on collector-owned or terminal edges" time="0.029281738">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/OperationalImpactPanel.test.tsx" timestamp="2026-10-23T16:57:24.506Z" hostname="e2b.local" tests="4" failures="0" errors="0" skipped="0" time="0.059443453">
+        <testcase classname="src/components/OperationalImpactPanel.test.tsx" name="does not silently classify old answers as hard dependency or safe operation" time="0.032346321">
+        </testcase>
+        <testcase classname="src/components/OperationalImpactPanel.test.tsx" name="shows declared failover identities without claiming healthy alternatives or shrinking exposure" time="0.012458056">
+        </testcase>
+        <testcase classname="src/components/OperationalImpactPanel.test.tsx" name="keeps zero declared queue capacity distinct from missing and refuses a buffering guarantee" time="0.006020526">
+        </testcase>
+        <testcase classname="src/components/OperationalImpactPanel.test.tsx" name="reports bounded details without deriving counts from the displayed subset" time="0.00606822">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/PortfolioDependencyPanel.test.tsx" timestamp="2026-10-23T16:57:24.507Z" hostname="e2b.local" tests="1" failures="0" errors="0" skipped="0" time="0.007017623">
+        <testcase classname="src/components/PortfolioDependencyPanel.test.tsx" name="estate CBOM dependency rows &gt; derives per-system assets, depends-on and dependents from dependencies[]" time="0.004167372">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/ProcessImpactPanel.test.tsx" timestamp="2026-10-23T16:57:24.507Z" hostname="e2b.local" tests="3" failures="0" errors="0" skipped="0" time="0.08165017">
+        <testcase classname="src/components/ProcessImpactPanel.test.tsx" name="preserves legacy names without inventing a scoped process projection" time="0.034033364">
+        </testcase>
+        <testcase classname="src/components/ProcessImpactPanel.test.tsx" name="distinguishes exposure context and potential, with real mapping and system reason" time="0.035294764">
+        </testcase>
+        <testcase classname="src/components/ProcessImpactPanel.test.tsx" name="shows bounds separately from full process/reason counts" time="0.009635559">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/TraversalEvidencePanel.test.tsx" timestamp="2026-10-23T16:57:24.508Z" hostname="e2b.local" tests="3" failures="0" errors="0" skipped="0" time="0.093712883">
+        <testcase classname="src/components/TraversalEvidencePanel.test.tsx" name="does not reconstruct old stored evidence from the current graph" time="0.032865465">
+        </testcase>
+        <testcase classname="src/components/TraversalEvidencePanel.test.tsx" name="shows bounded missing witnesses and preserves physical arrows and timestamp meanings" time="0.041390546">
+        </testcase>
+        <testcase classname="src/components/TraversalEvidencePanel.test.tsx" name="labels legacy direct context unverified without inventing an edge" time="0.016653523">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/UnifiedCascadePanel.test.tsx" timestamp="2026-10-23T16:57:24.508Z" hostname="e2b.local" tests="15" failures="0" errors="0" skipped="0" time="1.087561935">
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; renders direct, consumer and context lists separately and labels both totals" time="0.33094254">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; does not invent a classification for an older answer" time="0.072477226">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; keeps inventory-only zero counts explicitly unknown rather than safe" time="0.06544849">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; labels legacy history and unavailable mixed-version comparisons honestly" time="0.027494121">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; shows per-category moves even when the review total stays unchanged" time="0.055100464">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; shows the versioned policy on new results and warns for mixed-policy comparisons" time="0.066871118">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; discloses release digests, SBOM document hashes and declared deployment evidence separately" time="0.062076987">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; keeps stale/expired uncertainty separate and never labels fewer links safe" time="0.059833209">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="cascade disjoint system classification &gt; warns about unbound release identity and bounded software input" time="0.036479613">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="exact cascade identities &gt; hides compatibility impact counts for an unresolved target and executes only a selected identity" time="0.072702898">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="exact cascade identities &gt; requires the broad-name checkbox and warns about truncated or conflicting choices" time="0.052983807">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="exact cascade identities &gt; labels unresolved history as not analyzed and withholds misleading unchanged diffs" time="0.051341012">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="exact cascade identities &gt; shows subject-only and different-fingerprint binding gaps without calling them exposure" time="0.06339876">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="places coverage warnings before modeled impact panels" time="0.044490161">
+        </testcase>
+        <testcase classname="src/components/UnifiedCascadePanel.test.tsx" name="does not label incomparable coverage as unchanged exposure" time="0.022613356">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/components/ui.test.tsx" timestamp="2026-10-23T16:57:24.511Z" hostname="e2b.local" tests="11" failures="0" errors="0" skipped="0" time="0.290662822">
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Panel renders title, subtitle and children" time="0.04532975">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Stat / Kpi show label and value, including honest zero" time="0.020800222">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Badge renders its content" time="0.002617845">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Bar / ProgressBar / Ring accept percentages without crashing" time="0.023451508">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Table renders headers and rows and reports row selection" time="0.012320877">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Table headers declare column scope and rows are keyboard-activatable (audit 06 a11y)" time="0.12550633">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Tabs switches on click" time="0.005506281">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Tabs expose the ARIA tab pattern and move with arrow keys (audit 06 a11y)" time="0.023033214">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Button fires onClick and respects disabled" time="0.010026588">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; Drawer closes via its control" time="0.013897203">
+        </testcase>
+        <testcase classname="src/components/ui.test.tsx" name="ui primitives &gt; PageHead renders crumb and title" time="0.005012452">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/i18n/I18n.test.tsx" timestamp="2026-10-23T16:57:24.513Z" hostname="e2b.local" tests="4" failures="0" errors="0" skipped="0" time="0.069174715">
+        <testcase classname="src/i18n/I18n.test.tsx" name="i18n &gt; defaults to English, LTR" time="0.021802472">
+        </testcase>
+        <testcase classname="src/i18n/I18n.test.tsx" name="i18n &gt; switches to Arabic and flips the document direction to RTL" time="0.040974143">
+        </testcase>
+        <testcase classname="src/i18n/I18n.test.tsx" name="i18n &gt; falls back to the key for an unknown id and to English for an untranslated one" time="0.002694863">
+        </testcase>
+        <testcase classname="src/i18n/I18n.test.tsx" name="i18n &gt; every Arabic key exists in English (no orphan translations)" time="0.001076988">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/api.health.test.ts" timestamp="2026-10-23T16:57:24.514Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.01674611">
+        <testcase classname="src/lib/api.health.test.ts" name="apiSystemHealthStatus — no fabricated green &gt; reports only the Core API as Operational from /healthz alone" time="0.0073556">
+        </testcase>
+        <testcase classname="src/lib/api.health.test.ts" name="apiSystemHealthStatus — no fabricated green &gt; marks a down dependency Degraded, not Operational" time="0.001375538">
+        </testcase>
+        <testcase classname="src/lib/api.health.test.ts" name="apiSystemHealthStatus — no fabricated green &gt; uses the measured SLO window when present" time="0.001769628">
+        </testcase>
+        <testcase classname="src/lib/api.health.test.ts" name="apiSystemHealthStatus — no fabricated green &gt; reports Offline when the API is unreachable, with null latency" time="0.0009044">
+        </testcase>
+        <testcase classname="src/lib/api.health.test.ts" name="apiScannerEnginesHealth — scanners are on-demand collectors &gt; never claims Healthy/Active from API liveness" time="0.001856704">
+        </testcase>
+        <testcase classname="src/lib/api.health.test.ts" name="apiScannerEnginesHealth — scanners are on-demand collectors &gt; reports Offline for every engine when the API is unreachable" time="0.000545686">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/api.test.ts" timestamp="2026-10-23T16:57:24.516Z" hostname="e2b.local" tests="19" failures="0" errors="0" skipped="0" time="0.029072092">
+        <testcase classname="src/lib/api.test.ts" name="api bridge — offline contract &gt; returns an offline result instead of throwing when the backend is down" time="0.004341266">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="api bridge — offline contract &gt; maps a non-2xx status to offline with the HTTP code" time="0.00320447">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="api bridge — offline contract &gt; returns live data on 200" time="0.002110041">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="backend reachability — scope response truth &gt; rejects Vite&apos;s HTML SPA fallback even when it answers 200" time="0.000925332">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="backend reachability — scope response truth &gt; accepts only a scope-shaped JSON 200, not arbitrary JSON or malformed JSON" time="0.002123063">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="backend reachability — scope response truth &gt; recognizes a real JSON 401 auth response, but not HTML" time="0.001433565">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="backend reachability — scope response truth &gt; recognizes a real JSON 403 auth response, but not HTML" time="0.00089349">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="backend reachability — scope response truth &gt; recognizes a Bearer challenge without JSON, not a proxy&apos;s Basic challenge" time="0.000988109">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="backend reachability — scope response truth &gt; rejects 404, 5xx and network failures" time="0.000943048">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="backend reachability — scope response truth &gt; retries after a failure and rechecks after success with current auth and tenant" time="0.002215065">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="api bridge — auth + tenancy headers &gt; sends the bearer token and the active tenant on every call" time="0.001153961">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="api bridge — auth + tenancy headers &gt; omits auth headers when signed out" time="0.000773374">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="api bridge — auth + tenancy headers &gt; clearing the token also forgets roles and user name" time="0.00078154">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="api bridge — auth + tenancy headers &gt; tenant selection round-trips through storage" time="0.000419863">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="apiLogin &gt; stores token + roles on success" time="0.000938222">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="apiLogin &gt; surfaces the server&apos;s detail on a 401 and stores nothing" time="0.000642883">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="apiLogin &gt; does not throw when the backend is unreachable" time="0.000504231">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="syncSession &gt; adopts the server profile when /auth/me answers" time="0.000735625">
+        </testcase>
+        <testcase classname="src/lib/api.test.ts" name="syncSession &gt; clears the cached profile when offline instead of authorizing stale state" time="0.000449781">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/auth.test.tsx" timestamp="2026-10-23T16:57:24.520Z" hostname="e2b.local" tests="8" failures="0" errors="0" skipped="0" time="0.089665666">
+        <testcase classname="src/lib/auth.test.tsx" name="RequireAuth &gt; sends an anonymous visitor to the login screen" time="0.045600525">
+        </testcase>
+        <testcase classname="src/lib/auth.test.tsx" name="RequireAuth &gt; renders the page for a verified session" time="0.007554349">
+        </testcase>
+        <testcase classname="src/lib/auth.test.tsx" name="RequireAuth &gt; does not render the page while the session is still being checked" time="0.00364547">
+        </testcase>
+        <testcase classname="src/lib/auth.test.tsx" name="RequireAuth &gt; fails closed when /auth/me errors" time="0.007842475">
+        </testcase>
+        <testcase classname="src/lib/auth.test.tsx" name="RequireAuth &gt; a forged localStorage identity does not get past the guard" time="0.006172112">
+        </testcase>
+        <testcase classname="src/lib/auth.test.tsx" name="roles come from the server &gt; discards an edited localStorage role once the server answers" time="0.007482313">
+        </testcase>
+        <testcase classname="src/lib/auth.test.tsx" name="roles come from the server &gt; RequireRole hides a control the session&apos;s roles do not allow" time="0.003831165">
+        </testcase>
+        <testcase classname="src/lib/auth.test.tsx" name="roles come from the server &gt; RequireRole shows a control the session&apos;s roles allow" time="0.004651644">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/binary-scan-api.test.ts" timestamp="2026-10-23T16:57:24.522Z" hostname="e2b.local" tests="3" failures="0" errors="0" skipped="0" time="0.01376907">
+        <testcase classname="src/lib/binary-scan-api.test.ts" name="binary scan read-model API &gt; sends tenant scope and query filters for history" time="0.007060932">
+        </testcase>
+        <testcase classname="src/lib/binary-scan-api.test.ts" name="binary scan read-model API &gt; encodes scan ids for detail retrieval and preserves partial observations" time="0.001343723">
+        </testcase>
+        <testcase classname="src/lib/binary-scan-api.test.ts" name="binary scan read-model API &gt; supports observation, finding, coverage, and comparison API views" time="0.002529252">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/maturity.test.ts" timestamp="2026-10-23T16:57:24.523Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.020085968">
+        <testcase classname="src/lib/maturity.test.ts" name="capability maturity &gt; classifies every page route; aliases redirect to classified destinations" time="0.003379889">
+        </testcase>
+        <testcase classname="src/lib/maturity.test.ts" name="capability maturity &gt; does not classify routes that do not exist" time="0.000785042">
+        </testcase>
+        <testcase classname="src/lib/maturity.test.ts" name="capability maturity &gt; unknown routes default down to preview; query strings and sub-paths are ignored" time="0.00043926">
+        </testcase>
+        <testcase classname="src/lib/maturity.test.ts" name="capability maturity &gt; is not all GA" time="0.000827796">
+        </testcase>
+        <testcase classname="src/lib/maturity.test.ts" name="capability maturity &gt; retired sidebar routes are gone and every sidebar link has a page" time="0.00094919">
+        </testcase>
+        <testcase classname="src/lib/maturity.test.ts" name="capability maturity &gt; keeps visible page CTAs on BrowserRouter paths, never hash-only destinations" time="0.011016067">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/realtime.test.tsx" timestamp="2026-10-23T16:57:24.524Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.116999743">
+        <testcase classname="src/lib/realtime.test.tsx" name="estate SSE client &gt; resumes opaque checkpoint cursors, ignores control frames and deduplicates replay" time="0.057167582">
+        </testcase>
+        <testcase classname="src/lib/realtime.test.tsx" name="estate SSE client &gt; clears the old estate immediately and ignores a late old-estate response" time="0.014312093">
+        </testcase>
+        <testcase classname="src/lib/realtime.test.tsx" name="estate SSE client &gt; erases private feed and aborts on sign-out" time="0.013453775">
+        </testcase>
+        <testcase classname="src/lib/realtime.test.tsx" name="estate SSE client &gt; shows retention loss rather than treating a gap as a scan event" time="0.014388536">
+        </testcase>
+        <testcase classname="src/lib/realtime.test.tsx" name="estate SSE client &gt; keeps unmeasured telemetry unknown but preserves a measured zero" time="0.008018282">
+        </testcase>
+        <testcase classname="src/lib/realtime.test.tsx" name="estate SSE client &gt; does not silently reset a refused cursor to fresh successful history" time="0.006556026">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/requestFeedback.test.ts" timestamp="2026-10-23T16:57:24.526Z" hostname="e2b.local" tests="16" failures="0" errors="0" skipped="0" time="0.011220247">
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; categorizes read HTTP 401 without server detail" time="0.002489458">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; categorizes read HTTP 403 without server detail" time="0.000780945">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; categorizes read HTTP 409 without server detail" time="0.000401447">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; categorizes read HTTP 422 without server detail" time="0.000345674">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; categorizes read HTTP 429 without server detail" time="0.000222048">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; categorizes read HTTP 503 without server detail" time="0.000251622">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; calls HTTP 400 a rejected validation and retains the draft" time="0.000818993">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; calls HTTP 422 a rejected validation and retains the draft" time="0.00034806">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; does not infer a write outcome from transport/HTTP undefined" time="0.000703097">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; does not infer a write outcome from transport/HTTP 200" time="0.000423922">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; does not infer a write outcome from transport/HTTP 404" time="0.000242114">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; does not infer a write outcome from transport/HTTP 408" time="0.000264293">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; does not infer a write outcome from transport/HTTP 429" time="0.000188279">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; does not infer a write outcome from transport/HTTP 500" time="0.000135805">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; does not infer a write outcome from transport/HTTP 503" time="0.000132568">
+        </testcase>
+        <testcase classname="src/lib/requestFeedback.test.ts" name="Safe feedback preserves refusal and uncertainty boundaries &gt; requires revision reconciliation instead of advising a blind conflict retry" time="0.000276341">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/lib/useLive.scope.test.tsx" timestamp="2026-10-23T16:57:24.529Z" hostname="e2b.local" tests="36" failures="0" errors="0" skipped="0" time="0.166220198">
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on current-window estate" time="0.022517787">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on current-window auth" time="0.005002279">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on storage cryptoscan_tenant" time="0.006859105">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on storage zelinx_token" time="0.003075135">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on storage zelinx_roles" time="0.004211401">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on storage zelinx_user" time="0.00369224">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on storage null" time="0.002510168">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on visible resume" time="0.003137252">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears loaded data and revalidates on persisted pageshow" time="0.004057444">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; ignores old-context success even when abort is ignored" time="0.002776552">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; ignores old-context failure even when abort is ignored" time="0.002105342">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; does not resurrect an A/B/A response" time="0.003164584">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; clears the old path immediately while its replacement is pending" time="0.002550845">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; a null path clears data and cancels the previous request" time="0.001922676">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; disabling a previously loaded path clears its data and error state" time="0.003296131">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; null reads never fetch, even on resume or reload" time="0.001906464">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; manual reload clears old data, and latest reload wins" time="0.002629981">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; aborts on unmount and ignores a captured reload after unmount" time="0.00176915">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; bounds an ignored-abort transport and discards its late success" time="0.004256756">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; refreshes using the current token and estate rather than cached headers" time="0.002874046">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; uses the current fallback on reload without fetching on fallback identity alone" time="0.006553408">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; StrictMode remount rejects the first mount&apos;s late reply" time="0.003975059">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; does not refetch for unrelated storage" time="0.013827736">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; does not refetch for session storage" time="0.004138838">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; does not refetch for hidden tab" time="0.001473456">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; does not refetch for ordinary pageshow" time="0.003786412">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; distinguishes HTTP 401 refusal/outage and clears earlier data" time="0.00240988">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; distinguishes HTTP 403 refusal/outage and clears earlier data" time="0.001896803">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; distinguishes HTTP 409 refusal/outage and clears earlier data" time="0.002321618">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; distinguishes HTTP 503 refusal/outage and clears earlier data" time="0.0067104">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; distinguishes malformed JSON from live or transport failure" time="0.00191194">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; keeps transport outage empty and never invents data" time="0.001502754">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; guards a late response body after headers have already arrived" time="0.002008686">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; cleans its owned deadline and scope listeners on unmount" time="0.004429468">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; shows the safe refusal reason rather than falsely calling it an outage" time="0.02084745">
+        </testcase>
+        <testcase classname="src/lib/useLive.scope.test.tsx" name="useLive private read scope &gt; preserves the exported liveGet nullable compatibility contract" time="0.000843718">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Assets.test.tsx" timestamp="2026-10-23T16:57:24.537Z" hostname="e2b.local" tests="21" failures="0" errors="0" skipped="0" time="2.814809071">
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; renders sparse rows without inventing identity, crypto, ownership, dates, evidence, or verdicts" time="0.396374143">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; renders only returned columns and detail evidence IDs; preserves search, selection, and tenant authentication" time="0.181611295">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; loads beyond 100 without duplicate IDs and reports the server total" time="0.984218588">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; keeps loaded assets and exposes later-page failure with retry" time="0.695092691">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; clears old tenant assets and ignores late detail responses on a same-tab switch" time="0.094248305">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; ignores a late inventory response from the previous tenant" time="0.018296289">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; clears visible assets when authentication changes and the new request is denied" time="0.025455249">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; distinguishes HTTP 401 from a verified empty inventory" time="0.007433046">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; distinguishes HTTP 403 from a verified empty inventory" time="0.008577278">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; distinguishes offline service from an empty inventory" time="0.007469807">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; rejects rows without real IDs rather than fabricating asset identifiers" time="0.007424059">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; shows a genuine empty inventory only when the API returns an empty list" time="0.009355043">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; does not treat 403 asset detail as absent or verified evidence" time="0.034631465">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset inventory from the live API &gt; does not treat offline asset detail as absent or verified evidence" time="0.033128398">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset identity spine in the detail view &gt; shows the canonical asset_key when the API returns one" time="0.032312987">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset identity spine in the detail view &gt; says Not observed when no spine key exists — never invents identity" time="0.034238141">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset detail → fact and graph cross-links (round 64) &gt; joins the asset to its fact row on the identity spine" time="0.054016932">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset detail → fact and graph cross-links (round 64) &gt; says honestly when no fact row matches the identity — no fabricated fact" time="0.037142349">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset detail → fact and graph cross-links (round 64) &gt; walks the real blast radius from the asset and deep-links into the graph view" time="0.058204594">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset detail → fact and graph cross-links (round 64) &gt; shows the remediation tasks that reference this asset&apos;s evidence (round 75)" time="0.060575091">
+        </testcase>
+        <testcase classname="src/pages/Assets.test.tsx" name="asset detail → fact and graph cross-links (round 64) &gt; states honestly when no remediation task references the asset&apos;s evidence" time="0.031064203">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/BankingRegulatory.claims.test.tsx" timestamp="2026-10-23T16:57:24.542Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.219334203">
+        <testcase classname="src/pages/BankingRegulatory.claims.test.tsx" name="Existing banking view does not manufacture bank-ready claims &gt; separates unavailable evidence from zero risk and invented jurisdiction coverage" time="0.090697829">
+        </testcase>
+        <testcase classname="src/pages/BankingRegulatory.claims.test.tsx" name="Existing banking view does not manufacture bank-ready claims &gt; keeps unknown HNDL explicit and declarations separate from verified readiness" time="0.026129718">
+        </testcase>
+        <testcase classname="src/pages/BankingRegulatory.claims.test.tsx" name="Existing banking view does not manufacture bank-ready claims &gt; does not promote an empty returned cohort to discovery completeness" time="0.019415719">
+        </testcase>
+        <testcase classname="src/pages/BankingRegulatory.claims.test.tsx" name="Existing banking view does not manufacture bank-ready claims &gt; shows an actual zero jurisdiction mapping response without substituting ten" time="0.023628364">
+        </testcase>
+        <testcase classname="src/pages/BankingRegulatory.claims.test.tsx" name="Existing banking view does not manufacture bank-ready claims &gt; clears old-bank evidence when the private scope changes" time="0.043374605">
+        </testcase>
+        <testcase classname="src/pages/BankingRegulatory.claims.test.tsx" name="Existing banking view does not manufacture bank-ready claims &gt; passes a selected jurisdiction as a jurisdiction rather than an unsupported framework" time="0.012685988">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Cbom.test.tsx" timestamp="2026-10-23T16:57:24.544Z" hostname="e2b.local" tests="13" failures="0" errors="0" skipped="0" time="1.557140537">
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — no fabricated components &gt; renders real identities from /cbom/query with their BOM badges" time="0.156728804">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — no fabricated components &gt; never shows invented risk, owner, location or PQC columns" time="0.077855144">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — no fabricated components &gt; an empty query result shows the honest empty state, not default rows" time="0.07435836">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — no fabricated components &gt; flags cross-BOM conflicts instead of a blanket green" time="0.035130837">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — no fabricated components &gt; linkage filters only affect real fields" time="0.257270919">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — no fabricated components &gt; unreachable BOM sources leave the table empty with a warning, never fake rows" time="0.046830459">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — pinned snapshots &gt; pins a scan&apos;s CBOM and lists the pinned rendering" time="0.295260886">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — pinned snapshots &gt; serves the pinned document verbatim with its integrity self-check" time="0.084518154">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — pinned snapshots &gt; shows a tampered snapshot as MISMATCH — detected, never trusted" time="0.100394683">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — two-pin comparison &gt; diffs a newer pin against the previous pin, spine-keyed by default" time="0.163738679">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — two-pin comparison &gt; switches to exact per-scan evidence keying on request" time="0.124973949">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — two-pin comparison &gt; renders the identical state without inventing drift" time="0.098685225">
+        </testcase>
+        <testcase classname="src/pages/Cbom.test.tsx" name="Cbom — two-pin comparison &gt; offers no comparison with a single pin — honestly" time="0.037673706">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Certificates.test.tsx" timestamp="2026-10-23T16:57:24.546Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.580309332">
+        <testcase classname="src/pages/Certificates.test.tsx" name="Certificates page &gt; renders the persisted estate distinct from the live scan view, owner unknown stays unknown" time="0.14885451">
+        </testcase>
+        <testcase classname="src/pages/Certificates.test.tsx" name="Certificates page &gt; shows the estate drawer with facts, recorded usages, and no invented task linkage" time="0.114619332">
+        </testcase>
+        <testcase classname="src/pages/Certificates.test.tsx" name="Certificates page &gt; states honestly when no usage location is linked" time="0.07968056">
+        </testcase>
+        <testcase classname="src/pages/Certificates.test.tsx" name="Certificates page &gt; runs the revocation check and renders what the probes determined" time="0.085511059">
+        </testcase>
+        <testcase classname="src/pages/Certificates.test.tsx" name="Certificates page &gt; assigns ownership with a mandatory audited reason; 403 renders as the permission it needs" time="0.09380833">
+        </testcase>
+        <testcase classname="src/pages/Certificates.test.tsx" name="Certificates page &gt; renders an honest empty estate and stays honest offline" time="0.054892253">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Cmdb.test.tsx" timestamp="2026-10-23T16:57:24.548Z" hostname="e2b.local" tests="3" failures="0" errors="0" skipped="0" time="0.496783687">
+        <testcase classname="src/pages/Cmdb.test.tsx" name="Cmdb — per-asset risk explainability (§4.6) &gt; renders the unified risk rows with a Why? affordance per asset" time="0.250527778">
+        </testcase>
+        <testcase classname="src/pages/Cmdb.test.tsx" name="Cmdb — per-asset risk explainability (§4.6) &gt; Why? loads the chain: factor provenance, evidence trail, stored verdicts, owners, limitations" time="0.152740468">
+        </testcase>
+        <testcase classname="src/pages/Cmdb.test.tsx" name="Cmdb — per-asset risk explainability (§4.6) &gt; Close hides the panel; a failed explain never fabricates one" time="0.080134295">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/CommandCenter.test.tsx" timestamp="2026-10-23T16:57:24.549Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.948720655">
+        <testcase classname="src/pages/CommandCenter.test.tsx" name="CommandCenter source truth &gt; does not substitute zero or healthy/readiness claims when all endpoints are offline" time="0.329562807">
+        </testcase>
+        <testcase classname="src/pages/CommandCenter.test.tsx" name="CommandCenter source truth &gt; distinguishes a live empty response with no scan baseline from measured zeros" time="0.178424061">
+        </testcase>
+        <testcase classname="src/pages/CommandCenter.test.tsx" name="CommandCenter source truth &gt; keeps missing fields unavailable even when neighboring fields and coverage are returned" time="0.106011194">
+        </testcase>
+        <testcase classname="src/pages/CommandCenter.test.tsx" name="CommandCenter source truth &gt; renders only correctly scoped values from populated responses" time="0.14588173">
+        </testcase>
+        <testcase classname="src/pages/CommandCenter.test.tsx" name="CommandCenter source truth &gt; does not call an unscanned domain zero observed just because another scanner ran" time="0.11112388">
+        </testcase>
+        <testcase classname="src/pages/CommandCenter.test.tsx" name="CommandCenter source truth &gt; shows a measured zero only after a completed snapshot or comparison" time="0.0746861">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Compliance.test.tsx" timestamp="2026-10-23T16:57:24.550Z" hostname="e2b.local" tests="9" failures="0" errors="0" skipped="0" time="0.689301072">
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — no false green &gt; shows 100% only from real passing controls, with the denominator" time="0.103099276">
+        </testcase>
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — no false green &gt; an empty controls response is NOT a 100% score" time="0.022157723">
+        </testcase>
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — no false green &gt; an unreachable evidence source shows no score and no violation claim" time="0.039466029">
+        </testcase>
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — no false green &gt; counts fails and unknowns separately; unknown is not a violation" time="0.04991555">
+        </testcase>
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — no false green &gt; retention shows Not configured when the policy is absent, never a default 7" time="0.02601932">
+        </testcase>
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — no false green &gt; an unmapped framework says nothing was evaluated instead of showing all rows" time="0.16924206">
+        </testcase>
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — requirements register &gt; maps every requirement to evidence, gap, expiry and sign-off with an explicit denominator" time="0.083985364">
+        </testcase>
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — requirements register &gt; shows not-evaluated when no pack is pinned, and pinning establishes the evidence" time="0.092868998">
+        </testcase>
+        <testcase classname="src/pages/Compliance.test.tsx" name="Compliance — requirements register &gt; signs a requirement off over the pinned pack and records the reviewer" time="0.09938087">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/CriticalScope.test.tsx" timestamp="2026-10-23T16:57:24.552Z" hostname="e2b.local" tests="41" failures="0" errors="0" skipped="0" time="1.993960009">
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; clears retained evidence/drafts after cryptoscan_tenant" time="0.178847711">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; clears retained evidence/drafts after zelinx_token" time="0.085233023">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; clears retained evidence/drafts after zelinx_roles" time="0.049793515">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; clears retained evidence/drafts after zelinx_user" time="0.052160044">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; clears retained evidence/drafts after null" time="0.056983312">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; clears retained evidence/drafts after resume" time="0.059523597">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; clears retained evidence/drafts after bfcache" time="0.045757408">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; discards an old read even if abort is ignored, including A→B→A" time="0.035176669">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions private scope &gt; ignores unrelated storage changes" time="0.027201587">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; clears retained evidence/drafts after cryptoscan_tenant" time="0.074124552">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; clears retained evidence/drafts after zelinx_token" time="0.06298002">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; clears retained evidence/drafts after zelinx_roles" time="0.04970656">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; clears retained evidence/drafts after zelinx_user" time="0.048469265">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; clears retained evidence/drafts after null" time="0.048390862">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; clears retained evidence/drafts after resume" time="0.039569332">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; clears retained evidence/drafts after bfcache" time="0.048489887">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; discards an old read even if abort is ignored, including A→B→A" time="0.024816637">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness private scope &gt; ignores unrelated storage changes" time="0.017321609">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; clears retained evidence/drafts after cryptoscan_tenant" time="0.043998114">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; clears retained evidence/drafts after zelinx_token" time="0.020020422">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; clears retained evidence/drafts after zelinx_roles" time="0.026245759">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; clears retained evidence/drafts after zelinx_user" time="0.038023493">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; clears retained evidence/drafts after null" time="0.032484901">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; clears retained evidence/drafts after resume" time="0.017818153">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; clears retained evidence/drafts after bfcache" time="0.020669116">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; discards an old read even if abort is ignored, including A→B→A" time="0.012245467">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Evidence private scope &gt; ignores unrelated storage changes" time="0.008132663">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions mutation lock &gt; admits only one same-turn submit" time="0.036475546">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions mutation lock &gt; does not restore a late receipt across a scope reset" time="0.094756138">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions mutation lock &gt; warns that a failed write has an uncertain outcome, without automatic retry" time="0.051176466">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness mutation lock &gt; admits only one same-turn submit" time="0.040922681">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness mutation lock &gt; does not restore a late receipt across a scope reset" time="0.039396947">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness mutation lock &gt; warns that a failed write has an uncertain outcome, without automatic retry" time="0.102124859">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="deduplicates record verification before React flushes a second click" time="0.063968576">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="does not revive a record verdict after selecting away and back" time="0.083976196">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Operator decisions fences an old form synchronously before scope-reset rendering" time="0.045378902">
+            <system-err>
+Warning: An update to OperatorDecisionsPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OperatorDecisionsPage (/home/user/CryproScan/frontend/src/pages/OperatorDecisions.tsx:46:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at OperatorDecisions
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+Warning: An update to OperatorDecisionsPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OperatorDecisionsPage (/home/user/CryproScan/frontend/src/pages/OperatorDecisions.tsx:46:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at OperatorDecisions
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+Warning: An update to OperatorDecisionsPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OperatorDecisionsPage (/home/user/CryproScan/frontend/src/pages/OperatorDecisions.tsx:46:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at OperatorDecisions
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="Launch readiness fences an old form synchronously before scope-reset rendering" time="0.042084993">
+            <system-err>
+Warning: An update to LaunchReadinessPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LaunchReadinessPage (/home/user/CryproScan/frontend/src/pages/LaunchReadiness.tsx:61:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at LaunchReadiness
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+Warning: An update to LaunchReadinessPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LaunchReadinessPage (/home/user/CryproScan/frontend/src/pages/LaunchReadiness.tsx:61:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at LaunchReadiness
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+
+Warning: An update to LaunchReadinessPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LaunchReadinessPage (/home/user/CryproScan/frontend/src/pages/LaunchReadiness.tsx:61:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at LaunchReadiness
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="rejects inconsistent record PASS responses: {}" time="0.043603847">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="rejects inconsistent record PASS responses: {&quot;content_intact&quot;:false}" time="0.037820938">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="rejects inconsistent record PASS responses: {&quot;errors&quot;:[&quot;mismatch&quot;]}" time="0.037993486">
+        </testcase>
+        <testcase classname="src/pages/CriticalScope.test.tsx" name="bounds an interrupted launch write and requires reconciliation before retry" time="0.045538251">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/DependencyGraph.test.tsx" timestamp="2026-10-23T16:57:24.562Z" hostname="e2b.local" tests="10" failures="0" errors="0" skipped="0" time="0.709070931">
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — honest blast radius and backend &gt; counts impacted systems from the real `systems` field with per-system hops" time="0.191549794">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — honest blast radius and backend &gt; never defaults an unreported backend to Neo4j Cluster" time="0.068405099">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — honest blast radius and backend &gt; labels the real neo4j backend from the API response" time="0.057900511">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — honest blast radius and backend &gt; an empty traversal shows zero honestly instead of claiming none exist globally" time="0.064607526">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — honest blast radius and backend &gt; breaks the edge count down by provenance instead of implying all edges are observed" time="0.041080857">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — honest blast radius and backend &gt; labels edges with no provenance as unattributed, never as observed" time="0.039696639">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — honest blast radius and backend &gt; discloses the provenance of the edges the blast radius traversed" time="0.060039612">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — honest blast radius and backend &gt; a failed traversal says unavailable rather than &apos;no dependencies detected&apos;" time="0.071951483">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — asset-inventory deep link (round 64) &gt; ?asset= runs the asset-start blast radius with owning systems and honest linkage labels" time="0.072423405">
+        </testcase>
+        <testcase classname="src/pages/DependencyGraph.test.tsx" name="DependencyGraph — asset-inventory deep link (round 64) &gt; ?asset= with no system links says unknown, never zero impact" time="0.038097584">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Drift.test.tsx" timestamp="2026-10-23T16:57:24.565Z" hostname="e2b.local" tests="14" failures="0" errors="0" skipped="0" time="1.768619302">
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; does not turn a successful empty feed or missing per-scan comparison into an all-clear" time="0.119054505">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; reports actual scan comparison states without extrapolating to the estate" time="0.02546207">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; distinguishes HTTP 401 refusal from a known empty feed" time="0.17280011">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; distinguishes HTTP 403 refusal from a known empty feed" time="0.043774078">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; treats an unreachable backend as unknown, not zero events" time="0.027678342">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; shows source and observed fields and loads beyond the first 50 while scoping counts" time="0.603304199">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; shows paging failure without discarding loaded rows, then permits retry" time="0.510134534">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; acknowledges only on server response, with audit authorization and no resolution claim" time="0.058288195">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; does not mark rejected actions successful and labels resolution as administrative, never verified" time="0.078439257">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; ignores acknowledgement responses from a previous tenant after switching" time="0.04285809">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="drift feed and disposition truth &gt; clears old tenant events immediately and ignores late old-tenant responses" time="0.020804758">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="Drift — condition-level verification display (§4.7) &gt; shows evidence-backed VERIFIED separately from the administrative RESOLVED caveat" time="0.031564011">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="Drift — condition-level verification display (§4.7) &gt; says the closure closed nothing when the rescan still sees the condition" time="0.013000381">
+        </testcase>
+        <testcase classname="src/pages/Drift.test.tsx" name="Drift — condition-level verification display (§4.7) &gt; claims no verification line when none is recorded" time="0.017987554">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Evidence.test.tsx" timestamp="2026-10-23T16:57:24.568Z" hostname="e2b.local" tests="16" failures="0" errors="0" skipped="0" time="2.303520787">
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; shows sparse server facts, not per-record seals or invented audit IPs" time="0.398185076">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; renders server-confirmed scan PASS only after the exact scan verification response" time="0.109909851">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; reports a server FAIL and refuses missing or mismatched scan verdicts" time="0.068317147">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; keeps HTTP 401 failure distinct from empty evidence" time="0.014345146">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; keeps HTTP 403 failure distinct from empty evidence" time="0.018143705">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; keeps HTTP 503 failure distinct from empty evidence" time="0.016741483">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; reports offline service as unknown instead of no scans" time="0.021494197">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; does not retain a verified verdict if the verification request is later denied" time="0.062338666">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; paginates scans and selected scan evidence without inventing IDs" time="0.819760621">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; clears old scan, findings and verdict on tenant switch and rejects late old-tenant responses" time="0.073728239">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; shows audit permission failure rather than an empty or verified ledger" time="0.044578134">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence workflow &gt; retains audit export, chain verification, event selection and pagination across tab switches" time="0.444027471">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence — completed scans disclose failed optional stages (§4.8) &gt; marks a COMPLETED scan whose optional stages failed as observation-incomplete" time="0.025322452">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence — completed scans disclose failed optional stages (§4.8) &gt; claims no failure marker when statistics are absent or malformed" time="0.015170459">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence — completed scans disclose failed optional stages (§4.8) &gt; verifies a single evidence record on demand and counts only what was checked" time="0.061613932">
+        </testcase>
+        <testcase classname="src/pages/Evidence.test.tsx" name="Evidence — completed scans disclose failed optional stages (§4.8) &gt; filters the audit ledger server-side and keeps the export the full WORM ledger" time="0.106176758">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Findings.test.tsx" timestamp="2026-10-23T16:57:24.571Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.666372277">
+        <testcase classname="src/pages/Findings.test.tsx" name="Findings page &gt; verifies one record against its own commitments and shows the verdict" time="0.287372362">
+        </testcase>
+        <testcase classname="src/pages/Findings.test.tsx" name="Findings page &gt; renders a FAIL verdict with its exact errors — never a softened pass" time="0.126898465">
+        </testcase>
+        <testcase classname="src/pages/Findings.test.tsx" name="Findings page &gt; renders the auditor-role refusal honestly on 403" time="0.094625008">
+        </testcase>
+        <testcase classname="src/pages/Findings.test.tsx" name="Findings page &gt; cross-links the remediation tasks that reference this finding" time="0.074648257">
+        </testcase>
+        <testcase classname="src/pages/Findings.test.tsx" name="Findings page &gt; states honestly when no remediation task references the finding" time="0.060120393">
+        </testcase>
+        <testcase classname="src/pages/Findings.test.tsx" name="Findings page &gt; keeps the drawer honest when the backend is unreachable" time="0.019537667">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Hbom.test.tsx" timestamp="2026-10-23T16:57:24.572Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.611857895">
+        <testcase classname="src/pages/Hbom.test.tsx" name="HBOM page &gt; renders the estate document with identity, evidence and its content hash" time="0.179848218">
+        </testcase>
+        <testcase classname="src/pages/Hbom.test.tsx" name="HBOM page &gt; renders an honest empty estate — no fabricated components" time="0.06722537">
+        </testcase>
+        <testcase classname="src/pages/Hbom.test.tsx" name="HBOM page &gt; pins the estate document and verifies the pinned snapshot verbatim" time="0.138065135">
+        </testcase>
+        <testcase classname="src/pages/Hbom.test.tsx" name="HBOM page &gt; shows the MISMATCH verdict when a pinned payload was mutated" time="0.06970427">
+        </testcase>
+        <testcase classname="src/pages/Hbom.test.tsx" name="HBOM page &gt; compares two pins — devices added/removed and field drift on survivors" time="0.138927082">
+        </testcase>
+        <testcase classname="src/pages/Hbom.test.tsx" name="HBOM page &gt; stays honest when the backend is unreachable" time="0.014887555">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/LaunchReadiness.test.tsx" timestamp="2026-10-23T16:57:24.574Z" hostname="e2b.local" tests="7" failures="0" errors="0" skipped="0" time="0.574092558">
+        <testcase classname="src/pages/LaunchReadiness.test.tsx" name="Launch readiness &gt; preserves external assurance, SLA and bounded coverage limitations" time="0.132504496">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.test.tsx" name="Launch readiness &gt; does not keep operating success after a failed refresh" time="0.138101124">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.test.tsx" name="Launch readiness &gt; rejects malformed JSON without submitting a write" time="0.060353998">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.test.tsx" name="Launch readiness &gt; imports an external envelope and presents an immutable receipt" time="0.067979435">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.test.tsx" name="Launch readiness &gt; clears drafts and ignores delayed responses after an estate change" time="0.070227888">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.test.tsx" name="Launch readiness &gt; shows missing pilot evidence rather than accepted cached data" time="0.043109949">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.test.tsx" name="browses bounded exact-estate record revisions without inventing a current result" time="0.058603882">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/LaunchReadiness.usability.test.tsx" timestamp="2026-10-23T16:57:24.576Z" hostname="e2b.local" tests="9" failures="0" errors="0" skipped="0" time="0.932931883">
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="Existing launch operator task safety &gt; names the selected estate next to the form and explains why an ID-bound action is unavailable" time="0.303582727">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="Existing launch operator task safety &gt; preserves the draft and record ID, focuses safe validation feedback, and sends no malformed JSON" time="0.191346257">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="Existing launch operator task safety &gt; treats HTTP 400 as an ordinary rejected validation, not an ambiguous accepted write, without leaking raw detail" time="0.07772688">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="Existing launch operator task safety &gt; treats HTTP 422 as an ordinary rejected validation, not an ambiguous accepted write, without leaking raw detail" time="0.063953012">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="Existing launch operator task safety &gt; keeps a server outage ambiguous and never retries a write automatically" time="0.063802282">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="Existing launch operator task safety &gt; separates loading, unavailable, empty and partial operating reads instead of displaying a green default" time="0.082021431">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="Existing launch operator task safety &gt; labels retained history separately from an acknowledged write and a newly read current gate" time="0.050725958">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="Existing launch operator task safety &gt; isolates technical IDs and JSON as LTR while the surrounding Arabic task context is RTL" time="0.040210895">
+        </testcase>
+        <testcase classname="src/pages/LaunchReadiness.usability.test.tsx" name="bounds a non-cooperative action body at 20 seconds and ignores its late success without retrying" time="0.056462795">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Login.test.tsx" timestamp="2026-10-23T16:57:24.578Z" hostname="e2b.local" tests="2" failures="0" errors="0" skipped="0" time="0.261239953">
+        <testcase classname="src/pages/Login.test.tsx" name="login brand reveal &gt; paints readable plaintext first, exposes it to assistive tech, and leaves sign-in controls usable" time="0.208456925">
+        </testcase>
+        <testcase classname="src/pages/Login.test.tsx" name="login brand reveal &gt; renders static translated plaintext in reduced motion, including after an RTL switch" time="0.049887364">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/NotificationReceipts.test.tsx" timestamp="2026-10-23T16:57:24.578Z" hostname="e2b.local" tests="6" failures="0" errors="0" skipped="0" time="0.414891504">
+        <testcase classname="src/pages/NotificationReceipts.test.tsx" name="Read-only notification receipt inspection &gt; shows existing backlog without dispatch and never equates legacy unknown with delivery" time="0.102876188">
+        </testcase>
+        <testcase classname="src/pages/NotificationReceipts.test.tsx" name="Read-only notification receipt inspection &gt; navigates keyset pages and returns to newest without appending duplicates" time="0.181189313">
+        </testcase>
+        <testcase classname="src/pages/NotificationReceipts.test.tsx" name="Read-only notification receipt inspection &gt; resets pagination on filtering and never lets an old page overwrite the new filter" time="0.05743932">
+        </testcase>
+        <testcase classname="src/pages/NotificationReceipts.test.tsx" name="Read-only notification receipt inspection &gt; does not turn unavailable counts or ledger data into zero/healthy outcomes" time="0.018189167">
+        </testcase>
+        <testcase classname="src/pages/NotificationReceipts.test.tsx" name="Read-only notification receipt inspection &gt; keeps empty observed data distinct from proof of delivered events" time="0.017829757">
+        </testcase>
+        <testcase classname="src/pages/NotificationReceipts.test.tsx" name="Read-only notification receipt inspection &gt; refreshes both reads without issuing a write or retaining the older-page cursor" time="0.034216426">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Notifications.test.tsx" timestamp="2026-10-23T16:57:24.579Z" hostname="e2b.local" tests="8" failures="0" errors="0" skipped="0" time="0.75635323">
+        <testcase classname="src/pages/Notifications.test.tsx" name="Notifications page &gt; delivers the in-app feed with the verification outcome as its flagship class" time="0.172927187">
+        </testcase>
+        <testcase classname="src/pages/Notifications.test.tsx" name="Notifications page &gt; shows the new event classes in the routing matrix" time="0.064650072">
+        </testcase>
+        <testcase classname="src/pages/Notifications.test.tsx" name="Notifications page &gt; dispatches outward over the drain button and shows per-integration outcomes" time="0.181334815">
+        </testcase>
+        <testcase classname="src/pages/Notifications.test.tsx" name="Notifications page &gt; shows MEASURED connector status — never a CONNECTED derivation from the enabled flag" time="0.073059651">
+        </testcase>
+        <testcase classname="src/pages/Notifications.test.tsx" name="Notifications page &gt; renders the honest nothing-new state after a dry drain" time="0.082262922">
+        </testcase>
+        <testcase classname="src/pages/Notifications.test.tsx" name="Notifications page &gt; renders an honest empty feed — never fabricated notifications" time="0.034282873">
+        </testcase>
+        <testcase classname="src/pages/Notifications.test.tsx" name="does not label deferred receipts or legacy history as delivered" time="0.075606078">
+        </testcase>
+        <testcase classname="src/pages/Notifications.test.tsx" name="renders a lost receipt fence as unconfirmed, not a durable delivered outcome" time="0.068794031">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/OperatorDecisions.test.tsx" timestamp="2026-10-23T16:57:24.581Z" hostname="e2b.local" tests="5" failures="0" errors="0" skipped="0" time="4.319262616">
+        <testcase classname="src/pages/OperatorDecisions.test.tsx" name="Operator decisions &gt; distinguishes reported action, unknown coverage and verification decisions" time="0.143930089">
+        </testcase>
+        <testcase classname="src/pages/OperatorDecisions.test.tsx" name="Operator decisions &gt; drops old estate results and fields when selection changes" time="0.063374974">
+        </testcase>
+        <testcase classname="src/pages/OperatorDecisions.test.tsx" name="Operator decisions &gt; does not substitute cached success on polling errors" time="0.120125083">
+        </testcase>
+        <testcase classname="src/pages/OperatorDecisions.test.tsx" name="Operator decisions &gt; shows replay reset until a fresh SQL read is acknowledged" time="0.048073455">
+        </testcase>
+        <testcase classname="src/pages/OperatorDecisions.test.tsx" name="Operator decisions &gt; bounds a long polling session without growing history or overlapping reads" time="3.940915989">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Priorities.test.tsx" timestamp="2026-10-23T16:57:24.582Z" hostname="e2b.local" tests="4" failures="0" errors="0" skipped="0" time="0.228515998">
+        <testcase classname="src/pages/Priorities.test.tsx" name="priority item → owned remediation task (§4.7) &gt; opens tasks for a drift item and reports what was created" time="0.121142799">
+        </testcase>
+        <testcase classname="src/pages/Priorities.test.tsx" name="priority item → owned remediation task (§4.7) &gt; shows the honest no-op when the drift has no failing evidence" time="0.037727858">
+        </testcase>
+        <testcase classname="src/pages/Priorities.test.tsx" name="priority item → owned remediation task (§4.7) &gt; shows the API&apos;s 422 refusal verbatim for runtime items — never papers over it" time="0.041035857">
+        </testcase>
+        <testcase classname="src/pages/Priorities.test.tsx" name="priority item → owned remediation task (§4.7) &gt; flags rows without a backing record id instead of offering a dead button" time="0.02558173">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Remediation.scope.test.tsx" timestamp="2026-10-23T16:57:24.583Z" hostname="e2b.local" tests="29" failures="0" errors="0" skipped="0" time="2.59174085">
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; clears rows, counts and private drafts immediately on tenant change" time="0.438611533">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; clears rows, counts and private drafts immediately on auth change" time="0.139877816">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; ignores late initial success after tenant change" time="0.059644236">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; ignores late initial failure after tenant change" time="0.042182682">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; ignores late initial success after auth change" time="0.029735572">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; ignores late initial failure after auth change" time="0.038380113">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; ignores a superseded filter read&apos;s late success" time="0.050563408">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; ignores a superseded filter read&apos;s late failure" time="0.044939608">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not show old rows or premature empty success while a filter read is pending" time="0.090548371">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; drops old counts and findings when the current read fails" time="0.06471473">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not let old accept success reload or clear the new scope" time="0.148845068">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not let old accept failure reload or clear the new scope" time="0.137750254">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not let old complete success reload or clear the new scope" time="0.118163654">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not let old complete failure reload or clear the new scope" time="0.08637235">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not let old verify success reload or clear the new scope" time="0.120364162">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not let old verify failure reload or clear the new scope" time="0.114465294">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not refresh after an action completes on an unmounted page" time="0.046670897">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; prevents two same-turn lifecycle submissions" time="0.05423336">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; keeps HTTP failure outcome uncertain without automatic retry" time="0.067779143">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; keeps network disconnect outcome uncertain without automatic retry" time="0.091669697">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; keeps StrictMode&apos;s superseded mount read out of the current view" time="0.029581743">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not accept an old success after switching back to the same filter" time="0.042573467">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not accept an old failure after switching back to the same filter" time="0.045082373">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; preserves status and draft on HTTP 403 without retrying" time="0.107158317">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; preserves status and draft on HTTP 409 without retrying" time="0.106273806">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; clears private state on cross-window storage change cryptoscan_tenant" time="0.12411185">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; clears private state on cross-window storage change zelinx_token" time="0.05871197">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; clears private state on cross-window storage change null" time="0.060702868">
+        </testcase>
+        <testcase classname="src/pages/Remediation.scope.test.tsx" name="Remediation scope and asynchronous outcomes &gt; does not reset drafts for unrelated storage preferences" time="0.028255694">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Remediation.test.tsx" timestamp="2026-10-23T16:57:24.589Z" hostname="e2b.local" tests="5" failures="0" errors="0" skipped="0" time="0.502756824">
+        <testcase classname="src/pages/Remediation.test.tsx" name="Remediation — task lifecycle &gt; renders tasks with owner, source and the latest machine verification" time="0.164713149">
+        </testcase>
+        <testcase classname="src/pages/Remediation.test.tsx" name="Remediation — task lifecycle &gt; expands a task and drives the lifecycle: complete calls the endpoint with the rescan id" time="0.222338449">
+        </testcase>
+        <testcase classname="src/pages/Remediation.test.tsx" name="Remediation — task lifecycle &gt; hides the PROPOSED-only accept action on an ACCEPTED task" time="0.053574318">
+        </testcase>
+        <testcase classname="src/pages/Remediation.test.tsx" name="Remediation — task lifecycle &gt; filters by status server-side and renders the honest empty state" time="0.043508301">
+        </testcase>
+        <testcase classname="src/pages/Remediation.test.tsx" name="Remediation — task lifecycle &gt; renders the offline state without inventing tasks" time="0.015310415">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Reports.test.tsx" timestamp="2026-10-23T16:57:24.590Z" hostname="e2b.local" tests="3" failures="0" errors="0" skipped="0" time="0.406072714">
+        <testcase classname="src/pages/Reports.test.tsx" name="Reports — report version authority (§4.4) &gt; marks content-addressed snapshots and names legacy rows honestly" time="0.126482036">
+        </testcase>
+        <testcase classname="src/pages/Reports.test.tsx" name="Reports — report version authority (§4.4) &gt; pins the EXACT scan: form calls the pin endpoint with the named template" time="0.189906017">
+        </testcase>
+        <testcase classname="src/pages/Reports.test.tsx" name="Reports — report version authority (§4.4) &gt; a failed pin renders the error, never a fabricated success" time="0.086659779">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Risk.test.tsx" timestamp="2026-10-23T16:57:24.591Z" hostname="e2b.local" tests="4" failures="0" errors="0" skipped="0" time="0.360288138">
+        <testcase classname="src/pages/Risk.test.tsx" name="per-system risk explainability (§4.6) &gt; ranks systems with score, owner, evidence count, lineage and top driver" time="0.146320272">
+        </testcase>
+        <testcase classname="src/pages/Risk.test.tsx" name="per-system risk explainability (§4.6) &gt; opens a full decomposition: factor levels, weights, signals, owners, evidence guidance" time="0.135299634">
+        </testcase>
+        <testcase classname="src/pages/Risk.test.tsx" name="per-system risk explainability (§4.6) &gt; shows the honest empty state when no systems are scored" time="0.033759102">
+        </testcase>
+        <testcase classname="src/pages/Risk.test.tsx" name="per-system risk explainability (§4.6) &gt; says the engine is unavailable rather than showing an invented table" time="0.041733967">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Scanners.test.tsx" timestamp="2026-10-23T16:57:24.592Z" hostname="e2b.local" tests="20" failures="0" errors="0" skipped="0" time="2.025206212">
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; does not treat an accepted discovery run as completed until its ID status is terminal" time="0.476890461">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; keeps a queued run pending until its returned ID resolves to completed" time="0.142608734">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; reports terminal failed with the backend error rather than success" time="0.131622076">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; reports terminal cancelled with the backend error rather than success" time="0.113072988">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; never routes passive network selection to an active sweep; requires explicit authorization" time="0.095650293">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; preserves HTTP 403 safety refusals without fallback or fabricated completion" time="0.069257615">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; preserves HTTP 409 safety refusals without fallback or fabricated completion" time="0.058118326">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; preserves HTTP 503 safety refusals without fallback or fabricated completion" time="0.061110812">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; every scanner card is available behind the durable per-run job contract" time="0.014764448">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; runs an HSM key check with a durable job id and tracks it to completion" time="0.072892355">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; runs a CT monitor scan and reports per-domain errors verbatim" time="0.111672079">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; queues a source scan with a job id and tracks it through the durable job record" time="0.112492674">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; reports an execution-gate refusal from the job record verbatim" time="0.074502797">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; runs a cloud scan behind its durable job record and shows the run&apos;s own coverage" time="0.094678534">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; runs a container scan and reports the run&apos;s recorded failure reason verbatim" time="0.070441902">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; does not accept a job status record that identifies a different run" time="0.065825913">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; does not claim a failed onboarding precondition or an accepted run without ID completed" time="0.05461441">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; marks an accepted discovery response without a run ID as unknown" time="0.06256737">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; stops tracking on auth replacement without accepting a late completion" time="0.081455414">
+        </testcase>
+        <testcase classname="src/pages/Scanners.test.tsx" name="scanner workflow truth &gt; uses auth and tenant on start/status, and ignores a prior tenant&apos;s late result" time="0.057352092">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/SearchResults.test.tsx" timestamp="2026-10-23T16:57:24.597Z" hostname="e2b.local" tests="4" failures="0" errors="0" skipped="0" time="0.182731979">
+        <testcase classname="src/pages/SearchResults.test.tsx" name="SearchResults — observed assets, server-side &gt; shows estate assets from the server-side search, labeled as observed" time="0.115866486">
+        </testcase>
+        <testcase classname="src/pages/SearchResults.test.tsx" name="SearchResults — observed assets, server-side &gt; shows an honest empty state when nothing matches — no invented rows" time="0.028048751">
+        </testcase>
+        <testcase classname="src/pages/SearchResults.test.tsx" name="SearchResults — runtime findings, server-side (round 65) &gt; searches the whole runtime-findings store on the server, labeled with the match total" time="0.019603269">
+        </testcase>
+        <testcase classname="src/pages/SearchResults.test.tsx" name="SearchResults — runtime findings, server-side (round 65) &gt; shows no runtime group when the store has zero matches — no invented findings" time="0.015525825">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/SystemHealth.test.tsx" timestamp="2026-10-23T16:57:24.598Z" hostname="e2b.local" tests="3" failures="0" errors="0" skipped="0" time="0.215966367">
+        <testcase classname="src/pages/SystemHealth.test.tsx" name="SystemHealth worker-fleet probe &gt; renders the measured queue &amp; worker pool row — drain evidence, live heartbeat, no synthetic latency" time="0.137879206">
+        </testcase>
+        <testcase classname="src/pages/SystemHealth.test.tsx" name="SystemHealth worker-fleet probe &gt; surfaces stuck work as Degraded with the exact measured reason" time="0.037764429">
+        </testcase>
+        <testcase classname="src/pages/SystemHealth.test.tsx" name="SystemHealth worker-fleet probe &gt; stays honestly Not measured when the probe is unreachable or unauthenticated" time="0.037371568">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/Tenancy.test.tsx" timestamp="2026-10-23T16:57:24.598Z" hostname="e2b.local" tests="5" failures="0" errors="0" skipped="0" time="0.264540341">
+        <testcase classname="src/pages/Tenancy.test.tsx" name="OrgSwitcher — the tenant picker on the tenancy page &gt; renders one button per membership and marks the active org" time="0.118711353">
+            <system-err>
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/Tenancy.test.tsx" name="OrgSwitcher — the tenant picker on the tenancy page &gt; switching stores the org and every later call carries it as X-Tenant-ID" time="0.051692014">
+            <system-err>
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/Tenancy.test.tsx" name="OrgSwitcher — the tenant picker on the tenancy page &gt; hides the platform estate option for non-admin members" time="0.024836159">
+            <system-err>
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/Tenancy.test.tsx" name="OrgSwitcher — the tenant picker on the tenancy page &gt; offers the platform estate to platform admins and clears the header" time="0.042164596">
+            <system-err>
+Warning: An update to Tenancy inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Tenancy (/home/user/CryproScan/frontend/src/pages/Tenancy.tsx:583:72)
+    at Suspense
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to Tenancy inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Tenancy (/home/user/CryproScan/frontend/src/pages/Tenancy.tsx:583:72)
+    at Suspense
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to Tenancy inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Tenancy (/home/user/CryproScan/frontend/src/pages/Tenancy.tsx:583:72)
+    at Suspense
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to Tenancy inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Tenancy (/home/user/CryproScan/frontend/src/pages/Tenancy.tsx:583:72)
+    at Suspense
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+            </system-err>
+        </testcase>
+        <testcase classname="src/pages/Tenancy.test.tsx" name="OrgSwitcher — the tenant picker on the tenancy page &gt; stays hidden when the user belongs to no organization" time="0.023821105">
+            <system-err>
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() =&gt; {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you&apos;re testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+            </system-err>
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/navigation.test.tsx" timestamp="2026-10-23T16:57:24.601Z" hostname="e2b.local" tests="5" failures="0" errors="0" skipped="0" time="0.418731021">
+        <testcase classname="src/pages/navigation.test.tsx" name="primary workspace CTAs &gt; opens inventory from a dashboard KPI rather than changing only the hash" time="0.243337987">
+        </testcase>
+        <testcase classname="src/pages/navigation.test.tsx" name="primary workspace CTAs &gt; routes the CBOM dependency CTA to an actual graph workspace" time="0.056604562">
+        </testcase>
+        <testcase classname="src/pages/navigation.test.tsx" name="primary workspace CTAs &gt; routes empty dependency discovery to scanners" time="0.054606799">
+        </testcase>
+        <testcase classname="src/pages/navigation.test.tsx" name="primary workspace CTAs &gt; opens full search results on Enter with an encoded query" time="0.020231744">
+        </testcase>
+        <testcase classname="src/pages/navigation.test.tsx" name="primary workspace CTAs &gt; reads direct search query links and updates results on repeat search" time="0.040353373">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/pages/pages.smoke.test.tsx" timestamp="2026-10-23T16:57:24.602Z" hostname="e2b.local" tests="79" failures="0" errors="0" skipped="0" time="3.761798843">
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; discovers the page files App.tsx routes to" time="0.003178987">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Accuracy mounts without throwing and paints something" time="1.294619147">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Admin mounts without throwing and paints something" time="0.049539188">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Agility mounts without throwing and paints something" time="0.031612242">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Alerts mounts without throwing and paints something" time="0.039003342">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Assets mounts without throwing and paints something" time="0.019306249">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Automation mounts without throwing and paints something" time="0.051372565">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; BankingRegulatory mounts without throwing and paints something" time="0.027000264">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Catalog mounts without throwing and paints something" time="0.024296393">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Cbom mounts without throwing and paints something" time="0.036721539">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Certificates mounts without throwing and paints something" time="0.056916076">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Cloud mounts without throwing and paints something" time="0.034416243">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Cmdb mounts without throwing and paints something" time="0.030683877">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; CommandCenter mounts without throwing and paints something" time="0.062618103">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Compliance mounts without throwing and paints something" time="0.025611434">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Crypto mounts without throwing and paints something" time="0.023231777">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; CryptoAssets mounts without throwing and paints something" time="0.018157567">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; CryptoAssurance mounts without throwing and paints something" time="0.027573208">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; CryptoChanges mounts without throwing and paints something" time="0.019490148">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; DependencyGraph mounts without throwing and paints something" time="0.041881929">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; DevSecOps mounts without throwing and paints something" time="0.12265117">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; DigitalTwin mounts without throwing and paints something" time="0.055587105">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Drift mounts without throwing and paints something" time="0.016465621">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Evidence mounts without throwing and paints something" time="0.015951822">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Executive mounts without throwing and paints something" time="0.023875866">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Findings mounts without throwing and paints something" time="0.024404824">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Governance mounts without throwing and paints something" time="0.022363285">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Graph mounts without throwing and paints something" time="0.025356853">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Hardware mounts without throwing and paints something" time="0.05724176">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Hbom mounts without throwing and paints something" time="0.01554912">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Identity mounts without throwing and paints something" time="0.021656983">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Integrations mounts without throwing and paints something" time="0.019025573">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; InviteAccept mounts without throwing and paints something" time="0.010752626">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; LaunchReadiness mounts without throwing and paints something" time="0.042255482">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Libraries mounts without throwing and paints something" time="0.017633227">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; LiveAssetIntelligence mounts without throwing and paints something" time="0.074416154">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; LiveEnvironment mounts without throwing and paints something" time="0.045342135">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; LiveScanners mounts without throwing and paints something" time="0.028300018">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; LiveStream mounts without throwing and paints something" time="0.018793979">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Login mounts without throwing and paints something" time="0.096773606">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Migration mounts without throwing and paints something" time="0.028885006">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Nbom mounts without throwing and paints something" time="0.027416918">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Network mounts without throwing and paints something" time="0.039988481">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; NotificationReceipts mounts without throwing and paints something" time="0.01319576">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Notifications mounts without throwing and paints something" time="0.035313527">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Onboarding mounts without throwing and paints something" time="0.0515186">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; OperatorDecisions mounts without throwing and paints something" time="0.020503229">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Organization mounts without throwing and paints something" time="0.015765183">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; PlatformP2 mounts without throwing and paints something" time="0.108192418">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Pqc mounts without throwing and paints something" time="0.030664095">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; PqcMap mounts without throwing and paints something" time="0.031235418">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Priorities mounts without throwing and paints something" time="0.008480752">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Protocols mounts without throwing and paints something" time="0.016267243">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Register mounts without throwing and paints something" time="0.016690193">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Remediation mounts without throwing and paints something" time="0.010882599">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Reports mounts without throwing and paints something" time="0.020626345">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; ResetPassword mounts without throwing and paints something" time="0.019833974">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Resilience mounts without throwing and paints something" time="0.028847527">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Risk mounts without throwing and paints something" time="0.01732469">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; RoleDashboard mounts without throwing and paints something" time="0.019429095">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Runtime mounts without throwing and paints something" time="0.027664293">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Scanners mounts without throwing and paints something" time="0.017316237">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Scope mounts without throwing and paints something" time="0.075573502">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; SearchResults mounts without throwing and paints something" time="0.010361833">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Sectors mounts without throwing and paints something" time="0.019700088">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Security mounts without throwing and paints something" time="0.030231775">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; SecurityCenter mounts without throwing and paints something" time="0.039249554">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; SecurityIntelligence mounts without throwing and paints something" time="0.031265345">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; SecurityPolicy mounts without throwing and paints something" time="0.046245152">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Settings mounts without throwing and paints something" time="0.023937648">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Supervision mounts without throwing and paints something" time="0.020997344">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; SystemHealth mounts without throwing and paints something" time="0.01765427">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Telecom mounts without throwing and paints something" time="0.037257423">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Tenancy mounts without throwing and paints something" time="0.008688552">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Timeline mounts without throwing and paints something" time="0.015546971">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Trust mounts without throwing and paints something" time="0.037539056">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; Vendor mounts without throwing and paints something" time="0.016744343">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; VendorDueDiligence mounts without throwing and paints something" time="0.0310954">
+        </testcase>
+        <testcase classname="src/pages/pages.smoke.test.tsx" name="pages render offline &gt; WhatIf mounts without throwing and paints something" time="0.017328855">
+        </testcase>
+    </testsuite>
+    <testsuite name="src/test/ui-copy.test.ts" timestamp="2026-10-23T16:57:24.620Z" hostname="e2b.local" tests="1" failures="0" errors="0" skipped="0" time="0.693508234">
+        <testcase classname="src/test/ui-copy.test.ts" name="operator-facing copy &gt; does not display raw API endpoints in text or descriptive props" time="0.690520947">
+        </testcase>
+    </testsuite>
+</testsuites>

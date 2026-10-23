@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import PrivateScope from "../components/PrivateScope";
 import { Badge, Button } from "../components/ui";
 import {
   apiBankingOverview,
@@ -7,12 +8,16 @@ import {
   apiBankingHsm,
   apiBankingJurisdictions,
   apiBankingSwiftCsp,
-  apiBankingActionPlan,
+  apiBankingActionPlanJurisdiction,
   tenantFetch,
 } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
 export default function BankingRegulatory() {
+  return <PrivateScope><BankingRegulatoryPage /></PrivateScope>;
+}
+
+function BankingRegulatoryPage() {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<any>(null);
   const [hndl, setHndl] = useState<any>(null);
@@ -20,6 +25,7 @@ export default function BankingRegulatory() {
   const [hsmFleet, setHsmFleet] = useState<any>(null);
   const [swiftCsp, setSwiftCsp] = useState<any>(null);
   const [jurisdictions, setJurisdictions] = useState<any[]>([]);
+  const [jurisdictionsKnown, setJurisdictionsKnown] = useState(false);
   const [selectedJurisdiction, setSelectedJurisdiction] = useState<string>("eu");
   const [actionPlan, setActionPlan] = useState<any>(null);
 
@@ -67,7 +73,7 @@ export default function BankingRegulatory() {
           if (hndlRes.source === "live" && hndlRes.data) setHndl(hndlRes.data);
           if (rmRes.source === "live" && rmRes.data) setRoadmap(rmRes.data);
           if (hsmRes.source === "live" && hsmRes.data) setHsmFleet(hsmRes.data);
-          if (jRes.source === "live" && jRes.data) setJurisdictions((jRes.data as any).jurisdictions || []);
+          if (jRes.source === "live" && jRes.data && Array.isArray((jRes.data as any).jurisdictions)) { setJurisdictions((jRes.data as any).jurisdictions); setJurisdictionsKnown(true); }
           if (swiftRes.source === "live" && swiftRes.data) setSwiftCsp(swiftRes.data);
         }
       } catch (err) {
@@ -83,7 +89,7 @@ export default function BankingRegulatory() {
   useEffect(() => {
     if (!selectedJurisdiction) return;
     let alive = true;
-    apiBankingActionPlan(selectedJurisdiction).then((r) => {
+    apiBankingActionPlanJurisdiction(selectedJurisdiction).then((r) => {
       if (alive && r.source === "live" && r.data) setActionPlan(r.data);
     }).catch(() => {});
     return () => { alive = false; };
@@ -118,7 +124,7 @@ export default function BankingRegulatory() {
           </div>
           <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Banking & Regulatory Cryptography</h1>
           <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
-            Deterministic supervision posture for DORA, SWIFT CSP, NIST IR 8547, and cross-border regulatory bodies.
+            Evidence screening for review. Bank acceptance, regulatory approval and discovery completeness are not established by this view.
           </p>
         </div>
 
@@ -141,22 +147,22 @@ export default function BankingRegulatory() {
             HNDL Exposure
           </div>
           <div style={{ fontSize: "28px", fontWeight: 700, color: hndl?.at_risk ? "var(--red)" : "var(--text)", margin: "4px 0" }}>
-            {loading ? "..." : (hndl?.total ?? 0)}
+            {loading ? "..." : (hndl?.total ?? "Unknown")}
           </div>
-          <div style={{ fontSize: "12px", color: hndl?.at_risk ? "var(--red)" : "var(--green)" }}>
-            {hndl?.at_risk ? "Confidential records at risk" : "Zero vulnerable data classes observed"}
+          <div style={{ fontSize: "12px", color: hndl?.at_risk === true ? "var(--red)" : "var(--dim)" }}>
+            {loading ? "Loading HNDL evidence…" : !hndl ? "HNDL evidence unavailable — not zero risk." : hndl.at_risk === true ? "Confidential records at risk" : hndl.at_risk !== false || hndl.assessment_complete !== true ? "HNDL risk unknown — unresolved or unclassified evidence." : "No HNDL candidates in returned scope — not proof of completeness."}
           </div>
         </div>
 
         <div className="panel" style={{ padding: "18px" }}>
           <div style={{ fontSize: "11.5px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            HSM Fleet PQC Readiness
+            HSM Fleet — verification status
           </div>
           <div style={{ fontSize: "28px", fontWeight: 700, margin: "4px 0" }}>
-            {loading ? "..." : `${hsmFleet?.fleet?.pqc_ready ?? 0} / ${hsmFleet?.fleet?.total ?? 0}`}
+            {loading ? "..." : hsmFleet?.fleet ? `${hsmFleet.fleet.pqc_ready ?? 0} verified / ${hsmFleet.fleet.total ?? "unknown"} returned` : "Unavailable"}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            FIPS Validated: {hsmFleet?.fleet?.fips_validated_family ?? 0}
+            HSM declarations are not verified PQC readiness. Exact module FIPS validation is not established by family names.
           </div>
         </div>
 
@@ -165,22 +171,22 @@ export default function BankingRegulatory() {
             SWIFT CSP Controls
           </div>
           <div style={{ fontSize: "28px", fontWeight: 700, color: swiftCsp?.cscf?.attestation_ready ? "var(--green)" : "var(--amber)", margin: "4px 0" }}>
-            {loading ? "..." : (swiftCsp?.cscf?.attestation_ready ? "Attestation Ready" : "Review Required")}
+            {loading ? "..." : (swiftCsp?.cscf?.attestation_ready ? "Mapped assertions — review required" : "Review Required")}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Gaps: {swiftCsp?.cscf?.gaps ?? 0} · Unknown: {swiftCsp?.cscf?.unknown ?? 0}
+            Gaps: {swiftCsp?.cscf?.gaps ?? "Unknown"} · Unknown: {swiftCsp?.cscf?.unknown ?? "Unknown"}
           </div>
         </div>
 
         <div className="panel" style={{ padding: "18px" }}>
           <div style={{ fontSize: "11.5px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-            Supported Jurisdictions
+            Jurisdiction mappings returned
           </div>
           <div style={{ fontSize: "28px", fontWeight: 700, margin: "4px 0" }}>
-            {loading ? "..." : (jurisdictions.length || 10)}
+            {loading ? "..." : (jurisdictionsKnown ? jurisdictions.length : "Unavailable")}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            ECB, FCA, Fed, MAS, HKMA, FINMA
+            Mapping presence is not regulatory approval.
           </div>
         </div>
       </div>
@@ -190,7 +196,7 @@ export default function BankingRegulatory() {
         <div className="panel" style={{ padding: "20px" }}>
           <h3 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 600 }}>SWIFT CSP Control Evidence</h3>
           <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
-            Authoritative platform mapping against Customer Security Programme themes.
+            Evidence crosswalk for review; not a SWIFT or regulator attestation.
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -225,11 +231,11 @@ export default function BankingRegulatory() {
           </div>
         </div>
 
-        {/* ISO 20022 Signature Verification Testbench */}
+        {/* ISO 20022 Signature Metadata Testbench */}
         <div className="panel" style={{ padding: "20px" }}>
-          <h3 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 600 }}>ISO 20022 Signature Verification</h3>
+          <h3 style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 600 }}>ISO 20022 Signature Metadata</h3>
           <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
-            Inspect Business Application Header (BAH) xmldsig and XAdES digital signatures.
+            Inspect BAH/xmldsig metadata only; cryptographic signature validity, trust and PQC readiness are not established.
           </p>
 
           <textarea
@@ -266,7 +272,7 @@ export default function BankingRegulatory() {
               <div style={{ fontSize: "12px", color: "var(--dim)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
                 <div>Algorithm: <span style={{ color: "var(--text)" }}>{isoResult.signature_algorithm?.split("#")[1] || isoResult.signature_algorithm}</span></div>
                 <div>Key Type: <span style={{ color: "var(--text)" }}>{isoResult.key_type} ({isoResult.key_size_bits || "?"} bits)</span></div>
-                <div>PQC Ready: <span style={{ color: isoResult.pqc_ready ? "var(--green)" : "var(--amber)" }}>{isoResult.pqc_ready ? "YES" : "NO (Classical)"}</span></div>
+                <div>Algorithm screening: <span style={{ color: isoResult.pqc_ready ? "var(--green)" : "var(--amber)" }}>{isoResult.pqc_ready ? "PQC name detected — not verified" : "No PQC name detected — not proof of absence"}</span></div>
                 <div>Quantum Vulnerable: <span style={{ color: isoResult.quantum_vulnerable ? "var(--red)" : "var(--green)" }}>{isoResult.quantum_vulnerable ? "YES" : "NO"}</span></div>
               </div>
               {isoResult.findings && isoResult.findings.length > 0 && (

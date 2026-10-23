@@ -1,0 +1,13 @@
+
+> zelinx-frontend@1.0.0 test
+> vitest run src/pages/BankingRegulatory.claims.test.tsx
+
+
+ RUN  v5.0.5 /home/user/CryproScan/frontend
+
+ ✓ src/pages/BankingRegulatory.claims.test.tsx (6 tests) 221ms
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  16:54:30
+   Duration  2.47s (import 56%, environment 26%, tests 9%, transform 5%, setup 4%)
