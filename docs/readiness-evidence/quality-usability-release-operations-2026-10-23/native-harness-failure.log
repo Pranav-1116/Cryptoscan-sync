@@ -308,8 +308,8 @@ tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing
 >                   Path(os.environ["CRYPTOSCAN_COHORT_OUT"]).write_text(json.dumps(result, indent=2) + "\n")
                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-services/api/tests/unit/test_isolated_cohort_recovery.py:263: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+services/api/tests/unit/test_isolated_cohort_recovery.py:263:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
 
 [environment repr omitted: synthetic key and sandbox metadata]
 key = 'CRYPTOSCAN_COHORT_OUT'

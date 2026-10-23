@@ -32,7 +32,7 @@ cleanup. Test totals alone do not establish correctness or acceptance.
 
 ## Actual red→green evidence
 
-All text logs below have ANSI styling removed for review. Red logs are preserved
+All text logs below have ANSI styling and trailing whitespace removed for review. Red logs are preserved
 as adverse evidence, **not** passing qualification reports. Source changes and
 current relevant files are bound in the
 [results/hash manifest](quality-usability-release-operations-results-2026-10-23.json).

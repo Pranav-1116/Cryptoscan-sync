@@ -82,14 +82,14 @@ Ignored nodes: comments, script, style
           >
             Condition-level remediation
           </a>
-           · 
+           ·
           <a
             data-discover="true"
             href="/crypto-assurance"
           >
             Registered coverage
           </a>
-           · 
+           ·
           <a
             href="/api/docs"
             rel="noreferrer"
@@ -731,14 +731,14 @@ Ignored nodes: comments, script, style
           >
             Condition-level remediation
           </a>
-           · 
+           ·
           <a
             data-discover="true"
             href="/crypto-assurance"
           >
             Registered coverage
           </a>
-           · 
+           ·
           <a
             href="/api/docs"
             rel="noreferrer"
@@ -1035,14 +1035,14 @@ Ignored nodes: comments, script, style
           >
             Condition-level remediation
           </a>
-           · 
+           ·
           <a
             data-discover="true"
             href="/crypto-assurance"
           >
             Registered coverage
           </a>
-           · 
+           ·
           <a
             href="/api/docs"
             rel="noreferrer"
@@ -1340,14 +1340,14 @@ Ignored nodes: comments, script, style
           >
             Condition-level remediation
           </a>
-           · 
+           ·
           <a
             data-discover="true"
             href="/crypto-assurance"
           >
             Registered coverage
           </a>
-           · 
+           ·
           <a
             href="/api/docs"
             rel="noreferrer"
@@ -1659,14 +1659,14 @@ Ignored nodes: comments, script, style
           >
             Condition-level remediation
           </a>
-           · 
+           ·
           <a
             data-discover="true"
             href="/crypto-assurance"
           >
             Registered coverage
           </a>
-           · 
+           ·
           <a
             href="/api/docs"
             rel="noreferrer"
@@ -1906,4 +1906,3 @@ Ignored nodes: comments, script, style
       Tests  7 failed | 1 passed (8)
    Start at  09:39:12
    Duration  4.20s (tests 41%, import 39%, environment 14%, setup 3%, transform 2%)
-

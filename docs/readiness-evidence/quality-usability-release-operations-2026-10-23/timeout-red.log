@@ -277,7 +277,7 @@ Ignored nodes: comments, script, style
       >
         <strong>
           Selected estate
-          : 
+          :
           <bdi
             dir="auto"
           >
@@ -342,14 +342,14 @@ Ignored nodes: comments, script, style
           >
             Condition-level remediation
           </a>
-           · 
+           ·
           <a
             data-discover="true"
             href="/crypto-assurance"
           >
             Registered coverage
           </a>
-           · 
+           ·
           <a
             href="/api/docs"
             rel="noreferrer"
@@ -616,4 +616,3 @@ Ignored nodes: comments, script, style
       Tests  1 failed | 8 skipped (9)
    Start at  09:47:42
    Duration  2.83s (import 56%, environment 22%, tests 14%, setup 5%, transform 3%, worker 1%)
-

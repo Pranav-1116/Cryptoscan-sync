@@ -110,9 +110,9 @@
     "docs/operations/accountable-operations-handoff-2026-10-23.md": "d146cac7e60c3697d4dea5e5e1e61327c254513c1e25d3a69161f75d4e677cd5",
     "docs/readiness-evidence/README.md": "1006ac2934d272214a8487786b8c59d3729dae61e631e68edc0d442192a71771",
     "docs/readiness-evidence/quality-existing-task-usability-2026-10-23.md": "4c85efe1270a95cef4244790965732e653eca257d70ff09a17a7f967d032ca97",
-    "docs/readiness-evidence/quality-maintenance-test-trust-2026-10-23.md": "232699722e7a14bae7485044772b24932dd8f12396f1da5f04cd66e587029f36",
+    "docs/readiness-evidence/quality-maintenance-test-trust-2026-10-23.md": "82dd3741422ac4d78f6bf3dcaab183f87647447999bce69ddd3a096ab7012c68",
     "docs/readiness-evidence/quality-repeatable-release-2026-10-23.md": "f6f95b553ef53cf02da78d4eda79b7d4afc001d6f088e8a327f8c0885d35cd8b",
-    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23.md": "f7d9e52c599a5e49a74526c509f3f686ca4fb6fe1c7d59a8052430c2f91df798",
+    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23.md": "be9ea53411219f6f6a8bc2730de0bf2d78115178041ff45d04714e55dc74a7aa",
     "docs/runbooks/operator-install-upgrade-recover.md": "66345864bd56597584c4d204982059c9906b94a8beaae83db50112e4ca179e94",
     "frontend/package-lock.json": "94e58e21705e304238037cd7569bd6332fc9f73ae8d17a3b37ab205880fa839b",
     "frontend/package.json": "72beb49bfa4785cf45d1b7dae44a2ee80885999679538488233c57902a8ab9fc",
@@ -143,7 +143,7 @@
     "shared/shared_models/shared_models/launch_assurance.py": "fce2620c8ce03bbab72765aa006e17c1070e0d9ef148319da0d34e7d0c56963d"
   },
   "record_sha256": {
-    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/README.md": "37be8e7e9a045be91b1e47e7ae5bcfdba9f782c91f1f09283f320863dc783c2a",
+    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/README.md": "85f5fb0b688ed05a38ec08faabcc33bf4cfedadf13ca689a0154d613dbed128b",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/backend.log": "8462138eef3ef6b8e704c9902d1f28134a20584c1af8a18be474f20e1232acda",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/backend.xml": "f07c8423dbb1a6063d955ff47fdd4719479e6b84ff57c60e80305c2b03619f6b",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/browser-reflow-red.json": "c7605b269ad614bdbf955d96646e36869d0b51f956d5d0c51c88b701684a7fbe",
@@ -153,8 +153,8 @@
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/cohort.json": "cfc37adc6166c3619843b1d4c34874dcf03fd020eb41e8b35e177fc0b8425e70",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/frontend.log": "cc68c308dc305fbb73c47ffd85e426d7fd64b55922742b4df2937806a0e04b87",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/frontend.xml": "82f429344c4cbdc3470ba8aa9ac9eb8c6e38f1476dae0d1a631ccd14d85ba8ea",
-    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/locale-red.log": "6bb23f3b90e2fd4b4455aa9a0105b8009497c688861682c4fcb11cbba74580ee",
-    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/native-harness-failure.log": "193cfb41919da2cb12b809aa596bff2cba2990a42efc0c560f478968f22bb517",
+    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/locale-red.log": "7a0ffdc04e7d315cfe7151eeb1021d43e3d8cca4f67db2e0d98bae3726c0ab90",
+    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/native-harness-failure.log": "a571b07af5a14e92ff67f3a468c7b8437e6bef994cf1a73c1a982b8b9d38622f",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/native.log": "fec4d0c18d2d55db3e11f19a9184faff6836fd86ef1391b025a80672672d57ac",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/native.xml": "1d32259092e17c9e6002bd4e487fff5f39f70aafd1f774ae258547c47675a297",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/operations-red.log": "88a631acdc39500a6a8b81e75fd4b1ca5f444987181b4e1d916295d387f1986f",
@@ -163,12 +163,12 @@
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/regression.log": "f9e0dff58c46a1c4d6daf1c4132b7672a6ef997cc3a50988f60201e5d5e9cd51",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/regression.xml": "708311b966617e3a4b8a43e0a3db98917a519dc43ed3f313bdce510ef4241ef2",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/release-red.log": "10392859dcd60443627ba620b93b4a679dd1f85a88cc58ba30cd187f35f1446f",
-    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/repeat-focus-red.log": "dfe58c99ccc48cff3bf4061c2e874810cc2cb108b4d2964ae646c6e1d5a1aef0",
+    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/repeat-focus-red.log": "21a14b38c62093b1d88e801f0c45e3d8fb84266017f7f781ee28f4f1c09b49b5",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/run-tests.py": "f0a046edc4675f0990497e0674de985483c9042fd9c055d646231b4d1c884397",
-    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/timeout-red.log": "008d21b07004b523467ac115801c381603e36b5fd8fb908edaaada88aa62666f",
+    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/timeout-red.log": "3461d1bbe79867c11a06c7dcd2630b4fb580d30db8ad8a1e045fb284e88bbcce",
     "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/trace.json": "b3659a4f58ee52f905ca28d725c762c4e5305abb70846fc8a1fb96e120d30e97",
-    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/typecheck.log": "00d48cfff576795106b5dd2c6f7c9544879ff21a718ce93cacac140432ff2a08",
-    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/ui-red.log": "024fb0f2d6692ae87641bce2e5c265b605a5116681fa9195441f420dd2fe5ee7"
+    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/typecheck.log": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f",
+    "docs/readiness-evidence/quality-usability-release-operations-2026-10-23/ui-red.log": "f39b27796edeb57c90af1ce5d79f0bbd86254d686fdcf2e85991a128e4d418e5"
   },
   "cleanup": {
     "fixture_database_query": "select datname from pg_database where datname like 'cs_quality_%'",

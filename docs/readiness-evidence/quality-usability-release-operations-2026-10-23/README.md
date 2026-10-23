@@ -26,7 +26,7 @@ record digests are in the [results manifest](../quality-usability-release-operat
 - `run-tests.py`: the constrained-environment bootstrap used for pytest,
   relocated to compute the repo root rather than hardcode this sandbox path.
 
-Text logs have ANSI styling stripped. The omission in the failed harness log is
+Text logs have ANSI styling and trailing whitespace stripped. The omission in the failed harness log is
 explicit. No database/archive, generated key, dependency tree, compiled browser,
 source tarball or production customer data is included.
 

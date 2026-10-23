@@ -49,7 +49,7 @@ actual fixes are distinguished in the maintenance record.
 Before shutdown, the disposable cluster contained **zero `cs_quality_*`
 databases**. PostgreSQL was stopped cleanly. Build outputs, browser/runtime
 binaries, keys, database data and dependency environments remain outside Git.
-The retained records contain synthetic data; ANSI coloring is stripped from
+The retained records contain synthetic data; ANSI coloring and trailing whitespace are stripped from
 text logs and the failed harness's environment repr is omitted.
 
 ## Acceptance decision
