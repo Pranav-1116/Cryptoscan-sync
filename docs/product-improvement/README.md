@@ -3,14 +3,14 @@
 **Prepared:** 2026-10-22 UTC
 **Original planning baseline:** `bfc42df0` on `arena/bb4b80dd-cryproscan`, with
 original broad implementation review against `698beb38`.
-**Previously published quality implementation:** `9f3fa5a9` (2026-10-23), following
-the first-three-increment snapshot `2fd8fc8f`. The sixth increment is this source
-update; see the [current implementation ledger](IMPLEMENTATION-STATUS.md).
+**Previously published quality implementation:** `7e00d37e` (2026-10-23), following
+`9f3fa5a9` and the first-three-increment snapshot `2fd8fc8f`. The seventh increment
+is this source update; see the [current implementation ledger](IMPLEMENTATION-STATUS.md).
 **Audience:** product owner, engineering, QA, security, operators and bank reviewers.
-**Status:** six bounded engineering increments documented; the full program,
+**Status:** seven bounded engineering increments documented; the full program,
 independent review and bank release acceptance are not complete.
 
-## Six bounded increments, not a completed qualification
+## Seven bounded increments, not a completed qualification
 
 The first bounded changes and exact before/after results are tracked in
 [implementation status](IMPLEMENTATION-STATUS.md) and the
@@ -27,9 +27,12 @@ were subsequently published in `9f3fa5a9`, strengthening execution recovery and
 parser startup/cancellation/cleanup. The [sixth increment](../readiness-evidence/quality-trace-integrity-2026-10-23.md)
 checks existing application trace revision integrity and both observation-time
 boundaries, preserving reviewed-assertion limits and exact-estate privacy.
-Its containing commit/PR identifies publication; exact results and source hashes
-are in the dated record. These increments do not mark the full program or bank
-qualification complete.
+It was published in `7e00d37e`; exact results and source hashes remain in its dated
+record. The [seventh increment](../readiness-evidence/quality-remediation-retraction-2026-10-23.md)
+keeps withdrawn source observations out of current remediation eligibility and
+operator/pilot proof projections, while retaining old verdicts and audited restore.
+Its containing commit/PR identifies publication. These increments do not mark
+the full program or bank qualification complete.
 
 ## The recommendation in one sentence
 

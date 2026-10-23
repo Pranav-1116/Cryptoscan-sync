@@ -1,6 +1,33 @@
 # Evidence assurance upgrade and published quality-source handoff
 
-## Current trace-integrity source handoff (2026-10-23)
+## Current source-evidence withdrawal handoff (2026-10-23)
+
+The seventh increment builds on published `7e00d37e`; see the
+[dated source-proof record](../readiness-evidence/quality-remediation-retraction-2026-10-23.md)
+and [current ledger](../product-improvement/IMPLEMENTATION-STATUS.md) for source
+hashes, local results, containing publication commit and open review/site work.
+
+| Existing behavior now enforced | Safe operator action | Never substitute |
+|---|---|---|
+| Retracted source comparison member blocks a new proposal/approval/report or produces INCONCLUSIVE verification | Inspect exact-estate baseline/replacement observations and authorized withdrawal reason; obtain fresh eligible evidence and review when required | Drop tombstones from the corpus, relabel an empty scan clean or extend expiry to bypass withdrawal |
+| Old VERIFIED proof/task remains historical, but current operator resolution is false and proof freshness is STALE_OR_UNAVAILABLE when its source evidence is withdrawn; pilot status adds CURRENT_INDEPENDENT_REMEDIATION_PROOF_MISSING | Treat needs_attention/current_condition_verified and current authority as the operational decision; retain the prior proof | Present a stored VERIFIED label as current resolution or edit/delete its payload/hash |
+| Existing authorized/audited finding restore can restore live membership | Restore only under the existing justified auditor process; recheck approval, assignment, policy, freshness and exact-condition evidence | Automatic restore, stale authority reuse or treating restore as a new independently observed scan |
+
+The entire bounded comparison contributed to the verdict, including regression
+checks. Any withdrawn captured member invalidates current use; the verifier does
+not guess whether that withdrawal is harmless. A new eligible scan/review may be
+required. Each source snapshot is bounded to 5,000 findings. Read-side membership
+queries add work; no PostgreSQL query-plan/latency/capacity qualification is claimed.
+
+Stored observations/chain content and assurance history are not rewritten by
+these reads. TLS_CERTIFICATE behavior is unchanged; this is not a new collection
+adapter, mutable-content verifier or serializable PostgreSQL withdrawal fence.
+No site rollout occurs. Review and stage the separately signed coordinated
+package and perform actual database/restore/time/operating qualification first.
+
+<a id="current-trace-integrity-source-handoff-2026-10-23"></a>
+
+## Previous trace-integrity source handoff (2026-10-23)
 
 The sixth quality increment builds on published `9f3fa5a9` on the current PR
 branch. Use its [dated record](../readiness-evidence/quality-trace-integrity-2026-10-23.md)

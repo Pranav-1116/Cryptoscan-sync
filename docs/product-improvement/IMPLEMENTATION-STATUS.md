@@ -7,33 +7,43 @@
 [quality-only roadmap](08-execution-roadmap-and-acceptance.md). No new collectors,
 BOM types, pages, services or deployment profiles.
 
-## Current PR update — sixth increment: trace integrity and freshness
+## Current PR update — seventh increment: withdrawn source proof
 
-This bounded update follows published `9f3fa5a9` on the same PR branch. Guides
-[2](02-correctness-and-six-bom-quality.md) and
-[3](03-security-privacy-and-isolation.md) selected existing relationship/current
-trace correctness, not a new feature. The containing Git commit and PR comment
-identify publication; [dated evidence](../readiness-evidence/quality-trace-integrity-2026-10-23.md)
-retains exact test inputs, adverse results, source hashes and limitations.
+Continuing guides 2/3 and roadmap B2/B3/B4 from published `7e00d37e`, existing
+source-condition verification must not consume withdrawn observations. No new
+feature or trust mechanism is added. The containing commit/PR identifies this
+publication; [dated evidence](../readiness-evidence/quality-remediation-retraction-2026-10-23.md)
+retains exact source hashes, original adverse sequence, commands and limits.
 
-The existing four-suite baseline passed **85**. The corrected adverse suite
-against unchanged baseline source reproduced **12 failures / 10 passes**. Trace
-now verifies every loaded bounded relationship envelope before revision selection;
-review/current trace recheck `observed_at <= now < expires_at`. All **22 new cases
-pass**, including lifecycle/history and exact-estate controls.
+The baseline passed **68**. The complete **16-case** adverse set against unchanged
+baseline source reproduced **14 failures / 2 passes**. Current eligibility now
+checks live exact-estate membership of bounded frozen source comparisons. Source
+intake refuses any tombstone rather than filtering it away as clean absence;
+positive verification rechecks after comparison. Operator and pilot proof gates
+use the same eligibility. Earlier proofs/task labels remain historical, not
+silently rewritten; existing authorized/audited restore retains its separate meaning.
 
-Final local checks: **452 API/assurance/six-BOM passed**, 6 warnings; **113 auth
-passed**, 10 warnings; **1,114 shared/CBOM/selected package/database passed**,
-10 warnings. No failures, skips or deselections in these three runs. The new
-cases are included in 452, not additive. Full configured Python lint, dependency
-consistency, documentation links/anchors/shell syntax/source hashes and whitespace
-pass. This is not an all-repository, Actions, PostgreSQL or bank-site verdict.
+All **16 new cases pass**, including retraction/restore, denied/foreign paths,
+other-estate preservation, repeated verification and an injected comparison
+boundary. Final local checks: **480 API/assurance/remediation/six-BOM passed**, 6 warnings, **283.01 s**;
+**113 auth passed**, 10 warnings, **37.85 s**; **1,159 library/package/database passed**, 10 warnings, **20.42
+s**.
+No failures/skips/deselections in these three runs; the 16 cases are included in
+the API total, not additive. Ruff, dependency consistency, local documentation/
+source-hash and whitespace checks pass. Warnings remain explicit in the record.
 
-Storage faults deliberately bypass unchanged append-only ORM guards; no API write
-bypass, full database/chain completeness or externally anchored integrity is
-claimed. A different-human repository review, actual site qualification and
-customer acceptance remain open. No new route/collector/service/profile,
-migration, workflow, dependency lock, native binary or site installation changes.
+This is not a PostgreSQL race/fence/restore, latency/capacity, browser/site,
+independent-review or customer-acceptance result. No migration, workflow, lock,
+new route/collector/service/profile, native build or bank installation changes.
+
+## Previous publication — trace integrity/freshness (7e00d37e)
+
+The sixth increment was published in
+[`7e00d37e81540f343e7d94065cff054a5962dbe2`](https://github.com/ZKChainForge/CryproScan/commit/7e00d37e81540f343e7d94065cff054a5962dbe2)
+with `[skip ci]`: verify loaded relationship envelopes and both observation-time
+bounds. Its original final runs were **452 API / 113 auth / 1,114 library passed**,
+with **22 new cases** included in 452. Its [dated record](../readiness-evidence/quality-trace-integrity-2026-10-23.md)
+is preserved unchanged; these totals are not this seventh increment's rerun.
 
 ## Previous publication — recovery and parser boundaries (9f3fa5a9)
 
@@ -42,7 +52,7 @@ The fourth and fifth increments were published together in
 on 2026-10-23 with `[skip ci]`. Their **35 + 18 new cases** are included in the
 historical **1,070 passed / 16 PostgreSQL skips / 1 live Docker deselection**,
 17 warnings, with a separate **113 passed** auth run, 10 warnings. Those are not
-reruns for this sixth increment. Their separate dated records remain unchanged.
+reruns for later increments. Their separate dated records remain unchanged.
 
 ## Published engineering snapshot
 
@@ -305,7 +315,21 @@ and **1,114-case** library/package/database runs also pass. Exact commands, sour
 identities, the corrected red run and qualification limits are in the
 [sixth dated record](../readiness-evidence/quality-trace-integrity-2026-10-23.md).
 
-## 9. Next bounded work
+## 9. Seventh increment — source evidence withdrawal and current proof
+
+The 16 new cases cover proposal (1), approval/report (2), first verification (2),
+current read/audited restore (2), other comparison members (2), denied/foreign
+withdrawal (1), unrelated estate (1), repeated verification (2), injected
+comparison-boundary withdrawal (1) and pilot-status proof gating (2).
+
+Each frozen source corpus stays bounded to 5,000 findings; every captured member
+must remain live in its exact estate for current use. Historical records are
+not rewritten. A last positive-result membership check is not a serializable
+PostgreSQL fence or complete mutable-content proof. TLS_CERTIFICATE predicates
+are unchanged. Exact results and the deliberately scoped pilot tests are in the
+[seventh dated record](../readiness-evidence/quality-remediation-retraction-2026-10-23.md).
+
+## 10. Next bounded work
 
 1. Obtain different-human review of the bounded corrections and retain current
    source/runtime identities. No independent approval is invented here.

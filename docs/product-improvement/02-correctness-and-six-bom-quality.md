@@ -181,3 +181,22 @@ deployments or retracted supporting observations still remove eligible paths
 without changing assurance history. SBOM, CBOM, NBOM, TechBOM, HBOM and VBOM retain
 the distinct evidence burdens above. Reviewed package mappings remain customer
 assertions, not independent deployment, invocation or runtime verification.
+
+
+## 2.11 Implemented bounded source-proof withdrawal correction
+
+The [seventh quality increment](../readiness-evidence/quality-remediation-retraction-2026-10-23.md)
+reproduced withdrawn source observations still supporting new VERIFIED remediation
+proofs and current operator resolution. The existing source predicate now refuses
+a comparison corpus containing a tombstone; current approval/proof eligibility
+rechecks the live exact-estate membership of its bounded frozen observations.
+The existing pilot status uses the same replacement-eligibility check.
+A final positive-verdict check also rechecks source membership after comparison.
+
+No tombstone is silently removed to create clean absence. The original verdict,
+proof hash and task history remain inspectable; a historical VERIFIED label is
+not current resolution. Existing authorized/audited restore can restore current
+eligibility only while all other authority, assignment and freshness checks hold.
+This does not prove real PostgreSQL transaction isolation, prevent every race,
+validate arbitrary mutable observation content or qualify TLS/site collection.
+SBOM, CBOM, NBOM, TechBOM, HBOM and VBOM keep their separate evidence burdens.

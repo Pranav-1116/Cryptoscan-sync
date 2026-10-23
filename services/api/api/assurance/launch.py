@@ -780,6 +780,7 @@ def pilot_status(db, owner, identifier):
         or proof.payload["result"] != "VERIFIED"
         or proof.payload["change_sha256"] != change.payload_sha256
         or not proof.payload.get("after")
+        or not remediation.observation_current(db, owner, change, proof.payload["after"])
         or aware(datetime.fromisoformat(proof.payload["after"]["completed_at"]))
         + timedelta(seconds=change.payload["freshness_seconds"])
         <= utcnow()

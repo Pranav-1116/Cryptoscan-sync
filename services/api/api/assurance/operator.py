@@ -43,7 +43,8 @@ def inbox(db, owner, offset=0, limit=25):
         proof = proofs.get(store.subject(change.subject_id, "condition_proof")) if change else None
         observed = bool(t.status == "VERIFIED" and t.owner and change and proof
             and remediation.current(db, owner, change, binding, assignment) and proof.payload["result"] == "VERIFIED"
-            and proof.payload.get("after") and aware(datetime.fromisoformat(proof.payload["after"]["completed_at"]))
+            and proof.payload.get("after") and remediation.observation_current(db, owner, change, proof.payload["after"])
+            and aware(datetime.fromisoformat(proof.payload["after"]["completed_at"]))
                 + timedelta(seconds=change.payload["freshness_seconds"]) > now)
         items.append({"id": t.id, "status": t.status, "priority": t.priority, "owner": t.owner or "UNASSIGNED",
             "needs_attention": not observed, "current_condition_verified": observed,
@@ -110,7 +111,9 @@ def inbox(db, owner, offset=0, limit=25):
                 change = proof_changes.get(p["change_id"])
                 after = p.get("after")
                 expires = (aware(datetime.fromisoformat(after["completed_at"])) + timedelta(seconds=change.payload["freshness_seconds"])) if change and after else None
-                is_current = bool(change and expires and expires > now and remediation.current(db, owner, change, binding, proof_assignments.get(change.payload.get("task_id"))))
+                is_current = bool(change and expires and expires > now
+                    and remediation.current(db, owner, change, binding, proof_assignments.get(change.payload.get("task_id")))
+                    and remediation.observation_current(db, owner, change, after))
                 items.append({"freshness_state": "WITHIN_APPROVED_WINDOW" if is_current else "STALE_OR_UNAVAILABLE",
                     "condition_expires_at": expires.isoformat() if expires else None,
                     "proof_revision": r.revision, "id": r.subject_id, "change_id": p["change_id"], "change_revision": p["change_revision"],

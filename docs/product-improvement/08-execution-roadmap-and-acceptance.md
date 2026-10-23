@@ -3,16 +3,15 @@
 [Pack index](README.md) · [Previous: operations](07-operations-and-bank-qualification.md) ·
 [Next: worked example/templates](09-worked-example-and-review-templates.md)
 
-Three bounded engineering increments are published in `2fd8fc8f` and tracked in
-[implementation status](IMPLEMENTATION-STATUS.md#published-engineering-snapshot),
-with reproduced defects, local test results and open site/review requirements.
-A fourth bounded increment now exercises interruption, duplicate delivery and
-durable UNKNOWN recovery and corrects reproduced failure boundaries;
-see [its dated evidence](../readiness-evidence/quality-execution-recovery-2026-10-23.md).
-A fifth [parser runtime increment](../readiness-evidence/quality-parser-runtime-2026-10-23.md)
-corrects reproduced startup/cleanup/cancellation boundaries. Both are bundled
-in the current PR update. Production fault/recovery qualification remains open. The roadmap
-below remains the full target, not a claim that every work package has finished.
+Six bounded increments have been published: the first three in `2fd8fc8f`,
+execution recovery/parser boundaries in `9f3fa5a9`, and current-trace integrity/
+freshness in `7e00d37e`. The [implementation ledger](IMPLEMENTATION-STATUS.md)
+retains exact scope, reproduced failures and original local results. The current
+[seventh increment](../readiness-evidence/quality-remediation-retraction-2026-10-23.md)
+continues B2/B3/B4: withdrawn source observations must not remain current
+remediation proof. Earlier dated evidence is preserved, not relabeled as a rerun.
+Production fault/recovery, different-human review and bank acceptance remain open.
+This roadmap is the full target, not a claim that every work package has finished.
 
 ## 8.1 Program rules
 
@@ -24,8 +23,10 @@ below remains the full target, not a claim that every work package has finished.
 6. Keep operator/customer/assessor actions separate from code completion.
 7. Do not grant progress percentages or scheduled production approval without results.
 
-No implementation, workflow edit, CI dispatch or site drill is performed by this
-roadmap. The user owns the remaining unspecified CI failure separately.
+The original roadmap was planning only; subsequent bounded implementation is
+explicitly tracked in the ledger and dated records. No workflow edit, explicit
+CI dispatch or site drill is performed by this roadmap. Publication uses
+`[skip ci]`; the user owns the remaining unspecified CI failure separately.
 
 ## 8.2 Dependency order
 

@@ -24,8 +24,28 @@ def policy_binding(db, owner):
 _UNSET = object()
 
 
+def live_findings(db, owner, findings):
+    # The entire bounded comparison contributed to the verdict. Never turn a
+    # withdrawn member into clean absence by silently filtering the snapshot.
+    if not findings or len(findings) > 5000:
+        return False
+    identifiers = {f.get("evidence_id") for f in findings}
+    if None in identifiers or len(identifiers) != len(findings):
+        return False
+    return db.query(EvidenceRecord.id).filter(
+        EvidenceRecord.tenant_id == owner, EvidenceRecord.id.in_(identifiers),
+        EvidenceRecord.deleted_at.is_(None)).count() == len(identifiers)
+
+
+def observation_current(db, owner, row, after):
+    return (row.payload["kind"] != "SOURCE_SITE"
+            or bool(after and live_findings(db, owner, after.get("findings"))))
+
+
 def current(db, owner, row, binding=_UNSET, assignment=_UNSET):
     if row.payload["state"] == "REVOKED":
+        return False
+    if row.payload["kind"] == "SOURCE_SITE" and not live_findings(db, owner, row.payload["before"].get("findings")):
         return False
     if row.payload["kind"] == "SOURCE_SITE" and row.payload["state"] != "PROPOSED":
         if assignment is _UNSET:
@@ -63,6 +83,8 @@ def source(db, owner, scan_id, task):
     observations = db.query(EvidenceRecord).filter_by(tenant_id=owner, scan_id=scan.id).order_by(EvidenceRecord.id).limit(5001).all()
     if len(observations) > 5000:
         raise HTTPException(409, "Comparison exceeds bounded verifier; partition the target, do not truncate proof")
+    if any(r.deleted_at is not None for r in observations):
+        raise HTTPException(409, "Retracted observations cannot establish a current source comparison; collect again")
     from api.routers.remediation import _finding_snapshot
     return {"scan_id": scan.id, "job_id": jobs[0].id, "started_at": aware(scan.scan_start).isoformat(),
             "completed_at": aware(scan.scan_end).isoformat(), "job_started_at": aware(jobs[0].started_at).isoformat(),
@@ -213,8 +235,8 @@ def verify(db, owner, identifier, body, actor):
     except HTTPException as exc:
         # Failed lookups do not become successful fixes. Do not reveal foreign IDs.
         reason = "Independent observation unavailable" if exc.status_code == 404 else str(exc.detail)
-    if result == "VERIFIED" and not current(db, owner, row):
-        result, reason = "INCONCLUSIVE", "Approval changed or expired during verification"
+    if result == "VERIFIED" and (not current(db, owner, row) or not observation_current(db, owner, row, after)):
+        result, reason = "INCONCLUSIVE", "Approval or source evidence changed or expired during verification"
     proof = store.append(db, owner, "condition_proof", proof_id, body.expected_proof_revision,
         {"change_id": identifier, "change_revision": row.revision, "change_sha256": row.payload_sha256,
          "predicate_version": p["predicate_version"], "result": result, "reason": reason,

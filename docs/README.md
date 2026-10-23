@@ -8,7 +8,7 @@ remaining independent/site acceptance. The first three increments were published
 in `2fd8fc8f`: source coverage proof/font bootstrap, unresolved package identity,
 and role-store failure/selected probe privacy. Later recovery/parser increments
 were published in `9f3fa5a9`. See the
-[current upgrade handoff](runbooks/evidence-assurance-upgrade.md#current-trace-integrity-source-handoff-2026-10-23)
+[current upgrade handoff](runbooks/evidence-assurance-upgrade.md#current-source-evidence-withdrawal-handoff-2026-10-23)
 for changed refusals and requalification. This is not feature expansion, a tagged
 release, bank deployment or production approval.
 
@@ -23,8 +23,15 @@ continues existing application-trace correctness: verify loaded relationship
 revision envelopes and recheck both freshness boundaries without rewriting
 history or promoting customer review into runtime verification. **22 new cases**
 pass within **452 selected API checks**; **113 authorization** and **1,114 library/
-package/database checks** also pass. The containing commit/PR identifies this
-source publication; no new feature, workflow or installed-site change is claimed.
+package/database checks** also passed for its publication `7e00d37e`. Those are
+retained results, not a rerun of the next increment. No new feature, workflow or
+installed-site change was claimed.
+
+The [seventh increment](readiness-evidence/quality-remediation-retraction-2026-10-23.md)
+continues the existing source-remediation predicate: withdrawn observations block
+current comparison/approval, current operator resolution and pilot proof credit. Historical proofs
+remain intact, and existing authorized/audited restore retains its distinct
+meaning. See the dated record and ledger for actual new results and limitations.
 
 ## Binary-oriented delivery and IP protection
 

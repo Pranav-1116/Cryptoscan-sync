@@ -6,6 +6,19 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — withdrawn source-remediation evidence (2026-10-23)
+
+- Refuse new source-condition comparisons containing retracted observations;
+  never filter a withdrawn member away to manufacture clean absence.
+- Recheck live exact-estate membership of bounded baseline/replacement snapshots
+  for approval, reporting, verification, operator projections and pilot proof gating.
+- Recheck source evidence after a positive comparison; retain historical proofs
+  and task labels while marking withdrawn current proof unavailable.
+- Exercise existing authorized/audited retraction/restore, denied/foreign paths
+  and an explicitly injected comparison boundary. No PostgreSQL race guarantee,
+  new route, migration, workflow, collector or installed-site change.
+- [Reproduction, regression results and limits](docs/readiness-evidence/quality-remediation-retraction-2026-10-23.md).
+
 ### Fixed — current evidence-trace integrity and freshness (2026-10-23)
 
 - Verify every loaded bounded relationship revision envelope before application
