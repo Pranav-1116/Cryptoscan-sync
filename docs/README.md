@@ -11,6 +11,13 @@ and role-store failure/selected probe privacy. See the
 for changed refusals and requalification. This is not feature expansion, a tagged
 release, bank deployment or production approval.
 
+The later [execution recovery increment](product-improvement/IMPLEMENTATION-STATUS.md#6-fourth-increment--interruption-duplicate-delivery-and-durable-unknown)
+and [parser runtime correction](readiness-evidence/quality-parser-runtime-2026-10-23.md)
+are bundled into the current PR update: bounded interruption, duplicate-delivery,
+durable UNKNOWN and parser startup/cleanup/cancellation checks. Their new local
+results are separate from the historical snapshot and do not qualify bank-site
+recovery or publish a signed operator release.
+
 ## Binary-oriented delivery and IP protection
 
 Read the [end-to-end binary/on-premises delivery design](BINARY-ON-PREMISES-DELIVERY.md)
@@ -45,7 +52,7 @@ execution roadmap and a worked example with review templates. This is a
 quality-only program with three published bounded corrections, not completion
 of the whole roadmap or production approval.
 
-> **Latest published implementation — 2026-10-22 (`2fd8fc8f`):**
+> **Original three-increment published snapshot — 2026-10-22 (`2fd8fc8f`):**
 > [Current implementation status](CURRENT-IMPLEMENTATION-STATUS.md) reconciles migration
 > **0105**, the published quality corrections and CI/launch Preview boundaries.
 > The inherited **77**-surface and REST snapshots retain their original review scope.

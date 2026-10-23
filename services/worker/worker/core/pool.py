@@ -70,7 +70,8 @@ class WorkerPool:
         self._semaphore.acquire()
         try:
             future = self._executor.submit(self._run, job)
-        except Exception:
+        except BaseException:
+            # Submission may itself be interrupted after acquiring a slot.
             self._semaphore.release()
             raise
         self.futures.append(future)
@@ -78,16 +79,19 @@ class WorkerPool:
 
     def _run(self, job: ScanJob) -> bool:
         self.stats.begin()
+        ok = False
         try:
             result = self.handler(job)
             ok = result is not False
-            self.stats.end(ok=ok)
             return ok
         except Exception:
             logger.exception("job_execution_failed", extra={"job_id": job.job_id})
-            self.stats.end(ok=False)
             return False
         finally:
+            # BaseException interruptions still propagate through the Future,
+            # but must not permanently saturate local pool accounting. This
+            # releases LOCAL backpressure, not durable execution reservations.
+            self.stats.end(ok=ok)
             self._semaphore.release()
 
     def shutdown(self, wait: bool = True) -> None:

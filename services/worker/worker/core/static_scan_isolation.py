@@ -75,14 +75,18 @@ def _exchange(command: list[str], request: dict, *, timeout: float, limit: int =
     payload = json.dumps(request, allow_nan=False).encode()
     if len(payload) > 65536:
         raise StaticScanIsolationError("scanner request exceeds the protocol limit")
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, start_new_session=True, close_fds=True, bufsize=0)
-    selector = selectors.DefaultSelector()
+    # Own resources from the first successful allocation, including failures
+    # between spawning the CLI and constructing/registering its selector.
+    process = None
+    selector = None
     output = bytearray()
     counts = {"stdout": 0, "stderr": 0}
     pending = memoryview(payload)
     deadline = time.monotonic() + timeout
     try:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, start_new_session=True, close_fds=True, bufsize=0)
+        selector = selectors.DefaultSelector()
         for name in ("stdin", "stdout", "stderr"):
             stream = getattr(process, name)
             os.set_blocking(stream.fileno(), False)
@@ -132,10 +136,27 @@ def _exchange(command: list[str], request: dict, *, timeout: float, limit: int =
     except OSError:
         raise StaticScanIsolationError("could not communicate with static parser runtime") from None
     finally:
-        _kill(process)
-        selector.close()
-        for name in ("stdin", "stdout", "stderr"):
-            getattr(process, name).close()
+        # One failed cleanup must not skip every remaining handle. A failed
+        # kill/wait is UNKNOWN, never proof that the CLI or daemon work stopped.
+        cleanup_failed = False
+        if process is not None:
+            try:
+                _kill(process)
+            except (OSError, subprocess.TimeoutExpired):
+                cleanup_failed = True
+        if selector is not None:
+            try:
+                selector.close()
+            except OSError:
+                cleanup_failed = True
+        if process is not None:
+            for name in ("stdin", "stdout", "stderr"):
+                try:
+                    getattr(process, name).close()
+                except OSError:
+                    cleanup_failed = True
+        if cleanup_failed:
+            raise StaticScanIsolationError("static parser process cleanup could not be confirmed") from None
 
 
 def scan_static(*, root_path, exclude_test_dirs=False, **metadata):
@@ -262,7 +283,9 @@ def scan_static(*, root_path, exclude_test_dirs=False, **metadata):
             raise StaticScanIsolationError("scanner failed; container cleanup could not be confirmed") from None
         if isinstance(exc, StaticScanIsolationError):
             raise
-        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+        if not isinstance(exc, Exception):
+            # Preserve cancellation BaseExceptions after confirmed daemon
+            # cleanup, including CancelledError and GeneratorExit.
             raise
         raise StaticScanIsolationError("scanner runtime returned an invalid or unavailable result") from None
     finally:

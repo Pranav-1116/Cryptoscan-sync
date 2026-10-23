@@ -126,18 +126,20 @@ def reap_stale_jobs(
 
 
 def fail_job(session: Any, job_id: str, reason: str) -> None:
-    """Dead-letter callback: mark the DB row FAILED."""
-    from db.repositories.job_repository import JobRepository
+    """Dead-letter legacy jobs; transport never decides controlled SQL state.
 
-    from sqlalchemy import select, update
+    A duplicate hint can exhaust Redis redelivery while the actual SQL attempt
+    is healthy, or before a QUEUED job has ever been claimed. SQL deadline
+    recovery owns RUNNING -> UNKNOWN; the durable outbox/reaper owns missing
+    QUEUED publication. Neither path releases reservations on transport loss.
+    """
+    from db.repositories.job_repository import JobRepository
+    from sqlalchemy import select
     from db.models.scan_job import ScanJob
-    from db.models.execution_control import ExecutionAttempt
+
     job = session.execute(select(ScanJob).where(ScanJob.id == job_id)).scalar_one_or_none()
-    if job and (job.progress or {}).get("execution_control") and job.status == "RUNNING":
-        session.execute(update(ExecutionAttempt).where(ExecutionAttempt.job_id == job.id,
-            ExecutionAttempt.tenant_id == job.tenant_id, ExecutionAttempt.status == "RUNNING").values(status="UNKNOWN", version=ExecutionAttempt.version + 1))
-        session.execute(update(ScanJob).where(ScanJob.id == job.id, ScanJob.tenant_id == job.tenant_id,
-            ScanJob.status == "RUNNING").values(status="UNKNOWN", version=ScanJob.version + 1, error_message="Delivery exhausted while execution outcome is unknown"))
-    else:
-        JobRepository(session).update_status(job_id, "FAILED", error_message=reason)
+    if job is not None and (job.progress or {}).get("execution_control") is not None:
+        logger.info("controlled_delivery_dead_lettered", extra={"job_id": job.id})
+        return
+    JobRepository(session).update_status(job_id, "FAILED", error_message=reason)
     session.commit()

@@ -353,15 +353,16 @@ def require_roles(*allowed: str):
     legacy identity may use the single-admin compatibility path. Unavailable
     storage and missing production identities never confer roles.
     """
-    from api.security.rbac import normalize_roles
-
-    allowed_norm = set(normalize_roles(list(allowed)))
-
     def dependency(
         request: Request,
         user: str = Depends(get_current_user),
         db: Session = Depends(get_db_session),
     ) -> str:
+        # Resolve at request time: cold worker imports can enter rbac before
+        # dependencies; eager factory normalization creates an import cycle.
+        from api.security.rbac import normalize_roles
+
+        allowed_norm = set(normalize_roles(list(allowed)))
         api_key = _resolve_api_key(request)
         if api_key is _API_KEY_INVALID:
             raise HTTPException(

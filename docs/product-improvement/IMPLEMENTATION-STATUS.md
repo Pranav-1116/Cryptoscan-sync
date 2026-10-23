@@ -7,16 +7,36 @@
 [quality-only roadmap](08-execution-roadmap-and-acceptance.md). No new collectors,
 BOM types, pages, services or deployment profiles.
 
+## Current PR update — recovery and parser failure boundaries
+
+This update bundles the previously uncommitted **fourth increment** and the new
+**fifth increment** for publication to the existing PR branch with `[skip ci]`.
+There are **35 + 18 new regression cases**, with scope and original adverse
+results in the separate dated records below. The containing Git commit and PR
+publication comment identify the pushed source; content hashes identify the exact
+tested files. This is source publication, not a signed release or bank upgrade.
+No workflow, dependency lock, migration or new service/collector/profile is added.
+
+Final local publication checks: **1,070 passed / 16 PostgreSQL skips / 1 live
+Docker deselection**, 17 warnings; separate authorization compatibility **113
+passed**, 10 warnings. The 53 new cases are included in the broad run, not extra
+coverage to add to its total. Full configured Python lint, dependency consistency,
+documentation/whitespace and both source-hash inventories pass. No all-repository,
+Actions or actual bank-site acceptance is inferred.
+
 ## Published engineering snapshot
+
+**Historical first-three-increment snapshot**, retained with its original scope.
 
 **Published source:** [`2fd8fc8fba255333f605202ebb68d04c4029c610`](https://github.com/ZKChainForge/CryproScan/commit/2fd8fc8fba255333f605202ebb68d04c4029c610)
 **Published:** 2026-10-22 UTC, commit message includes `[skip ci]`.
 **PR:** [#34](https://github.com/ZKChainForge/CryproScan/pull/34), open at this documentation update;
 not merged into main and not deployed to a bank.
 
-All three increments below are committed and pushed. The current docs-only
-follow-up corrects publication/operating guidance; it changes no implementation,
-workflow, dependency lock or schema and does not rerun the application tests.
+The first three increments below were committed and pushed in the published
+snapshot above. Its subsequent documentation reconciliation did not rerun tests.
+The fourth working-tree increment in section 6 has separate source hashes and new
+local results; it is not included in that historical publication or test table.
 
 | Final checks retained for the published source | Actual result |
 |---|---|
@@ -34,8 +54,9 @@ below overlap and retain their original scope; do not add them together.
 
 For upgrade consequences and safe operator responses, use the
 [current handoff](../runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f).
-The next bounded engineering work is interruption, duplicate-delivery and durable
-UNKNOWN recovery checks; it is **planned, not implemented by this docs update**.
+The previously planned interruption, duplicate-delivery and durable UNKNOWN
+checks are now implemented as the bounded fourth increment below; its local
+evidence does not qualify production recovery or publish a new release.
 Different-human review and real site/customer acceptance remain pending.
 
 ## 1. Sequence actually followed
@@ -187,19 +208,78 @@ branch with `[skip ci]`, without workflow edits or resolving the earlier CI lane
 A source push does not update a bank installation or sign a full operator release.
 Different review and all actual site/security/customer acceptance remain open.
 
-## 6. Next bounded work
+## 6. Fourth increment — interruption, duplicate delivery and durable UNKNOWN
 
-After review of these increments:
+**Implemented 2026-10-23; included in this PR update:** existing execution boundaries only;
+no new route, collector, service, schema migration, binary build or workflow change.
+The checkout contained accumulated changes before this increment; unrelated work
+is preserved. The [dated record](../readiness-evidence/quality-execution-recovery-2026-10-23.md)
+identifies the actually tested source by content hash; Git history identifies
+the containing publication commit.
 
-1. Continue the six-BOM wrong-build/version/estate and stale-evidence matrix,
-   starting with an observed defect or explicit missing proof, not feature breadth.
-2. Continue authority/privacy boundary coverage beyond the selected role/probe
-   paths and rehearse durable UNKNOWN/interruption/duplicate-delivery recovery
-   using existing test boundaries; retain original outcomes.
-3. Run the proposed PostgreSQL/browser measurements only in an approved isolated
-   representative environment. Local SQLite and DOM tests cannot substitute.
-4. Have real owners arrange independent assessment, site evidence and operating
-   exercises in parallel; these cannot be assigned to fabricated identities.
+An 88-passing baseline preceded new tests. The first adverse set reproduced
+11 failures among 24 cases: interrupted local pool accounting, masked original
+interruptions, forbidden memory publication and transport-derived controlled job
+verdicts. A separate three-case submission check reproduced three leaked semaphore
+slots. Actual child-process tests additionally exposed a cold worker RBAC/dependency
+import cycle that in-process API tests had masked.
+
+Corrections release local backpressure even on BaseException, preserve the original
+interruption if the UNKNOWN write fails, reject memory-only publication when fallback
+is disabled, and leave controlled SQL state untouched on dead-letter notification.
+Role normalization is deferred to dependency execution, breaking the cold-start cycle
+without caching roles or changing the authorization matrix.
+
+The new tests cover real SIGKILL before/after claim and after a checkpoint using a
+file-backed SQLite database and independent worker/recovery processes. Repeated
+recovery, stale writes, in-flight/UNKNOWN duplicates, atomic rollback and current
+human/evidence confirmation remain bounded by existing contracts. Real collectors
+and daemon preflight are doubles; expiry time is advanced explicitly. This is not
+PostgreSQL/Docker/Redis fault, HA, latency/SLO, bank-site or customer acceptance.
+
+Final local results: **35 new checks passed**; broader worker/selected execution
+regressions **1,052 passed / 16 PostgreSQL skips / 1 live deselection**; auth
+compatibility **113 passed**. The 35 cases overlap the broad run. Full configured
+Python lint and dependency consistency pass. Exact warnings, timing, commands and
+scope are retained in the dated record. UNKNOWN keeps its
+provider/estate reservations until explicit authorized reconciliation; transport
+recovery never resumes a RUNNING/UNKNOWN attempt. CONFIRMED_COMPLETED does not
+manufacture a scan or findings. Any new execution requires a new currently approved
+job. Independent review and actual bank recovery exercises remain open.
+
+
+## 7. Fifth increment — parser startup, cancellation and cleanup
+
+Continuing the existing controlled-runtime boundary after UNKNOWN recovery,
+**72 existing boundary tests passed** before new tests. The first 14 adverse
+runtime cases reproduced **9 failures / 5 passes**: raw launch errors, an unowned
+child after selector-construction failure, skipped pipe cleanup after failed
+kill/wait/selector close, and lost CancelledError/GeneratorExit identity.
+
+The exchange now owns resources from startup, cleans allocated resources
+independently and refuses with a safe category if cleanup cannot be confirmed.
+Non-Exception cancellations propagate after confirmed named-container cleanup.
+Digest pinning, fixed protocol, parser resource limits and source/SQL authority
+are not weakened. Four real-SQL integration cases retain UNKNOWN and both budget
+reservations after runtime/result/cleanup/cancellation failures and refuse duplicate
+execution; the daemon and selected faults are explicit doubles.
+
+The **18 new checks pass**. Final worker and authorization publication results,
+source hashes, original failures, warnings/skips and exact scope are in the
+[fifth dated record](../readiness-evidence/quality-parser-runtime-2026-10-23.md).
+Local child tests are not Docker/escape/daemon-loss or production bank evidence.
+
+## 8. Next bounded work
+
+1. Obtain different-human review of the bounded corrections and retain current
+   source/runtime identities. No independent approval is invented here.
+2. Continue observed-defect-first six-BOM wrong-build/version/estate/stale-evidence
+   and authority/privacy regressions, not new collectors or feature breadth.
+3. Run the approved disposable PostgreSQL/TLS Redis/actual parser/daemon/fence/
+   orphan/restore fault exercises and representative browser/capacity measurements.
+   Skipped or mocked checks do not close these requirements.
+4. Have real site/operating owners arrange independent assessment and distinct
+   technical/customer acceptance under the existing nine-duty process.
 
 See [the full roadmap](08-execution-roadmap-and-acceptance.md) for dependencies and
 [review templates](09-worked-example-and-review-templates.md) for evidence fields.

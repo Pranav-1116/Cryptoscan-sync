@@ -18,6 +18,23 @@ are refused, **not covered by the parser's isolation claim**. The actual runtime
 image and deployment/escape qualification still must be provisioned externally;
 none was fabricated in the implementation sandbox.
 
+## Runtime failure hardening (2026-10-23)
+
+The current PR update normalizes CLI startup errors, owns the spawned process
+before selector allocation, and tries process/selector/pipe cleanup independently.
+A failed kill/wait/close is reported as **cleanup could not be confirmed**, not
+successful parsing or proof that daemon work stopped. Raw runtime/path exception
+text is not reflected by these edited public failure paths. Original non-Exception
+cancellations (including CancelledError/GeneratorExit) propagate after confirmed
+named-container cleanup.
+
+The [dated parser record](../readiness-evidence/quality-parser-runtime-2026-10-23.md)
+contains **18 new passing checks**, using real harmless CLI children, injected
+resource faults and real-SQL/mocked-runtime execution contracts. It does not
+qualify actual Docker deletion, escape resistance, orphan fencing, stop latency
+or production PostgreSQL/Redis. Follow the [UNKNOWN operator procedure](../runbooks/job-queue.md#controlled-unknown-reconciliation):
+closed local handles or a dead CLI do not release durable reservations.
+
 ## Policy and scope
 
 Both source scan entry points (`PipelineRunner._scan` and `stage_scan.execute`)

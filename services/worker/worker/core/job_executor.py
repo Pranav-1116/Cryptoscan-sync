@@ -94,7 +94,16 @@ class JobExecutor:
             with execution_scope(attempt):
                 outcome = bool(run())
         except BaseException:
-            finish_attempt(attempt, False)
+            try:
+                finish_attempt(attempt, False)
+            except Exception as exc:
+                # Preserve the original interruption. An unavailable SQL write
+                # does NOT prove external work stopped or free reservations;
+                # the durable deadline reaper will fence the attempt UNKNOWN.
+                logger.warning(
+                    "interrupted_attempt_recovery_deferred",
+                    extra={"job_id": job.job_id, "error_type": type(exc).__name__},
+                )
             raise
         return bool(finish_attempt(attempt, outcome))
 

@@ -6,6 +6,37 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — parser runtime failure boundaries (2026-10-23)
+
+- Normalize parser CLI creation failures without exposing raw runtime/path details.
+- Own child/selector/pipe resources from startup; one failed cleanup no longer skips
+  the remaining handles. Unconfirmed kill/wait/close refuses successful output.
+- Preserve CancelledError/GeneratorExit as well as other cancellation BaseExceptions
+  after confirmed named-container cleanup; retain controlled UNKNOWN reservations.
+- Add **18 regressions**, including real local CLI children and four SQL-backed
+  parser-failure/duplicate contracts. [Original results and limits](docs/readiness-evidence/quality-parser-runtime-2026-10-23.md).
+- Publish with the preceding execution-recovery increment on the existing PR branch
+  using `[skip ci]`; no new feature, binary build, schema or workflow change.
+
+
+### Fixed — bounded execution recovery (2026-10-23)
+
+- Release local worker-pool accounting/semaphore capacity on interrupted execution
+  and submission without releasing durable execution reservations.
+- Preserve the original interruption when best-effort UNKNOWN persistence fails;
+  SQL deadline recovery remains responsible for unresolved attempts.
+- Raise on Redis enqueue failure when memory fallback is disabled, allowing SQL
+  outbox retry rather than acknowledging a memory-only delivery. Log only the
+  failure category on this enqueue path.
+- Keep controlled SQL state unchanged on dead-letter exhaustion; transport hints
+  cannot fail queued work or fence a healthy execution. Legacy reaping remains.
+- Break a cold worker RBAC/dependency import cycle without changing current role
+  checks or permission mappings.
+- Add interruption, duplicate, atomic reconciliation and file-backed SQLite
+  SIGKILL/restart checks. [Evidence and limits](docs/readiness-evidence/quality-execution-recovery-2026-10-23.md).
+  No new service/collector/route, native binary, migration, workflow or site rollout.
+
+
 ### Fixed — quality-only evidence, authority and browser hardening (2026-10-22)
 
 Published in [`2fd8fc8f`](https://github.com/ZKChainForge/CryproScan/commit/2fd8fc8fba255333f605202ebb68d04c4029c610) on the current PR branch;

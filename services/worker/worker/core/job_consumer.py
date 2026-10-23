@@ -279,8 +279,12 @@ class JobConsumer:
                 self.redis_client.rpush(self.queue_name, body)
                 return
             except Exception as exc:
-                logger.warning("redis_enqueue_failed", extra={"error": str(exc)})
+                logger.warning("redis_enqueue_failed", extra={"error_type": type(exc).__name__})
                 self.redis_client = None
+        if not self.allow_memory_fallback:
+            # The SQL outbox must observe failure, not acknowledge an ephemeral
+            # process-local delivery as a durable publication.
+            raise RuntimeError("Redis unavailable during enqueue and memory fallback is disabled")
         _MEMORY_QUEUE.put(body)
 
     def publish_job(self, job: ScanJob | dict) -> bool:

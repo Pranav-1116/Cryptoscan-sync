@@ -1,6 +1,6 @@
 # Runbook — scan job queue and persisted execution authority
 
-**Current contract: 2026-10-21.** Redis delivery recovery and SQL execution
+**Updated recovery contract: 2026-10-23 (working-tree increment).** Redis delivery recovery and SQL execution
 eligibility are separate. See the [coordinated upgrade procedure](execution-and-replay-upgrade.md)
 and [authority design](../bank-environment/44-queued-authority-and-durable-ssh.md).
 
@@ -36,11 +36,23 @@ versioned QUEUED-to-RUNNING SQL claim. Inline fallback uses the same executor.
 1. A worker-loss lease expires (default 60 seconds). Maintenance can return the
    unacknowledged payload to the queue with a delivery-attempt increment.
 2. At the configured loss limit (default three), delivery can be dead-lettered.
-3. A stale RUNNING SQL job is failed by the database reaper after
-   `JOB_RUNNING_TIMEOUT_MINUTES` (default **90**).
-4. An old QUEUED job absent from Redis is eligible for re-publication after
-   `JOB_QUEUED_TIMEOUT_MINUTES` (default **10**); bounded re-publications eventually
-   settle it FAILED. If Redis cannot be inspected, absence is not invented.
+3. **Legacy uncontrolled jobs:** stale RUNNING work is failed after
+   `JOB_RUNNING_TIMEOUT_MINUTES` (default **90**). **Controlled work:** only
+   persisted attempt deadline recovery changes RUNNING to UNKNOWN. It does not
+   release provider/estate capacity, restart a collector or prove external stop.
+4. **Legacy uncontrolled jobs:** an old QUEUED job absent from Redis is eligible
+   for bounded re-publication after `JOB_QUEUED_TIMEOUT_MINUTES` (default **10**),
+   eventually FAILED. **Controlled work:** the SQL outbox repairs missing QUEUED
+   publication; it is not failed merely because a duplicate exhausted transport
+   redelivery. If Redis cannot be inspected, absence is not invented.
+5. Controlled dead-letter notifications do not change QUEUED/RUNNING/UNKNOWN or
+   settled SQL state. A delivery lease is not the SQL execution deadline. A dead
+   letter can belong to a duplicate while another worker is healthy; inspect
+   current SQL state instead of resetting it.
+6. With memory fallback disabled, failed Redis enqueue raises; the SQL outbox
+   remains/reverts PENDING for retry. An actual publish followed by interruption
+   before SQL acknowledgement may duplicate delivery; the SQL claim still gates
+   execution. There is no cross-system exactly-once guarantee.
 
 **Re-publication is not automatic execution restart.** If the original worker
 already committed RUNNING, a replacement's descriptor is refused by the claim
@@ -64,6 +76,47 @@ redis-cli LRANGE cryptoscan:jobs:queue:dead 0 -1
 
 These examples omit connection flags deliberately; do not assume plaintext
 localhost is the production endpoint. Queue clients are not all Sentinel-aware.
+
+## Controlled UNKNOWN reconciliation
+
+An interruption normally persists UNKNOWN and retains both reservations. If SQL
+is unavailable during best-effort finalization, the original interruption is
+preserved and the row may remain RUNNING until a committed deadline-recovery sweep.
+Restore dependencies and inspect the authoritative attempt/job. Do not infer that
+external work is stopped from an exception, timeout, ACK, empty processing list,
+freed local thread slot or restarted worker.
+
+1. Identify exact estate, job, attempt, image/release and retained incident history.
+2. Establish the actual external state using the approved runtime/incident process.
+   Fence/stop or otherwise account for external work before releasing reservations.
+3. A current authorized human uses the existing selected-estate
+   `POST /api/v1/execution-controls/attempts/{attempt_id}/reconcile` contract with
+   `CONFIRMED_STOPPED` or `CONFIRMED_COMPLETED`, a meaningful incident/evidence
+   reference and `confirm_external_work_stopped: true`. The declaration is an
+   operator confirmation, not independently generated runtime proof.
+4. Successful settlement resolves the attempt and releases both reservations once.
+   The old job is FAILED/non-reusable, even for CONFIRMED_COMPLETED; it does not
+   manufacture missing completed scans/findings. A duplicate settlement refuses.
+5. Failed/concurrent settlement rolls back the attempt and reservation changes;
+   inspect fresh state before another authorized action. Any further execution
+   requires a new admitted job/current approval, never a reset of the old row.
+
+The [new recovery evidence](../readiness-evidence/quality-execution-recovery-2026-10-23.md)
+includes real SIGKILL of a child executor and fresh-process file-backed SQLite
+recovery. Collectors/preflight are doubles and expiry time is advanced explicitly.
+It does not replace actual PostgreSQL, Redis/TLS, parser/daemon, restore, fenced
+orphan and measured stop/recovery qualification at the intended bank site.
+
+## Parser communication and cleanup failures
+
+The [parser runtime update](../readiness-evidence/quality-parser-runtime-2026-10-23.md)
+normalizes selected startup/setup errors and independently cleans allocated CLI
+resources. A safe communication failure may occur **after** process creation.
+Cleanup-uncertain means external state is not established; inspect the exact
+owning attempt/container/runtime under the approved incident process. The SQL
+contract still retains UNKNOWN and both reservations, refuses duplicate execution
+and requires the current authorized human reconciliation above. Do not enable
+inline parsing, memory queue fallback or reset a job to clear the condition.
 
 ## Safe retry
 
