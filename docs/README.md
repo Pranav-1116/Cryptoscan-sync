@@ -62,6 +62,12 @@ states and refusal meanings. All516 frontend tests and11 actual built-browser
 checks pass; the browser uses synthetic HTTP, not a live bank backend. Caller
 forms/actions/bespoke exports and external acceptance remain separate gaps.
 
+The [eleventh increment](readiness-evidence/quality-six-bom-perf-recovery-2026-10-23.md)
+adds six-BOM negative contracts, fixes original-SBOM/current-SSH evidence gaps,
+measures and batches a trace N+1, and executes isolated SQL/artifact and Redis
+recovery exercises.248 selected contracts and19 native tests pass. The broader
+performance workload, integrated site recovery and independent review remain open.
+
 ## Binary-oriented delivery and IP protection
 
 Read the [end-to-end binary/on-premises delivery design](BINARY-ON-PREMISES-DELIVERY.md)

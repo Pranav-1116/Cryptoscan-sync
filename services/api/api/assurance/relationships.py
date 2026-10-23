@@ -26,18 +26,49 @@ def active(row):
             and not getattr(row, "deleted_at", None))
 
 
-def validate(db, owner, value):
+def current_components(binding, owner):
+    """Current joins need retained original bytes, not only a derived SQL index."""
+    import hashlib
+    from api.routers.devsecops import _sbom_storage, _find_manifest, _artifact_blob
+    from devsecops.software_identity import sbom_components
+    from shared_models.qualified_export import bounded_json
+    from shared_models.software_identity import MAX_SBOM_BYTES
+    try:
+        storage = _sbom_storage()
+        manifest = _find_manifest(storage, binding.sbom_artifact_id, tenant_id=owner)
+        if not manifest or manifest.get("tenant_id") != owner:
+            raise ValueError("Original owner unavailable")
+        raw, _ = _artifact_blob(storage, manifest, owner)
+        if (len(raw) > MAX_SBOM_BYTES or hashlib.sha256(raw).hexdigest() != binding.sbom_sha256
+                or binding.sbom_sha256 != manifest.get("sha256")):
+            raise ValueError("Original digest mismatch")
+        return sbom_components(bounded_json(raw, max_bytes=MAX_SBOM_BYTES))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, HTTPException):
+        raise HTTPException(409, "Current original SBOM evidence unavailable or inconsistent") from None
+
+
+def validate(db, owner, value, *, resolved=None):
     if (value["subject_type"], value["object_type"]) != TYPES[value["relation"]]:
         raise HTTPException(422, "Relationship has incompatible typed endpoints")
-    a = store.exact(db, MODELS[value["subject_type"]], owner, value["subject_id"])
-    b = store.exact(db, MODELS[value["object_type"]], owner, value["object_id"])
-    proofs = [store.exact(db, EvidenceRecord, owner, i) for i in value["evidence_ids"]]
+    if resolved is not None and value["relation"] == "PACKAGE_CRYPTO":
+        a, identities, evidence = resolved
+        b = evidence.get(value["object_id"])
+        proofs = [evidence.get(i) for i in value["evidence_ids"]]
+        if (a.id != value["subject_id"] or a.tenant_id != owner or b is None
+                or any(e is None or e.tenant_id != owner for e in [b, *proofs])):
+            raise HTTPException(404, "Referenced evidence/identity not found")
+    else:
+        a = store.exact(db, MODELS[value["subject_type"]], owner, value["subject_id"])
+        b = store.exact(db, MODELS[value["object_type"]], owner, value["object_id"])
+        proofs = [store.exact(db, EvidenceRecord, owner, i) for i in value["evidence_ids"]]
     if not active(a) or not active(b) or any(not active(e) for e in proofs):
         raise HTTPException(409, "Inactive/expired/retracted identity or evidence")
     if value["object_type"] == "evidence" and value["object_id"] not in value["evidence_ids"]:
         raise HTTPException(422, "Object observation must be among the explicit supporting evidence")
     if value["relation"] == "PACKAGE_CRYPTO":
-        if not value["package_identity"] or value["package_identity"] not in {package_identity(c.get("package_identity")) for c in a.components}:
+        if resolved is None:
+            identities = {package_identity(c.get("package_identity")) for c in current_components(a, owner)}
+        if not value["package_identity"] or value["package_identity"] not in identities:
             raise HTTPException(409, "Exact versioned package is not resolved by this release SBOM binding")
     elif value["package_identity"]:
         raise HTTPException(422, "Package identity only belongs on a PACKAGE_CRYPTO assertion")
@@ -94,6 +125,7 @@ def trace(db, owner, system_id):
             if not active(binding):
                 unresolved.append({"sbom_binding_id": binding.id, "reason": "INACTIVE_OR_EXPIRED_BINDING"})
                 continue
+            components = current_components(binding, owner)
             assertions = store.rows(db, AssuranceRevision, owner).filter_by(kind="bom_relationship").filter(
                 AssuranceRevision.payload["subject_id"].as_string() == binding.id,
                 AssuranceRevision.payload["relation"].as_string() == "PACKAGE_CRYPTO").limit(2001).all()
@@ -106,7 +138,16 @@ def trace(db, owner, system_id):
                 store.verify(row)
                 if row.revision > getattr(newest.get(row.subject_id), "revision", 0):
                     newest[row.subject_id] = row
-            for component in binding.components:
+            # Request-local batched reads, not a cross-request truth cache.
+            # All loaded history is verified above; preserve exact owner and
+            # each link's current lifecycle/freshness checks below.
+            evidence_ids = {i for row in newest.values() for i in [row.payload["object_id"], *row.payload["evidence_ids"]]}
+            if len(evidence_ids) > 10000:
+                raise HTTPException(409, "Trace exceeds current evidence identity budget")
+            evidence_rows = db.query(EvidenceRecord).filter(EvidenceRecord.tenant_id == owner,
+                EvidenceRecord.id.in_(evidence_ids)).populate_existing().all() if evidence_ids else []
+            prefetched = (binding, {package_identity(c.get("package_identity")) for c in components}, {r.id: r for r in evidence_rows})
+            for component in components:
                 # Re-evaluate legacy derived identities without rewriting the
                 # stored SBOM or historical reviewed assertion.
                 purl = package_identity(component.get("package_identity"))
@@ -117,7 +158,7 @@ def trace(db, owner, system_id):
                     if value["state"] != "REVIEWED" or not _current(value):
                         continue
                     try:
-                        _, evidence = validate(db, owner, value)
+                        _, evidence = validate(db, owner, value, resolved=prefetched)
                     except HTTPException:
                         continue
                     resolved = True

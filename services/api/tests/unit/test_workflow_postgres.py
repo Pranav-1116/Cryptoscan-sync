@@ -63,7 +63,7 @@ def quality_cluster():
     def database(template=None):
         name = "cs_quality_" + uuid.uuid4().hex
         with control.connect() as connection:
-            connection.execute(text(f'CREATE DATABASE "{name}"' + (f' TEMPLATE "{template}"' if template else "")))
+            connection.execute(text(f'CREATE DATABASE "{name}"' + (f' TEMPLATE "{template}"' if template else " TEMPLATE template0 ENCODING 'UTF8'")))
         engine = create_engine(url.set(database=name), connect_args={"options": "-c statement_timeout=15000 -c lock_timeout=10000"})
         try:
             yield engine
@@ -80,6 +80,7 @@ def quality_cluster():
             with template_engine.connect() as connection:
                 assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "0106"
                 assert connection.dialect.name == "postgresql"
+                assert connection.scalar(text("SHOW server_encoding")) == "UTF8"
             template_engine.dispose()
             yield database, template_engine.url.database
     finally:

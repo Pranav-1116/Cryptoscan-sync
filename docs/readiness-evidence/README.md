@@ -2,7 +2,7 @@
 
 ## Current reading versus immutable evidence
 
-**Current 2026-10-23 review: tenth increment from `8c1b2bcf`.** Dated records in this directory retain
+**Current 2026-10-23 review: eleventh bounded increment from `c48f667e`.** Dated records in this directory retain
 their original commands, commits, results and hashes. They are not rewritten as
 fresh execution by a documentation update. In particular,
 [launch engineering](launch-engineering-2026-10-22.md) records migration **0104**
@@ -34,6 +34,12 @@ External artifacts remain outside the repository when they contain sensitive
 customer/provider information; pass their controlled paths to the gate.
 
 ## Latest bounded engineering evidence
+
+The [eleventh six-BOM/performance/recovery record](quality-six-bom-perf-recovery-2026-10-23.md)
+retains248 selected contract passes,19 native PostgreSQL passes, a matched
+169→20-query trace improvement, executed SQL/artifact failback and actual Redis
+SIGKILL loss. Broader workload, joint site recovery and independent review remain
+open; this does not promote readiness or replace older immutable records.
 
 The [tenth shared-read record](quality-shared-private-reads-2026-10-23.md) and
 [results/input hashes](quality-shared-private-reads-results-2026-10-23.json) retain

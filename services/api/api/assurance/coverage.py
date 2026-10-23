@@ -69,6 +69,34 @@ def _current_source_jobs(db, owner, targets, observations, identifier):
     return jobs, scans
 
 
+def _network_completion(db, owner, target, job, now):
+    """Re-evaluate phase identity/content and interval, not a historical green label."""
+    import hashlib
+    import json
+    required = {"host_keys", "kex"} if target["method"] == "SSH_HOST_KEYS_KEX" else {"host_keys"}
+    if job is None or job.status != "COMPLETED" or not job.started_at or not job.completed_at:
+        raise HTTPException(409, "Current completed network job required")
+    phases = db.query(CollectionPhaseReceipt).filter_by(job_id=job.id, tenant_id=owner,
+        endpoint=target["target_ref"]).filter(CollectionPhaseReceipt.phase.in_(required)).populate_existing().all()
+    if len(phases) != len(required) or {p.phase for p in phases} != required:
+        raise HTTPException(409, "Current exact endpoint/phase evidence unavailable")
+    for phase in phases:
+        observation = phase.observation
+        if (phase.state != "COMPLETED" or phase.observation_succeeded is not True
+                or not phase.started_at or not phase.updated_at
+                or not aware(job.started_at) <= aware(phase.started_at) <= aware(phase.updated_at) <= aware(job.completed_at) <= now
+                or not isinstance(observation, dict) or observation.get("status") != "OK"
+                or not observation.get("keys" if phase.phase == "host_keys" else "kex_algorithms")):
+            raise HTTPException(409, "Current network observation is incomplete or contradictory")
+        try:
+            raw = json.dumps(observation, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        except (ValueError, TypeError):
+            raise HTTPException(409, "Current network observation cannot be verified") from None
+        if len(raw) > 65536 or hashlib.sha256(raw).hexdigest() != phase.observation_sha256:
+            raise HTTPException(409, "Current network observation integrity mismatch")
+    return max(aware(p.started_at) for p in phases), max(aware(p.updated_at) for p in phases)
+
+
 def save_register(db, owner, identifier, body, actor):
     for target in body.targets:
         if target.system_id:
@@ -124,7 +152,8 @@ def record(db, owner, register_id, target_id, body, actor):
                 raise HTTPException(409, "Phase attempt start provenance is unavailable")
             attempted_at = max(aware(p.started_at) for p in attempted)
             if state == "OBSERVED":
-                success_at = max(aware(p.updated_at) for p in phases).isoformat()
+                attempted_at, completed_at = _network_completion(db, owner, target, job, utcnow())
+                success_at = completed_at.isoformat()
         else:
             raise HTTPException(409, "External export needs a qualified import-to-target binding; not inferred from a job")
     elif body.job_id:
@@ -163,6 +192,12 @@ def report(db, owner, identifier):
                     or value.get("last_successful_at") != completed.isoformat()
                     or value.get("last_attempted_at") != aware(job.started_at).isoformat()):
                 raise HTTPException(409, "Current source receipt disagrees with retained coverage; record a new valid observation")
+        if state == "OBSERVED" and target["method"].startswith("SSH_"):
+            job = db.query(ScanJob).filter_by(id=value.get("job_id"), tenant_id=owner).populate_existing().one_or_none()
+            attempted, completed = _network_completion(db, owner, target, job, now)
+            if (value.get("assertion") != "SQL_RECEIPT" or value.get("last_successful_at") != completed.isoformat()
+                    or value.get("last_attempted_at") != attempted.isoformat()):
+                raise HTTPException(409, "Current network receipt disagrees with retained coverage")
         expires_at = None
         if value and value.get("last_successful_at"):
             from datetime import datetime

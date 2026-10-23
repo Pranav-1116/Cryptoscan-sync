@@ -16,6 +16,7 @@ import json
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -55,7 +56,13 @@ def main() -> int:
     parser.add_argument("--db", default=None, help="target DATABASE_URL (default: current env or sqlite default)")
     parser.add_argument("--force", action="store_true", help="skip manifest check when manifest is missing")
     args = parser.parse_args()
+    # Never decrypt beside the backup: a renamed encrypted object can alias
+    # an existing file. Private staging is removed on every exit/exception.
+    with tempfile.TemporaryDirectory(prefix="cryptoscan-restore-") as directory:
+        return _restore(args, Path(directory))
 
+
+def _restore(args, private_staging):
     backup = Path(args.backup)
     if not backup.exists():
         raise SystemExit(f"backup not found: {backup}")
@@ -73,7 +80,7 @@ def main() -> int:
         import backup_crypto
 
         key = backup_crypto.load_key()
-        decrypted = backup.with_suffix("")  # strip only the trailing .enc
+        decrypted = private_staging / "decrypted-backup"
         try:
             backup_crypto.decrypt_file(backup, decrypted, key)
         except Exception as exc:
@@ -129,7 +136,7 @@ def main() -> int:
         return 0
 
     # Postgres path
-    cmd = ["psql", "--single-transaction", "--file", str(backup), database_url]
+    cmd = ["psql", "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--single-transaction", "--file", str(backup), database_url]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         _cleanup_decrypted(decrypted_cleanup)

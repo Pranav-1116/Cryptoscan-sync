@@ -162,3 +162,18 @@ def _run_main(module, argv):
         return module.main()
     finally:
         sys.argv = ["pytest"]
+
+
+def test_restore_never_overwrites_adjacent_plaintext_and_cleans_malformed_manifest(tmp_path, monkeypatch, backup_crypto):
+    import tempfile
+    monkeypatch.setenv("BACKUP_ENCRYPTION_KEY", "synthetic-historical-backup-key")
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    encrypted = tmp_path / "historical.sql.enc"
+    encrypted.write_bytes(backup_crypto.encrypt_bytes(b"sensitive synthetic plaintext", backup_crypto.load_key()))
+    adjacent = encrypted.with_suffix("")
+    adjacent.write_bytes(b"pre-existing-file-must-survive")
+    encrypted.with_suffix(".enc.manifest.json").write_text("{")
+    with pytest.raises(json.JSONDecodeError):
+        _run_main(_load("restore_evidence"), [str(encrypted), "--db", "postgresql://unused"])
+    assert adjacent.read_bytes() == b"pre-existing-file-must-survive"
+    assert not list(tmp_path.glob("cryptoscan-restore-*")), "Private plaintext staging must be cleaned on every exception"

@@ -7,7 +7,25 @@
 [quality-only roadmap](08-execution-roadmap-and-acceptance.md). No new collectors,
 BOM types, pages, services or deployment profiles.
 
-## Current PR update — tenth increment: shared private GET reads
+## Current PR update — eleventh bounded increment: six-BOM/performance/recovery
+
+From published `c48f667e`: strengthen current original-SBOM and SSH evidence,
+retain21 six-BOM cases (published baseline13fail/8pass; corrected248-pass contract
+suite), measure a native trace N+1 before batching it (169→20 statements; p95
+about381→42ms on the exact same50-edge corpus), and execute actual isolated
+SQL/artifact restore/new-write-preserving failback plus Redis SIGKILL/RDB loss.
+Native PostgreSQL19/19 passes. Restore false-success and plaintext staging defects
+were reproduced and fixed. Schema remains0106; no new feature/service/profile.
+
+[Detailed eleventh record](../readiness-evidence/quality-six-bom-perf-recovery-2026-10-23.md)
+and [results/hashes](../readiness-evidence/quality-six-bom-perf-recovery-results-2026-10-23.json).
+The selected trace target is met, **not** the entire supported performance
+workload. PostgreSQL/file and Redis scratch drills are **not** a single site
+cohort or all real Redis consumers. Broader performance, integrated recovery,
+external-process fences and different-person independent review remain pending.
+No readiness, SLA, production RPO/RTO or CI success is inferred.
+
+## Tenth published increment: shared private GET reads
 
 From published `8c1b2bcf`, harden the existing `useLive` read-state lifecycle,
 not feature breadth: scope/path/reload invalidation, late headers/body fences,
