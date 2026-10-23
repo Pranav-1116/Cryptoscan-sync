@@ -1,5 +1,23 @@
 # Evidence assurance upgrade and published quality-source handoff
 
+## Current remediation browser-scope handoff (2026-10-23)
+
+The eighth increment follows `e5469967`; see the
+[dated browser record](../readiness-evidence/quality-remediation-browser-scope-2026-10-23.md)
+and [ledger](../product-improvement/IMPLEMENTATION-STATUS.md).
+
+| Changed behavior | Safe operator response | Limit |
+|---|---|---|
+| Estate/auth or relevant cross-window storage change clears private page/form state | Confirm current estate/principal and reread current tasks before acting | Not a backend grant or a claim that every console page is fixed. |
+| New list/filter read clears prior rows/counts and ignores late results | Wait for the current read or inspect its unavailable state | Loading, empty and failed remain distinct; prior success is not substituted. |
+| Old detached action reply cannot refresh a new scope | Inspect the original exact-estate durable history separately | UI reset does not cancel/undo an already-sent action or release server reservations. |
+| Duplicate same-turn submission is locked locally; unsuccessful/unconfirmed replies show history-before-retry guidance | Check HTTP refusal/current authority and retained history before a deliberate retry | Not exactly-once execution, automatic retry, or proof that a timeout stopped work. |
+
+Rebuild and independently verify the coordinated frontend/full release using the
+existing signed package process; test actual bank-browser scope transitions,
+keyboard/RTL/zoom and permitted outages. No automatic rollout, new API, migration,
+collector or production browser qualification is introduced.
+
 ## Current source-evidence withdrawal handoff (2026-10-23)
 
 The seventh increment builds on published `7e00d37e`; see the

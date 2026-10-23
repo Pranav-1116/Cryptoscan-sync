@@ -3,14 +3,15 @@
 **Prepared:** 2026-10-22 UTC
 **Original planning baseline:** `bfc42df0` on `arena/bb4b80dd-cryproscan`, with
 original broad implementation review against `698beb38`.
-**Previously published quality implementation:** `7e00d37e` (2026-10-23), following
-`9f3fa5a9` and the first-three-increment snapshot `2fd8fc8f`. The seventh increment
-is this source update; see the [current implementation ledger](IMPLEMENTATION-STATUS.md).
+**Previously published quality implementation:** `08b48df0` (seventh increment),
+following `7e00d37e`, `9f3fa5a9` and `2fd8fc8f`. The eighth browser-scope increment
+continues from the documentation publication `e5469967`; see the
+[current implementation ledger](IMPLEMENTATION-STATUS.md).
 **Audience:** product owner, engineering, QA, security, operators and bank reviewers.
-**Status:** seven bounded engineering increments documented; the full program,
+**Status:** eight bounded engineering increments documented; the full program,
 independent review and bank release acceptance are not complete.
 
-## Seven bounded increments, not a completed qualification
+## Eight bounded increments, not a completed qualification
 
 The first bounded changes and exact before/after results are tracked in
 [implementation status](IMPLEMENTATION-STATUS.md) and the
@@ -31,8 +32,12 @@ It was published in `7e00d37e`; exact results and source hashes remain in its da
 record. The [seventh increment](../readiness-evidence/quality-remediation-retraction-2026-10-23.md)
 keeps withdrawn source observations out of current remediation eligibility and
 operator/pilot proof projections, while retaining old verdicts and audited restore.
-Its containing commit/PR identifies publication. These increments do not mark
-the full program or bank qualification complete.
+It was published in `08b48df0`. The
+[eighth increment](../readiness-evidence/quality-remediation-browser-scope-2026-10-23.md)
+corrects the existing Remediation page's private-state/late-response lifecycle,
+same-turn duplicate submission and uncertain-outcome presentation. Its containing
+commit/PR identifies publication. These increments do not mark the full program
+or bank qualification complete.
 
 ## The recommendation in one sentence
 

@@ -7,7 +7,36 @@
 [quality-only roadmap](08-execution-roadmap-and-acceptance.md). No new collectors,
 BOM types, pages, services or deployment profiles.
 
-## Current PR update — seventh increment: withdrawn source proof
+## Current PR update — eighth increment: remediation browser scope
+
+Continue guide 5 / roadmap C3 with bounded B3/B4 regressions from published
+`e5469967`. The existing Remediation page now clears private rows, counts,
+filters, expanded actions and drafts on current-window estate/auth events and
+cross-window token/tenant storage changes. Superseded list results cannot replace
+a newer filter/scope, including A→B→A and StrictMode mount sequences.
+
+The selected baseline passed **10**. The complete **29-case** new set against
+unchanged page source reproduced **28 failures / 1 pass**; the unrelated-storage
+control already passed. A local in-flight ref prevents same-turn double submit.
+Detached action responses cannot reload the next estate or overwrite its drafts.
+Unconfirmed outcomes are announced with retained-history-before-retry guidance;
+HTTP status and useful current-scope input remain visible. No automatic retry.
+
+All **29 new cases pass** within the final **427-test / 46-file** frontend DOM
+suite, **106.73 s** wall, zero failures/errors/skips. The **7 toolchain checks**,
+TypeScript typecheck and production bundle pass. The full run emitted **16 React
+act warnings** (2 TaskActions, 10 RealtimeProvider, 4 Tenancy); they remain explicit
+in the dated record. No backend or real-browser qualification is implied.
+
+This is React/jsdom with synthetic fetch/storage events, not a real browser,
+multiple real windows, backend authorization bypass, production mutation recovery,
+latency/endurance/accessibility certification or bank acceptance. Existing API
+helpers retain their timeout; already-sent requests are not canceled or rolled
+back by UI reset. Backend exact-estate/current-authority checks remain essential.
+No new screen, route, collector, BOM, schema, dependency or workflow change.
+[Exact source/results and limits](../readiness-evidence/quality-remediation-browser-scope-2026-10-23.md).
+
+## Previous publication — seventh increment: withdrawn source proof (08b48df0)
 
 Continuing guides 2/3 and roadmap B2/B3/B4 from published `7e00d37e`, existing
 source-condition verification must not consume withdrawn observations. No new

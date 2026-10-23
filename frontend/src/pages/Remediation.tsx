@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, PageHead, Panel } from "../components/ui.jsx";
 import { ICON_SM, IconCaretDown, IconCaretRight } from "../components/icons";
@@ -71,20 +71,38 @@ function TaskActions({ task, onChanged }: { task: RemediationTask; onChanged: ()
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const mounted = useRef(true);
+  const inFlight = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
   const run = async (kind: "accept" | "complete" | "verify") => {
+    // State alone does not lock two clicks in the same React batch.
+    if (!mounted.current || inFlight.current) return;
+    inFlight.current = true;
     setBusy(kind);
     setError(null);
-    const res =
-      kind === "accept" ? await apiRemediationAccept(task.id)
-      : kind === "complete" ? await apiRemediationComplete(task.id, rescan.trim(), notes.trim() || undefined)
-      : await apiRemediationVerify(task.id, rescan.trim() || undefined);
-    setBusy(null);
-    if (res.source === "live") {
-      onChanged();
-      setNotes("");
-    } else {
-      // refusals (409 wrong status, 404 gone) are shown verbatim
-      setError(res.error || "The action was refused.");
+    try {
+      const res =
+        kind === "accept" ? await apiRemediationAccept(task.id)
+        : kind === "complete" ? await apiRemediationComplete(task.id, rescan.trim(), notes.trim() || undefined)
+        : await apiRemediationVerify(task.id, rescan.trim() || undefined);
+      // Scope/filter changes unmount this action form. An already-sent mutation
+      // is not rolled back, but its reply must not refresh the new scope.
+      if (!mounted.current) return;
+      if (res.source === "live") {
+        onChanged();
+        setNotes("");
+      } else {
+        setError(`Action outcome not confirmed. Inspect retained task history before retrying. ${res.error || "Request refused or interrupted."}`);
+      }
+    } catch {
+      if (mounted.current) setError("Action outcome not confirmed. Inspect retained task history before retrying.");
+    } finally {
+      inFlight.current = false;
+      if (mounted.current) setBusy(null);
     }
   };
 
@@ -123,12 +141,33 @@ function TaskActions({ task, onChanged }: { task: RemediationTask; onChanged: ()
           />
         )}
       </div>
-      {error && <div style={{ fontSize: 12, color: "var(--red)" }}>Refused: {error}</div>}
+      {error && <div role="alert" style={{ fontSize: 12, color: "var(--red)" }}>{error}</div>}
     </div>
   );
 }
 
 export default function Remediation() {
+  const [scopeVersion, setScopeVersion] = useState(0);
+  useEffect(() => {
+    const reset = () => setScopeVersion(version => version + 1);
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "cryptoscan_tenant" || event.key === "zelinx_token" || event.key === null) reset();
+    };
+    window.addEventListener("zelinx:tenant", reset);
+    window.addEventListener("zelinx:auth", reset);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("zelinx:tenant", reset);
+      window.removeEventListener("zelinx:auth", reset);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+  // Recreate all private rows, counts, expanded actions and drafts, including
+  // when two estates happen to return the same task ID.
+  return <RemediationView key={scopeVersion} />;
+}
+
+function RemediationView() {
   const [tasks, setTasks] = useState<RemediationTask[]>([]);
   const [total, setTotal] = useState(0);
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -136,8 +175,15 @@ export default function Remediation() {
   const [offline, setOffline] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
 
+  const mounted = useRef(true);
+  const latestRead = useRef(0);
   const load = async (status: string) => {
+    if (!mounted.current) return;
+    const request = ++latestRead.current;
+    setTasks([]); setTotal(0); setOpenId(null);
+    setLoaded(false); setOffline(false);
     const res = await apiRemediationTasks(status ? { status } : { page_size: 100 });
+    if (!mounted.current || request !== latestRead.current) return;
     if (res.source === "live" && res.data) {
       setTasks(res.data.tasks || []);
       setTotal(res.data.total ?? 0);
@@ -150,7 +196,9 @@ export default function Remediation() {
   };
 
   useEffect(() => {
+    mounted.current = true;
     void load(statusFilter);
+    return () => { mounted.current = false; ++latestRead.current; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
@@ -183,6 +231,8 @@ export default function Remediation() {
           Ranked priorities →
         </Link>
       </div>
+
+      {!loaded && <p role="status">Loading remediation tasks for the current scope…</p>}
 
       {offline && (
         <Panel title="Tasks unavailable" sub="The remediation service did not answer; nothing is shown or invented.">

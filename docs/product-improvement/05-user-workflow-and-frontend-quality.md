@@ -3,6 +3,26 @@
 [Pack index](README.md) · [Previous: reliability](04-reliability-performance-and-recovery.md) ·
 [Next: testing and release](06-testing-maintainability-and-release.md)
 
+## Implemented bounded follow-on — 2026-10-23
+
+The [eighth quality increment](../readiness-evidence/quality-remediation-browser-scope-2026-10-23.md)
+implements selected state-matrix/form safeguards in the existing Remediation page:
+
+- Recreate private view/form state on estate/auth events and relevant cross-window
+  storage events, even when task IDs coincide across responses.
+- Ignore obsolete reads after filter/scope/unmount; distinguish loading from empty
+  or unavailable and remove previous counts as well as rows.
+- Lock same-turn duplicate lifecycle actions; discard detached replies/callbacks.
+- Announce unsuccessful/unconfirmed outcomes and inspect retained history before
+  retrying; preserve current-scope drafts and HTTP refusal status, no automatic retry.
+
+**29 new local cases** cover these boundaries; the exact baseline, adverse and
+final results are in the dated record/ledger. The requests use existing helper
+contracts/timeouts: UI invalidation does not undo a mutation already sent. This
+is not a new screen, complete page audit, all-console scope fix, real cross-window
+or bank-browser test, accessibility certification or backend authorization result.
+The remaining user-task/RTL/zoom/endurance/site requirements below stay open.
+
 ## 5.1 Objective: fewer mistakes, not more screens
 
 Improve the existing Scan, evidence/BOM, Operator decisions, remediation and

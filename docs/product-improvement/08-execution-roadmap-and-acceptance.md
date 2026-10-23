@@ -3,13 +3,15 @@
 [Pack index](README.md) · [Previous: operations](07-operations-and-bank-qualification.md) ·
 [Next: worked example/templates](09-worked-example-and-review-templates.md)
 
-Six bounded increments have been published: the first three in `2fd8fc8f`,
-execution recovery/parser boundaries in `9f3fa5a9`, and current-trace integrity/
-freshness in `7e00d37e`. The [implementation ledger](IMPLEMENTATION-STATUS.md)
-retains exact scope, reproduced failures and original local results. The current
-[seventh increment](../readiness-evidence/quality-remediation-retraction-2026-10-23.md)
-continues B2/B3/B4: withdrawn source observations must not remain current
-remediation proof. Earlier dated evidence is preserved, not relabeled as a rerun.
+Seven bounded increments have been published: first three in `2fd8fc8f`,
+execution recovery/parser boundaries in `9f3fa5a9`, current-trace integrity/
+freshness in `7e00d37e`, and source-proof withdrawal in `08b48df0`.
+The [implementation ledger](IMPLEMENTATION-STATUS.md) retains their original
+scope/results. The current
+[eighth increment](../readiness-evidence/quality-remediation-browser-scope-2026-10-23.md)
+continues C3 and B3/B4 on the existing Remediation browser lifecycle. Its local
+mock/DOM regressions do not complete real-browser/site objectives or the rest of
+C3. Earlier dated evidence is preserved, not relabeled as a rerun.
 Production fault/recovery, different-human review and bank acceptance remain open.
 This roadmap is the full target, not a claim that every work package has finished.
 

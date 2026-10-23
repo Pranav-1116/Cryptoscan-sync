@@ -6,6 +6,17 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — remediation browser scope and uncertain outcomes (2026-10-23)
+
+- Clear private rows/counts/expanded forms/drafts on estate/auth and relevant
+  cross-window storage changes; ignore obsolete list results, including A→B→A.
+- Stop detached lifecycle replies from refreshing a replacement view, lock
+  same-turn duplicate submission and announce uncertain outcomes with retained
+  history review before retry; no automatic retry or server rollback promise.
+- Add 29 local DOM/fetch regressions; preserve backend authority and existing
+  API/timeouts. No new route/screen, schema, dependency or workflow change.
+- [Adverse reproduction, final results and limits](docs/readiness-evidence/quality-remediation-browser-scope-2026-10-23.md).
+
 ### Fixed — withdrawn source-remediation evidence (2026-10-23)
 
 - Refuse new source-condition comparisons containing retracted observations;

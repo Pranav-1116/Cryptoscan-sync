@@ -16,7 +16,7 @@ remaining independent/site acceptance. The first three increments were published
 in `2fd8fc8f`: source coverage proof/font bootstrap, unresolved package identity,
 and role-store failure/selected probe privacy. Later recovery/parser increments
 were published in `9f3fa5a9`. See the
-[current upgrade handoff](runbooks/evidence-assurance-upgrade.md#current-source-evidence-withdrawal-handoff-2026-10-23)
+[current upgrade handoff](runbooks/evidence-assurance-upgrade.md#current-remediation-browser-scope-handoff-2026-10-23)
 for changed refusals and requalification. This is not feature expansion, a tagged
 release, bank deployment or production approval.
 
@@ -40,6 +40,12 @@ continues the existing source-remediation predicate: withdrawn observations bloc
 current comparison/approval, current operator resolution and pilot proof credit. Historical proofs
 remain intact, and existing authorized/audited restore retains its distinct
 meaning. See the dated record and ledger for actual new results and limitations.
+
+The [eighth increment](readiness-evidence/quality-remediation-browser-scope-2026-10-23.md)
+continues the frontend roadmap in the existing Remediation page: clear old
+estate/auth private state, ignore superseded reads/actions, lock same-turn duplicate
+submissions and disclose uncertain outcomes. Local DOM checks are not real-browser,
+backend authorization, all-console or bank acceptance.
 
 ## Binary-oriented delivery and IP protection
 
