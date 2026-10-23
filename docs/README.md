@@ -1,5 +1,13 @@
 # CryptoScan documentation
 
+## Detailed backup and disaster-recovery pack (2026-10-23)
+
+Start with [the complete DR plan](disaster-recovery/README.md): eight detailed
+chapters and eight editable SVG/DOT diagrams cover architecture, all data stores,
+consistent backup cohorts, isolated restore, execution/Redis reconciliation,
+keys/ransomware/retention, drills, cutover and failback. This is documentation,
+not a production restore result, provisioned recovery site or accepted SLA.
+
 ## Quality implementation progress
 
 See the [step-by-step implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md)

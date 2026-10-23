@@ -1,5 +1,9 @@
 # DR & Recovery Runbook — CryptoScan HA Stack
 
+> **2026-10-23 detailed recovery plan:** start with the
+> [end-to-end backup and disaster-recovery pack](../disaster-recovery/README.md).
+> The older HA targets/procedures below are historical scope, not current bank acceptance. The overlay does not actually archive WAL (`archive_command=/bin/true`); its promotion helper does not prove positive old-primary fencing or enforce an acceptable lag bound.
+
 > **2026-10-21 scope correction:** RPO/RTO values below are historical targets or
 > results for the named earlier environment, not guarantees for a current release.
 > Asynchronous PostgreSQL/Redis replication does not imply zero loss. The local

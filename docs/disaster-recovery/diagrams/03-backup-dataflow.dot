@@ -1,0 +1,32 @@
+digraph G {
+graph [rankdir=TB, bgcolor="white", pad="0.3", nodesep="0.50", ranksep="0.65", fontname="Arial", fontsize=18, labelloc=t, label="03 | End-to-end backup: capture is not completion"];
+node [shape=box, style="rounded,filled", fontname="Arial", fontsize=12, margin="0.30,0.18", penwidth=1.2];
+edge [fontname="Arial", fontsize=10, color="#536577", arrowsize=0.7];
+"schedule" [label="Approved schedule / change + operators\ncheck capacity, topology, legal hold and keys", fillcolor="#def4ec", color="#25705b"];
+"window" [label="Fence new admission / inventory work\naccount for in-flight and UNKNOWN attempts\nrecord recoverable consistency cut", fillcolor="#def4ec", color="#25705b"];
+"capture" [label="Capture approved cohort\nSQL snapshot or physical base + continuous WAL\nfile versions + required Redis + source + config", fillcolor="#e5f0ff", color="#2f5c91"];
+"seal" [label="Encrypt using approved separate custody\ncompute artifact and manifest identities\nprotect any plaintext staging", fillcolor="#def4ec", color="#25705b"];
+"local" [label="Protected local staging\nnot the only recovery copy", fillcolor="#eef0f4", color="#687381"];
+"remote" [label="Transfer to independent approved vault\nimmutable / offline policy + separate credentials\nreceipt includes exact object versions", fillcolor="#fff1cf", color="#9c7019"];
+"catalog" [label="Restricted signed cohort catalog\ncopy receipts, key IDs, retention and expiry\nindependent audit / ACK record", fillcolor="#e5f0ff", color="#2f5c91"];
+"inspect" [label="Verify remote bytes + decryptability\narchive continuity and completeness\ncapacity and retention / legal hold", fillcolor="#def4ec", color="#25705b"];
+"restore" [label="Restore drill in isolated estate\nno live collectors, schedulers or notifications", fillcolor="#def4ec", color="#25705b"];
+"review" [label="Different authorized reviewer\naccept measured integrity / RPO / RTO\nrecord failures and exclusions", fillcolor="#fff1cf", color="#9c7019"];
+"success" [label="Backup qualified for exact scenario / cohort\nnot a blanket SLA or every future restore", fillcolor="#def4ec", color="#25705b"];
+"fail" [label="Backup / recovery assurance BLOCKED\nalert owner, keep prior good cohort\nno silent success or retention deletion", fillcolor="#ffe6e6", color="#a84646"];
+"schedule" -> "window" [label="authorize"];
+"window" -> "capture" [label="cut recorded"];
+"capture" -> "seal" [label="all required parts accounted for"];
+"seal" -> "local" [label="restricted artifacts"];
+"local" -> "remote" [label="approved encrypted transfer"];
+"remote" -> "catalog" [label="durable receipt"];
+"catalog" -> "inspect" [label="independent verification"];
+"inspect" -> "restore" [label="verified candidate"];
+"restore" -> "review" [label="measured evidence"];
+"review" -> "success" [label="accepted bounded result"];
+"capture" -> "fail" [label="capture / dependency failure"];
+"remote" -> "fail" [label="copy failure"];
+"inspect" -> "fail" [label="checksum / key / WAL gap"];
+"restore" -> "fail" [label="invariant or scenario failure"];
+"review" -> "fail" [label="missing / rejected review"];
+}

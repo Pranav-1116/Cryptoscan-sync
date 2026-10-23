@@ -1,5 +1,9 @@
 # Backup and recovery architecture
 
+> **2026-10-23 detailed recovery plan:** start with the
+> [end-to-end backup and disaster-recovery pack](../disaster-recovery/README.md).
+> Use the detailed pack to complete this customer template; neither document provisions site backup infrastructure or establishes an accepted RPO/RTO.
+
 **Status:** customer-specific architecture template
 **Owner:** `[OPERATIONS OWNER]`
 **Review:** every material topology, database, storage, key, or retention change

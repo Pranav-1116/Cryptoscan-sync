@@ -1,5 +1,9 @@
 # Backup / restore drill
 
+> **2026-10-23 detailed recovery plan:** start with the
+> [end-to-end backup and disaster-recovery pack](disaster-recovery/README.md).
+> This dated SQLite/local-store report is retained unchanged below. It is not a current controlled PostgreSQL, whole-site or cyber-recovery qualification.
+
 Ran 2026-10-05T09:39:13Z. Hot online backup (SQLite backup API) + event-bus logs +
 live-CBOM store -> restored into a clean data dir -> second instance
 booted from the backup alone -> estate verified through the real API.

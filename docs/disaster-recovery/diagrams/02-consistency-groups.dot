@@ -1,0 +1,29 @@
+digraph G {
+graph [rankdir=TB, bgcolor="white", pad="0.3", nodesep="0.50", ranksep="0.65", fontname="Arial", fontsize=18, labelloc=t, label="02 | One recovery cohort, multiple distinct authorities"];
+node [shape=box, style="rounded,filled", fontname="Arial", fontsize=12, margin="0.30,0.18", penwidth=1.2];
+edge [fontname="Arial", fontsize=10, color="#536577", arrowsize=0.7];
+"cut" [label="Approved recovery cut / cohort ID\nUTC interval + SQL position + evidence markers\nquiesce / drain or independently justified snapshot plan", fillcolor="#fff1cf", color="#9c7019"];
+"db" [label="A | SQL transaction snapshot\nusers, memberships, revocations, ownership\nobservations, revisions, tombstones, proof history\njob / attempt / budget / outbox consistency", fillcolor="#e5f0ff", color="#2f5c91"];
+"obj" [label="B | Referenced file / object versions\nraw bytes + manifests + owner mapping\nno dangling SQL references", fillcolor="#e5f0ff", color="#2f5c91"];
+"queue" [label="C | Redis persistence + pre-fault ACK evidence\nrole prefixes, configuration, primary identity\nnot an independent execution grant", fillcolor="#e5f0ff", color="#2f5c91"];
+"input" [label="D | Approved source snapshot / custody\noriginal content identity + permission + retention\ntransient staging is not canonical source", fillcolor="#e5f0ff", color="#2f5c91"];
+"config" [label="E | Release and nonsecret configuration\nimage digests, schema, CA references\nretention / residency and policy revision IDs", fillcolor="#e5f0ff", color="#2f5c91"];
+"keys" [label="F | Separately controlled key recovery\nkey versions, trusted public fingerprints\nprivate material outside general manifest", fillcolor="#fff1cf", color="#9c7019"];
+"manifest" [label="Restricted cohort manifest + independent signature\nobject versions, sizes, hashes, time bounds\nexcluded items, missing dependencies and custody", fillcolor="#def4ec", color="#25705b"];
+"gate" [label="Restore acceptance\nreferential / tenant / chain / temporal checks\nall required dependencies must match", fillcolor="#fff1cf", color="#9c7019"];
+"hold" [label="QUARANTINE / choose another cohort\nno patched hashes or guessed references", fillcolor="#ffe6e6", color="#a84646"];
+"cut" -> "db" [label="capture A"];
+"cut" -> "obj" [label="capture B"];
+"cut" -> "queue" [label="capture C"];
+"cut" -> "input" [label="capture D"];
+"cut" -> "config" [label="capture E"];
+"keys" -> "manifest" [label="references only, not secret values"];
+"db" -> "manifest" [label="snapshot / position"];
+"obj" -> "manifest" [label="version / hash list"];
+"queue" -> "manifest" [label="persistence / ACK marker"];
+"input" -> "manifest" [label="source hashes / custody"];
+"config" -> "manifest" [label="compatibility / inventory"];
+"manifest" -> "gate" [label="authorized isolated restore"];
+"keys" -> "gate" [label="separate successful recovery ceremony"];
+"gate" -> "hold" [label="mismatch / incomplete"];
+}
