@@ -3,13 +3,14 @@
 **Prepared:** 2026-10-22 UTC
 **Original planning baseline:** `bfc42df0` on `arena/bb4b80dd-cryproscan`, with
 original broad implementation review against `698beb38`.
-**Published quality implementation:** `2fd8fc8f` (2026-10-22); see the
-[publication ledger](IMPLEMENTATION-STATUS.md#published-engineering-snapshot).
+**Previously published quality implementation:** `9f3fa5a9` (2026-10-23), following
+the first-three-increment snapshot `2fd8fc8f`. The sixth increment is this source
+update; see the [current implementation ledger](IMPLEMENTATION-STATUS.md).
 **Audience:** product owner, engineering, QA, security, operators and bank reviewers.
-**Status:** three bounded engineering increments published; the full program,
+**Status:** six bounded engineering increments documented; the full program,
 independent review and bank release acceptance are not complete.
 
-## Three bounded increments are published
+## Six bounded increments, not a completed qualification
 
 The first bounded changes and exact before/after results are tracked in
 [implementation status](IMPLEMENTATION-STATUS.md) and the
@@ -20,7 +21,15 @@ keeps unresolved package versions out of exact SBOM/cascade/crypto paths, includ
 legacy current reads. The [third increment](../readiness-evidence/quality-authority-privacy-2026-10-22.md)
 strengthens role-store failure refusal and selected public probe/log privacy;
 all three accumulated increments were pushed in `2fd8fc8f` to open PR #34.
-They do not mark this whole program or bank qualification complete.
+The [fourth increment](../readiness-evidence/quality-execution-recovery-2026-10-23.md)
+and [fifth increment](../readiness-evidence/quality-parser-runtime-2026-10-23.md)
+were subsequently published in `9f3fa5a9`, strengthening execution recovery and
+parser startup/cancellation/cleanup. The [sixth increment](../readiness-evidence/quality-trace-integrity-2026-10-23.md)
+checks existing application trace revision integrity and both observation-time
+boundaries, preserving reviewed-assertion limits and exact-estate privacy.
+Its containing commit/PR identifies publication; exact results and source hashes
+are in the dated record. These increments do not mark the full program or bank
+qualification complete.
 
 ## The recommendation in one sentence
 
@@ -53,8 +62,10 @@ Four labels are used throughout:
 
 The user reports one remaining workflow failure and will resolve it separately.
 Its lane/run is unspecified; this session cannot independently read Actions
-results. This pack neither repairs nor waives it. No workflows or application
-code are changed, no CI is dispatched, and no new site tests are claimed.
+results. This pack neither repairs nor waives it. The original pack was planning
+only; subsequent bounded application corrections are explicitly recorded in the
+ledger and dated records. No workflows are changed or CI explicitly dispatched;
+publication uses `[skip ci]`. No new site tests or Actions verdict are claimed.
 
 ## Read in order
 

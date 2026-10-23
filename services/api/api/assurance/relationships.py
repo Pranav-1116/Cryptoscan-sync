@@ -57,13 +57,19 @@ def save(db, owner, identifier, body, actor):
                         {**value, "state": "PROPOSED", "trust": "DECLARED_NOT_VERIFIED"}, actor)
 
 
+def _current(value):
+    # Intake validation is not enough after a clock correction or restore.
+    return (aware(datetime.fromisoformat(value["observed_at"])) <= utcnow()
+            < aware(datetime.fromisoformat(value["expires_at"])))
+
+
 def approve(db, owner, identifier, body, actor):
     row = store.latest(db, owner, "bom_relationship", identifier)
     if row.payload["state"] != "PROPOSED" or actor == row.created_by:
         raise HTTPException(409, "Relationship needs a different human reviewer")
     validate(db, owner, row.payload)
-    if aware(datetime.fromisoformat(row.payload["expires_at"])) <= utcnow():
-        raise HTTPException(409, "Relationship assertion expired before review")
+    if not _current(row.payload):
+        raise HTTPException(409, "Relationship observation/freshness window is not current for review")
     return store.append(db, owner, "bom_relationship", identifier, body.expected_revision,
         {**row.payload, "state": "REVIEWED", "proposed_by": row.created_by, "approved_by": actor,
          "approval_evidence_ref": body.evidence_ref, "approval_reason": body.reason,
@@ -95,6 +101,9 @@ def trace(db, owner, system_id):
                 raise HTTPException(409, "Relationship history exceeds trace budget; narrow the release scope")
             newest = {}
             for row in assertions:
+                # Verify every loaded envelope, including predecessors, before
+                # it influences revision selection or a returned evidence path.
+                store.verify(row)
                 if row.revision > getattr(newest.get(row.subject_id), "revision", 0):
                     newest[row.subject_id] = row
             for component in binding.components:
@@ -105,7 +114,7 @@ def trace(db, owner, system_id):
                 resolved = False
                 for link in links:
                     value = link.payload
-                    if value["state"] != "REVIEWED" or aware(datetime.fromisoformat(value["expires_at"])) <= utcnow():
+                    if value["state"] != "REVIEWED" or not _current(value):
                         continue
                     try:
                         _, evidence = validate(db, owner, value)

@@ -146,7 +146,9 @@ negative cases cannot produce false PASS/VERIFIED. The API, browser and export
 must agree on those meanings. Missing external truth stays a named limitation.
 
 
-## 2.8 Implemented bounded package-identity correction
+<a id="28-implemented-bounded-package-identity-correction"></a>
+
+## 2.9 Implemented bounded package-identity correction
 
 The [second quality increment](../readiness-evidence/quality-package-identity-2026-10-22.md)
 reproduced known unresolved build variables, wildcard version segments and
@@ -161,3 +163,21 @@ deployment, invocation and independent truth retain their own evidence burdens.
 This is not a full Package URL/range parser, new version resolver, complete
 six-BOM matrix or independent bank accuracy qualification. Actual results and
 open review/site work are in the [implementation ledger](IMPLEMENTATION-STATUS.md).
+
+
+## 2.10 Implemented bounded current-trace correction
+
+The [sixth quality increment](../readiness-evidence/quality-trace-integrity-2026-10-23.md)
+reproduced current application traces accepting corrupt relationship envelopes,
+including loaded predecessors and a storage-forged reviewed state. Trace selection
+now verifies every loaded bounded relationship envelope with the existing hash
+verifier before using it. Review and current trace also recheck
+`observed_at <= now < expires_at`, including a synthetic clock rollback.
+
+These are **22 regression cases**, not a completed six-BOM negative matrix or a
+new trust mechanism. Storage corruption is injected explicitly outside unchanged
+append-only ORM guards; no API write bypass is claimed. Current inactive bindings,
+deployments or retracted supporting observations still remove eligible paths
+without changing assurance history. SBOM, CBOM, NBOM, TechBOM, HBOM and VBOM retain
+the distinct evidence burdens above. Reviewed package mappings remain customer
+assertions, not independent deployment, invocation or runtime verification.

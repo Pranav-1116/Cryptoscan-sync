@@ -6,6 +6,19 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — current evidence-trace integrity and freshness (2026-10-23)
+
+- Verify every loaded bounded relationship revision envelope before application
+  trace selection, including predecessors; integrity mismatch returns safe 409.
+- Recheck both observation-time boundaries at review/current trace, refusing
+  not-yet-observed assertions as well as expired ones after clock correction.
+- Add **22 authenticated SQL/API regressions** for corrupt storage, boundary times,
+  upstream lifecycle, immutable reads and exact-estate privacy. These fixtures do
+  not demonstrate an API write bypass or independently verified runtime use.
+- Retain existing query/path bounds, append-only history and reviewed-assertion
+  limits. No new route, feature, migration, dependency or workflow change.
+- [Reproduction, final results and scope](docs/readiness-evidence/quality-trace-integrity-2026-10-23.md).
+
 ### Fixed — parser runtime failure boundaries (2026-10-23)
 
 - Normalize parser CLI creation failures without exposing raw runtime/path details.

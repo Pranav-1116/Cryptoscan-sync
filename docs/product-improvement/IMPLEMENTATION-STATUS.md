@@ -7,22 +7,42 @@
 [quality-only roadmap](08-execution-roadmap-and-acceptance.md). No new collectors,
 BOM types, pages, services or deployment profiles.
 
-## Current PR update — recovery and parser failure boundaries
+## Current PR update — sixth increment: trace integrity and freshness
 
-This update bundles the previously uncommitted **fourth increment** and the new
-**fifth increment** for publication to the existing PR branch with `[skip ci]`.
-There are **35 + 18 new regression cases**, with scope and original adverse
-results in the separate dated records below. The containing Git commit and PR
-publication comment identify the pushed source; content hashes identify the exact
-tested files. This is source publication, not a signed release or bank upgrade.
-No workflow, dependency lock, migration or new service/collector/profile is added.
+This bounded update follows published `9f3fa5a9` on the same PR branch. Guides
+[2](02-correctness-and-six-bom-quality.md) and
+[3](03-security-privacy-and-isolation.md) selected existing relationship/current
+trace correctness, not a new feature. The containing Git commit and PR comment
+identify publication; [dated evidence](../readiness-evidence/quality-trace-integrity-2026-10-23.md)
+retains exact test inputs, adverse results, source hashes and limitations.
 
-Final local publication checks: **1,070 passed / 16 PostgreSQL skips / 1 live
-Docker deselection**, 17 warnings; separate authorization compatibility **113
-passed**, 10 warnings. The 53 new cases are included in the broad run, not extra
-coverage to add to its total. Full configured Python lint, dependency consistency,
-documentation/whitespace and both source-hash inventories pass. No all-repository,
-Actions or actual bank-site acceptance is inferred.
+The existing four-suite baseline passed **85**. The corrected adverse suite
+against unchanged baseline source reproduced **12 failures / 10 passes**. Trace
+now verifies every loaded bounded relationship envelope before revision selection;
+review/current trace recheck `observed_at <= now < expires_at`. All **22 new cases
+pass**, including lifecycle/history and exact-estate controls.
+
+Final local checks: **452 API/assurance/six-BOM passed**, 6 warnings; **113 auth
+passed**, 10 warnings; **1,114 shared/CBOM/selected package/database passed**,
+10 warnings. No failures, skips or deselections in these three runs. The new
+cases are included in 452, not additive. Full configured Python lint, dependency
+consistency, documentation links/anchors/shell syntax/source hashes and whitespace
+pass. This is not an all-repository, Actions, PostgreSQL or bank-site verdict.
+
+Storage faults deliberately bypass unchanged append-only ORM guards; no API write
+bypass, full database/chain completeness or externally anchored integrity is
+claimed. A different-human repository review, actual site qualification and
+customer acceptance remain open. No new route/collector/service/profile,
+migration, workflow, dependency lock, native binary or site installation changes.
+
+## Previous publication — recovery and parser boundaries (9f3fa5a9)
+
+The fourth and fifth increments were published together in
+[`9f3fa5a9e873aa8f0cd44e2d16996a32154860a2`](https://github.com/ZKChainForge/CryproScan/commit/9f3fa5a9e873aa8f0cd44e2d16996a32154860a2)
+on 2026-10-23 with `[skip ci]`. Their **35 + 18 new cases** are included in the
+historical **1,070 passed / 16 PostgreSQL skips / 1 live Docker deselection**,
+17 warnings, with a separate **113 passed** auth run, 10 warnings. Those are not
+reruns for this sixth increment. Their separate dated records remain unchanged.
 
 ## Published engineering snapshot
 
@@ -35,8 +55,8 @@ not merged into main and not deployed to a bank.
 
 The first three increments below were committed and pushed in the published
 snapshot above. Its subsequent documentation reconciliation did not rerun tests.
-The fourth working-tree increment in section 6 has separate source hashes and new
-local results; it is not included in that historical publication or test table.
+The later increments have separate source hashes and local results; they are not
+included in that first-three-increment publication or test table.
 
 | Final checks retained for the published source | Actual result |
 |---|---|
@@ -53,7 +73,7 @@ security or bank-production qualification. Counts from earlier incremental runs
 below overlap and retain their original scope; do not add them together.
 
 For upgrade consequences and safe operator responses, use the
-[current handoff](../runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f).
+[historical first-three handoff](../runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f).
 The previously planned interruption, duplicate-delivery and durable UNKNOWN
 checks are now implemented as the bounded fourth increment below; its local
 evidence does not qualify production recovery or publish a new release.
@@ -269,7 +289,23 @@ source hashes, original failures, warnings/skips and exact scope are in the
 [fifth dated record](../readiness-evidence/quality-parser-runtime-2026-10-23.md).
 Local child tests are not Docker/escape/daemon-loss or production bank evidence.
 
-## 8. Next bounded work
+## 8. Sixth increment — current-trace integrity and observation freshness
+
+Loaded relationship history now uses the existing envelope verifier before
+revision selection. A corrupt predecessor or storage-forged reviewed state cannot
+supply a green current path. Both observation boundaries are rechecked during
+review and trace, including a synthetic clock correction. Current lifecycle
+revalidation and exact-estate refusal remain in force without rewriting history.
+
+The **22 new cases** comprise six latest-envelope faults, two predecessor faults,
+one forged-state fault, four trace clock boundaries, four review boundaries,
+four upstream lifecycle cases and one combined intact-path/privacy contract.
+All pass in the **452-case** selected API run; the separate **113-case** auth
+and **1,114-case** library/package/database runs also pass. Exact commands, source
+identities, the corrected red run and qualification limits are in the
+[sixth dated record](../readiness-evidence/quality-trace-integrity-2026-10-23.md).
+
+## 9. Next bounded work
 
 1. Obtain different-human review of the bounded corrections and retain current
    source/runtime identities. No independent approval is invented here.

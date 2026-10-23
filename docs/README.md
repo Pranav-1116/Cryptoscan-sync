@@ -4,19 +4,27 @@
 
 See the [step-by-step implementation ledger](product-improvement/IMPLEMENTATION-STATUS.md)
 for reproduced defects, bounded code corrections, actual regression results and
-remaining independent/site acceptance. Three bounded increments are published
+remaining independent/site acceptance. The first three increments were published
 in `2fd8fc8f`: source coverage proof/font bootstrap, unresolved package identity,
-and role-store failure/selected probe privacy. See the
-[upgrade handoff](runbooks/evidence-assurance-upgrade.md#current-quality-source-handoff-2fd8fc8f)
+and role-store failure/selected probe privacy. Later recovery/parser increments
+were published in `9f3fa5a9`. See the
+[current upgrade handoff](runbooks/evidence-assurance-upgrade.md#current-trace-integrity-source-handoff-2026-10-23)
 for changed refusals and requalification. This is not feature expansion, a tagged
 release, bank deployment or production approval.
 
 The later [execution recovery increment](product-improvement/IMPLEMENTATION-STATUS.md#6-fourth-increment--interruption-duplicate-delivery-and-durable-unknown)
 and [parser runtime correction](readiness-evidence/quality-parser-runtime-2026-10-23.md)
-are bundled into the current PR update: bounded interruption, duplicate-delivery,
-durable UNKNOWN and parser startup/cleanup/cancellation checks. Their new local
-results are separate from the historical snapshot and do not qualify bank-site
-recovery or publish a signed operator release.
+were published together: bounded interruption, duplicate-delivery, durable UNKNOWN
+and parser startup/cleanup/cancellation checks. Their retained local results do
+not qualify bank-site recovery or publish a signed operator release.
+
+The [sixth increment](readiness-evidence/quality-trace-integrity-2026-10-23.md)
+continues existing application-trace correctness: verify loaded relationship
+revision envelopes and recheck both freshness boundaries without rewriting
+history or promoting customer review into runtime verification. **22 new cases**
+pass within **452 selected API checks**; **113 authorization** and **1,114 library/
+package/database checks** also pass. The containing commit/PR identifies this
+source publication; no new feature, workflow or installed-site change is claimed.
 
 ## Binary-oriented delivery and IP protection
 

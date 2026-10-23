@@ -1,8 +1,33 @@
 # Evidence assurance upgrade and published quality-source handoff
 
-## Current quality-source handoff (2fd8fc8f)
+## Current trace-integrity source handoff (2026-10-23)
 
-**Published source:** `2fd8fc8fba255333f605202ebb68d04c4029c610`, current PR branch,
+The sixth quality increment builds on published `9f3fa5a9` on the current PR
+branch. Use its [dated record](../readiness-evidence/quality-trace-integrity-2026-10-23.md)
+and the [current ledger](../product-improvement/IMPLEMENTATION-STATUS.md) for exact
+source hashes, local results and the containing publication commit. The snapshot
+below records the first three increments, not the complete current source.
+
+| Changed existing behavior | Safe operator action | Never substitute |
+|---|---|---|
+| Application trace returns 409 `Assurance revision integrity mismatch` for a corrupt loaded relationship envelope, including a predecessor | Preserve the record and restricted diagnostics; have the authorized storage/security owner investigate provenance, grants, backup/restore and incident scope | Repair hashes/payloads in place, suppress the error, delete history or reuse a previously green trace as current proof |
+| Review returns 409 when the observation has not yet occurred or has expired; current trace leaves that component unresolved | Check approved UTC/time synchronization, observation provenance and freshness; obtain new authorized evidence/review when required | Backdate evidence, extend old expiry or override the clock to make an assertion eligible |
+| Stale deployment/binding or tombstoned supporting evidence removes the current path | Reconcile the exact upstream identity under its existing lifecycle process; keep earlier history | Resurrect an old relationship or call absence successful runtime verification |
+
+Hash verification covers envelopes actually loaded within the existing trace
+budget. It is not full database/chain completeness, rollback detection, external
+anchoring or protection against an administrator rewriting a consistent chain.
+Unrelated/foreign application reads remain scoped; do not disclose raw payloads or
+SQL in public support tickets. No migration or installed-site update is performed.
+Stage the separately signed coordinated release, obtain different-human review
+and run actual PostgreSQL/site/restore tests before bank acceptance. A reviewed
+mapping still does not verify deployment, invocation or runtime use.
+
+<a id="current-quality-source-handoff-2fd8fc8f"></a>
+
+## Historical quality-source handoff (2fd8fc8f)
+
+**Historical published source:** `2fd8fc8fba255333f605202ebb68d04c4029c610`, current PR branch,
 2026-10-22. The three quality increments are pushed, not merely proposed. See the
 [publication ledger](../product-improvement/IMPLEMENTATION-STATUS.md#published-engineering-snapshot)
 for actual local checks and the remaining review/site boundary.
