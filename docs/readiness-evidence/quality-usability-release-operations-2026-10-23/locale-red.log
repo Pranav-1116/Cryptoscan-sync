@@ -1,0 +1,709 @@
+
+> zelinx-frontend@1.0.0 test
+> vitest run --reporter=default src/components/Accessibility.test.tsx -t exposes the existing Arabic
+
+
+ RUN  v5.0.5 /home/user/CryproScan/frontend
+
+stderr | src/components/Accessibility.test.tsx > existing console locale control > exposes the existing Arabic switcher inside the authenticated shell without changing the estate
+Warning: An update to LayoutInner inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LayoutInner (/home/user/CryproScan/frontend/src/components/Layout.tsx:403:31)
+    at EnterpriseProvider (/home/user/CryproScan/frontend/src/components/EnterpriseContext.tsx:56:31)
+    at Layout (/home/user/CryproScan/frontend/src/components/Layout.tsx:1488:19)
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to LayoutInner inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LayoutInner (/home/user/CryproScan/frontend/src/components/Layout.tsx:403:31)
+    at EnterpriseProvider (/home/user/CryproScan/frontend/src/components/EnterpriseContext.tsx:56:31)
+    at Layout (/home/user/CryproScan/frontend/src/components/Layout.tsx:1488:19)
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+ ❯ src/components/Accessibility.test.tsx (16 tests | 1 failed | 15 skipped) 537ms
+   ↓ keyboard: skip link and main landmark (1)
+     ↓ renders the skip link as the first focusable element, targeting a focusable main
+   ↓ screen readers: navigation state (1)
+     ↓ marks the active nav link with aria-current=page and only that link
+   ↓ theme: the OS preference is honored on first visit (2)
+     ↓ defaults to light when the OS prefers light and nothing is stored
+     ↓ an explicit stored choice beats the OS preference
+   ↓ contrast: every text token passes WCAG AA in both themes (7)
+     ↓ has the expected tokens in both effective themes
+     ↓ dark theme: text/dim/faint hold 4.5:1 on every surface
+     ↓ light theme: text/dim/faint hold 4.5:1 on every surface
+     ↓ dark theme: status hues hold 4.5:1 as text on the base surfaces
+     ↓ light theme: status hues hold 4.5:1 as text on the base surfaces
+     ↓ dark theme: text on the accent meets 4.5:1
+     ↓ light theme: text on the accent meets 4.5:1
+   ↓ stylesheet contracts (4)
+     ↓ keeps the un-overridable keyboard focus ring
+     ↓ keeps the skip-link styles (hidden until focused)
+     ↓ declares color-scheme for both themes so native controls follow
+     ↓ collapses to a single column with a horizontal nav bar at phone width (<=560px)
+   ❯ existing console locale control (1)
+     × exposes the existing Arabic switcher inside the authenticated shell without changing the estate 534ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/components/Accessibility.test.tsx > existing console locale control > exposes the existing Arabic switcher inside the authenticated shell without changing the estate
+TestingLibraryElementError: Unable to find an accessible element with the role "button" and name "ع"
+
+Here are the accessible roles:
+
+  link:
+
+  Name "Skip to main content":
+  <a
+    class="skip-link"
+    href="#main-content"
+  />
+
+  Name "ZELNXSEC":
+  <a
+    class="logo"
+    data-discover="true"
+    href="/"
+    style="display: flex; align-items: center; gap: 11px; font-weight: 700; font-size: 17px; letter-spacing: 0.02em; text-decoration: none;"
+  />
+
+  Name "Dashboard":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/command-center"
+  />
+
+  Name "Launch readinessPreview":
+  <a
+    aria-current="page"
+    class="nav active"
+    data-discover="true"
+    href="/launch-readiness"
+  />
+
+  Name "Operator decisionsPreview":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/operator-decisions"
+  />
+
+  Name "Activity":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/live-stream"
+  />
+
+  Name "Scan":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/scanners"
+  />
+
+  Name "Live Scanners":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/live-scanners"
+  />
+
+  Name "Assets":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/assets"
+  />
+
+  Name "Network":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/network"
+  />
+
+  Name "Cloud":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/cloud"
+  />
+
+  Name "Applications":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/dev-sec-ops"
+  />
+
+  Name "HardwareBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/hardware"
+  />
+
+  Name "Certificates":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/certificates"
+  />
+
+  Name "Vendors":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/vendor"
+  />
+
+  Name "Cryptography":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/crypto"
+  />
+
+  Name "Crypto Inventory (CBOM)":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/cbom"
+  />
+
+  Name "Algorithm Catalog":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/crypto-assets"
+  />
+
+  Name "Technology BOM":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/live-asset-intelligence"
+  />
+
+  Name "HBOMBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/hbom"
+  />
+
+  Name "NBOMPreview":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/nbom"
+  />
+
+  Name "DependenciesBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/dependency-graph"
+  />
+
+  Name "Graph ExplorerBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/graph"
+  />
+
+  Name "Findings":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/findings"
+  />
+
+  Name "PQC Readiness":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/pqc"
+  />
+
+  Name "Crypto AgilityBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/agility"
+  />
+
+  Name "Crypto Drift":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/drift"
+  />
+
+  Name "Banking & SWIFTBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/banking-regulatory"
+  />
+
+  Name "Policies":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/security-policy"
+  />
+
+  Name "Compliance":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/compliance"
+  />
+
+  Name "Evidence":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/evidence"
+  />
+
+  Name "Audit Log":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/security-center"
+  />
+
+  Name "Remediation TasksBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/remediation"
+  />
+
+  Name "Remediation PrioritiesBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/priorities"
+  />
+
+  Name "MigrationBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/migration"
+  />
+
+  Name "Reports":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/reports"
+  />
+
+  Name "What-If AnalysisPreview":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/what-if"
+  />
+
+  Name "Digital TwinBeta":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/digital-twin"
+  />
+
+  Name "System Health":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/system-health"
+  />
+
+  Name "Settings & Org":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/settings"
+  />
+
+  Name "Security Center":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/security-center"
+  />
+
+  Name "Users & Teams":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/identity"
+  />
+
+  Name "Integrations & API":
+  <a
+    class="nav "
+    data-discover="true"
+    href="/integrations"
+  />
+
+  Name "sign in":
+  <a
+    class="btn sm"
+    data-discover="true"
+    href="/login"
+  />
+
+  Name "See capability maturity →":
+  <a
+    data-discover="true"
+    href="/scope"
+    style="color: var(--slate);"
+  />
+
+  --------------------------------------------------
+  complementary:
+
+  Name "Primary navigation":
+  <aside
+    aria-label="Primary navigation"
+    class="sidebar"
+  />
+
+  --------------------------------------------------
+  button:
+
+  Name "Collapse sidebar":
+  <button
+    aria-label="Collapse sidebar"
+    class="icon-btn"
+    title="Collapse sidebar"
+  />
+
+  Name "Platform":
+  <button
+    class="scope-sel"
+    title="Switch Organization / Business Unit"
+  />
+
+  Name "PRODUCTION":
+  <button
+    class="scope-sel env is-prod"
+    title="Switch Deployment Environment"
+  />
+
+  Name "Open global search":
+  <button
+    aria-label="Open global search"
+    class="searchbox"
+    style="border-radius: var(--r); background: var(--panel); display: flex; align-items: center; gap: 10px; padding: 6px 14px; cursor: pointer; border: 1px solid var(--line); font: inherit; text-align: left;"
+    type="button"
+  />
+
+  Name "UTC":
+  <button
+    class="btn sm ghost"
+    style="font-family: var(--mono); font-size: 11px;"
+    title="Toggle Global Timezone (UTC / Local / GST)"
+  />
+
+  Name "offline":
+  <button
+    class="btn sm ico-row"
+    style="font-size: 11.5px;"
+    title="Click to Switch Role Profile (RBAC)"
+  />
+
+  Name "Switch to light theme":
+  <button
+    aria-label="Switch to light theme"
+    class="btn sm"
+    title="Switch to light theme"
+  />
+
+  Name "Security Center":
+  <button
+    class="btn sm ico-row"
+    style="font-size: 11px; border-color: var(--accent); color: var(--accent);"
+    title="Enterprise Identity, Access & Governance Suite"
+  />
+
+  --------------------------------------------------
+  navigation:
+
+  Name "Primary console sections":
+  <nav
+    aria-label="Primary console sections"
+    class="primary-nav"
+  />
+
+  --------------------------------------------------
+  main:
+
+  Name "":
+  <main
+    class="main"
+    id="main-content"
+    tabindex="-1"
+  />
+
+  --------------------------------------------------
+  combobox:
+
+  Name "Switch Information Hierarchy Level":
+  <select
+    class="inp sm"
+    style="width: auto; font-size: 11px; padding: 3px 8px; background: var(--panel);"
+    title="Switch Information Hierarchy Level"
+  />
+
+  --------------------------------------------------
+  option:
+
+  Name "Level 1 — Executive":
+  <option
+    value="Level 1 — Executive"
+  />
+
+  Name "Level 2 — SecOps":
+  <option
+    value="Level 2 — Security Operations"
+  />
+
+  Name "Level 3 — Technical":
+  <option
+    value="Level 3 — Technical Investigation"
+  />
+
+  --------------------------------------------------
+  note:
+
+  Name "":
+  <div
+    class="maturity-banner maturity-preview"
+    data-tier="preview"
+    role="note"
+    style="display: flex; align-items: center; gap: 10px; margin: 0px 0px 12px; padding: 6px 12px; border-radius: var(--r); background: color-mix(in srgb, var(--violet) 12%, transparent); border: 1px solid color-mix(in srgb, var(--violet) 45%, transparent); font-size: 12px; color: var(--dim);"
+  />
+
+  --------------------------------------------------
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div
+      class="shell "
+      data-sidebar-collapsed="false"
+      dir="ltr"
+    >
+      <a
+        class="skip-link"
+        href="#main-content"
+      >
+        Skip to main content
+      </a>
+      <aside
+        aria-label="Primary navigation"
+        class="sidebar"
+      >
+        <div
+          style="display: flex; align-items: center; justify-content: space-between; margin: 4px 8px 16px;"
+        >
+          <a
+            class="logo"
+            data-discover="true"
+            href="/"
+            style="display: flex; align-items: center; gap: 11px; font-weight: 700; font-size: 17px; letter-spacing: 0.02em; text-decoration: none;"
+          >
+            <span
+              aria-hidden="true"
+              class="brandmark"
+              style="width: 30px; height: 30px;"
+            >
+              <svg
+                fill="none"
+                height="16.5"
+                viewBox="0 0 24 24"
+                width="16.5"
+              >
+                <path
+                  d="M12 2.5 21.5 12 12 21.5 2.5 12z"
+                  stroke="currentColor"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                />
+                <path
+                  d="M12 8.5 15.5 12 12 15.5 8.5 12z"
+                  fill="currentColor"
+                />
+              </svg>
+            </span>
+            <span
+              class="logo-text"
+              style="color: var(--text);"
+            >
+              ZELNX
+              <span
+                style="color: var(--faint); font-weight: 500; font-size: 10px; margin-left: 6px; letter-spacing: 0.14em;"
+              >
+                SEC
+              </span>
+            </span>
+          </a>
+          <button
+            aria-label="Collapse sidebar"
+            class="icon-btn"
+            title="Collapse sidebar"
+          >
+            <svg
+              fill="currentColor"
+              height="14"
+              viewBox="0 0 256 256"
+              width="14"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"
+              />
+            </svg>
+          </button>
+        </div>
+        <div
+          class="scope-group"
+        >
+          <button
+            class="scope-sel"
+            title="Switch Organization / Business Unit"
+          >
+            <span
+              class="ico-row"
+            >
+              <svg
+                class="ico"
+                fill="currentColor"
+                height="14"
+                viewBox="0 0 256 256"
+                width="14"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M240,208H224V96a16,16,0,0,0-16-16H144V32a16,16,0,0,0-24.88-13.32L39.12,72A16,16,0,0,0,32,85.34V208H16a8,8,0,0,0,0,16H240a8,8,0,0,0,0-16ZM208,96V208H144V96ZM48,85.34,128,32V208H48ZM112,112v16a8,8,0,0,1-16,0V112a8,8,0,1,1,16,0Zm-32,0v16a8,8,0,0,1-16,0V112a8,8,0,1,1,16,0Zm0,56v16a8,8,0,0,1-16,0V168a8,8,0,0,1,16,0Zm32,0v16a8,8,0,0,1-16,0V168a8,8,0,0,1,16,0Z"
+                />
+              </svg>
+              <span>
+                Platform
+              </span>
+            </span>
+            <svg
+              class="ico"
+              fill="var(--faint)"
+              height="13"
+              viewBox="0 0 256 256"
+              width="13"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"
+              />
+            </svg>
+          </button>
+          <button
+            class="scope-sel env is-prod"
+            title="Switch Deployment Environment"
+          >
+            <span
+              class="ico-row"
+            >
+              <span
+                class="scope-dot"
+              />
+              <span>
+                PRODUCTION
+              </span>
+            </span>
+            <svg
+              class="ico"
+              fill="var(--faint)"
+              height="13"
+              viewBox="0 0 256 256"
+              width="13"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"
+              />
+            </svg>
+          </button>
+        </div>
+        <nav
+          aria-label="Primary console sections"
+          class="primary-nav"
+        >
+          <div
+            class="nav-label"
+          >
+            Overview
+          </div>
+          <a
+            class=...
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/components/Accessibility.test.tsx:198:27
+    196|     localStorage.setItem("cryptoscan_tenant", "synthetic-selected-esta…
+    197|     shell("/launch-readiness");
+    198|     const arabic = screen.getByRole("button", { name: "ع", exact: true…
+       |                           ^
+    199|     fireEvent.click(arabic);
+    200|     expect(document.documentElement).toHaveAttribute("lang", "ar");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 skipped (16)
+   Start at  09:51:09
+   Duration  3.25s (import 56%, environment 19%, tests 17%, transform 4%, setup 4%)
+

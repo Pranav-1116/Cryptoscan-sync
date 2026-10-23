@@ -20,7 +20,7 @@ interface I18nCtx {
 }
 
 const Ctx = createContext<I18nCtx>({
-  lang: "en", dir: "ltr", setLang: () => {}, t: (k) => k,
+  lang: "en", dir: "ltr", setLang: () => {}, t: (k) => DICTS.en[k] ?? k,
 });
 
 function initialLang(): Lang {
@@ -58,10 +58,10 @@ export function useI18n(): I18nCtx {
 export function LanguageSwitcher() {
   const { lang, setLang, t } = useI18n();
   return (
-    <span className="lang-switch" title={t("lang.label")}
+    <span className="lang-switch" role="group" aria-label={t("lang.label")} title={t("lang.label")}
       style={{ display: "inline-flex", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", overflow: "hidden" }}>
       {(["en", "ar"] as Lang[]).map((l) => (
-        <button key={l}
+        <button key={l} type="button" lang={l} aria-pressed={lang === l}
           onClick={() => setLang(l)}
           className="btn sm"
           style={{

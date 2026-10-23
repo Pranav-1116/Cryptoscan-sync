@@ -660,6 +660,9 @@ def test_pilot_gate_expiry_tamper_revocation_and_selected_source_binding(pilot_s
     db.commit()
     status = done(a.get(path + "/status"), 200)
     assert any("SSH observation integrity" in x for x in status["issues"])
+    assert "COVERAGE_UNAVAILABLE_OR_CHANGED" in status["issues"]
+    assert status["coverage_available"] is False
+    assert status["coverage_counts"] is None  # unavailable is never zero findings
     assert not status["commercial_acceptance_current"]
     eng = store.latest(db, "a", "security_engagement", body["engagement_id"])
     done(admin(clients).post(P + f"/engagements/{body['engagement_id']}/withdraw", json=approval(eng.revision)))

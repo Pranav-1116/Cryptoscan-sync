@@ -1,0 +1,474 @@
+.................FF                                                      [100%]
+=================================== FAILURES ===================================
+_______________________ test_matched_trace_api_workload ________________________
+
+assured = ({'bank_a': <starlette.testclient.TestClient object at 0x7f5be0c69b50>, 'bank_b': <starlette.testclient.TestClient obj....session.Session object at 0x7f5be025ea10>, PosixPath('/tmp/pytest-of-user/pytest-31/test_matched_trace_api_workloa0'))
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f5be1521990>
+
+    def test_matched_trace_api_workload(assured, monkeypatch):
+        clients, db, _ = assured
+        client = clients["bank_a"]
+        components = [{"name": f"crypto-{n}", "version": "1.2.3", "purl": f"pkg:maven/org.bank/crypto-{n}@1.2.3", "bom-ref": f"component-{n}"} for n in range(50)]
+        binding = attach(client, register(client), stored(client, {"bomFormat": "CycloneDX", "components": components}))
+        done(deploy(client, {"id": binding["artifact_id"]}, system_id="system-a"))
+        scan = new_scan(db)
+        evidence = db.query(EvidenceRecord).filter_by(scan_id=scan.id).one()
+        for n, component in enumerate(components):
+            value = relationship(binding, component["purl"], evidence); value.pop("expected_revision")
+            identifier = store.subject("synthetic-perf", str(n))
+            first = store.append(db, "a", "bom_relationship", identifier, 0, {**value, "state": "PROPOSED", "trust": "DECLARED_NOT_VERIFIED"}, "fixture-author")
+            store.append(db, "a", "bom_relationship", identifier, 1, {**first.payload, "state": "REVIEWED", "trust": "CUSTOMER_REVIEWED_ASSERTION_NOT_INDEPENDENT_RUNTIME_PROOF"}, "fixture-reviewer")
+        # Exact published baseline; both functions see the SAME SQL/blobs/identities.
+        original = types.ModuleType("api.assurance.trace_baseline"); original.__package__ = "api.assurance"
+        code = subprocess.check_output(["git", "show", BASELINE + ":services/api/api/assurance/relationships.py"])
+        exec(compile(code, "published_trace_baseline", "exec"), original.__dict__)
+        candidate = relationships.trace
+        output, reference, statements = {}, None, []
+        def observed(_connection, _cursor, statement, *_args): statements.append(statement)
+        event.listen(db.get_bind(), "before_cursor_execute", observed)
+        try:
+            for name, fn in [("before", original.trace), ("after", candidate)]:
+                monkeypatch.setattr(relationships, "trace", fn)
+                for _ in range(3): done(client.get(P + "/applications/system-a/trace"), 200)
+                samples, queries = [], []
+                for _ in range(25):
+                    statements.clear(); start = time.perf_counter()
+                    response = client.get(P + "/applications/system-a/trace")
+                    samples.append((time.perf_counter() - start) * 1000)
+                    body = done(response, 200); queries.append(len(statements))
+                    if reference is None: reference = body
+                    assert body == reference and len(body["paths"]) == 50
+                    assert body["runtime_verified"] is body["complete"] is False
+                ordered = sorted(samples)
+                output[name] = {"samples_ms": samples, "p50_ms": ordered[12], "p95_ms": ordered[23], "p99_ms": ordered[24],
+                                "query_counts": queries, "response_bytes": len(response.content)}
+        finally:
+            event.remove(db.get_bind(), "before_cursor_execute", observed)
+            monkeypatch.setattr(relationships, "trace", candidate)
+        with db.get_bind().connect() as connection:
+            plan = connection.execute(text("EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM evidence_records WHERE tenant_id='a' AND id=:id"), {"id": evidence.id}).scalar()
+        output.update(baseline_commit=BASELINE, components=50, reviewed_edges=50, concurrency=1, warmups=3, repetitions=25,
+            correctness_exact_output_unchanged=True, query_plan=plan,
+            implementation_sha256=hashlib.sha256(Path(relationships.__file__).read_bytes()).hexdigest(),
+            targets_approved="No correctness regression; p95/p99 not slower; chosen bottleneck improvement >=20%")
+        target = os.getenv("CRYPTOSCAN_MEASURE_OUT")
+>       assert target, "Set an external result path for opt-in measurement"
+E       AssertionError: Set an external result path for opt-in measurement
+E       assert None
+
+services/api/tests/unit/test_trace_workload_postgres.py:80: AssertionError
+---------------------------- Captured stderr setup -----------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, Initial migration: Create scans table.
+INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, Create evidence_records table.
+INFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, Create verification_log table
+INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, Add normalized_crypto column to evidence_records
+INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, Add policy_evaluation column to evidence_records
+INFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, Create baselines table
+INFO  [alembic.runtime.migration] Running upgrade 0006 -> 0007, Create drift_events table
+INFO  [alembic.runtime.migration] Running upgrade 0007 -> 0008, Create scan_jobs table
+INFO  [alembic.runtime.migration] Running upgrade 0008 -> 0009, Create repo_configurations table
+INFO  [alembic.runtime.migration] Running upgrade 0009 -> 0010, Create crypto_assets table (SQLite-safe JSON).
+INFO  [alembic.runtime.migration] Running upgrade 0010 -> 0011, Create crypto_asset_evidence link table.
+INFO  [alembic.runtime.migration] Running upgrade 0011 -> 0012, Create systems table.
+INFO  [alembic.runtime.migration] Running upgrade 0012 -> 0013, Create system_assets table.
+INFO  [alembic.runtime.migration] Running upgrade 0013 -> 0014, Create system_dependencies table.
+INFO  [alembic.runtime.migration] Running upgrade 0014 -> 0015, Create container_scans table.
+INFO  [alembic.runtime.migration] Running upgrade 0015 -> 0016, Create vulnerabilities table.
+INFO  [alembic.runtime.migration] Running upgrade 0016 -> 0017, Part 3 intelligence tables.
+INFO  [alembic.runtime.migration] Running upgrade 0017 -> 0018, Part 4 maturity tables: agility, exceptions, OT, vendor crypto, cert usages.
+INFO  [alembic.runtime.migration] Running upgrade 0018 -> 0019, Create users, user_sessions, audit_log tables (multi-user RBAC).
+INFO  [alembic.runtime.migration] Running upgrade 0019 -> 0020, Create runtime_findings table (runtime TLS tap + process library observations).
+INFO  [alembic.runtime.migration] Running upgrade 0020 -> 0021, Create network_scan_runs table (persisted scan results for scan-to-scan drift).
+INFO  [alembic.runtime.migration] Running upgrade 0021 -> 0022, Add MFA (TOTP) support: users.mfa_secret/mfa_enabled + recovery codes.
+INFO  [alembic.runtime.migration] Running upgrade 0022 -> 0023, CI gate evaluation records (blocked-deployments tracking).
+INFO  [alembic.runtime.migration] Running upgrade 0023 -> 0024, Migration tracking: tasks + milestones (Week 53-54).
+INFO  [alembic.runtime.migration] Running upgrade 0024 -> 0025, Audit log hash chain (Week 57-58): tamper-evident audit trail.
+INFO  [alembic.runtime.migration] Running upgrade 0025 -> 0026, Hot-path composite indexes (Week 59-60): estate-scale query performance.
+INFO  [alembic.runtime.migration] Running upgrade 0026 -> 0027, Scheduled compliance reports + immutable snapshots (W55-56 items 7-8).
+INFO  [alembic.runtime.migration] Running upgrade 0027 -> 0028, 24/7 continuous monitoring: watch-list targets + event feed.
+INFO  [alembic.runtime.migration] Running upgrade 0028 -> 0029, Reconcile migrated schemas with the ORM models.
+INFO  [alembic.runtime.migration] Running upgrade 0029 -> 0030, Payment cryptography inventory: HSM keys, ceremonies, audit events, findings.
+INFO  [alembic.runtime.migration] Running upgrade 0030 -> 0031, Leader lease for multi-AZ monitor daemons (exactly-one-scans).
+INFO  [alembic.runtime.migration] Running upgrade 0031 -> 0032, Daily transaction-volume series for crypto-per-transaction correlation.
+INFO  [alembic.runtime.migration] Running upgrade 0032 -> 0033, Ceremony scheduling: status column on key ceremonies (PLANNED/HELD/ABANDONED).
+INFO  [alembic.runtime.migration] Running upgrade 0033 -> 0034, Certificate renewal tracking: status, ticket reference, notes on certificates.
+INFO  [alembic.runtime.migration] Running upgrade 0034 -> 0035, Machine API keys for CI/SIEM integration (real-time / enterprise API).
+INFO  [alembic.runtime.migration] Running upgrade 0035 -> 0036, 24/7 Live Hardware Engine persistence (spec §3/§4/§16).
+INFO  [alembic.runtime.migration] Running upgrade 0036 -> 0037, Live crypto scanner persistence (§34/§35 of the Universal Crypto Scanner).
+INFO  [alembic.runtime.migration] Running upgrade 0037 -> 0038, Realtime event log tuning.
+INFO  [alembic.runtime.migration] Running upgrade 0038 -> 0039, Soft delete for users (admin account removal, compliance-safe).
+INFO  [alembic.runtime.migration] Running upgrade 0039 -> 0040, Organization-level settings (active sector profile).
+INFO  [alembic.runtime.migration] Running upgrade 0040 -> 0041, Enterprise onboarding aggregate: organizations, environments, authorized
+scope entries, connectors, and discovery runs.
+INFO  [alembic.runtime.migration] Running upgrade 0041 -> 0042, Onboarding: maintenance-window controls, agent heartbeat, discovery progress.
+INFO  [alembic.runtime.migration] Running upgrade 0042 -> 0043, ZELNX Control Plane (P0): tenancy, ABAC grants, credential vault refs,
+agent fleet, safe-scan policies, asset identity, durable event queue, and
+detection benchmarking.
+INFO  [alembic.runtime.migration] Running upgrade 0043 -> 0044, P1 enterprise layer: policy-as-code (versioned), compliance intelligence,
+ITSM tickets, CMDB/ITS/SIEM integrations, regions/DR, crypto knowledge base.
+INFO  [alembic.runtime.migration] Running upgrade 0044 -> 0045, Outbound webhook delivery audit (SIEM/ITSM/SOAR real HTTP fan-out).
+INFO  [alembic.runtime.migration] Running upgrade 0045 -> 0046, P2 deterministic enterprise features: marketplace, data lake, anomaly,
+governance approvals and migration validation.
+INFO  [alembic.runtime.migration] Running upgrade 0046 -> 0047, P2 machine API-key platform: endpoint scopes, method allowlist, rate quota,
+and lifetime usage counters.
+INFO  [alembic.runtime.migration] Running upgrade 0047 -> 0048, OT/ICS maintenance windows for deterministic active-scan safety gating.
+INFO  [alembic.runtime.migration] Running upgrade 0048 -> 0049, Short-lived vault-lease audit records for scanner credential access.
+INFO  [alembic.runtime.migration] Running upgrade 0049 -> 0050, Deterministic automation engine: configured rules + run records.
+INFO  [alembic.runtime.migration] Running upgrade 0050 -> 0051, Live versioned CBOM (immutable, content-addressed snapshots).
+INFO  [alembic.runtime.migration] Running upgrade 0051 -> 0052, :class:`api_keys` — add per-key IP allowlist and rotation policy.
+INFO  [alembic.runtime.migration] Running upgrade 0052 -> 0053, :class:`cp_security_posture` — durable ZELNX security-posture snapshots.
+INFO  [alembic.runtime.migration] Running upgrade 0053 -> 0054, :class:`graph_snapshots` — immutable content-addressed dependency-graph versions.
+INFO  [alembic.runtime.migration] Running upgrade 0054 -> 0055, :class:`technology_bom_snapshots` — immutable content-addressed unified BOM versions.
+INFO  [alembic.runtime.migration] Running upgrade 0055 -> 0056, :class:`technology_bom_export_schedules` / `technology_bom_export_runs`.
+INFO  [alembic.runtime.migration] Running upgrade 0056 -> 0057, class:`tenants` / `tenant_memberships` / `tenant_usage_events` /
+`tenant_provision_events` / `tenant_invites` + `tenant_id` scoping columns.
+INFO  [alembic.runtime.migration] Running upgrade 0057 -> 0058, ``access_reviews`` — records of completed quarterly access reviews.
+INFO  [alembic.runtime.migration] Running upgrade 0058 -> 0059, ``pentest_findings`` — third-party pen-test results tracked to closure.
+INFO  [alembic.runtime.migration] Running upgrade 0059 -> 0060, Align legacy UUID columns with the ORM's String(36) ids.
+INFO  [alembic.runtime.migration] Running upgrade 0060 -> 0061, Add tenant_id to the scan surface so tenant isolation can be enforced.
+INFO  [alembic.runtime.migration] Running upgrade 0061 -> 0062, Finish tenant scoping: tenant_id on the remaining customer-owned tables.
+INFO  [alembic.runtime.migration] Running upgrade 0062 -> 0063, Add durable binary scan and per-observation query indexes.
+INFO  [alembic.runtime.migration] Running upgrade 0063 -> 0064, Scope durable control-plane history by tenant.
+INFO  [alembic.runtime.migration] Running upgrade 0064 -> 0065, Make control-plane asset identity uniqueness tenant-local.
+INFO  [alembic.runtime.migration] Running upgrade 0065 -> 0066, Versioned vendor due-diligence profiles.
+INFO  [alembic.runtime.migration] Running upgrade 0066 -> 0067, Record the authenticated actor that created each profile revision.
+INFO  [alembic.runtime.migration] Running upgrade 0067 -> 0068, Persist tenant-scoped network inventory revisions.
+INFO  [alembic.runtime.migration] Running upgrade 0068 -> 0069, Persist cross-BOM cascade runs (unified cascade audit trail).
+INFO  [alembic.runtime.migration] Running upgrade 0069 -> 0070, Cascade stack completion: edge provenance, declared linkage, twin snapshots, watches.
+INFO  [alembic.runtime.migration] Running upgrade 0070 -> 0071, Network scan-target provenance + tenant-local snapshot versions.
+INFO  [alembic.runtime.migration] Running upgrade 0071 -> 0072, Remediation task tracking + verification store (audit 62 / GAP-006).
+INFO  [alembic.runtime.migration] Running upgrade 0072 -> 0073, Retired-asset registry + crypto-asset lifecycle (audits 69/54, GAP-023).
+INFO  [alembic.runtime.migration] Running upgrade 0073 -> 0074, Optimistic scan-job locking, policy rule overrides, drift task source (audit 04/05/03).
+INFO  [alembic.runtime.migration] Running upgrade 0074 -> 0075, Evidence soft delete: tombstones that preserve the chain (audits 15/16).
+INFO  [alembic.runtime.migration] Running upgrade 0075 -> 0076, Resource-level access grants (report 13 §2.2 — per-system permissions).
+INFO  [alembic.runtime.migration] Running upgrade 0076 -> 0077, System ownership roles (report 55 P0 — technical + security owner fields).
+INFO  [alembic.runtime.migration] Running upgrade 0077 -> 0078, Model/chain index parity (report 04 — the index-analysis claims, re-verified).
+INFO  [alembic.runtime.migration] Running upgrade 0078 -> 0079, Drift acknowledgment timestamps (report 31 §5/§6, round 23).
+INFO  [alembic.runtime.migration] Running upgrade 0079 -> 0080, Direct ownership on crypto assets, certificates, vendors (report 55 P0#3-5, round 27).
+INFO  [alembic.runtime.migration] Running upgrade 0080 -> 0081, Custom role definitions (report 13 §2.2 open item, round 30).
+INFO  [alembic.runtime.migration] Running upgrade 0081 -> 0082, Migration task dependencies (round 30 execution engine).
+INFO  [alembic.runtime.migration] Running upgrade 0082 -> 0083, Declared network topology (advanced/58 P0#1–2, round 31).
+INFO  [alembic.runtime.migration] Running upgrade 0083 -> 0084, Crypto threat-intel advisories (deep/30, round 31).
+INFO  [alembic.runtime.migration] Running upgrade 0084 -> 0085, Cryptographic fact rows (advanced/51 P0#1 write-side step, round 35).
+INFO  [alembic.runtime.migration] Running upgrade 0085 -> 0086, Fact store read path (advanced/51 P0#1, round 37).
+INFO  [alembic.runtime.migration] Running upgrade 0086 -> 0087, Keep derived facts tenant-local and enforce NULL-safe identity.
+INFO  [alembic.runtime.migration] Running upgrade 0087 -> 0088, Evidence dispositions (§4.2 P0, round 40).
+INFO  [alembic.runtime.migration] Running upgrade 0088 -> 0089, Drift condition-level verification columns (§4.7, round 40).
+INFO  [alembic.runtime.migration] Running upgrade 0089 -> 0090, Persisted, content-addressed CBOM snapshots (§4.4, round 45).
+INFO  [alembic.runtime.migration] Running upgrade 0090 -> 0091, Durable compliance records (§4.3, round 47).
+INFO  [alembic.runtime.migration] Running upgrade 0091 -> 0092, Crypto asset identity spine (§4.2, round 57).
+INFO  [alembic.runtime.migration] Running upgrade 0092 -> 0093, Durable API-key quota windows (§4.8, round 59).
+INFO  [alembic.runtime.migration] Running upgrade 0093 -> 0094, Report snapshot payload hashes (§4.4, round 69 — the report leg of
+scan-run → BOM → report).
+INFO  [alembic.runtime.migration] Running upgrade 0094 -> 0095, HBOM estate snapshots (§4.4, round 71 — the independent HBOM leg).
+INFO  [alembic.runtime.migration] Running upgrade 0095 -> 0096, Durable destination receipts and conservative legacy notification handoff.
+INFO  [alembic.runtime.migration] Running upgrade 0096 -> 0097, Index exact-estate receipt keyset inspection; no delivery data changes.
+INFO  [alembic.runtime.migration] Running upgrade 0097 -> 0098, Separate SBOM document identity, immutable release digest and deployment assertion.
+INFO  [alembic.runtime.migration] Running upgrade 0098 -> 0099, Retained relationship lifecycle, monotonic source receipts and event journal.
+INFO  [alembic.runtime.migration] Running upgrade 0099 -> 0100, Optional relationship evidence pointers; no invented legacy verification.
+INFO  [alembic.runtime.migration] Running upgrade 0100 -> 0101, Declared operational dependency modes; legacy rows remain unknown.
+INFO  [alembic.runtime.migration] Running upgrade 0101 -> 0102, Positive authorization, shared budgets, attempts and transactional outbox.
+INFO  [alembic.runtime.migration] Running upgrade 0102 -> 0103, Partial collection receipts and exact-estate immutable assurance revisions.
+INFO  [alembic.runtime.migration] Running upgrade 0103 -> 0104, Measured operator pagination indexes; no data/status/approval rewrites.
+INFO  [alembic.runtime.migration] Running upgrade 0104 -> 0105, Widen monitor event types for platform events sharing the audit journal.
+INFO  [alembic.runtime.migration] Running upgrade 0105 -> 0106, Complete existing job-state contracts on migrated PostgreSQL enums.
+___ test_isolated_complete_cohort_restore_and_new_write_preserving_failback ____
+
+prepared_cohort = ({'clients': {'bank_a': <starlette.testclient.TestClient object at 0x7f5be0816a90>, 'bank_b': <starlette.testclient.Te...cccc', 'collected_at': '2026-10-23T09:01:22.035525Z', 'customer_id': 'a', 'estate_scope': 'tenant:a', ...}, ...}, ...})
+controlled = {'clients': {'bank_a': <starlette.testclient.TestClient object at 0x7f5bd8f7af90>, 'bank_b': <starlette.testclient.Tes...lete_cohort_0/approved-source', 'tmp': PosixPath('/tmp/pytest-of-user/pytest-31/test_isolated_complete_cohort_0'), ...}
+quality_cluster = (<function quality_cluster.<locals>.database at 0x7f5bdb320860>, 'cs_quality_3bdc72868cef420eb4a0aaeb1a6ada5f')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f5be4b4b6d0>
+tmp_path_factory = TempPathFactory(_given_basetemp=None, _trace=<pluggy._tracing.TagTracerSub object at 0x7f5be4d4ea90>, _basetemp=PosixPath('/tmp/pytest-of-user/pytest-31'), _retention_count=3, _retention_policy='all')
+
+    def test_isolated_complete_cohort_restore_and_new_write_preserving_failback(prepared_cohort, controlled, quality_cluster, monkeypatch, tmp_path_factory):
+        case, signer, signer_body, supplier = prepared_cohort
+        state = controlled
+        clients, db, live_files = state["clients"], state["db"], state["tmp"]
+        source = db.get_bind()
+        archive = tmp_path_factory.mktemp("isolated-cohort-archive")
+        current_key = secrets.token_urlsafe(32)
+        monkeypatch.setenv("BACKUP_ENCRYPTION_KEY", secrets.token_urlsafe(32))
+        # The source fixture's SBOM was encrypted with the fixture environment's
+        # historical master. Keep that exact generation separately from new keys.
+        historical_key = os.getenv("CRYPTOSCAN_ARTIFACT_KEY") or os.getenv("SECRET_KEY")
+        assert historical_key, "An explicit synthetic artifact master must be configured for this drill"
+        configure(state)
+        approve(state)
+        queued, descriptor = queue(state)
+        job_id = queued.id
+        with tenant_scope("a"):
+            old_attempt = claim(descriptor)
+        db.execute(update(ExecutionAttempt).where(ExecutionAttempt.id == old_attempt["id"]).values(deadline_at=utcnow() - timedelta(seconds=1)))
+        db.commit(); db.expire_all()
+        # Cohort is quiesced in this single-writer synthetic exercise. Every public
+        # table and every referenced file under the isolated fixture root is retained.
+        before_rows = cohort_rows(source)
+        before_tables = cohort_hashes(source)
+        before_files = file_hashes(live_files)
+        shutil.copytree(live_files, archive / "files")
+        encrypted = backup(source, archive / "initial")
+        assert file_hashes(archive / "files") == before_files
+        # Capture post-backup acknowledged deltas while source is still authority.
+        withdrawn_at = utcnow()
+        db.execute(update(EvidenceRecord).where(EvidenceRecord.id == case["evidence"].id).values(deleted_at=withdrawn_at))
+        db.execute(update(UserSession).where(UserSession.username == "bank_b").values(revoked_at=withdrawn_at))
+        db.commit()
+        signer_body.update(expected_revision=1, revoked=True)
+        done(admin(clients).put(P + f"/signers/{signer['subject_id']}", json=signer_body), 200)
+        store.append(db, "a", "synthetic_recovery_write", "post-backup-accepted", 0, {"acknowledged": True}, "bank_a")
+        # Preserve complete immutable SQL rows/envelopes, not reconstructed assertions.
+        db.commit()
+        after_rows = cohort_rows(source)
+        after_tables = cohort_hashes(source)
+        control = create_engine(source.url.set(database="postgres"), isolation_level="AUTOCOMMIT")
+        database, _ = quality_cluster
+        began = time.perf_counter()
+        old_connection = source.connect()
+        try:
+            fence(source, control)
+            with pytest.raises(Exception): old_connection.execute(text("CREATE TABLE stale_writer_must_not_write (id integer)"))
+            old_connection.close()
+            with pytest.raises(Exception):
+                with source.connect() as connection: connection.execute(text("SELECT 1"))
+            with database() as candidate:
+                restore(encrypted, candidate)
+                assert cohort_hashes(candidate) == before_tables
+                restored_files = archive / "restored-files"
+                shutil.copytree(archive / "files", restored_files)
+                assert file_hashes(restored_files) == before_files
+                # A backup alone loses the accepted delta and resurrects old
+                # eligibility. Keep candidate unavailable until the journal is applied.
+                with Session(candidate) as recovered:
+                    assert recovered.query(AssuranceRevision).filter_by(subject_id="post-backup-accepted").count() == 0
+                    changed_rows = replay_quiesced_delta(candidate, before_rows, after_rows)
+                    assert cohort_hashes(candidate) == after_tables
+                    assert controls.recover_expired(recovered) == 1
+                    recovered.commit()
+                    assert recovered.get(ScanJob, job_id).status == "UNKNOWN"
+                    assert all(b.active == 1 for b in recovered.query(ExecutionBudget))
+                    assert recovered.query(AssuranceRevision).filter_by(subject_id="post-backup-accepted").count() == 1
+                import api.routers.devsecops as ds
+                from governance.backup_jobs import DiskBackupStorage
+                monkeypatch.setattr(ds, "_SBOM_STORE", DiskBackupStorage(restored_files / "sboms"))
+                monkeypatch.setattr(db_engine, "_ENGINE", candidate); configure_session(candidate)
+                with tenant_scope("a"), pytest.raises(QueueRefused): claim(descriptor)
+                with pytest.raises(controls.ExecutionDenied): controls.finish_attempt(old_attempt, True)
+                assert done(clients["bank_a"].get(TRACE), 200)["paths"] == []
+                assert admin(clients).get(P + f"/evidence-blobs/{supplier['subject_id']}/content").status_code == 409
+                assert clients["bank_b"].get(P + f"/records/supplier_evidence/{supplier['subject_id']}").status_code in (401, 403)
+                history = done(clients["bank_a"].get(P + f"/records/bom_relationship/{case['proposed']['subject_id']}"), 200)
+                assert len(history["revisions"]) == 2
+                recovery_seconds = time.perf_counter() - began
+                # Actually accept new API writes after cutover, including a second
+                # artifact key generation. These MUST survive subsequent failback.
+                fresh_register = done(clients["bank_a"].post(P + "/registers", json=manifest()))
+                fresh_evidence = blob(clients["bank_a"], b"synthetic post-cutover accepted evidence")
+                current_store = ds._sbom_storage()
+                old_manifest = next(m for m in current_store.list_manifests() if m["artifact_id"] == case["binding"]["sbom_artifact_id"])
+                old_blob = current_store.get(old_manifest["storage_key"])
+                # Exercise explicit second-generation key recovery on a synthetic
+                # standalone object, NOT an admitted/reviewed SBOM or runtime fact.
+                new_blob, _ = encrypt_blob(b"synthetic second-generation object", tenant_id="a", secret=current_key)
+                current_store.put("synthetic-unbound-generation-two", new_blob)
+                assert decrypt_blob(old_blob, tenant_id="a", secret=historical_key)[0]
+                assert decrypt_blob(new_blob, tenant_id="a", secret=current_key)[0]
+                with pytest.raises(ArtifactCryptoError): decrypt_blob(old_blob, tenant_id="a", secret=current_key)
+                cutover_tables = cohort_hashes(candidate)
+                cutover_files = file_hashes(restored_files)
+                shutil.copytree(restored_files, archive / "failback-files")
+                new_backup = backup(candidate, archive / "failback")
+                failback_start = time.perf_counter()
+                fence(candidate, control)
+                with database() as failed_back:
+                    restore(new_backup, failed_back)
+                    assert cohort_hashes(failed_back) == cutover_tables
+                    assert file_hashes(archive / "failback-files") == cutover_files
+                    monkeypatch.setattr(db_engine, "_ENGINE", failed_back); configure_session(failed_back)
+                    with Session(failed_back) as final:
+                        from db.models.assurance import AssuranceBlob
+                        assert store.latest(final, "a", "estate_register", fresh_register["subject_id"])
+                        assert final.get(AssuranceBlob, fresh_evidence["blob_id"])
+                        assert final.query(AssuranceRevision).filter_by(subject_id="post-backup-accepted").count() == 1
+                        assert final.get(ScanJob, job_id).status == "UNKNOWN"
+                    assert admin(clients).get(P + f"/evidence-blobs/{supplier['subject_id']}/content").status_code == 409
+                    failback_seconds = time.perf_counter() - failback_start
+                    result = {"scenario": "isolated synthetic complete SQL+files cohort; actual encrypted pg_dump/psql restore and failback",
+                        "postgres_version": "16.2", "tables": len(before_tables), "table_hashes": before_tables,
+                        "initial_files": before_files, "failback_files": cutover_files,
+                        "recovery_seconds": recovery_seconds, "failback_seconds": failback_seconds,
+                        "post_backup_changed_rows": changed_rows, "acknowledged_post_backup_marker_writes": 1, "lost_without_delta_replay": 1, "lost_after_delta_replay": 0,
+                        "new_cutover_api_register_and_evidence_blob_preserved": True, "old_database_connections_and_writer_fenced": True,
+                        "old_execution_fence_rejected": True, "expired_attempt_unknown_capacity_retained": True,
+                        "post_backup_session_and_signer_revocations_and_withdrawal_preserved": True,
+                        "historical_and_current_artifact_keys_verified_separately": True,
+                        "independent_review": "PENDING", "deployment_qualification": False,
+                        "limits": ["single-writer quiesced synthetic estate; no concurrent site traffic or production cutover", "single cluster / Unix socket / local trust; no TLS or cross-site recovery", "collector and external process outcomes not executed", "privileged operator replay and DB fencing, not automatic failover", "artifact key generations require explicit operator selection; no automatic historical keyring", "no production RPO/RTO promised"]}
+>                   Path(os.environ["CRYPTOSCAN_COHORT_OUT"]).write_text(json.dumps(result, indent=2) + "\n")
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+services/api/tests/unit/test_isolated_cohort_recovery.py:263: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+[environment repr omitted: synthetic key and sandbox metadata]
+key = 'CRYPTOSCAN_COHORT_OUT'
+
+>   ???
+E   KeyError: 'CRYPTOSCAN_COHORT_OUT'
+
+<frozen os>:679: KeyError
+---------------------------- Captured stderr setup -----------------------------
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, Initial migration: Create scans table.
+INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, Create evidence_records table.
+INFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, Create verification_log table
+INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, Add normalized_crypto column to evidence_records
+INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, Add policy_evaluation column to evidence_records
+INFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, Create baselines table
+INFO  [alembic.runtime.migration] Running upgrade 0006 -> 0007, Create drift_events table
+INFO  [alembic.runtime.migration] Running upgrade 0007 -> 0008, Create scan_jobs table
+INFO  [alembic.runtime.migration] Running upgrade 0008 -> 0009, Create repo_configurations table
+INFO  [alembic.runtime.migration] Running upgrade 0009 -> 0010, Create crypto_assets table (SQLite-safe JSON).
+INFO  [alembic.runtime.migration] Running upgrade 0010 -> 0011, Create crypto_asset_evidence link table.
+INFO  [alembic.runtime.migration] Running upgrade 0011 -> 0012, Create systems table.
+INFO  [alembic.runtime.migration] Running upgrade 0012 -> 0013, Create system_assets table.
+INFO  [alembic.runtime.migration] Running upgrade 0013 -> 0014, Create system_dependencies table.
+INFO  [alembic.runtime.migration] Running upgrade 0014 -> 0015, Create container_scans table.
+INFO  [alembic.runtime.migration] Running upgrade 0015 -> 0016, Create vulnerabilities table.
+INFO  [alembic.runtime.migration] Running upgrade 0016 -> 0017, Part 3 intelligence tables.
+INFO  [alembic.runtime.migration] Running upgrade 0017 -> 0018, Part 4 maturity tables: agility, exceptions, OT, vendor crypto, cert usages.
+INFO  [alembic.runtime.migration] Running upgrade 0018 -> 0019, Create users, user_sessions, audit_log tables (multi-user RBAC).
+INFO  [alembic.runtime.migration] Running upgrade 0019 -> 0020, Create runtime_findings table (runtime TLS tap + process library observations).
+INFO  [alembic.runtime.migration] Running upgrade 0020 -> 0021, Create network_scan_runs table (persisted scan results for scan-to-scan drift).
+INFO  [alembic.runtime.migration] Running upgrade 0021 -> 0022, Add MFA (TOTP) support: users.mfa_secret/mfa_enabled + recovery codes.
+INFO  [alembic.runtime.migration] Running upgrade 0022 -> 0023, CI gate evaluation records (blocked-deployments tracking).
+INFO  [alembic.runtime.migration] Running upgrade 0023 -> 0024, Migration tracking: tasks + milestones (Week 53-54).
+INFO  [alembic.runtime.migration] Running upgrade 0024 -> 0025, Audit log hash chain (Week 57-58): tamper-evident audit trail.
+INFO  [alembic.runtime.migration] Running upgrade 0025 -> 0026, Hot-path composite indexes (Week 59-60): estate-scale query performance.
+INFO  [alembic.runtime.migration] Running upgrade 0026 -> 0027, Scheduled compliance reports + immutable snapshots (W55-56 items 7-8).
+INFO  [alembic.runtime.migration] Running upgrade 0027 -> 0028, 24/7 continuous monitoring: watch-list targets + event feed.
+INFO  [alembic.runtime.migration] Running upgrade 0028 -> 0029, Reconcile migrated schemas with the ORM models.
+INFO  [alembic.runtime.migration] Running upgrade 0029 -> 0030, Payment cryptography inventory: HSM keys, ceremonies, audit events, findings.
+INFO  [alembic.runtime.migration] Running upgrade 0030 -> 0031, Leader lease for multi-AZ monitor daemons (exactly-one-scans).
+INFO  [alembic.runtime.migration] Running upgrade 0031 -> 0032, Daily transaction-volume series for crypto-per-transaction correlation.
+INFO  [alembic.runtime.migration] Running upgrade 0032 -> 0033, Ceremony scheduling: status column on key ceremonies (PLANNED/HELD/ABANDONED).
+INFO  [alembic.runtime.migration] Running upgrade 0033 -> 0034, Certificate renewal tracking: status, ticket reference, notes on certificates.
+INFO  [alembic.runtime.migration] Running upgrade 0034 -> 0035, Machine API keys for CI/SIEM integration (real-time / enterprise API).
+INFO  [alembic.runtime.migration] Running upgrade 0035 -> 0036, 24/7 Live Hardware Engine persistence (spec §3/§4/§16).
+INFO  [alembic.runtime.migration] Running upgrade 0036 -> 0037, Live crypto scanner persistence (§34/§35 of the Universal Crypto Scanner).
+INFO  [alembic.runtime.migration] Running upgrade 0037 -> 0038, Realtime event log tuning.
+INFO  [alembic.runtime.migration] Running upgrade 0038 -> 0039, Soft delete for users (admin account removal, compliance-safe).
+INFO  [alembic.runtime.migration] Running upgrade 0039 -> 0040, Organization-level settings (active sector profile).
+INFO  [alembic.runtime.migration] Running upgrade 0040 -> 0041, Enterprise onboarding aggregate: organizations, environments, authorized
+scope entries, connectors, and discovery runs.
+INFO  [alembic.runtime.migration] Running upgrade 0041 -> 0042, Onboarding: maintenance-window controls, agent heartbeat, discovery progress.
+INFO  [alembic.runtime.migration] Running upgrade 0042 -> 0043, ZELNX Control Plane (P0): tenancy, ABAC grants, credential vault refs,
+agent fleet, safe-scan policies, asset identity, durable event queue, and
+detection benchmarking.
+INFO  [alembic.runtime.migration] Running upgrade 0043 -> 0044, P1 enterprise layer: policy-as-code (versioned), compliance intelligence,
+ITSM tickets, CMDB/ITS/SIEM integrations, regions/DR, crypto knowledge base.
+INFO  [alembic.runtime.migration] Running upgrade 0044 -> 0045, Outbound webhook delivery audit (SIEM/ITSM/SOAR real HTTP fan-out).
+INFO  [alembic.runtime.migration] Running upgrade 0045 -> 0046, P2 deterministic enterprise features: marketplace, data lake, anomaly,
+governance approvals and migration validation.
+INFO  [alembic.runtime.migration] Running upgrade 0046 -> 0047, P2 machine API-key platform: endpoint scopes, method allowlist, rate quota,
+and lifetime usage counters.
+INFO  [alembic.runtime.migration] Running upgrade 0047 -> 0048, OT/ICS maintenance windows for deterministic active-scan safety gating.
+INFO  [alembic.runtime.migration] Running upgrade 0048 -> 0049, Short-lived vault-lease audit records for scanner credential access.
+INFO  [alembic.runtime.migration] Running upgrade 0049 -> 0050, Deterministic automation engine: configured rules + run records.
+INFO  [alembic.runtime.migration] Running upgrade 0050 -> 0051, Live versioned CBOM (immutable, content-addressed snapshots).
+INFO  [alembic.runtime.migration] Running upgrade 0051 -> 0052, :class:`api_keys` — add per-key IP allowlist and rotation policy.
+INFO  [alembic.runtime.migration] Running upgrade 0052 -> 0053, :class:`cp_security_posture` — durable ZELNX security-posture snapshots.
+INFO  [alembic.runtime.migration] Running upgrade 0053 -> 0054, :class:`graph_snapshots` — immutable content-addressed dependency-graph versions.
+INFO  [alembic.runtime.migration] Running upgrade 0054 -> 0055, :class:`technology_bom_snapshots` — immutable content-addressed unified BOM versions.
+INFO  [alembic.runtime.migration] Running upgrade 0055 -> 0056, :class:`technology_bom_export_schedules` / `technology_bom_export_runs`.
+INFO  [alembic.runtime.migration] Running upgrade 0056 -> 0057, class:`tenants` / `tenant_memberships` / `tenant_usage_events` /
+`tenant_provision_events` / `tenant_invites` + `tenant_id` scoping columns.
+INFO  [alembic.runtime.migration] Running upgrade 0057 -> 0058, ``access_reviews`` — records of completed quarterly access reviews.
+INFO  [alembic.runtime.migration] Running upgrade 0058 -> 0059, ``pentest_findings`` — third-party pen-test results tracked to closure.
+INFO  [alembic.runtime.migration] Running upgrade 0059 -> 0060, Align legacy UUID columns with the ORM's String(36) ids.
+INFO  [alembic.runtime.migration] Running upgrade 0060 -> 0061, Add tenant_id to the scan surface so tenant isolation can be enforced.
+INFO  [alembic.runtime.migration] Running upgrade 0061 -> 0062, Finish tenant scoping: tenant_id on the remaining customer-owned tables.
+INFO  [alembic.runtime.migration] Running upgrade 0062 -> 0063, Add durable binary scan and per-observation query indexes.
+INFO  [alembic.runtime.migration] Running upgrade 0063 -> 0064, Scope durable control-plane history by tenant.
+INFO  [alembic.runtime.migration] Running upgrade 0064 -> 0065, Make control-plane asset identity uniqueness tenant-local.
+INFO  [alembic.runtime.migration] Running upgrade 0065 -> 0066, Versioned vendor due-diligence profiles.
+INFO  [alembic.runtime.migration] Running upgrade 0066 -> 0067, Record the authenticated actor that created each profile revision.
+INFO  [alembic.runtime.migration] Running upgrade 0067 -> 0068, Persist tenant-scoped network inventory revisions.
+INFO  [alembic.runtime.migration] Running upgrade 0068 -> 0069, Persist cross-BOM cascade runs (unified cascade audit trail).
+INFO  [alembic.runtime.migration] Running upgrade 0069 -> 0070, Cascade stack completion: edge provenance, declared linkage, twin snapshots, watches.
+INFO  [alembic.runtime.migration] Running upgrade 0070 -> 0071, Network scan-target provenance + tenant-local snapshot versions.
+INFO  [alembic.runtime.migration] Running upgrade 0071 -> 0072, Remediation task tracking + verification store (audit 62 / GAP-006).
+INFO  [alembic.runtime.migration] Running upgrade 0072 -> 0073, Retired-asset registry + crypto-asset lifecycle (audits 69/54, GAP-023).
+INFO  [alembic.runtime.migration] Running upgrade 0073 -> 0074, Optimistic scan-job locking, policy rule overrides, drift task source (audit 04/05/03).
+INFO  [alembic.runtime.migration] Running upgrade 0074 -> 0075, Evidence soft delete: tombstones that preserve the chain (audits 15/16).
+INFO  [alembic.runtime.migration] Running upgrade 0075 -> 0076, Resource-level access grants (report 13 §2.2 — per-system permissions).
+INFO  [alembic.runtime.migration] Running upgrade 0076 -> 0077, System ownership roles (report 55 P0 — technical + security owner fields).
+INFO  [alembic.runtime.migration] Running upgrade 0077 -> 0078, Model/chain index parity (report 04 — the index-analysis claims, re-verified).
+INFO  [alembic.runtime.migration] Running upgrade 0078 -> 0079, Drift acknowledgment timestamps (report 31 §5/§6, round 23).
+INFO  [alembic.runtime.migration] Running upgrade 0079 -> 0080, Direct ownership on crypto assets, certificates, vendors (report 55 P0#3-5, round 27).
+INFO  [alembic.runtime.migration] Running upgrade 0080 -> 0081, Custom role definitions (report 13 §2.2 open item, round 30).
+INFO  [alembic.runtime.migration] Running upgrade 0081 -> 0082, Migration task dependencies (round 30 execution engine).
+INFO  [alembic.runtime.migration] Running upgrade 0082 -> 0083, Declared network topology (advanced/58 P0#1–2, round 31).
+INFO  [alembic.runtime.migration] Running upgrade 0083 -> 0084, Crypto threat-intel advisories (deep/30, round 31).
+INFO  [alembic.runtime.migration] Running upgrade 0084 -> 0085, Cryptographic fact rows (advanced/51 P0#1 write-side step, round 35).
+INFO  [alembic.runtime.migration] Running upgrade 0085 -> 0086, Fact store read path (advanced/51 P0#1, round 37).
+INFO  [alembic.runtime.migration] Running upgrade 0086 -> 0087, Keep derived facts tenant-local and enforce NULL-safe identity.
+INFO  [alembic.runtime.migration] Running upgrade 0087 -> 0088, Evidence dispositions (§4.2 P0, round 40).
+INFO  [alembic.runtime.migration] Running upgrade 0088 -> 0089, Drift condition-level verification columns (§4.7, round 40).
+INFO  [alembic.runtime.migration] Running upgrade 0089 -> 0090, Persisted, content-addressed CBOM snapshots (§4.4, round 45).
+INFO  [alembic.runtime.migration] Running upgrade 0090 -> 0091, Durable compliance records (§4.3, round 47).
+INFO  [alembic.runtime.migration] Running upgrade 0091 -> 0092, Crypto asset identity spine (§4.2, round 57).
+INFO  [alembic.runtime.migration] Running upgrade 0092 -> 0093, Durable API-key quota windows (§4.8, round 59).
+INFO  [alembic.runtime.migration] Running upgrade 0093 -> 0094, Report snapshot payload hashes (§4.4, round 69 — the report leg of
+scan-run → BOM → report).
+INFO  [alembic.runtime.migration] Running upgrade 0094 -> 0095, HBOM estate snapshots (§4.4, round 71 — the independent HBOM leg).
+INFO  [alembic.runtime.migration] Running upgrade 0095 -> 0096, Durable destination receipts and conservative legacy notification handoff.
+INFO  [alembic.runtime.migration] Running upgrade 0096 -> 0097, Index exact-estate receipt keyset inspection; no delivery data changes.
+INFO  [alembic.runtime.migration] Running upgrade 0097 -> 0098, Separate SBOM document identity, immutable release digest and deployment assertion.
+INFO  [alembic.runtime.migration] Running upgrade 0098 -> 0099, Retained relationship lifecycle, monotonic source receipts and event journal.
+INFO  [alembic.runtime.migration] Running upgrade 0099 -> 0100, Optional relationship evidence pointers; no invented legacy verification.
+INFO  [alembic.runtime.migration] Running upgrade 0100 -> 0101, Declared operational dependency modes; legacy rows remain unknown.
+INFO  [alembic.runtime.migration] Running upgrade 0101 -> 0102, Positive authorization, shared budgets, attempts and transactional outbox.
+INFO  [alembic.runtime.migration] Running upgrade 0102 -> 0103, Partial collection receipts and exact-estate immutable assurance revisions.
+INFO  [alembic.runtime.migration] Running upgrade 0103 -> 0104, Measured operator pagination indexes; no data/status/approval rewrites.
+INFO  [alembic.runtime.migration] Running upgrade 0104 -> 0105, Widen monitor event types for platform events sharing the audit journal.
+INFO  [alembic.runtime.migration] Running upgrade 0105 -> 0106, Complete existing job-state contracts on migrated PostgreSQL enums.
+=============================== warnings summary ===============================
+services/api/api/routers/auth.py:87
+  /home/user/CryproScan/services/api/api/routers/auth.py:87: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(BaseModel):
+
+services/api/api/routers/network.py:326
+  /home/user/CryproScan/services/api/api/routers/network.py:326: UserWarning: Field name "register" in "SubnetDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class SubnetDiscoverRequest(BaseModel):
+
+services/api/api/routers/cloud.py:40
+  /home/user/CryproScan/services/api/api/routers/cloud.py:40: UserWarning: Field name "register" in "CloudOrgDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class CloudOrgDiscoverRequest(BaseModel):
+
+../quality-venv/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /home/user/quality-venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+services/api/tests/unit/test_workflow_postgres.py: 11 warnings
+services/api/tests/unit/test_restore_failure_postgres.py: 2 warnings
+services/api/tests/unit/test_trace_workload_postgres.py: 2 warnings
+services/api/tests/unit/test_isolated_cohort_recovery.py: 2 warnings
+  /home/user/quality-venv/lib/python3.11/site-packages/alembic/config.py:604: DeprecationWarning: No path_separator found in configuration; falling back to legacy splitting on spaces, commas, and colons for prepend_sys_path.  Consider adding path_separator=os to Alembic config.
+    util.warn_deprecated(
+
+services/api/tests/unit/test_workflow_postgres.py::test_real_postgres_signed_in_supported_source_to_independent_proof[sha256-VERIFIED]
+  /home/user/CryproScan/services/evidence/evidence/models/evidence_record.py:9: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class EvidenceRecord(BaseModel):
+
+services/api/tests/unit/test_workflow_postgres.py::test_real_postgres_signed_in_supported_source_to_independent_proof[sha256-VERIFIED]
+  /home/user/CryproScan/services/evidence/evidence/models/scan_manifest.py:9: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class ScanManifest(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/unit/test_trace_workload_postgres.py::test_matched_trace_api_workload
+FAILED services/api/tests/unit/test_isolated_cohort_recovery.py::test_isolated_complete_cohort_restore_and_new_write_preserving_failback
+2 failed, 17 passed, 23 warnings in 102.24s (0:01:42)

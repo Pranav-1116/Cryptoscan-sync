@@ -215,5 +215,18 @@
   "nav.securityCenter": "Security center",
   "nav.securityPolicy": "Scanning policy",
   "nav.settings": "Settings",
-  "nav.usersAccess": "Users & access"
+  "nav.usersAccess": "Users & access",
+  "launch.estate": "Selected estate",
+  "launch.platform": "Platform / no customer estate selected",
+  "launch.loading": "Loading operating records…",
+  "launch.unavailable": "Operating records unavailable — not an empty estate.",
+  "launch.empty": "No operating duties returned. This is not proof of coverage.",
+  "launch.partial": "Partial operating evidence — unresolved duties remain.",
+  "launch.receipt": "Reported write receipt — not current proof",
+  "launch.current": "Current gate read — re-read before acting",
+  "launch.history": "Retained history — not current proof",
+  "launch.meanings": "Reported completion is a declaration. Historical verification records a past observation. Current proof requires fresh evidence and current authority.",
+  "launch.idRequired": "Enter the exact record ID before this action is available.",
+  "launch.idScope": "The record must belong to the selected estate. Server-side authority and revision checks still apply.",
+  "launch.busy": "Request in progress. Actions are unavailable until its outcome is known; do not repeat an uncertain write."
 }

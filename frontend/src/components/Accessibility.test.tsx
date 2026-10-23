@@ -189,3 +189,17 @@ describe("stylesheet contracts", () => {
     expect(phone).toContain(".searchov .groups { grid-template-columns: 1fr; }");
   });
 });
+
+describe("existing console locale control", () => {
+  it("exposes the existing Arabic switcher inside the authenticated shell without changing the estate", async () => {
+    const { fireEvent, act } = await import("@testing-library/react");
+    localStorage.setItem("cryptoscan_tenant", "synthetic-selected-estate");
+    await act(async () => { shell("/launch-readiness"); });
+    const arabic = screen.getByRole("button", { name: "ع" });
+    fireEvent.click(arabic);
+    expect(document.documentElement).toHaveAttribute("lang", "ar");
+    expect(document.documentElement).toHaveAttribute("dir", "rtl");
+    expect(arabic).toHaveAttribute("aria-pressed", "true");
+    expect(localStorage.getItem("cryptoscan_tenant")).toBe("synthetic-selected-estate");
+  });
+});

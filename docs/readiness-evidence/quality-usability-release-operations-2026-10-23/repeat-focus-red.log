@@ -1,0 +1,58 @@
+
+> zelinx-frontend@1.0.0 test
+> vitest run --reporter=default src/pages/LaunchReadiness.usability.test.tsx -t preserves the draft
+
+
+ RUN  v5.0.5 /home/user/CryproScan/frontend
+
+ ❯ src/pages/LaunchReadiness.usability.test.tsx (9 tests | 1 failed | 8 skipped) 283ms
+   ❯ Existing launch operator task safety (8)
+     ↓ names the selected estate next to the form and explains why an ID-bound action is unavailable
+     × preserves the draft and record ID, focuses safe validation feedback, and sends no malformed JSON 280ms
+     ↓ treats HTTP 400 as an ordinary rejected validation, not an ambiguous accepted write, without leaking raw detail
+     ↓ treats HTTP 422 as an ordinary rejected validation, not an ambiguous accepted write, without leaking raw detail
+     ↓ keeps a server outage ambiguous and never retries a write automatically
+     ↓ separates loading, unavailable, empty and partial operating reads instead of displaying a green default
+     ↓ labels retained history separately from an acknowledged write and a newly read current gate
+     ↓ isolates technical IDs and JSON as LTR while the surrounding Arabic task context is RTL
+   ↓ bounds a non-cooperative action body at 20 seconds and ignores its late success without retrying
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/LaunchReadiness.usability.test.tsx > Existing launch operator task safety > preserves the draft and record ID, focuses safe validation feedback, and sends no malformed JSON
+Error: expect(element).toHaveFocus()
+
+Expected element with focus:
+  <p
+  role="alert"
+  tabindex="-1"
+>
+  Enter a valid JSON object matching the documented schema and an exact record ID when required. Draft retained.
+</p>
+Received element with focus:
+  <textarea
+  aria-label="Typed JSON body"
+  dir="ltr"
+  placeholder="Paste a reviewed schema-valid object, including expected_revision where required"
+  required=""
+  rows="12"
+  style="box-sizing: border-box; min-width: 0px; width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+>
+  {"secret":"do-not-echo",
+</textarea>
+ ❯ src/pages/LaunchReadiness.usability.test.tsx:30:22
+     28|     screen.getByLabelText("Typed JSON body").focus();
+     29|     fireEvent.click(screen.getByRole("button", { name: "Submit bounded…
+     30|     expect(feedback).toHaveFocus(); // identical feedback must be re-a…
+       |                      ^
+     31|     expect(screen.getByLabelText("Typed JSON body")).toHaveValue('{"se…
+     32|     expect(screen.getByLabelText("Exact record ID")).toHaveValue("kept…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 8 skipped (9)
+   Start at  09:53:40
+   Duration  2.79s (import 58%, environment 23%, tests 11%, setup 4%, transform 3%)
+

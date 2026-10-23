@@ -99,3 +99,10 @@ reviewed six-BOM paths, immutable/byte-bound accuracy review and regressions,
 purpose-aware assessments, verified Redis consumers and signed supplier offline
 quarantine/profile exercises. **No external closure or bank-readiness PASS is
 issued.** Read the [upgrade runbook](../runbooks/evidence-assurance-upgrade.md).
+
+## Existing-product steps 7–10 (2026-10-23)
+
+[Usability, demonstrated test trust, release binding and accountable operations](quality-usability-release-operations-2026-10-23.md)
+records local542 frontend/15 browser/92 selected backend/248 broader/19 native
+checks, adverse failures and warning debt. Human acceptance, actual staffing,
+independent RC review and required release CI remain open; no SLA/readiness claim.

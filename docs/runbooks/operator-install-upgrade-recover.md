@@ -109,7 +109,15 @@ Digests must be the real registry SHA256 values. The legacy attestation schema
 requires a Neo4j digest even when graph is disabled: the reserved entry is **not
 permission to deploy or enable graph**. The package also inventories the parser,
 frontend and every sidecar image. Output must be a **new, disjoint directory**;
-existing releases are never overwritten. No signing occurs in this tool.
+existing releases are never overwritten. Keep source manifests and release output
+outside the source checkout. No signing occurs in this tool.
+
+Current builds emit `cryptoscan.operator-package/2`, with signed-inventory-bound
+`source-provenance.json`: tracked worktree snapshot hashes, Git commit/tree,
+disclosed dirty state, copied Python/Node dependency inputs and tracked migration
+files. A final source recheck refuses changes during construction. This is a
+source assertion, **not OCI image/source build attestation, authenticated test
+results, CI approval or independent release review**.
 
 The external release authority signs the exact bytes of
 `release-image-lock.json` using the existing Ed25519 attestation format. Its
@@ -130,12 +138,19 @@ trusted for subsequent operations.
 ```bash
 python scripts/operator_release.py verify \
   --package "$RELEASE_PACKAGE" --public-key "$TRUSTED_RELEASE_PUBLIC_KEY" \
-  --attestation "$DETACHED_RELEASE_ATTESTATION"
+  --attestation "$DETACHED_RELEASE_ATTESTATION" \
+  --expected-source-commit "$REVIEWED_SOURCE_COMMIT"
 ```
 
 Any changed/missing/extra file, symlink, changed digest, unpinned image, embedded
 Secret, absent CA declaration or invalid signature fails. A PASS establishes
-package integrity, **not deployed readiness**. Reports/attestations written into
+package integrity, **not deployed readiness**. The optional expected-source
+argument requires matching provenance and a clean source assertion, rejecting
+legacy version-1 packages. Without it, legacy inventory verification is labeled
+`LEGACY_UNBOUND_NOT_CANDIDATE`. Version-2 source/dependency/schema consistency
+checks also reject re-signed cross-file disagreement. Even a successful report
+keeps image build provenance, required test results, CI and separate review
+`NOT_ESTABLISHED`, with `release_candidate_approved:false`. Reports/attestations written into
 the package count as extra files and deliberately invalidate its inventory.
 
 ## 4. Air-gap procedure

@@ -1346,6 +1346,17 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   .livehead { margin-inline: -18px; padding-inline: 18px; }
   .livehead .item:nth-of-type(n+4) { display: none; }
 }
+/* Keep the phone layout AFTER the compact-rail breakpoint. The later 900px
+   rule otherwise reinstated two columns while .main stayed in column 1,
+   shrinking content to a 76px rail at 400%/320-CSS-pixel reflow. */
+@media (max-width: 560px) {
+  .shell, .shell.collapsed { grid-template-columns: minmax(0, 1fr); }
+  .main { grid-column: 1; padding-inline: 14px; }
+  .sidebar { min-width: 0; max-width: 100%; }
+  .livehead { position: static; margin-inline: -14px; padding-inline: 14px; }
+  .livehead .searchbox { min-width: 0; width: 100%; }
+}
+
 /* ── interaction motion ────────────────────────────────────────────────
    Entrances live in lib/motion.tsx; this is the hover/active layer, which
    belongs in CSS because it must survive re-renders and never run on the

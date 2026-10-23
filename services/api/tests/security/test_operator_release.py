@@ -118,3 +118,98 @@ def test_output_never_overwrites_or_contains_source(site, tmp_path):
     out = package(site, tmp_path / "package")
     with pytest.raises(ValueError): package(site, out)
     assert release.main(["verify", "--package", str(out), "--public-key", str(tmp_path / "absent"), "--attestation", str(tmp_path / "absent")]) == 1
+
+
+def refresh_inventory_and_sign(root, tmp_path):
+    """A valid signature must not bypass cross-file consistency checks."""
+    lock_path = root / "release-image-lock.json"
+    lock = json.loads(lock_path.read_text())
+    lock["files_sha256"] = release.inventory(root)
+    lock_path.write_text(json.dumps(lock))
+    return sign(root, tmp_path)
+
+
+def test_signed_package_cannot_mix_contract_and_lock_release_id(site, tmp_path):
+    root = package(site, tmp_path / "package")
+    path = root / "operator-package.json"
+    contract = json.loads(path.read_text()); contract["release"] = "another-coordinated-release"
+    path.write_text(json.dumps(contract))
+    public, att = refresh_inventory_and_sign(root, tmp_path)
+    with pytest.raises(ValueError, match="release"):
+        release.verify(root, public, att)
+
+
+def test_package_retains_source_dependency_and_schema_bindings_without_claiming_image_provenance(site, tmp_path):
+    root = package(site, tmp_path / "package")
+    assert (root / "source-provenance.json").is_file(), "Signed byte inventory alone does not bind source/dependencies/schema"
+    provenance = json.loads((root / "source-provenance.json").read_text())
+    assert len(provenance["git_commit"]) == 40
+    assert len(provenance["git_tree"]) == 40
+    assert provenance["migration_head"] == release.MIGRATION_HEAD
+    for name in ["requirements.txt", "requirements.lock.txt", "frontend/package.json", "frontend/package-lock.json"]:
+        assert provenance["files_sha256"][name] == hashlib.sha256((root / name).read_bytes()).hexdigest()
+    assert any(Path(name).name.startswith("0106") for name in provenance["files_sha256"])
+    for name, digest in provenance["files_sha256"].items():
+        assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
+
+    public, att = sign(root, tmp_path)
+    result = release.verify(root, public, att)
+    assert result["source_dependency_schema_binding"] == "PASS"
+    assert result["image_build_provenance"] == "NOT_ESTABLISHED"
+    assert result["release_candidate_approved"] is False
+
+
+@pytest.mark.parametrize("name", ["requirements.lock.txt", "frontend/package-lock.json"])
+def test_even_resigned_dependency_change_must_match_source_binding(site, tmp_path, name):
+    root = package(site, tmp_path / "package")
+    path = root / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("changed-dependency-input")
+    public, att = refresh_inventory_and_sign(root, tmp_path)
+    with pytest.raises(ValueError, match="provenance|binding"):
+        release.verify(root, public, att)
+
+
+def test_expected_source_revision_requires_clean_snapshot(site, tmp_path, monkeypatch):
+    original = release.source_binding
+    monkeypatch.setattr(release, "source_binding", lambda: {**original(), "source_dirty": True})
+    root = package(site, tmp_path / "package")
+    public, att = sign(root, tmp_path)
+    revision = json.loads((root / "source-provenance.json").read_text())["git_commit"]
+    with pytest.raises(ValueError, match="clean"):
+        release.verify(root, public, att, expected_source_commit=revision)
+
+
+def test_legacy_inventory_verification_is_not_a_source_bound_candidate(site, tmp_path):
+    root = package(site, tmp_path / "package")
+    path = root / "operator-package.json"
+    contract = json.loads(path.read_text()); contract["schema"] = "cryptoscan.operator-package/1"
+    contract.pop("source_provenance_sha256")
+    path.write_text(json.dumps(contract)); (root / "source-provenance.json").unlink()
+    public, att = refresh_inventory_and_sign(root, tmp_path)
+    result = release.verify(root, public, att)
+    assert result["source_dependency_schema_binding"] == "LEGACY_UNBOUND_NOT_CANDIDATE"
+    assert result["release_candidate_approved"] is False
+    with pytest.raises(ValueError, match="Legacy"):
+        release.verify(root, public, att, expected_source_commit="a" * 40)
+
+
+def test_source_change_during_build_never_publishes_package(site, tmp_path, monkeypatch):
+    original = release.source_binding
+    calls = 0
+
+    def changing_snapshot():
+        nonlocal calls
+        calls += 1
+        result = original()
+        if calls == 2:
+            result["tracked_snapshot_sha256"] = "0" * 64
+        return result
+
+    monkeypatch.setattr(release, "source_binding", changing_snapshot)
+    out = tmp_path / "package"
+    with pytest.raises(ValueError, match="changed during package build"):
+        package(site, out)
+    assert calls == 2
+    assert not out.exists()
+    assert not list(tmp_path.glob(".operator-release-*"))

@@ -437,6 +437,8 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             <option value="Level 3 — Technical Investigation">Level 3 — Technical</option>
           </select>
 
+          <LanguageSwitcher />
+
           {/* Section 57: Global Timezone Switcher */}
           <button
             className="btn sm ghost"

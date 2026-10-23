@@ -494,6 +494,11 @@ def acknowledge(db, owner, identifier, body, actor):
     )
 
 
+def operating_interval(started_at, ended_at, assigned_at, now):
+    """One interval rule at intake and current read, including clock rollback."""
+    return aware(assigned_at) <= aware(started_at) <= aware(ended_at) <= now
+
+
 def exercise(db, owner, identifier, body, actor):
     row = store.latest(db, owner, "operating_assignment", identifier)
     p = row.payload
@@ -505,7 +510,7 @@ def exercise(db, owner, identifier, body, actor):
         or actor not in {p["owner_user_id"], p["backup_user_id"]}
     ):
         raise HTTPException(409, "Current acknowledged assignment and designated operator required")
-    if not aware(row.created_at) <= body.started_at <= body.ended_at <= utcnow():
+    if not operating_interval(body.started_at, body.ended_at, row.created_at, utcnow()):
         raise HTTPException(422, "Exercise interval invalid/future-dated")
     blob = store.blob(db, owner, body.evidence_blob_id)
     if (
@@ -560,6 +565,7 @@ def review_exercise(db, owner, identifier, body, actor):
 
 
 def operations_status(db, owner):
+    now = utcnow()
     ids = [store.subject("duty", d) for d in DUTIES]
     assignments = store.latest_many(db, owner, "operating_assignment", ids)
     exercises = store.latest_many(db, owner, "operating_exercise", ids)
@@ -591,9 +597,11 @@ def operations_status(db, owner):
                 issues.append("CURRENT_ASSIGNMENT_EXERCISE_MISSING")
             elif (
                 e.payload["state"] != "REVIEWED_EXERCISE_ASSERTION"
+                or not operating_interval(datetime.fromisoformat(e.payload["started_at"]),
+                    datetime.fromisoformat(e.payload["ended_at"]), a.created_at, now)
                 or aware(datetime.fromisoformat(e.payload["ended_at"]))
                 + timedelta(seconds=p["exercise_max_age_seconds"])
-                <= utcnow()
+                <= now
             ):
                 issues.append("EXERCISE_FAILED_UNREVIEWED_OR_STALE")
         result.append(
@@ -792,7 +800,15 @@ def pilot_status(db, owner, identifier):
     operations = operations_status(db, owner)
     if not operations["all_owner_reviewed_records_current"]:
         issues.append("OPERATIONAL_OWNERSHIP_OR_EXERCISES_INCOMPLETE")
-    report = coverage.report(db, owner, p["register_id"])
+    try:
+        report = coverage.report(db, owner, p["register_id"])
+        coverage_available = True
+    except HTTPException as exc:
+        if exc.status_code not in {404, 409, 503}:
+            raise
+        # Counts are UNKNOWN, not zero, when a dependency cannot be verified.
+        issues.append("COVERAGE_UNAVAILABLE_OR_CHANGED")
+        report, coverage_available = {"targets": [], "counts": None}, False
     unresolved = [t["target_id"] for t in report["targets"] if t["state"] != "OBSERVED"]
     # External-export register entries have no automatic receipt adapter. Disclose
     # them rather than manufacturing OBSERVED records for a document assertion.
@@ -849,6 +865,7 @@ def pilot_status(db, owner, identifier):
         "sla_authorized": False,
         "security": security,
         "coverage_counts": report["counts"],
+        "coverage_available": coverage_available,
         "unresolved_targets": unresolved,
         "exclusions": p["exclusions"],
         "limits": p["snapshot"]["relationship_limit"],

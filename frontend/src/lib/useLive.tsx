@@ -13,6 +13,7 @@
  */
 import { useEffect, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { tenantFetch } from "./api.js";
+import { readFailure } from "./requestFeedback";
 import { watchPrivateScope } from "./privateScope";
 
 export interface LiveState<T> {
@@ -26,10 +27,7 @@ async function readLive<T>(path: string, init?: RequestInit): Promise<{ data: T 
   try {
     const resp = await tenantFetch(path, { ...init, signal: init?.signal ?? AbortSignal.timeout(12000) });
     if (!resp.ok) {
-      const category = resp.status === 401 ? "Session expired or authentication required"
-        : resp.status === 403 ? "Access refused" : resp.status >= 500 ? "Service unavailable" : "Read refused";
-      // Never expose a dependency's raw body, stack, target or credentials.
-      return { data: null, error: `${category} (HTTP ${resp.status})` };
+      return { data: null, error: readFailure(resp.status) };
     }
     try {
       const data = await resp.json() as T | null;

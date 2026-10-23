@@ -49,7 +49,7 @@ async function fixture(routePath, work) {
     if (request.method() === "POST" && p.startsWith("/api/v1/assurance/")) {
       state.writeSeen.resolve();
       if (state.hold) await state.hold.promise;
-      await route.fulfill(state.failWrite ? { ...json({ detail: "synthetic dependency failure" }), status: 503 } : json({ kind: "task", id: "synthetic-old-write", receipt: "synthetic-old-write" }));
+      await route.fulfill(state.validationStatus ? { ...json({ detail: "sensitive-validation-canary" }), status: state.validationStatus } : state.failWrite ? { ...json({ detail: "synthetic dependency failure" }), status: 503 } : json({ kind: "task", id: "synthetic-old-write", receipt: "synthetic-old-write" }));
       state.done.resolve(); return;
     }
     if (p === "/api/v1/auth/audit/export") {
@@ -154,6 +154,49 @@ try {
       await changeEstate();
       assert.equal(await page.getByText(marker("a"), { exact: false }).count(), 0);
       assert.equal(state.posts.length, 0, "Scope revalidation must not perform an action");
+    }));
+  await exercise("launch: keyboard submission focuses safe validation and retains useful input", () => fixture("/launch-readiness", async ({ page, state }) => {
+    await page.getByLabel("Typed JSON body").fill('{"private":"must-not-echo",');
+    await page.getByLabel("Exact record ID", { exact: true }).fill("synthetic-kept-id");
+    await page.getByLabel("Typed JSON body").focus();
+    await page.keyboard.press("Tab");
+    assert.equal(await page.getByRole("button", { name: "Submit bounded action" }).evaluate(e => e === document.activeElement), true);
+    await page.keyboard.press("Enter");
+    const alert = page.getByRole("alert"); await alert.waitFor();
+    assert.equal(await alert.evaluate(e => e === document.activeElement), true);
+    assert(!await alert.textContent().then(text => text.includes("must-not-echo")));
+    assert.equal(await page.getByLabel("Exact record ID", { exact: true }).inputValue(), "synthetic-kept-id");
+    assert.equal(await page.getByLabel("Typed JSON body").inputValue(), '{"private":"must-not-echo",');
+    assert.equal(state.posts.length, 0);
+  }));
+  await exercise("launch: native disabled action has visible ID reason; rejected validation never auto-retries", () => fixture("/launch-readiness", async ({ page, state }) => {
+    await page.getByLabel("Launch action").selectOption("Acknowledge assigned duty");
+    assert.equal(await page.getByRole("button", { name: "Submit bounded action" }).isDisabled(), true);
+    await page.getByText("Enter the exact record ID before this action is available.").waitFor({ state: "visible" });
+    await page.getByLabel("Exact record ID", { exact: true }).fill("synthetic-assignment");
+    await form(page, "launch"); state.validationStatus = 422;
+    await page.getByRole("button", { name: "Submit bounded action" }).click();
+    const alert = page.getByRole("alert"); await alert.filter({ hasText: /Validation rejected/ }).waitFor();
+    assert(!await alert.textContent().then(text => /sensitive-validation-canary|not confirmed/.test(text)));
+    assert.equal(await page.getByLabel("Typed JSON body").inputValue(), "{}");
+    assert.equal(state.posts.length, 1);
+  }));
+  for (const scale of [2, 4])
+    await exercise(`launch: Arabic RTL with ${scale}x device scale and ${1280 / scale}-CSS-pixel reflow`, () => fixture("/launch-readiness", async ({ page }) => {
+      await page.getByRole("button", { name: "ع", exact: true }).click();
+      await page.getByLabel("Selected estate").filter({ hasText: "البيئة المحددة" }).waitFor();
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280 / scale, height: 960 / scale, deviceScaleFactor: scale, mobile: false });
+      assert.equal(await page.locator("html").getAttribute("dir"), "rtl");
+      assert.equal(await page.getByLabel("Exact record ID", { exact: true }).getAttribute("dir"), "ltr");
+      assert.equal(await page.getByLabel("Typed JSON body").getAttribute("dir"), "ltr");
+      await page.getByLabel("Typed JSON body").fill('{"expected_revision":0}');
+      await page.getByLabel("Typed JSON body").scrollIntoViewIfNeeded();
+      const layout = await page.locator(".launch-readiness").evaluate(e => ({ client: e.clientWidth, scroll: e.scrollWidth }));
+      assert(layout.scroll <= layout.client + 1, `Launch form clips at ${scale}x: ${JSON.stringify(layout)}`);
+      const box = await page.getByLabel("Typed JSON body").boundingBox();
+      assert(box && box.width > 0 && box.width <= 1280 / scale);
+      await cdp.detach();
     }));
   assert.deepEqual(errors, []);
 } catch (error) { failure = error; }

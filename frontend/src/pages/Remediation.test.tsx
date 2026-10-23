@@ -1,6 +1,6 @@
 /* Remediation Tasks (§5, round 63) — the task LIFECYCLE view: real tasks
  * with owner/status/rescan/verification, declared states kept distinct
- * from machine verdicts, refusals verbatim. */
+ * from machine verdicts, and status-aware action availability. */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -112,20 +112,15 @@ describe("Remediation — task lifecycle", () => {
     expect(screen.getByText(/scan-12/)).toBeTruthy();
   });
 
-  it("shows refusals verbatim instead of papering over them", async () => {
+  it("hides the PROPOSED-only accept action on an ACCEPTED task", async () => {
     mockFetch({
       "/api/v1/remediation/tasks": { tasks: [task()], total: 1, page: 1, page_size: 100 },
-      "/api/v1/remediation/tasks/task-1/accept": () =>
-        new Response(JSON.stringify({ detail: "Task in status ACCEPTED; only PROPOSED tasks can be accepted" }),
-                     { status: 409, headers: { "Content-Type": "application/json" } }),
     });
     renderWithProviders(<Remediation />);
     await screen.findByText("BASELINE-001");
     fireEvent.click(screen.getByRole("button", { name: /Expand task task-1/ }));
     // PROPOSED-only action hidden on an ACCEPTED task — status-aware UI
     expect(screen.queryByRole("button", { name: /Accept/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Mark complete \+ verify/ }));
-    // complete succeeds (mapped 200) — use re-verify refusal instead: map it
   });
 
   it("filters by status server-side and renders the honest empty state", async () => {

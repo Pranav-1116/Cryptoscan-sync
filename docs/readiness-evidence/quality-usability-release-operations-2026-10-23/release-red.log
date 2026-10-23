@@ -1,0 +1,85 @@
+FFFF                                                                     [100%]
+=================================== FAILURES ===================================
+_________ test_signed_package_cannot_mix_contract_and_lock_release_id __________
+
+site = PosixPath('/tmp/pytest-of-user/pytest-25/test_signed_package_cannot_mix0/site')
+tmp_path = PosixPath('/tmp/pytest-of-user/pytest-25/test_signed_package_cannot_mix0')
+
+    def test_signed_package_cannot_mix_contract_and_lock_release_id(site, tmp_path):
+        root = package(site, tmp_path / "package")
+        path = root / "operator-package.json"
+        contract = json.loads(path.read_text()); contract["release"] = "another-coordinated-release"
+        path.write_text(json.dumps(contract))
+        public, att = refresh_inventory_and_sign(root, tmp_path)
+>       with pytest.raises(ValueError, match="release"):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/security/test_operator_release.py:138: Failed
+_ test_package_retains_source_dependency_and_schema_bindings_without_claiming_image_provenance _
+
+site = PosixPath('/tmp/pytest-of-user/pytest-25/test_package_retains_source_de0/site')
+tmp_path = PosixPath('/tmp/pytest-of-user/pytest-25/test_package_retains_source_de0')
+
+    def test_package_retains_source_dependency_and_schema_bindings_without_claiming_image_provenance(site, tmp_path):
+        root = package(site, tmp_path / "package")
+>       assert (root / "source-provenance.json").is_file(), "Signed byte inventory alone does not bind source/dependencies/schema"
+E       AssertionError: Signed byte inventory alone does not bind source/dependencies/schema
+E       assert False
+E        +  where False = is_file()
+E        +    where is_file = (PosixPath('/tmp/pytest-of-user/pytest-25/test_package_retains_source_de0/package') / 'source-provenance.json').is_file
+
+services/api/tests/security/test_operator_release.py:144: AssertionError
+_ test_even_resigned_dependency_change_must_match_source_binding[requirements.lock.txt] _
+
+site = PosixPath('/tmp/pytest-of-user/pytest-25/test_even_resigned_dependency_0/site')
+tmp_path = PosixPath('/tmp/pytest-of-user/pytest-25/test_even_resigned_dependency_0')
+name = 'requirements.lock.txt'
+
+    @pytest.mark.parametrize("name", ["requirements.lock.txt", "frontend/package-lock.json"])
+    def test_even_resigned_dependency_change_must_match_source_binding(site, tmp_path, name):
+        root = package(site, tmp_path / "package")
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("changed-dependency-input")
+        public, att = refresh_inventory_and_sign(root, tmp_path)
+>       with pytest.raises(ValueError, match="provenance|binding"):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/security/test_operator_release.py:166: Failed
+_ test_even_resigned_dependency_change_must_match_source_binding[frontend/package-lock.json] _
+
+site = PosixPath('/tmp/pytest-of-user/pytest-25/test_even_resigned_dependency_1/site')
+tmp_path = PosixPath('/tmp/pytest-of-user/pytest-25/test_even_resigned_dependency_1')
+name = 'frontend/package-lock.json'
+
+    @pytest.mark.parametrize("name", ["requirements.lock.txt", "frontend/package-lock.json"])
+    def test_even_resigned_dependency_change_must_match_source_binding(site, tmp_path, name):
+        root = package(site, tmp_path / "package")
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("changed-dependency-input")
+        public, att = refresh_inventory_and_sign(root, tmp_path)
+>       with pytest.raises(ValueError, match="provenance|binding"):
+E       Failed: DID NOT RAISE ValueError
+
+services/api/tests/security/test_operator_release.py:166: Failed
+=============================== warnings summary ===============================
+services/api/api/routers/auth.py:87
+  /home/user/CryproScan/services/api/api/routers/auth.py:87: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(BaseModel):
+
+services/api/api/routers/network.py:326
+  /home/user/CryproScan/services/api/api/routers/network.py:326: UserWarning: Field name "register" in "SubnetDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class SubnetDiscoverRequest(BaseModel):
+
+services/api/api/routers/cloud.py:40
+  /home/user/CryproScan/services/api/api/routers/cloud.py:40: UserWarning: Field name "register" in "CloudOrgDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class CloudOrgDiscoverRequest(BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/security/test_operator_release.py::test_signed_package_cannot_mix_contract_and_lock_release_id
+FAILED services/api/tests/security/test_operator_release.py::test_package_retains_source_dependency_and_schema_bindings_without_claiming_image_provenance
+FAILED services/api/tests/security/test_operator_release.py::test_even_resigned_dependency_change_must_match_source_binding[requirements.lock.txt]
+FAILED services/api/tests/security/test_operator_release.py::test_even_resigned_dependency_change_must_match_source_binding[frontend/package-lock.json]
+4 failed, 20 deselected, 3 warnings in 0.85s
