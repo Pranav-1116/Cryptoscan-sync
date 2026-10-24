@@ -87,3 +87,28 @@ def test_native_windows_ordinary_user_named_service_and_nonexistent_receipts():
     assert not snapshot.windows_execution_qualified and not snapshot.production_execution_qualified
     missing = OfflineWindowsCollector().collect(target("CryptoScanNonexistentWitnessService"))
     assert missing.receipts[0].status == "UNAVAILABLE" and not missing.receipts[0].facts
+
+
+def test_windows_os_resource_is_exact_and_not_emulated_on_linux():
+    from shared_models.host_collection import HostInput
+
+    with pytest.raises(ValidationError):
+        HostInput(input_id="os", kind="WINDOWS_OS_RELEASE", path="windows-os://remote/current-version")
+    if sys.platform != "win32":
+        from inventory.windows_runtime import collect_os_version
+
+        item = HostInput(input_id="os", kind="WINDOWS_OS_RELEASE", path="windows-os://local/current-version")
+        with pytest.raises(ValueError):
+            collect_os_version(item, 1048576, lambda count: None)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Native Windows OS registry gate unavailable on Linux")
+def test_native_windows_os_version_remains_declared_and_unqualified():
+    assert not elevated()
+    item = HostInput(input_id="os", kind="WINDOWS_OS_RELEASE", path="windows-os://local/current-version")
+    candidate = target().model_copy(update={"manifest": target().manifest.model_copy(update={"inputs": [item]})})
+    snapshot = OfflineWindowsCollector().collect(candidate)
+    assert snapshot.receipts[0].status == "PARSED", snapshot.receipts[0]
+    fact = snapshot.receipts[0].facts[0]
+    assert fact.kind == "OS_RELEASE" and fact.local_basis == "DECLARED" and fact.algorithm == "UNKNOWN"
+    assert not snapshot.windows_execution_qualified

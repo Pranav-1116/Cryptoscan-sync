@@ -20,7 +20,7 @@ stay false. Universal registry authorization still rejects Windows targets.
 | Approved HKLM uninstall branches | Existing fixed-size allowlisted DisplayName/DisplayVersion reads; no uninstall commands | Native registry/denial/view fixtures still needed |
 | Named local service status **new** | `WINDOWS_SERVICE`, `windows-service://EventLog` → SCM state and conditionally valid PID | Portable fixed-width structure/state tests; native ordinary-user EventLog/nonexistent witness skipped on Linux |
 | Windows target-spec adapter **new** | `OfflineWindowsCollector`, explicit `--windows-candidate` | Requires actual `sys.platform == win32`, matching manifest/method and time window; not a production/remote worker |
-| Certificate stores, CNG/CAPI provider enumeration, TLS listeners, OS registry profile, loaded modules, TPM/firmware | Not added in this candidate | Remain implementation/native gates, not replaced by a package list or Linux emulation |
+| Certificate stores, CNG/CAPI provider enumeration, TLS listeners, loaded modules, TPM/firmware | Not added in this candidate | Remain implementation/native gates, not replaced by a package list or Linux emulation |
 
 ## Least privilege and bounded native interface
 
@@ -91,3 +91,11 @@ legacy `--manifest` handling remains separate; the new opt-in is valid only with
 Current code intentionally **does not** meet that full checklist. Phase 3 has
 begun with a bounded read-only candidate, not a Windows-ready release or a claim
 that the Linux host is a Windows witness.
+
+## Next implemented increment
+
+[Guide 65](65-signed-collector-isolation-and-native-gates.md) adds the fixed local
+`WINDOWS_OS_RELEASE` registry declaration and executable expected-truth native
+fixture runner, alongside signing-key and Linux isolation controls. Native Windows
+OS/SCM execution still requires an actual Windows ordinary-user fixture; no
+production authorization gate is changed.

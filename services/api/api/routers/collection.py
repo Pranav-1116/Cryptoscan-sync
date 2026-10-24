@@ -6,7 +6,14 @@ from api.dependencies import get_current_user, get_db_session
 from api.routers.assurance_boundary import estate, author, Key
 from api.assurance import collection as core, store
 from db.models.assurance import AssuranceRevision
-from shared_models.collection import TargetSpec, TargetUpdate, RevisionRequest, JobRequest, JobDecision
+from shared_models.collection import (
+    TargetSpec,
+    TargetUpdate,
+    RevisionRequest,
+    JobRequest,
+    JobDecision,
+    AuthorizeRequest,
+)
 
 router = APIRouter(prefix="/collection", tags=["collection"])
 
@@ -79,7 +86,7 @@ def update(
 @router.post("/targets/{identifier}/authorize")
 def authorize(
     identifier: Key,
-    body: RevisionRequest,
+    body: AuthorizeRequest,
     request: Request,
     ctx=Depends(estate),
     db: Session = Depends(get_db_session),

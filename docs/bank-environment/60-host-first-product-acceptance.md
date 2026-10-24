@@ -122,3 +122,13 @@ systemd/DMI/TPM and broader estate qualification remain open. [Phase 3 Windows](
 now has an explicit offline candidate and read-only named SCM query; native
 Windows/production qualification remains false and registry authorization stays
 blocked. [Current execution evidence](../readiness-evidence/linux-runtime-windows-candidate-2026-10-24.md).
+
+## Signed handoff, isolated stage and native qualification executor
+
+[Guide 65](65-signed-collector-isolation-and-native-gates.md) now supplies enforced
+approval-pinned Ed25519 handoffs, actual Landlock/seccomp file-stage isolation,
+bounded SQLite RPM export parsing and a target-bound expected-truth native
+fixture runner. Windows adds a fixed local OS registry declaration candidate.
+[Current execution report](../readiness-evidence/collector-security-2026-10-24.md)
+separates demonstrated controls from failed/unavailable native interfaces,
+installed-release/host attestation and production/independent acceptance gates.

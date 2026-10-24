@@ -33,6 +33,8 @@ Kind = Literal[
     "LINUX_HARDWARE",
     "WINDOWS_SERVICE",
     "APK_INSTALLED",
+    "RPM_SQLITE",
+    "WINDOWS_OS_RELEASE",
 ]
 Basis = Literal["OBSERVED", "DECLARED", "IMPORTED", "INFERRED", "UNKNOWN"]
 Protocol = Literal["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
@@ -68,6 +70,8 @@ class HostInput(Strict):
         from shared_models.host_runtime_scope import resource
 
         resource(self.kind, self.path)
+        if self.kind == "WINDOWS_OS_RELEASE" and self.path != "windows-os://local/current-version":
+            raise ValueError("Noncanonical Windows OS resource")
         return self
 
 
@@ -257,6 +261,8 @@ class HostSnapshot(Strict):
             "BINARY_METADATA": "BINARY",
             "DPKG_STATUS": "SOFTWARE",
             "APK_INSTALLED": "SOFTWARE",
+            "RPM_SQLITE": "SOFTWARE",
+            "WINDOWS_OS_RELEASE": "OS_RELEASE",
             "WINDOWS_UNINSTALL": "SOFTWARE",
             "LINUX_OS_RELEASE": "OS_RELEASE",
             "LINUX_PROCESS": "PROCESS",
@@ -279,6 +285,7 @@ class HostSnapshot(Strict):
                     item.kind
                     in {
                         "DPKG_STATUS",
+                        "RPM_SQLITE",
                         "APK_INSTALLED",
                         "LINUX_OS_RELEASE",
                         "LINUX_PROCESS",
@@ -289,7 +296,10 @@ class HostSnapshot(Strict):
                     }
                     and self.execution_platform != "linux"
                 )
-                or (item.kind in {"WINDOWS_UNINSTALL", "WINDOWS_SERVICE"} and self.execution_platform != "windows")
+                or (
+                    item.kind in {"WINDOWS_UNINSTALL", "WINDOWS_SERVICE", "WINDOWS_OS_RELEASE"}
+                    and self.execution_platform != "windows"
+                )
             ):
                 raise ValueError("OS-specific inventory on the wrong platform")
             if self.execution_platform != self.manifest.platform and receipt.status == "PARSED":

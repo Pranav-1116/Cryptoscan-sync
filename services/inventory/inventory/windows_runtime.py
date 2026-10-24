@@ -125,3 +125,35 @@ def collect_service(item, limit, charge):
     if len(data) > limit - reserved:
         raise Refused("BUDGET_EXCEEDED", "LIMIT")
     return data, [fact]
+
+
+def collect_os_version(item, limit, charge):
+    if sys.platform != "win32" or item.path != "windows-os://local/current-version":
+        raise ValueError("Unsupported native OS scope")
+    import winreg
+    from inventory.host import _registry_value, Refused
+    from shared_models.host_collection import HostFact
+
+    with winreg.OpenKey(
+        winreg.HKEY_LOCAL_MACHINE,
+        r"SOFTWARE\Microsoft\Windows NT\CurrentVersion",
+        0,
+        winreg.KEY_QUERY_VALUE | winreg.KEY_WOW64_64KEY,
+    ) as key:
+        name = _registry_value(key, "ProductName")
+        try:
+            version = _registry_value(key, "CurrentBuildNumber")
+        except FileNotFoundError:
+            version = None
+    fact = HostFact(
+        kind="OS_RELEASE",
+        local_basis="DECLARED",
+        purpose="OS_RELEASE_METADATA",
+        software_name=name,
+        software_version=version,
+    )
+    raw = json.dumps([fact.model_dump(mode="json")], sort_keys=True, separators=(",", ":")).encode()
+    charge(min(len(raw), limit))
+    if len(raw) > limit:
+        raise Refused("BUDGET_EXCEEDED", "LIMIT")
+    return raw, [fact]

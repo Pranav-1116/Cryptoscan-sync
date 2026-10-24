@@ -120,10 +120,10 @@ def _parts(path, windows=False):
 @contextmanager
 def _linux_fd(path):
     p = _parts(path)
-    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    fd = os.open("/", os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
         for part in p.parts[1:-1]:
-            nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+            nxt = os.open(part, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
             os.close(fd)
             fd = nxt
         leaf = os.open(p.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=fd)
@@ -500,6 +500,12 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                     data, facts = collect_live(item, limit, charge)
                 except ProbeError as exc:
                     raise Refused(exc.status, exc.reason) from None
+            elif item.kind == "WINDOWS_OS_RELEASE":
+                if platform != "windows":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                from inventory.windows_runtime import collect_os_version
+
+                data, facts = collect_os_version(item, limit, charge)
             elif item.kind == "WINDOWS_SERVICE":
                 if platform != "windows":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
@@ -512,7 +518,10 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                 data, facts = _registry(item.path, limit)
                 charge(len(data))
             else:
-                if item.kind in {"DPKG_STATUS", "APK_INSTALLED", "LINUX_OS_RELEASE"} and platform != "linux":
+                if (
+                    item.kind in {"DPKG_STATUS", "APK_INSTALLED", "RPM_SQLITE", "LINUX_OS_RELEASE"}
+                    and platform != "linux"
+                ):
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
                 data = _read(item.path, limit, charge)
                 if b"PRIVATE KEY" in data or b"BEGIN OPENSSH" in data:
@@ -523,6 +532,10 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                     facts = _config(data)
                 elif item.kind == "DPKG_STATUS":
                     facts = _packages(data)
+                elif item.kind == "RPM_SQLITE":
+                    from inventory.rpm_metadata import rpm_sqlite
+
+                    facts = rpm_sqlite(data)
                 elif item.kind == "APK_INSTALLED":
                     from inventory.linux_packages import apk_installed
 

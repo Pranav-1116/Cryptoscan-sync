@@ -164,6 +164,7 @@ def authorize(db, owner, identifier, body, actor, user, *, revoke=False):
                 "host_identity_attested": False,
                 "collection_target_id": identifier,
                 "collection_target_revision": row.revision + 1,
+                **identity_approval_fields(getattr(body, "collector_identity", None)),
             },
             actor,
             commit=False,
@@ -173,7 +174,15 @@ def authorize(db, owner, identifier, body, actor, user, *, revoke=False):
             user,
             "host.approve",
             approval_id,
-            {"manifest_sha256": digest(spec.manifest), "system_id": spec.system_id},
+            {
+                "manifest_sha256": digest(spec.manifest),
+                "system_id": spec.system_id,
+                **(
+                    {"collector_identity_sha256": digest(body.collector_identity)}
+                    if getattr(body, "collector_identity", None)
+                    else {}
+                ),
+            },
         )
         value = {
             **row.payload,
@@ -393,3 +402,11 @@ def admit_host_intake(db, owner, approval, snapshot):
     spec = admitted(db, owner, target, approval.payload["collection_target_revision"])
     if target.payload["approval_id"] != approval.subject_id or snapshot.started_at < spec.not_before:
         raise HTTPException(409, "Registry authorization does not admit this host intake")
+
+
+def identity_approval_fields(policy):
+    if policy is None:
+        return {}
+    import secrets
+
+    return {"collector_identity": policy.model_dump(mode="json"), "collector_nonce": secrets.token_hex(32)}

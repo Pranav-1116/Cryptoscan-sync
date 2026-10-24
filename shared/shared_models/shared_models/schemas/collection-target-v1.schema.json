@@ -22,7 +22,9 @@
             "LINUX_SERVICE",
             "LINUX_HARDWARE",
             "WINDOWS_SERVICE",
-            "APK_INSTALLED"
+            "APK_INSTALLED",
+            "RPM_SQLITE",
+            "WINDOWS_OS_RELEASE"
           ],
           "title": "Kind",
           "type": "string"

@@ -314,3 +314,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [62. Universal collection Phase 1 foundation](62-universal-collection-foundation.md) — stable scoped targets, current authorization, offline jobs, typed evidence and shared BOM projections.
 - [63. Phase 2 scoped Linux runtime collection](63-linux-collection-phase-two.md) — explicit PID/mapped paths, TCP listeners, named services, kernel hardware metadata, Alpine packages and honest native qualification gaps.
 - [64. Phase 3 Windows candidate](64-windows-collection-phase-three.md) — local named SCM status, explicit offline candidate CLI and native Windows gates; not production admission.
+
+- [65. Signed collector handoff, isolated Linux stage and native fixture gates](65-signed-collector-isolation-and-native-gates.md) — approval-pinned Ed25519, actual Landlock/seccomp file stage, bounded RPM exports, native qualification executor and next Windows OS candidate.

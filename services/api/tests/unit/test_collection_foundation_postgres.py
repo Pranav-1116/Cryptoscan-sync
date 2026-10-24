@@ -114,3 +114,23 @@ def test_postgres_admission_mutex_is_a_real_row_lock(assured):
         assert failure.value.orig.pgcode == "55P03"
         other.rollback()
     db.rollback()
+
+
+@pytest.mark.parametrize(
+    "contract",
+    ["test_signed_collector_intake_inspection_and_replay", "test_attestation_tamper_is_detected_on_inspection"],
+)
+def test_postgres_collector_identity(assured, contract):
+    import test_collector_identity as identity
+
+    getattr(identity, contract)(assured)
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["unsigned", "wrong-key", "nonce", "host", "release", "snapshot", "future", "approval", "revoked", "cross-bank"],
+)
+def test_postgres_collector_signature_refusals(assured, change):
+    import test_collector_identity as identity
+
+    identity.test_signature_failures_never_commit_evidence(assured, change)

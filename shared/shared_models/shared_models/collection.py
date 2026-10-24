@@ -61,6 +61,13 @@ class RevisionRequest(Strict):
     reason: str = Field(min_length=20, max_length=500, pattern=r"^[^\x00-\x1f\x7f]+$")
 
 
+from shared_models.collector_identity import CollectorIdentityPolicy
+
+
+class AuthorizeRequest(RevisionRequest):
+    collector_identity: CollectorIdentityPolicy | None = None
+
+
 class JobRequest(Strict):
     target_id: str = Field(min_length=1, max_length=36)
     expected_target_revision: int = Field(ge=1, le=100)

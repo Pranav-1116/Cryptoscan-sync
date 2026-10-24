@@ -154,17 +154,28 @@ VERSION_ID survive. Symlink `/etc/os-release` is still refused: approve a review
 regular file explicitly. Alpine only exports P/V installed-record fields, checks
 ambiguous/missing/duplicate identities and never invokes apk or install scripts.
 
+## Later signed-identity/isolation increment
+
+[Guide 65](65-signed-collector-isolation-and-native-gates.md) adds approval-pinned
+Ed25519 snapshot handoffs, an actual Linux Landlock/seccomp file stage, bounded
+SQLite RPM export metadata and an expected-truth native fixture executor. These
+do not turn unavailable hardware/systemd interfaces into positive qualification,
+attest installed code/host clocks or enable production dispatch. The boundaries
+below distinguish that implementation from remaining deployment/native gates.
+
 ## Remaining qualification and implementation boundaries
 
 - Positive native systemd, DMI and TPM fixtures; denied/changed/interface-missing
   variants on the intended hosts; independently reviewed expected-truth results.
-- Alpine native-host review, RPM/other package profiles, alternate systemd
+- Alpine/RPM native-host review, other package profiles, alternate systemd
   layouts, additional distributions/architectures and package/binary signatures.
 - Verified ELF/provider attribution, algorithm invocation, effective TLS, hardware
   mechanisms and HSM/KMS operations require **additional actual evidence**;
   none can be obtained by relabeling mapped paths or hardware metadata.
-- Signed collector release/identity and authenticated host/time binding, isolated
-  admission→queue→worker execution, external security review and bank approval
+- Pinned signing-key handoff verification and the isolated file-stage primitive
+  are implemented in guide 65. Signed installed collector release binding,
+  authenticated host/time, production admission→queue→worker execution,
+  external security review and bank approval
   remain open. Existing local hashes do not close them.
 - No full-bank coverage denominator, p95/p99/20% performance qualification,
   deployed HA/TLS/monitoring acceptance or production collection is claimed.

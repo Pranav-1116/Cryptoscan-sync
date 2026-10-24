@@ -28,16 +28,20 @@ from shared_models.host_collection import HostManifest, HostSnapshot, Strict, To
 from shared_models.safe_finding import safe_finding
 from shared_models.host_associations import AssociationProposal, AssociationDecision, TargetType
 
+from shared_models.collector_identity import CollectorIdentityPolicy, CollectorAttestation, verify_collector
+
 router = APIRouter(prefix="/host-evidence", tags=["host-evidence"])
 
 
 class ApprovalRequest(Strict):
     system_id: Token
     manifest: HostManifest
+    collector_identity: CollectorIdentityPolicy | None = None
 
 
 class IntakeRequest(Strict):
     snapshot: HostSnapshot
+    collector_attestation: CollectorAttestation | None = None
 
 
 def _system(db, owner, identifier):
@@ -100,6 +104,7 @@ def _check(db, owner, intake):
                 or row.confidence != "LOW"
             ):
                 raise ValueError("host evidence projection mismatch")
+        _verify_identity(approval, snapshot, payload.get("collector_attestation"), snapshot.manifest.expires_at)
         _system(db, owner, approval.payload["system_id"])
         return snapshot, scan, rows, verdict
     except (KeyError, ValueError, TypeError):
@@ -121,6 +126,8 @@ def approve(
     if not now < body.manifest.expires_at <= now + timedelta(days=1):
         raise HTTPException(422, "Approval must expire within the next 24 hours")
     identifier = new_id()
+    from api.assurance.collection import identity_approval_fields
+
     try:
         row = store.append(
             db,
@@ -135,6 +142,7 @@ def approve(
                 "source_basis": "DECLARED",
                 "authorizes_remote_execution": False,
                 "host_identity_attested": False,
+                **identity_approval_fields(body.collector_identity),
             },
             actor_id,
             commit=False,
@@ -144,7 +152,11 @@ def approve(
             user,
             "host.approve",
             identifier,
-            {"manifest_sha256": digest(body.manifest), "system_id": body.system_id},
+            {
+                "manifest_sha256": digest(body.manifest),
+                "system_id": body.system_id,
+                **({"collector_identity_sha256": digest(body.collector_identity)} if body.collector_identity else {}),
+            },
         )
         db.commit()
     except Exception:
@@ -169,6 +181,10 @@ def intake(
     snapshot, now = body.snapshot, utcnow()
     old = store.latest(db, ctx.tenant_id, "host_intake", approval_id, required=False)
     if old:
+        if old.payload.get("collector_attestation") != (
+            body.collector_attestation.model_dump(mode="json") if body.collector_attestation else None
+        ):
+            raise HTTPException(409, "Collector signature replay/downgrade mismatch")
         if old.payload["snapshot_sha256"] != digest(snapshot):
             raise HTTPException(409, "This one-use approval already holds a different snapshot")
         _check(db, ctx.tenant_id, old)
@@ -181,7 +197,9 @@ def intake(
     ):
         raise HTTPException(409, "Approval scope, collection time or expiry mismatch")
     from api.assurance.collection import admit_host_intake
+
     admit_host_intake(db, ctx.tenant_id, approval, snapshot)
+    _verify_identity(approval, snapshot, body.collector_attestation, now)
     _system(db, ctx.tenant_id, approval.payload["system_id"])
     scan_id = new_id()
     pipeline = EvidencePipeline(scan_id)
@@ -219,6 +237,11 @@ def intake(
                 "evidence_ids": [r.evidence_id for r in records],
                 "imported_by": user,
                 "source_basis": "IMPORTED",
+                **(
+                    {"collector_attestation": body.collector_attestation.model_dump(mode="json")}
+                    if body.collector_attestation
+                    else {}
+                ),
             },
             actor_id,
             commit=False,
@@ -236,6 +259,11 @@ def intake(
                 "evidence_ids": [r.evidence_id for r in records],
                 "imported_by": user,
                 "source_basis": "IMPORTED",
+                **(
+                    {"collector_attestation_sha256": digest(body.collector_attestation)}
+                    if body.collector_attestation
+                    else {}
+                ),
             },
         )
         db.commit()
@@ -263,6 +291,15 @@ def _public_receipt(row):
         "policy_result": "NOT_EVALUATED",
         "pqc_assessment": "UNKNOWN",
         "host_identity_attested": False,
+        **(
+            {
+                "collector_identity_verified": True,
+                "collector_identity_basis": "APPROVAL_PINNED_SIGNING_KEY_NOT_HOST_ATTESTATION",
+                "collector_key_id": row.payload["collector_attestation"]["statement"]["key_id"],
+            }
+            if row.payload.get("collector_attestation")
+            else {}
+        ),
     }
 
 
@@ -429,3 +466,26 @@ def host_estate_graph_export(
     )
     db.commit()
     return value
+
+
+def _verify_identity(approval, snapshot, proof, latest):
+    policy = approval.payload.get("collector_identity")
+    if policy is None:
+        if proof is not None:
+            raise HTTPException(409, "Collector signing key was not pinned by approval")
+        return
+    try:
+        if proof is None:
+            raise ValueError("Collector signature required")
+        proof = proof if isinstance(proof, CollectorAttestation) else CollectorAttestation.model_validate(proof)
+        return verify_collector(
+            CollectorIdentityPolicy.model_validate(policy),
+            proof,
+            snapshot,
+            approval.subject_id,
+            approval.payload["collector_nonce"],
+            aware(approval.created_at),
+            latest,
+        )
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(409, "Collector identity proof missing, invalid, out of scope or expired") from None

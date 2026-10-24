@@ -32,6 +32,9 @@ def main():
         action="store_true",
         help="Explicitly opt into unqualified native Windows offline candidate; no production job admission",
     )
+    parser.add_argument(
+        "--isolated", action="store_true", help="Fail-closed Linux Landlock/seccomp file stage; requires --target-spec"
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
@@ -43,9 +46,16 @@ def main():
             from inventory.collection import OfflineLinuxCollector, OfflineWindowsCollector
 
             adapter = OfflineWindowsCollector() if args.windows_candidate else OfflineLinuxCollector()
-            snapshot = adapter.collect(TargetSpec.model_validate(value))
+            if args.isolated:
+                if args.windows_candidate:
+                    raise ValueError("No Windows isolation fallback")
+                from inventory.isolation import collect_isolated
+
+                snapshot, _ = collect_isolated(TargetSpec.model_validate(value))
+            else:
+                snapshot = adapter.collect(TargetSpec.model_validate(value))
         else:
-            if args.windows_candidate:
+            if args.windows_candidate or args.isolated:
                 raise ValueError("Windows candidate opt-in requires target-spec")
             snapshot = collect(HostManifest.model_validate(value))
         raw = json.dumps(snapshot.model_dump(mode="json"), sort_keys=True, indent=2).encode()

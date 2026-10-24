@@ -1,0 +1,118 @@
+{
+  "actual_isolated_stage": {
+    "exec_clone": "DENIED",
+    "filesystem": "EXPLICIT_READ_LEAVES",
+    "landlock_abi": 2,
+    "network": "DENIED",
+    "production_execution_qualified": false,
+    "profile": "linux-landlock-seccomp/v1"
+  },
+  "native_os": {
+    "architecture": "x86_64",
+    "host_identity_attested": false,
+    "independent_review_verified": false,
+    "native_platform": "Linux",
+    "production_execution_qualified": false,
+    "results": [
+      {
+        "actual_facts": 1,
+        "expected_facts": 1,
+        "input_id": "os",
+        "matches_expected_truth": true,
+        "reason": "METADATA_ONLY",
+        "status": "PARSED"
+      }
+    ],
+    "reviewer_reference": "engineering/owned-not-independent",
+    "snapshot_sha256": "278fc9dec79c08947ab833beb3915f41354ef4051f44c67de6c2c10f6d88192f",
+    "target_sha256": "c0af0bd0c3fabd007f5c9dd2c924cca03f6383ad9b34451b9112da0b26dbccba",
+    "verdict": "PASS_SCOPED_FIXTURE"
+  },
+  "native_os_exit": 0,
+  "native_required_interfaces": {
+    "architecture": "x86_64",
+    "host_identity_attested": false,
+    "independent_review_verified": false,
+    "native_platform": "Linux",
+    "production_execution_qualified": false,
+    "results": [
+      {
+        "actual_facts": 0,
+        "expected_facts": 1,
+        "input_id": "service",
+        "matches_expected_truth": false,
+        "reason": "INTERFACE_UNAVAILABLE",
+        "status": "UNAVAILABLE"
+      },
+      {
+        "actual_facts": 0,
+        "expected_facts": 1,
+        "input_id": "dmi",
+        "matches_expected_truth": false,
+        "reason": "NOT_FOUND",
+        "status": "UNAVAILABLE"
+      },
+      {
+        "actual_facts": 0,
+        "expected_facts": 1,
+        "input_id": "tpm",
+        "matches_expected_truth": false,
+        "reason": "NOT_FOUND",
+        "status": "UNAVAILABLE"
+      }
+    ],
+    "reviewer_reference": "engineering/owned-not-independent",
+    "snapshot_sha256": "93cf01bd479c9aa4f81df285a00fb7e81e9d703dc28d7a6aa29358003f690f0b",
+    "target_sha256": "a68ebe2637fd409a0edfecfe043ddcfbc267ecdff90fd905efb1cb820a4488e3",
+    "verdict": "FAIL_GAPS_OR_TRUTH_MISMATCH"
+  },
+  "native_required_interfaces_exit": 2,
+  "overwrite_refusal_exit": 64,
+  "owned_temporary_directory_removed": true,
+  "prepare_exit": 0,
+  "production_execution_qualified": false,
+  "signature_verification": {
+    "host_identity_attested": false,
+    "identity_basis": "APPROVAL_PINNED_SIGNING_KEY_NOT_HOST_ATTESTATION",
+    "key_id": "engineering-disposable",
+    "production_execution_qualified": false,
+    "release_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "signature": "PASS"
+  },
+  "signer": "DISPOSABLE_IN_MEMORY_TEST_KEY_NOT_BANK_OR_RELEASE_SIGNER",
+  "sqlite_public_timestamp_prepare_exit": 0,
+  "synthetic_inputs_actual_isolation": [
+    {
+      "facts": 1,
+      "kind": "PUBLIC_CERTIFICATE",
+      "status": "PARSED"
+    },
+    {
+      "facts": 1,
+      "kind": "NGINX_TLS_CONFIG",
+      "status": "PARSED"
+    },
+    {
+      "facts": 1,
+      "kind": "BINARY_METADATA",
+      "status": "PARSED"
+    },
+    {
+      "facts": 1,
+      "kind": "DPKG_STATUS",
+      "status": "PARSED"
+    },
+    {
+      "facts": 1,
+      "kind": "APK_INSTALLED",
+      "status": "PARSED"
+    },
+    {
+      "facts": 1,
+      "kind": "RPM_SQLITE",
+      "status": "PARSED"
+    }
+  ],
+  "verify_exit": 0,
+  "windows_native_execution": false
+}
