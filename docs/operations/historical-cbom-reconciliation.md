@@ -1,5 +1,10 @@
 # Historical CBOM reconciliation — implemented increment
 
+**Successor:** [controlled unassigned/mixed-source decisions](controlled-historical-cbom.md)
+now extend the existing workflow. Retained mixed histories remain partial, not
+clean scan evidence or bank acceptance. Earlier limits/results below describe
+the historical increment.
+
 **2026-10-24 · existing database → API → CBOM console. Not whole-product production qualification.**
 
 This follows [data-path hardening / migration 0107](production-data-path-hardening.md).

@@ -12,6 +12,7 @@ from typing import Any
 IMPORT_SOURCE_BASIS = "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS"
 LEGACY_SOURCE_BASIS = "LEGACY_IMPORT_REVIEW_REQUIRED"
 ARCHIVED_DECLARATION = "ARCHIVED_DECLARATION"
+RETAINED_MIXED_EVIDENCE = "RETAINED_MIXED_EVIDENCE"
 
 
 def is_import(data: dict[str, Any]) -> bool:
@@ -40,7 +41,7 @@ def project_import_provenance(data: dict[str, Any]) -> dict[str, Any]:
     result["confidence"] = "LOW"
     extra = data.get("extra") if isinstance(data.get("extra"), dict) else {}
     disposition = extra.get("legacy_cbom_disposition") or {}
-    if isinstance(disposition, dict) and disposition.get("state") == ARCHIVED_DECLARATION:
-        result["source_disposition"] = ARCHIVED_DECLARATION
+    if isinstance(disposition, dict) and disposition.get("state") in {ARCHIVED_DECLARATION, RETAINED_MIXED_EVIDENCE}:
+        result["source_disposition"] = disposition["state"]
     result["source_basis"] = LEGACY_SOURCE_BASIS if is_legacy_import(data) else IMPORT_SOURCE_BASIS
     return result

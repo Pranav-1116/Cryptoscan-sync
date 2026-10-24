@@ -132,7 +132,8 @@ def to_cyclonedx16(bom: dict, *, omit_inventory_dependencies: bool = False) -> d
     root = meta.get("component") or {}
     properties = [copy.deepcopy(p) for p in meta.get("properties", [])
                   if p.get("name") in {"cryptoscan:scope", "cryptoscan:systems", "cryptoscan:assets",
-                    "cryptoscan:truncated", "cryptoscan:asset_limit", "cryptoscan:assets_total"}]
+                    "cryptoscan:truncated", "cryptoscan:asset_limit", "cryptoscan:assets_total",
+                    "cryptoscan:retained_mixed_evidence_assets", "cryptoscan:inventory_completeness"}]
     properties += [_property("cryptoscan:discovery_completeness", "NOT_PROVEN"),
                    _property("cryptoscan:dependency_basis", "SOURCE_RELATIONSHIPS_NOT_RUNTIME_OR_REPLACEMENT_PROOF"),
                    _property("cryptoscan:profile", "ALLOWLISTED_CRYPTO_METADATA_NO_SECRET_VALUES")]

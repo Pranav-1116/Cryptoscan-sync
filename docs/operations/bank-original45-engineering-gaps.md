@@ -6,6 +6,15 @@ all45 capabilities. This follow-up changes executable export, classification,
 accuracy, API and existing-screen behavior, and provides an actual synthetic
 CBOM/report. It still does not make the original questionnaire fully satisfied.
 
+## Subsequent bounded implementation
+
+[Controlled historical CBOM decisions](controlled-historical-cbom.md) now handle
+unassigned and mixed-source histories in the existing screen/API, and
+[qualification evidence corrections](qualification-evidence-boundaries.md)
+include actual disposable PostgreSQL/Redis execution. Neither update closes the
+original45 or supplies independent bank acceptance. Historical evidence below
+remains tied to its original increment, not silently refreshed.
+
 ## Implemented in this follow-up
 
 | Original question | Actual implementation change | Evidence |

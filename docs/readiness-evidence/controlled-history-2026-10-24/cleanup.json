@@ -1,0 +1,19 @@
+{
+  "scope": "OWNED_SYNTHETIC_LOCAL_FIXTURES_ONLY",
+  "known_temporary_keys": 2,
+  "all_known_keys_revoked": true,
+  "redis_scratch_keys_remaining": 0,
+  "temporary_pg_test_and_restore_databases_remaining": 0,
+  "audit": {
+    "status": "OK",
+    "checked": 134,
+    "entry_count": 134,
+    "chain_head": "97e2f0979afb893ba04ec3061b220a008b4dee3a99ba2b38df7320a5a929f0eb"
+  },
+  "owned_services_stopped": true,
+  "owned_runtime_data_removed": true,
+  "bank_approved": false,
+  "deployment_qualified": false,
+  "private_config_and_synthetic_credentials_removed": true,
+  "api_and_console_ports_closed": true
+}

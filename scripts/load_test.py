@@ -20,12 +20,14 @@ bootstrap()
 
 import argparse
 import json
+import os
 import statistics
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 from collections.abc import Callable
 
 DEFAULT_URL = "http://localhost:8010"
@@ -46,12 +48,12 @@ class Result:
             self.by_status[status] = self.by_status.get(status, 0) + 1
             if status == 429:
                 self.throttled += 1
-            elif not 200 <= status < 400:
+            elif not 200 <= status < 300:
                 # 401/403/404 are errors for a load test: an identity that stops
                 # working under load or a probe path that does not exist must
                 # not be reported as capacity.
                 self.errors += 1
-            if status != 429:  # throttled responses are not latency-representative
+            if 200 <= status < 300:  # only successful operations measure useful latency
                 self.latencies.append(elapsed)
 
 
@@ -61,6 +63,25 @@ def percentile(values: list[float], fraction: float) -> float:
     ordered = sorted(values)
     index = min(int(len(ordered) * fraction), len(ordered) - 1)
     return ordered[index]
+
+
+def summarize(result: Result, *, wall: float, max_error_rate: float, max_throttle_rate: float) -> dict:
+    successful = len(result.latencies)
+    error_rate = result.errors / result.requests if result.requests else 1.0
+    throttle_rate = result.throttled / result.requests if result.requests else 0.0
+    passed = bool(successful and wall > 0 and error_rate <= max_error_rate and throttle_rate <= max_throttle_rate)
+    latencies = {label: round(percentile(result.latencies, fraction)*1000, 3) if successful else None
+                 for label, fraction in [('p50',.5),('p90',.9),('p95',.95),('p99',.99)]}
+    latencies['max'] = round(max(result.latencies)*1000,3) if successful else None
+    return {'capacity_verdict':'PASS' if passed else 'FAIL','bank_approved':False,
+        'measurement_basis':'CONFIGURED_HTTP_WORKLOAD_NOT_BANK_OR_SCANNER_THROUGHPUT_QUALIFICATION',
+        'requests':result.requests,'duration_s':round(wall,3),'successful_operations':successful,
+        'throughput_rps':round(result.requests/wall,3) if wall > 0 else 0,
+        'successful_throughput_rps':round(successful/wall,3) if wall > 0 else 0,
+        'errors':result.errors,'error_rate':error_rate,'throttled_429':result.throttled,'throttle_rate':throttle_rate,
+        'limits':{'max_error_rate':max_error_rate,'max_throttle_rate':max_throttle_rate},
+        'by_status':dict(sorted(result.by_status.items())), 'latency_ms':latencies,
+        'mean_ms':round(statistics.fmean(result.latencies)*1000,3) if successful else None}
 
 
 def make_client(base_url: str, token: str, api_key: str = "") -> Callable[[str, str | None], tuple[int, float]]:
@@ -126,23 +147,33 @@ def create_vu_keys(base_url: str, token: str, n: int) -> list[tuple[str, str]]:
     keys: list[tuple[str, str]] = []
     expires = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600))
     for i in range(n):
-        status, body = _json(base_url, "/api/v1/api-keys", token, "POST", {
-            "name": f"loadtest-vu-{i:03d}-{int(time.time())}", "roles": ["viewer"], "allowed_methods": ["GET", "POST"],
-            "scopes": ["/monitor", "/payment-crypto", "/stats"], "expires_at": expires,
-        })
+        try:
+            status, body = _json(base_url, "/api/v1/api-keys", token, "POST", {
+                "name": f"loadtest-vu-{i:03d}-{int(time.time())}", "roles": ["viewer"], "allowed_methods": ["GET", "POST"],
+                "scopes": ["/monitor", "/payment-crypto", "/stats"], "expires_at": expires,
+            })
+        except (OSError, ValueError):
+            print("API key creation unconfirmed; reconcile key inventory before retrying", file=sys.stderr)
+            break
         if status != 201 or "raw_key" not in body:
-            print(f"api-key create failed for VU {i}: HTTP {status} {body}", file=sys.stderr)
+            print(f"api-key create failed for VU {i}: HTTP {status}", file=sys.stderr)
             break
         keys.append((body["id"], body["raw_key"]))
     return keys
 
 
-def revoke_vu_keys(base_url: str, token: str, keys: list[tuple[str, str]]) -> None:
+def revoke_vu_keys(base_url: str, token: str, keys: list[tuple[str, str]]) -> bool:
+    successful = True
     for key_id, _ in keys:
-        _json(base_url, f"/api/v1/api-keys/{key_id}", token, "DELETE")
+        try:
+            status, _body = _json(base_url, f"/api/v1/api-keys/{key_id}", token, "DELETE")
+            successful = (200 <= status < 300) and successful
+        except (OSError, ValueError):
+            successful = False  # continue best-effort revocation of every known key
+    return successful
 
 
-def worker(call: Callable, result: Result, stop_at: float, scan_target_id: str | None, rps: float = 0.0) -> None:
+def worker(call: Callable, result: Result, stop_at: float, scan_target_id: str | None, rps: float = 0.0, stop: threading.Event | None = None) -> None:
     paths = [
         "/api/v1/monitor/status",
         "/api/v1/monitor/targets",
@@ -150,7 +181,7 @@ def worker(call: Callable, result: Result, stop_at: float, scan_target_id: str |
         "/api/v1/stats/summary",
     ]
     iteration = 0
-    while time.time() < stop_at:
+    while time.monotonic() < stop_at and not (stop and stop.is_set()):
         path = paths[iteration % len(paths)]
         if scan_target_id and iteration % 8 == 7:
             status, elapsed = call(f"/api/v1/monitor/targets/{scan_target_id}/scan-now", "POST")
@@ -159,7 +190,8 @@ def worker(call: Callable, result: Result, stop_at: float, scan_target_id: str |
         result.record(elapsed, status)
         iteration += 1
         if rps > 0:  # pace each virtual user like a real client (default 8 rps < 600/min budget)
-            time.sleep(max(0.0, 1.0 / rps - elapsed))
+            delay = max(0.0, 1.0 / rps - elapsed)
+            stop.wait(delay) if stop else time.sleep(delay)
 
 
 def main() -> int:
@@ -168,9 +200,11 @@ def main() -> int:
     parser.add_argument("--users", type=int, default=10, help="concurrent virtual users")
     parser.add_argument("--duration", type=float, default=30.0, help="seconds")
     parser.add_argument("--username", default="admin")
-    parser.add_argument("--password", default="")
+    parser.add_argument("--password", default=os.getenv("CRYPTOSCAN_LOAD_PASSWORD", ""),
+                        help="Prefer CRYPTOSCAN_LOAD_PASSWORD from a secret store; CLI values are visible in process arguments")
     parser.add_argument("--scan-target", default="", help="monitor target id for scan-now probes")
     parser.add_argument("--max-error-rate", type=float, default=0.01)
+    parser.add_argument("--max-throttle-rate", type=float, default=0.01, help="429 ceiling; throttling is not useful capacity")
     parser.add_argument("--rps-per-user", type=float, default=8.0,
                         help="pace each VU (0 = unpaced). 8 rps keeps a VU under its 600/min identity budget, "
                              "so throughput scales with --users and 429s mean real saturation")
@@ -180,6 +214,13 @@ def main() -> int:
                              "sessions: one login per VU, staggered for the 5/min login limiter")
     args = parser.parse_args()
 
+    if not (1 <= args.users <= 1000 and 0 < args.duration <= 86400 and 0 <= args.rps_per_user <= 600
+            and 0 <= args.max_error_rate <= 1 and 0 <= args.max_throttle_rate < 1):
+        parser.error("Invalid workload bounds or error/throttle limits")
+    target = urllib.parse.urlsplit(args.url)
+    if target.scheme not in {"http", "https"} or not target.netloc or target.username or target.password or target.query or target.fragment:
+        parser.error("Target must be an HTTP(S) origin without embedded credentials, query or fragment")
+    args.url = args.url.rstrip("/")
     if not args.password:
         print("--password required (read API credentials from your secret store)", file=sys.stderr)
         return 2
@@ -194,7 +235,8 @@ def main() -> int:
     if args.identity == "api-keys":
         vu_keys = create_vu_keys(args.url, token, args.users)
         if len(vu_keys) != args.users:
-            revoke_vu_keys(args.url, token, vu_keys)
+            if not revoke_vu_keys(args.url, token, vu_keys):
+                print("Known temporary keys could not all be revoked; operator cleanup required", file=sys.stderr)
             print("could not mint one API key per VU (admin role needed); try --identity sessions", file=sys.stderr)
             return 2
         clients = [make_client(args.url, "", raw) for _, raw in vu_keys]
@@ -214,43 +256,44 @@ def main() -> int:
             if i < args.users - 1:
                 time.sleep(13.0)  # login window: 5/min per IP
         clients = [make_client(args.url, tok) for tok in tokens]
-    stop_at = time.time() + args.duration  # soak clock starts after setup
+    stop_at = time.monotonic() + args.duration  # soak clock starts after setup
+    stop = threading.Event()
+    worker_failures = []
+    def run_worker(call):
+        try:
+            worker(call, result, stop_at, args.scan_target or None, args.rps_per_user, stop)
+        except Exception:
+            worker_failures.append(True)
+            stop.set()
     threads = [
-        threading.Thread(target=worker, args=(call, result, stop_at, args.scan_target or None, args.rps_per_user), daemon=True)
+        threading.Thread(target=run_worker, args=(call,), daemon=True)
         for call in clients
     ]
     started = time.perf_counter()
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join()
-    wall = time.perf_counter() - started
-    if vu_keys:
-        revoke_vu_keys(args.url, token, vu_keys)
-
-    error_rate = result.errors / result.requests if result.requests else 1.0
-    # NOTE: rate limiting is active in production mode (600 req/min/identity);
-    # a high throttled_429 share means the *budget* was the ceiling, not capacity.
-    print(json.dumps({
-        "identity": args.identity,
-        "users": args.users,
-        "rps_per_user": args.rps_per_user,
-        "requests": result.requests,
-        "duration_s": round(wall, 1),
-        "throughput_rps": round(result.requests / wall, 1),
-        "errors": result.errors,
-        "error_rate": round(error_rate, 4),
-        "throttled_429": result.throttled,
-        "by_status": dict(sorted(result.by_status.items())),
-        "latency_ms": {
-            "p50": round(percentile(result.latencies, 0.50) * 1000, 1),
-            "p90": round(percentile(result.latencies, 0.90) * 1000, 1),
-            "p99": round(percentile(result.latencies, 0.99) * 1000, 1),
-            "max": round(max(result.latencies) * 1000, 1) if result.latencies else 0,
-        },
-        "mean_ms": round(statistics.fmean(result.latencies) * 1000, 1) if result.latencies else 0,
-    }, indent=2))
-    return 0 if error_rate <= args.max_error_rate else 1
+    keys_revoked = True
+    try:
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        wall = time.perf_counter() - started
+    finally:
+        stop.set()
+        for thread in threads:
+            if thread.is_alive():
+                thread.join()  # finish in-flight bounded HTTP requests before revoking identities
+        if vu_keys:
+            keys_revoked = revoke_vu_keys(args.url, token, vu_keys)
+    report = summarize(result, wall=wall, max_error_rate=args.max_error_rate, max_throttle_rate=args.max_throttle_rate)
+    report.update(identity=args.identity, users=args.users, rps_per_user=args.rps_per_user,
+                  temporary_keys_revoked=keys_revoked, target_url=args.url, worker_failures=len(worker_failures))
+    if worker_failures:
+        report['capacity_verdict'] = 'FAIL'
+    if not keys_revoked:
+        report['capacity_verdict'] = 'FAIL'
+        report['cleanup_error'] = 'Temporary API key revocation unconfirmed; operator action required'
+    print(json.dumps(report, indent=2))
+    return 0 if report['capacity_verdict'] == 'PASS' else 1
 
 
 if __name__ == "__main__":

@@ -20,6 +20,8 @@ from db.import_provenance import archived_legacy_clause, legacy_import_clause
 from db.models.base import BaseModel as RowModel
 from db.models.crypto_asset import CryptoAsset
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
+from db.models.evidence_record import EvidenceRecord
+from db.tenancy import current_tenant
 from db.models.system import System
 from db.models.system_asset import SystemAsset
 from db.repositories.user_repository import UserRepository
@@ -52,13 +54,38 @@ def refuse_legacy_records(records) -> None:
 
 
 def _system(db: Session, system_id: str, *, lock: bool = False) -> System:
-    stmt = select(System).where(System.id == system_id)
+    stmt = select(System).where(System.id == system_id, System.tenant_id == current_tenant())
     if lock:
         stmt = stmt.with_for_update().execution_options(populate_existing=True)
     system = db.execute(stmt).scalar_one_or_none()
     if system is None:
         raise HTTPException(404, "System not found")
     return system
+
+
+def evidence_membership(db, asset_ids, *, lock=False):
+    if lock and asset_ids:
+        links = list(db.execute(select(CryptoAssetEvidence).where(CryptoAssetEvidence.asset_id.in_(asset_ids))
+            .order_by(CryptoAssetEvidence.id).limit(10001).with_for_update()).scalars())
+        if len(links) > 10000:
+            raise HTTPException(413, "Evidence membership exceeds 10000-link safety limit")
+        evidence_ids = sorted({link.evidence_id for link in links})
+        if evidence_ids:
+            db.execute(select(EvidenceRecord.id).where(EvidenceRecord.id.in_(evidence_ids))
+                       .order_by(EvidenceRecord.id).with_for_update()).all()
+    rows = db.execute(select(CryptoAssetEvidence, EvidenceRecord.updated_at, EvidenceRecord.content_hash,
+                             EvidenceRecord.chain_hash, EvidenceRecord.deleted_at)
+        .outerjoin(EvidenceRecord, EvidenceRecord.id == CryptoAssetEvidence.evidence_id)
+        .where(CryptoAssetEvidence.asset_id.in_(asset_ids)).order_by(CryptoAssetEvidence.id).limit(10001)).all()
+    if len(rows) > 10000:
+        raise HTTPException(413, "Evidence membership exceeds 10000-link safety limit")
+    counts, membership = {}, []
+    for link, updated, content, chain, deleted in rows:
+        if content is None:
+            raise HTTPException(409, "Evidence linkage unavailable or inconsistent; controlled investigation required")
+        counts[link.asset_id] = counts.get(link.asset_id, 0) + 1
+        membership.append([link.id, link.asset_id, link.evidence_id, str(link.updated_at), str(updated), content, chain, str(deleted)])
+    return membership, counts
 
 
 def _review(db: Session, system: System, *, lock: bool = False) -> tuple[dict, list[CryptoAsset], list[CryptoAsset]]:
@@ -71,13 +98,14 @@ def _review(db: Session, system: System, *, lock: bool = False) -> tuple[dict, l
     assets = list(db.execute(stmt).scalars())
     if len(assets) > REVIEW_MAX_ASSETS:
         raise HTTPException(413, "Historical review exceeds the 2000-asset safety limit; controlled operator reconciliation required")
-    evidence_counts = dict(db.execute(select(CryptoAssetEvidence.asset_id, func.count())
-        .where(CryptoAssetEvidence.asset_id.in_([asset.id for asset in assets]))
-        .group_by(CryptoAssetEvidence.asset_id)).all()) if assets else {}
-    replacements = list(db.execute(select(CryptoAsset).join(SystemAsset, SystemAsset.asset_id == CryptoAsset.id)
+    membership, evidence_counts = evidence_membership(db, [asset.id for asset in assets], lock=lock)
+    replacement_query = (select(CryptoAsset).join(SystemAsset, SystemAsset.asset_id == CryptoAsset.id)
         .where(SystemAsset.system_id == system.id,
                CryptoAsset.extra["cbom_import"]["system_id"].as_string() == system.id)
-        .order_by(CryptoAsset.id).limit(REVIEW_MAX_ASSETS + 1)).scalars())
+        .order_by(CryptoAsset.id).limit(REVIEW_MAX_ASSETS + 1))
+    if lock:
+        replacement_query = replacement_query.with_for_update(of=CryptoAsset).execution_options(populate_existing=True)
+    replacements = list(db.execute(replacement_query).scalars())
     if len(replacements) > REVIEW_MAX_ASSETS:
         raise HTTPException(413, "Replacement inventory exceeds the 2000-asset review safety limit")
     system_extra = system.extra if isinstance(system.extra, dict) else {}
@@ -87,7 +115,7 @@ def _review(db: Session, system: System, *, lock: bool = False) -> tuple[dict, l
     # raw snippets, paths, credentials or findings in the review listing.
     canonical = {"system":RowModel.to_dict(system),
                  "legacy":[RowModel.to_dict(asset) for asset in assets],
-                 "evidence_counts":evidence_counts,
+                 "evidence_counts":evidence_counts, "evidence_membership":membership,
                  "replacements":[RowModel.to_dict(asset) for asset in replacements]}
     snapshot = hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
     return {"system_id":system.id, "system_name":system.name, "snapshot_sha256":snapshot,

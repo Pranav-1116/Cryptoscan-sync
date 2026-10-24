@@ -517,6 +517,8 @@ def cbom_portfolio(
         {"name": "cryptoscan:systems", "value": str(len({row.get("system_id") for row in records if row.get("system_id")}))},
         {"name": "cryptoscan:assets", "value": str(len(records))},
     ]
+    from api.routers.cbom_legacy_controlled import retained_metadata
+    metadata_properties += retained_metadata(db)
     if truncated:
         # explicit, machine-readable truncation — never a silent 5000-row stop
         metadata_properties += [
@@ -628,6 +630,8 @@ def cbom_assess_portfolio(
 ):
     """Estate-wide crypto posture: every system with assets, assessed and
     ranked worst-first, plus an aggregate estate score."""
+    from api.routers.cbom_legacy_controlled import refuse_partial_assessment
+    refuse_partial_assessment(db)
     from cbom.assessment import assess_cbom
 
     from api.routers.cbom_legacy import refuse_unreviewed_export
@@ -712,9 +716,17 @@ def cbom_assess(
     from cbom.assessment import assess_cbom
 
     if ref.bom is not None:
+        metadata = ref.bom.get("metadata") or {}
+        properties = metadata.get("properties") or [] if isinstance(metadata, dict) else []
+        if any(isinstance(p, dict) and p.get("name") == "cryptoscan:inventory_completeness"
+               and p.get("value") == "PARTIAL_RETAINED_MIXED_EVIDENCE" for p in properties):
+            raise HTTPException(409, "Partial retained-history document cannot establish a clean posture grade")
         return assess_cbom(ref.bom)
     from contextlib import contextmanager
     with contextmanager(get_db_session)() as db:
+        if ref.system_id:
+            from api.routers.cbom_legacy_controlled import refuse_partial_assessment
+            refuse_partial_assessment(db, ref.system_id)
         name, _source_id, records = _resolve_ref(db, ref)
         bom = CbomGenerator().from_records(records, name=name)
         return assess_cbom(bom)
@@ -1212,6 +1224,7 @@ def cbom_for_system(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    from api.routers.cbom_legacy_controlled import retained_system_metadata
     system, assets = _records_for_system(db, system_id)
     records = []
     for asset in assets:
@@ -1239,6 +1252,7 @@ def cbom_for_system(
         dependencies=dependencies,
         metadata_properties=[
             {"name": "cryptoscan:dependencies", "value": "estate-linkage"},
+            *retained_system_metadata(system),
         ],
         scan_id=f"system:{system.id}")
     if fmt == "cyclonedx16":
@@ -1412,3 +1426,6 @@ def nbom_live(db: Session = Depends(get_db_session), user: str = Depends(get_cur
 
 from api.routers.cbom_legacy import register_legacy_routes
 register_legacy_routes(router, require_cbom_writer)
+
+from api.routers.cbom_legacy_controlled import register_controlled_routes
+register_controlled_routes(router)

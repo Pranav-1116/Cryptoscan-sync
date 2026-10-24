@@ -1,0 +1,2 @@
+Actual SIGKILL delivered to the fixed private lab Redis; restart the same lab from its RDB before finish.
+Retained actual loss and reconciliation results; scratch keys cleaned; independent review remains pending.

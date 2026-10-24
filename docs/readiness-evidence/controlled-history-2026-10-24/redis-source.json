@@ -1,0 +1,7 @@
+{
+  "source_url": "https://codeload.github.com/redis/redis/tar.gz/refs/tags/8.2.4",
+  "source_tar_sha256": "b9d7252b26af9738aa686681151b0e798ef8b4afc092a838b3de0a12a36b1542",
+  "server_binary_sha256": "38be6241ae0b90613ba23d2ccaeedfda75eea0086df4b5045fa165406a821ac4",
+  "build": "make -j2 MALLOC=libc BUILD_TLS=no OPT=-O2",
+  "warning": "Memory overcommit warning retained; no sysctl change made"
+}

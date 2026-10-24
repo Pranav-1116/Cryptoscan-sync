@@ -5040,3 +5040,27 @@ export const apiCbomReconcileLegacy = (systemId: string, body: {
   expected_snapshot_sha256: string; replacement_document_sha256: string; reason: string;
 }): Promise<ApiResult<{ audit_id: string; detached_assets: number; archived_declarations: number }>> =>
   call(`/api/v1/cbom/system/${encodeURIComponent(systemId)}/reconcile-legacy`, { method: "POST", body: JSON.stringify(body) });
+
+export interface LegacyOrphanPage {
+  total: number; page: number; page_size: number;
+  assets: Array<{ id: string; algorithm: string; confidence: string; source_basis: string }>;
+}
+export interface LegacyOrphanReview {
+  asset_id: string; algorithm: string; snapshot_sha256: string; linked_evidence_count: number; unassigned: boolean;
+}
+export interface LegacyMixedCase {
+  payload_sha256: string;
+  payload: { state: string; submitted_by: string; reason: string; evidence_ref: string; expected_snapshot_sha256: string };
+}
+export const apiLegacyOrphans = (page = 1): Promise<ApiResult<LegacyOrphanPage>> =>
+  call(`/api/v1/cbom/legacy-imports/unassigned?page=${page}&page_size=50`);
+export const apiLegacyOrphanReview = (id: string): Promise<ApiResult<LegacyOrphanReview>> =>
+  call(`/api/v1/cbom/legacy-assets/${encodeURIComponent(id)}/review`);
+export const apiLegacyAssign = (id: string, body: { expected_snapshot_sha256: string; system_id: string; reason: string; evidence_ref: string }): Promise<ApiResult<{ audit_id: string }>> =>
+  call(`/api/v1/cbom/legacy-assets/${encodeURIComponent(id)}/assign`, { method: "POST", body: JSON.stringify(body) });
+export const apiLegacyMixedCase = (id: string): Promise<ApiResult<{ case: LegacyMixedCase | null }>> =>
+  call(`/api/v1/cbom/system/${encodeURIComponent(id)}/mixed-review`);
+export const apiLegacyMixedPropose = (id: string, body: { expected_snapshot_sha256: string; replacement_document_sha256: string; reason: string; evidence_ref: string }): Promise<ApiResult<LegacyMixedCase>> =>
+  call(`/api/v1/cbom/system/${encodeURIComponent(id)}/mixed-review`, { method: "POST", body: JSON.stringify(body) });
+export const apiLegacyMixedApprove = (id: string, body: { expected_case_sha256: string; reason: string; evidence_ref: string }): Promise<ApiResult<{ audit_id: string }>> =>
+  call(`/api/v1/cbom/system/${encodeURIComponent(id)}/mixed-review/approve`, { method: "POST", body: JSON.stringify(body) });

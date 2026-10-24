@@ -287,10 +287,11 @@ def run_load(api_url: str, users: int, duration: float,
         cmd = [sys.executable, str(script),
                "--url", api_url, "--users", str(users),
                "--duration", str(duration),
-               "--username", username, "--password", password,
+               "--username", username,
                "--max-error-rate", str(MAX_ERROR_RATE)]
         try:
             r = subprocess.run(cmd, capture_output=True, text=True,
+                               env={**os.environ, "CRYPTOSCAN_LOAD_PASSWORD":password},
                                timeout=3600 + 60 * users)
         except subprocess.TimeoutExpired:
             ph.fail(error="load harness timed out")
@@ -308,12 +309,14 @@ def run_load(api_url: str, users: int, duration: float,
                     tail=(out or r.stderr or "").strip()[-400:])
             return ph
         error_rate = metrics.get("error_rate", 1.0)
-        if error_rate <= MAX_ERROR_RATE:
+        if (metrics.get("capacity_verdict") == "PASS" and metrics.get("successful_operations",0) > 0
+                and metrics.get("throttle_rate",1) <= .01 and metrics.get("temporary_keys_revoked") is True
+                and error_rate <= MAX_ERROR_RATE):
             ph.pass_(**{k: metrics.get(k) for k in
-                        ("requests", "throughput_rps", "error_rate", "duration_s")},
+                        ("requests", "successful_operations", "successful_throughput_rps", "latency_ms", "error_rate", "duration_s")},
                      users=users, throttled_429=metrics.get("throttled_429"))
         else:
-            ph.fail(error_rate=error_rate, limit=MAX_ERROR_RATE, **metrics)
+            ph.fail(**{**metrics, "limit":MAX_ERROR_RATE})
         return ph
 
 
