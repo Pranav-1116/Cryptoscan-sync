@@ -1,0 +1,60 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "binding_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Binding Id",
+      "type": "string"
+    },
+    "host_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Host Id",
+      "type": "string"
+    },
+    "release_public_key": {
+      "maxLength": 44,
+      "minLength": 44,
+      "title": "Release Public Key",
+      "type": "string"
+    },
+    "source_lock_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Lock Sha256",
+      "type": "string"
+    },
+    "system_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "System Id",
+      "type": "string"
+    },
+    "target_id": {
+      "maxLength": 36,
+      "minLength": 36,
+      "title": "Target Id",
+      "type": "string"
+    },
+    "tenant_id": {
+      "anyOf": [
+        {
+          "maxLength": 36,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Tenant Id"
+    }
+  },
+  "required": [
+    "binding_id",
+    "source_lock_sha256",
+    "tenant_id",
+    "system_id",
+    "target_id",
+    "host_id",
+    "release_public_key"
+  ],
+  "title": "LocalWorkerBinding",
+  "type": "object"
+}

@@ -132,3 +132,17 @@ fixture runner. Windows adds a fixed local OS registry declaration candidate.
 [Current execution report](../readiness-evidence/collector-security-2026-10-24.md)
 separates demonstrated controls from failed/unavailable native interfaces,
 installed-release/host attestation and production/independent acceptance gates.
+
+## Verified-source local worker candidate (next increment)
+
+[Guide 66](66-verified-local-host-worker.md) adds executable, development-only
+worker dispatch on the existing ledger: typed current-human/session authority,
+exclusive claim, re-admission checkpoints, cancellation, durable public snapshot
+and original external-signature intake. A separate release signer pins exact
+stage source-lock bytes; the child runs the verified copy. Explicit proc/sysfs
+and pinned TCP capabilities extend real Linux isolation without a broad proc
+read grant. [Current evidence](../readiness-evidence/host-worker-2026-10-24.md)
+includes actual SQL races and native kernel witnesses. Earlier reports remain
+historical, not current-source requalification. Positive native systemd/DMI/TPM,
+Windows, host/boot/dependency attestation and independent whole-worker/bank
+acceptance remain open; production/Phase 4 admission is unchanged.

@@ -98,3 +98,74 @@ def test_parent_deadline_and_overflow_kill_and_reap(tmp_path, monkeypatch):
     with pytest.raises(IsolationUnavailable):
         collect_isolated(target)
     assert all(p.poll() is not None for p in children)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Native Linux runtime interfaces")
+def test_isolated_runtime_actual_process_maps_cpu_and_owned_socket(tmp_path):
+    import socket
+
+    target = spec(tmp_path, b"ID=debian\n")
+    inputs = [
+        HostInput(input_id="process", kind="LINUX_PROCESS", path="linux-proc://self/process"),
+        HostInput(input_id="maps", kind="LINUX_PROCESS_MAPS", path="linux-proc://self/maps"),
+        HostInput(input_id="cpu", kind="LINUX_HARDWARE", path="linux-hardware://cpu0"),
+        HostInput(input_id="tcp", kind="LINUX_LISTENERS", path="linux-sockets://self/tcp"),
+    ]
+    target = target.model_copy(update={"manifest": target.manifest.model_copy(update={"inputs": inputs})})
+    with socket.socket() as owned:
+        owned.bind(("127.0.0.1", 0))
+        owned.listen(1)
+        snapshot, report = collect_isolated(target)
+        assert [r.status for r in snapshot.receipts] == ["PARSED"] * 4
+        assert any(f.port == owned.getsockname()[1] for f in snapshot.receipts[-1].facts)
+        assert report["network"] == "DENIED" and not snapshot.host_identity_attested
+        assert all(r.byte_count > 0 and r.content_sha256 for r in snapshot.receipts)
+
+
+def test_checkpoint_refusal_kills_and_reaps_actual_child(tmp_path, monkeypatch):
+    import subprocess
+    from inventory import isolation
+
+    target = spec(tmp_path, b"ID=debian\n")
+    observed = []
+    original = subprocess.Popen
+
+    def spawned(*a, **kw):
+        child = original(*a, **kw)
+        observed.append(child)
+        return child
+
+    monkeypatch.setattr(subprocess, "Popen", spawned)
+    calls = []
+
+    def checkpoint():
+        calls.append(1)
+        if len(calls) > 1:
+            raise RuntimeError("authority revoked")
+
+    with pytest.raises(RuntimeError, match="authority revoked"):
+        isolation.collect_isolated(target, checkpoint=checkpoint)
+    assert observed and observed[0].poll() is not None and observed[0].stdout.closed
+
+
+def test_pinned_network_capability_does_not_grant_broad_proc_reads(tmp_path):
+    root = Path(__file__).resolve().parents[3]
+    code = f"""
+import sys,os
+sys.path.insert(0,{str(root / "scripts")!r})
+from _bootstrap import bootstrap
+bootstrap()
+from inventory.linux_runtime import pinned_network_tables,kernel_bytes
+from inventory.isolation import install
+with pinned_network_tables(['/proc/self/net/tcp']):
+ install([],{{'/proc/self/net/tcp':0x9fa0}})
+ assert kernel_bytes('/proc/self/net/tcp',1000000,0x9fa0)
+ for path in ['/proc/self/environ','/proc/self/cmdline','/proc/self/net/udp','/proc/self/maps','/etc/passwd']:
+  try:os.open(path,os.O_RDONLY)
+  except PermissionError:pass
+  else:raise AssertionError('broad source escape')
+print('PINNED_SCOPE_OK')
+"""
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == b"PINNED_SCOPE_OK"

@@ -25,6 +25,11 @@ def main():
     parser.add_argument(
         "--include-foundation", action="store_true", help="Also qualify universal registry/jobs and Linux extension"
     )
+    parser.add_argument(
+        "--include-worker",
+        action="store_true",
+        help="Also exercise the development local worker and actual SQL claim races",
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -55,6 +60,8 @@ def main():
                 files.append("services/api/tests/unit/test_host_associations_postgres.py")
             if args.include_foundation:
                 files.append("services/api/tests/unit/test_collection_foundation_postgres.py")
+            if args.include_worker:
+                files.append("services/api/tests/unit/test_host_worker_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

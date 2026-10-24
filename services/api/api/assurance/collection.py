@@ -137,6 +137,11 @@ def authorize(db, owner, identifier, body, actor, user, *, revoke=False):
     if row.payload["state"] != "REGISTERED":
         raise HTTPException(409, "Target must be registered before authorization")
     supported(spec)
+    worker = getattr(body, "worker", None)
+    if worker is not None and (
+        body.collector_identity is None or worker.source_lock_sha256 != body.collector_identity.release_sha256
+    ):
+        raise HTTPException(422, "Worker requires matching approved signing/release policy")
     system = store.exact(db, System, owner, spec.system_id)
     if system.environment != spec.environment:
         raise HTTPException(409, "System and target environments differ")
@@ -165,6 +170,7 @@ def authorize(db, owner, identifier, body, actor, user, *, revoke=False):
                 "collection_target_id": identifier,
                 "collection_target_revision": row.revision + 1,
                 **identity_approval_fields(getattr(body, "collector_identity", None)),
+                **({"worker": worker.model_dump(mode="json")} if worker else {}),
             },
             actor,
             commit=False,
@@ -400,6 +406,10 @@ def admit_host_intake(db, owner, approval, snapshot):
     lock_target(db, owner, identifier)
     target = chain(db, owner, TARGET, identifier)[-1]
     spec = admitted(db, owner, target, approval.payload["collection_target_revision"])
+    if approval.payload.get("worker"):
+        from api.assurance.host_worker import admit_result
+
+        admit_result(db, owner, approval, snapshot)
     if target.payload["approval_id"] != approval.subject_id or snapshot.started_at < spec.not_before:
         raise HTTPException(409, "Registry authorization does not admit this host intake")
 

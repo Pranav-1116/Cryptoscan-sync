@@ -235,3 +235,12 @@ changes `windows_execution_qualified`/`production_execution_qualified` to true.
 Phase 4/production admission must not be unlocked by a locally passed parser or
 a failed native profile. The supplied tooling lets actual approved fixtures
 produce defensible results instead of another checklist with no executor.
+
+## Next increment, without retroactive qualification
+
+[Guide 66](66-verified-local-host-worker.md) now implements a separate signed
+source-lock verifier, verified stage copy and development local-worker lifecycle
+with durable result/claim/cancellation. Its proc/sysfs/pinned-TCP isolation
+extension and new validation are recorded separately. This guide's original
+file-stage evidence stays historical; a measured interpreter file and source
+copy still do not establish protected measured execution or physical-host trust.

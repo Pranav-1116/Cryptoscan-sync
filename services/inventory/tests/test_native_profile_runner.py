@@ -63,3 +63,63 @@ def test_fixture_binding_and_assertions_are_validated_before_collection(tmp_path
         )
         with pytest.raises(ValueError):
             module.validate_plan(target, plan)
+
+
+def test_actual_isolated_qualification_cli_missing_hardware_is_gap_not_pass(tmp_path):
+    import subprocess, sys, json
+
+    target = spec(tmp_path, b"ID=debian\n")
+    expected = [module.ExpectedInput(input_id="os", facts=[{"kind": "OS_RELEASE", "software_name": "debian"}])]
+    plan = module.FixturePlan(
+        schema_version="cryptoscan.native-fixture/v1",
+        target_sha256=digest(target),
+        reviewer_reference="fixture/independent-pending",
+        expected=expected,
+    )
+    target_path = tmp_path / "target.json"
+    plan_path = tmp_path / "expected.json"
+    output = tmp_path / "actual-isolation.json"
+    target_path.write_text(target.model_dump_json())
+    plan_path.write_text(plan.model_dump_json())
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(path),
+            "--target",
+            str(target_path),
+            "--expectations",
+            str(plan_path),
+            "--output",
+            str(output),
+            "--isolated",
+        ],
+        capture_output=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads(output.read_bytes())
+    assert report["verdict"] == "PASS_SCOPED_FIXTURE" and report["isolation"]["network"] == "DENIED"
+    assert not report["production_execution_qualified"] and not report["independent_review_verified"]
+    inputs = [HostInput(input_id="os", kind="LINUX_HARDWARE", path="linux-hardware://tpm999")]
+    target = target.model_copy(update={"manifest": target.manifest.model_copy(update={"inputs": inputs})})
+    plan = plan.model_copy(update={"target_sha256": digest(target)})
+    target_path.write_text(target.model_dump_json())
+    plan_path.write_text(plan.model_dump_json())
+    output.unlink()
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(path),
+            "--target",
+            str(target_path),
+            "--expectations",
+            str(plan_path),
+            "--output",
+            str(output),
+            "--isolated",
+        ],
+        capture_output=True,
+        timeout=15,
+    )
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert json.loads(output.read_bytes())["verdict"] == "FAIL_GAPS_OR_TRUTH_MISMATCH"

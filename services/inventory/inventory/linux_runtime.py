@@ -5,6 +5,7 @@ arbitrary /proc paths. Every source byte and command output is bounded.
 """
 
 import ctypes
+from contextlib import contextmanager, ExitStack
 import errno
 import hashlib
 import ipaddress
@@ -26,15 +27,50 @@ class ProbeError(Exception):
         self.status, self.reason = status, reason
 
 
-def kernel_bytes(path, limit, magic, on_chunk=None):
-    fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+_PINNED_NET_TABLES = {}
+
+
+@contextmanager
+def pinned_network_tables(paths):
+    # proc net table lookups can receive fresh inodes on each open. Retain only
+    # explicitly selected read-only kernel descriptors as capabilities; never
+    # grant an entire /proc subtree to work around Landlock inode semantics.
+    with ExitStack() as stack:
+        try:
+            for path in paths:
+                if path in {"/proc/self/net/tcp", "/proc/self/net/tcp6"}:
+                    try:
+                        _PINNED_NET_TABLES[path] = stack.enter_context(kernel_fd(path, 0x9FA0))
+                    except (FileNotFoundError, PermissionError):
+                        pass
+            yield
+        finally:
+            _PINNED_NET_TABLES.clear()
+
+
+@contextmanager
+def kernel_fd(path, magic):
+    if path in _PINNED_NET_TABLES:
+        fd = _PINNED_NET_TABLES[path]
+        os.lseek(fd, 0, os.SEEK_SET)
+        yield fd
+        return
+    fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         buffer = ctypes.create_string_buffer(512)
         if (
-            ctypes.CDLL(None, use_errno=True).fstatfs(fd, buffer) != 0
+            not stat.S_ISREG(os.fstat(fd).st_mode)
+            or ctypes.CDLL(None, use_errno=True).fstatfs(fd, buffer) != 0
             or ctypes.c_long.from_buffer(buffer).value != magic
         ):
             raise ProbeError("UNSUPPORTED", "INVALID_FORMAT")
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def kernel_bytes(path, limit, magic, on_chunk=None):
+    with kernel_fd(path, magic) as fd:
         chunks = []
         count = 0
         while True:
@@ -48,8 +84,6 @@ def kernel_bytes(path, limit, magic, on_chunk=None):
                 raise ProbeError("BUDGET_EXCEEDED", "LIMIT")
             chunks.append(data)
         return b"".join(chunks)
-    finally:
-        os.close(fd)
 
 
 class Reader:

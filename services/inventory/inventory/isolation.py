@@ -32,7 +32,7 @@ class Program(ctypes.Structure):
     _fields_ = [("length", ctypes.c_ushort), ("filters", ctypes.POINTER(Filter))]
 
 
-def install(read_paths):
+def install(read_paths, kernel_paths=None):
     if platform.system() != "Linux" or platform.machine() != "x86_64":
         raise IsolationUnavailable("Unsupported isolation ABI")
     from inventory.host import elevated
@@ -59,10 +59,24 @@ def install(read_paths):
         from inventory.host import _linux_fd
 
         for path in sorted(set(read_paths)):
-            with _linux_fd(path) as leaf:
-                rule = PathRule(1 << 2, leaf)
-                if libc.syscall(445, fd, 1, ctypes.byref(rule), 0):
-                    raise IsolationUnavailable("Landlock rule refused")
+            try:
+                with _linux_fd(path) as leaf:
+                    rule = PathRule(1 << 2, leaf)
+                    if libc.syscall(445, fd, 1, ctypes.byref(rule), 0):
+                        raise IsolationUnavailable("Landlock rule refused")
+            except (FileNotFoundError, PermissionError):
+                pass  # no permission granted; collection still emits a bounded gap
+        from inventory.linux_runtime import kernel_fd
+
+        for path, magic in sorted((kernel_paths or {}).items()):
+            try:
+                with kernel_fd(path, magic) as leaf:
+                    rule = PathRule(1 << 2, leaf)
+                    if libc.syscall(445, fd, 1, ctypes.byref(rule), 0):
+                        raise IsolationUnavailable("Kernel Landlock rule refused")
+            except (FileNotFoundError, PermissionError):
+                # No permission fallback. The collection stage emits a gap.
+                pass
         if libc.syscall(446, fd, 0):
             raise IsolationUnavailable("Landlock enforcement refused")
     finally:
@@ -185,8 +199,8 @@ def set_limits():
 
 
 def approved_paths(manifest):
-    # Initial isolated stage is file metadata only. Systemd bus/exec, native
-    # Windows and live kernel interfaces require distinct reviewed sandboxes.
+    # Explicit checked file/proc/sysfs leaves only. Systemd bus/exec and native
+    # Windows still require distinct reviewed sandboxes.
     supported = {
         "PUBLIC_CERTIFICATE",
         "NGINX_TLS_CONFIG",
@@ -195,18 +209,69 @@ def approved_paths(manifest):
         "APK_INSTALLED",
         "LINUX_OS_RELEASE",
         "RPM_SQLITE",
+        "LINUX_PROCESS",
+        "LINUX_PROCESS_MAPS",
+        "LINUX_LISTENERS",
+        "LINUX_HARDWARE",
     }
     if manifest.platform != "linux" or any(i.kind not in supported for i in manifest.inputs):
         raise IsolationUnavailable("Interface not supported by isolated file stage; no fallback")
     from inventory.host import _linux_fd
 
     for item in manifest.inputs:
-        with _linux_fd(item.path):
-            pass  # same no-follow/type/FS check before sandbox
-    return [i.path for i in manifest.inputs]
+        if item.kind in {"LINUX_PROCESS", "LINUX_PROCESS_MAPS", "LINUX_LISTENERS", "LINUX_HARDWARE"}:
+            continue
+        try:
+            with _linux_fd(item.path):
+                pass  # no-follow/type/FS check; absent/denied scope gets no grant
+        except (FileNotFoundError, PermissionError):
+            pass
+    return [
+        i.path
+        for i in manifest.inputs
+        if i.kind not in {"LINUX_PROCESS", "LINUX_PROCESS_MAPS", "LINUX_LISTENERS", "LINUX_HARDWARE"}
+    ]
 
 
-def collect_isolated(target, timeout=15):
+def approved_kernel_paths(manifest):
+    from shared_models.host_runtime_scope import resource
+
+    proc, sysfs = 0x9FA0, 0x62656572
+    paths = {}
+    for item in manifest.inputs:
+        if item.kind not in {"LINUX_PROCESS", "LINUX_PROCESS_MAPS", "LINUX_LISTENERS", "LINUX_HARDWARE"}:
+            continue
+        selected = resource(item.kind, item.path)
+        if item.kind in {"LINUX_PROCESS", "LINUX_PROCESS_MAPS"}:
+            pid = os.getpid() if selected == "self" else int(selected)
+            names = ["stat", "comm", "cgroup"] if item.kind == "LINUX_PROCESS" else ["stat", "maps"]
+            paths.update({f"/proc/{pid}/{name}": proc for name in names})
+            paths["/proc/sys/kernel/random/boot_id"] = proc
+        elif item.kind == "LINUX_LISTENERS":
+            paths[f"/proc/self/net/{selected}"] = proc
+            paths["/proc/sys/kernel/random/boot_id"] = proc
+        elif selected.startswith("cpu"):
+            root = f"/sys/devices/system/cpu/{selected}/topology"
+            paths.update({root + "/core_id": sysfs, root + "/physical_package_id": sysfs})
+        elif selected == "dmi":
+            paths.update(
+                {
+                    f"/sys/devices/virtual/dmi/id/{name}": sysfs
+                    for name in ["sys_vendor", "product_name", "bios_version"]
+                }
+            )
+        else:
+            link = "/sys/class/tpm/" + selected
+            if not os.path.lexists(link):
+                continue
+            root = os.path.realpath(link)
+            if not root.startswith("/sys/devices/"):
+                raise IsolationUnavailable("TPM scope escape")
+            paths[root + "/tpm_version_major"] = sysfs
+    return paths
+
+
+def collect_isolated(target, timeout=15, *, checkpoint=None, stage_root=None):
     """Fixed child command, input file, bounded stdout, kill/reap on every error."""
     import selectors
     import signal
@@ -226,17 +291,27 @@ def collect_isolated(target, timeout=15):
 
     if elevated():
         raise IsolationUnavailable("Ordinary user required")
-    script = Path(__file__).resolve().parents[3] / "scripts" / "_isolated_host_stage.py"
+    script = (
+        (Path(stage_root) if stage_root is not None else Path(__file__).resolve().parents[3])
+        / "scripts"
+        / "_isolated_host_stage.py"
+    )
     command = [
         sys.executable,
         "-I",
         "-B",
         "-c",
-        f'import sys,runpy;sys.path.insert(0,{str(script.parent)!r});runpy.run_path({str(script)!r},run_name="__main__")',
+        # Arm parent-death SIGKILL before stage imports. Recheck PPID to close
+        # the race where the supervisor dies immediately before prctl.
+        f"import sys,runpy,ctypes,os;libc=ctypes.CDLL(None);"
+        f"os._exit(64) if libc.prctl(1,9,0,0,0)!=0 or os.getppid()!={os.getpid()} else None;"
+        f'sys.path.insert(0,{str(script.parent)!r});runpy.run_path({str(script)!r},run_name="__main__")',
     ]
     raw = target.model_dump_json().encode()
     if len(raw) > 131072:
         raise ValueError("Target size limit")
+    if checkpoint is not None:
+        checkpoint()
     with tempfile.TemporaryFile() as source, tempfile.TemporaryDirectory(prefix="cryptoscan-isolated-") as cwd:
         source.write(raw)
         source.seek(0)
@@ -258,8 +333,12 @@ def collect_isolated(target, timeout=15):
                 selector.register(proc.stdout, selectors.EVENT_READ)
                 while True:
                     remaining = deadline - time.monotonic()
-                    if remaining <= 0 or not selector.select(remaining):
+                    if checkpoint is not None:
+                        checkpoint()
+                    if remaining <= 0:
                         raise IsolationUnavailable("Isolated deadline exceeded")
+                    if not selector.select(min(remaining, 0.2)):
+                        continue
                     chunk = os.read(proc.stdout.fileno(), min(65536, 1500001 - len(result)))
                     if not chunk:
                         break
@@ -282,6 +361,9 @@ def collect_isolated(target, timeout=15):
             raise IsolationUnavailable("Isolated deadline exceeded") from None
         finally:
             if proc.poll() is None:
-                os.killpg(proc.pid, signal.SIGKILL)
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 proc.wait()
             proc.stdout.close()

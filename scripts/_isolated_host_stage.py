@@ -9,7 +9,8 @@ from _bootstrap import bootstrap
 bootstrap()
 # Preload all parsers/native modules before restricting filesystem imports.
 from inventory.host import collect
-from inventory.isolation import install, approved_paths, set_limits
+from inventory.isolation import install, approved_paths, approved_kernel_paths, set_limits
+from inventory import linux_runtime
 from inventory.linux_packages import apk_installed
 from inventory.rpm_metadata import rpm_sqlite
 from shared_models.collection import TargetSpec
@@ -26,8 +27,10 @@ def main():
         OfflineLinuxCollector().validate_scope(target)
         paths = approved_paths(target.manifest)
         set_limits()
-        isolation = install(paths)
-        snapshot = collect(target.manifest)
+        kernel_paths = approved_kernel_paths(target.manifest)
+        with linux_runtime.pinned_network_tables(kernel_paths):
+            isolation = install(paths, kernel_paths)
+            snapshot = collect(target.manifest)
         output = json.dumps(
             {"snapshot": snapshot.model_dump(mode="json"), "isolation": isolation},
             sort_keys=True,

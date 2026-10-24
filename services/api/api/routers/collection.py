@@ -231,3 +231,35 @@ def coverage(
 @router.get("/jobs/{identifier}/errors")
 def errors(identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)):
     return {"errors": core.evidence(db, ctx.tenant_id, identifier)["errors"], "asset_absence_proven": False}
+
+
+@router.post("/jobs/{job_id}/enqueue")
+def enqueue_job(
+    job_id: Key,
+    body: RevisionRequest,
+    request: Request,
+    ctx=Depends(estate),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from api.assurance import host_worker
+
+    actor = author(db, request, user)
+    username = user
+    return host_worker.enqueue(db, ctx.tenant_id, job_id, body.expected_revision, actor, username)
+
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel_worker_job(
+    job_id: Key,
+    body: RevisionRequest,
+    request: Request,
+    ctx=Depends(estate),
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from api.assurance import host_worker
+
+    actor = author(db, request, user)
+    username = user
+    return host_worker.cancel(db, ctx.tenant_id, job_id, body.expected_revision, actor, username)

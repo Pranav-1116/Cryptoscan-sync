@@ -126,7 +126,9 @@ def main():
     p.add_argument("--target", type=Path, required=True)
     p.add_argument("--expectations", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--windows-candidate", action="store_true")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--windows-candidate", action="store_true")
+    mode.add_argument("--isolated", action="store_true", help="Require actual Linux Landlock/seccomp, never fall back")
     args = p.parse_args()
     try:
         target = TargetSpec.model_validate(read(args.target))
@@ -135,8 +137,16 @@ def main():
         if elevated():
             raise ValueError("Ordinary native user required")
         collector = OfflineWindowsCollector() if args.windows_candidate else OfflineLinuxCollector()
-        snapshot = collector.collect(target)
+        isolation = None
+        if args.isolated:
+            from inventory.isolation import collect_isolated
+
+            snapshot, isolation = collect_isolated(target)
+        else:
+            snapshot = collector.collect(target)
         report = evaluate(target, plan, snapshot)
+        if isolation is not None:
+            report["isolation"] = isolation
         raw = json.dumps(report, sort_keys=True, indent=2).encode()
         with os.fdopen(
             os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600), "wb"

@@ -316,3 +316,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [64. Phase 3 Windows candidate](64-windows-collection-phase-three.md) — local named SCM status, explicit offline candidate CLI and native Windows gates; not production admission.
 
 - [65. Signed collector handoff, isolated Linux stage and native fixture gates](65-signed-collector-isolation-and-native-gates.md) — approval-pinned Ed25519, actual Landlock/seccomp file stage, bounded RPM exports, native qualification executor and next Windows OS candidate.
+
+- [66. Verified-source local host worker](66-verified-local-host-worker.md) — external source-lock signatures, verified stage copies, durable claims/results/cancellation, scoped native kernel isolation and external-signature intake; development only, not host attestation or full worker clearance.

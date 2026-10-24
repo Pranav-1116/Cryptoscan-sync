@@ -5,6 +5,7 @@ from typing import Literal, Protocol
 from pydantic import Field, model_validator, field_validator
 from shared_models.host_collection import Strict, Token, Digest, HostManifest, HostSnapshot, HostFact, Kind
 from shared_models.host_runtime import RuntimeFact
+from shared_models.host_worker import WorkerPin
 
 Method = Literal[
     "offline_host", "windows", "container", "source", "cloud", "network", "hsm", "hardware", "vendor", "ot"
@@ -66,6 +67,7 @@ from shared_models.collector_identity import CollectorIdentityPolicy
 
 class AuthorizeRequest(RevisionRequest):
     collector_identity: CollectorIdentityPolicy | None = None
+    worker: WorkerPin | None = None
 
 
 class JobRequest(Strict):
