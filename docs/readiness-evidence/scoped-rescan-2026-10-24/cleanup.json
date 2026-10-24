@@ -1,0 +1,18 @@
+{
+  "scope": "OWNED_SYNTHETIC_LOCAL_FIXTURES_ONLY",
+  "temporary_pg_test_databases_remaining": 0,
+  "api_keys_created": 0,
+  "synthetic_source_directories_removed": true,
+  "audit": {
+    "status": "OK",
+    "checked": 117,
+    "entry_count": 117,
+    "chain_head": "388b8172b3f2ba53184447c1da7e0cf3bb39dc0232317dd995ac625dd12370c7"
+  },
+  "owned_services_stopped": true,
+  "private_config_removed": true,
+  "runtime_data_removed": true,
+  "bank_approved": false,
+  "deployment_qualified": false,
+  "api_and_console_ports_closed": true
+}

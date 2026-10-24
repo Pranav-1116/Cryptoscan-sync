@@ -1,0 +1,46 @@
+{
+  "schema": "cryptoscan.scoped-rescan-browser/1",
+  "checks": [
+    "REAL_SCANNER_FILE_RECEIPTS_EVIDENCE_HASHING_AND_PG_LOAD",
+    "BROWSER_SCOPED_PROOF_AND_EXPLICIT_NON_CLEARANCE",
+    "CLEAN_POSTURE_GRADE_STILL_BLOCKED",
+    "TAMPERED_CONTENT_REJECTED_AND_PREVIOUS_PROOF_CLEARED",
+    "FOREIGN_TENANT_PROOF_AND_INVENTORY_ISOLATED",
+    "NO_BROWSER_PAGE_ERRORS"
+  ],
+  "proof": {
+    "system_id": "51281d8b-eb1e-4245-adfe-db148ecfa7a3",
+    "job_id": "25a28482-6f7f-46af-af70-b6ecd5ba7a39",
+    "scan_id": "94defdac-c963-4f9f-bfd4-707ba44398e7",
+    "source_snapshot_sha256": "e317bdc7fa495fe41295973f92ebda24fe83d3a2868d3c81c4e46803d25e77ef",
+    "retained_case_sha256": "e45b00865bc6b3cc8666d3f976a338e3ef17daebbf5abcc60e7cf89d0f9f5e00",
+    "result": "VERIFIED_SCOPED_RESCAN",
+    "integrity": {
+      "result": "PASS",
+      "records": 1,
+      "chain_intact": true,
+      "content_intact": true,
+      "manifest_intact": true,
+      "hash_format_valid": true
+    },
+    "parsed_files": 2,
+    "unparsed_files": 0,
+    "completed_at": "2026-10-24T10:11:08.958683+00:00",
+    "inspected_at": "2026-10-24T10:11:14.364164+00:00",
+    "clears_partial_history": false,
+    "bank_approved": false,
+    "absence_proven": false,
+    "whole_system_coverage_verified": false,
+    "freshness_slo_qualified": false,
+    "basis": "CURRENT_SQL_JOB_SOURCE_RECEIPTS_AND_COMMITTED_CONTENT_NOT_COMPLETENESS_OR_RUNTIME_PROOF"
+  },
+  "browser": "153.0.8010.0",
+  "page_errors": [],
+  "scope": "OWNED_LOCAL_SYNTHETIC_POSTGRESQL",
+  "job_envelope_fixture_provisioned": true,
+  "worker_dispatch_exercised": false,
+  "bank_approved": false,
+  "deployment_qualified": false,
+  "partial_history_cleared": false,
+  "synthetic_source_directory_removed": true
+}

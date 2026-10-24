@@ -15,6 +15,11 @@ include actual disposable PostgreSQL/Redis execution. Neither update closes the
 original45 or supplies independent bank acceptance. Historical evidence below
 remains tied to its original increment, not silently refreshed.
 
+The subsequent [scoped rescan inspection](scoped-rescan-inspection.md) checks actual
+local-source job/receipt/content commitments in the existing CBOM panel. It does
+not supply a complete independent denominator, clear partial histories, qualify
+runtime discovery or close the remaining platform/migration/acceptance gaps.
+
 ## Implemented in this follow-up
 
 | Original question | Actual implementation change | Evidence |

@@ -1429,3 +1429,6 @@ register_legacy_routes(router, require_cbom_writer)
 
 from api.routers.cbom_legacy_controlled import register_controlled_routes
 register_controlled_routes(router)
+
+from api.routers.cbom_rescan_inspection import register_rescan_routes
+register_rescan_routes(router)

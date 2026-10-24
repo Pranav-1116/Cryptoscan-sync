@@ -5064,3 +5064,15 @@ export const apiLegacyMixedPropose = (id: string, body: { expected_snapshot_sha2
   call(`/api/v1/cbom/system/${encodeURIComponent(id)}/mixed-review`, { method: "POST", body: JSON.stringify(body) });
 export const apiLegacyMixedApprove = (id: string, body: { expected_case_sha256: string; reason: string; evidence_ref: string }): Promise<ApiResult<{ audit_id: string }>> =>
   call(`/api/v1/cbom/system/${encodeURIComponent(id)}/mixed-review/approve`, { method: "POST", body: JSON.stringify(body) });
+
+export interface RescanInspection {
+  system_id: string; job_id: string; scan_id: string; source_snapshot_sha256: string;
+  retained_case_sha256: string; result: string; completed_at: string; inspected_at: string;
+  parsed_files: number; unparsed_files: number;
+  integrity: { result: string; records: number; content_intact: boolean; chain_intact: boolean; manifest_intact: boolean; hash_format_valid: boolean };
+  clears_partial_history: false; bank_approved: false; whole_system_coverage_verified: false; absence_proven: false;
+}
+export const apiRetainedHistories = (page = 1): Promise<ApiResult<{systems: Array<{id: string; name: string}>; total: number; page: number; page_size: number}>> =>
+  call(`/api/v1/cbom/retained-histories?page=${page}&page_size=50`);
+export const apiRescanInspection = (systemId: string, jobId: string): Promise<ApiResult<RescanInspection>> =>
+  call(`/api/v1/cbom/system/${encodeURIComponent(systemId)}/rescan-inspection?job_id=${encodeURIComponent(jobId)}`);

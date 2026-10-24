@@ -73,6 +73,13 @@ verified rescan/reassessment workflow and independent deployment qualification
 are still required. Link preservation alone does not validate the scanner's
 cryptographic evidence chain or establish completeness.
 
+## Post-review inspection (subsequent increment)
+
+The existing panel now supports [scoped rescan inspection](scoped-rescan-inspection.md)
+using actual job/source receipts and committed evidence validation. It is read-only
+and does **not** implement automatic partialness clearance or bank acceptance.
+The preceding caution about verified coverage/reassessment remains applicable.
+
 ## API shape and failure handling
 
 All paths below have prefix `/api/v1/cbom`; use existing session authentication

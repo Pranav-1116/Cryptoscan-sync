@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { apiCbomLegacyImports, apiCbomLegacyReview, apiCbomReconcileLegacy, LegacyImportPage, LegacyImportReview } from "../lib/api";
 import { MixedHistoryDecision, UnassignedHistory } from "./CbomControlledHistory";
+import CbomRescanInspection from "./CbomRescanInspection";
 import { usePrivateScopeCurrent } from "./PrivateScope";
 
 /** Existing CBOM workflow, not a separate dashboard. No automatic write/retry. */
@@ -9,6 +10,7 @@ export default function CbomLegacyReview({ refresh, onCommitted }: { refresh: nu
   const generation = useRef(0);
   const mounted = useRef(true);
   const [open, setOpen] = useState(false);
+  const [inspectionEpoch, setInspectionEpoch] = useState(0);
   const [page, setPage] = useState<LegacyImportPage | null>(null);
   const [review, setReview] = useState<LegacyImportReview | null>(null);
   const [reason, setReason] = useState("");
@@ -21,6 +23,7 @@ export default function CbomLegacyReview({ refresh, onCommitted }: { refresh: nu
 
   async function load(pageNumber = 1, preserveReceipt = false) {
     const token = ++generation.current;
+    setInspectionEpoch(value => value + 1);
     setReview(null); setReason(""); setAccepted(false); setPage(null); setBusy(true); setMessage(""); if (!preserveReceipt) setReceipt("");
     const response = await apiCbomLegacyImports(pageNumber);
     if (!valid(token)) return;
@@ -77,6 +80,7 @@ export default function CbomLegacyReview({ refresh, onCommitted }: { refresh: nu
       {page.page * page.page_size < page.total && <button disabled={busy} onClick={() => void load(page.page + 1)}>Next review page</button>}
     </>}
     {open && <UnassignedHistory key={refresh} onCommitted={controlledCommitted} />}
+    {open && <CbomRescanInspection key={`rescan-${refresh}-${inspectionEpoch}`} />}
     {review && <div>
       <h3>{review.system_name}: {review.pending_assets} historical records</h3>
       <p>{review.message}</p>
