@@ -22,14 +22,22 @@ from shared_models.qualified_export import bounded_json
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--manifest")
+    source.add_argument("--target-spec", help="Approved registry target payload; Linux offline adapter only")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
-        with open(args.manifest, "rb") as src:
+        with open(args.manifest or args.target_spec, "rb") as src:
             raw = src.read(131073)
-        manifest = HostManifest.model_validate(bounded_json(raw, max_bytes=131072))
-        snapshot = collect(manifest)
+        value = bounded_json(raw, max_bytes=131072)
+        if args.target_spec:
+            from shared_models.collection import TargetSpec
+            from inventory.collection import OfflineLinuxCollector
+
+            snapshot = OfflineLinuxCollector().collect(TargetSpec.model_validate(value))
+        else:
+            snapshot = collect(HostManifest.model_validate(value))
         raw = json.dumps(snapshot.model_dump(mode="json"), sort_keys=True, indent=2).encode()
         if len(raw) > 1500000:
             raise ValueError("receipt size limit")

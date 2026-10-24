@@ -19,7 +19,9 @@ MAX_FACTS = 1000
 Token = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\[\]-]{0,119}$")]
 Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 SignatureOid = Annotated[str, StringConstraints(max_length=100, pattern=r"^(UNKNOWN|[0-9]+(?:\.[0-9]+)+)$")]
-Kind = Literal["PUBLIC_CERTIFICATE", "NGINX_TLS_CONFIG", "BINARY_METADATA", "DPKG_STATUS", "WINDOWS_UNINSTALL"]
+Kind = Literal[
+    "PUBLIC_CERTIFICATE", "NGINX_TLS_CONFIG", "BINARY_METADATA", "DPKG_STATUS", "WINDOWS_UNINSTALL", "LINUX_OS_RELEASE"
+]
 Basis = Literal["OBSERVED", "DECLARED", "IMPORTED", "INFERRED", "UNKNOWN"]
 Protocol = Literal["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
 Cipher = Literal[
@@ -64,6 +66,8 @@ class HostManifest(Strict):
     @field_validator("expires_at", mode="before")
     @classmethod
     def aware(cls, value):
+        if not isinstance(value, (str, datetime)):
+            raise ValueError("UTC-offset-aware timestamp required")
         if isinstance(value, str):
             value = datetime.fromisoformat(value.replace("Z", "+00:00"))
         if value.tzinfo is None or value.utcoffset() is None:
@@ -80,12 +84,14 @@ class HostManifest(Strict):
 
 
 class HostFact(Strict):
-    kind: Literal["CERTIFICATE", "TLS_CONFIGURATION", "BINARY", "SOFTWARE"]
+    kind: Literal["CERTIFICATE", "TLS_CONFIGURATION", "BINARY", "SOFTWARE", "OS_RELEASE"]
     local_basis: Literal["OBSERVED", "DECLARED"]
     algorithm: Literal["RSA", "EC", "DSA", "ED25519", "ED448", "UNKNOWN"] = "UNKNOWN"
     key_size: int | None = Field(default=None, ge=1, le=16384)
     mode: Literal["UNKNOWN"] = "UNKNOWN"
-    purpose: Literal["PUBLIC_KEY_METADATA", "TLS_CONFIGURATION", "FILE_PRESENCE", "PACKAGE_DATABASE_RECORD"]
+    purpose: Literal[
+        "PUBLIC_KEY_METADATA", "TLS_CONFIGURATION", "FILE_PRESENCE", "PACKAGE_DATABASE_RECORD", "OS_RELEASE_METADATA"
+    ]
     fingerprint_sha256: Digest | None = None
     signature_hash: Literal["SHA1", "SHA224", "SHA256", "SHA384", "SHA512", "UNKNOWN"] = "UNKNOWN"
     curve: Literal["secp256r1", "secp384r1", "secp521r1", "UNKNOWN"] = "UNKNOWN"
@@ -115,13 +121,14 @@ class HostFact(Strict):
             or self.certificate_signature_oid != "UNKNOWN"
         ):
             raise ValueError("non-certificate metadata cannot assert a public-key algorithm")
-        if (self.kind == "TLS_CONFIGURATION") != (self.local_basis == "DECLARED"):
-            raise ValueError("configuration contents are declarations, never effective TLS observations")
+        if (self.kind in {"TLS_CONFIGURATION", "OS_RELEASE"}) != (self.local_basis == "DECLARED"):
+            raise ValueError("configuration/OS-file contents are declarations, never effective runtime observations")
         purposes = {
             "CERTIFICATE": "PUBLIC_KEY_METADATA",
             "TLS_CONFIGURATION": "TLS_CONFIGURATION",
             "BINARY": "FILE_PRESENCE",
             "SOFTWARE": "PACKAGE_DATABASE_RECORD",
+            "OS_RELEASE": "OS_RELEASE_METADATA",
         }
         if self.purpose != purposes[self.kind]:
             raise ValueError("fact purpose mismatch")
@@ -129,7 +136,9 @@ class HostFact(Strict):
             raise ValueError("configuration fields require a configuration fact")
         if self.kind != "BINARY" and self.binary_format != "UNKNOWN":
             raise ValueError("binary format requires a binary fact")
-        if self.kind != "SOFTWARE" and (self.software_name is not None or self.software_version is not None):
+        if self.kind not in {"SOFTWARE", "OS_RELEASE"} and (
+            self.software_name is not None or self.software_version is not None
+        ):
             raise ValueError("software fields require a software fact")
         if self.algorithm == "UNKNOWN" and self.key_size is not None:
             raise ValueError("unknown algorithm cannot carry an interpreted key size")
@@ -237,6 +246,7 @@ class HostSnapshot(Strict):
             "BINARY_METADATA": "BINARY",
             "DPKG_STATUS": "SOFTWARE",
             "WINDOWS_UNINSTALL": "SOFTWARE",
+            "LINUX_OS_RELEASE": "OS_RELEASE",
         }
         for item, receipt in zip(self.manifest.inputs, self.receipts):
             if receipt.byte_count > self.manifest.max_file_bytes or any(
@@ -244,7 +254,7 @@ class HostSnapshot(Strict):
             ):
                 raise ValueError("input budget/fact kind mismatch")
             if receipt.status == "PARSED" and (
-                (item.kind == "DPKG_STATUS" and self.execution_platform != "linux")
+                (item.kind in {"DPKG_STATUS", "LINUX_OS_RELEASE"} and self.execution_platform != "linux")
                 or (item.kind == "WINDOWS_UNINSTALL" and self.execution_platform != "windows")
             ):
                 raise ValueError("OS-specific inventory on the wrong platform")

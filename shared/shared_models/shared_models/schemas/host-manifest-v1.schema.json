@@ -14,7 +14,8 @@
             "NGINX_TLS_CONFIG",
             "BINARY_METADATA",
             "DPKG_STATUS",
-            "WINDOWS_UNINSTALL"
+            "WINDOWS_UNINSTALL",
+            "LINUX_OS_RELEASE"
           ],
           "title": "Kind",
           "type": "string"

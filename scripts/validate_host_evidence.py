@@ -22,6 +22,9 @@ def main():
     parser.add_argument(
         "--include-associations", action="store_true", help="Also qualify the host-to-estate association adapter"
     )
+    parser.add_argument(
+        "--include-foundation", action="store_true", help="Also qualify universal registry/jobs and Linux extension"
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -50,6 +53,8 @@ def main():
             files = ["services/api/tests/unit/test_host_evidence_postgres.py"]
             if args.include_associations:
                 files.append("services/api/tests/unit/test_host_associations_postgres.py")
+            if args.include_foundation:
+                files.append("services/api/tests/unit/test_collection_foundation_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

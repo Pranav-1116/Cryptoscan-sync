@@ -1,0 +1,602 @@
+{
+  "$defs": {
+    "CollectionError": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_absence_proven": {
+          "const": false,
+          "default": false,
+          "title": "Asset Absence Proven",
+          "type": "boolean"
+        },
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        },
+        "reason": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Reason",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "DENIED",
+            "UNSUPPORTED",
+            "INVALID",
+            "BUDGET_EXCEEDED",
+            "UNAVAILABLE"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id",
+        "status",
+        "reason"
+      ],
+      "title": "CollectionError",
+      "type": "object"
+    },
+    "CollectorIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "const": "offline-linux/v1",
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "CollectorIdentity",
+      "type": "object"
+    },
+    "Coverage": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_inputs": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Approved Inputs",
+          "type": "integer"
+        },
+        "basis": {
+          "const": "APPROVED_INPUT_RECEIPTS_ONLY",
+          "default": "APPROVED_INPUT_RECEIPTS_ONLY",
+          "title": "Basis",
+          "type": "string"
+        },
+        "parsed_inputs": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Parsed Inputs",
+          "type": "integer"
+        },
+        "whole_host_coverage_verified": {
+          "const": false,
+          "default": false,
+          "title": "Whole Host Coverage Verified",
+          "type": "boolean"
+        },
+        "whole_host_percent": {
+          "default": null,
+          "title": "Whole Host Percent",
+          "type": "null"
+        }
+      },
+      "required": [
+        "parsed_inputs",
+        "approved_inputs"
+      ],
+      "title": "Coverage",
+      "type": "object"
+    },
+    "EvidenceManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_id": {
+          "title": "Approval Id",
+          "type": "string"
+        },
+        "scan_id": {
+          "title": "Scan Id",
+          "type": "string"
+        },
+        "scan_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Scan Manifest Sha256",
+          "type": "string"
+        },
+        "snapshot_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Snapshot Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_id",
+        "scan_id",
+        "snapshot_sha256",
+        "scan_manifest_sha256"
+      ],
+      "title": "EvidenceManifest",
+      "type": "object"
+    },
+    "HostFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "default": "UNKNOWN",
+          "enum": [
+            "RSA",
+            "EC",
+            "DSA",
+            "ED25519",
+            "ED448",
+            "UNKNOWN"
+          ],
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "binary_format": {
+          "default": "UNKNOWN",
+          "enum": [
+            "ELF",
+            "PE",
+            "UNKNOWN"
+          ],
+          "title": "Binary Format",
+          "type": "string"
+        },
+        "certificate_signature_oid": {
+          "default": "UNKNOWN",
+          "maxLength": 100,
+          "pattern": "^(UNKNOWN|[0-9]+(?:\\.[0-9]+)+)$",
+          "title": "Certificate Signature Oid",
+          "type": "string"
+        },
+        "cipher_suites": {
+          "items": {
+            "enum": [
+              "AES128-GCM-SHA256",
+              "AES256-GCM-SHA384",
+              "ECDHE-RSA-AES128-GCM-SHA256",
+              "ECDHE-RSA-AES256-GCM-SHA384",
+              "ECDHE-ECDSA-AES128-GCM-SHA256",
+              "ECDHE-ECDSA-AES256-GCM-SHA384"
+            ],
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Cipher Suites",
+          "type": "array"
+        },
+        "curve": {
+          "default": "UNKNOWN",
+          "enum": [
+            "secp256r1",
+            "secp384r1",
+            "secp521r1",
+            "UNKNOWN"
+          ],
+          "title": "Curve",
+          "type": "string"
+        },
+        "fingerprint_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fingerprint Sha256"
+        },
+        "key_size": {
+          "anyOf": [
+            {
+              "maximum": 16384,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Size"
+        },
+        "kind": {
+          "enum": [
+            "CERTIFICATE",
+            "TLS_CONFIGURATION",
+            "BINARY",
+            "SOFTWARE",
+            "OS_RELEASE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "enum": [
+            "OBSERVED",
+            "DECLARED"
+          ],
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "mode": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Mode",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "protocols": {
+          "items": {
+            "enum": [
+              "TLSv1",
+              "TLSv1.1",
+              "TLSv1.2",
+              "TLSv1.3"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Protocols",
+          "type": "array"
+        },
+        "purpose": {
+          "enum": [
+            "PUBLIC_KEY_METADATA",
+            "TLS_CONFIGURATION",
+            "FILE_PRESENCE",
+            "PACKAGE_DATABASE_RECORD",
+            "OS_RELEASE_METADATA"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "signature_hash": {
+          "default": "UNKNOWN",
+          "enum": [
+            "SHA1",
+            "SHA224",
+            "SHA256",
+            "SHA384",
+            "SHA512",
+            "UNKNOWN"
+          ],
+          "title": "Signature Hash",
+          "type": "string"
+        },
+        "software_name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Software Name"
+        },
+        "software_version": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Software Version"
+        },
+        "unparsed_directives": {
+          "default": false,
+          "title": "Unparsed Directives",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "local_basis",
+        "purpose"
+      ],
+      "title": "HostFact",
+      "type": "object"
+    },
+    "Observation": {
+      "additionalProperties": false,
+      "properties": {
+        "collected_at": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Collected At",
+          "type": "string"
+        },
+        "content_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Hash",
+          "type": "string"
+        },
+        "contributes_to": {
+          "items": {
+            "enum": [
+              "SBOM",
+              "CBOM",
+              "TechBOM"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Contributes To",
+          "type": "array"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "fact": {
+          "$ref": "#/$defs/HostFact"
+        },
+        "fact_ordinal": {
+          "maximum": 999,
+          "minimum": 0,
+          "title": "Fact Ordinal",
+          "type": "integer"
+        },
+        "fact_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Fact Sha256",
+          "type": "string"
+        },
+        "identity_basis": {
+          "const": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+          "default": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+          "title": "Identity Basis",
+          "type": "string"
+        },
+        "identity_slot": {
+          "title": "Identity Slot",
+          "type": "string"
+        },
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        },
+        "observation_id": {
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "provenance": {
+          "const": "IMPORTED",
+          "default": "IMPORTED",
+          "title": "Provenance",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/ObservationSource"
+        }
+      },
+      "required": [
+        "observation_id",
+        "identity_slot",
+        "input_id",
+        "fact_ordinal",
+        "fact",
+        "source",
+        "collected_at",
+        "evidence_id",
+        "content_hash",
+        "fact_sha256",
+        "contributes_to"
+      ],
+      "title": "Observation",
+      "type": "object"
+    },
+    "ObservationSource": {
+      "additionalProperties": false,
+      "properties": {
+        "host_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Host Id",
+          "type": "string"
+        },
+        "input_content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Input Content Sha256",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "PUBLIC_CERTIFICATE",
+            "NGINX_TLS_CONFIG",
+            "BINARY_METADATA",
+            "DPKG_STATUS",
+            "WINDOWS_UNINSTALL",
+            "LINUX_OS_RELEASE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "path",
+        "input_content_sha256",
+        "host_id"
+      ],
+      "title": "ObservationSource",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "collector": {
+      "$ref": "#/$defs/CollectorIdentity"
+    },
+    "coverage": {
+      "$ref": "#/$defs/Coverage"
+    },
+    "environment": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Environment",
+      "type": "string"
+    },
+    "errors": {
+      "items": {
+        "$ref": "#/$defs/CollectionError"
+      },
+      "maxItems": 100,
+      "title": "Errors",
+      "type": "array"
+    },
+    "evidence_manifest": {
+      "$ref": "#/$defs/EvidenceManifest"
+    },
+    "finished_at": {
+      "title": "Finished At",
+      "type": "string"
+    },
+    "host_identity_attested": {
+      "const": false,
+      "default": false,
+      "title": "Host Identity Attested",
+      "type": "boolean"
+    },
+    "job_id": {
+      "title": "Job Id",
+      "type": "string"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/Observation"
+      },
+      "maxItems": 1000,
+      "title": "Observations",
+      "type": "array"
+    },
+    "pqc_use": {
+      "const": "UNKNOWN",
+      "default": "UNKNOWN",
+      "title": "Pqc Use",
+      "type": "string"
+    },
+    "provenance": {
+      "const": "IMPORTED",
+      "default": "IMPORTED",
+      "title": "Provenance",
+      "type": "string"
+    },
+    "runtime_use": {
+      "const": "UNKNOWN",
+      "default": "UNKNOWN",
+      "title": "Runtime Use",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "cryptoscan.collection-evidence/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_revision": {
+      "default": null,
+      "title": "Source Revision",
+      "type": "null"
+    },
+    "started_at": {
+      "title": "Started At",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "COMPLETED",
+        "PARTIAL",
+        "FAILED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "system_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "System Id",
+      "type": "string"
+    },
+    "target_id": {
+      "title": "Target Id",
+      "type": "string"
+    },
+    "target_revision": {
+      "maximum": 100,
+      "minimum": 1,
+      "title": "Target Revision",
+      "type": "integer"
+    },
+    "target_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "job_id",
+    "target_id",
+    "target_revision",
+    "target_sha256",
+    "system_id",
+    "environment",
+    "collector",
+    "status",
+    "started_at",
+    "finished_at",
+    "evidence_manifest",
+    "observations",
+    "errors",
+    "coverage"
+  ],
+  "title": "CollectionResult",
+  "type": "object"
+}

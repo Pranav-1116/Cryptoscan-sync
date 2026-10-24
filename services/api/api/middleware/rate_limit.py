@@ -43,6 +43,8 @@ def _endpoint_class(method: str, path: str) -> str:
         return "register"
     if method == "POST" and (path == "/api/v1/scans" or path.startswith("/api/v1/scans")):
         return "scan_submit"
+    if path.startswith("/api/v1/collection/"):
+        return "host_read" if method in {"GET", "HEAD"} else "host_write"
     if path.startswith("/api/v1/host-evidence/"):
         return "host_write" if method == "POST" else "host_read"
     return "api"

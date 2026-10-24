@@ -88,6 +88,12 @@ describe("Approved offline host workflow", () => {
     const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: () => new Response('{"detail":"Unqualified host adapter"}', { status: 409 }) });
     mount(); inspect(); await screen.findByText(/No verified receipt or security verdict assumed/); expect(fetcher.mock.calls).toHaveLength(1);
   });
+  it("retains Linux OS-release as imported declared metadata, not crypto use", async () => {
+    const os = { ...detail, snapshot: { ...detail.snapshot, receipts: [{ input_id: "os", status: "PARSED", reason: "METADATA_ONLY", facts: [{ kind: "OS_RELEASE", algorithm: "UNKNOWN", key_size: null, local_basis: "DECLARED", runtime_use: "UNKNOWN", software_name: "ubuntu", software_version: "24.04" }] }] } };
+    mockFetch({ [`${P}/${id}/snapshot`]: os }); mount(); inspect();
+    await screen.findByText(/OS_RELEASE · ubuntu · 24.04 · local claim DECLARED/);
+    expect(screen.getByText(/Runtime use: UNKNOWN · PQC assessment: UNKNOWN/)).toBeTruthy();
+  });
   it("does not invent evidence when offline", async () => {
     offlineFetch(); mount(); inspect(); await screen.findByText(/No verified receipt or security verdict assumed/);
     expect(screen.queryByText("payments-1 · prod")).toBeNull();

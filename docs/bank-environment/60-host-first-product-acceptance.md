@@ -106,3 +106,15 @@ Current-source results and replay boundaries are recorded in the
 [second-increment evidence report](../readiness-evidence/host-estate-graph-2026-10-24.md).
 The earlier host report remains historical evidence for its published source;
 this update does not relabel those earlier logs as a graph qualification.
+
+
+## Phase-wise universal foundation and Linux increment
+
+[Phase 1](62-universal-collection-foundation.md) now provides the stable target
+registry, authorization, offline handoff/job states, shared typed evidence envelope,
+metadata-slot identity and reference-based six-domain materialization. It reuses
+existing tables and evidence intake. [Phase 2](63-linux-collection-phase-two.md)
+extends the Linux adapter with approved OS-release declarations and target-spec
+CLI. **Phase 2 is not complete:** actual services/listeners, hardware/TPM/HSM and
+runtime attribution remain unsupported here. Production and other collector phases
+remain unqualified. [Current execution evidence](../readiness-evidence/collection-foundation-2026-10-24.md).

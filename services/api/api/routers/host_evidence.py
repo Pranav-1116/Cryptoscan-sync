@@ -180,6 +180,8 @@ def intake(
         or now >= snapshot.manifest.expires_at
     ):
         raise HTTPException(409, "Approval scope, collection time or expiry mismatch")
+    from api.assurance.collection import admit_host_intake
+    admit_host_intake(db, ctx.tenant_id, approval, snapshot)
     _system(db, ctx.tenant_id, approval.payload["system_id"])
     scan_id = new_id()
     pipeline = EvidencePipeline(scan_id)

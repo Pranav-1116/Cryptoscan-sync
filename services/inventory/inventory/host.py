@@ -375,6 +375,34 @@ def _packages(data):
     return result
 
 
+def _os_release(data):
+    """Read two literal allowlisted fields. NEVER source/expand an os-release file."""
+    values = {}
+    for line in data.decode("utf-8").splitlines():
+        if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key not in {"ID", "VERSION_ID"}:
+            continue
+        if key in values:
+            raise Refused("INVALID", "INVALID_FORMAT")
+        match = re.fullmatch(r"(?:'([A-Za-z0-9_.-]{1,64})'|\"([A-Za-z0-9_.-]{1,64})\"|([A-Za-z0-9_.-]{1,64}))", value)
+        if not match:
+            raise Refused("INVALID", "INVALID_FORMAT")
+        values[key] = next(v for v in match.groups() if v is not None)
+    if "ID" not in values:
+        raise Refused("INVALID", "INVALID_FORMAT")
+    return [
+        HostFact(
+            kind="OS_RELEASE",
+            local_basis="DECLARED",
+            purpose="OS_RELEASE_METADATA",
+            software_name=values["ID"],
+            software_version=values.get("VERSION_ID"),
+        )
+    ]
+
+
 def _registry_value(item, field):
     # Fixed-size native buffer: winreg.QueryValueEx allocates an unbounded value
     # before the caller can check its size. Never use it for host collection.
@@ -469,7 +497,7 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                 data, facts = _registry(item.path, limit)
                 charge(len(data))
             else:
-                if item.kind == "DPKG_STATUS" and platform != "linux":
+                if item.kind in {"DPKG_STATUS", "LINUX_OS_RELEASE"} and platform != "linux":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
                 data = _read(item.path, limit, charge)
                 if b"PRIVATE KEY" in data or b"BEGIN OPENSSH" in data:
@@ -480,6 +508,8 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                     facts = _config(data)
                 elif item.kind == "DPKG_STATUS":
                     facts = _packages(data)
+                elif item.kind == "LINUX_OS_RELEASE":
+                    facts = _os_release(data)
                 else:
                     fmt = "ELF" if data.startswith(b"\x7fELF") else "PE" if data.startswith(b"MZ") else None
                     if fmt is None:

@@ -389,6 +389,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     # existing bounded evidence JSON reader, including chunked requests.
     app.add_middleware(AssuranceBodyLimit, prefix="/api/v1/cbom/", label="CBOM")
     app.add_middleware(AssuranceBodyLimit, prefix="/api/v1/host-evidence/", label="Host evidence")
+    app.add_middleware(AssuranceBodyLimit, prefix="/api/v1/collection/", label="Collection")
 
     @app.exception_handler(AuthenticationError)
     async def auth_exception_handler(request: Request, exc: AuthenticationError):
@@ -481,7 +482,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(algorithms.router, prefix=prefix)
     app.include_router(systems.router, prefix=prefix)
     app.include_router(cbom.router, prefix=prefix)
-    from api.routers import host_evidence
+    from api.routers import host_evidence, collection
+    app.include_router(collection.router, prefix=prefix)
     app.include_router(host_evidence.router, prefix=prefix)
     app.include_router(container.router, prefix=prefix)
     app.include_router(container_scans.router, prefix=prefix)

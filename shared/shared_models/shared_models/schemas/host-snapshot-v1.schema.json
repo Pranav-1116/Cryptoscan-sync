@@ -92,7 +92,8 @@
             "CERTIFICATE",
             "TLS_CONFIGURATION",
             "BINARY",
-            "SOFTWARE"
+            "SOFTWARE",
+            "OS_RELEASE"
           ],
           "title": "Kind",
           "type": "string"
@@ -142,7 +143,8 @@
             "PUBLIC_KEY_METADATA",
             "TLS_CONFIGURATION",
             "FILE_PRESENCE",
-            "PACKAGE_DATABASE_RECORD"
+            "PACKAGE_DATABASE_RECORD",
+            "OS_RELEASE_METADATA"
           ],
           "title": "Purpose",
           "type": "string"
@@ -220,7 +222,8 @@
             "NGINX_TLS_CONFIG",
             "BINARY_METADATA",
             "DPKG_STATUS",
-            "WINDOWS_UNINSTALL"
+            "WINDOWS_UNINSTALL",
+            "LINUX_OS_RELEASE"
           ],
           "title": "Kind",
           "type": "string"
