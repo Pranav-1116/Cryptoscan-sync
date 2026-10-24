@@ -1,9 +1,10 @@
 # Ten-point product delivery and acceptance ledger
 
-**2026-10-24 · host-first implementation, not a ten-point completion declaration**
+**2026-10-24 · host-first collection + reviewed association increments, not ten-point completion**
 
 The [implemented host workflow](59-approved-offline-host-collection.md) is the
-first new slice. Existing six-BOM/policy/evidence/operational capabilities remain
+first new slice. The next [host-to-six-BOM association slice](61-host-to-six-bom-associations.md)
+adds explicit two-human metadata associations, never inferred operational links. Existing six-BOM/policy/evidence/operational capabilities remain
 subject to their own qualification boundaries. This ledger must not relabel code
 presence as a measured bank deployment.
 
@@ -24,13 +25,13 @@ coverage, approved Windows deployment, HSM/PQC use or production isolation succe
 |---|---|---|---|
 | 1 | Controlled Linux/Windows non-Git host collection | Manifest-only offline collector; Linux synthetic execution; native Windows file/registry code; least-privilege refusal; bounded receipts; no shell/upload | Real Windows execution/security review, supported OS/filesystem/package profiles, signed release/host identity, independent scope approval and bank pilot |
 | 2 | Evidence-grade CBOM | Source statuses distinct; imported snapshot bound to exact admin approval; per-input and cert/config evidence IDs/hashes; system/environment/time/location/algorithm/size retained; source revision/library/version/runtime/policy/PQC unknown or unevaluated where unproven | Qualified asset/fact projection and estate-rollup reconciliation; effective-use observations, policy/PQC applicability and independently verified completeness |
-| 3 | Connected SBOM/CBOM/NBOM/HBOM/VBOM/TechBOM | Reuses existing six-BOM console and native CBOM generator; **no invented host/HSM/dependency links** | Connect host evidence to existing identity/edge models with per-edge evidence, justified predicates and ownership; all six paths need a joined bank-like witness, not co-existence |
+| 3 | Connected SBOM/CBOM/NBOM/HBOM/VBOM/TechBOM | Versioned host-to-existing SBOM/CBOM/NBOM/HBOM/VBOM/TechBOM metadata graph; per-edge provenance, exact package/original SBOM checks, independent admin/CISO review, stale/retraction exclusion; **no inferred runtime/HSM links** | Native joined bank-like operational witness, qualified endpoint/device/KMS identity and actual use; customer-reviewed metadata is not runtime proof |
 | 4 | Isolated production execution | No privileged shortcut; all new host APIs deliberately refused under current controlled profile | Versioned host admission→queue→worker→isolated scanner→read-only stage→evidence adapter and positive/negative rootless isolation witness before allowlisting |
 | 5 | Demonstrable bank controls | Real human sessions; admin/CISO approval, analyst intake, auditor/viewer inspection not modification; exact tenant reads/foreign-ID refusal; chained approve→intake→export audit; one-use transaction and rollback; HTTP rate/body caps | Deployed TLS/secrets/monitoring and DB grants/retention controls, shared limiter outage/load tests, independent security review and operations acceptance |
 | 6 | Strict UNKNOWN semantics | Failed collection stays unknown; library presence not algorithm use; config not negotiation; unsupported public-key implementation not guessed; PQC names in config not deployment | Run handshake-failure, vendor-only declaration, HSM mechanism and KMS usage truth through the joined estate; preserve UNKNOWN in every downstream consumer |
 | 7 | Exact CycloneDX validation | Pinned full official1.6 offline validation, versioned strict host schemas, golden export/property tests, no inferred dependency fanout | Independent importing-tool interoperability, agreed property vocabulary/version policy, review of complete certificate/profile semantics; no broad compliance claim |
 | 8 | Bank-like controlled test estate | Synthetic Linux cert/config/library/package fixtures plus actual authenticated SQLite/PostgreSQL evidence path | Actual Windows/container/HSM/TLS/KMS fixtures, permissions/failed probes, vendor-only assertions and independent expected-truth review; distinguish simulation from native execution |
-| 9 | Threat-intelligence console | Existing CBOM page now approves/imports/inspects/exports host evidence; bounded private state, explicit unknowns, no AI chat or sample-data fallback | Estate-wide host assets/risk/PQC/drift/policy/graph/timeline integration with evidence filters and source uncertainty intact; not a new disconnected dashboard |
+| 9 | Threat-intelligence console | Existing CBOM page approves/imports/inspects/exports host evidence and reviewed six-BOM metadata graph; source/target selection, provenance, stale/retraction state, private-scope fences, no AI chat/sample fallback | Estate-wide host assets/risk/PQC/drift/policy/graph/timeline integration with evidence filters and source uncertainty intact; not a new disconnected dashboard |
 | 10 | Defensible messaging | Scoped contract in this guide and repository entry point; host/Windows/production limits shown in console | Review historical marketing/docs and all downstream labels against supported surfaces, qualifications and actual bank acceptance |
 
 ## Six-BOM relationship acceptance — no fictional joins
@@ -46,7 +47,7 @@ All six remain required, even when a particular scope has no evidence:
 | VBOM | Supplier declaration with version/date/source and explicit DECLARED/IMPORTED status | Vendor ML-KEM support is not bank HSM ML-KEM use or certification |
 | TechBOM | Scoped system/environment/deployment identity with author/provenance | Admin approval of a logical host label is not attestation of that physical host |
 
-Each eventual edge needs tenant/scope, endpoint identities, a specific predicate,
+Each operational-use edge still needs tenant/scope, endpoint identities, a specific predicate,
 evidence/reference IDs, timestamp, evidence basis, source revision/commitment and
 unknown limitations. Approval provenance supports an **operator-declared scope
 assignment only**. Do not turn the new report into an HSM dependency edge or
@@ -81,3 +82,27 @@ Windows qualification, then an approved isolated host execution profile. The
 controlled production allowlist stays closed until its own admission, worker,
 sandbox, cleanup, evidence, export and negative-control proof exists. No caching,
 new fleet service or performance claim is justified by this functional slice.
+
+
+## Second increment: reviewed host-to-estate metadata associations
+
+[Guide 61](61-host-to-six-bom-associations.md) implements the previously missing
+host identity/reference adapter. It connects all six domains in a synthetic joined
+witness and exposes their provenance in the existing CBOM console. This advances
+#2/#3/#5/#6/#9, but does **not** close the native-operational acceptance gaps.
+
+- SBOM requires exact versioned package, retained original bytes and same-system,
+  same-environment active deployment; no matching-name release binding.
+- NBOM uses a supported successful existing SSH host-key receipt with a checked
+  job/hash/timestamp, not a failed handshake or an invented TLS-phase adapter.
+- HBOM/VBOM are explicitly customer-reviewed metadata assertions. Firmware and
+  vendor capability changes invalidate the committed association; ML-KEM use stays
+  UNKNOWN. Metadata freshness is not refreshed device observation.
+- Different admin/CISO review, scoped readers, audit/expected-revision controls,
+  source closure, retained retractions and complete bounded graph/export are
+  executable controls. Native Windows and production admission remain blocked.
+
+Current-source results and replay boundaries are recorded in the
+[second-increment evidence report](../readiness-evidence/host-estate-graph-2026-10-24.md).
+The earlier host report remains historical evidence for its published source;
+this update does not relabel those earlier logs as a graph qualification.

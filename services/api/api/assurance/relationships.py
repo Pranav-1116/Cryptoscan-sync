@@ -48,6 +48,8 @@ def current_components(binding, owner):
 
 
 def validate(db, owner, value, *, resolved=None):
+    if value.get("schema_version") == "cryptoscan.host-association/v1":
+        raise HTTPException(409, "Host associations require the scoped host evidence review adapter")
     if (value["subject_type"], value["object_type"]) != TYPES[value["relation"]]:
         raise HTTPException(422, "Relationship has incompatible typed endpoints")
     if resolved is not None and value["relation"] == "PACKAGE_CRYPTO":

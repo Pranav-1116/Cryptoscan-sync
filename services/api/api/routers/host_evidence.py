@@ -8,11 +8,11 @@ attested host identity, production scanner execution or whole-system coverage.
 from __future__ import annotations
 
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from api.assurance import store
+from api.assurance import store, host_associations
 from api.dependencies import get_current_user, get_db_session
 from api.routers.assurance_boundary import estate, author, new_id, Key
 from db.models.base import utcnow
@@ -26,6 +26,7 @@ from evidence.core.pipeline import EvidencePipeline
 from evidence.verification.stored_scan import verify_stored_scan
 from shared_models.host_collection import HostManifest, HostSnapshot, Strict, Token, digest, snapshot_findings
 from shared_models.safe_finding import safe_finding
+from shared_models.host_associations import AssociationProposal, AssociationDecision, TargetType
 
 router = APIRouter(prefix="/host-evidence", tags=["host-evidence"])
 
@@ -328,3 +329,101 @@ def export_cbom(
     )
     db.commit()
     return bom
+
+
+@router.get("/approvals/{approval_id}/association-target")
+def association_target(
+    approval_id: Key,
+    target_type: TargetType,
+    target_id: str = Query(min_length=1, max_length=36),
+    package_identity: str | None = Query(default=None, min_length=1, max_length=500),
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    bundle = host_associations.source(db, ctx.tenant_id, approval_id)
+    return host_associations.target(
+        db,
+        ctx.tenant_id,
+        bundle[0].payload["system_id"],
+        target_type,
+        target_id,
+        package_identity,
+        environment=bundle[1].manifest.environment,
+    )
+
+
+@router.post("/approvals/{approval_id}/associations", status_code=201)
+def propose_host_association(
+    approval_id: Key,
+    body: AssociationProposal,
+    request: Request,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    return host_associations.propose(db, ctx.tenant_id, approval_id, body, author(db, request, user), user)
+
+
+@router.post("/approvals/{approval_id}/associations/{identifier}/review")
+def review_host_association(
+    approval_id: Key,
+    identifier: Key,
+    body: AssociationDecision,
+    request: Request,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    return host_associations.decide(
+        db, ctx.tenant_id, approval_id, identifier, body, author(db, request, user, "assurance.trust"), user
+    )
+
+
+@router.post("/approvals/{approval_id}/associations/{identifier}/retract")
+def retract_host_association(
+    approval_id: Key,
+    identifier: Key,
+    body: AssociationDecision,
+    request: Request,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    return host_associations.decide(
+        db,
+        ctx.tenant_id,
+        approval_id,
+        identifier,
+        body,
+        author(db, request, user, "assurance.trust"),
+        user,
+        retract=True,
+    )
+
+
+@router.get("/approvals/{approval_id}/graph")
+def host_estate_graph(
+    approval_id: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
+):
+    return host_associations.graph(db, ctx.tenant_id, approval_id)
+
+
+@router.get("/approvals/{approval_id}/graph/export")
+def host_estate_graph_export(
+    approval_id: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
+):
+    value = host_associations.graph(db, ctx.tenant_id, approval_id)
+    _audit(
+        db,
+        user,
+        "host.graph.export",
+        value["scan_id"],
+        {
+            "approval_id": approval_id,
+            "graph_sha256": value["graph_sha256"],
+            "evidence_status": "DECLARED_ASSOCIATIONS_IMPORTED_SOURCE",
+        },
+    )
+    db.commit()
+    return value

@@ -5097,3 +5097,23 @@ export const apiInspectHostSnapshot = (approvalId: string) =>
   _rsGet<HostSnapshotInspection>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/snapshot`);
 export const apiHostCbom = (approvalId: string) =>
   _rsGet<Record<string, unknown>>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/cbom`);
+
+/** Reviewed metadata associations, never CycloneDX operational dependencies. */
+export type HostAssociationTargetType = "sbom_binding" | "phase_receipt" | "hardware" | "vendor" | "deployment";
+export type HostAssociationTarget = { target_type: HostAssociationTargetType; target_id: string; target_sha256: string; bom: string; evidence_status: "DECLARED"; runtime_use: "UNKNOWN" };
+export type HostAssociation = { id: string; revision: number; state: "PROPOSED" | "REVIEWED" | "RETRACTED" | "STALE"; reason: string | null; target_type: HostAssociationTargetType; target_id: string; package_identity: string | null; bom: string; input_id: string; fact_ordinal: number; evidence_status: "DECLARED"; proposal_reason: string; evidence_ref: string; expires_at: string; proposed_by: string; reviewed_by: string | null; decision_reason: string | null; payload_sha256: string };
+export type HostEstateGraph = { schema_version: "cryptoscan.host-estate-graph/v1"; approval_id: string; system_id: string; snapshot_sha256: string; graph_sha256: string; evaluated_at: string;
+  whole_host_coverage_verified: false; host_identity_attested: false; operational_dependency_verified: false; pqc_use: "UNKNOWN";
+  nodes: { id: string; bom: string; kind: string; evidence_status: "DECLARED" | "IMPORTED" }[];
+  edges: { from: string; to: string; predicate: string; evidence_status: "DECLARED" | "IMPORTED"; runtime_use: "UNKNOWN"; operational_dependency_verified: false; provenance: Record<string, unknown> }[];
+  associations: HostAssociation[]; domains: Record<string, { represented: boolean; operational_use: "UNKNOWN" }> };
+const hostGraphPath = (approval: string) => `/api/v1/host-evidence/approvals/${encodeURIComponent(approval)}`;
+export const apiHostAssociationTarget = (approval: string, type: HostAssociationTargetType, id: string, purl?: string) => {
+  const params = new URLSearchParams({ target_type: type, target_id: id }); if (purl) params.set("package_identity", purl);
+  return _rsGet<HostAssociationTarget>(`${hostGraphPath(approval)}/association-target?${params}`);
+};
+export const apiProposeHostAssociation = (approval: string, body: { input_id: string; fact_ordinal: number; target_type: HostAssociationTargetType; target_id: string; package_identity: string | null; expected_target_sha256: string; expires_at: string; evidence_ref: string; reason: string }) =>
+  _rsPost<{ subject_id: string; revision: number }>(`${hostGraphPath(approval)}/associations`, body);
+export const apiDecideHostAssociation = (approval: string, id: string, action: "review" | "retract", revision: number, evidenceRef: string, reason: string) =>
+  _rsPost<{ subject_id: string; revision: number }>(`${hostGraphPath(approval)}/associations/${encodeURIComponent(id)}/${action}`, { expected_revision: revision, evidence_ref: evidenceRef, reason });
+export const apiHostEstateGraph = (approval: string) => _rsGet<HostEstateGraph>(`${hostGraphPath(approval)}/graph`);

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { apiApproveHostScope, apiImportHostSnapshot, apiInspectHostSnapshot, apiHostCbom, HostImportReceipt, HostSnapshotInspection } from "../lib/api";
+import HostAssociationsPanel from "./HostAssociationsPanel";
 import { usePrivateScopeCurrent } from "./PrivateScope";
 
 function validReceipt(value: HostImportReceipt, approval: string) {
@@ -112,6 +113,6 @@ export default function HostEvidencePanel() {
     {detail && <><h4>{detail.snapshot.manifest.host_id} · {detail.snapshot.manifest.environment}</h4><p>Stored content, chain and manifest integrity checked. Claimed collection time: {detail.snapshot.finished_at}. This does not authenticate the originating host.</p>
       <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"} · local claim {f.local_basis} · runtime UNKNOWN</p>)}</td></tr>)}</tbody></table>
       <p>System-to-host scope is operator DECLARED, not host attestation. Endpoint/HSM/KMS use and six-BOM dependencies are not established by co-existence.</p>
-      <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button></>}
+      <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button><HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
   </section>;
 }

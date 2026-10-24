@@ -1,0 +1,8 @@
+{
+  "observed_at": "2026-10-24T17:05:36.903904+00:00",
+  "scope": "Only explicitly owned cryptoscan-host-witness-* PostgreSQL resources",
+  "remaining_owned_directories": [],
+  "remaining_owned_postgres_pids": [],
+  "status": "PASS",
+  "customer_deployment_modified": false
+}

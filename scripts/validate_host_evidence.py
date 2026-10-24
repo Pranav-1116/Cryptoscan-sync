@@ -19,6 +19,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--acknowledge-local-synthetic", action="store_true", required=True)
     parser.add_argument("--junitxml", required=True)
+    parser.add_argument(
+        "--include-associations", action="store_true", help="Also qualify the host-to-estate association adapter"
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -44,9 +47,10 @@ def main():
             sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "services/api/tests/unit"))
             import pytest
 
-            return pytest.main(
-                ["-q", "services/api/tests/unit/test_host_evidence_postgres.py", "--junitxml=" + args.junitxml]
-            )
+            files = ["services/api/tests/unit/test_host_evidence_postgres.py"]
+            if args.include_associations:
+                files.append("services/api/tests/unit/test_host_associations_postgres.py")
+            return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()
             print("Owned PostgreSQL cleanup completed; no customer deployment touched.")

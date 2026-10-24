@@ -308,3 +308,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 
 - [59. Approved offline non-Git host collection](59-approved-offline-host-collection.md) — code-backed metadata/receipts, admin approval, analyst intake and auditor inspection; Windows/production qualification remains open.
 - [60. Ten-point product delivery and acceptance ledger](60-host-first-product-acceptance.md) — all six BOMs, expected-truth estate and remaining production/security gates; not a completion claim.
+
+- [61. Host-to-six-BOM reviewed metadata associations](61-host-to-six-bom-associations.md) — exact source/target commitments, independent human review, stale/retraction handling, API/console/export and remaining native/production boundaries.
