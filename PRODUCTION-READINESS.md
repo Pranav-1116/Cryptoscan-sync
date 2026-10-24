@@ -1,6 +1,22 @@
 # CryptoScan production readiness — current evidence gate
 
-## Latest end-to-end hardening — 2026-10-24, not platform qualification
+## Latest increment — historical provenance and audit concurrency, 2026-10-24
+
+The [historical CBOM implementation](docs/operations/historical-cbom-reconciliation.md)
+adds conservative legacy read/coverage projections, bounded authenticated review,
+commit-before-success reconciliation receipts, import/scanner namespace protection,
+SQL-bounded portfolio reads and PostgreSQL global audit-append serialization.
+Schema head remains **0107**; no new migration or collector/dashboard/service.
+
+Fresh retained evidence: **1,020 selected Python tests, 568 frontend tests,
+27 PostgreSQL checks, 17 historical-workflow browser checks and 16 existing
+browser regression checks**. See [execution and limits](docs/readiness-evidence/historical-cbom-2026-10-24.md)
+and the [operator runbook](docs/runbooks/historical-cbom-reconciliation.md).
+Mixed-evidence, unassigned and oversized history still requires controlled review.
+These are local synthetic engineering results, not production/bank approval,
+performance qualification or closure of the original-question acceptance register.
+
+## Previous end-to-end hardening — 2026-10-24, not platform qualification
 
 Migration **0107** and matching database/API/console changes fix bank-local
 system names, durable source-separated CBOM metadata, import write roles,

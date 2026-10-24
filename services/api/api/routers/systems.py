@@ -103,8 +103,9 @@ def list_systems(
         business_unit=business_unit,
         cloud_provider=cloud_provider,
     )
+    catalog = repo.catalog_rows(rows)
     return {
-        "systems": [{**row.to_dict(), **{"coverage": repo.catalog_row(row).get("coverage_status")}} for row in rows],
+        "systems": [{**row.to_dict(), **meta, "coverage":meta["coverage_status"]} for row, meta in zip(rows, catalog)],
         "total_count": total,
         "page": page,
         "page_size": page_size,
@@ -253,7 +254,7 @@ def get_system(
     payload = row.to_dict()
     payload["assets"] = [asset.to_dict() for asset in repo.assets_for(system_id)]
     payload["dependencies"] = [edge.to_dict() for edge in repo.dependencies_for(system_id)]
-    payload.update({k: v for k, v in repo.catalog_row(row).items() if k not in payload})
+    payload.update(repo.catalog_row(row))
     return payload
 
 
@@ -304,7 +305,10 @@ def attach_asset(
     asset_id = body.asset_id.removeprefix("asset:")
     if AssetRepository(db).get_by_id(asset_id) is None:
         raise HTTPException(status_code=404, detail=f"Asset not found: {asset_id}")
-    link = repo.attach_asset(system_id, asset_id)
+    try:
+        link = repo.attach_asset(system_id, asset_id)
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc
     return link.to_dict()
 
 

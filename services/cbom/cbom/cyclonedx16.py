@@ -33,6 +33,7 @@ SCHEMA_HASHES = {
 CONTEXT_FIELDS = (
     "application", "owner", "data_classification", "retention_years", "criticality",
     "exposure", "purpose", "library", "system", "system_id", "confidence", "asset_key",
+    "source_basis", "reported_confidence",
 )
 SAFE_PROPERTIES = {f"cryptoscan:{key}" for key in CONTEXT_FIELDS} | {
     "cryptoscan:reported_algorithm", "cryptoscan:reported_key_size", "cryptoscan:reported_mode",

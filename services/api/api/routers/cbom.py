@@ -206,27 +206,35 @@ def _located_assets(db: Session) -> tuple[list[dict[str, Any]], int]:
     from db.models.system_asset import SystemAsset
     from sqlalchemy import select
 
+    from sqlalchemy import func
+    from db.import_provenance import archived_legacy_clause
+    from api.routers.cbom_legacy import refuse_unreviewed_export
+    refuse_unreviewed_export(db)
+    active = ~archived_legacy_clause()
+    limit = _portfolio_max_assets()
     rows = db.execute(
-        select(CryptoAsset, System)
+        select(CryptoAsset, System, func.count().over().label("total"))
         .outerjoin(SystemAsset, SystemAsset.asset_id == CryptoAsset.id)
         .outerjoin(System, System.id == SystemAsset.system_id)
+        .where(active).order_by(CryptoAsset.id, System.id).limit(limit)
     ).all()
+    from api.routers.cbom_legacy import refuse_legacy_records
+    refuse_legacy_records([row[0] for row in rows])
+    total = int(rows[0][2]) if rows else 0
     located: list[dict[str, Any]] = []
-    for asset, system in rows:
+    for asset, system, _total in rows:
         data = asset.to_dict()
         data["system_id"] = system.id if system is not None else None
         data["system_name"] = system.name if system is not None else "unassigned"
         if system is not None:
             _attach_business_context(data, system)
         located.append(data)
-    total = len(located)
-    limit = _portfolio_max_assets()
     if total > limit:
         logger.warning(
             "portfolio_assets_truncated",
             extra={"total": total, "limit": limit},
         )
-        return located[:limit], total
+        return located, total
     return located, total
 
 
@@ -235,7 +243,12 @@ def _records_for_system(db: Session, system_id: str) -> tuple[Any, list[Any]]:
     system = repo.get_by_id(system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
-    return system, repo.assets_for(system_id)
+    from api.routers.cbom_legacy import refuse_unreviewed_export
+    refuse_unreviewed_export(db, system_id=system_id)
+    assets = repo.assets_for(system_id)
+    from api.routers.cbom_legacy import refuse_legacy_records
+    refuse_legacy_records(assets)
+    return system, assets
 
 
 def _records_for_scan(db: Session, scan_id: str) -> tuple[Scan, list[Any]]:
@@ -278,7 +291,7 @@ def cbom_catalog(
 ):
     sys_repo = SystemRepository(db)
     systems, system_total = sys_repo.list_systems(page=page, page_size=page_size, coverage=coverage, q=q)
-    catalog = [sys_repo.catalog_row(system) for system in systems]
+    catalog = sys_repo.catalog_rows(systems)
     coverage_totals = sys_repo.coverage_summary()
     algorithms = AssetRepository(db).algorithm_counts()
     scans, scan_total = ScanRepository(db).list_scans(page=1, page_size=20)
@@ -617,6 +630,8 @@ def cbom_assess_portfolio(
     ranked worst-first, plus an aggregate estate score."""
     from cbom.assessment import assess_cbom
 
+    from api.routers.cbom_legacy import refuse_unreviewed_export
+    refuse_unreviewed_export(db)
     systems, _trunc = SystemRepository(db).list_all_bounded()
     results = []
     for system in systems:
@@ -698,13 +713,11 @@ def cbom_assess(
 
     if ref.bom is not None:
         return assess_cbom(ref.bom)
-    db = next(get_db_session())  # type: ignore[arg-type]
-    try:
+    from contextlib import contextmanager
+    with contextmanager(get_db_session)() as db:
         name, _source_id, records = _resolve_ref(db, ref)
         bom = CbomGenerator().from_records(records, name=name)
         return assess_cbom(bom)
-    finally:
-        db.close()
 
 
 require_cbom_writer = require_roles("superadmin", "ciso", "security_analyst")
@@ -1252,6 +1265,8 @@ def cbom_custom(
 ):
     if not body.asset_ids:
         raise HTTPException(status_code=422, detail="asset_ids is required")
+    from api.routers.cbom_legacy import refuse_unreviewed_export
+    refuse_unreviewed_export(db, asset_ids=body.asset_ids)
     repo = AssetRepository(db)
     records = []
     missing = []
@@ -1274,6 +1289,8 @@ def cbom_custom(
         records.append(payload)
     if missing and not records:
         raise HTTPException(status_code=404, detail=f"Assets not found: {missing}")
+    from api.routers.cbom_legacy import refuse_legacy_records
+    refuse_legacy_records(records)
     vulns = None
     if body.include_vulnerabilities:
         try:
@@ -1392,3 +1409,6 @@ def nbom_live(db: Session = Depends(get_db_session), user: str = Depends(get_cur
     bom = build_nbom(gathered["endpoints"], estate="network-estate")
     return {"nbom": bom, "summary": summarise(bom),
             "source": "live" if gathered["endpoints"] else "empty"}
+
+from api.routers.cbom_legacy import register_legacy_routes
+register_legacy_routes(router, require_cbom_writer)

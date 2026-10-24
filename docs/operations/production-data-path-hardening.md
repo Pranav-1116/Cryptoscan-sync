@@ -49,3 +49,13 @@ This is not a full repository test run, container build, deployment, security au
 7. No customer deployment was modified. Supported production PostgreSQL/Redis, TLS, encrypted/resident storage, approved execution/isolation, backup/PITR/HA/partition drills, capacity, image/CI/security review, independent bank acceptance and real staffing/support/commercial obligations still require their own evidence. The strict original-question register remains blocked.
 
 Follow the [0107 upgrade/rollback runbook](../runbooks/cbom-0107-upgrade.md). The engineering evidence does not authorize a rollout or replace the unified [production gate](../../PRODUCTION-READINESS.md).
+
+## Follow-up: historical provenance and audit serialization
+
+The next [implemented increment](historical-cbom-reconciliation.md) adds bounded
+historical review/reconciliation, conservative source-aware current coverage,
+namespace collision fixes, SQL-bounded portfolio reads and PostgreSQL audit-append
+serialization. Its [fresh execution](../readiness-evidence/historical-cbom-2026-10-24.md)
+supersedes the historical/audit implementation gaps above only to that explicitly
+described extent. Mixed-source/unassigned cases, independent qualification and the
+remaining original-45 capabilities are not declared closed.

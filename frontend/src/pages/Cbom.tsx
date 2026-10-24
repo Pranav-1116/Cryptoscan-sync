@@ -13,6 +13,7 @@ import {
 } from "../lib/api";
 import PrivateScope, { usePrivateScopeCurrent } from "../components/PrivateScope";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
+import CbomLegacyReview from "../components/CbomLegacyReview";
 import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
 import { ICON_SM, IconCaretDown, IconCaretRight } from "../components/icons";
 
@@ -314,6 +315,8 @@ function CbomContent() {
             filename="imported-cbom-1.6.json" className="btn outline">Export persisted metadata</AuthenticatedDownload>
         </div>}
       </section>
+
+      <CbomLegacyReview refresh={refresh} onCommitted={() => setRefresh(value => value + 1)} />
 
       {offline && !loading && (
         <div className="panel" style={{ padding: "14px 18px", marginBottom: "18px", border: "1px solid var(--amber)", color: "var(--amber)", fontSize: "13px" }}>

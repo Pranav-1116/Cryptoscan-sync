@@ -49,7 +49,8 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         return list(self.session.execute(stmt).scalars().all()), total
 
     def algorithm_counts(self) -> dict[str, int]:
-        stmt = select(CryptoAsset.algorithm, func.count()).group_by(CryptoAsset.algorithm)
+        from db.import_provenance import archived_legacy_clause
+        stmt = select(CryptoAsset.algorithm, func.count()).where(~archived_legacy_clause()).group_by(CryptoAsset.algorithm)
         return {str(row[0] or "UNKNOWN"): int(row[1]) for row in self.session.execute(stmt).all()}
 
     def search_located(self, query: str, *, limit: int = 200) -> list[dict]:
@@ -99,6 +100,9 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         # They must not overwrite scanner evidence or another application's context.
         import_scope = CryptoAsset.extra["cbom_import"]["system_id"].as_string()
         stmt = stmt.where(import_scope == import_system_id if import_system_id is not None else import_scope.is_(None))
+        if import_system_id is None:
+            from db.import_provenance import import_clause
+            stmt = stmt.where(~import_clause())
         existing = list(self.session.execute(stmt).scalars())
         # Keep assets from other scans; we key by identity and refresh
         by_key = {(a.algorithm, a.purpose or "", a.file_path, a.line_number): a for a in existing}
@@ -201,8 +205,9 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         now = datetime.now(timezone.utc).isoformat()
         extra = dict(asset.get("extra") or {})
         extra["last_seen_at"] = now
+        from db.import_provenance import import_clause
         existing = self.session.execute(
-            select(CryptoAsset).where(CryptoAsset.file_path == asset["file_path"])
+            select(CryptoAsset).where(CryptoAsset.file_path == asset["file_path"], ~import_clause())
         ).scalar_one_or_none()
         if existing is None:
             extra["first_seen_at"] = now

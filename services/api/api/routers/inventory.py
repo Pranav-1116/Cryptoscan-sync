@@ -169,20 +169,22 @@ def collect_inventory(session: Session, *,
 
     for a in session.execute(select(CryptoAsset).limit(limit)).scalars().all():
         alg = a.algorithm
+        projection = a.to_dict()
         rows.append({
+            **{key:projection[key] for key in ("source_basis", "reported_confidence", "source_disposition") if key in projection},
             "id": f"crypto:{a.id}",
             "asset_type": _TYPE_LABEL["CryptoAsset"],
             "name": alg,
             "algorithm": alg,
             "purpose": a.purpose,
             "key_size": a.key_size,
-            "confidence": a.confidence,
+            "confidence": projection["confidence"],
             "file_path": a.file_path,
             "source_language": a.source_language,
             "owner": a.owner,
             "technical_owner": a.technical_owner,
             "security_owner": a.security_owner,
-            "risk": _risk(None, a.confidence, alg),
+            "risk": _risk(None, projection["confidence"], alg),
             "pqc": _pqc(alg),
             "lifecycle_state": a.lifecycle_state,
             "relationships": {"used_by": crypto_systems.get(a.id, [])},

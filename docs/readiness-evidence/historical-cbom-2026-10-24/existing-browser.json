@@ -1,0 +1,187 @@
+{
+  "schema": "cryptoscan.cbom-durable-browser-check/1",
+  "bank_approved": false,
+  "deployment_qualified": false,
+  "scope": "DISPOSABLE_SYNTHETIC_ESTATES",
+  "checks": [
+    "REAL_BROWSER_PASSWORD_LOGIN",
+    "BROWSER_NATIVE_FILE_UPLOAD",
+    "COMMITTED_IMPORT_RECEIPT",
+    "AUTHENTICATED_PERSISTED_NATIVE_EXPORT",
+    "BROWSER_RELOAD_READS_PERSISTED_IDENTITY",
+    "REIMPORT_KEEPS_SYSTEM_ID",
+    "CONCURRENT_EXISTING_SYSTEM_IMPORTS_SERIALIZE",
+    "CONCURRENT_FIRST_CREATE_HAS_ONE_SYSTEM_OR_EXPLICIT_409",
+    "BROWSER_PRIVATE_SCOPE_EVENT_CLEARS_DRAFT",
+    "SAME_NAME_DIFFERENT_BANK_IDS",
+    "FOREIGN_SYSTEM_READ_DENIED_BOTH_DIRECTIONS",
+    "READONLY_REAL_SESSION_IMPORT_403",
+    "POSTGRES_NEW_CONNECTION_READBACK",
+    "NO_FALSE_SCAN_TIMESTAMPS",
+    "BANK_SCOPED_DECLARATIONS_AND_LINKS",
+    "REIMPORT_NO_DUPLICATE_ASSETS"
+  ],
+  "browser": "153.0.8010.0",
+  "concurrency": [
+    {
+      "scenario": "existing",
+      "statuses": [
+        200,
+        200,
+        200,
+        200
+      ],
+      "accepted_system_id": "b00ed188-e1ae-4a08-b848-7bcc1464007c"
+    },
+    {
+      "scenario": "first_create",
+      "statuses": [
+        200,
+        409,
+        409,
+        409
+      ],
+      "accepted_system_id": "3f8eb83f-6d6f-4210-ae5f-84e34a677feb"
+    }
+  ],
+  "receipts": {
+    "a": {
+      "system": {
+        "name": "Synthetic CBOM e2e 0b8a7b1e03fd",
+        "description": "Imported from CycloneDX CBOM",
+        "owner": null,
+        "technical_owner": null,
+        "security_owner": null,
+        "environment": null,
+        "compliance_scopes": [],
+        "current_agility_score": null,
+        "agility_category": null,
+        "migration_readiness_score": null,
+        "migration_readiness_category": null,
+        "extra": {
+          "cbom_import": {
+            "spec_version": "1.6",
+            "serial_number": "urn:uuid:f74c864b-f844-00ff-9ce9-a6aa754a38b7",
+            "imported_at": "2026-10-24T09:01:50.180841+00:00",
+            "component_count": 2,
+            "source": "ingest",
+            "imported_by": "e2e_bank_a",
+            "source_basis": "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS",
+            "document_sha256": "d710da443632a8b56a7a440f10848931a43090b1e8f4892d4b99454ba7032a93"
+          },
+          "cbom": {
+            "spec_version": "1.6",
+            "serial_number": "urn:uuid:f74c864b-f844-00ff-9ce9-a6aa754a38b7",
+            "imported_at": "2026-10-24T09:01:50.180841+00:00",
+            "component_count": 2,
+            "source": "ingest",
+            "imported_by": "e2e_bank_a",
+            "source_basis": "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS",
+            "document_sha256": "d710da443632a8b56a7a440f10848931a43090b1e8f4892d4b99454ba7032a93"
+          }
+        },
+        "scan_target": null,
+        "scan_branch": null,
+        "last_scan_id": null,
+        "last_scanned_at": null,
+        "coverage_status": "NO_TARGET",
+        "business_unit": null,
+        "criticality": null,
+        "cloud_provider": null,
+        "cloud_account": null,
+        "id": "b00ed188-e1ae-4a08-b848-7bcc1464007c",
+        "created_at": "2026-10-24T09:01:49.425891+00:00",
+        "updated_at": "2026-10-24T09:01:50.183543+00:00",
+        "tenant_id": "e2e-a"
+      },
+      "imported": 2,
+      "summary": {
+        "source_type": "system",
+        "source_id": "b00ed188-e1ae-4a08-b848-7bcc1464007c",
+        "name": "Synthetic CBOM e2e 0b8a7b1e03fd",
+        "environment": null,
+        "spec": "CycloneDX 1.5",
+        "components": 2,
+        "algorithms": {
+          "ML-KEM-768": 1,
+          "AES": 1
+        },
+        "algorithm_count": 2,
+        "quantum_vulnerable": 0,
+        "pqc_ready": 1
+      },
+      "document_sha256": "d710da443632a8b56a7a440f10848931a43090b1e8f4892d4b99454ba7032a93",
+      "source_basis": "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS"
+    },
+    "b": {
+      "system": {
+        "name": "Synthetic CBOM e2e 0b8a7b1e03fd",
+        "description": "Imported from CycloneDX CBOM",
+        "owner": null,
+        "technical_owner": null,
+        "security_owner": null,
+        "environment": null,
+        "compliance_scopes": [],
+        "current_agility_score": null,
+        "agility_category": null,
+        "migration_readiness_score": null,
+        "migration_readiness_category": null,
+        "extra": {
+          "cbom_import": {
+            "spec_version": "1.6",
+            "serial_number": "urn:uuid:f74c864b-f844-00ff-9ce9-a6aa754a38b7",
+            "imported_at": "2026-10-24T09:01:51.845320+00:00",
+            "component_count": 2,
+            "source": "ingest",
+            "imported_by": "e2e_bank_b",
+            "source_basis": "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS",
+            "document_sha256": "d710da443632a8b56a7a440f10848931a43090b1e8f4892d4b99454ba7032a93"
+          },
+          "cbom": {
+            "spec_version": "1.6",
+            "serial_number": "urn:uuid:f74c864b-f844-00ff-9ce9-a6aa754a38b7",
+            "imported_at": "2026-10-24T09:01:51.845320+00:00",
+            "component_count": 2,
+            "source": "ingest",
+            "imported_by": "e2e_bank_b",
+            "source_basis": "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS",
+            "document_sha256": "d710da443632a8b56a7a440f10848931a43090b1e8f4892d4b99454ba7032a93"
+          }
+        },
+        "scan_target": null,
+        "scan_branch": null,
+        "last_scan_id": null,
+        "last_scanned_at": null,
+        "coverage_status": "NO_TARGET",
+        "business_unit": null,
+        "criticality": null,
+        "cloud_provider": null,
+        "cloud_account": null,
+        "id": "aab97f55-c1ee-4e0f-9f10-a41ba10bb2d9",
+        "created_at": "2026-10-24T09:01:51.841730+00:00",
+        "updated_at": "2026-10-24T09:01:51.848673+00:00",
+        "tenant_id": "e2e-b"
+      },
+      "imported": 2,
+      "summary": {
+        "source_type": "system",
+        "source_id": "aab97f55-c1ee-4e0f-9f10-a41ba10bb2d9",
+        "name": "Synthetic CBOM e2e 0b8a7b1e03fd",
+        "environment": null,
+        "spec": "CycloneDX 1.5",
+        "components": 2,
+        "algorithms": {
+          "ML-KEM-768": 1,
+          "AES": 1
+        },
+        "algorithm_count": 2,
+        "quantum_vulnerable": 0,
+        "pqc_ready": 1
+      },
+      "document_sha256": "d710da443632a8b56a7a440f10848931a43090b1e8f4892d4b99454ba7032a93",
+      "source_basis": "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS"
+    }
+  },
+  "export_sha256": "d66f726ef22968c0ded86f0ebba2456e5e7bd615a9d36efbfd4b8dd887a4545b",
+  "page_errors": []
+}

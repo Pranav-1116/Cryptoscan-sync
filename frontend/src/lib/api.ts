@@ -5021,3 +5021,22 @@ export const apiGraphUpdateOperationalDependency = (parentId: string, childId: s
   call(`/api/v1/graph/edges/${encodeURIComponent(parentId)}/${encodeURIComponent(childId)}/operational-dependency`, {
     method: "PATCH", body: JSON.stringify(body),
   });
+
+export interface LegacyImportPage {
+  systems: { id: string; name: string }[];
+  total: number; page: number; page_size: number; unassigned_review_required: number;
+}
+export interface LegacyImportReview {
+  system_id: string; system_name: string; snapshot_sha256: string;
+  replacement_document_sha256: string | null; pending_assets: number; mixed_evidence_assets: number;
+  assets: { id: string; algorithm: string; reported_confidence: string; linked_evidence_count: number }[];
+  limit: number; message: string;
+}
+export const apiCbomLegacyImports = (page = 1): Promise<ApiResult<LegacyImportPage>> =>
+  call(`/api/v1/cbom/legacy-imports?page=${page}&page_size=50`);
+export const apiCbomLegacyReview = (systemId: string): Promise<ApiResult<LegacyImportReview>> =>
+  call(`/api/v1/cbom/system/${encodeURIComponent(systemId)}/legacy-imports`);
+export const apiCbomReconcileLegacy = (systemId: string, body: {
+  expected_snapshot_sha256: string; replacement_document_sha256: string; reason: string;
+}): Promise<ApiResult<{ audit_id: string; detached_assets: number; archived_declarations: number }>> =>
+  call(`/api/v1/cbom/system/${encodeURIComponent(systemId)}/reconcile-legacy`, { method: "POST", body: JSON.stringify(body) });

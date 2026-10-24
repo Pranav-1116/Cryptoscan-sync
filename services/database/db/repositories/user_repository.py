@@ -563,6 +563,18 @@ class UserRepository:
             detail = json.dumps(detail, default=str)
         from db.models.base import utcnow as _utcnow
 
+        if self.session.get_bind().dialect.name == "postgresql":
+            # The chain is global, not per tenant. Lock BEFORE reading its
+            # head and hold through commit/rollback; locking the latest row
+            # alone misses concurrent first writers and can fork the chain.
+            # All application appends use this repository. This is not a
+            # claim of DB-admin-proof immutability or a repair of old forks.
+            from sqlalchemy import BigInteger, literal
+            from sqlalchemy.exc import InvalidRequestError
+            if self.session.connection().get_isolation_level() != "READ COMMITTED":
+                raise InvalidRequestError("Concurrent audit appends require PostgreSQL READ COMMITTED isolation")
+            self.session.execute(select(func.pg_advisory_xact_lock(
+                literal(0x43525950544F4155, type_=BigInteger))))
         head = self._audit_chain_head()
         row = AuditLog(
             created_at=_utcnow(),  # hash covers a real timestamp, never the pre-flush None

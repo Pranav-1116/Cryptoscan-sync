@@ -65,11 +65,12 @@ def _gather_inventory(db: Session, *, limit: int = 2000) -> dict[str, Any]:
              "owner": s.owner, "environment": s.environment, "criticality": s.criticality,
              "supplier": s.owner}
             for s in db.execute(select(System).limit(limit)).scalars().all()]
-    crypto = [{"id": c.id, "algorithm": c.algorithm, "key_size": c.key_size,
+    from db.import_provenance import archived_legacy_clause
+    crypto = [{**c.to_dict(), "id": c.id, "algorithm": c.algorithm, "key_size": c.key_size,
                "purpose": c.purpose, "mode": c.mode, "asset": getattr(c, "hostname", "") or "",
-               "application": "", "file_path": c.file_path, "confidence": c.confidence,
+               "application": "", "file_path": c.file_path, "confidence": c.to_dict()["confidence"],
                "library": _libraries(c)}
-              for c in db.execute(select(CryptoAsset).limit(limit)).scalars().all()]
+              for c in db.execute(select(CryptoAsset).where(~archived_legacy_clause()).order_by(CryptoAsset.id).limit(limit)).scalars().all()]
     hardware = [{"id": h.id, "asset_id": h.asset_id, "manufacturer": h.manufacturer,
                  "model": h.model, "device_type": h.device_type,
                  "serial_reference": h.serial_reference, "firmware": h.firmware,

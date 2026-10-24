@@ -54,3 +54,9 @@ class CryptoAsset(BaseModel, TenantScoped):
         cascade="all, delete-orphan",
         lazy="select",
     )
+
+    def to_dict(self, exclude: set[str] | None = None) -> dict:
+        from shared_models.import_provenance import project_import_provenance
+        # Classify from the complete record even when callers hide metadata.
+        projected = project_import_provenance(super().to_dict())
+        return {key: value for key, value in projected.items() if key not in (exclude or set())}

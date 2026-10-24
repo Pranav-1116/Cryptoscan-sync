@@ -58,7 +58,10 @@ def app_component(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def crypto_layer_component(row: dict[str, Any]) -> dict[str, Any]:
+    from shared_models.import_provenance import project_import_provenance
+    row = project_import_provenance(row)
     return {
+        **{key: row[key] for key in ("source_basis", "reported_confidence", "source_disposition") if key in row},
         "type": "crypto",
         "algorithm": (row.get("algorithm") or "").upper(),
         "key_type": row.get("key_type") or "",
@@ -121,6 +124,8 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
     ``data`` is the row's dict shape (``to_dict()`` or a plain dict) —
     identical inputs to ``CbomGenerator._component`` before round 38.
     """
+    from shared_models.import_provenance import project_import_provenance
+    data = project_import_provenance(data)
     normalized = data.get("normalized_crypto") or {}
     algorithm = str(data.get("algorithm") or normalized.get("standard_name") or "UNKNOWN")
     primitive = normalized.get("algorithm_family") or map_primitive(algorithm, data.get("purpose"))
@@ -128,6 +133,7 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
     # Evidence confidence (report 08 P1#6): the recorded confidence of
     # the observation, not a hardcoded 0.9. Unrecorded stays at the
     # source-analysis default — never fabricated upward.
+    declared = data.get("source_basis") in {"IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS", "LEGACY_IMPORT_REVIEW_REQUIRED"}
     recorded = str(data.get("confidence") or "").upper()
     method_confidence = _CONFIDENCE_SCORES.get(recorded, 0.9)
     component: dict[str, Any] = {
@@ -151,12 +157,12 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
             "identity": [
                 {
                     "field": "bom-ref",
-                    "confidence": 1,
+                    "confidence": method_confidence if declared else 1,
                     "methods": [
                         {
-                            "technique": "source-code-analysis",
+                            "technique": "other" if declared else "source-code-analysis",
                             "confidence": method_confidence,
-                            "value": f"{data.get('file_path')}:{data.get('line_number')}",
+                            "value": "Imported declaration metadata; deployment unverified" if declared else f"{data.get('file_path')}:{data.get('line_number')}",
                         }
                     ],
                 }
@@ -202,7 +208,9 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
             properties.append({"name": f"cryptoscan:{field}", "value": str(value)})
     # Preserve imported declarations independently of operational owner fields.
     # This is allowlisted context, not a copy of the uploaded document.
-    imported = (data.get("extra") or {}).get("cbom_import") or {}
+    source_extra = data.get("extra") if isinstance(data.get("extra"), dict) else {}
+    imported = source_extra.get("cbom_import")
+    imported = imported if isinstance(imported, dict) else {}
     if imported:
         if imported.get("padding") is not None:
             component["cryptoProperties"]["algorithmProperties"]["padding"] = imported["padding"]
@@ -212,6 +220,9 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
         for key in ("source_basis", "document_sha256", "parameter_set_identifier", "key_size_basis"):
             if imported.get(key) is not None:
                 properties.append({"name": f"cryptoscan:import_{key}", "value": str(imported[key])})
+    for key in ("source_basis", "reported_confidence"):
+        if data.get(key) is not None:
+            properties.append({"name": f"cryptoscan:{key}", "value": str(data[key])})
     if properties:
         component["properties"] = properties
     return component
