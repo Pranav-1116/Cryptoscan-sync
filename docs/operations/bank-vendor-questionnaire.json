@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.bank-vendor-questionnaire/1",
-  "as_of": "2026-10-23",
+  "as_of": "2026-10-24",
   "claim": "Source navigation and explicit gaps, not qualified support or customer acceptance",
   "questions": [
     {
@@ -107,25 +107,28 @@
       "id": "M4",
       "question": "What are false-positive/false-negative rates and how are they validated?",
       "status": "PARTIAL",
-      "existing_surface": "Cohort-specific accuracy review and benchmark tooling.",
-      "boundary": "No universal rate: precision/recall require labeled representative positives and negatives and known sampling limits.",
+      "existing_surface": "Existing approved/frozen sample workflow plus corrected legacy triage denominators, explicit unmeasured metrics, validated workbooks and consistent CLI scoring.",
+      "boundary": "Reviewed file/algorithm units are not all-bank recall. No true-negative denominator is supplied by legacy workbooks, so no false-positive rate is claimed. Existing separate corpus evaluator conventions are not globally requalified.",
       "acceptance_needed": "Bank-agreed corpus/version/method, confusion matrix, missed classes, confidence intervals and independent retest.",
       "source_refs": [
         "services/api/api/assurance/accuracy.py",
-        "scripts/accuracy_benchmark.py"
+        "scripts/accuracy_benchmark.py",
+        "shared/shared_models/tests/test_field_accuracy_denominators.py",
+        "services/api/tests/integration/test_field_accuracy_api.py"
       ]
     },
     {
       "id": "M5",
       "question": "Can algorithm, key size, mode and quantum vulnerability be distinguished?",
       "status": "PARTIAL",
-      "existing_surface": "Shared algorithm registry/classifier plus purpose-aware risk screening.",
-      "boundary": "Algorithm properties are not correct implementation, policy compliance, complete discovery or deployed readiness. Unknown is not safe.",
+      "existing_surface": "Shared classifier plus explicit PQC public-key byte units, native FIPS parameter-set identifiers and all twelve full SLH-DSA parameter names.",
+      "boundary": "Algorithm recognition and catalog sizes are not observed key usage, implementation correctness, module validation or global current-policy approval. Legacy input key_size units remain unverified for PQC.",
       "acceptance_needed": "Known/unknown/alias/suite/key-size fixtures and independently checked observations for the bank workload.",
       "source_refs": [
         "shared/shared_models/shared_models/algorithm_registry.py",
         "shared/shared_models/shared_models/quantum_classify.py",
-        "services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py"
+        "services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py",
+        "shared/shared_models/tests/test_bank_pqc_parameters.py"
       ]
     },
     {
@@ -145,13 +148,15 @@
       "id": "O1",
       "question": "Which CBOM formats and schema versions are available?",
       "status": "PARTIAL",
-      "existing_surface": "CBOM generator and validated export pipeline; distinct SBOM/CBOM/NBOM/TechBOM/HBOM/VBOM.",
-      "boundary": "A syntactically valid CycloneDX document or signature is not accurate/comprehensive data. Do not relabel the six BOMs.",
+      "existing_surface": "Legacy compatibility exporters plus native CycloneDX1.6 JSON with pinned full upstream schema, offline validation and local reference integrity.",
+      "boundary": "Native1.6 is an allowlisted metadata profile, JSON only; not lossless arbitrary-document conversion. Legacy1.5 JSON/XML are not newly standard-qualified. Schema validity is not bank or third-party tooling acceptance.",
       "acceptance_needed": "Validate requested schema/version and all six semantics; customer import round trip, provenance, unsupported fields and signing trust.",
       "source_refs": [
         "services/cbom/cbom/generator.py",
         "services/cbom/cbom/export_service.py",
-        "services/api/tests/unit/test_six_bom_current_evidence.py"
+        "services/api/tests/unit/test_six_bom_current_evidence.py",
+        "services/cbom/cbom/cyclonedx16.py",
+        "services/cbom/tests/test_cyclonedx16.py"
       ]
     },
     {
@@ -182,13 +187,14 @@
       "id": "O4",
       "question": "Can findings map to applications, owners and classifications?",
       "status": "PARTIAL",
-      "existing_surface": "Existing system/business links, ownership and estate registers.",
-      "boundary": "Missing mappings remain gaps; imported owner names do not appoint accountable responders.",
+      "existing_surface": "Existing business-system links plus native export of supplied application, owner, classification and retention context; shared assets retain multiple contexts without duplicate references.",
+      "boundary": "Business context is supplied metadata, not independently verified ownership/classification; import does not automatically create CMDB mappings.",
       "acceptance_needed": "CMDB reconciliation, active owners, classification approval and unmatched/ambiguous mapping review.",
       "source_refs": [
         "services/api/api/routers/systems.py",
         "services/api/api/routers/business.py",
-        "services/api/api/assurance/operator.py"
+        "services/api/api/assurance/operator.py",
+        "services/api/tests/unit/test_bank_native_cbom.py"
       ]
     },
     {
@@ -207,12 +213,13 @@
       "id": "R1",
       "question": "How are FIPS203/204/205 and evolving FN-DSA/HQC standards handled?",
       "status": "PARTIAL",
-      "existing_surface": "Algorithm registry separates recognized/status values; nonapproved names cannot establish readiness.",
-      "boundary": "Algorithm recognition is not module validation; draft/selected/prestandard/final states need current authoritative review.",
+      "existing_surface": "Registry screens ML-KEM/ML-DSA/SLH-DSA families and full FIPS205 variants; FN-DSA/Falcon/HQC/McEliece do not receive automatic policy approval from draft/selected labels.",
+      "boundary": "No live NIST publication refresh or regulator interpretation was performed. Conservative registry status is not a claim about the latest legal publication state or implementation certification.",
       "acceptance_needed": "Record exact standard/revision/final status, implementation parameters and independent compatibility/validation evidence.",
       "source_refs": [
         "shared/shared_models/shared_models/algorithm_registry.py",
-        "services/cbom/cbom/banking.py"
+        "services/cbom/cbom/banking.py",
+        "shared/shared_models/tests/test_bank_pqc_parameters.py"
       ]
     },
     {
@@ -522,12 +529,15 @@
       "id": "G2",
       "question": "Can a comparable sample CBOM/report be shown?",
       "status": "PARTIAL",
-      "existing_surface": "Can produce clearly synthetic, verified-format sample exports.",
-      "boundary": "Synthetic examples are not comparable-bank case studies or permission to disclose customer evidence.",
+      "existing_surface": "A committed synthetic banking-like eight-record native1.6 CBOM and actual planning-engine report are reproducible locally.",
+      "boundary": "Synthetic supplied inputs are not a comparable customer engagement or scanner execution; no bank reference or independent discovery accuracy follows.",
       "acceptance_needed": "Consent-based comparable evidence or labeled synthetic six-BOM sample validated by the bank consumer.",
       "source_refs": [
         "services/cbom/cbom/export_service.py",
-        "services/cbom/tests/unit/test_export_service.py"
+        "services/cbom/tests/unit/test_export_service.py",
+        "docs/examples/bank-pqc-discovery/inputs.json",
+        "docs/examples/bank-pqc-discovery/cbom.cyclonedx16.json",
+        "docs/examples/bank-pqc-discovery/report.json"
       ]
     },
     {

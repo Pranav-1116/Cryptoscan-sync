@@ -48,6 +48,7 @@ UNKNOWN = "UNKNOWN"
 KEY_BITS = "key_bits"
 DIGEST_BITS = "digest_bits"
 CURVE_BITS = "curve_bits"
+PUBLIC_KEY_BYTES = "public_key_bytes"
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ class AlgorithmInfo:
     family: str  # block-cipher / stream-cipher / aead / hash / mac / pke / signature / key-agree / kdf
     status: str = UNKNOWN
     key_size: int | None = None
-    parameter_kind: str | None = None  # key_bits / digest_bits / curve_bits
+    parameter_kind: str | None = None  # key_bits / digest_bits / curve_bits / public_key_bytes
     mode: str | None = None
     allowed_key_sizes: tuple[int, ...] = ()
     min_key_size: int | None = None
@@ -184,13 +185,13 @@ _FAMILIES: dict[str, _Family] = {
     "X25519": _Family("X25519", "key-agree", ALLOWED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor"),
     "X448": _Family("X448", "key-agree", ALLOWED, key_size=448, parameter_kind=CURVE_BITS, quantum_impact="shor"),
     # -- post-quantum ------------------------------------------------------- #
-    "ML-KEM-512": _Family("ML-KEM-512", "kem-pqc", ALLOWED, key_size=800, parameter_kind=KEY_BITS, notes="FIPS 203 (Kyber) level 1"),
-    "ML-KEM-768": _Family("ML-KEM-768", "kem-pqc", ALLOWED, key_size=1184, parameter_kind=KEY_BITS, notes="FIPS 203 level 3"),
-    "ML-KEM-1024": _Family("ML-KEM-1024", "kem-pqc", ALLOWED, key_size=1568, parameter_kind=KEY_BITS, notes="FIPS 203 level 5"),
-    "ML-DSA-44": _Family("ML-DSA-44", "signature-pqc", ALLOWED, key_size=1312, parameter_kind=KEY_BITS, notes="FIPS 204 (Dilithium) level 2"),
-    "ML-DSA-65": _Family("ML-DSA-65", "signature-pqc", ALLOWED, key_size=1952, parameter_kind=KEY_BITS, notes="FIPS 204 level 3"),
-    "ML-DSA-87": _Family("ML-DSA-87", "signature-pqc", ALLOWED, key_size=2592, parameter_kind=KEY_BITS, notes="FIPS 204 level 5"),
-    "SLH-DSA-128S": _Family("SLH-DSA-128S", "signature-pqc", ALLOWED, key_size=64, parameter_kind=KEY_BITS, notes="FIPS 205 (SPHINCS+)"),
+    "ML-KEM-512": _Family("ML-KEM-512", "kem-pqc", ALLOWED, key_size=800, parameter_kind=PUBLIC_KEY_BYTES, notes="FIPS 203 (Kyber) level 1"),
+    "ML-KEM-768": _Family("ML-KEM-768", "kem-pqc", ALLOWED, key_size=1184, parameter_kind=PUBLIC_KEY_BYTES, notes="FIPS 203 level 3"),
+    "ML-KEM-1024": _Family("ML-KEM-1024", "kem-pqc", ALLOWED, key_size=1568, parameter_kind=PUBLIC_KEY_BYTES, notes="FIPS 203 level 5"),
+    "ML-DSA-44": _Family("ML-DSA-44", "signature-pqc", ALLOWED, key_size=1312, parameter_kind=PUBLIC_KEY_BYTES, notes="FIPS 204 (Dilithium) level 2"),
+    "ML-DSA-65": _Family("ML-DSA-65", "signature-pqc", ALLOWED, key_size=1952, parameter_kind=PUBLIC_KEY_BYTES, notes="FIPS 204 level 3"),
+    "ML-DSA-87": _Family("ML-DSA-87", "signature-pqc", ALLOWED, key_size=2592, parameter_kind=PUBLIC_KEY_BYTES, notes="FIPS 204 level 5"),
+    "SLH-DSA-128S": _Family("SLH-DSA-128S", "signature-pqc", ALLOWED, notes="Hash-unspecified legacy shorthand; exact SHA2/SHAKE variant and public-key size not established"),
     "KYBER": _Family("Kyber", "kem-pqc", RESTRICTED, notes="pre-standardization name — prefer ML-KEM"),
     # -- hybrid key exchange (RFC 10024 TLS groups / RFC 9370 IKEv2 / OpenSSH) --
     # Classical + PQ combined: quantum verdict is PQC_RESISTANT via the -pqc
@@ -281,16 +282,16 @@ _FAMILIES: dict[str, _Family] = {
     "BRAINPOOLP384R1": _Family("brainpoolP384r1", "ec-curve", RESTRICTED, key_size=384, parameter_kind=CURVE_BITS, quantum_impact="shor"),
     "FRP256V1": _Family("FRP256v1", "ec-curve", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="French ANSSI curve"),
     # -- additional post-quantum (NIST FIPS 203/204/205 + candidates) ----- #
-    "FN-DSA": _Family("FN-DSA (Falcon)", "signature-pqc", ALLOWED, notes="FIPS 206 / Falcon lattice signature (draft)"),
+    "FN-DSA": _Family("FN-DSA (Falcon)", "signature-pqc", RESTRICTED, notes="FN-DSA family; current final-standard/policy applicability review required; no approval inferred"),
     "SLH-DSA": _Family("SLH-DSA", "signature-pqc", ALLOWED, notes="FIPS 205 (SPHINCS+) stateless hash-based signature family"),
     # parameter-set-less family names are what scanners emit for most call sites (KEM.getInstance("ML-KEM"), MLKem.GenerateKey(...))
     "ML-KEM": _Family("ML-KEM", "kem-pqc", ALLOWED, notes="FIPS 203 (Kyber) key-encapsulation family"),
     "ML-DSA": _Family("ML-DSA", "signature-pqc", ALLOWED, notes="FIPS 204 (Dilithium) signature family"),
     "FALCON": _Family("FN-DSA (Falcon)", "signature-pqc", RESTRICTED, notes="FIPS 206 draft (FN-DSA); not yet final"),
-    "MCELIECE": _Family("Classic McEliece", "kem-pqc", ALLOWED, notes="NIST PQC round-4 KEM (code-based)"),
-    "HQC-128": _Family("HQC-128", "kem-pqc", RESTRICTED, key_size=3626, parameter_kind=KEY_BITS, notes="NIST-selected code-based KEM (2025), level 1"),
-    "HQC-192": _Family("HQC-192", "kem-pqc", RESTRICTED, key_size=7242, parameter_kind=KEY_BITS, notes="NIST-selected code-based KEM (2025), level 3"),
-    "HQC-256": _Family("HQC-256", "kem-pqc", RESTRICTED, key_size=14434, parameter_kind=KEY_BITS, notes="NIST-selected code-based KEM (2025), level 5"),
+    "MCELIECE": _Family("Classic McEliece", "kem-pqc", RESTRICTED, notes="NIST PQC round-4 KEM (code-based)"),
+    "HQC-128": _Family("HQC-128", "kem-pqc", RESTRICTED, key_size=3626, parameter_kind=PUBLIC_KEY_BYTES, notes="NIST-selected code-based KEM (2025), level 1"),
+    "HQC-192": _Family("HQC-192", "kem-pqc", RESTRICTED, key_size=7242, parameter_kind=PUBLIC_KEY_BYTES, notes="NIST-selected code-based KEM (2025), level 3"),
+    "HQC-256": _Family("HQC-256", "kem-pqc", RESTRICTED, key_size=14434, parameter_kind=PUBLIC_KEY_BYTES, notes="NIST-selected code-based KEM (2025), level 5"),
     "BIKE": _Family("BIKE", "kem-pqc", RESTRICTED, notes="NIST PQC round-4 KEM (code-based)"),
     "FRODOKEM": _Family("FrodoKEM", "kem-pqc", RESTRICTED, notes="conservative lattice KEM (high bandwidth)"),
     "NTRU": _Family("NTRU", "kem-pqc", RESTRICTED, notes="lattice KEM (legacy/commercial)"),
@@ -358,6 +359,17 @@ _FAMILIES: dict[str, _Family] = {
     "FF1": _Family("FF1", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), quantum_impact="grover", notes="NIST SP 800-38Gr2 format-preserving encryption (AES-based)"),
     "FF3-1": _Family("FF3-1", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), quantum_impact="grover", notes="NIST SP 800-38Gr2 format-preserving encryption"),
 }
+
+# FIPS205 defines twelve SHA2/SHAKE parameter sets, not merely a generic
+# SLH-DSA family. Public keys are2*n bytes: security-category names are NOT
+# public-key bit lengths. Recognition never certifies an implementation.
+for _hash in ("SHA2", "SHAKE"):
+    for _security, _public_bytes in ((128, 32), (192, 48), (256, 64)):
+        for _variant in ("s", "f"):
+            _name = f"SLH-DSA-{_hash}-{_security}{_variant}"
+            _FAMILIES[_name] = _Family(_name, "signature-pqc", ALLOWED,
+                key_size=_public_bytes, parameter_kind=PUBLIC_KEY_BYTES,
+                notes="FIPS205 parameter identity/public-key bytes; not implementation validation")
 
 # Aliases: normalized (upper, separators stripped) -> canonical family key.
 _ALIASES: dict[str, str] = {

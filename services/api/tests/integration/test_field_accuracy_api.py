@@ -150,3 +150,38 @@ async def test_field_accuracy_loop():
     from db.models.assurance import AssuranceRevision
     assert session.query(AssuranceRevision).filter_by(kind="legacy_triage").count() == 2
     session.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("workbook", [{"findings": "bad"}, {"findings": [None]}, {"findings": [{"file": "x", "verdict": "MAYBE"}]}])
+async def test_invalid_bank_workbook_returns422_not500_or_silent_unreviewed(workbook):
+    app, session = _make_app()
+    _scan(session, "invalid-review", "synthetic://review")
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            _act_as(client, session, "reviewer", "security_analyst")
+            response = await client.post("/api/v1/scans/invalid-review/triage", json={"workbook": workbook})
+            assert response.status_code == 422, response.text
+            assert "field_triage" not in (session.get(Scan, "invalid-review").statistics or {})
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+async def test_fp_only_review_does_not_publish_perfect_recall_or_measured_fpr():
+    app, session = _make_app()
+    _scan(session, "fp-review", "synthetic://review")
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            _act_as(client, session, "reviewer", "security_analyst")
+            response = await client.post("/api/v1/scans/fp-review/triage", json={"workbook": {
+                "findings": [{"file": "x.py", "algorithm": "RSA", "verdict": "FP"}]}})
+            assert response.status_code == 201, response.text
+            assert response.json()["precision"] == 0.0
+            assert response.json()["recall"] is None
+            result = (await client.get("/api/v1/accuracy/field")).json()
+            assert result["recall"] is None and result["false_positive_rate"] is None
+            assert result["precision_denominator"] == 1 and result["recall_denominator"] == 0
+            assert result["global_accuracy_claim"] is False
+    finally:
+        session.close()

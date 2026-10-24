@@ -1,0 +1,459 @@
+FFFFFFFFFFFFFFFFFFFFFFF.............................FFF                  [100%]
+=================================== FAILURES ===================================
+__ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-KEM-512-800] ___
+
+name = 'ML-KEM-512', size = 800
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+__ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-KEM-768-1184] __
+
+name = 'ML-KEM-768', size = 1184
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+_ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-KEM-1024-1568] __
+
+name = 'ML-KEM-1024', size = 1568
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+__ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-DSA-44-1312] ___
+
+name = 'ML-DSA-44', size = 1312
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+__ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-DSA-65-1952] ___
+
+name = 'ML-DSA-65', size = 1952
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+__ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-DSA-87-2592] ___
+
+name = 'ML-DSA-87', size = 2592
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+___ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[HQC-128-3626] ____
+
+name = 'HQC-128', size = 3626
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+___ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[HQC-192-7242] ____
+
+name = 'HQC-192', size = 7242
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+___ test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[HQC-256-14434] ___
+
+name = 'HQC-256', size = 14434
+
+    @pytest.mark.parametrize("name,size", [
+        ("ML-KEM-512", 800), ("ML-KEM-768", 1184), ("ML-KEM-1024", 1568),
+        ("ML-DSA-44", 1312), ("ML-DSA-65", 1952), ("ML-DSA-87", 2592),
+        ("HQC-128", 3626), ("HQC-192", 7242), ("HQC-256", 14434),
+    ])
+    def test_existing_pqc_sizes_are_public_key_bytes_not_key_bits(name, size):
+        info = parse_algorithm(name)
+        assert info.key_size == size
+>       assert info.parameter_kind == "public_key_bytes"
+E       AssertionError: assert 'key_bits' == 'public_key_bytes'
+E
+E         - public_key_bytes
+E         + key_bits
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:14: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-128-32-SHA2] _
+
+hash_family = 'SHA2', security = 128, size = 32, variant = 's'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHA2-128s', canonical='SLH-DSA-SHA2-128s', family='unknown', status='UNKNOWN', key_size=Non...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-128-32-SHAKE] _
+
+hash_family = 'SHAKE', security = 128, size = 32, variant = 's'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHAKE-128s', canonical='SLH-DSA-SHAKE-128s', family='unknown', status='UNKNOWN', key_size=1...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-192-48-SHA2] _
+
+hash_family = 'SHA2', security = 192, size = 48, variant = 's'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHA2-192s', canonical='SLH-DSA-SHA2-192s', family='unknown', status='UNKNOWN', key_size=Non...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-192-48-SHAKE] _
+
+hash_family = 'SHAKE', security = 192, size = 48, variant = 's'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHAKE-192s', canonical='SLH-DSA-SHAKE-192s', family='unknown', status='UNKNOWN', key_size=1...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-256-64-SHA2] _
+
+hash_family = 'SHA2', security = 256, size = 64, variant = 's'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHA2-256s', canonical='SLH-DSA-SHA2-256s', family='unknown', status='UNKNOWN', key_size=Non...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-256-64-SHAKE] _
+
+hash_family = 'SHAKE', security = 256, size = 64, variant = 's'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHAKE-256s', canonical='SLH-DSA-SHAKE-256s', family='unknown', status='UNKNOWN', key_size=2...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-128-32-SHA2] _
+
+hash_family = 'SHA2', security = 128, size = 32, variant = 'f'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHA2-128f', canonical='SLH-DSA-SHA2-128f', family='unknown', status='UNKNOWN', key_size=Non...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-128-32-SHAKE] _
+
+hash_family = 'SHAKE', security = 128, size = 32, variant = 'f'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHAKE-128f', canonical='SLH-DSA-SHAKE-128f', family='unknown', status='UNKNOWN', key_size=1...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-192-48-SHA2] _
+
+hash_family = 'SHA2', security = 192, size = 48, variant = 'f'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHA2-192f', canonical='SLH-DSA-SHA2-192f', family='unknown', status='UNKNOWN', key_size=Non...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-192-48-SHAKE] _
+
+hash_family = 'SHAKE', security = 192, size = 48, variant = 'f'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHAKE-192f', canonical='SLH-DSA-SHAKE-192f', family='unknown', status='UNKNOWN', key_size=1...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-256-64-SHA2] _
+
+hash_family = 'SHA2', security = 256, size = 64, variant = 'f'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHA2-256f', canonical='SLH-DSA-SHA2-256f', family='unknown', status='UNKNOWN', key_size=Non...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-256-64-SHAKE] _
+
+hash_family = 'SHAKE', security = 256, size = 64, variant = 'f'
+
+    @pytest.mark.parametrize("hash_family", ["SHA2", "SHAKE"])
+    @pytest.mark.parametrize("security,size", [(128, 32), (192, 48), (256, 64)])
+    @pytest.mark.parametrize("variant", ["s", "f"])
+    def test_all_twelve_fips205_parameter_sets_are_exactly_recognized(hash_family, security, size, variant):
+        name = f"SLH-DSA-{hash_family}-{security}{variant}"
+        info = parse_algorithm(name)
+>       assert info.recognized is True
+E       AssertionError: assert False is True
+E        +  where False = AlgorithmInfo(raw='SLH-DSA-SHAKE-256f', canonical='SLH-DSA-SHAKE-256f', family='unknown', status='UNKNOWN', key_size=2...min_key_size=None, quantum_impact=None, notes='no catalog match — needs human review', components=(), recognized=False).recognized
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:23: AssertionError
+_ test_draft_selected_or_legacy_names_do_not_get_automatic_policy_approval[FN-DSA] _
+
+name = 'FN-DSA'
+
+    @pytest.mark.parametrize("name", ["FN-DSA", "FN-DSA-512", "Falcon-512", "HQC-128"])
+    def test_draft_selected_or_legacy_names_do_not_get_automatic_policy_approval(name):
+>       assert parse_algorithm(name).status != "ALLOWED"
+E       AssertionError: assert 'ALLOWED' != 'ALLOWED'
+E        +  where 'ALLOWED' = AlgorithmInfo(raw='FN-DSA', canonical='FN-DSA (Falcon)', family='signature-pqc', status='ALLOWED', key_size=None, para...ey_size=None, quantum_impact=None, notes='FIPS 206 / Falcon lattice signature (draft)', components=(), recognized=True).status
+E        +    where AlgorithmInfo(raw='FN-DSA', canonical='FN-DSA (Falcon)', family='signature-pqc', status='ALLOWED', key_size=None, para...ey_size=None, quantum_impact=None, notes='FIPS 206 / Falcon lattice signature (draft)', components=(), recognized=True) = parse_algorithm('FN-DSA')
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:32: AssertionError
+_ test_draft_selected_or_legacy_names_do_not_get_automatic_policy_approval[FN-DSA-512] _
+
+name = 'FN-DSA-512'
+
+    @pytest.mark.parametrize("name", ["FN-DSA", "FN-DSA-512", "Falcon-512", "HQC-128"])
+    def test_draft_selected_or_legacy_names_do_not_get_automatic_policy_approval(name):
+>       assert parse_algorithm(name).status != "ALLOWED"
+E       AssertionError: assert 'ALLOWED' != 'ALLOWED'
+E        +  where 'ALLOWED' = AlgorithmInfo(raw='FN-DSA-512', canonical='FN-DSA (Falcon)', family='signature-pqc', status='ALLOWED', key_size=None, ...ey_size=None, quantum_impact=None, notes='FIPS 206 / Falcon lattice signature (draft)', components=(), recognized=True).status
+E        +    where AlgorithmInfo(raw='FN-DSA-512', canonical='FN-DSA (Falcon)', family='signature-pqc', status='ALLOWED', key_size=None, ...ey_size=None, quantum_impact=None, notes='FIPS 206 / Falcon lattice signature (draft)', components=(), recognized=True) = parse_algorithm('FN-DSA-512')
+
+shared/shared_models/tests/test_bank_pqc_parameters.py:32: AssertionError
+_ test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths[ML-KEM-768-1184-768] _
+
+name = 'ML-KEM-768', reported_size = 1184, parameter_set = '768'
+
+    @pytest.mark.parametrize("name,reported_size,parameter_set", [
+        ("ML-KEM-768", 1184, "768"), ("ML-DSA-65", 1952, "65"),
+        ("SLH-DSA-SHA2-128s", 32, "SHA2-128s"),
+    ])
+    def test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths(name, reported_size, parameter_set):
+        bom = CbomGenerator().from_records([{"id": "pqc", "algorithm": name, "key_size": reported_size}], spec_version="1.6")
+        algorithm = bom["components"][0]["cryptoProperties"]["algorithmProperties"]
+>       assert algorithm["parameterSetIdentifier"] == parameter_set
+E       AssertionError: assert '1184' == '768'
+E
+E         - 768
+E         + 1184
+
+services/cbom/tests/test_cyclonedx16.py:163: AssertionError
+_ test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths[ML-DSA-65-1952-65] _
+
+name = 'ML-DSA-65', reported_size = 1952, parameter_set = '65'
+
+    @pytest.mark.parametrize("name,reported_size,parameter_set", [
+        ("ML-KEM-768", 1184, "768"), ("ML-DSA-65", 1952, "65"),
+        ("SLH-DSA-SHA2-128s", 32, "SHA2-128s"),
+    ])
+    def test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths(name, reported_size, parameter_set):
+        bom = CbomGenerator().from_records([{"id": "pqc", "algorithm": name, "key_size": reported_size}], spec_version="1.6")
+        algorithm = bom["components"][0]["cryptoProperties"]["algorithmProperties"]
+>       assert algorithm["parameterSetIdentifier"] == parameter_set
+E       AssertionError: assert '1952' == '65'
+E
+E         - 65
+E         + 1952
+
+services/cbom/tests/test_cyclonedx16.py:163: AssertionError
+_ test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths[SLH-DSA-SHA2-128s-32-SHA2-128s] _
+
+name = 'SLH-DSA-SHA2-128s', reported_size = 32, parameter_set = 'SHA2-128s'
+
+    @pytest.mark.parametrize("name,reported_size,parameter_set", [
+        ("ML-KEM-768", 1184, "768"), ("ML-DSA-65", 1952, "65"),
+        ("SLH-DSA-SHA2-128s", 32, "SHA2-128s"),
+    ])
+    def test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths(name, reported_size, parameter_set):
+        bom = CbomGenerator().from_records([{"id": "pqc", "algorithm": name, "key_size": reported_size}], spec_version="1.6")
+        algorithm = bom["components"][0]["cryptoProperties"]["algorithmProperties"]
+>       assert algorithm["parameterSetIdentifier"] == parameter_set
+E       AssertionError: assert '32' == 'SHA2-128s'
+E
+E         - SHA2-128s
+E         + 32
+
+services/cbom/tests/test_cyclonedx16.py:163: AssertionError
+=========================== short test summary info ============================
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-KEM-512-800]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-KEM-768-1184]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-KEM-1024-1568]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-DSA-44-1312]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-DSA-65-1952]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[ML-DSA-87-2592]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[HQC-128-3626]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[HQC-192-7242]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_existing_pqc_sizes_are_public_key_bytes_not_key_bits[HQC-256-14434]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-128-32-SHA2]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-128-32-SHAKE]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-192-48-SHA2]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-192-48-SHAKE]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-256-64-SHA2]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[s-256-64-SHAKE]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-128-32-SHA2]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-128-32-SHAKE]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-192-48-SHA2]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-192-48-SHAKE]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-256-64-SHA2]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_all_twelve_fips205_parameter_sets_are_exactly_recognized[f-256-64-SHAKE]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_draft_selected_or_legacy_names_do_not_get_automatic_policy_approval[FN-DSA]
+FAILED shared/shared_models/tests/test_bank_pqc_parameters.py::test_draft_selected_or_legacy_names_do_not_get_automatic_policy_approval[FN-DSA-512]
+FAILED services/cbom/tests/test_cyclonedx16.py::test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths[ML-KEM-768-1184-768]
+FAILED services/cbom/tests/test_cyclonedx16.py::test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths[ML-DSA-65-1952-65]
+FAILED services/cbom/tests/test_cyclonedx16.py::test_pqc_parameter_identifiers_are_not_serialized_public_key_lengths[SLH-DSA-SHA2-128s-32-SHA2-128s]
+26 failed, 29 passed in 0.44s

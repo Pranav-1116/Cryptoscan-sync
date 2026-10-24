@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 import csv
 import io
@@ -148,6 +149,8 @@ def export_verification_script(
 @router.get("/scans/{scan_id}/cbom")
 def export_cbom(
     scan_id: str,
+    spec_version: Literal["1.5", "1.6"] = "1.5",
+    db: Session = Depends(get_db_session),
     user: str = Depends(get_current_user),
     ctx: TenantContext = Depends(history_context),
     scans: ScanRepository = Depends(get_scan_repository),
@@ -156,7 +159,18 @@ def export_cbom(
     scan = scans.get_by_id(scan_id)
     if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
         raise HTTPException(status_code=404, detail="Scan not found")
+    refused = export_refused_reason(db, scan_id)
+    if refused:
+        raise HTTPException(status_code=409, detail=refused)
     rows = evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id)
+    if spec_version == "1.6":
+        from cbom.generator import CbomGenerator
+        try:
+            return CbomGenerator().from_records(rows, name=scan.target_location,
+                version=scan.target_commit or scan.target_branch or "unknown",
+                tool_version=scan.scanner_version or "unknown", scan_id=scan.id, spec_version="1.6")
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Native CBOM export failed schema/reference validation") from exc
     components = []
     for row in rows:
         normalized = row.normalized_crypto or {}

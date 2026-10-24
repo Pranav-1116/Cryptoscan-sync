@@ -42,9 +42,9 @@ class LanguageScore(BaseModel):
     tp: int = 0
     fp: int = 0
     fn: int = 0
-    precision: float = 1.0
-    recall: float = 1.0
-    f1: float = 1.0
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+    f1: Optional[float] = None
 
 
 class TriageResult(BaseModel):
@@ -61,20 +61,38 @@ class TriageResult(BaseModel):
     tp: int = 0
     fp: int = 0
     fn: int = 0
-    precision: float = 1.0
-    recall: float = 1.0
-    f1: float = 1.0
+    precision: Optional[float] = None
+    recall: Optional[float] = None
+    f1: Optional[float] = None
     by_language: list[LanguageScore] = Field(default_factory=list)
     fp_examples: list[dict[str, Any]] = Field(default_factory=list, description="up to 20 {file, algorithm, note} — what the bank rejected")
     fn_examples: list[dict[str, Any]] = Field(default_factory=list, description="up to 20 {file, expected, note} — what the scanner missed")
     notes: Optional[str] = None
 
 
-def _prf(tp: int, fp: int, fn: int) -> tuple[float, float, float]:
-    p = tp / (tp + fp) if tp + fp else 1.0
-    r = tp / (tp + fn) if tp + fn else 1.0
-    f = 2 * p * r / (p + r) if p + r else 0.0
-    return round(p, 4), round(r, 4), round(f, 4)
+def _prf(tp: int, fp: int, fn: int) -> tuple[float | None, float | None, float | None]:
+    # No denominator means NOT MEASURED, not perfect accuracy.
+    p = round(tp / (tp + fp), 4) if tp + fp else None
+    r = round(tp / (tp + fn), 4) if tp + fn else None
+    f = round(2 * tp / (2 * tp + fp + fn), 4) if 2 * tp + fp + fn else None
+    return p, r, f
+
+
+def _validate_workbook(wb: Any) -> None:
+    if not isinstance(wb, dict):
+        raise ValueError("workbook must be an object")
+    for field, verdicts in (("findings", {"", "TP", "FP"}), ("candidate_misses", {"", "FN", "OK"})):
+        rows = wb.get(field, [])
+        if not isinstance(rows, list):
+            raise ValueError(f"{field} must be a list")
+        for row in rows:
+            if not isinstance(row, dict) or not isinstance(row.get("file"), str) or not row["file"].strip():
+                raise ValueError(f"{field} requires an object with a nonempty file")
+            if str(row.get("verdict") or "").strip().upper() not in verdicts:
+                raise ValueError(f"invalid verdict for {field}")
+            if "expected" in row and (not isinstance(row["expected"], list) or not row["expected"]
+                    or any(not isinstance(x, str) or not x.strip() for x in row["expected"])):
+                raise ValueError("expected must be a nonempty list of algorithm families")
 
 
 def score_workbook(wb: dict[str, Any], *, reviewer: str | None = None, notes: str | None = None) -> TriageResult:
@@ -83,6 +101,7 @@ def score_workbook(wb: dict[str, Any], *, reviewer: str | None = None, notes: st
     Workbook: {"repo", "files_scanned"?, "scanner_version"?, "findings": [{file, algorithm, verdict: TP|FP|""}],
     "candidate_misses": [{file, verdict: FN|OK|"", expected?: [families]}]}.
     """
+    _validate_workbook(wb)
     tp_by_file: dict[str, set[str]] = defaultdict(set)
     fp_by_file: dict[str, set[str]] = defaultdict(set)
     fn_by_file: dict[str, set[str]] = {}
@@ -138,6 +157,11 @@ def score_workbook(wb: dict[str, Any], *, reviewer: str | None = None, notes: st
 class FieldAccuracy(BaseModel):
     """Pooled field number across every published triage (what BANK-READINESS cites)."""
 
+    metric_scope: str = "REVIEWED_FILE_ALGORITHM_UNITS_NOT_ESTATE_COMPLETENESS"
+    false_positive_rate: Optional[float] = None  # FP/(FP+TN): no TN denominator in legacy workbooks
+    false_negative_rate: Optional[float] = None
+    precision_denominator: int = 0
+    recall_denominator: int = 0
     measurement_basis: str = "LEGACY_SUBMITTED_TRIAGE_NOT_APPROVED_FROZEN_SAMPLE"
     approved_customer_sample: bool = False
     global_accuracy_claim: bool = False
@@ -155,7 +179,7 @@ class FieldAccuracy(BaseModel):
     worst_languages: list[str] = Field(default_factory=list, description="languages with F1 < 0.95 and ≥ 10 reviewed families")
     corpus_f1: Optional[float] = Field(None, description="the corpus benchmark's F1 for comparison, when supplied")
     gap: Optional[float] = Field(None, description="corpus_f1 − field f1 (positive = the corpus is flattering)")
-    status: str = Field("NO_FIELD_DATA", description="NO_FIELD_DATA | MEASURED")
+    status: str = Field("NO_FIELD_DATA", description="NO_FIELD_DATA | NO_REVIEWED_UNITS | MEASURED")
 
 
 def aggregate(results: list[TriageResult], *, corpus_f1: float | None = None) -> FieldAccuracy:
@@ -175,11 +199,14 @@ def aggregate(results: list[TriageResult], *, corpus_f1: float | None = None) ->
     for lang, (ltp, lfp, lfn) in sorted(per_lang.items()):
         lp, lr, lf = _prf(ltp, lfp, lfn)
         langs.append(LanguageScore(language=lang, tp=ltp, fp=lfp, fn=lfn, precision=lp, recall=lr, f1=lf))
-        if lf < 0.95 and ltp + lfp + lfn >= 10:
+        if lf is not None and lf < 0.95 and ltp + lfp + lfn >= 10:
             worst.append(lang)
     return FieldAccuracy(
         triages=len(results), repos=len({t.repo for t in results}), reviewers=len({t.reviewer for t in results if t.reviewer}),
         files_scanned=sum(t.files_scanned for t in results), tp=tp, fp=fp, fn=fn, precision=p, recall=r, f1=f1,
         by_language=langs, worst_languages=worst, corpus_f1=corpus_f1,
-        gap=round(corpus_f1 - f1, 4) if corpus_f1 is not None else None, status="MEASURED",
+        gap=round(corpus_f1 - f1, 4) if corpus_f1 is not None and f1 is not None else None,
+        false_negative_rate=round(fn / (tp + fn), 4) if tp + fn else None,
+        precision_denominator=tp + fp, recall_denominator=tp + fn,
+        status="MEASURED" if tp + fp + fn else "NO_REVIEWED_UNITS",
     )

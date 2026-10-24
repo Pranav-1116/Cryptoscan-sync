@@ -200,6 +200,10 @@ def _markdown(wb: dict) -> str:
     return "\n".join(L) + "\n"
 
 
+def _metric(value: float | None, digits: int = 3) -> str:
+    return "NOT_MEASURED" if value is None else f"{value:.{digits}f}"
+
+
 def _score_shared(wb: dict, args: argparse.Namespace):
     """Score with the shared field-accuracy model (same code the API runs) and optionally write the TriageResult."""
     sys.path.insert(0, str(ROOT / "shared" / "shared_models"))
@@ -210,7 +214,7 @@ def _score_shared(wb: dict, args: argparse.Namespace):
         Path(args.json_out).write_text(result.model_dump_json(indent=2))
         print(f"wrote scored TriageResult -> {args.json_out}  (publish: bank_triage.py publish {args.json_out} --scan-id <id> --api <url>)")
     if result.by_language:
-        print("per language: " + ", ".join(f"{l.language} P={l.precision:.2f} R={l.recall:.2f} (n={l.tp + l.fp + l.fn})" for l in result.by_language))
+        print("per language: " + ", ".join(f"{l.language} P={_metric(l.precision, 2)} R={_metric(l.recall, 2)} (n={l.tp + l.fp + l.fn})" for l in result.by_language))
     return result
 
 
@@ -226,13 +230,13 @@ def cmd_publish(args: argparse.Namespace) -> int:
                                           **({"Authorization": f"Bearer {args.token}"} if args.token else {})})
     with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 — operator-supplied URL
         out = json.loads(resp.read())
-    print(f"published: precision={out['precision']:.3f} recall={out['recall']:.3f} f1={out['f1']:.3f} on scan {args.scan_id}")
+    print(f"published: precision={_metric(out['precision'])} recall={_metric(out['recall'])} f1={_metric(out['f1'])} on scan {args.scan_id}")
     return 0
 
 
 def cmd_score(args: argparse.Namespace) -> int:
     wb = json.loads(Path(args.workbook).read_text())
-    _score_shared(wb, args)
+    result = _score_shared(wb, args)
     per_file_tp = collections.defaultdict(set)
     per_file_fp = collections.defaultdict(set)
     unreviewed = 0
@@ -251,14 +255,9 @@ def cmd_score(args: argparse.Namespace) -> int:
             fn_files[m["file"]] = set(m.get("expected") or ["UNKNOWN"])
         elif v not in ("OK", "FN"):
             unreviewed += 1
-    tp = sum(len(v) for v in per_file_tp.values())
-    fp = sum(len(v - per_file_tp[k]) for k, v in per_file_fp.items())
-    fn = sum(len(v) for v in fn_files.values())
-    prec = tp / (tp + fp) if tp + fp else 1.0
-    rec = tp / (tp + fn) if tp + fn else 1.0
-    f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0.0
-    print(f"reviewed: TP={tp} FP={fp} FN={fn} (unreviewed rows={unreviewed})")
-    print(f"precision={prec:.3f} recall={rec:.3f} f1={f1:.3f}   (per file × algorithm family, same unit as the corpus benchmark)")
+    print(f"reviewed: TP={result.tp} FP={result.fp} FN={result.fn} (unreviewed rows={result.unreviewed})")
+    print(f"precision={_metric(result.precision)} recall={_metric(result.recall)} f1={_metric(result.f1)}   "
+          "(reviewed file × algorithm units only; not an estate-wide false-positive/false-negative rate)")
     if args.corpus_out:
         cases = []
         for k, v in per_file_fp.items():

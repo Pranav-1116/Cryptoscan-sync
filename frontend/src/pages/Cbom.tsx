@@ -206,7 +206,7 @@ export default function Cbom() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
         <div>
           <div style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            CycloneDX 1.5 Cryptographic Specification
+            CycloneDX 1.6 JSON · schema-validated metadata
           </div>
           <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Cryptographic Bill of Materials</h1>
           <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
@@ -216,12 +216,12 @@ export default function Cbom() {
 
         <div style={{ display: "flex", gap: "10px" }}>
           <AuthenticatedDownload
-            path="/api/v1/cbom"
-            filename="cryptoscan-cbom.json"
+            path="/api/v1/cbom/portfolio?fmt=cyclonedx16"
+            filename="cryptoscan-cbom-1.6.json"
             className="btn outline"
             style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
-            Export CycloneDX 1.5 JSON
+            Export CycloneDX 1.6 JSON
           </AuthenticatedDownload>
           <Link
             to="/dependency-graph"

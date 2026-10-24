@@ -157,7 +157,7 @@ def test_plan_mosca_honest_without_retention_data():
 
 def test_plan_summary_and_version():
     plan = build_migration_plan(_findings(), systems=_systems(), today=date(2026, 8, 28))
-    assert "3 of 5 sites quantum-vulnerable" in plan["summary"]
+    assert "3 of 5 sites are migration-review candidates" in plan["summary"]
     assert plan["calculation_version"].endswith("+plan")
     # risk report stays intact underneath
     report = analyze_quantum_risk(_findings(), systems=_systems(), today=date(2026, 8, 28))
@@ -191,3 +191,17 @@ def test_cli_risk_report_by_default(tmp_path, capsys):
     assert cli_main([str(path)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert "overall_hndl_risk" in result and "assets" in result
+
+
+def test_summary_does_not_label_classically_weak_migration_sites_as_all_shor():
+    result = build_migration_plan([{"id": "legacy", "algorithm": "3DES"}])
+    assert result["inventory"]["by_threat_type"] == {"CLASSICALLY_BROKEN": 1}
+    assert "migration-review" in result["summary"]
+
+
+def test_mosca_human_explanation_is_also_an_assumption_not_a_forecast():
+    from datetime import date
+    from quantum.plan import mosca
+    result = mosca(retention_years=12, migration_years=None, today=date(2026, 10, 24), threat_year=2030)
+    assert "assumption" in result["explanation"].lower()
+    assert "estimated CRQC arrival" not in result["explanation"]

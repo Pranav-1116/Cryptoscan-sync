@@ -1,4 +1,4 @@
-"""CycloneDX 1.5 Cryptographic Bill of Materials generator."""
+"""Legacy1.5 CryptoScan exports and explicit native CycloneDX1.6 JSON profile."""
 
 from __future__ import annotations
 
@@ -44,7 +44,10 @@ class CbomGenerator:
         dependencies: list[dict[str, Any]] | None = None,
         metadata_properties: list[dict[str, Any]] | None = None,
         scan_id: str | None = None,
+        spec_version: str = "1.5",
     ) -> dict[str, Any]:
+        if spec_version not in {"1.5", "1.6"}:
+            raise ValueError("Only legacy1.5 and native1.6 JSON exports are supported")
         components = [self._component(record) for record in records]
         metadata: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -113,9 +116,15 @@ class CbomGenerator:
                     "dependsOn": [str(item.get("bom-ref")) for item in components if item.get("bom-ref")],
                 }
             ]
+        if spec_version == "1.6":
+            from cbom.cyclonedx16 import to_cyclonedx16
+            return to_cyclonedx16(bom, omit_inventory_dependencies=dependencies is None)
         return bom
 
     def validate(self, bom: dict[str, Any]) -> dict[str, Any]:
+        if bom.get("specVersion") == "1.6":
+            from cbom.cyclonedx16 import validate_cyclonedx16
+            return validate_cyclonedx16(bom)
         errors: list[str] = []
         if bom.get("bomFormat") != "CycloneDX":
             errors.append("bomFormat must be CycloneDX")
@@ -138,6 +147,8 @@ class CbomGenerator:
         cryptoProperties (assetType/oid/nistDesignation/quantumVulnerable/
         primitive), evidence, metadata properties (incl. cryptoscan:jws),
         dependencies and vulnerabilities."""
+        if bom.get("specVersion") == "1.6":
+            raise ValueError("Native CycloneDX1.6 export supports JSON only; legacy XML cannot serialize it")
         root = Element("bom")
         root.set("xmlns", "http://cyclonedx.org/schema/bom/1.5")
         root.set("version", str(bom.get("version") or 1))

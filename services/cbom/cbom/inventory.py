@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from collections import Counter
 from typing import Any
 
@@ -166,6 +168,9 @@ def search_records(records: list[Any], query: str, *, limit: int = 200) -> list[
 
 
 def validate_document(bom: Any) -> dict[str, Any]:
+    if isinstance(bom, dict) and bom.get("specVersion") == "1.6":
+        from cbom.cyclonedx16 import validate_cyclonedx16
+        return validate_cyclonedx16(bom)
     errors: list[str] = []
     if not isinstance(bom, dict):
         return {"ok": False, "errors": ["body must be a CycloneDX object"]}
@@ -200,8 +205,15 @@ def records_from_bom(bom: dict[str, Any]) -> list[dict[str, Any]]:
         location = evidence.get("file") or first.get("location") or first.get("file")
         line = evidence.get("line") if evidence.get("line") is not None else first.get("line")
         name = str(component.get("name") or "UNKNOWN")
-        algorithm = str(algo_props.get("algorithm") or name)
+        profile_props = {p.get("name"): p.get("value") for p in component.get("properties", []) if isinstance(p, dict)}
+        algorithm = str(algo_props.get("algorithm") or profile_props.get("cryptoscan:reported_algorithm") or name)
         key_size = _as_int(algo_props.get("parameterSetIdentifier") or algo_props.get("parameterSet"))
+        pqc_parameter = False
+        if bom.get("specVersion") == "1.6":
+            from shared_models.algorithm_registry import parse_algorithm
+            pqc_parameter = parse_algorithm(algorithm).family in {"kem-pqc", "signature-pqc", "kem-hybrid-pqc"}
+            if pqc_parameter:
+                key_size = _as_int(profile_props.get("cryptoscan:reported_key_size"))
         records.append(
             {
                 "id": component.get("bom-ref") or component.get("bomRef"),
@@ -223,6 +235,25 @@ def records_from_bom(bom: dict[str, Any]) -> list[dict[str, Any]]:
                 "cryptoProperties": props or None,
             }
         )
+        if pqc_parameter:
+            records[-1]["parameter_set_identifier"] = algo_props.get("parameterSetIdentifier")
+            records[-1]["key_size_basis"] = "REPORTED_UNIT_NOT_ESTABLISHED"
+        from cbom.cyclonedx16 import CONTEXT_FIELDS
+        contexts = []
+        for prop in component.get("properties", []):
+            if prop.get("name") == "cryptoscan:business_context":
+                try:
+                    context = json.loads(prop["value"])
+                    if isinstance(context, dict):
+                        contexts.append({k: v for k, v in context.items() if k in CONTEXT_FIELDS})
+                except (ValueError, TypeError):
+                    pass  # malformed contextual declaration never becomes verified context
+        if contexts:
+            records[-1]["business_contexts"] = contexts
+        for field in CONTEXT_FIELDS:
+            value = profile_props.get(f"cryptoscan:{field}")
+            if value is not None and len(contexts) <= 1:
+                records[-1][field] = _as_int(value) if field == "retention_years" else value
     return records
 
 

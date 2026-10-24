@@ -113,3 +113,9 @@ independent RC review and required release CI remain open; no SLA/readiness clai
 map all45 original questions plus12 missing controls, with source references and
 actual remaining acceptance.648 selected Python/548 frontend tests pass locally;
 no bank readiness, corporate certification, new collector or SLA is inferred.
+
+## Original45 bank questions — implementation follow-up (2026-10-24)
+
+- [Executed implementation and regression results](bank-original45-2026-10-24.md)
+- [Every original question and remaining engineering/acceptance work](../operations/bank-original45-engineering-gaps.md)
+- [Synthetic native CycloneDX1.6 CBOM and report](../examples/bank-pqc-discovery/README.md)

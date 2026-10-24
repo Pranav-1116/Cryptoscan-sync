@@ -110,8 +110,8 @@ This register does not accept self-entered QUALIFIED status as evidence.
 
 **Status: PARTIAL.**
 
-- **Existing surface:** Cohort-specific accuracy review and benchmark tooling.
-- **Honest boundary:** No universal rate: precision/recall require labeled representative positives and negatives and known sampling limits.
+- **Existing surface:** Existing approved/frozen sample workflow plus corrected legacy triage denominators, explicit unmeasured metrics, validated workbooks and consistent CLI scoring.
+- **Honest boundary:** Reviewed file/algorithm units are not all-bank recall. No true-negative denominator is supplied by legacy workbooks, so no false-positive rate is claimed. Existing separate corpus evaluator conventions are not globally requalified.
 - **Acceptance still required:** Bank-agreed corpus/version/method, confusion matrix, missed classes, confidence intervals and independent retest.
 - **Source navigation, not proof:** [accuracy.py](../../services/api/api/assurance/accuracy.py) · [accuracy_benchmark.py](../../scripts/accuracy_benchmark.py)
 
@@ -119,8 +119,8 @@ This register does not accept self-entered QUALIFIED status as evidence.
 
 **Status: PARTIAL.**
 
-- **Existing surface:** Shared algorithm registry/classifier plus purpose-aware risk screening.
-- **Honest boundary:** Algorithm properties are not correct implementation, policy compliance, complete discovery or deployed readiness. Unknown is not safe.
+- **Existing surface:** Shared classifier plus explicit PQC public-key byte units, native FIPS parameter-set identifiers and all twelve full SLH-DSA parameter names.
+- **Honest boundary:** Algorithm recognition and catalog sizes are not observed key usage, implementation correctness, module validation or global current-policy approval. Legacy input key_size units remain unverified for PQC.
 - **Acceptance still required:** Known/unknown/alias/suite/key-size fixtures and independently checked observations for the bank workload.
 - **Source navigation, not proof:** [algorithm_registry.py](../../shared/shared_models/shared_models/algorithm_registry.py) · [quantum_classify.py](../../shared/shared_models/shared_models/quantum_classify.py) · [test_bank_vendor_questionnaire_boundaries.py](../../services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py)
 
@@ -139,8 +139,8 @@ This register does not accept self-entered QUALIFIED status as evidence.
 
 **Status: PARTIAL.**
 
-- **Existing surface:** CBOM generator and validated export pipeline; distinct SBOM/CBOM/NBOM/TechBOM/HBOM/VBOM.
-- **Honest boundary:** A syntactically valid CycloneDX document or signature is not accurate/comprehensive data. Do not relabel the six BOMs.
+- **Existing surface:** Legacy compatibility exporters plus native CycloneDX1.6 JSON with pinned full upstream schema, offline validation and local reference integrity.
+- **Honest boundary:** Native1.6 is an allowlisted metadata profile, JSON only; not lossless arbitrary-document conversion. Legacy1.5 JSON/XML are not newly standard-qualified. Schema validity is not bank or third-party tooling acceptance.
 - **Acceptance still required:** Validate requested schema/version and all six semantics; customer import round trip, provenance, unsupported fields and signing trust.
 - **Source navigation, not proof:** [generator.py](../../services/cbom/cbom/generator.py) · [export_service.py](../../services/cbom/cbom/export_service.py) · [test_six_bom_current_evidence.py](../../services/api/tests/unit/test_six_bom_current_evidence.py)
 
@@ -166,8 +166,8 @@ This register does not accept self-entered QUALIFIED status as evidence.
 
 **Status: PARTIAL.**
 
-- **Existing surface:** Existing system/business links, ownership and estate registers.
-- **Honest boundary:** Missing mappings remain gaps; imported owner names do not appoint accountable responders.
+- **Existing surface:** Existing business-system links plus native export of supplied application, owner, classification and retention context; shared assets retain multiple contexts without duplicate references.
+- **Honest boundary:** Business context is supplied metadata, not independently verified ownership/classification; import does not automatically create CMDB mappings.
 - **Acceptance still required:** CMDB reconciliation, active owners, classification approval and unmatched/ambiguous mapping review.
 - **Source navigation, not proof:** [systems.py](../../services/api/api/routers/systems.py) · [business.py](../../services/api/api/routers/business.py) · [operator.py](../../services/api/api/assurance/operator.py)
 
@@ -186,8 +186,8 @@ This register does not accept self-entered QUALIFIED status as evidence.
 
 **Status: PARTIAL.**
 
-- **Existing surface:** Algorithm registry separates recognized/status values; nonapproved names cannot establish readiness.
-- **Honest boundary:** Algorithm recognition is not module validation; draft/selected/prestandard/final states need current authoritative review.
+- **Existing surface:** Registry screens ML-KEM/ML-DSA/SLH-DSA families and full FIPS205 variants; FN-DSA/Falcon/HQC/McEliece do not receive automatic policy approval from draft/selected labels.
+- **Honest boundary:** No live NIST publication refresh or regulator interpretation was performed. Conservative registry status is not a claim about the latest legal publication state or implementation certification.
 - **Acceptance still required:** Record exact standard/revision/final status, implementation parameters and independent compatibility/validation evidence.
 - **Source navigation, not proof:** [algorithm_registry.py](../../shared/shared_models/shared_models/algorithm_registry.py) · [banking.py](../../services/cbom/cbom/banking.py)
 
@@ -430,8 +430,8 @@ This register does not accept self-entered QUALIFIED status as evidence.
 
 **Status: PARTIAL.**
 
-- **Existing surface:** Can produce clearly synthetic, verified-format sample exports.
-- **Honest boundary:** Synthetic examples are not comparable-bank case studies or permission to disclose customer evidence.
+- **Existing surface:** A committed synthetic banking-like eight-record native1.6 CBOM and actual planning-engine report are reproducible locally.
+- **Honest boundary:** Synthetic supplied inputs are not a comparable customer engagement or scanner execution; no bank reference or independent discovery accuracy follows.
 - **Acceptance still required:** Consent-based comparable evidence or labeled synthetic six-BOM sample validated by the bank consumer.
 - **Source navigation, not proof:** [export_service.py](../../services/cbom/cbom/export_service.py) · [test_export_service.py](../../services/cbom/tests/unit/test_export_service.py)
 
@@ -562,3 +562,12 @@ This register does not accept self-entered QUALIFIED status as evidence.
 - **Honest boundary:** This control requires explicit bank acceptance, not a product-name assertion.
 - **Acceptance still required:** Own TLS/SSO/artifact/report signatures and long-lived evidence keys; rotation, offline verification and backup restore.
 - **Source navigation, not proof:** [operator_release.py](../../scripts/operator_release.py)
+
+## Original45 implementation follow-up —2026-10-24
+
+The [original-question gap audit](bank-original45-engineering-gaps.md) separates
+actual code changes in the second pass from remaining engineering and external
+qualification. [Synthetic native CBOM and report](../examples/bank-pqc-discovery/README.md)
+are available now; they are not comparable-customer evidence. New source
+references are included in the machine-readable register. All57 bank acceptance
+requirements remain open; this is not a count of completed capabilities.

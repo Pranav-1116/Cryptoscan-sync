@@ -70,7 +70,19 @@ def _server_keyring() -> dict[str, str]:
 
 
 def _render(bom: dict, fmt: str, signed: bool | str):
+    if fmt not in {"json", "xml", "cyclonedx16"}:
+        raise HTTPException(status_code=422, detail="fmt must be json, xml or cyclonedx16")
+    if fmt == "cyclonedx16":
+        from cbom.cyclonedx16 import to_cyclonedx16
+        try:
+            bom = to_cyclonedx16(bom)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Native CBOM export failed schema/reference validation") from exc
     bom = _apply_signature(bom, signed, fmt=fmt)
+    if fmt == "cyclonedx16":
+        from cbom.cyclonedx16 import validate_cyclonedx16
+        if not validate_cyclonedx16(bom)["ok"]:
+            raise HTTPException(status_code=422, detail="Signed native CBOM failed schema/reference validation")
     generator = CbomGenerator()
     if fmt == "xml":
         return Response(content=generator.to_xml(bom), media_type="application/xml")
@@ -162,6 +174,20 @@ def _portfolio_max_assets() -> int:
         return 50_000
 
 
+def _attach_business_context(data: dict, system) -> None:
+    """Export supplied business context, not an independent ownership attestation."""
+    data["application"] = system.name
+    for field in ("owner", "criticality"):
+        if getattr(system, field, None) is not None:
+            data[field] = getattr(system, field)
+    extra = system.extra if isinstance(system.extra, dict) else {}
+    if "data_classification" in extra:
+        data["data_classification"] = extra["data_classification"]
+    retention = extra.get("data_retention_years", extra.get("retention_years"))
+    if retention is not None:
+        data["retention_years"] = retention
+
+
 def _located_assets(db: Session) -> tuple[list[dict[str, Any]], int]:
     """All crypto assets with their system location, in a bounded set-based query.
 
@@ -188,6 +214,8 @@ def _located_assets(db: Session) -> tuple[list[dict[str, Any]], int]:
         data = asset.to_dict()
         data["system_id"] = system.id if system is not None else None
         data["system_name"] = system.name if system is not None else "unassigned"
+        if system is not None:
+            _attach_business_context(data, system)
         located.append(data)
     total = len(located)
     limit = _portfolio_max_assets()
@@ -212,6 +240,10 @@ def _records_for_scan(db: Session, scan_id: str) -> tuple[Scan, list[Any]]:
     scan = filtered_get(db, Scan, scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
+    from api.routers.evidence_disposition import export_refused_reason
+    refused = export_refused_reason(db, scan_id)
+    if refused:
+        raise HTTPException(status_code=409, detail=refused)
     # CBOM generation consumes evidence: retracted (soft-deleted) findings
     # must not appear as components in the inventory.
     return scan, EvidenceRepository(db).get_all_for_scan(scan_id, include_deleted=False)
@@ -566,11 +598,11 @@ def cbom_validate(
     user: str = Depends(get_current_user),
 ):
     document = validate_document(body.bom)
-    crypto = records_from_bom(body.bom)
+    crypto = records_from_bom(body.bom) if document["ok"] else []
     return {
         **document,
         "crypto_components": len(crypto),
-        "name": bom_system_name(body.bom),
+        "name": bom_system_name(body.bom) if document["ok"] else None,
     }
 
 
@@ -1091,6 +1123,7 @@ def cbom_for_system(
         data = asset.to_dict() if hasattr(asset, "to_dict") else {"algorithm": getattr(asset, "algorithm", "UNKNOWN")}
         data["system_id"] = system.id
         data["system_name"] = system.name
+        _attach_business_context(data, system)
         records.append(data)
     # Real edges, not a root-fan-out: the system depends on the crypto assets
     # registered to it, plus its registered inter-system dependencies in both
@@ -1113,6 +1146,17 @@ def cbom_for_system(
             {"name": "cryptoscan:dependencies", "value": "estate-linkage"},
         ],
         scan_id=f"system:{system.id}")
+    if fmt == "cyclonedx16":
+        # Self-contained native profile: named neighboring systems must be
+        # tenant-visible components, not unresolved strings pretending to be
+        # external BOM links. Preserve incoming/outgoing edge direction.
+        from db.models.system import System
+        neighbor_ids = {str(edge[key]) for edge in system_edges for key in ("parent", "child")} - {str(system.id)}
+        neighbors = db.query(System).filter(System.id.in_(neighbor_ids)).all() if neighbor_ids else []
+        if {str(row.id) for row in neighbors} != neighbor_ids:
+            raise HTTPException(status_code=422, detail="System relationships include unavailable context")
+        bom["metadata"]["component"]["bom-ref"] = f"system:{system.id}"
+        bom["components"] += [{"type": "application", "name": row.name, "bom-ref": f"system:{row.id}"} for row in neighbors]
     return _render(bom, fmt, signed)
 
 

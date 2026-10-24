@@ -1,0 +1,182 @@
+{
+  "fixture": "synthetic-bank-original45-v1",
+  "bank_approved": false,
+  "customer_evidence": false,
+  "scanner_executed": false,
+  "supplied_records": 8,
+  "exported_crypto_components": 8,
+  "validation": {
+    "ok": true,
+    "errors": [],
+    "warnings": [],
+    "validation_basis": "CYCLONEDX_1_6_OFFICIAL_SCHEMA_AND_REFERENCES",
+    "bank_approved": false,
+    "discovery_completeness_proven": false
+  },
+  "qualification": "SYNTHETIC_INPUT_EXPORT_AND_PLANNING_ONLY",
+  "omitted": [
+    "key values",
+    "certificate bodies",
+    "runtime/deployment proof",
+    "independent completeness",
+    "bank references",
+    "real protocol/latency/packet/certificate/HSM performance"
+  ],
+  "migration_plan": {
+    "inventory": {
+      "total_sites": 8,
+      "vulnerable_sites": 3,
+      "pqc_ready_sites": 0,
+      "pqc_candidate_sites": 3,
+      "deployment_readiness": "NOT_ESTABLISHED",
+      "by_family": {
+        "AES": 1,
+        "ECC": 1,
+        "LEGACY": 1,
+        "OTHER": 1,
+        "PQC": 3,
+        "RSA": 1
+      },
+      "by_threat_type": {
+        "CLASSICALLY_BROKEN": 1,
+        "GROVER_MINIMAL": 1,
+        "PQC_RESISTANT": 3,
+        "SHOR_VULNERABLE": 2,
+        "UNKNOWN": 1
+      }
+    },
+    "workstreams": [
+      {
+        "target": "AES-256-GCM",
+        "hybrid": false,
+        "sites": [
+          {
+            "algorithm": "3DES",
+            "file_path": "synthetic/payments/legacy-card.metadata",
+            "line_number": 1,
+            "system_id": "payments",
+            "quantum_risk_score": 100,
+            "risk_category": "CRITICAL",
+            "hndl_risk": "CRITICAL",
+            "deadline": "2028-10-24"
+          }
+        ],
+        "site_count": 1,
+        "earliest_deadline": "2028-10-24",
+        "priority": "P1",
+        "systems": [
+          "payments"
+        ]
+      },
+      {
+        "target": "ML-DSA-65",
+        "hybrid": true,
+        "sites": [
+          {
+            "algorithm": "ECDSA",
+            "file_path": "synthetic/payments/signer-ec.metadata",
+            "line_number": 1,
+            "system_id": "payments",
+            "quantum_risk_score": 100,
+            "risk_category": "CRITICAL",
+            "hndl_risk": "NONE",
+            "deadline": "2028-10-24"
+          }
+        ],
+        "site_count": 1,
+        "earliest_deadline": "2028-10-24",
+        "priority": "P1",
+        "systems": [
+          "payments"
+        ]
+      },
+      {
+        "target": "ML-KEM-768",
+        "hybrid": true,
+        "sites": [
+          {
+            "algorithm": "RSA",
+            "file_path": "synthetic/payments/gateway-rsa.metadata",
+            "line_number": 1,
+            "system_id": "payments",
+            "quantum_risk_score": 100,
+            "risk_category": "CRITICAL",
+            "hndl_risk": "CRITICAL",
+            "deadline": "2028-10-24"
+          }
+        ],
+        "site_count": 1,
+        "earliest_deadline": "2028-10-24",
+        "priority": "P1",
+        "systems": [
+          "payments"
+        ]
+      }
+    ],
+    "waves": {
+      "1": {
+        "focus": "harvest-now-decrypt-later critical/high asymmetric crypto",
+        "sites": [
+          {
+            "algorithm": "RSA",
+            "file_path": "synthetic/payments/gateway-rsa.metadata",
+            "line_number": 1,
+            "system_id": "payments",
+            "quantum_risk_score": 100,
+            "risk_category": "CRITICAL",
+            "hndl_risk": "CRITICAL",
+            "deadline": "2028-10-24"
+          },
+          {
+            "algorithm": "3DES",
+            "file_path": "synthetic/payments/legacy-card.metadata",
+            "line_number": 1,
+            "system_id": "payments",
+            "quantum_risk_score": 100,
+            "risk_category": "CRITICAL",
+            "hndl_risk": "CRITICAL",
+            "deadline": "2028-10-24"
+          }
+        ],
+        "site_count": 2
+      },
+      "2": {
+        "focus": "remaining Shor-vulnerable / classically broken crypto",
+        "sites": [
+          {
+            "algorithm": "ECDSA",
+            "file_path": "synthetic/payments/signer-ec.metadata",
+            "line_number": 1,
+            "system_id": "payments",
+            "quantum_risk_score": 100,
+            "risk_category": "CRITICAL",
+            "hndl_risk": "NONE",
+            "deadline": "2028-10-24"
+          }
+        ],
+        "site_count": 1
+      },
+      "3": {
+        "focus": "Grover-marginal symmetric sizing (AES-128 -> AES-256, SHA-256 -> SHA-384)",
+        "sites": [],
+        "site_count": 0
+      }
+    },
+    "mosca": {
+      "scenario_only": true,
+      "threat_year_basis": "ASSUMPTION_NOT_FORECAST_OR_REGULATORY_DEADLINE",
+      "time_resolution": "calendar_year",
+      "computable": true,
+      "verdict": "ALREADY_LATE",
+      "x_shelf_life_years": 12.0,
+      "y_migration_years": null,
+      "z_years_to_crqc": 4,
+      "slack_years": null,
+      "inequality": "x(12) + y(None) ? vs z(4)",
+      "explanation": "Under this threat-year assumption, the supplied shelf life exceeds the scenario horizon even with zero migration duration",
+      "threat_year": 2030
+    },
+    "summary": "3 of 8 sites are migration-review candidates across 3 replacement workstreams; HNDL wave 1 = 2 sites.",
+    "calculation_version": "quantum-risk-v2.1+plan"
+  }
+}

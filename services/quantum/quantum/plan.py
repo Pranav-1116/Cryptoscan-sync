@@ -53,17 +53,17 @@ def mosca(
     y = float(migration_years) if migration_years is not None else None
     if x >= z:
         verdict = "ALREADY_LATE"
-        explanation = "data encrypted today outlives the estimated CRQC arrival even if migration finished instantly"
+        explanation = "Under this threat-year assumption, the supplied shelf life exceeds the scenario horizon even with zero migration duration"
     elif y is not None and x + y >= z:
         # zero slack counts as at-risk: finishing exactly when CRQC arrives is no margin
         verdict = "AT_RISK"
-        explanation = "shelf-life plus migration time meets or exceeds the time to CRQC — migration must start now"
+        explanation = "Under this threat-year assumption, shelf life plus migration meets or exceeds the scenario horizon; review urgency"
     elif y is not None:
         verdict = "SAFE_MARGIN"
-        explanation = "there is slack between (shelf-life + migration) and CRQC"
+        explanation = "There is scenario slack under the supplied threat-year assumption, not a forecast"
     else:
         verdict = "UNKNOWN_MARGIN"
-        explanation = "shelf-life fits before CRQC, but migration time was not provided"
+        explanation = "Shelf life fits within the threat-year assumption, but migration duration was not supplied"
     slack = None
     if y is not None:
         slack = round(z - x - y, 2)
@@ -225,7 +225,7 @@ def build_migration_plan(
         },
         "mosca": plan_mosca,
         "summary": (
-            f"{report['vulnerable_count']} of {len(assets)} sites quantum-vulnerable across "
+            f"{report['vulnerable_count']} of {len(assets)} sites are migration-review candidates across "
             f"{len(streams)} replacement workstreams; HNDL wave 1 = {len(wave1)} sites."
         ),
         "calculation_version": f"{CALC_VERSION}+plan",

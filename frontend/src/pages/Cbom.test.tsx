@@ -3,7 +3,7 @@
  * risk or PQC status from catalog counts, and an empty/offline result
  * must never produce fabricated green rows. */
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch, offlineFetch } from "../test/setup";
 import Cbom from "./Cbom";
@@ -330,4 +330,20 @@ describe("Cbom — two-pin comparison", () => {
     await waitFor(() => expect(screen.getByText("aaaaaaaaaaaaaaaa…")).toBeTruthy());
     expect(screen.queryByText("Diff vs Prev Pin")).toBeNull();
   });
+});
+
+it("downloads the native1.6 portfolio CBOM, never the catalog JSON", async () => {
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  const fetch = mockFetch({
+    "/api/v1/cbom/query": queryResponse([]),
+    "/api/v1/cbom/coverage": coverage,
+    "/api/v1/cbom/portfolio": { bomFormat: "CycloneDX", specVersion: "1.6", components: [] },
+  });
+  renderPage();
+  fireEvent.click(screen.getByRole("button", { name: "Export CycloneDX 1.6 JSON" }));
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).includes("/api/v1/cbom/portfolio?fmt=cyclonedx16"))).toBe(true));
+  await waitFor(() => expect(click).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Export CycloneDX 1.6 JSON" })).not.toBeDisabled());
+  click.mockRestore();
+  expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/v1/cbom"))).toBe(false);
 });

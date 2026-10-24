@@ -63,7 +63,10 @@ def publish_triage(
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     if "workbook" in body:
-        result = score_workbook(body["workbook"], reviewer=body.get("reviewer"), notes=body.get("notes"))
+        try:
+            result = score_workbook(body["workbook"], reviewer=body.get("reviewer"), notes=body.get("notes"))
+        except (ValueError, TypeError, KeyError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid triage workbook") from exc
     else:
         try:
             result = TriageResult.model_validate(body)

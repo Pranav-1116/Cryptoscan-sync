@@ -194,6 +194,12 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
         properties.append({"name": "cryptoscan:system_id", "value": str(data["system_id"])})
     if recorded:
         properties.append({"name": "cryptoscan:confidence", "value": recorded})
+    # Bank business context is caller-supplied metadata, not independently verified.
+    # Explicit allowlist: never copy arbitrary finding_data or key/secret values.
+    for field in ("application", "owner", "data_classification", "retention_years", "criticality", "exposure", "purpose", "library"):
+        value = data.get(field)
+        if value is not None and isinstance(value, (str, int, float)) and not isinstance(value, bool):
+            properties.append({"name": f"cryptoscan:{field}", "value": str(value)})
     if properties:
         component["properties"] = properties
     return component
