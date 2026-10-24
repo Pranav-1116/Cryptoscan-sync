@@ -1,6 +1,23 @@
 # CryptoScan production readiness — current evidence gate
 
-## Current implementation review — not a gate rerun
+## Latest end-to-end hardening — 2026-10-24, not platform qualification
+
+Migration **0107** and matching database/API/console changes fix bank-local
+system names, durable source-separated CBOM metadata, import write roles,
+bounded untrusted JSON, signature checking, transaction/receipt semantics and
+private browser state. See the [implemented contracts and remaining engineering
+work](docs/operations/production-data-path-hardening.md), [upgrade procedure](docs/runbooks/cbom-0107-upgrade.md)
+and [retained execution](docs/readiness-evidence/production-data-path-2026-10-24.md).
+
+Evidence: **974 selected Python tests, 561 frontend tests, 10 real PostgreSQL
+migration checks, 16 actual browser/data-path checks and four post-restart
+checks**. The browser used a production-compiled console with development API
+settings on disposable synthetic estates. A controlled restart is not backup
+restore, failover, capacity, customer acceptance or production deployment.
+Historical imports still require explicit reconciliation; no readiness gate is
+waived or changed to approved.
+
+## Prior implementation review — 2026-10-23, not a gate rerun
 
 The [2026-10-23 current-state companion](docs/CURRENT-IMPLEMENTATION-STATUS.md)
 records the ninth increment from `78d4df91`, migration **0106**, active discovered CI/reusable

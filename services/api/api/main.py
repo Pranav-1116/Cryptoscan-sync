@@ -385,6 +385,9 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     from api.middleware.control_events import ControlEventMiddleware
 
     app.add_middleware(ControlEventMiddleware)
+    # Before ABAC and FastAPI can buffer/parse uploaded CBOMs. Reuse the
+    # existing bounded evidence JSON reader, including chunked requests.
+    app.add_middleware(AssuranceBodyLimit, prefix="/api/v1/cbom/", label="CBOM")
 
     @app.exception_handler(AuthenticationError)
     async def auth_exception_handler(request: Request, exc: AuthenticationError):

@@ -131,7 +131,12 @@ class SystemRepository(BaseRepository[System]):
         return System.coverage_status == token
 
     def get_by_name(self, name: str) -> System | None:
-        return self.session.execute(select(System).where(System.name == name)).scalar_one_or_none()
+        # A name is never an estate-global key. Outside a request an unset
+        # context means platform, not "search all banks".
+        from db.tenancy import current_tenant
+        return self.session.execute(select(System).where(
+            System.name == name, System.tenant_id == current_tenant()
+        )).scalar_one_or_none()
 
     def get_or_create(
         self,

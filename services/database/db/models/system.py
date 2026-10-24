@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Integer, JSON, String, Text, Index
+from sqlalchemy import DateTime, Integer, JSON, String, Text, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -16,9 +16,12 @@ class System(BaseModel, TenantScoped):
     __tablename__ = "systems"
     __table_args__ = (
         Index("ix_systems_agility_score", "current_agility_score"),
+        Index("uq_systems_tenant_name", "tenant_id", "name", unique=True),
+        Index("uq_systems_platform_name", "name", unique=True,
+              postgresql_where=text("tenant_id IS NULL"), sqlite_where=text("tenant_id IS NULL")),
     )
 
-    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     # Report 55 P0: accountability needs named humans/teams per role, not one

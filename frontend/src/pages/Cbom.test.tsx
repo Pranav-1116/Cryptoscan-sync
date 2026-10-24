@@ -2,7 +2,7 @@
  * endpoint. The page must not invent asset IDs, owners, locations,
  * risk or PQC status from catalog counts, and an empty/offline result
  * must never produce fabricated green rows. */
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch, offlineFetch } from "../test/setup";
@@ -346,4 +346,119 @@ it("downloads the native1.6 portfolio CBOM, never the catalog JSON", async () =>
   await waitFor(() => expect(screen.getByRole("button", { name: "Export CycloneDX 1.6 JSON" })).not.toBeDisabled());
   click.mockRestore();
   expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/v1/cbom"))).toBe(false);
+});
+
+const chooseImport = (text = '{"bomFormat":"CycloneDX","specVersion":"1.6","components":[]}') => {
+  fireEvent.change(screen.getByLabelText("Import system name"), { target: { value: "Payments" } });
+  const file = new File([text], "bank.json", { type: "application/json" });
+  // jsdom's File lacks text(); real Chromium exercises the native File API.
+  Object.defineProperty(file, "text", { value: async () => text });
+  fireEvent.change(screen.getByLabelText("CBOM JSON file"), { target: { files: [file] } });
+  return file;
+};
+const importReceipt = { system: { id: "system-persisted", name: "Payments" }, imported: 1,
+  document_sha256: "c".repeat(64), source_basis: "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS" };
+const emptyRoutes = { "/api/v1/cbom/query": queryResponse([]), "/api/v1/cbom/coverage": coverage };
+
+describe("Cbom — durable import and private context fences", () => {
+  it("submits authenticated metadata once, refreshes readback and offers persisted export", async () => {
+    const spy = mockFetch({ ...emptyRoutes, "/api/v1/cbom/ingest": importReceipt });
+    renderPage(); chooseImport();
+    fireEvent.click(screen.getByRole("button", { name: "Import metadata" }));
+    expect(await screen.findByText(/Saved metadata: 1 assets for Payments/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Export persisted metadata" })).toBeTruthy();
+    const posts = spy.mock.calls.filter(([url, init]) => String(url).endsWith("/cbom/ingest") && init?.method === "POST");
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(posts[0][1]?.body as string).system_name).toBe("Payments");
+    await waitFor(() => expect(spy.mock.calls.filter(([url]) => String(url).includes("/cbom/query"))).toHaveLength(2));
+  });
+
+  it("rejects invalid JSON locally without a write", async () => {
+    const spy = mockFetch(emptyRoutes);
+    renderPage(); chooseImport("{invalid");
+    fireEvent.click(screen.getByRole("button", { name: "Import metadata" }));
+    expect(await screen.findByText(/Invalid JSON document/)).toBeTruthy();
+    expect(spy.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("rejects oversized files before reading or uploading them", async () => {
+    const spy = mockFetch(emptyRoutes);
+    renderPage(); const file = chooseImport();
+    Object.defineProperty(file, "size", { value: 1024 * 1024 + 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Import metadata" }));
+    expect(await screen.findByText(/File exceeds the 1 MiB/)).toBeTruthy();
+    expect(spy.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("does not claim success or automatically retry an ambiguous write failure", async () => {
+    const spy = mockFetch({ ...emptyRoutes, "/api/v1/cbom/ingest": () => { throw new TypeError("network interrupted"); } });
+    renderPage(); chooseImport();
+    fireEvent.click(screen.getByRole("button", { name: "Import metadata" }));
+    expect(await screen.findByText(/Import not confirmed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Export persisted metadata" })).toBeNull();
+    expect(spy.mock.calls.filter(([url]) => String(url).includes("/cbom/ingest"))).toHaveLength(1);
+  });
+
+  it("clears private drafts on an estate switch", async () => {
+    mockFetch(emptyRoutes); renderPage(); chooseImport();
+    fireEvent(window, new Event("zelinx:tenant"));
+    expect(screen.getByLabelText("Import system name")).toHaveValue("");
+    expect(screen.getByLabelText("CBOM JSON file")).toHaveValue("");
+    expect(screen.getByText(/unsubmitted drafts were cleared/)).toBeTruthy();
+    await screen.findByText("No CBOM identities found");
+  });
+
+  it("never submits a file whose asynchronous parsing finishes in an old estate", async () => {
+    let finish!: (text: string) => void;
+    const spy = mockFetch(emptyRoutes);
+    renderPage(); chooseImport();
+    const file = new File(["{}"], "pending.json");
+    Object.defineProperty(file, "text", { value: () => new Promise<string>((resolve) => { finish = resolve; }) });
+    fireEvent.change(screen.getByLabelText("CBOM JSON file"), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Import metadata" }));
+    fireEvent(window, new Event("zelinx:tenant"));
+    await act(async () => { finish("{}"); });
+    await waitFor(() => expect(screen.getByLabelText("Import system name")).toHaveValue(""));
+    expect(spy.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("discards a late import receipt after an estate switch without replaying it", async () => {
+    let finish!: (result: unknown) => void;
+    const spy = mockFetch({ ...emptyRoutes, "/api/v1/cbom/ingest": () => new Promise((resolve) => { finish = resolve; }) });
+    renderPage(); chooseImport();
+    fireEvent.click(screen.getByRole("button", { name: "Import metadata" }));
+    await waitFor(() => expect(finish).toBeTypeOf("function"));
+    fireEvent(window, new Event("zelinx:tenant"));
+    await act(async () => { finish(importReceipt); });
+    await waitFor(() => expect(screen.getByLabelText("Import system name")).toHaveValue(""));
+    expect(screen.queryByText(/Saved metadata:/)).toBeNull();
+    expect(screen.queryByText(/cccccccc/)).toBeNull();
+    expect(spy.mock.calls.filter(([url]) => String(url).includes("/cbom/ingest"))).toHaveLength(1);
+  });
+
+  it("discards snapshot responses from a previous selection", async () => {
+    let finish!: (result: unknown) => void;
+    mockFetch({ ...emptyRoutes,
+      "/api/v1/scans": { scans: [{ scan_id:"old-scan", status:"COMPLETED", target_location:"old" }] },
+      "/api/v1/cbom/scan/old-scan/snapshots": () => new Promise((resolve) => { finish = resolve; }),
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("option", { name: /old-scan/ })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText("Scan"), { target:{ value:"old-scan" } });
+    await waitFor(() => expect(finish).toBeTypeOf("function"));
+    fireEvent.change(screen.getByLabelText("Scan"), { target:{ value:"" } });
+    await act(async () => { finish({ snapshots:[snapshotRow()], note:"old private note" }); });
+    await waitFor(() => expect(screen.getByLabelText("Scan")).toHaveValue(""));
+    expect(screen.queryByText("old private note")).toBeNull();
+    expect(screen.queryByRole("button", { name:"Verify & View" })).toBeNull();
+  });
+});
+
+it("does not turn unavailable scan coverage into a fabricated zero", async () => {
+  mockFetch({ "/api/v1/cbom/query": queryResponse([match()]) });
+  renderPage();
+  expect(await screen.findByText("crypto:RSA-2048")).toBeTruthy();
+  expect(screen.getByText("Unknown")).toBeTruthy();
+  expect(screen.queryByText("0%")).toBeNull();
+  expect(screen.getByText(/Imports are excluded; this is not discovery completeness/)).toBeTruthy();
 });

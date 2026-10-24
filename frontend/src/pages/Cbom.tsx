@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Badge } from "../components/ui";
 import {
   apiCbomCoverage,
+  apiCbomIngest,
   apiCbomPinSnapshot,
   apiCbomQuery,
   apiCbomScanSnapshots,
@@ -10,6 +11,7 @@ import {
   apiCbomSnapshotDiff,
   apiScansRecent,
 } from "../lib/api";
+import PrivateScope, { usePrivateScopeCurrent } from "../components/PrivateScope";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
 import { ICON_SM, IconCaretDown, IconCaretRight } from "../components/icons";
@@ -32,6 +34,51 @@ interface CbomItem {
 const LINKAGE_FILTERS = ["ALL", "LINKED", "UNLINKED", "CONFLICTS"] as const;
 
 export default function Cbom() {
+  return <PrivateScope><CbomContent /></PrivateScope>;
+}
+
+function CbomContent() {
+  const current = usePrivateScopeCurrent();
+  const selectionGeneration = useRef(0);
+  const viewRequest = useRef(0);
+  const diffRequest = useRef(0);
+  const [refresh, setRefresh] = useState(0);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importName, setImportName] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importReceipt, setImportReceipt] = useState<any>(null);
+
+  async function importDocument(event: React.FormEvent) {
+    event.preventDefault();
+    if (!current() || !importFile || !importName.trim() || importBusy) return;
+    setImportError(""); setImportReceipt(null);
+    if (importFile.size > 1024 * 1024) {
+      setImportError("File exceeds the 1 MiB import limit."); return;
+    }
+    setImportBusy(true);
+    let submitted = false;
+    try {
+      const bom = JSON.parse(await importFile.text());
+      if (!current()) return; // Do not submit a draft parsed in an old estate.
+      if (!bom || Array.isArray(bom) || typeof bom !== "object") throw new Error("Expected a JSON object");
+      submitted = true;
+      const result = await apiCbomIngest(bom, importName.trim());
+      if (!current()) return;
+      if (result.source !== "live" || !result.data?.system?.id || !result.data?.document_sha256) {
+        setImportError(`Import not confirmed (${result.error || "invalid receipt"}). Check document/schema and permissions; reload current inventory before retrying. No request is automatically replayed.`);
+        return;
+      }
+      setImportReceipt(result.data);
+      setRefresh((value) => value + 1);
+    } catch {
+      if (current()) setImportError(submitted
+        ? "Import outcome unconfirmed. Reload current inventory before retrying."
+        : "Invalid JSON document. Choose a CycloneDX JSON object; nothing was submitted.");
+    } finally {
+      if (current()) setImportBusy(false);
+    }
+  }
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
   const [search, setSearch] = useState("");
@@ -62,8 +109,9 @@ export default function Cbom() {
   const [diffKeyBy, setDiffKeyBy] = useState<"asset_key" | "bom_ref">("asset_key");
   const [diffBusy, setDiffBusy] = useState(false);
 
-  async function loadSnapshots(scanId: string) {
+  async function loadSnapshots(scanId: string, generation = selectionGeneration.current) {
     const res = await apiCbomScanSnapshots(scanId);
+    if (!current() || generation !== selectionGeneration.current) return;
     if (res.source === "live" && res.data) {
       setSnapshots(Array.isArray(res.data.snapshots) ? res.data.snapshots : []);
       setSnapshotsNote(typeof res.data.note === "string" ? res.data.note : "");
@@ -83,7 +131,7 @@ export default function Cbom() {
     let alive = true;
     async function loadScanChoices() {
       const res = await apiScansRecent(20);
-      if (!alive) return;
+      if (!alive || !current()) return;
       if (res.source === "live" && res.data && Array.isArray(res.data.scans)) {
         setScans(res.data.scans);
       }
@@ -93,23 +141,28 @@ export default function Cbom() {
   }, []);
 
   async function pinSnapshot() {
-    if (!selectedScan) return;
+    if (!current() || !selectedScan || pinBusy) return;
+    const generation = selectionGeneration.current;
     setPinBusy(true);
     setPinResult(null);
     const res = await apiCbomPinSnapshot(selectedScan, signOnPin);
+    if (!current() || generation !== selectionGeneration.current) return;
     setPinBusy(false);
     if (res.source === "live" && res.data) {
       setPinResult(res.data.note || (res.data.created ? "Snapshot pinned." : "Returned the existing pin."));
-      await loadSnapshots(selectedScan);
+      await loadSnapshots(selectedScan, generation);
     } else {
-      setPinResult("Pin failed — the snapshot was not created.");
+      setPinResult("Pin outcome unconfirmed — reload the selected scan’s pins before retrying.");
     }
   }
 
   async function loadDiff(targetId: string, againstId: string, keyBy: "asset_key" | "bom_ref") {
+    const generation = selectionGeneration.current;
+    const request = ++diffRequest.current;
     setDiffBusy(true);
     try {
       const res = await apiCbomSnapshotDiff(targetId, againstId, keyBy);
+      if (!current() || generation !== selectionGeneration.current || request !== diffRequest.current) return;
       setDiffFor(targetId);
       setDiffAgainst(againstId);
       if (res.source === "live" && res.data) {
@@ -118,16 +171,19 @@ export default function Cbom() {
         setDiffData({ error: "Diff unavailable — the comparison could not be computed." });
       }
     } finally {
-      setDiffBusy(false);
+      if (current() && generation === selectionGeneration.current && request === diffRequest.current) setDiffBusy(false);
     }
   }
 
   async function viewSnapshot(id: string) {
+    const generation = selectionGeneration.current;
+    const request = ++viewRequest.current;
     if (openSnapshot?.snapshot_id === id) {
       setOpenSnapshot(null);
       return;
     }
     const res = await apiCbomSnapshot(id);
+    if (!current() || generation !== selectionGeneration.current || request !== viewRequest.current) return;
     if (res.source === "live" && res.data) {
       setOpenSnapshot(res.data);
     } else {
@@ -139,13 +195,14 @@ export default function Cbom() {
     let alive = true;
     async function loadCbom() {
       setLoading(true);
+      setOffline(false); setComponents([]); setCoverage(null); setQueryNote("");
       try {
         const [qRes, covRes] = await Promise.all([
           apiCbomQuery(),
           apiCbomCoverage(),
         ]);
 
-        if (!alive) return;
+        if (!alive || !current()) return;
 
         // The unified query is the row source. An unreachable or failed
         // query must NOT fall back to fabricated rows — the table stays
@@ -173,15 +230,15 @@ export default function Cbom() {
         }
       } catch (err) {
         console.error("Failed to load CBOM query:", err);
-        if (alive) setOffline(true);
+        if (alive && current()) setOffline(true);
       } finally {
-        if (alive) setLoading(false);
+        if (alive && current()) setLoading(false);
       }
     }
 
     loadCbom();
     return () => { alive = false; };
-  }, []);
+  }, [refresh]);
 
   const filtered = components.filter((c) => {
     const haystack = `${c.identity} ${c.label} ${c.kind} ${c.boms.join(" ")}`.toLowerCase();
@@ -233,6 +290,31 @@ export default function Cbom() {
         </div>
       </div>
 
+      <section className="panel" aria-label="Import CBOM metadata" style={{ padding: 18, marginBottom: 18 }}>
+        <h2 style={{ marginTop: 0, fontSize: 17 }}>Import CBOM metadata</h2>
+        <p style={{ color: "var(--dim)", fontSize: 13 }}>
+          Uploaded declarations are not scanner observations, deployment approval or complete estate coverage.
+          Imports require a security analyst, CISO or administrator. The server caps requests at 2 MiB. Existing scanner timestamps and evidence are preserved.
+          Re-import refreshes matching declarations; absent components are not automatically retired.
+        </p>
+        <form onSubmit={importDocument} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+          <label>System name<br /><input aria-label="Import system name" value={importName} maxLength={200} required
+            disabled={importBusy} onChange={(event) => setImportName(event.target.value)} /></label>
+          <label>CycloneDX JSON (1 MiB maximum)<br /><input aria-label="CBOM JSON file" type="file" accept=".json,application/json"
+            disabled={importBusy} onChange={(event) => { setImportFile(event.target.files?.[0] || null); setImportError(""); setImportReceipt(null); }} /></label>
+          <button className="btn primary" type="submit" disabled={importBusy || !importFile || !importName.trim()}>
+            {importBusy ? "Importing metadata…" : "Import metadata"}
+          </button>
+        </form>
+        {importError && <p role="alert">{importError}</p>}
+        {importReceipt && <div role="status" style={{ marginTop: 12 }}>
+          <p>Saved metadata: {importReceipt.imported} assets for {importReceipt.system.name}. Not a scan or approval.</p>
+          <p style={{ overflowWrap: "anywhere" }}>Document SHA-256: {importReceipt.document_sha256}</p>
+          <AuthenticatedDownload path={`/api/v1/cbom/system/${encodeURIComponent(importReceipt.system.id)}?fmt=cyclonedx16`}
+            filename="imported-cbom-1.6.json" className="btn outline">Export persisted metadata</AuthenticatedDownload>
+        </div>}
+      </section>
+
       {offline && !loading && (
         <div className="panel" style={{ padding: "14px 18px", marginBottom: "18px", border: "1px solid var(--amber)", color: "var(--amber)", fontSize: "13px" }}>
           BOM sources are unreachable. The table below is empty because no live query result is available — nothing is shown from cache or guesswork.
@@ -279,13 +361,13 @@ export default function Cbom() {
 
         <div className="panel" style={{ padding: "16px" }}>
           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Coverage Percentage
+            Recorded scan coverage
           </div>
           <div style={{ fontSize: "26px", fontWeight: 700, color: "var(--cyan)", margin: "4px 0" }}>
-            {loading ? "..." : `${coverage?.coverage_pct ?? 0}%`}
+            {loading ? "..." : coverage?.coverage_pct == null ? "Unknown" : `${coverage.coverage_pct}%`}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Systems with active CBOMs: {coverage?.with_cbom ?? 0} / {coverage?.systems ?? 0}
+            Systems with current or stale scans: {coverage?.with_cbom ?? "—"} / {coverage?.systems ?? "—"}. Imports are excluded; this is not discovery completeness.
           </div>
         </div>
       </div>
@@ -475,8 +557,12 @@ export default function Cbom() {
               aria-label="Scan"
               value={selectedScan}
               onChange={(e) => {
+                selectionGeneration.current++;
+                viewRequest.current++; diffRequest.current++;
                 setSelectedScan(e.target.value);
-                setPinResult(null);
+                setSnapshots([]); setSnapshotsLoaded(false); setSnapshotsNote("");
+                setOpenSnapshot(null); setDiffFor(null); setDiffAgainst(null); setDiffData(null);
+                setPinBusy(false); setDiffBusy(false); setPinResult(null);
                 if (e.target.value) void loadSnapshots(e.target.value);
                 else { setSnapshots([]); setSnapshotsLoaded(false); }
               }}

@@ -200,6 +200,18 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
         value = data.get(field)
         if value is not None and isinstance(value, (str, int, float)) and not isinstance(value, bool):
             properties.append({"name": f"cryptoscan:{field}", "value": str(value)})
+    # Preserve imported declarations independently of operational owner fields.
+    # This is allowlisted context, not a copy of the uploaded document.
+    imported = (data.get("extra") or {}).get("cbom_import") or {}
+    if imported:
+        if imported.get("padding") is not None:
+            component["cryptoProperties"]["algorithmProperties"]["padding"] = imported["padding"]
+        import json
+        for context in imported.get("business_contexts") or []:
+            properties.append({"name": "cryptoscan:business_context", "value": json.dumps(context, sort_keys=True)})
+        for key in ("source_basis", "document_sha256", "parameter_set_identifier", "key_size_basis"):
+            if imported.get(key) is not None:
+                properties.append({"name": f"cryptoscan:import_{key}", "value": str(imported[key])})
     if properties:
         component["properties"] = properties
     return component

@@ -79,7 +79,7 @@ class AssetRepository(BaseRepository[CryptoAsset]):
             hits.append(data)
         return hits
 
-    def replace_for_scan(self, scan_id: str, assets: list[dict]) -> list[CryptoAsset]:
+    def replace_for_scan(self, scan_id: str, assets: list[dict], *, import_system_id: str | None = None) -> list[CryptoAsset]:
         """Persist this scan's deduplicated assets, keyed by identity.
 
         Assets live across scans (a re-scan refreshes matching rows; other
@@ -95,11 +95,16 @@ class AssetRepository(BaseRepository[CryptoAsset]):
             if "" in paths:  # NULL paths keyed to "" in the identity tuple
                 conditions.append(CryptoAsset.file_path.is_(None))
             stmt = stmt.where(or_(*conditions))
+        # Imported declarations are a separate observation namespace per system.
+        # They must not overwrite scanner evidence or another application's context.
+        import_scope = CryptoAsset.extra["cbom_import"]["system_id"].as_string()
+        stmt = stmt.where(import_scope == import_system_id if import_system_id is not None else import_scope.is_(None))
         existing = list(self.session.execute(stmt).scalars())
         # Keep assets from other scans; we key by identity and refresh
         by_key = {(a.algorithm, a.purpose or "", a.file_path, a.line_number): a for a in existing}
         stored: list[CryptoAsset] = []
         pending_links: list[tuple[CryptoAsset, list]] = []
+        seen_keys: set[tuple] = set()
         for item in assets:
             key = (
                 item["algorithm"],
@@ -131,12 +136,17 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                     },
                 )
                 self.session.add(row)
+                by_key[key] = row
             else:
                 # repair the spine on legacy rows touched by a refresh:
                 # pre-0092 rows converge to the canonical key on contact
                 expected_key = crypto_asset_key_from_row(item)
                 if row.asset_key != expected_key:
                     row.asset_key = expected_key
+                if "mode" in item:
+                    row.mode = item["mode"]
+                if "key_size" in item:
+                    row.key_size = item["key_size"]
                 row.confidence = item.get("confidence") or row.confidence
                 row.occurrence_count = int(item.get("occurrence_count") or row.occurrence_count)
                 row.scanner_ids = item.get("scanner_ids") or row.scanner_ids
@@ -146,8 +156,15 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                 if item.get("dedup_key"):
                     extra["dedup_key"] = item.get("dedup_key")
                 row.extra = extra
+            if import_system_id is not None:
+                context = item.get("cbom_import") or {}
+                if context.get("system_id") != import_system_id:
+                    raise ValueError("CBOM import context does not match its system namespace")
+                row.extra = {**(row.extra or {}), "cbom_import": context}
             pending_links.append((row, list(item.get("evidence_ids") or [])))
-            stored.append(row)
+            if key not in seen_keys:
+                stored.append(row)
+                seen_keys.add(key)
         self.session.flush()  # single flush assigns ids for the new rows
 
         # one bulk query instead of one SELECT per (asset, evidence) pair

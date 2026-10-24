@@ -5,6 +5,7 @@ import json
 import pytest
 from cbom.generator import CbomGenerator
 from cbom.inventory import records_from_bom, validate_document
+from cbom.cyclonedx16 import validate_cyclonedx16
 
 
 def document():
@@ -177,3 +178,14 @@ def test_retained_banking_example_is_native_schema_valid_and_explicitly_syntheti
     assert len(bom["components"]) == report["exported_crypto_components"] == report["supplied_records"] == 8
     assert report["bank_approved"] is False and report["scanner_executed"] is False
     assert report["migration_plan"]["inventory"]["pqc_ready_sites"] == 0
+
+
+def test_standard_jsf_hmac_is_schema_valid_and_not_a_uri_algorithm():
+    from cbom.generator import CbomGenerator
+    generator = CbomGenerator()
+    bom = generator.from_records([{"id":"one", "algorithm":"AES"}], spec_version="1.6")
+    signed = generator.sign_standard(bom, "test-only-secret", alg="HS256")
+    assert validate_cyclonedx16(signed)["ok"]
+    assert generator.verify_standard(signed, "test-only-secret")[0]
+    signed["signature"]["algorithm"] = "HS256-not-a-URI"
+    assert not validate_cyclonedx16(signed)["ok"]

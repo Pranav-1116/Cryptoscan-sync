@@ -254,6 +254,15 @@ def records_from_bom(bom: dict[str, Any]) -> list[dict[str, Any]]:
             value = profile_props.get(f"cryptoscan:{field}")
             if value is not None and len(contexts) <= 1:
                 records[-1][field] = _as_int(value) if field == "retention_years" else value
+        # External native documents need not use our aggregated JSON property.
+        # Preserve their allowlisted scalar properties too, without inventing
+        # measured owner/confidence fields or duplicating an existing context.
+        scalar_context = {field: profile_props[f"cryptoscan:{field}"] for field in CONTEXT_FIELDS
+                          if f"cryptoscan:{field}" in profile_props}
+        if scalar_context and scalar_context not in contexts:
+            contexts.append(scalar_context)
+        if contexts:
+            records[-1]["business_contexts"] = contexts
     return records
 
 

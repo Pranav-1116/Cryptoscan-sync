@@ -19,6 +19,7 @@ from typing import Any
 from jsonschema import Draft7Validator, FormatChecker
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT7
+from rfc3986_validator import validate_rfc3986
 from shared_models.algorithm_registry import parse_algorithm
 
 SCHEMA_DIR = Path(__file__).parent / "validators/schema/cyclonedx-1.6"
@@ -35,7 +36,9 @@ CONTEXT_FIELDS = (
 )
 SAFE_PROPERTIES = {f"cryptoscan:{key}" for key in CONTEXT_FIELDS} | {
     "cryptoscan:reported_algorithm", "cryptoscan:reported_key_size", "cryptoscan:reported_mode",
-    "cryptoscan:reported_padding", "cryptoscan:deployment_readiness",
+    "cryptoscan:reported_padding", "cryptoscan:deployment_readiness", "cryptoscan:business_context",
+    "cryptoscan:import_source_basis", "cryptoscan:import_document_sha256",
+    "cryptoscan:import_parameter_set_identifier", "cryptoscan:import_key_size_basis",
 }
 
 
@@ -54,6 +57,13 @@ def _validator() -> Draft7Validator:
             resources.append((uri, resource))
     # No retrieve callback: references outside this registry fail, never fetch.
     checker = FormatChecker()
+    # FormatChecker otherwise silently accepts unknown formats when optional
+    # packages are absent. JSF algorithm is oneOf(JWA enum, URI), so accepting
+    # "HS256" as a URI incorrectly rejects every standard signed document.
+    @checker.checks("uri")
+    def absolute_uri(value):
+        return not isinstance(value, str) or bool(validate_rfc3986(value, rule="URI"))
+
     @checker.checks("date-time")
     def date_time(value):
         if not isinstance(value, str):
@@ -184,7 +194,9 @@ def to_cyclonedx16(bom: dict, *, omit_inventory_dependencies: bool = False) -> d
         context = {p["name"].removeprefix("cryptoscan:"): p["value"] for p in props
                    if p["name"].removeprefix("cryptoscan:") in CONTEXT_FIELDS}
         if context:
-            props.append(_property("cryptoscan:business_context", json.dumps(context, sort_keys=True)))
+            declaration = _property("cryptoscan:business_context", json.dumps(context, sort_keys=True))
+            if declaration not in props:
+                props.append(declaration)
         if props:
             component["properties"] = props
         evidence = old.get("evidence") or {}

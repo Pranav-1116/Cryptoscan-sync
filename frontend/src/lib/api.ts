@@ -4318,6 +4318,9 @@ export const apiScannerEnginesHealth = async (): Promise<ScannerEngineHealth[]> 
 };
 
 /* ── Authoritative CBOM API calls ── */
+export const apiCbomIngest = (bom: Record<string, unknown>, systemName: string): Promise<ApiResult<any>> =>
+  call("/api/v1/cbom/ingest", { method: "POST", body: JSON.stringify({ bom, system_name: systemName }) });
+
 export const apiCbomCatalog = (page = 1, pageSize = 50): Promise<ApiResult<any>> =>
   call(`/api/v1/cbom?page=${page}&page_size=${pageSize}`);
 

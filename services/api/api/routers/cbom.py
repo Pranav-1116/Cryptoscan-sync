@@ -3,21 +3,23 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 
 from db.tenancy import filtered_get
 
-from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, get_job_repository, require_auditor
+from api.dependencies import get_current_user, get_db_session, get_job_repository, require_auditor, require_roles
 from api.schemas.cbom_schemas import (
     CbomRef,
     CustomCbomRequest,
@@ -705,6 +707,10 @@ def cbom_assess(
         db.close()
 
 
+require_cbom_writer = require_roles("superadmin", "ciso", "security_analyst")
+IMPORT_SOURCE_BASIS = "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS"
+
+
 def ingest_document(
     *,
     bom: dict,
@@ -712,6 +718,7 @@ def ingest_document(
     system_name: str | None = None,
     owner: str | None = None,
     environment: str | None = None,
+    actor: str | None = None,
 ) -> dict:
     """Load a validated CBOM document into the crypto inventory.
 
@@ -722,36 +729,91 @@ def ingest_document(
     check = validate_document(bom)
     if not check["ok"]:
         raise HTTPException(status_code=422, detail="; ".join(check["errors"]))
+    metadata = bom.get("metadata") or {}
+    if (not isinstance(metadata, dict) or not isinstance(metadata.get("properties", []), list)
+            or any(not isinstance(prop, dict) or not isinstance(prop.get("name"), str)
+                   or not isinstance(prop.get("value"), str) for prop in metadata.get("properties", []))
+            or (metadata.get("component") is not None and not isinstance(metadata["component"], dict))):
+        raise HTTPException(status_code=422, detail="Malformed CBOM metadata/properties")
+    if "signature" in bom and (not isinstance(bom["signature"], dict) or not bom["signature"].get("value")):
+        raise HTTPException(status_code=422, detail="Unsupported or empty CBOM signature envelope")
     props = {
         item.get("name")
         for item in ((bom.get("metadata") or {}).get("properties") or [])
+        if isinstance(item, dict)
     }
-    if props & {"cryptoscan:jws", "cryptoscan:signature"}:
+    if "signature" in bom or props & {"cryptoscan:jws", "cryptoscan:signature"}:
         signature = CbomGenerator().verify_report(bom, _server_keyring())
         if not signature["ok"]:
             raise HTTPException(
                 status_code=422,
                 detail=f"CBOM signature verification failed: {signature['error']}",
             )
-    records = records_from_bom(bom)
+    # Validate storage limits before any database mutation (including legacy
+    # 1.4/1.5 shapes, whose historical validator is deliberately permissive).
+    if len(bom.get("components") or []) > 10000:
+        raise HTTPException(status_code=422, detail="CBOM import limit is 10000 components; split the document explicitly")
+    for component in bom.get("components") or []:
+        if not isinstance(component, dict) or component.get("components"):
+            raise HTTPException(status_code=422, detail="Algorithm metadata import requires flat component objects; flatten nested documents explicitly")
+        crypto = component.get("cryptoProperties") or {}
+        if bom.get("specVersion") == "1.6" and crypto and crypto.get("assetType") != "algorithm":
+            raise HTTPException(status_code=422, detail="This importer supports algorithm metadata only; certificate, key and protocol records need their dedicated inventory workflows")
+    try:
+        records = records_from_bom(bom)
+    except (ValueError, TypeError, AttributeError, OverflowError):
+        raise HTTPException(status_code=422, detail="Malformed cryptographic component metadata") from None
+    for item in records:
+        if (len(item["algorithm"]) > 80 or len(str(item.get("purpose") or "")) > 50
+                or any(value is not None and (not isinstance(value, str) or len(value) > 50)
+                       for value in (item.get("mode"), item.get("purpose"), item.get("padding")))
+                or not 0 <= item["line_number"] <= 2147483647
+                or (item.get("key_size") is not None and not 0 <= item["key_size"] <= 2147483647)):
+            raise HTTPException(status_code=422, detail="Cryptographic component exceeds inventory field limits")
     if not records:
         raise HTTPException(status_code=422, detail="No cryptographic components in document")
     name = (system_name or bom_system_name(bom)).strip()
-    if not name:
-        raise HTTPException(status_code=422, detail="system_name is required")
+    if not name or len(name) > 200:
+        raise HTTPException(status_code=422, detail="system_name must contain 1 to 200 characters")
+    try:
+        document_sha256 = hashlib.sha256(json.dumps(bom, sort_keys=True, separators=(",", ":"),
+                                                   ensure_ascii=False, allow_nan=False).encode()).hexdigest()
+    except (ValueError, TypeError, RecursionError):
+        raise HTTPException(status_code=422, detail="CBOM must contain finite, serializable JSON values") from None
+    identities = {}
+    for item in records:
+        for context in item.get("business_contexts") or []:
+            if any(not isinstance(value, (str, int, float)) or isinstance(value, bool) or len(str(value)) > 1000
+                   for value in context.values()):
+                raise HTTPException(status_code=422, detail="Business context must contain scalar declarations of at most 1000 characters")
+        key = (item["algorithm"], item.get("purpose"), item["file_path"], item["line_number"])
+        metadata = {field: item.get(field) for field in ("mode", "padding", "key_size", "business_contexts", "parameter_set_identifier")}
+        if key in identities and identities[key] != metadata:
+            raise HTTPException(status_code=422, detail="Conflicting component declarations at the same inventory location")
+        identities[key] = metadata
     sys_repo = SystemRepository(db)
     system = sys_repo.get_or_create(
         name, owner=owner, environment=environment,
         description="Imported from CycloneDX CBOM",
     )
+    # Serialize concurrent imports to an existing system. A first-create
+    # race is rejected by the estate/name unique index and returned as 409.
+    from db.models.system import System
+    db.execute(select(System).where(System.id == system.id).with_for_update().execution_options(populate_existing=True)).scalar_one()
     extra = dict(system.extra or {})
-    extra["cbom"] = {
+    import_receipt = {
         "spec_version": bom.get("specVersion"),
         "serial_number": bom.get("serialNumber"),
         "imported_at": datetime.now(timezone.utc).isoformat(),
         "component_count": len(records),
         "source": "ingest",
+        "imported_by": actor,
+        "source_basis": IMPORT_SOURCE_BASIS,
+        "document_sha256": document_sha256,
     }
+    extra["cbom_import"] = import_receipt
+    if not isinstance(extra.get("cbom"), dict) or extra["cbom"].get("source") != "scan":
+        extra["cbom"] = import_receipt
     system.extra = extra
     stored = AssetRepository(db).replace_for_scan(
         f"cbom-ingest:{system.id}",
@@ -763,23 +825,26 @@ def ingest_document(
                 "key_size": item.get("key_size"),
                 "file_path": item.get("file_path") or f"cbom://{item.get('name') or item['algorithm']}",
                 "line_number": int(item.get("line_number") or 0),
-                "confidence": "HIGH",
+                "confidence": "LOW",
                 "scanner_ids": ["cbom-ingest"],
+                "cbom_import": {
+                    **{key: item[key] for key in ("business_contexts", "parameter_set_identifier", "key_size_basis", "padding") if key in item},
+                    "system_id": system.id,
+                    "document_sha256": document_sha256,
+                    "source_basis": IMPORT_SOURCE_BASIS,
+                },
                 "libraries": [],
                 "dedup_key": item.get("id"),
             }
             for item in records
         ],
+        import_system_id=system.id,
     )
     for asset in stored:
         sys_repo.attach_asset(system.id, asset.id)
-    sys_repo.stamp_scan(
-        system.id,
-        scan_id=None,
-        status="CURRENT",
-        component_count=len(stored),
-        algorithms=dict(Counter(item["algorithm"] for item in records)),
-    )
+    # Metadata import is NOT scanner execution: preserve last_scan_id,
+    # last_scanned_at and coverage_status, including an existing failed scan.
+    db.flush()
     summary = summarize_records(
         stored,
         source_type="system",
@@ -787,20 +852,37 @@ def ingest_document(
         name=system.name,
         environment=system.environment,
     )
-    return {"system": system.to_dict(), "imported": len(stored), "summary": summary}
+    return {"system": system.to_dict(), "imported": len(stored), "summary": summary,
+            "document_sha256": document_sha256, "source_basis": IMPORT_SOURCE_BASIS}
 
 
 @router.post("/ingest")
 def cbom_ingest(
     body: IngestCbomRequest,
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_cbom_writer),
     db: Session = Depends(get_db_session),
 ):
-    check = validate_document(body.bom)
-    if not check["ok"]:
-        raise HTTPException(status_code=422, detail="; ".join(check["errors"]))
-    return ingest_document(bom=body.bom, db=db, system_name=body.system_name,
-                           owner=body.owner, environment=body.environment)
+    try:
+        result = ingest_document(bom=body.bom, db=db, system_name=body.system_name,
+                                 owner=body.owner, environment=body.environment, actor=user)
+        from db.repositories.user_repository import UserRepository
+        UserRepository(db).audit(user, "cbom.ingest", target_type="system", target_id=result["system"]["id"],
+                                 detail={"document_sha256": result["document_sha256"], "assets": result["imported"],
+                                         "source_basis": IMPORT_SOURCE_BASIS})
+        # Commit BEFORE returning success, not in the request-scoped yield
+        # dependency teardown, which can run after the response is delivered.
+        db.commit()
+        return result
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Concurrent inventory update; reload current inventory before retrying") from None
+    except SQLAlchemyError:
+        db.rollback()
+        logger.error("CBOM import database transaction failed; outcome unconfirmed")
+        raise HTTPException(status_code=503, detail="Import outcome unconfirmed; reload current inventory before retrying") from None
+    except Exception:
+        db.rollback()
+        raise
 
 
 @router.post("/diff")

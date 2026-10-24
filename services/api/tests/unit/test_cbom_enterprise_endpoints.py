@@ -203,6 +203,11 @@ async def test_ingest_tamper_gate_sqlite(monkeypatch):
 
     application.dependency_overrides[get_db_session] = _session
 
+    # This signature/transaction unit test explicitly grants write authority.
+    # Actual durable-role denials are covered in test_cbom_production_flow.py.
+    from api.routers.cbom import require_cbom_writer
+    application.dependency_overrides[require_cbom_writer] = lambda: "testuser"
+
     good = CbomGenerator().sign(_bom(_records("AES")), SECRET)
     tampered = CbomGenerator().sign(_bom(_records("AES")), SECRET)
     tampered["components"].append(dict(tampered["components"][0], name="Injected-3DES"))

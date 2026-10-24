@@ -168,3 +168,80 @@ def test_downgrade_one_and_back(migrated):
     assert down.returncode == 0, down.stderr[-2000:]
     up = _alembic("upgrade", "head")
     assert up.returncode == 0, up.stderr[-2000:]
+
+
+def test_system_names_are_estate_local_including_platform_null(migrated):
+    statement = sa.text("""INSERT INTO systems (id, name, tenant_id, created_at, updated_at)
+        VALUES (:id, 'Shared business name', :tenant, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""")
+    with migrated.connect() as connection, connection.begin():
+        for ident, tenant in (("name-platform", None), ("name-a", "a"), ("name-b", "b")):
+            connection.execute(statement, {"id":ident, "tenant":tenant})
+        for ident, tenant in (("duplicate-platform", None), ("duplicate-a", "a")):
+            with pytest.raises(sa.exc.IntegrityError), connection.begin_nested():
+                connection.execute(statement, {"id":ident, "tenant":tenant})
+        connection.rollback()
+
+
+def test_0107_downgrade_refuses_duplicate_names_without_changing_data(migrated):
+    ids = ("downgrade-owned-a", "downgrade-owned-b")
+    try:
+        with migrated.begin() as connection:
+            for ident in ids:
+                connection.execute(sa.text("""INSERT INTO systems (id, name, tenant_id, created_at, updated_at)
+                    VALUES (:id, '0107 duplicate downgrade fixture', :id, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""), {"id":ident})
+        result = _alembic("downgrade", "0106")
+        assert result.returncode != 0 and "downgrade blocked" in result.stderr
+        with migrated.connect() as connection:
+            assert connection.execute(sa.text("select version_num from alembic_version")).scalar_one() == "0107"
+            assert connection.execute(sa.text("select count(*) from systems where id in ('downgrade-owned-a','downgrade-owned-b')")).scalar_one() == 2
+        indexes = {index["name"] for index in sa.inspect(migrated).get_indexes("systems")}
+        assert {"uq_systems_platform_name", "uq_systems_tenant_name"} <= indexes
+    finally:
+        with migrated.begin() as connection:
+            connection.execute(sa.text("DELETE FROM systems WHERE id in ('downgrade-owned-a','downgrade-owned-b')"))
+
+
+def test_0107_upgrade_preserves_an_existing_system_and_its_metadata(migrated):
+    down = _alembic("downgrade", "0106")
+    assert down.returncode == 0, down.stderr[-1500:]
+    try:
+        with migrated.begin() as connection:
+            connection.execute(sa.text("""INSERT INTO systems (id, name, tenant_id, owner, extra, created_at, updated_at)
+                VALUES ('upgrade-owned-a', '0107 preexisting service', 'a', 'preserve-owner',
+                        '{"preserve":"metadata"}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""))
+        up = _alembic("upgrade", "head")
+        assert up.returncode == 0, up.stderr[-1500:]
+        with migrated.begin() as connection:
+            row = connection.execute(sa.text("SELECT owner, extra FROM systems WHERE id='upgrade-owned-a'")).one()
+            assert row.owner == "preserve-owner" and row.extra == {"preserve":"metadata"}
+            connection.execute(sa.text("""INSERT INTO systems (id, name, tenant_id, created_at, updated_at)
+                VALUES ('upgrade-owned-b', '0107 preexisting service', 'b', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""))
+    finally:
+        with migrated.begin() as connection:
+            connection.execute(sa.text("DELETE FROM systems WHERE id in ('upgrade-owned-a','upgrade-owned-b')"))
+        restored = _alembic("upgrade", "head")
+        assert restored.returncode == 0, restored.stderr[-1500:]
+
+
+def test_0107_busy_database_fails_transactionally_and_can_be_retried(migrated):
+    down = _alembic("downgrade", "0106")
+    assert down.returncode == 0, down.stderr[-1500:]
+    try:
+        with migrated.begin() as connection:
+            connection.execute(sa.text("""INSERT INTO systems (id, name, created_at, updated_at)
+                VALUES ('lock-owned', '0107 busy database fixture', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""))
+        with migrated.connect() as holder, holder.begin():
+            holder.execute(sa.text("SELECT id FROM systems WHERE id='lock-owned' FOR UPDATE"))
+            up = _alembic("upgrade", "head")
+            assert up.returncode != 0 and "lock timeout" in up.stderr
+            holder.rollback()
+        with migrated.connect() as connection:
+            assert connection.execute(sa.text("SELECT version_num FROM alembic_version")).scalar_one() == "0106"
+        indexes = {index["name"] for index in sa.inspect(migrated).get_indexes("systems")}
+        assert "uq_systems_tenant_name" not in indexes and "uq_systems_platform_name" not in indexes
+        assert any(constraint["name"] == "uq_systems_name" for constraint in sa.inspect(migrated).get_unique_constraints("systems"))
+    finally:
+        with migrated.begin() as connection:
+            connection.execute(sa.text("DELETE FROM systems WHERE id='lock-owned'"))
+        restored = _alembic("upgrade", "head")
+        assert restored.returncode == 0, restored.stderr[-1500:]

@@ -3,8 +3,8 @@ from starlette.responses import JSONResponse
 
 
 class AssuranceBodyLimit:
-    def __init__(self, app, prefix="/api/v1/assurance/"):
-        self.app, self.prefix = app, prefix
+    def __init__(self, app, prefix="/api/v1/assurance/", label="Assurance"):
+        self.app, self.prefix, self.label = app, prefix, label
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or not scope.get("path", "").startswith(self.prefix):
@@ -19,7 +19,7 @@ class AssuranceBodyLimit:
                 return
             count += len(message.get("body", b""))
             if count > 2 * 1048576:
-                await JSONResponse({"detail": "Assurance request exceeds 2 MiB wire limit"}, status_code=413)(scope, receive, send)
+                await JSONResponse({"detail": f"{self.label} request exceeds 2 MiB wire limit"}, status_code=413, headers={"Cache-Control": "no-store"})(scope, receive, send)
                 return
             data.extend(message.get("body", b""))
             if not message.get("more_body", False):
@@ -32,7 +32,7 @@ class AssuranceBodyLimit:
             try:
                 bounded_json(b"".join(m.get("body", b"") for m in messages), max_bytes=2 * 1048576)
             except (ValueError, TypeError, UnicodeError, RecursionError):
-                await JSONResponse({"detail": "Malformed, duplicate-key or over-nested assurance JSON"}, status_code=422)(scope, receive, send)
+                await JSONResponse({"detail": f"Malformed, duplicate-key or over-nested {self.label.lower()} JSON"}, status_code=422, headers={"Cache-Control": "no-store"})(scope, receive, send)
                 return
         async def bounded_receive():
             if messages:
