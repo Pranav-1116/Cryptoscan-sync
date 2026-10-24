@@ -28,6 +28,12 @@ a provisioned isolation runtime. This narrows parts of D2/I2/I4, not all45:
 controlled execution success, deployed security/recovery/capacity, complete
 six-BOM coverage and independent bank acceptance remain open.
 
+The [long-running worker-pool repair](worker-pool-lifecycle.md) additionally
+bounds completion bookkeeping and prevents cancelled queued work from permanently
+consuming local slots, without allowing cancel/resubmit to bypass queue limits.
+This is a bounded resource/liveness correction, not representative bank scanner
+capacity or p95/p99 qualification. Redis atomic orphan recovery remains open.
+
 ## Implemented in this follow-up
 
 | Original question | Actual implementation change | Evidence |
