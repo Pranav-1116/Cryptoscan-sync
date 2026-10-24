@@ -318,3 +318,33 @@ def test_actual_orphan_dead_letter_does_not_fence_a_healthy_sql_attempt(controll
     assert consumer.recover_orphans() == {"requeued": 0, "dead_lettered": 1, "workers": 1}
     assert consumer.redis_client.llen(consumer.dead_letter_key) == 1
     assert snapshot(job_id) == before
+
+
+def test_api_publisher_does_not_commit_outbox_on_redis_memory_fallback(controlled, monkeypatch):
+    """Use the actual API→helper→consumer chain, not a preconfigured consumer."""
+    from queue import Queue
+    from types import SimpleNamespace
+    from api.routers import trigger
+    from worker.core import job_consumer
+
+    configure(controlled)
+    approve(controlled)
+    row, _descriptor = queue(controlled)
+    memory = Queue()
+    monkeypatch.setattr(job_consumer, "_MEMORY_QUEUE", memory)
+    client = Mock()
+    client.rpush.side_effect = OSError("synthetic transport outage")
+    monkeypatch.setattr(JobConsumer, "_connect_redis", lambda self: setattr(self, "redis_client", client))
+    monkeypatch.setattr(trigger, "get_settings", lambda: SimpleNamespace(
+        REDIS_URL="redis://synthetic.invalid", SCAN_JOB_QUEUE_KEY="synthetic:queue"))
+    trigger._publish_job({"job_id": row.id, "progress": row.progress})
+    with SessionLocal() as db:
+        outbox = db.query(ExecutionOutbox).one()
+        assert outbox.state == "PENDING", "API helper acknowledged a process-local delivery"
+        assert outbox.lease_until is None
+        assert db.get(ScanJob, row.id).status == "QUEUED"
+        assert db.query(ExecutionAttempt).count() == 0
+    assert memory.empty()
+    published = []
+    assert dispatch_pending(published.append) == 1
+    assert [p["job_id"] for p in published] == [row.id]

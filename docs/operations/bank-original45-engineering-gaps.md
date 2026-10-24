@@ -20,6 +20,14 @@ local-source job/receipt/content commitments in the existing CBOM panel. It does
 not supply a complete independent denominator, clear partial histories, qualify
 runtime discovery or close the remaining platform/migration/acceptance gaps.
 
+The subsequent [worker dispatch repair and drill](worker-dispatch-boundaries.md)
+reproduces and fixes memory-only outbox publication and expiring drain leases.
+An actual API-created development job now runs through real Redis and a fresh
+worker into PostgreSQL evidence; controlled dispatch remains fail-closed without
+a provisioned isolation runtime. This narrows parts of D2/I2/I4, not all45:
+controlled execution success, deployed security/recovery/capacity, complete
+six-BOM coverage and independent bank acceptance remain open.
+
 ## Implemented in this follow-up
 
 | Original question | Actual implementation change | Evidence |

@@ -1,0 +1,93 @@
+{
+  "schema": "cryptoscan.worker-dispatch-drill/1",
+  "result": "PASS",
+  "checks": [
+    "REAL_PASSWORD_LOGIN_AND_DURABLE_SESSIONS",
+    "ADMISSION_RBAC_SOURCE_ROOTS_AND_FOREIGN_JOB_ISOLATION",
+    "REAL_REDIS_DEQUEUE_WORKER_PARSER_HASH_LOAD_AND_DUPLICATE_FENCE",
+    "STOP_AFTER_ENQUEUE_REFUSED_AT_REAL_WORKER_AND_NEW_ADMISSION",
+    "CONTROLLED_SQL_OUTBOX_DISPATCH_REFUSES_UNPROVISIONED_ISOLATION",
+    "REAL_REDIS_OUTAGE_LEAVES_API_OUTBOX_PENDING_NOT_MEMORY_PUBLISHED",
+    "REAL_WORKER_MAINTENANCE_REPUBLISHES_PENDING_OUTBOX_AFTER_RESTART",
+    "REAL_REDIS_LEASE_SURVIVES_STOPPED_INTAKE_AND_DRAIN_BEYOND_TTL",
+    "REAL_SIGKILL_TRANSPORT_REDELIVERY_AFTER_NOT_BEFORE_LEASE_EXPIRY"
+  ],
+  "scope": "OWNED_LOCAL_SYNTHETIC_POSTGRESQL_REDIS",
+  "api_transport": "IN_PROCESS_ASGI_TESTCLIENT",
+  "worker_process": "REAL_UNMODIFIED_WORKER_ENTRYPOINT",
+  "job_envelope_fixture_provisioned": false,
+  "development_pipeline_exercised": true,
+  "development_inline_parser_qualified": false,
+  "controlled_isolation_qualified": false,
+  "bank_approved": false,
+  "deployment_qualified": false,
+  "limits": [
+    "Development success does not qualify controlled or production parsing",
+    "Controlled success remains blocked: pinned container runtime is not provisioned",
+    "Standalone Unix sockets; no deployed TLS/ACL/Sentinel/HA or partition qualification",
+    "Small synthetic workload; no capacity, latency SLO or performance-improvement claim",
+    "ASGI routes and real password/session auth, not a browser or network HTTP drill",
+    "Transport heartbeat is not the SQL execution fence or a collector-stop guarantee"
+  ],
+  "redis": {
+    "version": "8.2.4",
+    "tcp_port": 0,
+    "binary_sha256": "53ba04197589c82b26bab2cb01930ba8063bf0e021a7219d8236eab36de817ef"
+  },
+  "migration": "0107",
+  "postgres_version": "16.2",
+  "development_scan": {
+    "job_id": "d85273ec-dff3-48bc-8178-a49cfef896d7",
+    "status": "COMPLETED",
+    "integrity": {
+      "scan_id": "a60d9822-98eb-47c2-b50c-2733bab15497",
+      "records": 1,
+      "chain_intact": true,
+      "content_intact": true,
+      "hash_format_valid": true,
+      "manifest_intact": true,
+      "manifest_hash": "fefeb70dbf3b7456c0d4f246bdd4412b3a0df03a349df8aaacdd6c2a512d838b",
+      "result": "PASS",
+      "errors": []
+    },
+    "evidence_count": 1,
+    "scan_count": 1
+  },
+  "isolation_preflight": {
+    "result": "REFUSED",
+    "reason": "Controlled parsing requires the approved container profile",
+    "durable_grant_validated_before_dispatch": true
+  },
+  "transport_sigkill": {
+    "lease_ttl_s": 5,
+    "kill": "SIGKILL pid 12149 at t+0.4s while job in processing list",
+    "before_lease_expiry": {
+      "requeued": 0,
+      "dead_lettered": 0,
+      "workers": 0
+    },
+    "recover_orphans": {
+      "requeued": 1,
+      "dead_lettered": 0,
+      "workers": 1
+    },
+    "redelivered": {
+      "job_id": "drill-job",
+      "attempts": 1,
+      "t_plus_s": 6.4
+    },
+    "result": "PASS"
+  },
+  "controlled_refusals": {
+    "jobs": 2,
+    "execution_attempts": 0,
+    "additional_scans": 0,
+    "isolated_execution_qualified": false
+  },
+  "cleanup": {
+    "owned_children_shutdown_without_forced_kill": true,
+    "owned_children_exited": true,
+    "owned_postgresql_stopped": true,
+    "private_source_database_socket_and_logs_removed": true
+  }
+}

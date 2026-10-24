@@ -72,3 +72,18 @@ def test_interrupted_submission_returns_its_semaphore_slot(monkeypatch, interrup
         assert pool.stats.submitted == pool.stats.completed == 1
     finally:
         pool.shutdown(wait=True)
+
+
+@pytest.mark.parametrize("fault", ["startup", "publish"])
+def test_configured_redis_publish_helper_never_accepts_a_memory_delivery(monkeypatch, fault):
+    memory = Queue()
+    monkeypatch.setattr(job_consumer, "_MEMORY_QUEUE", memory)
+    client = Mock()
+    if fault == "startup":
+        client.ping.side_effect = OSError("synthetic unavailable transport")
+    else:
+        client.rpush.side_effect = OSError("synthetic unavailable transport")
+    monkeypatch.setattr("shared_models.redis_connection.verified_redis_client", lambda *a, **kw: client)
+    with pytest.raises(RuntimeError, match="memory fallback is disabled"):
+        job_consumer.enqueue_job({"job_id": "synthetic"}, redis_url="redis://synthetic.invalid")
+    assert memory.empty()

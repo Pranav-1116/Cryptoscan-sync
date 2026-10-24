@@ -23,6 +23,7 @@ import socket
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from queue import Empty, Queue
@@ -146,6 +147,36 @@ class JobConsumer:
             self.redis_client.set(self.lease_key, str(int(time.time())), ex=self.lease_ttl_seconds)
         except Exception as exc:
             logger.warning("lease_refresh_failed", extra={"error": str(exc)})
+
+    @contextmanager
+    def maintain_lease(self):
+        """Renew transport ownership independently of polling and pool capacity.
+
+        The caller must keep this context open through graceful pool draining.
+        ``stop()`` stops intake, NOT lease renewal: in-flight jobs still own
+        their processing-list entries until their completion callbacks ACK.
+        This heartbeat is transport liveness only, never a SQL execution fence
+        or proof that a collector has stopped after a network partition.
+        """
+        finished = threading.Event()
+        interval = max(0.1, self.lease_ttl_seconds / 3)
+
+        def renew():
+            while not finished.wait(interval):
+                self.heartbeat()
+
+        self.heartbeat()
+        keeper = threading.Thread(target=renew, name="cryptoscan-queue-lease", daemon=True)
+        keeper.start()
+        try:
+            yield
+        finally:
+            finished.set()
+            # Redis connections have bounded socket timeouts. Wait for the
+            # keeper to stop so it cannot resurrect an abandoned lease later.
+            keeper.join()
+            # Leave the last TTL to expire naturally. An ACK failure may have
+            # left transport work for the normal orphan recovery path.
 
     def ack(self, job: ScanJob) -> None:
         """Remove a finished job (success or failure) from this worker's processing list."""
@@ -391,4 +422,12 @@ class JobConsumer:
 
 
 def enqueue_job(payload: dict, redis_url: str = "", queue_name: str = "cryptoscan:jobs:queue") -> None:
-    JobConsumer(redis_url=redis_url, queue_name=queue_name).enqueue(payload)
+    """Publish across processes whenever a Redis destination was requested.
+
+    The API/outbox calls this helper directly. A configured Redis outage must
+    raise, even in development: an in-memory enqueue cannot reach a separate
+    worker and must never acknowledge durable SQL publication. Tests/tools can
+    still explicitly opt into fallback on a JobConsumer instance.
+    """
+    JobConsumer(redis_url=redis_url, queue_name=queue_name,
+                allow_memory_fallback=not bool((redis_url or "").strip())).enqueue(payload)

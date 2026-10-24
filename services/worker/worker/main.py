@@ -63,7 +63,7 @@ class Worker:
             queue_name=self.settings.queue_key,
             # Production must not silently degrade to an in-process queue:
             # jobs published by the API would be lost across processes.
-            allow_memory_fallback=not self.settings.is_production,
+            allow_memory_fallback=(not self.settings.is_production and not self.settings.REDIS_URL.strip()),
             lease_ttl_seconds=int(getattr(self.settings, "JOB_LEASE_TTL_SECONDS", 60)),
             max_redeliveries=int(getattr(self.settings, "JOB_MAX_REDELIVERIES", 3)),
             on_dead_letter=_dead_letter,
@@ -76,30 +76,33 @@ class Worker:
             "cryptoscan_worker_pool",
             extra={"max_concurrent_jobs": concurrency, "worker_id": self.consumer.worker_id},
         )
-        # startup: adopt work left behind by crashed workers before taking new work
-        recovered = self.consumer.recover_orphans()
-        if any(recovered.values()):
-            logger.warning("orphaned_jobs_recovered", extra=recovered)
+        # Polling may stop under backpressure or SIGTERM while jobs are still
+        # running. Keep transport ownership alive until the pool has drained.
+        with self.consumer.maintain_lease():
+            # startup: adopt work left behind by crashed workers before taking new work
+            recovered = self.consumer.recover_orphans()
+            if any(recovered.values()):
+                logger.warning("orphaned_jobs_recovered", extra=recovered)
 
-        def handle(job: ScanJob):
-            future = self.pool.submit(job)
-            # at-least-once: the payload leaves Redis only when the scan finished (either way)
-            future.add_done_callback(lambda _f, _job=job: self.consumer.ack(_job))
+            def handle(job: ScanJob):
+                future = self.pool.submit(job)
+                # at-least-once: the payload leaves Redis only when the scan finished (either way)
+                future.add_done_callback(lambda _f, _job=job: self.consumer.ack(_job))
 
-        try:
-            self.consumer.consume(handler=handle)
-        finally:
-            # Graceful shutdown: wait for in-flight scans to finish.
-            if self.pool:
-                logger.info("worker_draining", extra={"active": self.pool.stats.active})
-                self.pool.shutdown(wait=True)
-                logger.info(
-                    "worker_stopped",
-                    extra={
-                        "completed": self.pool.stats.completed,
-                        "failed": self.pool.stats.failed,
-                    },
-                )
+            try:
+                self.consumer.consume(handler=handle)
+            finally:
+                # Graceful shutdown: wait for in-flight scans to finish.
+                if self.pool:
+                    logger.info("worker_draining", extra={"active": self.pool.stats.active})
+                    self.pool.shutdown(wait=True)
+                    logger.info(
+                        "worker_stopped",
+                        extra={
+                            "completed": self.pool.stats.completed,
+                            "failed": self.pool.stats.failed,
+                        },
+                    )
 
 
 def main():

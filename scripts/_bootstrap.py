@@ -18,41 +18,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-_SHARED_PACKAGES = ("shared_config", "shared_logging", "shared_models")
-
-_SERVICE_PACKAGES = (
-    "agility",
-    "api",
-    "business_context",
-    "cbom",
-    "cloud_scanner",
-    "container_scanner",
-    "control_plane",
-    "database",
-    "deduplication",
-    "drift",
-    "evidence",
-    "graph_engine",
-    "network_scanner",
-    "normalization",
-    "ot_scanner",
-    "observability",
-    "policy",
-    "quantum",
-    "remediation",
-    "reporting",
-    "scanner",
-    "vendor_intel",
-    "worker",
-)
-
-
 def path_entries() -> list[str]:
-    """The canonical import roots: shared packages first, then services."""
-    entries = [str(ROOT / "shared" / name) for name in _SHARED_PACKAGES]
-    entries += [str(ROOT / "services" / name) for name in _SERVICE_PACKAGES]
-    entries.append(str(ROOT))
-    return entries
+    """Match scripts/env.sh and container .pth discovery, including all BOM services.
+
+    A hand-maintained list omitted devsecops and other API dependencies, so a
+    fresh script/worker process could not import the current application.
+    """
+    entries = [str(path) for folder in ("shared", "services")
+               for path in sorted((ROOT / folder).iterdir()) if path.is_dir()]
+    return entries + [str(ROOT)]
 
 
 def bootstrap() -> Path:
