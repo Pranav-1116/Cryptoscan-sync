@@ -9,7 +9,11 @@
 > Older dated tables/diagrams are historical; configured CI does not mean a signed
 > release or site approval. The user reports one remaining workflow failure.
 
-Production cryptographic inventory and compliance platform — **Full End-to-End Product**.
+CryptoScan discovers cryptographic assets across approved and supported collection surfaces within the bank's defined scope.
+
+Every finding retains provenance and evidence status, with unsupported or unobserved facts represented explicitly as unknown rather than inferred as secure.
+
+**New host-first increment (2026-10-24):** [approved offline non-Git collection](docs/bank-environment/59-approved-offline-host-collection.md) and [ten-point acceptance ledger](docs/bank-environment/60-host-first-product-acceptance.md). Linux synthetic collection and authenticated evidence/CBOM intake are implemented. Windows execution, production host isolation, whole-bank coverage and the joined six-BOM host estate are **not qualified**.
 
 **Current Stats (2026-10-16, measured):** 51 services (~389k lines of Python), 103 API router modules, **834 API paths / 920 operations** (regenerated reference: `docs/api-reference/rest-api.md`), 95 alembic migrations with schema-parity tests, 75 frontend page components with lazy-loaded routes, 783 backend test files (full local suite: 7,629 passed / 34 skipped) plus a 334-test Vitest frontend suite with clean `tsc --noEmit`. Deterministic policy — no AI in the decision path. Per-round build ledger: `audit_reports/00_ROUND_STATUS.md` (complete through round 80).
 

@@ -14,6 +14,7 @@ import {
 import PrivateScope, { usePrivateScopeCurrent } from "../components/PrivateScope";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import CbomLegacyReview from "../components/CbomLegacyReview";
+import HostEvidencePanel from "../components/HostEvidencePanel";
 import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
 import { ICON_SM, IconCaretDown, IconCaretRight } from "../components/icons";
 
@@ -316,6 +317,7 @@ function CbomContent() {
         </div>}
       </section>
 
+      <HostEvidencePanel />
       <CbomLegacyReview refresh={refresh} onCommitted={() => setRefresh(value => value + 1)} />
 
       {offline && !loading && (

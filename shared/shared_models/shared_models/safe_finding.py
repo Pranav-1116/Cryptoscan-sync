@@ -79,6 +79,9 @@ def safe_finding(data: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(data, Mapping):
         raise TypeError("evidence findings must be structured mappings")
     result = _select(data, _TOP_LEVEL)
+    if "host_evidence" in data:
+        from shared_models.host_collection import HostEvidenceRef
+        result["host_evidence"] = HostEvidenceRef.model_validate(data["host_evidence"]).model_dump(mode="json")
     scopes = data.get("compliance_scopes")
     if isinstance(scopes, list):
         result["compliance_scopes"] = [scope for scope in scopes

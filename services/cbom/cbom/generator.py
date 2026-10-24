@@ -48,7 +48,11 @@ class CbomGenerator:
     ) -> dict[str, Any]:
         if spec_version not in {"1.5", "1.6"}:
             raise ValueError("Only legacy1.5 and native1.6 JSON exports are supported")
-        components = [self._component(record) for record in records]
+        def is_receipt(record):
+            data = record.to_dict() if hasattr(record, "to_dict") else record if isinstance(record, dict) else {"finding_data": getattr(record, "finding_data", {})}
+            finding = data.get("finding_data") or data.get("finding") or data if isinstance(data, dict) else {}
+            return finding.get("finding_type") == "HOST_COLLECTION_RECEIPT" and bool(finding.get("host_evidence"))
+        components = [self._component(record) for record in records if not is_receipt(record)]
         metadata: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "component": {"type": "application", "name": name, "version": version},
@@ -516,4 +520,18 @@ class CbomGenerator:
                 "system_name": getattr(record, "system_name", None),
                 "system_id": getattr(record, "system_id", None),
             }
+        finding = data.get("finding_data") or data.get("finding") or data
+        reference = finding.get("host_evidence")
+        if reference:
+            from shared_models.host_collection import HostEvidenceRef
+            ref = HostEvidenceRef.model_validate(reference).model_dump(mode="json")
+            # Offline host facts have no trusted normalization/policy rollup.
+            # Build from the hash-covered source, never mutable enrichment or
+            # caller-supplied bank-context columns alongside that source.
+            data = {"id": data.get("id") or data.get("evidence_id") or data.get("finding_id"),
+                    **finding.get("crypto", {}), "source_basis": "IMPORTED", "confidence": "LOW",
+                    "system_id": ref["system_id"], "host_evidence": ref, "library": "UNKNOWN",
+                    "content_hash": data.get("content_hash"), "chain_hash": data.get("chain_hash"),
+                    "normalized_crypto": {}, "compliance_status": None,
+                    "file_path": finding.get("source", {}).get("file_path"), "line_number": 0}
         return cbom_crypto_component(data)

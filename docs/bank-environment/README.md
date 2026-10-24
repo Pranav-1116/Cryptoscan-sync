@@ -303,3 +303,8 @@ Preview workflows retain real external evidence when supplied; they do not hire 
 assessor, assign actual people, run site exercises or establish customer acceptance.
 Certified infrastructure does not certify the product, an exercise assertion is
 not an SLA, and one bounded workflow is not whole-bank visibility.
+
+## Approved host-first build (2026-10-24)
+
+- [59. Approved offline non-Git host collection](59-approved-offline-host-collection.md) — code-backed metadata/receipts, admin approval, analyst intake and auditor inspection; Windows/production qualification remains open.
+- [60. Ten-point product delivery and acceptance ledger](60-host-first-product-acceptance.md) — all six BOMs, expected-truth estate and remaining production/security gates; not a completion claim.

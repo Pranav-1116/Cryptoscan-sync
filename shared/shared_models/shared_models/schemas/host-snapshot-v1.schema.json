@@ -1,0 +1,481 @@
+{
+  "$defs": {
+    "HostFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "default": "UNKNOWN",
+          "enum": [
+            "RSA",
+            "EC",
+            "DSA",
+            "ED25519",
+            "ED448",
+            "UNKNOWN"
+          ],
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "binary_format": {
+          "default": "UNKNOWN",
+          "enum": [
+            "ELF",
+            "PE",
+            "UNKNOWN"
+          ],
+          "title": "Binary Format",
+          "type": "string"
+        },
+        "certificate_signature_oid": {
+          "default": "UNKNOWN",
+          "maxLength": 100,
+          "pattern": "^(UNKNOWN|[0-9]+(?:\\.[0-9]+)+)$",
+          "title": "Certificate Signature Oid",
+          "type": "string"
+        },
+        "cipher_suites": {
+          "items": {
+            "enum": [
+              "AES128-GCM-SHA256",
+              "AES256-GCM-SHA384",
+              "ECDHE-RSA-AES128-GCM-SHA256",
+              "ECDHE-RSA-AES256-GCM-SHA384",
+              "ECDHE-ECDSA-AES128-GCM-SHA256",
+              "ECDHE-ECDSA-AES256-GCM-SHA384"
+            ],
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Cipher Suites",
+          "type": "array"
+        },
+        "curve": {
+          "default": "UNKNOWN",
+          "enum": [
+            "secp256r1",
+            "secp384r1",
+            "secp521r1",
+            "UNKNOWN"
+          ],
+          "title": "Curve",
+          "type": "string"
+        },
+        "fingerprint_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fingerprint Sha256"
+        },
+        "key_size": {
+          "anyOf": [
+            {
+              "maximum": 16384,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Size"
+        },
+        "kind": {
+          "enum": [
+            "CERTIFICATE",
+            "TLS_CONFIGURATION",
+            "BINARY",
+            "SOFTWARE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "enum": [
+            "OBSERVED",
+            "DECLARED"
+          ],
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "mode": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Mode",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "protocols": {
+          "items": {
+            "enum": [
+              "TLSv1",
+              "TLSv1.1",
+              "TLSv1.2",
+              "TLSv1.3"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Protocols",
+          "type": "array"
+        },
+        "purpose": {
+          "enum": [
+            "PUBLIC_KEY_METADATA",
+            "TLS_CONFIGURATION",
+            "FILE_PRESENCE",
+            "PACKAGE_DATABASE_RECORD"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "signature_hash": {
+          "default": "UNKNOWN",
+          "enum": [
+            "SHA1",
+            "SHA224",
+            "SHA256",
+            "SHA384",
+            "SHA512",
+            "UNKNOWN"
+          ],
+          "title": "Signature Hash",
+          "type": "string"
+        },
+        "software_name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Software Name"
+        },
+        "software_version": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Software Version"
+        },
+        "unparsed_directives": {
+          "default": false,
+          "title": "Unparsed Directives",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "local_basis",
+        "purpose"
+      ],
+      "title": "HostFact",
+      "type": "object"
+    },
+    "HostInput": {
+      "additionalProperties": false,
+      "properties": {
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "PUBLIC_CERTIFICATE",
+            "NGINX_TLS_CONFIG",
+            "BINARY_METADATA",
+            "DPKG_STATUS",
+            "WINDOWS_UNINSTALL"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id",
+        "kind",
+        "path"
+      ],
+      "title": "HostInput",
+      "type": "object"
+    },
+    "HostManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_reference": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Approval Reference",
+          "type": "string"
+        },
+        "environment": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Environment",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "host_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Host Id",
+          "type": "string"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/HostInput"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Inputs",
+          "type": "array"
+        },
+        "max_file_bytes": {
+          "default": 1048576,
+          "maximum": 1048576,
+          "minimum": 1,
+          "title": "Max File Bytes",
+          "type": "integer"
+        },
+        "max_total_bytes": {
+          "default": 16777216,
+          "maximum": 16777216,
+          "minimum": 1,
+          "title": "Max Total Bytes",
+          "type": "integer"
+        },
+        "platform": {
+          "enum": [
+            "linux",
+            "windows"
+          ],
+          "title": "Platform",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cryptoscan.host-manifest/v1",
+          "default": "cryptoscan.host-manifest/v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_reference",
+        "host_id",
+        "environment",
+        "platform",
+        "expires_at",
+        "inputs"
+      ],
+      "title": "HostManifest",
+      "type": "object"
+    },
+    "HostReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_count": {
+          "default": 0,
+          "maximum": 1048576,
+          "minimum": 0,
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Sha256"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/$defs/HostFact"
+          },
+          "maxItems": 1000,
+          "title": "Facts",
+          "type": "array"
+        },
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "METADATA_ONLY",
+            "ACCESS_DENIED",
+            "UNSUPPORTED_PLATFORM",
+            "SYMLINK_OR_SPECIAL",
+            "INVALID_FORMAT",
+            "PRIVATE_MATERIAL_REFUSED",
+            "INPUT_CHANGED",
+            "LIMIT",
+            "NOT_FOUND",
+            "EXPIRED",
+            "LEAST_PRIVILEGE_UNPROVEN"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PARSED",
+            "DENIED",
+            "UNSUPPORTED",
+            "INVALID",
+            "BUDGET_EXCEEDED",
+            "UNAVAILABLE"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id",
+        "status",
+        "reason"
+      ],
+      "title": "HostReceipt",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "collector_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Collector Version",
+      "type": "string"
+    },
+    "execution_platform": {
+      "enum": [
+        "linux",
+        "windows",
+        "unsupported"
+      ],
+      "title": "Execution Platform",
+      "type": "string"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "host_identity_attested": {
+      "const": false,
+      "default": false,
+      "title": "Host Identity Attested",
+      "type": "boolean"
+    },
+    "manifest": {
+      "$ref": "#/$defs/HostManifest"
+    },
+    "manifest_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Manifest Sha256",
+      "type": "string"
+    },
+    "production_execution_qualified": {
+      "const": false,
+      "default": false,
+      "title": "Production Execution Qualified",
+      "type": "boolean"
+    },
+    "receipts": {
+      "items": {
+        "$ref": "#/$defs/HostReceipt"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Receipts",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "cryptoscan.host-snapshot/v1",
+      "default": "cryptoscan.host-snapshot/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_revision": {
+      "default": null,
+      "title": "Source Revision",
+      "type": "null"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "whole_host_coverage_verified": {
+      "const": false,
+      "default": false,
+      "title": "Whole Host Coverage Verified",
+      "type": "boolean"
+    },
+    "windows_execution_qualified": {
+      "const": false,
+      "default": false,
+      "title": "Windows Execution Qualified",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "manifest",
+    "manifest_sha256",
+    "started_at",
+    "finished_at",
+    "execution_platform",
+    "receipts"
+  ],
+  "title": "HostSnapshot",
+  "type": "object"
+}

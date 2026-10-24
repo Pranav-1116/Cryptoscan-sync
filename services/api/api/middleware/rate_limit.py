@@ -30,6 +30,8 @@ DEFAULT_RULES: dict[str, tuple[int, int]] = {
     "login": (5, 60),          # /api/v1/auth/login — 5 req/min per IP
     "register": (10, 3600),    # /api/v1/auth/register — 10 accounts/hour per IP (open endpoint)
     "scan_submit": (100, 60),  # POST /api/v1/scans — 100 req/min per user
+    "host_write": (10, 60),   # bounded offline approval/intake, not remote execution
+    "host_read": (60, 60),    # integrity-checked metadata/export
     "api": (600, 60),          # everything else under /api — 600 req/min per identity
 }
 
@@ -41,6 +43,8 @@ def _endpoint_class(method: str, path: str) -> str:
         return "register"
     if method == "POST" and (path == "/api/v1/scans" or path.startswith("/api/v1/scans")):
         return "scan_submit"
+    if path.startswith("/api/v1/host-evidence/"):
+        return "host_write" if method == "POST" else "host_read"
     return "api"
 
 

@@ -133,7 +133,7 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
     # Evidence confidence (report 08 P1#6): the recorded confidence of
     # the observation, not a hardcoded 0.9. Unrecorded stays at the
     # source-analysis default — never fabricated upward.
-    declared = data.get("source_basis") in {"IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS", "LEGACY_IMPORT_REVIEW_REQUIRED"}
+    declared = data.get("source_basis") in {"IMPORTED", "IMPORTED_DECLARATIONS_NOT_SCANNER_OBSERVATIONS", "LEGACY_IMPORT_REVIEW_REQUIRED"}
     recorded = str(data.get("confidence") or "").upper()
     method_confidence = _CONFIDENCE_SCORES.get(recorded, 0.9)
     component: dict[str, Any] = {
@@ -223,6 +223,11 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
     for key in ("source_basis", "reported_confidence"):
         if data.get(key) is not None:
             properties.append({"name": f"cryptoscan:{key}", "value": str(data[key])})
+    if data.get("host_evidence"):
+        from shared_models.host_collection import HostEvidenceRef
+        host = HostEvidenceRef.model_validate(data["host_evidence"])
+        for key, value in host.model_dump(mode="json").items():
+            properties.append({"name": f"cryptoscan:host:{key}", "value": str(value)})
     if properties:
         component["properties"] = properties
     return component

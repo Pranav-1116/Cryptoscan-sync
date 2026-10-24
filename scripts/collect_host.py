@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Run with the repository's installed inventory/shared-models dependencies.
+
+No upload. Never overwrite an output. Exit 2 means receipts contain gaps, not
+an insecure host. The local manifest is an operator assertion; intake separately
+checks a durable API approval and preserves IMPORTED, not attested OBSERVED.
+"""
+
+import argparse
+import json
+import os
+import sys
+
+from _bootstrap import bootstrap
+
+bootstrap()
+
+from inventory.host import collect
+from shared_models.host_collection import HostManifest
+from shared_models.qualified_export import bounded_json
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--manifest", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+    try:
+        with open(args.manifest, "rb") as src:
+            raw = src.read(131073)
+        manifest = HostManifest.model_validate(bounded_json(raw, max_bytes=131072))
+        snapshot = collect(manifest)
+        raw = json.dumps(snapshot.model_dump(mode="json"), sort_keys=True, indent=2).encode()
+        if len(raw) > 1500000:
+            raise ValueError("receipt size limit")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+        with os.fdopen(os.open(args.output, flags, 0o600), "wb") as out:
+            out.write(raw)
+        return 0 if all(r.status == "PARSED" for r in snapshot.receipts) else 2
+    except (ValueError, OSError):
+        print(
+            "Host collection refused: invalid manifest, unreadable input or unavailable output. No upload performed.",
+            file=sys.stderr,
+        )
+        return 64
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

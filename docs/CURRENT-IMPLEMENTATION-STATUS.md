@@ -1,5 +1,7 @@
 # Current implementation, CI and documentation status
 
+**2026-10-24 host-first update:** [implemented non-Git offline collection](bank-environment/59-approved-offline-host-collection.md), [ten-point acceptance boundaries](bank-environment/60-host-first-product-acceptance.md), [execution evidence](readiness-evidence/host-collection-2026-10-24.md). This is a bounded development evidence/CBOM path, not Windows, controlled production host execution, joined six-BOM coverage or bank approval. Historical sections below retain their dated scope.
+
 **Updated:** 2026-10-23 UTC
 **Historical first-three-increment published implementation:** [`2fd8fc8fba255333f605202ebb68d04c4029c610`](https://github.com/ZKChainForge/CryproScan/commit/2fd8fc8fba255333f605202ebb68d04c4029c610)
 on `arena/bb4b80dd-cryproscan` ([PR #34](https://github.com/ZKChainForge/CryproScan/pull/34),

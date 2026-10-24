@@ -5076,3 +5076,24 @@ export const apiRetainedHistories = (page = 1): Promise<ApiResult<{systems: Arra
   call(`/api/v1/cbom/retained-histories?page=${page}&page_size=50`);
 export const apiRescanInspection = (systemId: string, jobId: string): Promise<ApiResult<RescanInspection>> =>
   call(`/api/v1/cbom/system/${encodeURIComponent(systemId)}/rescan-inspection?job_id=${encodeURIComponent(jobId)}`);
+
+/** Offline host metadata is imported evidence, not authenticated host observation. */
+export type HostImportReceipt = {
+  approval_id: string; scan_id: string; system_id: string; snapshot_sha256: string;
+  evidence_count: number; source_basis: "IMPORTED"; runtime_use: "UNKNOWN";
+  policy_result: "NOT_EVALUATED"; pqc_assessment: "UNKNOWN";
+  whole_host_coverage_verified: false; host_identity_attested: false;
+};
+export type HostSnapshotInspection = HostImportReceipt & {
+  integrity: { result: string; content_intact: boolean; chain_intact: boolean; manifest_intact: boolean; hash_format_valid: boolean };
+  snapshot: { manifest: { host_id: string; environment: string }; finished_at: string;
+    receipts: { input_id: string; status: string; reason: string; facts: { kind: string; algorithm: string; key_size: number | null; local_basis: string; runtime_use: string; software_name: string | null; software_version: string | null }[] }[] };
+};
+export const apiApproveHostScope = (systemId: string, manifest: unknown) =>
+  _rsPost<{ subject_id: string; payload_sha256: string }>("/api/v1/host-evidence/approvals", { system_id: systemId, manifest });
+export const apiImportHostSnapshot = (approvalId: string, snapshot: unknown) =>
+  _rsPost<HostImportReceipt>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/intake`, { snapshot });
+export const apiInspectHostSnapshot = (approvalId: string) =>
+  _rsGet<HostSnapshotInspection>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/snapshot`);
+export const apiHostCbom = (approvalId: string) =>
+  _rsGet<Record<string, unknown>>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/cbom`);
