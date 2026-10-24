@@ -1,0 +1,7 @@
+{
+  "customer_deployment_touched": false,
+  "owned_postgresql_directories_remaining": [],
+  "owned_postgresql_processes_remaining": [],
+  "runner_reported_cleanup_completed": true,
+  "systemd_timeout_overflow_child_reaping_test": "PASS"
+}

@@ -16,6 +16,7 @@ import test_collection_foundation as contracts
         contracts.test_phase_two_linux_os_metadata_joins_same_envelope_and_not_crypto,
         contracts.test_software_metadata_slot_is_stable_across_versioned_collection_history,
         contracts.test_failed_collection_is_not_an_empty_success_or_asset_absence,
+        contracts.test_phase_two_native_runtime_one_intake_and_supported_domain_projections,
     ],
 )
 def test_postgres_foundation(assured, contract):

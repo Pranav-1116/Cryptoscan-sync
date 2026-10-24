@@ -99,3 +99,18 @@ describe("Approved offline host workflow", () => {
     expect(screen.queryByText("payments-1 · prod")).toBeNull();
   });
 });
+
+describe("Passive runtime metadata, not cryptographic operation proof", () => {
+  const fact = { kind: "LISTENER", algorithm: "UNKNOWN", key_size: null, local_basis: "OBSERVED", runtime_use: "UNKNOWN", software_name: null, software_version: null, purpose: "HOST_RUNTIME_METADATA", operation_use: "UNKNOWN", capabilities_observed: false, identity_key: "scoped-listener", interface: "LINUX_PROCFS", interface_sha256: "a".repeat(64), address: "127.0.0.1", port: 443 };
+  const runtimeDetail = (changes = {}) => ({ ...detail, snapshot: { ...detail.snapshot, receipts: [{ input_id: "listener", status: "PARSED", reason: "METADATA_ONLY", facts: [{ ...fact, ...changes }] }] } });
+  it("shows a listener without inferring TLS from port 443", async () => {
+    mockFetch({ [`${P}/${id}/snapshot`]: runtimeDetail() }); mount(); inspect();
+    await screen.findByText(/LISTENER · 127.0.0.1:443/);
+    expect(screen.getByText(/Runtime use: UNKNOWN · PQC assessment: UNKNOWN/)).toBeTruthy();
+  });
+  it.each([{ algorithm: "RSA" }, { local_basis: "DECLARED" }, { interface_sha256: "invalid" }, { operation_use: "OBSERVED" }, { capabilities_observed: true }])("refuses promoted or uncommitted runtime proof", async changes => {
+    mockFetch({ [`${P}/${id}/snapshot`]: runtimeDetail(changes) }); mount(); inspect();
+    await screen.findByText(/No verified receipt or security verdict assumed/);
+    expect(screen.queryByText(/LISTENER · 127.0.0.1:443/)).toBeNull();
+  });
+});

@@ -255,13 +255,9 @@ def envelope(db, owner, job, target):
     for item, receipt in zip(snapshot.manifest.inputs, snapshot.receipts):
         for ordinal, fact in enumerate(receipt.facts):
             reference = refs.get((item.input_id, ordinal), refs[(item.input_id, -1)])
-            domains = (
-                ["CBOM", "TechBOM"]
-                if fact.kind in {"CERTIFICATE", "TLS_CONFIGURATION"}
-                else ["SBOM", "TechBOM"]
-                if fact.kind in {"BINARY", "SOFTWARE"}
-                else ["TechBOM"]
-            )
+            from shared_models.host_runtime import domains as fact_domains
+
+            domains = fact_domains(fact)
             slot = store.subject(
                 "metadata-slot/v1",
                 store.scope_key(owner),
@@ -269,7 +265,7 @@ def envelope(db, owner, job, target):
                 item.kind,
                 item.path,
                 fact.kind,
-                fact.software_name or "",
+                getattr(fact, "identity_key", None) or fact.software_name or "",
             )
             observation = Observation(
                 observation_id=store.subject("observation/v1", scan.id, item.input_id, ordinal),

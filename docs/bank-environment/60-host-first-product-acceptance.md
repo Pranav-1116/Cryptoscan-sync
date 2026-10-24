@@ -114,7 +114,11 @@ this update does not relabel those earlier logs as a graph qualification.
 registry, authorization, offline handoff/job states, shared typed evidence envelope,
 metadata-slot identity and reference-based six-domain materialization. It reuses
 existing tables and evidence intake. [Phase 2](63-linux-collection-phase-two.md)
-extends the Linux adapter with approved OS-release declarations and target-spec
-CLI. **Phase 2 is not complete:** actual services/listeners, hardware/TPM/HSM and
-runtime attribution remain unsupported here. Production and other collector phases
-remain unqualified. [Current execution evidence](../readiness-evidence/collection-foundation-2026-10-24.md).
+extends the Linux adapter with exact PID/library mappings, namespace TCP listeners,
+named-systemd-service probes, CPU/DMI/TPM metadata interfaces, literal OS metadata
+and an Alpine package profile. Runtime metadata now contributes NBOM/HBOM/SBOM
+and TechBOM observations without creating crypto-use claims. Positive native
+systemd/DMI/TPM and broader estate qualification remain open. [Phase 3 Windows](64-windows-collection-phase-three.md)
+now has an explicit offline candidate and read-only named SCM query; native
+Windows/production qualification remains false and registry authorization stays
+blocked. [Current execution evidence](../readiness-evidence/linux-runtime-windows-candidate-2026-10-24.md).

@@ -1,0 +1,97 @@
+{
+  "architecture": "x86_64",
+  "elevation_guard": false,
+  "euid": 1001,
+  "host_attestation": false,
+  "native_interfaces": [
+    {
+      "charged_bytes": 1618,
+      "facts": 1,
+      "kind": "LINUX_PROCESS",
+      "proves_asset_absence": false,
+      "reason": "METADATA_ONLY",
+      "resource": "linux-proc://self/process",
+      "status": "PARSED"
+    },
+    {
+      "charged_bytes": 63591,
+      "facts": 25,
+      "kind": "LINUX_PROCESS_MAPS",
+      "proves_asset_absence": false,
+      "reason": "METADATA_ONLY",
+      "resource": "linux-proc://self/maps",
+      "status": "PARSED"
+    },
+    {
+      "charged_bytes": 3215,
+      "facts": 2,
+      "kind": "LINUX_LISTENERS",
+      "proves_asset_absence": false,
+      "reason": "METADATA_ONLY",
+      "resource": "linux-sockets://self/tcp",
+      "status": "PARSED"
+    },
+    {
+      "charged_bytes": 869,
+      "facts": 1,
+      "kind": "LINUX_HARDWARE",
+      "proves_asset_absence": false,
+      "reason": "METADATA_ONLY",
+      "resource": "linux-hardware://cpu0",
+      "status": "PARSED"
+    },
+    {
+      "charged_bytes": 0,
+      "facts": 0,
+      "kind": "LINUX_HARDWARE",
+      "proves_asset_absence": false,
+      "reason": "NOT_FOUND",
+      "resource": "linux-hardware://dmi",
+      "status": "UNAVAILABLE"
+    },
+    {
+      "charged_bytes": 0,
+      "facts": 0,
+      "kind": "LINUX_HARDWARE",
+      "proves_asset_absence": false,
+      "reason": "NOT_FOUND",
+      "resource": "linux-hardware://tpm999",
+      "status": "UNAVAILABLE"
+    },
+    {
+      "charged_bytes": 0,
+      "facts": 0,
+      "kind": "LINUX_SERVICE",
+      "proves_asset_absence": false,
+      "reason": "INTERFACE_UNAVAILABLE",
+      "resource": "systemd://cryptoscan-nonexistent-witness.service",
+      "status": "UNAVAILABLE"
+    },
+    {
+      "charged_bytes": 0,
+      "facts": 0,
+      "kind": "LINUX_HARDWARE",
+      "proves_asset_absence": false,
+      "reason": "NOT_FOUND",
+      "resource": "linux-hardware://tpm0",
+      "status": "UNAVAILABLE"
+    }
+  ],
+  "platform": "linux",
+  "production_execution_qualified": false,
+  "python": "3.11.2",
+  "uid": 1001,
+  "windows_cli_on_linux": [
+    {
+      "candidate_opt_in": false,
+      "exit_code": 64,
+      "output_created": false
+    },
+    {
+      "candidate_opt_in": true,
+      "exit_code": 64,
+      "output_created": false
+    }
+  ],
+  "windows_native_execution": false
+}

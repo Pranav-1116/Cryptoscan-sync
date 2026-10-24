@@ -491,13 +491,28 @@ def collect(manifest: HostManifest) -> HostSnapshot:
             limit = min(manifest.max_file_bytes, manifest.max_total_bytes - total)
             if limit <= 0 or fact_count >= MAX_FACTS:
                 raise Refused("BUDGET_EXCEEDED", "LIMIT")
-            if item.kind == "WINDOWS_UNINSTALL":
+            if item.kind.startswith("LINUX_") and item.kind != "LINUX_OS_RELEASE":
+                if platform != "linux":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                from inventory.linux_runtime import collect_live, ProbeError
+
+                try:
+                    data, facts = collect_live(item, limit, charge)
+                except ProbeError as exc:
+                    raise Refused(exc.status, exc.reason) from None
+            elif item.kind == "WINDOWS_SERVICE":
+                if platform != "windows":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                from inventory.windows_runtime import collect_service
+
+                data, facts = collect_service(item, limit, charge)
+            elif item.kind == "WINDOWS_UNINSTALL":
                 if platform != "windows":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
                 data, facts = _registry(item.path, limit)
                 charge(len(data))
             else:
-                if item.kind in {"DPKG_STATUS", "LINUX_OS_RELEASE"} and platform != "linux":
+                if item.kind in {"DPKG_STATUS", "APK_INSTALLED", "LINUX_OS_RELEASE"} and platform != "linux":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
                 data = _read(item.path, limit, charge)
                 if b"PRIVATE KEY" in data or b"BEGIN OPENSSH" in data:
@@ -508,6 +523,10 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                     facts = _config(data)
                 elif item.kind == "DPKG_STATUS":
                     facts = _packages(data)
+                elif item.kind == "APK_INSTALLED":
+                    from inventory.linux_packages import apk_installed
+
+                    facts = apk_installed(data)
                 elif item.kind == "LINUX_OS_RELEASE":
                     facts = _os_release(data)
                 else:
@@ -526,7 +545,7 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                 input_id=item.input_id,
                 status="PARSED",
                 reason="METADATA_ONLY",
-                byte_count=len(data),
+                byte_count=consumed,
                 content_sha256=hashlib.sha256(data).hexdigest(),
                 facts=facts,
             )

@@ -10,7 +10,7 @@ import hashlib
 import json
 from datetime import datetime
 from typing import Annotated, Literal
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 SCHEMA = "cryptoscan.host-snapshot/v1"
 MAX_FILE_BYTES = 1048576
@@ -20,7 +20,19 @@ Token = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:/@+ 
 Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 SignatureOid = Annotated[str, StringConstraints(max_length=100, pattern=r"^(UNKNOWN|[0-9]+(?:\.[0-9]+)+)$")]
 Kind = Literal[
-    "PUBLIC_CERTIFICATE", "NGINX_TLS_CONFIG", "BINARY_METADATA", "DPKG_STATUS", "WINDOWS_UNINSTALL", "LINUX_OS_RELEASE"
+    "PUBLIC_CERTIFICATE",
+    "NGINX_TLS_CONFIG",
+    "BINARY_METADATA",
+    "DPKG_STATUS",
+    "WINDOWS_UNINSTALL",
+    "LINUX_OS_RELEASE",
+    "LINUX_PROCESS",
+    "LINUX_PROCESS_MAPS",
+    "LINUX_LISTENERS",
+    "LINUX_SERVICE",
+    "LINUX_HARDWARE",
+    "WINDOWS_SERVICE",
+    "APK_INSTALLED",
 ]
 Basis = Literal["OBSERVED", "DECLARED", "IMPORTED", "INFERRED", "UNKNOWN"]
 Protocol = Literal["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
@@ -34,8 +46,8 @@ Cipher = Literal[
 ]
 
 
-class Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+from shared_models.host_common import Strict
+from shared_models.host_runtime import RuntimeFact
 
 
 def digest(value) -> str:
@@ -50,6 +62,13 @@ class HostInput(Strict):
     input_id: Token
     kind: Kind
     path: str = Field(min_length=1, max_length=1024, pattern=r"^[^\x00-\x1f\x7f]+$")
+
+    @model_validator(mode="after")
+    def runtime_scope(self):
+        from shared_models.host_runtime_scope import resource
+
+        resource(self.kind, self.path)
+        return self
 
 
 class HostManifest(Strict):
@@ -156,6 +175,7 @@ ReceiptReason = Literal[
     "INPUT_CHANGED",
     "LIMIT",
     "NOT_FOUND",
+    "INTERFACE_UNAVAILABLE",
     "EXPIRED",
     "LEAST_PRIVILEGE_UNPROVEN",
 ]
@@ -166,26 +186,16 @@ Curve = Literal["secp256r1", "secp384r1", "secp521r1", "UNKNOWN"]
 class HostReceipt(Strict):
     input_id: Token
     status: Literal["PARSED", "DENIED", "UNSUPPORTED", "INVALID", "BUDGET_EXCEEDED", "UNAVAILABLE"]
-    reason: Literal[
-        "METADATA_ONLY",
-        "ACCESS_DENIED",
-        "UNSUPPORTED_PLATFORM",
-        "SYMLINK_OR_SPECIAL",
-        "INVALID_FORMAT",
-        "PRIVATE_MATERIAL_REFUSED",
-        "INPUT_CHANGED",
-        "LIMIT",
-        "NOT_FOUND",
-        "EXPIRED",
-        "LEAST_PRIVILEGE_UNPROVEN",
-    ]
+    reason: ReceiptReason
     byte_count: int = Field(default=0, ge=0, le=MAX_FILE_BYTES)
     content_sha256: Digest | None = None
-    facts: list[HostFact] = Field(default_factory=list, max_length=MAX_FACTS)
+    facts: list[HostFact | RuntimeFact] = Field(default_factory=list, max_length=MAX_FACTS)
 
     @model_validator(mode="after")
     def disposition(self):
         if self.status == "PARSED":
+            if any(isinstance(f, RuntimeFact) and f.interface_sha256 is None for f in self.facts):
+                raise ValueError("Runtime interface commitment required")
             if self.reason != "METADATA_ONLY" or not self.facts or not self.content_sha256:
                 raise ValueError("parsed receipt requires bounded metadata and digest")
         elif self.facts or self.content_sha256:
@@ -200,6 +210,7 @@ class HostReceipt(Strict):
             "INPUT_CHANGED": {"INVALID"},
             "LIMIT": {"BUDGET_EXCEEDED"},
             "NOT_FOUND": {"UNAVAILABLE"},
+            "INTERFACE_UNAVAILABLE": {"UNAVAILABLE"},
             "EXPIRED": {"DENIED"},
             "LEAST_PRIVILEGE_UNPROVEN": {"DENIED"},
         }
@@ -245,17 +256,40 @@ class HostSnapshot(Strict):
             "NGINX_TLS_CONFIG": "TLS_CONFIGURATION",
             "BINARY_METADATA": "BINARY",
             "DPKG_STATUS": "SOFTWARE",
+            "APK_INSTALLED": "SOFTWARE",
             "WINDOWS_UNINSTALL": "SOFTWARE",
             "LINUX_OS_RELEASE": "OS_RELEASE",
+            "LINUX_PROCESS": "PROCESS",
+            "LINUX_PROCESS_MAPS": "LOADED_LIBRARY",
+            "LINUX_LISTENERS": "LISTENER",
+            "LINUX_SERVICE": "SERVICE",
+            "LINUX_HARDWARE": "HARDWARE",
+            "WINDOWS_SERVICE": "SERVICE",
         }
         for item, receipt in zip(self.manifest.inputs, self.receipts):
             if receipt.byte_count > self.manifest.max_file_bytes or any(
                 f.kind != kinds[item.kind] for f in receipt.facts
             ):
                 raise ValueError("input budget/fact kind mismatch")
+            from shared_models.host_runtime_scope import validate_runtime_facts
+
+            validate_runtime_facts(item, receipt.facts)
             if receipt.status == "PARSED" and (
-                (item.kind in {"DPKG_STATUS", "LINUX_OS_RELEASE"} and self.execution_platform != "linux")
-                or (item.kind == "WINDOWS_UNINSTALL" and self.execution_platform != "windows")
+                (
+                    item.kind
+                    in {
+                        "DPKG_STATUS",
+                        "APK_INSTALLED",
+                        "LINUX_OS_RELEASE",
+                        "LINUX_PROCESS",
+                        "LINUX_PROCESS_MAPS",
+                        "LINUX_LISTENERS",
+                        "LINUX_SERVICE",
+                        "LINUX_HARDWARE",
+                    }
+                    and self.execution_platform != "linux"
+                )
+                or (item.kind in {"WINDOWS_UNINSTALL", "WINDOWS_SERVICE"} and self.execution_platform != "windows")
             ):
                 raise ValueError("OS-specific inventory on the wrong platform")
             if self.execution_platform != self.manifest.platform and receipt.status == "PARSED":

@@ -24,7 +24,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--manifest")
-    source.add_argument("--target-spec", help="Approved registry target payload; Linux offline adapter only")
+    source.add_argument(
+        "--target-spec", help="Approved target payload; Linux by default, Windows requires candidate opt-in"
+    )
+    parser.add_argument(
+        "--windows-candidate",
+        action="store_true",
+        help="Explicitly opt into unqualified native Windows offline candidate; no production job admission",
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     try:
@@ -33,10 +40,13 @@ def main():
         value = bounded_json(raw, max_bytes=131072)
         if args.target_spec:
             from shared_models.collection import TargetSpec
-            from inventory.collection import OfflineLinuxCollector
+            from inventory.collection import OfflineLinuxCollector, OfflineWindowsCollector
 
-            snapshot = OfflineLinuxCollector().collect(TargetSpec.model_validate(value))
+            adapter = OfflineWindowsCollector() if args.windows_candidate else OfflineLinuxCollector()
+            snapshot = adapter.collect(TargetSpec.model_validate(value))
         else:
+            if args.windows_candidate:
+                raise ValueError("Windows candidate opt-in requires target-spec")
             snapshot = collect(HostManifest.model_validate(value))
         raw = json.dumps(snapshot.model_dump(mode="json"), sort_keys=True, indent=2).encode()
         if len(raw) > 1500000:

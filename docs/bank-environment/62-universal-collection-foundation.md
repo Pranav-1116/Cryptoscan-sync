@@ -9,7 +9,14 @@ No AI output is accepted as an observed fact. Failure is not evidence of absence
 This implements the first adapter on the existing architecture rather than moving
 services or creating independent SBOM/CBOM/NBOM/HBOM/VBOM databases.
 [Phase 2 Linux increment](63-linux-collection-phase-two.md) ·
-[Execution evidence](../readiness-evidence/collection-foundation-2026-10-24.md).
+[Initial foundation execution evidence](../readiness-evidence/collection-foundation-2026-10-24.md).
+
+The initial adapter/domain examples and counts below describe the Phase 1/OS
+metadata baseline. [The later runtime report](../readiness-evidence/linux-runtime-windows-candidate-2026-10-24.md)
+and [Phase 2 guide](63-linux-collection-phase-two.md) extend that mapping with
+listener→NBOM, hardware→HBOM and mapped paths→SBOM, without changing original
+metadata canonical defaults. [Windows Phase 3](64-windows-collection-phase-three.md)
+is candidate-only; registry authorization and native qualification stay blocked.
 
 ## What is implemented
 

@@ -312,4 +312,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [61. Host-to-six-BOM reviewed metadata associations](61-host-to-six-bom-associations.md) — exact source/target commitments, independent human review, stale/retraction handling, API/console/export and remaining native/production boundaries.
 
 - [62. Universal collection Phase 1 foundation](62-universal-collection-foundation.md) — stable scoped targets, current authorization, offline jobs, typed evidence and shared BOM projections.
-- [63. Phase 2 Linux increment and remaining work](63-linux-collection-phase-two.md) — literal OS metadata, target-spec CLI and explicit service/listener/hardware gaps.
+- [63. Phase 2 scoped Linux runtime collection](63-linux-collection-phase-two.md) — explicit PID/mapped paths, TCP listeners, named services, kernel hardware metadata, Alpine packages and honest native qualification gaps.
+- [64. Phase 3 Windows candidate](64-windows-collection-phase-three.md) — local named SCM status, explicit offline candidate CLI and native Windows gates; not production admission.

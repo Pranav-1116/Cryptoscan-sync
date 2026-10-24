@@ -1,0 +1,1 @@
+PASS: synthetic DMI/TPM positive parser fixtures; native execution NOT qualified

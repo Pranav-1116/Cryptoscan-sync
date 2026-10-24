@@ -31,3 +31,33 @@ class OfflineLinuxCollector:
             "production_execution_qualified": False,
             "remote_execution": False,
         }
+
+
+class OfflineWindowsCollector:
+    """Candidate only: local native user, no registry-job production admission."""
+
+    def validate_scope(self, target: TargetSpec) -> None:
+        from datetime import datetime, timezone
+
+        if (
+            target.collection_method != "offline_host"
+            or not target.manifest
+            or target.manifest.platform != "windows"
+            or sys.platform != "win32"
+        ):
+            raise ValueError("Collector/platform is not supported by offline-windows/candidate-v1")
+        if not target.not_before <= datetime.now(timezone.utc) < target.manifest.expires_at:
+            raise ValueError("Outside explicitly approved collection time window")
+
+    def collect(self, target: TargetSpec):
+        self.validate_scope(target)
+        return collect(target.manifest)
+
+    def health(self):
+        return {
+            "collector": "offline-windows/candidate-v1",
+            "platform_supported": sys.platform == "win32",
+            "windows_execution_qualified": False,
+            "production_execution_qualified": False,
+            "remote_execution": False,
+        }

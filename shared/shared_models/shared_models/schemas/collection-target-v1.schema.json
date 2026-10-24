@@ -15,7 +15,14 @@
             "BINARY_METADATA",
             "DPKG_STATUS",
             "WINDOWS_UNINSTALL",
-            "LINUX_OS_RELEASE"
+            "LINUX_OS_RELEASE",
+            "LINUX_PROCESS",
+            "LINUX_PROCESS_MAPS",
+            "LINUX_LISTENERS",
+            "LINUX_SERVICE",
+            "LINUX_HARDWARE",
+            "WINDOWS_SERVICE",
+            "APK_INSTALLED"
           ],
           "title": "Kind",
           "type": "string"

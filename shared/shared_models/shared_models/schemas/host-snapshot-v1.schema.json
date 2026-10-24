@@ -223,7 +223,14 @@
             "BINARY_METADATA",
             "DPKG_STATUS",
             "WINDOWS_UNINSTALL",
-            "LINUX_OS_RELEASE"
+            "LINUX_OS_RELEASE",
+            "LINUX_PROCESS",
+            "LINUX_PROCESS_MAPS",
+            "LINUX_LISTENERS",
+            "LINUX_SERVICE",
+            "LINUX_HARDWARE",
+            "WINDOWS_SERVICE",
+            "APK_INSTALLED"
           ],
           "title": "Kind",
           "type": "string"
@@ -341,7 +348,14 @@
         },
         "facts": {
           "items": {
-            "$ref": "#/$defs/HostFact"
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HostFact"
+              },
+              {
+                "$ref": "#/$defs/RuntimeFact"
+              }
+            ]
           },
           "maxItems": 1000,
           "title": "Facts",
@@ -363,6 +377,7 @@
             "INPUT_CHANGED",
             "LIMIT",
             "NOT_FOUND",
+            "INTERFACE_UNAVAILABLE",
             "EXPIRED",
             "LEAST_PRIVILEGE_UNPROVEN"
           ],
@@ -388,6 +403,445 @@
         "reason"
       ],
       "title": "HostReceipt",
+      "type": "object"
+    },
+    "RuntimeFact": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boot Id"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "core_id": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Core Id"
+        },
+        "cpu_index": {
+          "anyOf": [
+            {
+              "maximum": 9999,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Index"
+        },
+        "firmware_version": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Firmware Version"
+        },
+        "hardware_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "SYSTEM_DMI",
+                "TPM",
+                "CPU_TOPOLOGY"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hardware Type"
+        },
+        "identity_key": {
+          "maxLength": 300,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "enum": [
+            "LINUX_PROCFS",
+            "LINUX_SYSFS",
+            "SYSTEMD_READ_ONLY",
+            "WINDOWS_SCM"
+          ],
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface Sha256"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "enum": [
+            "PROCESS",
+            "LOADED_LIBRARY",
+            "LISTENER",
+            "SERVICE",
+            "HARDWARE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "library_path": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "pattern": "^/[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Library Path"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "manufacturer": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manufacturer"
+        },
+        "mapped_file_deleted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mapped File Deleted"
+        },
+        "mapping_basis": {
+          "anyOf": [
+            {
+              "const": "SHARED_OBJECT_PATH_SUFFIX_ONLY",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mapping Basis"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "network_namespace": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "pattern": "^net:\\[[0-9]+\\]$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Network Namespace"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "package_id": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package Id"
+        },
+        "pid": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pid"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "process_name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Process Name"
+        },
+        "process_start_ticks": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Process Start Ticks"
+        },
+        "purpose": {
+          "const": "HOST_RUNTIME_METADATA",
+          "default": "HOST_RUNTIME_METADATA",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "service_name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[A-Za-z0-9_.@:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Name"
+        },
+        "service_state": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "inactive",
+                "activating",
+                "deactivating",
+                "failed",
+                "reloading",
+                "maintenance",
+                "refreshing",
+                "RUNNING",
+                "STOPPED",
+                "START_PENDING",
+                "STOP_PENDING",
+                "CONTINUE_PENDING",
+                "PAUSE_PENDING",
+                "PAUSED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service State"
+        },
+        "socket_inode": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Socket Inode"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "tpm_major_version": {
+          "anyOf": [
+            {
+              "enum": [
+                1,
+                2
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tpm Major Version"
+        },
+        "transport": {
+          "anyOf": [
+            {
+              "enum": [
+                "TCP",
+                "TCP6"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transport"
+        }
+      },
+      "required": [
+        "kind",
+        "interface",
+        "identity_key"
+      ],
+      "title": "RuntimeFact",
       "type": "object"
     }
   },

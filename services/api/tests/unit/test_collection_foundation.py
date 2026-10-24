@@ -367,3 +367,69 @@ def test_universal_surface_is_not_a_production_fallback(controlled):
     assert client.get(P + "/targets").status_code == 409
     assert client.post(P + "/targets", json={}).status_code == 409
     assert client.put(P + "/targets/unknown", json={}).status_code == 409
+
+
+def test_phase_two_native_runtime_one_intake_and_supported_domain_projections(assured):
+    """Real PID/socket/sysfs witnesses; no fixture monkeypatch creates observations."""
+    import os
+    import socket
+
+    clients, db, body = target_body(assured)
+    body["manifest"]["inputs"] = [
+        {"input_id": "process", "kind": "LINUX_PROCESS", "path": f"linux-proc://{os.getpid()}/process"},
+        {"input_id": "libraries", "kind": "LINUX_PROCESS_MAPS", "path": f"linux-proc://{os.getpid()}/maps"},
+        {"input_id": "listeners", "kind": "LINUX_LISTENERS", "path": "linux-sockets://self/tcp"},
+        {"input_id": "hardware", "kind": "LINUX_HARDWARE", "path": "linux-hardware://cpu0"},
+        {
+            "input_id": "service-gap",
+            "kind": "LINUX_SERVICE",
+            "path": "systemd://cryptoscan-nonexistent-witness.service",
+        },
+        {"input_id": "tpm-gap", "kind": "LINUX_HARDWARE", "path": "linux-hardware://tpm999"},
+    ]
+    target = clients["bank_a"].post(P + "/targets", json=body)
+    assert target.status_code == 201, target.text
+    tid = target.json()["subject_id"]
+    auth = admin(clients).post(P + f"/targets/{tid}/authorize", json=decision(1))
+    assert auth.status_code == 200, auth.text
+    auth = auth.json()
+    job = clients["bank_a"].post(P + "/jobs", json={"target_id": tid, "expected_target_revision": 2})
+    assert job.status_code == 201, job.text
+    jid = job.json()["subject_id"]
+    assert clients["bank_a"].post(P + f"/jobs/{jid}/handoff", json={"expected_revision": 1}).status_code == 200
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        port = listener.getsockname()[1]
+        response = imported(clients, body, auth)
+        assert response.status_code == 201, response.text
+    complete = clients["bank_a"].post(P + f"/jobs/{jid}/complete", json={"expected_revision": 2})
+    assert complete.status_code == 200, complete.text
+    response = clients["reader_a"].get(P + f"/jobs/{jid}/evidence")
+    assert response.status_code == 200, response.text
+    evidence = response.json()
+    observations = evidence["observations"]
+    assert evidence["status"] == "PARTIAL" and evidence["coverage"]["approved_inputs"] == 6
+    assert evidence["coverage"]["parsed_inputs"] == 4
+    assert all(o["provenance"] == "IMPORTED" and o["fact"]["interface_sha256"] for o in observations)
+    assert all(
+        o["fact"]["algorithm"] == o["fact"]["runtime_use"] == o["fact"]["operation_use"] == "UNKNOWN"
+        for o in observations
+    )
+    libraries = [o for o in observations if o["fact"]["kind"] == "LOADED_LIBRARY"]
+    assert len(libraries) > 1 and len({o["identity_slot"] for o in libraries}) == len(libraries)
+    assert any(o["fact"].get("port") == port for o in observations if o["fact"]["kind"] == "LISTENER")
+    projection = clients["reader_a"].get(P + f"/jobs/{jid}/projections").json()
+    assert set(projection["domains"]) == {"NBOM", "CBOM", "TechBOM", "HBOM", "VBOM", "SBOM"}
+    for name in ["NBOM", "HBOM", "SBOM", "TechBOM"]:
+        assert projection["domains"][name]["observations"]
+    for name in ["CBOM", "VBOM"]:
+        assert not projection["domains"][name]["observations"]
+    assert all(not e["asset_absence_proven"] for e in evidence["errors"])
+    assert {e["input_id"] for e in evidence["errors"]} == {"service-gap", "tpm-gap"}
+    assert projection["envelope_sha256"] == evidence["envelope_sha256"]
+    cbom = clients["reader_a"].get("/api/v1/host-evidence/approvals/" + auth["payload"]["approval_id"] + "/cbom")
+    assert cbom.status_code == 200, cbom.text
+    assert cbom.json()["specVersion"] == "1.6" and not cbom.json().get("components", [])
+    assert clients["bank_b"].get(P + f"/jobs/{jid}/evidence").status_code == 404
+    assert verify_audit_chain(db)["status"] == "OK"

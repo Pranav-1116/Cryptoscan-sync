@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Literal, Protocol
 from pydantic import Field, model_validator, field_validator
 from shared_models.host_collection import Strict, Token, Digest, HostManifest, HostSnapshot, HostFact, Kind
+from shared_models.host_runtime import RuntimeFact
 
 Method = Literal[
     "offline_host", "windows", "container", "source", "cloud", "network", "hsm", "hardware", "vendor", "ot"
@@ -82,14 +83,14 @@ class Observation(Strict):
     identity_basis: Literal["SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET"] = "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET"
     input_id: Token
     fact_ordinal: int = Field(ge=0, le=999)
-    fact: HostFact
+    fact: HostFact | RuntimeFact
     source: ObservationSource
     collected_at: str = Field(min_length=1, max_length=40)
     evidence_id: str
     content_hash: Digest
     fact_sha256: Digest
     provenance: Literal["IMPORTED"] = "IMPORTED"
-    contributes_to: list[Literal["SBOM", "CBOM", "TechBOM"]] = Field(min_length=1, max_length=3)
+    contributes_to: list[Literal["SBOM", "CBOM", "NBOM", "HBOM", "TechBOM"]] = Field(min_length=1, max_length=3)
 
 
 class UniversalCollector(Protocol):
