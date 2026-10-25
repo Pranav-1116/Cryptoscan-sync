@@ -1,5 +1,13 @@
 # CryptoScan documentation
 
+## Bank questions and answers (2026-10-25)
+
+Start with [100 practical bank Q&As](questions/README.md): present/absent scope,
+pre-discovery, collection, all six BOMs, firewall/IDS/rate limits, on-premises
+deployment, access/evidence, operations, integration, accuracy and PQC. Answers
+distinguish implemented code, candidate interfaces and controlled-profile
+admission; this is not a new feature or deployment approval.
+
 ## Detailed backup and disaster-recovery pack (2026-10-23)
 
 Start with [the complete DR plan](disaster-recovery/README.md): eight detailed
