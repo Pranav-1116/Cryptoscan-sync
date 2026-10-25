@@ -37,6 +37,7 @@ class FixturePlan(Strict):
 def validate_plan(target, plan):
     from shared_models.host_collection import HostFact
     from shared_models.host_runtime import RuntimeFact
+    from shared_models.windows_images import WindowsImageFact
 
     if (
         not target.manifest
@@ -45,7 +46,7 @@ def validate_plan(target, plan):
         or len({e.input_id for e in plan.expected}) != len(plan.expected)
     ):
         raise ValueError("Fixture scope mismatch")
-    fields = set(HostFact.model_fields) | set(RuntimeFact.model_fields)
+    fields = set(HostFact.model_fields) | set(RuntimeFact.model_fields) | set(WindowsImageFact.model_fields)
     for expected in plan.expected:
         for pattern in expected.facts:
             if (

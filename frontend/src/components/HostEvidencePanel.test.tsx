@@ -114,3 +114,26 @@ describe("Passive runtime metadata, not cryptographic operation proof", () => {
     expect(screen.queryByText(/LISTENER · 127.0.0.1:443/)).toBeNull();
   });
 });
+
+describe("Windows exact process/module candidate", () => {
+  const fact = { kind: "WINDOWS_MODULE", algorithm: "UNKNOWN", key_size: null, local_basis: "OBSERVED", runtime_use: "UNKNOWN", software_name: null, software_version: null, purpose: "WINDOWS_IMAGE_METADATA", operation_use: "UNKNOWN", capabilities_observed: false, identity_key: "scoped-image", interface: "WINDOWS_PROCESS_TOOLHELP", interface_sha256: "a".repeat(64), pid: 71, creation_filetime: "133800000000000001", image_path: "C:\\Reviewed\\libcrypto.dll", module_name: "libcrypto.dll", capture_basis: "REPEATED_MATCHING_METADATA_NOT_INVOCATION" };
+  const images = (changes = {}) => ({ ...detail, snapshot: { ...detail.snapshot, receipts: [{ input_id: "images", status: "PARSED", reason: "METADATA_ONLY", facts: [{ ...fact, ...changes }] }] } });
+  it("keeps FILETIME exactly as text and module presence separate from crypto use", async () => {
+    const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: images() }); mount(); inspect();
+    await screen.findByText(/WINDOWS_MODULE · C:\\Reviewed\\libcrypto.dll/);
+    expect(screen.getByText(/creation FILETIME 133800000000000001 · repeated module metadata, not invocation/)).toBeTruthy();
+    expect(screen.getByText(/Windows execution and production host admission are not qualified/)).toBeTruthy();
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it.each([
+    { creation_filetime: 133800000000000001 }, { creation_filetime: "18446744073709551616" },
+    { creation_filetime: "0133800000000000001" }, { pid: 0 }, { pid: 4294967296 },
+    { algorithm: "RSA" }, { runtime_use: "OBSERVED" }, { operation_use: "OBSERVED" },
+    { interface: "LINUX_PROCFS" }, { capabilities_observed: true }, { capture_basis: "ATOMIC" },
+    { software_name: "OpenSSL" }, { software_version: "1.1.1" },
+  ])("refuses rounded or promoted module proof", async changes => {
+    mockFetch({ [`${P}/${id}/snapshot`]: images(changes) }); mount(); inspect();
+    await screen.findByText(/No verified receipt or security verdict assumed/);
+    expect(screen.queryByRole("button", { name: /Download CycloneDX/ })).toBeNull();
+  });
+});

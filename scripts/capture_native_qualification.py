@@ -38,8 +38,9 @@ def main():
         # Validate plan shape before acquisition, not after executing native reads.
         from shared_models.host_collection import HostFact
         from shared_models.host_runtime import RuntimeFact
+        from shared_models.windows_images import WindowsImageFact
 
-        fields = set(HostFact.model_fields) | set(RuntimeFact.model_fields)
+        fields = set(HostFact.model_fields) | set(RuntimeFact.model_fields) | set(WindowsImageFact.model_fields)
         if (
             not target.manifest
             or {e.input_id for e in plan.expected} != {i.input_id for i in target.manifest.inputs}

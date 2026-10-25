@@ -81,8 +81,9 @@ def evaluate_native(evidence):
         raise ValueError("Exact native expected-truth scope required")
     from shared_models.host_collection import HostFact
     from shared_models.host_runtime import RuntimeFact
+    from shared_models.windows_images import WindowsImageFact
 
-    fields = set(HostFact.model_fields) | set(RuntimeFact.model_fields)
+    fields = set(HostFact.model_fields) | set(RuntimeFact.model_fields) | set(WindowsImageFact.model_fields)
     matched = True
     for receipt in snapshot.receipts:
         patterns = wanted[receipt.input_id].facts

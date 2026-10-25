@@ -36,6 +36,7 @@ Kind = Literal[
     "RPM_SQLITE",
     "WINDOWS_OS_RELEASE",
     "WINDOWS_CERTIFICATE",
+    "WINDOWS_PROCESS_MODULES",
 ]
 Basis = Literal["OBSERVED", "DECLARED", "IMPORTED", "INFERRED", "UNKNOWN"]
 Protocol = Literal["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
@@ -51,6 +52,7 @@ Cipher = Literal[
 
 from shared_models.host_common import Strict
 from shared_models.host_runtime import RuntimeFact
+from shared_models.windows_images import WindowsImageFact
 
 
 def digest(value) -> str:
@@ -194,7 +196,7 @@ class HostReceipt(Strict):
     reason: ReceiptReason
     byte_count: int = Field(default=0, ge=0, le=MAX_FILE_BYTES)
     content_sha256: Digest | None = None
-    facts: list[HostFact | RuntimeFact] = Field(default_factory=list, max_length=MAX_FACTS)
+    facts: list[HostFact | RuntimeFact | WindowsImageFact] = Field(default_factory=list, max_length=MAX_FACTS)
 
     @model_validator(mode="after")
     def disposition(self):
@@ -273,15 +275,21 @@ class HostSnapshot(Strict):
             "LINUX_SERVICE": "SERVICE",
             "LINUX_HARDWARE": "HARDWARE",
             "WINDOWS_SERVICE": "SERVICE",
+            "WINDOWS_PROCESS_MODULES": {"WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE"},
         }
         for item, receipt in zip(self.manifest.inputs, self.receipts):
             if receipt.byte_count > self.manifest.max_file_bytes or any(
-                f.kind != kinds[item.kind] for f in receipt.facts
+                f.kind not in ({kinds[item.kind]} if isinstance(kinds[item.kind], str) else kinds[item.kind])
+                for f in receipt.facts
             ):
                 raise ValueError("input budget/fact kind mismatch")
             from shared_models.host_runtime_scope import validate_runtime_facts
 
             validate_runtime_facts(item, receipt.facts)
+            if item.kind == "WINDOWS_PROCESS_MODULES" and any(
+                f.interface_sha256 != receipt.content_sha256 for f in receipt.facts
+            ):
+                raise ValueError("Windows image source commitment mismatch")
             if item.kind == "WINDOWS_CERTIFICATE" and receipt.status == "PARSED":
                 from shared_models.host_runtime_scope import certificate_resource
 
@@ -304,7 +312,14 @@ class HostSnapshot(Strict):
                     and self.execution_platform != "linux"
                 )
                 or (
-                    item.kind in {"WINDOWS_UNINSTALL", "WINDOWS_SERVICE", "WINDOWS_OS_RELEASE", "WINDOWS_CERTIFICATE"}
+                    item.kind
+                    in {
+                        "WINDOWS_UNINSTALL",
+                        "WINDOWS_SERVICE",
+                        "WINDOWS_OS_RELEASE",
+                        "WINDOWS_CERTIFICATE",
+                        "WINDOWS_PROCESS_MODULES",
+                    }
                     and self.execution_platform != "windows"
                 )
             ):

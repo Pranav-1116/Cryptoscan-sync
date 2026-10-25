@@ -13,6 +13,10 @@ def certificate_resource(path):
 
 
 def resource(kind, path):
+    if kind == "WINDOWS_PROCESS_MODULES":
+        from shared_models.windows_images import process_resource
+
+        return process_resource(path)
     if kind == "WINDOWS_CERTIFICATE":
         return certificate_resource(path)
     patterns = {
@@ -34,6 +38,11 @@ def resource(kind, path):
 def validate_runtime_facts(item, facts):
     selected = resource(item.kind, item.path)
     if selected is None:
+        return
+    if item.kind == "WINDOWS_PROCESS_MODULES":
+        from shared_models.windows_images import validate_images
+
+        validate_images(item, facts)
         return
     if item.kind == "WINDOWS_CERTIFICATE":
         if facts and (len(facts) != 1 or facts[0].kind != "CERTIFICATE" or facts[0].fingerprint_sha256 != selected[3]):

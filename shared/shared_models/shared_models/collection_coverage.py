@@ -16,7 +16,7 @@ SURFACES = {
     "software": {"DPKG_STATUS", "APK_INSTALLED", "RPM_SQLITE", "WINDOWS_UNINSTALL", "BINARY_METADATA"},
     "certificates": {"PUBLIC_CERTIFICATE", "WINDOWS_CERTIFICATE"},
     "crypto_configuration": {"NGINX_TLS_CONFIG"},
-    "processes_and_libraries": {"LINUX_PROCESS", "LINUX_PROCESS_MAPS"},
+    "processes_and_libraries": {"LINUX_PROCESS", "LINUX_PROCESS_MAPS", "WINDOWS_PROCESS_MODULES"},
     "services": {"LINUX_SERVICE", "WINDOWS_SERVICE"},
     "network_listeners": {"LINUX_LISTENERS"},
     "hardware_metadata": {"LINUX_HARDWARE"},

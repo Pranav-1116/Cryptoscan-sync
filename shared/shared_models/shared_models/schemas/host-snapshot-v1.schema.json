@@ -233,7 +233,8 @@
             "APK_INSTALLED",
             "RPM_SQLITE",
             "WINDOWS_OS_RELEASE",
-            "WINDOWS_CERTIFICATE"
+            "WINDOWS_CERTIFICATE",
+            "WINDOWS_PROCESS_MODULES"
           ],
           "title": "Kind",
           "type": "string"
@@ -357,6 +358,9 @@
               },
               {
                 "$ref": "#/$defs/RuntimeFact"
+              },
+              {
+                "$ref": "#/$defs/WindowsImageFact"
               }
             ]
           },
@@ -845,6 +849,146 @@
         "identity_key"
       ],
       "title": "RuntimeFact",
+      "type": "object"
+    },
+    "WindowsImageFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "capture_basis": {
+          "const": "REPEATED_MATCHING_METADATA_NOT_INVOCATION",
+          "default": "REPEATED_MATCHING_METADATA_NOT_INVOCATION",
+          "title": "Capture Basis",
+          "type": "string"
+        },
+        "creation_filetime": {
+          "pattern": "^[1-9][0-9]{0,19}$",
+          "title": "Creation Filetime",
+          "type": "string"
+        },
+        "identity_key": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "image_path": {
+          "maxLength": 1024,
+          "minLength": 4,
+          "title": "Image Path",
+          "type": "string"
+        },
+        "interface": {
+          "const": "WINDOWS_PROCESS_TOOLHELP",
+          "default": "WINDOWS_PROCESS_TOOLHELP",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "enum": [
+            "WINDOWS_PROCESS_IMAGE",
+            "WINDOWS_MODULE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "module_name": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Module Name"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "pid": {
+          "maximum": 4294967295,
+          "minimum": 1,
+          "title": "Pid",
+          "type": "integer"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "WINDOWS_IMAGE_METADATA",
+          "default": "WINDOWS_IMAGE_METADATA",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        }
+      },
+      "required": [
+        "kind",
+        "interface_sha256",
+        "pid",
+        "creation_filetime",
+        "image_path",
+        "identity_key"
+      ],
+      "title": "WindowsImageFact",
       "type": "object"
     }
   },

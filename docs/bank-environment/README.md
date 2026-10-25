@@ -330,3 +330,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [71. Linux relationships and validated software BOM](71-linux-relationships-and-validated-sbom.md) — evidence-backed deterministic metadata joins, explicit unsupported relationships and a pinned-official-schema validated, incomplete CycloneDX 1.6 software export; no rescan or production qualification.
 
 - [72. Phase 3 — Windows public certificate candidate](72-phase-three-windows-public-certificate-candidate.md) — exact read-only native store lookup, dual-digest scope binding and existing evidence/CBOM custody; native qualification and universal Windows execution admission remain blocked.
+
+- [73. Phase 3 — Windows exact process/module candidate](73-phase-three-windows-process-module-candidate.md) — PID+string-FILETIME scope, repeated loader metadata, bounded read-only native handles and existing custody/UI; no crypto-use inference or Windows production admission.

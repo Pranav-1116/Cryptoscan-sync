@@ -1,0 +1,6 @@
+host-manifest-v1: model/schema/Draft2020-12 PASS; removing only new union/enum exactly reproduces baseline
+host-snapshot-v1: model/schema/Draft2020-12 PASS; removing only new union/enum exactly reproduces baseline
+collection-target-v1: model/schema/Draft2020-12 PASS; removing only new union/enum exactly reproduces baseline
+collection-evidence-v1: model/schema/Draft2020-12 PASS; removing only new union/enum exactly reproduces baseline
+native-evidence-v1: model/schema/Draft2020-12 PASS; removing only new union/enum exactly reproduces baseline
+Both new modules included in existing source lock; no signature/approval produced. File count: 77

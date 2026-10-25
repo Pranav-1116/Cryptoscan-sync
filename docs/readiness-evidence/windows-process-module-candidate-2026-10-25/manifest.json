@@ -1,0 +1,190 @@
+{
+  "schema_version": "cryptoscan.local-readiness-manifest/v1",
+  "baseline_commit": "fe1bbaec49872ae04ee6da78d134d32a356dca4f",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "recorded_at": "2026-10-25",
+  "classification": "LOCAL_SYNTHETIC_CANDIDATE_NOT_NATIVE_OR_PRODUCTION_QUALIFICATION",
+  "console_normalization": "ANSI escapes, trailing line whitespace and blank EOF lines removed; XML verbatim",
+  "files": [
+    {
+      "path": "docs/api-reference/windows-process-module-candidate.md",
+      "sha256": "4eb1090af9888a37a89aa3e2ede924dad080c64b3a565aad0b5936c8a0072b09",
+      "bytes": 3772
+    },
+    {
+      "path": "docs/bank-environment/73-phase-three-windows-process-module-candidate.md",
+      "sha256": "a86e5e58dfdab52f2ed72209b61c442f12e90f7f00784b32ba49bfa429803446",
+      "bytes": 11577
+    },
+    {
+      "path": "docs/bank-environment/README.md",
+      "sha256": "9478c52ce23b0b5371fe5da2400e65b5ea7e5a682b2c9a728d6fcb5e677be779",
+      "bytes": 28530
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25.md",
+      "sha256": "acf78a7b69d62bf92f78bc49c21ef1896cb62640d968f7d13d1036fda9ec81b3",
+      "bytes": 7715
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/build.txt",
+      "sha256": "8bb04f4eb53e8e29831bb255e26394a665630d9a0e946b985fa02075a81e08ce",
+      "bytes": 7052
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/frontend.txt",
+      "sha256": "6b0c0a2f8dc1814436c3acb370360f76cdc0f6597802a988ed92620ce474fb6c",
+      "bytes": 23128
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/postgres.txt",
+      "sha256": "92444d36ad19a2c0d30af1d04a43c67515a9bc96f53c9631d2ff7ec4d3881722",
+      "bytes": 6673
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/postgres.xml",
+      "sha256": "ad7b33e25bc46b1156f6b6fcf4a114798d6776ab48e5489e0c7e435f43ad1e8d",
+      "bytes": 8464
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/python.txt",
+      "sha256": "fa8c99e2caabc9b15d774d77a924f9b52bd75f824e557b287d21ace0c8564c98",
+      "bytes": 4129
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/python.xml",
+      "sha256": "dea10cd7e3752503bb76cc8ccbccd5a90d7ae08bb751c174cd346e629de00153",
+      "bytes": 366002
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/schema-compatibility.txt",
+      "sha256": "90ca6d4ad4a0ac62f72a9878cd470791e75c567bf7e81c71d4adb18785696697",
+      "bytes": 645
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/static.txt",
+      "sha256": "24228122f612ef1d81019aab62a57e37a6b8a1825a48031799f5d19aed1274e9",
+      "bytes": 49
+    },
+    {
+      "path": "docs/readiness-evidence/windows-process-module-candidate-2026-10-25/typecheck.txt",
+      "sha256": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f",
+      "bytes": 50
+    },
+    {
+      "path": "frontend/src/components/HostEvidencePanel.test.tsx",
+      "sha256": "03cf65fe03c493a5ef4424af38920c66b5b25822c979e17b31d04a6de464e5a9",
+      "bytes": 11984
+    },
+    {
+      "path": "frontend/src/components/HostEvidencePanel.tsx",
+      "sha256": "feceab8fbce08aa2fff58dcffafb186776df3a9a3a0cbab23818d682fdb2e19d",
+      "bytes": 12714
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "sha256": "9facb310e0e1d52659c447694cb7ba1487490ab65c8f920b142c0fc3b42476be",
+      "bytes": 244897
+    },
+    {
+      "path": "scripts/capture_native_qualification.py",
+      "sha256": "eac22e23fdb897384f41a606d9335c67c09602e79ecde8dedf8fe4a1cf9531a5",
+      "bytes": 3890
+    },
+    {
+      "path": "scripts/qualify_host_profile.py",
+      "sha256": "1eff013bc03e306dc81d6d8256ae9969a0133fb7211b927cd4e8f7406ba93fd9",
+      "bytes": 6354
+    },
+    {
+      "path": "scripts/validate_host_evidence.py",
+      "sha256": "e0c405fceb37f070f8fbaf1eb58d2793fe1a29bc3d9b418dfe2029cf598fbe34",
+      "bytes": 4913
+    },
+    {
+      "path": "services/api/tests/unit/test_windows_image_candidate.py",
+      "sha256": "b1d7154c199b83f1834235a70c65a6f1521fe6a37ef381a0ef3735b668b25f3f",
+      "bytes": 5552
+    },
+    {
+      "path": "services/api/tests/unit/test_windows_image_candidate_postgres.py",
+      "sha256": "087707c2ce5f3bceab7f6affb80425b82416b81e9937ef864380a0036d979c1e",
+      "bytes": 1376
+    },
+    {
+      "path": "services/inventory/inventory/host.py",
+      "sha256": "ac7c49a49d4fc64b9edcc5d24b4c015be1afd6eae3b69620d27a176d8793a660",
+      "bytes": 23924
+    },
+    {
+      "path": "services/inventory/inventory/windows_images.py",
+      "sha256": "94f6866e3945222706c1f2b611747cec9c566aedc2c883b7fea12a566514aa0e",
+      "bytes": 7195
+    },
+    {
+      "path": "services/inventory/tests/test_windows_images.py",
+      "sha256": "b1947a0ce8a88743b0a2a7315d057ccac28bf3dfcace0e6ea033aac7025b6098",
+      "bytes": 15260
+    },
+    {
+      "path": "shared/shared_models/shared_models/collection.py",
+      "sha256": "d3e5a938176f350a0a739bfae471b7b5516851f61229f430121c6976b7ccde93",
+      "bytes": 6359
+    },
+    {
+      "path": "shared/shared_models/shared_models/collection_coverage.py",
+      "sha256": "2bdda9dc20ba5eeaae16379fcaa5c860a96511baf446fa700ff21323864190b8",
+      "bytes": 10212
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_collection.py",
+      "sha256": "5e8519b0430982dad12a4407fe54e17edfe562acbf091caf67bc69ded560bb5a",
+      "bytes": 18181
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_runtime.py",
+      "sha256": "8d9fcacbf7645e2bb4c91c5a399977d315cb3648485334daadbc4d93813da49c",
+      "bytes": 8101
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_runtime_scope.py",
+      "sha256": "967cfd210197cd5d4a953a28613a7a3e66d988adedfe87a23752b39d1e0833f8",
+      "bytes": 3129
+    },
+    {
+      "path": "shared/shared_models/shared_models/qualification_acceptance.py",
+      "sha256": "f4ec6b1c2bb068a73ac87b9d7e6356bcf1709cdf898b04baa9932ae9d84ccc89",
+      "bytes": 14392
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/collection-evidence-v1.schema.json",
+      "sha256": "b0d2eefbd93473b2bd2c6e50f8f248aa940138492a640b02fec67bf3d0a7d430",
+      "bytes": 29073
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/collection-target-v1.schema.json",
+      "sha256": "0fa84a8867819bf591441fed7392b03720ba78a741a7c46d8e4e9c2f11b68e8a",
+      "bytes": 5627
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/host-manifest-v1.schema.json",
+      "sha256": "763da4e193c9ecbbe5e9e21e781db40130b65348893d3229c876c4a6aaf7708c",
+      "bytes": 2854
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/host-snapshot-v1.schema.json",
+      "sha256": "f250c4efdc75788fdb81b51e470cfc3909575338869f4b1d1fd26083eda97573",
+      "bytes": 26316
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/native-evidence-v1.schema.json",
+      "sha256": "5a7f1312046ef8b7ec120497e8dc28812e1e4451baedd93c9a013ad9ee2fabb3",
+      "bytes": 32549
+    },
+    {
+      "path": "shared/shared_models/shared_models/windows_images.py",
+      "sha256": "8625539ba23d564aa3614c9dff55cd8fbb5a350e131c29b562a2940c71997dfe",
+      "bytes": 4649
+    }
+  ]
+}

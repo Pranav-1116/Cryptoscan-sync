@@ -490,6 +490,12 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                 from inventory.windows_runtime import collect_os_version
 
                 data, facts = collect_os_version(item, limit, charge)
+            elif item.kind == "WINDOWS_PROCESS_MODULES":
+                if platform != "windows":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                from inventory.windows_images import collect_images
+
+                data, facts = collect_images(item, limit, charge)
             elif item.kind == "WINDOWS_CERTIFICATE":
                 if platform != "windows":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")

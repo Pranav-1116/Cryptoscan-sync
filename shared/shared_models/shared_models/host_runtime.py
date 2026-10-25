@@ -159,7 +159,7 @@ class RuntimeFact(Strict):
 def domains(fact):
     if fact.kind in {"CERTIFICATE", "TLS_CONFIGURATION"}:
         return ["CBOM", "TechBOM"]
-    if fact.kind in {"BINARY", "SOFTWARE", "LOADED_LIBRARY"}:
+    if fact.kind in {"BINARY", "SOFTWARE", "LOADED_LIBRARY", "WINDOWS_MODULE"}:
         return ["SBOM", "TechBOM"]
     if fact.kind == "LISTENER":
         return ["NBOM", "TechBOM"]
