@@ -94,6 +94,11 @@ def main():
         action="store_true",
         help="Owned TLS 1.3 group/custody parity, not PQC qualification",
     )
+    parser.add_argument(
+        "--include-tls-hybrid-candidate",
+        action="store_true",
+        help="Actual owned hybrid TLS custody parity with optional provider, not native/production qualification",
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -152,6 +157,8 @@ def main():
                 files.append("services/api/tests/unit/test_tls_session_candidate_postgres.py")
             if args.include_tls_key_share_candidate:
                 files.append("services/api/tests/unit/test_tls_key_share_candidate_postgres.py")
+            if args.include_tls_hybrid_candidate:
+                files.append("services/api/tests/unit/test_tls_hybrid_candidate_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

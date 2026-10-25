@@ -18,7 +18,9 @@ def props(value):
 
 def session_bom(snapshot, records, approval_id):
     requested = {
-        i.input_id for i in snapshot.manifest.inputs if i.kind in {"NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE"}
+        i.input_id
+        for i in snapshot.manifest.inputs
+        if i.kind in {"NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE", "NETWORK_TLS13_HYBRID"}
     }
     certs, components, services, failures = {}, [], {}, []
     for receipt in snapshot.receipts:
@@ -78,7 +80,19 @@ def session_bom(snapshot, records, approval_id):
                                 "pqc_readiness_verified": False,
                                 "all_groups_tested": False,
                             }
-                            if f.kind == "NETWORK_TLS13_KEY_SHARE"
+                            if f.kind in {"NETWORK_TLS13_KEY_SHARE", "NETWORK_TLS13_HYBRID"}
+                            else {}
+                        ),
+                        **(
+                            {
+                                "hybrid_session_completed": True,
+                                "tls_provider": f.tls_provider,
+                                "openssl_version": f.openssl_version,
+                                "pyopenssl_version": f.pyopenssl_version,
+                                "cryptography_version": f.cryptography_version,
+                                "provider_identity_basis": f.provider_identity_basis,
+                            }
+                            if f.kind == "NETWORK_TLS13_HYBRID"
                             else {}
                         ),
                         "server_signature_scheme": "UNKNOWN",

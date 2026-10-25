@@ -1,5 +1,7 @@
 # 80. TLS 1.3 selected-group evidence — closing one specific unknown
 
+> Historical slice: [Guide 81](81-actual-hybrid-operation-and-software-truth.md) subsequently demonstrates actual owned TCP hybrid negotiation. The synthetic-only claims below describe this earlier increment, not the later result.
+
 The request names several different gaps: broader TLS/PQC evidence, application/HSM operation use, complete software coverage, and actual Windows/container qualification. They cannot safely be converted into PASS flags by adding code or repeating synthetic tests. **This increment implements direct TLS 1.3 selected-key-share evidence.** It does not claim the other gaps are complete.
 
 [Operator packet](../runbooks/tls13-selected-group-evidence.md) · [API](../api-reference/tls13-selected-group-evidence.md) · [Retained validation](../readiness-evidence/tls13-key-share-2026-10-25.md) · [Previous single-session profile](79-approved-single-tls-session-candidate.md).

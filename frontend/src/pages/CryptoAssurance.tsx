@@ -186,19 +186,19 @@ function HsmPanel() {
   };
   const d = res?.data;
   return (
-    <Panel title="HSM / KMS / PKCS#11 key residence" sub="Verify keys live in hardware (AWS KMS CloudHSM, Azure Managed HSM, Luna/PKCS#11) and are non-exportable; sign challenge proves in-boundary use" className="mt">
-      <div className="row" style={{ marginBottom: 10 }}><button className="btn sm primary" onClick={() => void run()} disabled={busy}>{busy ? "Checking…" : "Verify residence"}</button>
+    <Panel title="HSM / KMS / PKCS#11 key residence" sub="Inspect reported provider attributes; a sign receipt is not signature verification, hardware attestation or application-use proof" className="mt">
+      <div className="row" style={{ marginBottom: 10 }}><button className="btn sm primary" onClick={() => void run()} disabled={busy}>{busy ? "Checking…" : "Inspect reported residence"}</button>
         <span className="faint" style={{ fontSize: 12 }}>paste collector-reported key attributes (key material never included)</span></div>
       <textarea className="inp" rows={7} value={text} onChange={(e) => setText(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 12 }} />
       {res?.ok && d && (
         <>
           <div className="row" style={{ gap: 8, marginBottom: 10 }}>
-            <Badge tone="green"><span className="dot" /> {d.summary.hardware_backed} hardware-backed</Badge>
+            <Badge tone="amber"><span className="dot" /> {d.summary.hardware_backed} provider-reported hardware</Badge>
             <Badge tone={d.summary.software_keys ? "red" : "green"}>{d.summary.software_keys} software</Badge>
             <Badge tone={d.summary.connectivity_failures ? "red" : "green"}>{d.summary.connectivity_failures} unreachable</Badge>
           </div>
           <Table
-            head={["key", "provider", "residence", "connect", "sign", "issues"]}
+            head={["key", "provider", "reported residence", "connect", "unverified sign receipt", "issues"]}
             rows={(d.results || []).map((r: any) => [
               <span className="mono">{r.key_ref}</span>,
               <span className="mono">{r.provider}</span>,

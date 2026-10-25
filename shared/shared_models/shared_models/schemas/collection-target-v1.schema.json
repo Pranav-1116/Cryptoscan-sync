@@ -13,6 +13,7 @@
             "PUBLIC_CERTIFICATE",
             "NETWORK_TLS_SESSION",
             "NETWORK_TLS13_KEY_SHARE",
+            "NETWORK_TLS13_HYBRID",
             "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS",

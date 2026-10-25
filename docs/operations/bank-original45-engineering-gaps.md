@@ -141,3 +141,7 @@ this audit or by producing a valid JSON document. Activities requiring a bank,
 HSM, vendor contract or independent reviewer were not fabricated.
 
 [Executed changes, tests and compatibility limits](../readiness-evidence/bank-original45-2026-10-24.md).
+
+## 2026-10-25 follow-up: functional hybrid / operation / package truth
+
+[Guide 81](../bank-environment/81-actual-hybrid-operation-and-software-truth.md) and [retained engineering evidence](../readiness-evidence/hybrid-operation-software-2026-10-25.md) supersede the earlier blanket “no actual hybrid execution” state for **owned Linux loopback only**: the product collector completes X25519MLKEM768 TCP with exact peer pin. Public operation signatures and separately pinned signed logs can now be checked, with physical HSM/application execution still UNKNOWN/unattested. All agreed package inputs can be reconciled against exact expected records; a real 283-record dpkg comparison is not whole-host software completeness. Original I3/native/customer/independent-acceptance/performance gates stay open; the 45-question ledger is not declared complete.

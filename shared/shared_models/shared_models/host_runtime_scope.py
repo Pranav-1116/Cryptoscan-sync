@@ -13,6 +13,10 @@ def certificate_resource(path):
 
 
 def resource(kind, path):
+    if kind == "NETWORK_TLS13_HYBRID":
+        from shared_models.tls_hybrid import hybrid_resource
+
+        return hybrid_resource(path)
     if kind == "NETWORK_TLS13_KEY_SHARE":
         from shared_models.tls_key_share import key_share_resource
 
@@ -68,8 +72,11 @@ def resource(kind, path):
 
 
 def validate_runtime_facts(item, facts):
-    if item.kind == "NETWORK_TLS13_KEY_SHARE":
+    if item.kind in {"NETWORK_TLS13_KEY_SHARE", "NETWORK_TLS13_HYBRID"}:
         from shared_models.tls_key_share import key_share_resource
+        from shared_models.tls_hybrid import hybrid_resource
+
+        approved_resource = hybrid_resource if item.kind == "NETWORK_TLS13_HYBRID" else key_share_resource
 
         if facts and (
             len(facts) != 1
@@ -80,7 +87,7 @@ def validate_runtime_facts(item, facts):
                 facts[0].tls_version,
                 facts[0].certificate.fingerprint_sha256,
             )
-            != key_share_resource(item.path)
+            != approved_resource(item.path)
         ):
             raise ValueError("Key-share fact outside exact approved scope")
         return

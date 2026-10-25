@@ -123,3 +123,5 @@ no bank readiness, corporate certification, new collector or SLA is inferred.
 - [Approved single TLS session candidate — local validation](tls-session-candidate-2026-10-25.md): owned-loopback TLS 1.2/1.3, bounded/typed failures, existing custody and official-schema stored export; **not actual bank endpoint, Windows or production admission**.
 
 - [TLS 1.3 selected-group evidence — local validation](tls13-key-share-2026-10-25.md): owned classical TLS, synthetic hybrid registry vectors, framing/negative/custody/UI checks; no actual hybrid/Windows/container/bank qualification.
+
+- [Actual hybrid / operation / software truth — local validation](hybrid-operation-software-2026-10-25.md): real pinned owned-loopback hybrid TCP, real software signatures and 283 actual dpkg records against a separate read-only tool; no customer/HSM/native/production acceptance.

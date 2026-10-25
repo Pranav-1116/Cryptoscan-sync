@@ -30,8 +30,13 @@ def probe_session(item, limit, charge, expires_at, *, reviewed_target_sha256):
         group_classification,
     )
 
-    detailed = item.kind == KIND
-    address, port, sni, version, pin = (key_share_resource if detailed else tls_resource)(item.path)
+    from shared_models.tls_hybrid import KIND as HYBRID_KIND, hybrid_resource, TlsHybridFact
+
+    hybrid = item.kind == HYBRID_KIND
+    detailed = item.kind == KIND or hybrid
+    address, port, sni, version, pin = (
+        hybrid_resource if hybrid else key_share_resource if detailed else tls_resource
+    )(item.path)
     reader = ServerHelloReader() if detailed else None
     budget = min(limit, WIRE_LIMIT)
     if budget < 8192:
@@ -60,7 +65,12 @@ def probe_session(item, limit, charge, expires_at, *, reviewed_target_sha256):
     family = socket.AF_INET6 if ":" in address else socket.AF_INET
     timeout()  # Refuse expiry before even allocating/connecting a socket.
     try:
-        obj, incoming, outgoing = client_session(sni, version)
+        if hybrid:
+            from inventory.tls_hybrid import hybrid_engine
+
+            obj, incoming, outgoing = hybrid_engine(sni, version)
+        else:
+            obj, incoming, outgoing = client_session(sni, version)
         with socket.socket(family, socket.SOCK_STREAM) as tcp:
             tcp.settimeout(timeout())
             try:
@@ -123,7 +133,7 @@ def probe_session(item, limit, charge, expires_at, *, reviewed_target_sha256):
             detail = {}
             if reader is not None:
                 if reader.final is None:
-                    raise Refused("INVALID", "UNSUPPORTED_FORMAT")
+                    raise Refused("INVALID", "INVALID_FORMAT")
                 counted(reader.final)
                 _, group_id, _ = parse_hello(reader.final)
                 detail = {
@@ -135,6 +145,10 @@ def probe_session(item, limit, charge, expires_at, *, reviewed_target_sha256):
                     "server_hello_sha256": hashlib.sha256(reader.final).hexdigest(),
                     "hello_retry_request_seen": bool(reader.retries),
                 }
+            if hybrid:
+                if group_id != 4588:
+                    raise Refused("UNAVAILABLE", "TLS_REQUIRED_GROUP_NOT_SELECTED")
+                detail.update(fact_model=TlsHybridFact, **obj.provider_metadata)
             fact = seal_session(
                 **detail,
                 on_selected=counted,

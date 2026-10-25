@@ -1,5 +1,7 @@
 # Local validation — TLS 1.3 selected-group evidence
 
+> Historical evidence retained unchanged in scope. [Later actual-hybrid/operation/package validation](hybrid-operation-software-2026-10-25.md) supersedes the no-functional-hybrid state for owned loopback only.
+
 2026-10-25 UTC. Baseline `a6fcc06322a6a1192fe560a416ca977272afd81d`; branch `arena/bb4b80dd-cryproscan`.
 
 [Guide 80](../bank-environment/80-tls13-selected-group-evidence.md) · [Operator packet](../runbooks/tls13-selected-group-evidence.md) · [API](../api-reference/tls13-selected-group-evidence.md).

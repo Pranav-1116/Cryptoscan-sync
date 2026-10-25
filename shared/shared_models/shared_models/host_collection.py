@@ -23,6 +23,7 @@ Kind = Literal[
     "PUBLIC_CERTIFICATE",
     "NETWORK_TLS_SESSION",
     "NETWORK_TLS13_KEY_SHARE",
+    "NETWORK_TLS13_HYBRID",
     "OCI_IMAGE_METADATA",
     "OCI_IMAGE_CONTENT",
     "OCI_RUNTIME_PROCESS",
@@ -67,6 +68,7 @@ from shared_models.windows_tpm import WindowsTpmFact
 from shared_models.oci_image import OciImageFact
 from shared_models.tls_session import TlsSessionFact
 from shared_models.tls_key_share import TlsKeyShareFact
+from shared_models.tls_hybrid import TlsHybridFact
 from shared_models.oci_content import OciContentFact, OciRuntimeFact
 from shared_models.windows_capi import WindowsCapiFact
 from shared_models.windows_listeners import WindowsListenerFact
@@ -192,6 +194,7 @@ ReceiptStatus = Literal["PARSED", "DENIED", "UNSUPPORTED", "INVALID", "BUDGET_EX
 ReceiptReason = Literal[
     "METADATA_ONLY",
     "TLS_TIMEOUT",
+    "TLS_REQUIRED_GROUP_NOT_SELECTED",
     "TLS_CONNECT_FAILED",
     "TLS_HANDSHAKE_FAILED",
     "TLS_PEER_PIN_MISMATCH",
@@ -227,6 +230,7 @@ class HostReceipt(Strict):
         | OciImageFact
         | TlsSessionFact
         | TlsKeyShareFact
+        | TlsHybridFact
         | OciContentFact
         | OciRuntimeFact
         | WindowsCapiFact
@@ -245,6 +249,7 @@ class HostReceipt(Strict):
         permitted = {
             "METADATA_ONLY": {"PARSED"},
             "TLS_TIMEOUT": {"UNAVAILABLE"},
+            "TLS_REQUIRED_GROUP_NOT_SELECTED": {"UNAVAILABLE"},
             "TLS_CONNECT_FAILED": {"UNAVAILABLE"},
             "TLS_HANDSHAKE_FAILED": {"UNAVAILABLE"},
             "TLS_PEER_PIN_MISMATCH": {"INVALID"},
@@ -302,6 +307,7 @@ class HostSnapshot(Strict):
             "PUBLIC_CERTIFICATE": "CERTIFICATE",
             "NETWORK_TLS_SESSION": "NETWORK_TLS_SESSION",
             "NETWORK_TLS13_KEY_SHARE": "NETWORK_TLS13_KEY_SHARE",
+            "NETWORK_TLS13_HYBRID": "NETWORK_TLS13_HYBRID",
             "OCI_IMAGE_METADATA": "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT": "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS": "OCI_RUNTIME_PROCESS",
@@ -335,7 +341,10 @@ class HostSnapshot(Strict):
             from shared_models.host_runtime_scope import validate_runtime_facts
 
             validate_runtime_facts(item, receipt.facts)
-            if item.kind in {"NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE"} and receipt.status == "PARSED":
+            if (
+                item.kind in {"NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE", "NETWORK_TLS13_HYBRID"}
+                and receipt.status == "PARSED"
+            ):
                 from shared_models.tls_session import selected_bytes
 
                 f = receipt.facts[0]
@@ -346,7 +355,11 @@ class HostSnapshot(Strict):
                     + f.wire_bytes_received
                     + f.peer_der_bytes
                     + len(selected_bytes(f))
-                    + (len(bytes.fromhex(f.server_hello_hex)) if item.kind == "NETWORK_TLS13_KEY_SHARE" else 0)
+                    + (
+                        len(bytes.fromhex(f.server_hello_hex))
+                        if item.kind in {"NETWORK_TLS13_KEY_SHARE", "NETWORK_TLS13_HYBRID"}
+                        else 0
+                    )
                 ):
                     raise ValueError("TLS source/budget commitment mismatch")
             if item.kind in {
@@ -371,6 +384,7 @@ class HostSnapshot(Strict):
                     in {
                         "NETWORK_TLS_SESSION",
                         "NETWORK_TLS13_KEY_SHARE",
+                        "NETWORK_TLS13_HYBRID",
                         "OCI_IMAGE_METADATA",
                         "OCI_IMAGE_CONTENT",
                         "OCI_RUNTIME_PROCESS",

@@ -378,3 +378,7 @@ This is manifest/config metadata, not package/container-runtime inventory or pro
 ### TLS 1.3 selected-group evidence
 
 [Guide 80](bank-environment/80-tls13-selected-group-evidence.md) · [Operator packet](runbooks/tls13-selected-group-evidence.md) · [API](api-reference/tls13-selected-group-evidence.md) · [Validation](readiness-evidence/tls13-key-share-2026-10-25.md). Final public ServerHello on the same pinned completed handshake identifies one selected group. Hybrid registry parsing is not actual PQC implementation/readiness, app/HSM use, complete software inventory or Windows/container qualification.
+
+### Actual hybrid, operation correlation and agreed package truth
+
+[Guide 81](bank-environment/81-actual-hybrid-operation-and-software-truth.md) · [Operator packet](runbooks/hybrid-operation-software-evidence.md) · [Contracts/API](api-reference/hybrid-operation-software-evidence.md) · [Validation](readiness-evidence/hybrid-operation-software-2026-10-25.md). Real owned TCP X25519MLKEM768 now runs through the collector. Signed operation logs remain imported claims, scoped package matches are not whole-host completeness, and actual physical-HSM/Windows/container qualification remains open.

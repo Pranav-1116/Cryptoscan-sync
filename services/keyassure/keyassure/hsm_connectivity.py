@@ -1,35 +1,24 @@
-"""HSM / KMS / PKCS#11 connectivity and key-residence verification.
+"""Provider connectivity/metadata claims, NOT physical HSM or application proof.
 
-Deterministically verify that a key referenced by the platform actually lives
-in a hardware-backed store (AWS KMS, Azure Key Vault / Managed HSM, Google
-Cloud KMS, Thales/Utimaco Luna/PKCS#11 HSM) rather than in software, and report
-the key's attributes.
-
-Network/SDK access is injected as a ``backend`` callable so the logic is fully
-testable offline and never imports a cloud SDK at module load. The canonical
-deterministic test is a **non-exportable sign challenge**: a hardware-backed
-key can sign inside the HSM but its private material cannot be exported. We
-model three probes:
-
-- connectivity   : endpoint reachable / authenticated
-- key_residence  : the provider reports HSM-origin / non-exportable attributes
-- sign_challenge : provider signs a fixed nonce with the key (material never
-                   leaves the boundary) — proves the key is usable in-hardware
-
-Key material is never returned (fail-closed scrub).
+Legacy ``hardware_backed`` is a provider-metadata classification, not attestation.
+Legacy ``sign_challenge=OK`` means a nonempty response, NOT signature verification.
+Fresh per-call challenges reduce accidental reuse but do not establish application
+use/non-exportability. Operation-bound cryptographic verification is provided by
+``shared_models.operation_evidence`` with separately approved public roots.
+No private material is returned; exposure is detected before scrubbing.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
+import hashlib
+import secrets
 
-SUPPORTED_PROVIDERS = ("aws_kms", "azure_keyvault", "azure_managed_hsm",
-                       "gcp_kms", "pkcs11", "luna")
+SUPPORTED_PROVIDERS = ("aws_kms", "azure_keyvault", "azure_managed_hsm", "gcp_kms", "pkcs11", "luna")
 
-# Attribute values that prove hardware backing / non-exportability.
-_HSM_ORIGIN = ("AWS_CLOUDHSM", "HSM", "HSM_PROTECTED", "HARDWARE",
-               "TRANSIT_PROTECTED", "HSM_BACKED")
+# Historical provider classification labels, never hardware/non-exportability attestation.
+_HSM_ORIGIN = ("AWS_CLOUDHSM", "HSM", "HSM_PROTECTED", "HARDWARE", "TRANSIT_PROTECTED", "HSM_BACKED")
 _NON_EXPORTABLE = ("EXTERNAL", "HSM", "true")
 
 
@@ -45,11 +34,11 @@ class KeyAttributes:
     key_usage: list[str] = field(default_factory=list)
     algorithm: str | None = None
     key_spec: str | None = None
-    origin: str | None = None          # AWS_KMS / AWS_CLOUDHSM / EXTERNAL
+    origin: str | None = None  # AWS_KMS / AWS_CLOUDHSM / EXTERNAL
     protection_level: str | None = None  # HARDWARE / SOFTWARE
     exportable: bool | None = None
     extractable: bool | None = None
-    raw_present: bool = False           # must stay False
+    raw_present: bool = False  # Provider input exposure flag; material is never retained.
 
 
 class Backend(Protocol):
@@ -60,11 +49,21 @@ class Backend(Protocol):
     def sign_challenge(self, key_ref: str, nonce: bytes) -> dict[str, Any]: ...
 
 
-_FORBIDDEN_SEGMENTS = frozenset({
-    "privatekey", "private_key", "privkey", "plaintext", "key_material",
-    "keymaterial", "pem", "privatekeymaterial", "secret_material",
-    "privateexponent", "private_exponent",
-})
+_FORBIDDEN_SEGMENTS = frozenset(
+    {
+        "privatekey",
+        "private_key",
+        "privkey",
+        "plaintext",
+        "key_material",
+        "keymaterial",
+        "pem",
+        "privatekeymaterial",
+        "secret_material",
+        "privateexponent",
+        "private_exponent",
+    }
+)
 
 
 def _is_material_key(k: str) -> bool:
@@ -97,10 +96,20 @@ def check_key(key_ref: str, *, provider: str, backend: Backend) -> dict[str, Any
         raise HsmCheckError(f"unsupported provider {provider!r}; supported: {SUPPORTED_PROVIDERS}")
 
     result: dict[str, Any] = {
-        "key_ref": key_ref, "provider": provider,
-        "connectivity": "UNKNOWN", "key_residence": "UNKNOWN",
-        "sign_challenge": "UNKNOWN", "hardware_backed": False,
-        "attributes": None, "issues": [],
+        "key_ref": key_ref,
+        "provider": provider,
+        "connectivity": "UNKNOWN",
+        "key_residence": "UNKNOWN",
+        "sign_challenge": "UNKNOWN",
+        "hardware_backed": False,
+        "attributes": None,
+        "issues": [],
+        "key_residence_basis": "PROVIDER_METADATA_CLAIM_NOT_ATTESTATION",
+        "sign_challenge_basis": "NONEMPTY_RESPONSE_NOT_SIGNATURE_VERIFICATION",
+        "operation_signature_verified": False,
+        "hardware_backing_verified": False,
+        "application_uses_physical_hsm": "UNKNOWN",
+        "application_execution_attested": False,
     }
 
     # 1) describe / connectivity
@@ -109,49 +118,84 @@ def check_key(key_ref: str, *, provider: str, backend: Backend) -> dict[str, Any
         result["connectivity"] = "OK"
     except Exception as exc:  # SDK/network failure
         result["connectivity"] = "FAIL"
-        result["issues"].append({"severity": "HIGH", "code": "CONNECTIVITY",
-                                 "detail": f"{type(exc).__name__}: {str(exc)[:160]}"})
+        result["issues"].append(
+            {
+                "severity": "HIGH",
+                "code": "CONNECTIVITY",
+                "detail": f"{type(exc).__name__}: provider request failed (details withheld)",
+            }
+        )
         return _finalize(result)
 
-    attrs = _extract_attributes(key_ref, provider, _scrub(desc or {}))
+    exposed = _contains_material(desc or {})
+    attrs = _extract_attributes(key_ref, provider, {} if exposed else _scrub(desc or {}))
+    attrs.raw_present = exposed
     result["attributes"] = attrs
-    result["raw_key_material_present"] = attrs.raw_present  # must be False
+    result["raw_key_material_present"] = attrs.raw_present  # Input exposure flag; no material retained.
 
     # 2) residence determination
     origin = (attrs.origin or "").upper()
     protection = (attrs.protection_level or "").upper()
     claims_hsm = _provider_claims_hsm(desc)
     if attrs.raw_present:
-        result["key_residence"] = "SOFTWARE"
-        result["issues"].append({"severity": "CRITICAL", "code": "KEY_MATERIAL_EXPOSED",
-                                 "detail": "provider response contained private key material"})
-    elif protection == "HARDWARE" or "CLOUDHSM" in origin or "HSM" in origin \
-            or (origin == "EXTERNAL" and claims_hsm) or (provider in ("pkcs11", "luna") and protection != "SOFTWARE"):
+        result["key_residence"] = "UNDETERMINED"
+        result["issues"].append(
+            {
+                "severity": "CRITICAL",
+                "code": "KEY_MATERIAL_EXPOSED",
+                "detail": "provider response contained private key material",
+            }
+        )
+        return _finalize(result)
+    elif (
+        protection == "HARDWARE"
+        or "CLOUDHSM" in origin
+        or "HSM" in origin
+        or (origin == "EXTERNAL" and claims_hsm)
+        or (provider in ("pkcs11", "luna") and protection != "SOFTWARE")
+    ):
         # Explicit hardware protection level, CloudHSM/HSM origin, an EXTERNAL
         # key in an HSM-backed custom key store, or a PKCS#11/Luna token key.
         result["key_residence"] = "HSM"
     elif protection == "SOFTWARE":
         result["key_residence"] = "SOFTWARE"
-        result["issues"].append({"severity": "MEDIUM", "code": "NOT_HARDWARE_BACKED",
-                                 "detail": "provider reports SOFTWARE protection level"})
+        result["issues"].append(
+            {
+                "severity": "MEDIUM",
+                "code": "NOT_HARDWARE_BACKED",
+                "detail": "provider reports SOFTWARE protection level",
+            }
+        )
     elif provider == "aws_kms" and origin == "AWS_KMS":
         # Default AWS-managed KMS keys are not dedicated-HSM backed.
         result["key_residence"] = "SOFTWARE"
-        result["issues"].append({"severity": "MEDIUM", "code": "NOT_HARDWARE_BACKED",
-                                 "detail": "AWS_KMS origin without CloudHSM/custom key store is not dedicated-HSM backed"})
+        result["issues"].append(
+            {
+                "severity": "MEDIUM",
+                "code": "NOT_HARDWARE_BACKED",
+                "detail": "AWS_KMS origin without CloudHSM/custom key store is not dedicated-HSM backed",
+            }
+        )
     elif attrs.exportable is True or attrs.extractable is True:
         result["key_residence"] = "SOFTWARE"
-        result["issues"].append({"severity": "HIGH", "code": "EXPORTABLE_KEY",
-                                 "detail": "key is marked exportable/extractable — not hardware-protected"})
+        result["issues"].append(
+            {
+                "severity": "HIGH",
+                "code": "EXPORTABLE_KEY",
+                "detail": "key is marked exportable/extractable — not hardware-protected",
+            }
+        )
     else:
         result["key_residence"] = "UNDETERMINED"
 
     if attrs.exportable is True or attrs.extractable is True:
-        result["issues"].append({"severity": "HIGH", "code": "EXPORTABLE_KEY",
-                                 "detail": "key export/extract flag is set"})
+        result["issues"].append(
+            {"severity": "HIGH", "code": "EXPORTABLE_KEY", "detail": "key export/extract flag is set"}
+        )
 
-    # 3) non-exportable sign challenge — proves in-hardware usability
-    nonce = b"cryptoscan-hsm-challenge-0123456789abcdef"
+    # Receipt only: no cryptographic verification or hardware/application inference.
+    nonce = b"cryptoscan.hsm-connectivity/v2\x00" + secrets.token_bytes(32)
+    result["challenge_sha256"] = hashlib.sha256(nonce).hexdigest()
     try:
         sign = backend.sign_challenge(key_ref, nonce)
         sig = (sign or {}).get("signature") or (sign or {}).get("Signature")
@@ -159,12 +203,18 @@ def check_key(key_ref: str, *, provider: str, backend: Backend) -> dict[str, Any
             result["sign_challenge"] = "OK"
         else:
             result["sign_challenge"] = "FAIL"
-            result["issues"].append({"severity": "HIGH", "code": "SIGN_CHALLENGE",
-                                     "detail": "provider returned no signature"})
+            result["issues"].append(
+                {"severity": "HIGH", "code": "SIGN_CHALLENGE", "detail": "provider returned no signature"}
+            )
     except Exception as exc:
         result["sign_challenge"] = "FAIL"
-        result["issues"].append({"severity": "HIGH", "code": "SIGN_CHALLENGE",
-                                 "detail": f"{type(exc).__name__}: {str(exc)[:160]}"})
+        result["issues"].append(
+            {
+                "severity": "HIGH",
+                "code": "SIGN_CHALLENGE",
+                "detail": f"{type(exc).__name__}: provider request failed (details withheld)",
+            }
+        )
 
     result["hardware_backed"] = result["key_residence"] == "HSM" and result["connectivity"] == "OK"
     return _finalize(result)
@@ -182,8 +232,7 @@ def _extract_attributes(key_ref: str, provider: str, d: dict) -> KeyAttributes:
     attrs.algorithm = meta.get("algorithm") or d.get("algorithm") or meta.get("alg")
     attrs.key_spec = meta.get("key_spec") or d.get("key_spec") or meta.get("spec")
     attrs.origin = meta.get("origin") or d.get("origin")
-    attrs.protection_level = (meta.get("protection_level")
-                              or d.get("protection_level") or d.get("protectionLevel"))
+    attrs.protection_level = meta.get("protection_level") or d.get("protection_level") or d.get("protectionLevel")
     if "exportable" in meta:
         attrs.exportable = bool(meta["exportable"])
     elif "exportable" in d:
@@ -193,19 +242,22 @@ def _extract_attributes(key_ref: str, provider: str, d: dict) -> KeyAttributes:
     usage = meta.get("key_usage") or d.get("key_usage") or meta.get("operations")
     if isinstance(usage, list):
         attrs.key_usage = [str(u) for u in usage]
-    # raw material detection post-scrub (should always be False)
+    # Caller also checks unsanitized response before its values can be retained.
     attrs.raw_present = _contains_material(d)
     return attrs
 
 
-def _contains_material(d: dict) -> bool:
-    import re
-
-    text = str(d)
-    # a PEM private key block or a long base64 blob in a key-like field
-    if "BEGIN" in text and "PRIVATE KEY" in text:
-        return True
-    return bool(re.search(r"'(private_key|material|plaintext)'\s*:\s*'.{40,}", text))
+def _contains_material(value: Any) -> bool:
+    if isinstance(value, dict):
+        return any(
+            (_is_material_key(str(k)) and bool(v))
+            or (k == "material" and isinstance(v, str) and len(v) >= 40)
+            or _contains_material(v)
+            for k, v in value.items()
+        )
+    if isinstance(value, list):
+        return any(_contains_material(v) for v in value)
+    return isinstance(value, str) and "BEGIN" in value and "PRIVATE KEY" in value
 
 
 def _finalize(result: dict) -> dict:

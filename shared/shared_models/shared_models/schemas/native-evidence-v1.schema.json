@@ -247,6 +247,7 @@
             "PUBLIC_CERTIFICATE",
             "NETWORK_TLS_SESSION",
             "NETWORK_TLS13_KEY_SHARE",
+            "NETWORK_TLS13_HYBRID",
             "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS",
@@ -413,6 +414,9 @@
                 "$ref": "#/$defs/TlsKeyShareFact"
               },
               {
+                "$ref": "#/$defs/TlsHybridFact"
+              },
+              {
                 "$ref": "#/$defs/OciContentFact"
               },
               {
@@ -439,6 +443,7 @@
           "enum": [
             "METADATA_ONLY",
             "TLS_TIMEOUT",
+            "TLS_REQUIRED_GROUP_NOT_SELECTED",
             "TLS_CONNECT_FAILED",
             "TLS_HANDSHAKE_FAILED",
             "TLS_PEER_PIN_MISMATCH",
@@ -1895,6 +1900,340 @@
         "not_before"
       ],
       "title": "TargetSpec",
+      "type": "object"
+    },
+    "TlsHybridFact": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "maxLength": 45,
+          "title": "Address",
+          "type": "string"
+        },
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "all_groups_tested": {
+          "const": false,
+          "default": false,
+          "title": "All Groups Tested",
+          "type": "boolean"
+        },
+        "all_tls_versions_tested": {
+          "const": false,
+          "default": false,
+          "title": "All Tls Versions Tested",
+          "type": "boolean"
+        },
+        "application_data_sent": {
+          "const": false,
+          "default": false,
+          "title": "Application Data Sent",
+          "type": "boolean"
+        },
+        "application_identity_verified": {
+          "const": false,
+          "default": false,
+          "title": "Application Identity Verified",
+          "type": "boolean"
+        },
+        "authorized_operation": {
+          "const": "OBSERVE_APPROVED_TLS_SESSION",
+          "default": "OBSERVE_APPROVED_TLS_SESSION",
+          "title": "Authorized Operation",
+          "type": "string"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "capture_basis": {
+          "const": "FINAL_SERVER_HELLO_SAME_PINNED_COMPLETED_HANDSHAKE",
+          "default": "FINAL_SERVER_HELLO_SAME_PINNED_COMPLETED_HANDSHAKE",
+          "title": "Capture Basis",
+          "type": "string"
+        },
+        "certificate": {
+          "$ref": "#/$defs/TlsPeerCertificate"
+        },
+        "certificate_chain_validated": {
+          "const": false,
+          "default": false,
+          "title": "Certificate Chain Validated",
+          "type": "boolean"
+        },
+        "cipher_bits": {
+          "maximum": 512,
+          "minimum": 1,
+          "title": "Cipher Bits",
+          "type": "integer"
+        },
+        "cipher_suite": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Cipher Suite",
+          "type": "string"
+        },
+        "cryptography_version": {
+          "maxLength": 40,
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "title": "Cryptography Version",
+          "type": "string"
+        },
+        "group_classification": {
+          "const": "REGISTERED_HYBRID_GROUP_SELECTED",
+          "default": "REGISTERED_HYBRID_GROUP_SELECTED",
+          "title": "Group Classification",
+          "type": "string"
+        },
+        "group_classification_basis": {
+          "const": "PINNED_REGISTRY_MAPPING_NOT_IMPLEMENTATION_PROOF",
+          "default": "PINNED_REGISTRY_MAPPING_NOT_IMPLEMENTATION_PROOF",
+          "title": "Group Classification Basis",
+          "type": "string"
+        },
+        "hello_retry_request_seen": {
+          "title": "Hello Retry Request Seen",
+          "type": "boolean"
+        },
+        "hostname_validated": {
+          "const": false,
+          "default": false,
+          "title": "Hostname Validated",
+          "type": "boolean"
+        },
+        "hybrid_session_completed": {
+          "const": true,
+          "default": true,
+          "title": "Hybrid Session Completed",
+          "type": "boolean"
+        },
+        "identity_key": {
+          "maxLength": 400,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "const": "EXPLICIT_NUMERIC_TCP_TLS_MEMORY_BIO",
+          "default": "EXPLICIT_NUMERIC_TCP_TLS_MEMORY_BIO",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_exchange_group": {
+          "const": "X25519MLKEM768",
+          "default": "X25519MLKEM768",
+          "title": "Key Exchange Group",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "NETWORK_TLS13_HYBRID",
+          "default": "NETWORK_TLS13_HYBRID",
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "negotiated_session_observed": {
+          "const": true,
+          "default": true,
+          "title": "Negotiated Session Observed",
+          "type": "boolean"
+        },
+        "openssl_version": {
+          "maxLength": 100,
+          "minLength": 10,
+          "pattern": "^OpenSSL [0-9]+\\.[0-9]+\\.[0-9]+ [A-Za-z0-9 .-]+$",
+          "title": "Openssl Version",
+          "type": "string"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "peer_der_bytes": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Peer Der Bytes",
+          "type": "integer"
+        },
+        "peer_fingerprint_matched": {
+          "const": true,
+          "default": true,
+          "title": "Peer Fingerprint Matched",
+          "type": "boolean"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "pqc_implementation_verified": {
+          "const": false,
+          "default": false,
+          "title": "Pqc Implementation Verified",
+          "type": "boolean"
+        },
+        "pqc_readiness_verified": {
+          "const": false,
+          "default": false,
+          "title": "Pqc Readiness Verified",
+          "type": "boolean"
+        },
+        "provider_identity_basis": {
+          "const": "SELF_REPORTED_LIBRARY_VERSION_NOT_MEASURED_EXECUTION",
+          "default": "SELF_REPORTED_LIBRARY_VERSION_NOT_MEASURED_EXECUTION",
+          "title": "Provider Identity Basis",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "PINNED_COMPLETED_X25519_MLKEM768_SESSION",
+          "default": "PINNED_COMPLETED_X25519_MLKEM768_SESSION",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "pyopenssl_version": {
+          "maxLength": 40,
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "title": "Pyopenssl Version",
+          "type": "string"
+        },
+        "reviewed_target_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Reviewed Target Sha256",
+          "type": "string"
+        },
+        "revocation_checked": {
+          "const": false,
+          "default": false,
+          "title": "Revocation Checked",
+          "type": "boolean"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "selected_group_id": {
+          "const": 4588,
+          "default": 4588,
+          "title": "Selected Group Id",
+          "type": "integer"
+        },
+        "server_hello_hex": {
+          "maxLength": 8192,
+          "minLength": 88,
+          "pattern": "^(?:[0-9a-f]{2})+$",
+          "title": "Server Hello Hex",
+          "type": "string"
+        },
+        "server_hello_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Server Hello Sha256",
+          "type": "string"
+        },
+        "server_signature_scheme": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Server Signature Scheme",
+          "type": "string"
+        },
+        "sni": {
+          "maxLength": 253,
+          "title": "Sni",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "tls_provider": {
+          "const": "PYOPENSSL_CRYPTOGRAPHY_OPENSSL",
+          "default": "PYOPENSSL_CRYPTOGRAPHY_OPENSSL",
+          "title": "Tls Provider",
+          "type": "string"
+        },
+        "tls_version": {
+          "const": "TLSv1.3",
+          "default": "TLSv1.3",
+          "title": "Tls Version",
+          "type": "string"
+        },
+        "wire_bytes_received": {
+          "maximum": 131072,
+          "minimum": 1,
+          "title": "Wire Bytes Received",
+          "type": "integer"
+        },
+        "wire_bytes_sent": {
+          "maximum": 131072,
+          "minimum": 1,
+          "title": "Wire Bytes Sent",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviewed_target_sha256",
+        "address",
+        "port",
+        "sni",
+        "cipher_suite",
+        "cipher_bits",
+        "certificate",
+        "peer_der_bytes",
+        "wire_bytes_sent",
+        "wire_bytes_received",
+        "identity_key",
+        "interface_sha256",
+        "server_hello_hex",
+        "server_hello_sha256",
+        "hello_retry_request_seen",
+        "openssl_version",
+        "pyopenssl_version",
+        "cryptography_version"
+      ],
+      "title": "TlsHybridFact",
       "type": "object"
     },
     "TlsKeyShareFact": {

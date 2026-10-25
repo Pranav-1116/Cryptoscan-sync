@@ -23,14 +23,17 @@ def main():
     p.add_argument(
         "--include-key-share", action="store_true", help="Explicit TLS 1.3 public ServerHello evidence profile"
     )
+    p.add_argument(
+        "--include-hybrid", action="store_true", help="Explicit actual X25519MLKEM768 profile with optional provider"
+    )
     args = p.parse_args()
     try:
         target = TargetSpec.model_validate(read_json(args.target))
         if sha(target) != args.approved_target_sha256:
             raise ValueError("Reviewed target changed")
         collector = (
-            ApprovedTlsSessionCollector(include_key_share=True)
-            if args.include_key_share
+            ApprovedTlsSessionCollector(include_key_share=args.include_key_share, include_hybrid=args.include_hybrid)
+            if args.include_key_share or args.include_hybrid
             else ApprovedTlsSessionCollector()
         )
         collector.validate_scope(target)

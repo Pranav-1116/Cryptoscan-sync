@@ -346,3 +346,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [79. Approved single TLS session candidate](79-approved-single-tls-session-candidate.md) — exact numeric endpoint/SNI/version/peer pin, reviewed active operation and bounded MemoryBIO handshake through existing custody/NBOM/CBOM/TechBOM/UI; no discovery, application/SBOM completeness or production admission. [Operator packet](../runbooks/approved-single-tls-session-candidate.md) · [API](../api-reference/tls-session-candidate.md) · [Local evidence](../readiness-evidence/tls-session-candidate-2026-10-25.md).
 
 - [80. TLS 1.3 selected-group evidence](80-tls13-selected-group-evidence.md) — direct final ServerHello group/cipher evidence with explicit operator opt-in, bounded framing and existing custody/export/UI. One selection, not all-capability/PQC/app/HSM/native qualification.
+
+- [81. Actual hybrid TLS, signed operation correlation and software truth](81-actual-hybrid-operation-and-software-truth.md) — real owned TCP X25519MLKEM768, pinned signed-operation verification, exact package-record denominator and honest native/HSM/whole-host blockers.

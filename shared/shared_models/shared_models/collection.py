@@ -11,6 +11,7 @@ from shared_models.windows_tpm import WindowsTpmFact
 from shared_models.oci_image import OciImageFact
 from shared_models.tls_session import TlsSessionFact
 from shared_models.tls_key_share import TlsKeyShareFact
+from shared_models.tls_hybrid import TlsHybridFact
 from shared_models.oci_content import OciContentFact, OciRuntimeFact
 from shared_models.windows_capi import WindowsCapiFact
 from shared_models.windows_listeners import WindowsListenerFact
@@ -114,6 +115,7 @@ class Observation(Strict):
         | OciImageFact
         | TlsSessionFact
         | TlsKeyShareFact
+        | TlsHybridFact
         | OciContentFact
         | OciRuntimeFact
         | WindowsCapiFact
