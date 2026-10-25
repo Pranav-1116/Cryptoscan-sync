@@ -157,6 +157,8 @@ class RuntimeFact(Strict):
 
 
 def domains(fact):
+    if fact.kind == "NETWORK_TLS_SESSION":
+        return ["CBOM", "NBOM", "TechBOM"]
     if fact.kind in {"CERTIFICATE", "TLS_CONFIGURATION"}:
         return ["CBOM", "TechBOM"]
     if fact.kind in {

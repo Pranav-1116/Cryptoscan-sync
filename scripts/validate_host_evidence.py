@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Opt-in, unprivileged, owned disposable PostgreSQL host-evidence witness.
 
-No customer URL, collector execution, external network or production change.
+No customer endpoint or production execution/change. Optional TLS cases use only
+owned loopback; other profiles retain their existing synthetic/offline scope.
 Requires the optional pgserver validation dependency, not a product dependency.
 """
 
@@ -83,6 +84,11 @@ def main():
         action="store_true",
         help="Synthetic verified layers/package and runtime metadata custody",
     )
+    parser.add_argument(
+        "--include-tls-session-candidate",
+        action="store_true",
+        help="Owned-loopback TLS custody parity, not network/production qualification",
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -137,6 +143,8 @@ def main():
                 files.append("services/api/tests/unit/test_oci_metadata_candidate_postgres.py")
             if args.include_container_content_candidate:
                 files.append("services/api/tests/unit/test_container_content_candidate_postgres.py")
+            if args.include_tls_session_candidate:
+                files.append("services/api/tests/unit/test_tls_session_candidate_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

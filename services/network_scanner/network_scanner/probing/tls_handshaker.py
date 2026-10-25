@@ -43,3 +43,10 @@ def handshake(sock, hostname: str, *, timeout: float | None = None) -> dict[str,
         "certificate": parse_der(der) if der else None,
         "hostname": hostname,
     }
+
+
+def approved_session_engine(sni: str, version: str):
+    """Constrained shared engine; caller owns exact TCP scope, budgets and fingerprint check."""
+    from shared_models.tls_session import client_session
+
+    return client_session(sni, version)

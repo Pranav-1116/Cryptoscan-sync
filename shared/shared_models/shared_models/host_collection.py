@@ -21,6 +21,7 @@ Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 SignatureOid = Annotated[str, StringConstraints(max_length=100, pattern=r"^(UNKNOWN|[0-9]+(?:\.[0-9]+)+)$")]
 Kind = Literal[
     "PUBLIC_CERTIFICATE",
+    "NETWORK_TLS_SESSION",
     "OCI_IMAGE_METADATA",
     "OCI_IMAGE_CONTENT",
     "OCI_RUNTIME_PROCESS",
@@ -63,6 +64,7 @@ from shared_models.windows_images import WindowsImageFact
 from shared_models.windows_cng import WindowsCngFact
 from shared_models.windows_tpm import WindowsTpmFact
 from shared_models.oci_image import OciImageFact
+from shared_models.tls_session import TlsSessionFact
 from shared_models.oci_content import OciContentFact, OciRuntimeFact
 from shared_models.windows_capi import WindowsCapiFact
 from shared_models.windows_listeners import WindowsListenerFact
@@ -187,6 +189,11 @@ class HostFact(Strict):
 ReceiptStatus = Literal["PARSED", "DENIED", "UNSUPPORTED", "INVALID", "BUDGET_EXCEEDED", "UNAVAILABLE"]
 ReceiptReason = Literal[
     "METADATA_ONLY",
+    "TLS_TIMEOUT",
+    "TLS_CONNECT_FAILED",
+    "TLS_HANDSHAKE_FAILED",
+    "TLS_PEER_PIN_MISMATCH",
+    "ACTIVE_PROBE_NOT_AUTHORIZED",
     "ACCESS_DENIED",
     "UNSUPPORTED_PLATFORM",
     "SYMLINK_OR_SPECIAL",
@@ -216,6 +223,7 @@ class HostReceipt(Strict):
         | WindowsCngFact
         | WindowsTpmFact
         | OciImageFact
+        | TlsSessionFact
         | OciContentFact
         | OciRuntimeFact
         | WindowsCapiFact
@@ -233,6 +241,11 @@ class HostReceipt(Strict):
             raise ValueError("failed receipt cannot contain positive facts or content digest")
         permitted = {
             "METADATA_ONLY": {"PARSED"},
+            "TLS_TIMEOUT": {"UNAVAILABLE"},
+            "TLS_CONNECT_FAILED": {"UNAVAILABLE"},
+            "TLS_HANDSHAKE_FAILED": {"UNAVAILABLE"},
+            "TLS_PEER_PIN_MISMATCH": {"INVALID"},
+            "ACTIVE_PROBE_NOT_AUTHORIZED": {"DENIED"},
             "ACCESS_DENIED": {"DENIED"},
             "UNSUPPORTED_PLATFORM": {"UNSUPPORTED"},
             "SYMLINK_OR_SPECIAL": {"UNSUPPORTED"},
@@ -284,6 +297,7 @@ class HostSnapshot(Strict):
             raise ValueError("total input byte limit")
         kinds = {
             "PUBLIC_CERTIFICATE": "CERTIFICATE",
+            "NETWORK_TLS_SESSION": "NETWORK_TLS_SESSION",
             "OCI_IMAGE_METADATA": "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT": "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS": "OCI_RUNTIME_PROCESS",
@@ -317,6 +331,16 @@ class HostSnapshot(Strict):
             from shared_models.host_runtime_scope import validate_runtime_facts
 
             validate_runtime_facts(item, receipt.facts)
+            if item.kind == "NETWORK_TLS_SESSION" and receipt.status == "PARSED":
+                from shared_models.tls_session import selected_bytes
+
+                f = receipt.facts[0]
+                if (
+                    receipt.content_sha256 != f.interface_sha256
+                    or receipt.byte_count
+                    != f.wire_bytes_sent + f.wire_bytes_received + f.peer_der_bytes + len(selected_bytes(f))
+                ):
+                    raise ValueError("TLS source/budget commitment mismatch")
             if item.kind in {
                 "OCI_IMAGE_METADATA",
                 "OCI_IMAGE_CONTENT",
@@ -337,6 +361,7 @@ class HostSnapshot(Strict):
                 (
                     item.kind
                     in {
+                        "NETWORK_TLS_SESSION",
                         "OCI_IMAGE_METADATA",
                         "OCI_IMAGE_CONTENT",
                         "OCI_RUNTIME_PROCESS",

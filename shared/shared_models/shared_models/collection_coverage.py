@@ -31,7 +31,7 @@ SURFACES = {
         "OCI_RUNTIME_PROCESS",
     },
     "services": {"LINUX_SERVICE", "WINDOWS_SERVICE"},
-    "network_listeners": {"LINUX_LISTENERS", "WINDOWS_TCP_LISTENERS"},
+    "network_listeners": {"LINUX_LISTENERS", "WINDOWS_TCP_LISTENERS", "NETWORK_TLS_SESSION"},
     "hardware_metadata": {"LINUX_HARDWARE", "WINDOWS_TPM_DEVICE_INFO"},
 }
 BOMS = ("SBOM", "CBOM", "NBOM", "HBOM", "VBOM", "TechBOM")

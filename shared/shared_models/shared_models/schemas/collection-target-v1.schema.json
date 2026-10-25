@@ -11,6 +11,7 @@
         "kind": {
           "enum": [
             "PUBLIC_CERTIFICATE",
+            "NETWORK_TLS_SESSION",
             "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS",
@@ -138,7 +139,10 @@
     },
     "allowed_operations": {
       "items": {
-        "const": "READ_APPROVED_METADATA",
+        "enum": [
+          "READ_APPROVED_METADATA",
+          "OBSERVE_APPROVED_TLS_SESSION"
+        ],
         "type": "string"
       },
       "maxItems": 1,

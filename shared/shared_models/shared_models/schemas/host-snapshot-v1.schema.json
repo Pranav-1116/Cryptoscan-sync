@@ -219,6 +219,7 @@
         "kind": {
           "enum": [
             "PUBLIC_CERTIFICATE",
+            "NETWORK_TLS_SESSION",
             "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS",
@@ -379,6 +380,9 @@
                 "$ref": "#/$defs/OciImageFact"
               },
               {
+                "$ref": "#/$defs/TlsSessionFact"
+              },
+              {
                 "$ref": "#/$defs/OciContentFact"
               },
               {
@@ -404,6 +408,11 @@
         "reason": {
           "enum": [
             "METADATA_ONLY",
+            "TLS_TIMEOUT",
+            "TLS_CONNECT_FAILED",
+            "TLS_HANDSHAKE_FAILED",
+            "TLS_PEER_PIN_MISMATCH",
+            "ACTIVE_PROBE_NOT_AUTHORIZED",
             "ACCESS_DENIED",
             "UNSUPPORTED_PLATFORM",
             "SYMLINK_OR_SPECIAL",
@@ -1609,6 +1618,315 @@
         "identity_key"
       ],
       "title": "RuntimeFact",
+      "type": "object"
+    },
+    "TlsPeerCertificate": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "RSA",
+            "EC",
+            "DSA",
+            "ED25519",
+            "ED448",
+            "UNKNOWN"
+          ],
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "certificate_signature_oid": {
+          "maxLength": 100,
+          "pattern": "^(UNKNOWN|[0-9]+(?:\\.[0-9]+)+)$",
+          "title": "Certificate Signature Oid",
+          "type": "string"
+        },
+        "curve": {
+          "enum": [
+            "secp256r1",
+            "secp384r1",
+            "secp521r1",
+            "UNKNOWN"
+          ],
+          "title": "Curve",
+          "type": "string"
+        },
+        "fingerprint_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Fingerprint Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "anyOf": [
+            {
+              "maximum": 65536,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Key Size"
+        },
+        "signature_hash": {
+          "enum": [
+            "SHA1",
+            "SHA224",
+            "SHA256",
+            "SHA384",
+            "SHA512",
+            "UNKNOWN"
+          ],
+          "title": "Signature Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fingerprint_sha256",
+        "algorithm",
+        "key_size",
+        "curve",
+        "signature_hash",
+        "certificate_signature_oid"
+      ],
+      "title": "TlsPeerCertificate",
+      "type": "object"
+    },
+    "TlsSessionFact": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "maxLength": 45,
+          "title": "Address",
+          "type": "string"
+        },
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "all_tls_versions_tested": {
+          "const": false,
+          "default": false,
+          "title": "All Tls Versions Tested",
+          "type": "boolean"
+        },
+        "application_data_sent": {
+          "const": false,
+          "default": false,
+          "title": "Application Data Sent",
+          "type": "boolean"
+        },
+        "application_identity_verified": {
+          "const": false,
+          "default": false,
+          "title": "Application Identity Verified",
+          "type": "boolean"
+        },
+        "authorized_operation": {
+          "const": "OBSERVE_APPROVED_TLS_SESSION",
+          "default": "OBSERVE_APPROVED_TLS_SESSION",
+          "title": "Authorized Operation",
+          "type": "string"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "certificate": {
+          "$ref": "#/$defs/TlsPeerCertificate"
+        },
+        "certificate_chain_validated": {
+          "const": false,
+          "default": false,
+          "title": "Certificate Chain Validated",
+          "type": "boolean"
+        },
+        "cipher_bits": {
+          "maximum": 512,
+          "minimum": 1,
+          "title": "Cipher Bits",
+          "type": "integer"
+        },
+        "cipher_suite": {
+          "maxLength": 100,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Cipher Suite",
+          "type": "string"
+        },
+        "hostname_validated": {
+          "const": false,
+          "default": false,
+          "title": "Hostname Validated",
+          "type": "boolean"
+        },
+        "identity_key": {
+          "maxLength": 400,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "const": "EXPLICIT_NUMERIC_TCP_TLS_MEMORY_BIO",
+          "default": "EXPLICIT_NUMERIC_TCP_TLS_MEMORY_BIO",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_exchange_group": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Key Exchange Group",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "NETWORK_TLS_SESSION",
+          "default": "NETWORK_TLS_SESSION",
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "negotiated_session_observed": {
+          "const": true,
+          "default": true,
+          "title": "Negotiated Session Observed",
+          "type": "boolean"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "peer_der_bytes": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Peer Der Bytes",
+          "type": "integer"
+        },
+        "peer_fingerprint_matched": {
+          "const": true,
+          "default": true,
+          "title": "Peer Fingerprint Matched",
+          "type": "boolean"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "ONE_PINNED_NEGOTIATED_TLS_SESSION",
+          "default": "ONE_PINNED_NEGOTIATED_TLS_SESSION",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "reviewed_target_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Reviewed Target Sha256",
+          "type": "string"
+        },
+        "revocation_checked": {
+          "const": false,
+          "default": false,
+          "title": "Revocation Checked",
+          "type": "boolean"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "server_signature_scheme": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Server Signature Scheme",
+          "type": "string"
+        },
+        "sni": {
+          "maxLength": 253,
+          "title": "Sni",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "tls_version": {
+          "enum": [
+            "TLSv1.2",
+            "TLSv1.3"
+          ],
+          "title": "Tls Version",
+          "type": "string"
+        },
+        "wire_bytes_received": {
+          "maximum": 131072,
+          "minimum": 1,
+          "title": "Wire Bytes Received",
+          "type": "integer"
+        },
+        "wire_bytes_sent": {
+          "maximum": 131072,
+          "minimum": 1,
+          "title": "Wire Bytes Sent",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviewed_target_sha256",
+        "address",
+        "port",
+        "sni",
+        "tls_version",
+        "cipher_suite",
+        "cipher_bits",
+        "certificate",
+        "peer_der_bytes",
+        "wire_bytes_sent",
+        "wire_bytes_received",
+        "identity_key",
+        "interface_sha256"
+      ],
+      "title": "TlsSessionFact",
       "type": "object"
     },
     "WindowsCapiFact": {

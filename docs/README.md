@@ -370,3 +370,7 @@ This is manifest/config metadata, not package/container-runtime inventory or pro
 ### Verified container content/runtime candidate
 
 [Phase 4 implementation and limits](bank-environment/78-verified-oci-content-and-runtime-candidate.md) · [Stored-evidence API](api-reference/container-content-candidate.md) · [Local validation](readiness-evidence/container-content-candidate-2026-10-25.md). Layer verification and supported package records do not prove runtime image binding, complete inventory or production admission; actual Windows qualification stays open.
+
+### Approved single TLS session candidate (Phase 5)
+
+[Scope and implementation](bank-environment/79-approved-single-tls-session-candidate.md) · [Operator packet](runbooks/approved-single-tls-session-candidate.md) · [Stored session API](api-reference/tls-session-candidate.md) · [Local validation](readiness-evidence/tls-session-candidate-2026-10-25.md). One exact numeric endpoint/SNI/version/public pin, explicit active consent and byte/time-bounded session; no discovery, software/application/HSM-use inference or production network-job admission.

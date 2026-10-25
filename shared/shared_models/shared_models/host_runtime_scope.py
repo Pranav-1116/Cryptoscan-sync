@@ -13,6 +13,10 @@ def certificate_resource(path):
 
 
 def resource(kind, path):
+    if kind == "NETWORK_TLS_SESSION":
+        from shared_models.tls_session import tls_resource
+
+        return tls_resource(path)
     if kind in {"OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"}:
         from shared_models.oci_content import content_resource, runtime_resource
 
@@ -60,6 +64,11 @@ def resource(kind, path):
 
 
 def validate_runtime_facts(item, facts):
+    if item.kind == "NETWORK_TLS_SESSION":
+        from shared_models.tls_session import validate_session
+
+        validate_session(item, facts)
+        return
     if item.kind in {"OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"}:
         from shared_models.oci_content import validate_container
 

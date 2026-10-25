@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { apiApproveHostScope, apiImportHostSnapshot, apiInspectHostSnapshot, apiHostCbom, apiHostOciSbom, apiHostContainerSbom, HostImportReceipt, HostSnapshotInspection } from "../lib/api";
+import { apiApproveHostScope, apiImportHostSnapshot, apiInspectHostSnapshot, apiHostCbom, apiHostOciSbom, apiHostContainerSbom, apiHostTlsSessionBom, HostImportReceipt, HostSnapshotInspection } from "../lib/api";
 import CollectionCoveragePanel from "./CollectionCoveragePanel";
 import HostAssociationsPanel from "./HostAssociationsPanel";
 import { usePrivateScopeCurrent } from "./PrivateScope";
@@ -20,6 +20,37 @@ function basicMetadata(f: MetadataFact, extra: string[]) {
     && f.policy_result === "NOT_EVALUATED" && f.pqc_assessment === "UNKNOWN" && f.capabilities_observed === false
     && /^[0-9a-f]{64}$/.test(f.interface_sha256 || "") && Object.keys(f).every(k => [...metadataKeys, ...extra].includes(k));
 }
+function tlsSession(f: MetadataFact) {
+  const extra = ["reviewed_target_sha256", "authorized_operation", "address", "port", "sni", "tls_version", "cipher_suite", "cipher_bits", "certificate", "peer_der_bytes", "wire_bytes_sent", "wire_bytes_received", "negotiated_session_observed", "peer_fingerprint_matched", "certificate_chain_validated", "hostname_validated", "revocation_checked", "all_tls_versions_tested", "application_data_sent", "application_identity_verified", "key_exchange_group", "server_signature_scheme"];
+  if (!basicMetadata(f, extra) || f.purpose !== "ONE_PINNED_NEGOTIATED_TLS_SESSION" || f.interface !== "EXPLICIT_NUMERIC_TCP_TLS_MEMORY_BIO"
+    || !/^[0-9a-f]{64}$/.test(f.reviewed_target_sha256 || "") || f.authorized_operation !== "OBSERVE_APPROVED_TLS_SESSION"
+    || typeof f.address !== "string" || !Number.isInteger(f.port) || !f.port || f.port < 1 || f.port > 65535
+    || !f.sni || f.sni.length > 253 || !f.sni.split(".").every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+    || /^(?:[0-9]+\.){3}[0-9]+$/.test(f.sni) || !["TLSv1.2", "TLSv1.3"].includes(f.tls_version || "")
+    || !/^[A-Za-z0-9_-]{1,100}$/.test(f.cipher_suite || "") || !Number.isInteger(f.cipher_bits) || !f.cipher_bits || f.cipher_bits > 512
+    || f.negotiated_session_observed !== true || f.peer_fingerprint_matched !== true
+    || [f.certificate_chain_validated, f.hostname_validated, f.revocation_checked, f.all_tls_versions_tested, f.application_data_sent, f.application_identity_verified].some(v => v !== false)
+    || f.key_exchange_group !== "UNKNOWN" || f.server_signature_scheme !== "UNKNOWN"
+    || ![f.peer_der_bytes, f.wire_bytes_sent, f.wire_bytes_received].every(n => Number.isInteger(n) && typeof n === "number" && n > 0 && n <= 131072)
+    || (f.peer_der_bytes || 0) > 65536) return false;
+  if (f.address.includes(":")) {
+    try { if (new URL(`http://[${f.address}]/`).hostname !== `[${f.address}]` || f.address === "::" || f.address.startsWith("ff") || f.address.startsWith("::ffff:") || /^fe[89ab]/.test(f.address)) return false; } catch { return false; }
+  } else if (!/^(0|[1-9]\d{0,2})(\.(0|[1-9]\d{0,2})){3}$/.test(f.address) || f.address.split(".").some(n => +n > 255) || f.address === "0.0.0.0" || f.address === "255.255.255.255" || (+f.address.split(".")[0] >= 224 && +f.address.split(".")[0] <= 239)) return false;
+  const c = f.certificate;
+  if (!c || Object.keys(c).sort().join(",") !== "algorithm,certificate_signature_oid,curve,fingerprint_sha256,key_size,signature_hash"
+    || !/^[0-9a-f]{64}$/.test(c.fingerprint_sha256) || !["RSA", "EC", "DSA", "ED25519", "ED448", "UNKNOWN"].includes(c.algorithm)
+    || !["secp256r1", "secp384r1", "secp521r1", "UNKNOWN"].includes(c.curve)
+    || !["SHA1", "SHA224", "SHA256", "SHA384", "SHA512", "UNKNOWN"].includes(c.signature_hash)
+    || c.certificate_signature_oid.length > 100 || !/^(UNKNOWN|[0-9]+(?:\.[0-9]+)+)$/.test(c.certificate_signature_oid)
+    || (["RSA", "EC", "DSA"].includes(c.algorithm) ? !Number.isInteger(c.key_size) || !c.key_size || c.key_size < 1 || c.key_size > 65536 : c.key_size !== null)
+    || (c.algorithm !== "EC" && c.curve !== "UNKNOWN")) return false;
+  const sizes: Record<string, number> = {secp256r1:256, secp384r1:384, secp521r1:521};
+  const modern: Record<string, number> = {TLS_AES_128_GCM_SHA256:128, TLS_AES_256_GCM_SHA384:256, TLS_CHACHA20_POLY1305_SHA256:256};
+  return (c.curve === "UNKNOWN" || sizes[c.curve] === c.key_size)
+    && (f.tls_version === "TLSv1.3" ? modern[f.cipher_suite!] === f.cipher_bits : !f.cipher_suite!.startsWith("TLS_"))
+    && f.identity_key === `tls-endpoint:${f.address.includes(":") ? `[${f.address}]` : f.address}:${f.port}:sni:${f.sni}`;
+}
+
 function tcpMetadata(f: MetadataFact) {
   if (!basicMetadata(f, ["address_family", "listener_count", "listeners", "process_identity_verified", "tls_observed", "asset_absence_proven"])
     || f.purpose !== "OS_TCP_LISTENER_TABLE_METADATA" || f.interface !== "WINDOWS_IP_HELPER_TCP_TABLE"
@@ -118,7 +149,7 @@ export default function HostEvidencePanel() {
       if (!r || typeof r.input_id !== "string" || typeof r.reason !== "string" || !["PARSED", "DENIED", "UNSUPPORTED", "INVALID", "BUDGET_EXCEEDED", "UNAVAILABLE"].includes(r.status) || !Array.isArray(r.facts)) return false;
       facts += r.facts.length;
       return facts <= 1000 && (r.status === "PARSED" ? r.facts.length > 0 : r.facts.length === 0)
-        && r.facts.every(f => f && ["CERTIFICATE", "TLS_CONFIGURATION", "SOFTWARE", "BINARY", "OS_RELEASE", "PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE", "WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE", "WINDOWS_CNG_REGISTRATION", "WINDOWS_TPM_METADATA", "WINDOWS_CAPI_DEFAULT_PROVIDER", "WINDOWS_TCP_LISTENER_TABLE", "OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"].includes(f.kind) && typeof f.algorithm === "string"
+        && r.facts.every(f => f && ["CERTIFICATE", "TLS_CONFIGURATION", "SOFTWARE", "BINARY", "OS_RELEASE", "PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE", "WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE", "WINDOWS_CNG_REGISTRATION", "WINDOWS_TPM_METADATA", "WINDOWS_CAPI_DEFAULT_PROVIDER", "WINDOWS_TCP_LISTENER_TABLE", "OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS", "NETWORK_TLS_SESSION"].includes(f.kind) && typeof f.algorithm === "string"
           && ["OBSERVED", "DECLARED"].includes(f.local_basis) && f.runtime_use === "UNKNOWN"
           && (f.kind !== "OS_RELEASE" || (f.local_basis === "DECLARED" && f.algorithm === "UNKNOWN" && f.key_size === null))
           && (!["PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE"].includes(f.kind)
@@ -151,6 +182,7 @@ export default function HostEvidencePanel() {
               && f.registered_functions.every((n, i, all) => typeof n === "string" && /^[A-Za-z0-9][A-Za-z0-9_.+\-]{0,63}$/.test(n)
                 && (i === 0 || all[i - 1] < n))
               && new Set(f.registered_functions.map(n => n.toLowerCase())).size === f.registered_functions.length))
+          && (f.kind !== "NETWORK_TLS_SESSION" || tlsSession(f))
           && (f.kind !== "OCI_IMAGE_METADATA" || ociMetadata(f))
           && (f.kind !== "OCI_IMAGE_CONTENT" || contentMetadata(f))
           && (f.kind !== "OCI_RUNTIME_PROCESS" || containerRuntime(f))
@@ -221,24 +253,24 @@ export default function HostEvidencePanel() {
       setReceipt(value); setDetail(value);
     } else setMessage(`${result.error || "Host evidence unavailable or integrity unverified"}. No verified receipt or security verdict assumed.`);
   }
-  async function download(image: boolean | "content" = false) {
+  async function download(image: boolean | "content" | "tls" = false) {
     if (busy || !detail) return;
     const id = approval.trim(), token = ++generation.current; if (!valid(token)) return;
     setBusy(true); setMessage("");
-    const result = await (image === "content" ? apiHostContainerSbom(id) : image ? apiHostOciSbom(id) : apiHostCbom(id)); if (!valid(token)) return;
+    const result = await (image === "tls" ? apiHostTlsSessionBom(id) : image === "content" ? apiHostContainerSbom(id) : image ? apiHostOciSbom(id) : apiHostCbom(id)); if (!valid(token)) return;
     setBusy(false);
     if (result.source !== "live" || !result.ok || result.data?.specVersion !== "1.6" || result.data?.bomFormat !== "CycloneDX") {
       setMessage(`${result.error || "Export unavailable"}. No validated document downloaded.`); return;
     }
     if (image) {
       const metadata = result.data?.metadata as { properties?: {name: string; value: string}[] } | undefined;
-      if (!Array.isArray(metadata?.properties) || !metadata.properties.some(p => p?.name === "cryptoscan:profile" && p.value === (image === "content" ? "VERIFIED_OCI_LAYERS_AND_SCOPED_PACKAGE_DATABASES" : "OCI_MANIFEST_CONFIG_METADATA_ONLY_NOT_PACKAGE_SBOM"))
+      if (!Array.isArray(metadata?.properties) || !metadata.properties.some(p => p?.name === "cryptoscan:profile" && p.value === (image === "tls" ? "PINNED_SINGLE_TLS_SESSION_NOT_CAPABILITY_SCAN" : image === "content" ? "VERIFIED_OCI_LAYERS_AND_SCOPED_PACKAGE_DATABASES" : "OCI_MANIFEST_CONFIG_METADATA_ONLY_NOT_PACKAGE_SBOM"))
         || !metadata.properties.some(p => p?.name === "cryptoscan:snapshot_sha256" && p.value === detail.snapshot_sha256)) {
-        setMessage("OCI export scope or profile unverified. No document downloaded."); return;
+        setMessage(`${image === "tls" ? "TLS session" : "OCI"} export scope or profile unverified. No document downloaded.`); return;
       }
     }
     const url = URL.createObjectURL(new Blob([JSON.stringify(result.data, null, 2)], { type: "application/json" }));
-    const link = document.createElement("a"); link.href = url; link.download = `${image ? "oci-image" : "host"}-${id}-cyclonedx-1.6.json`; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement("a"); link.href = url; link.download = `${image === "tls" ? "tls-session" : image ? "oci-image" : "host"}-${id}-cyclonedx-1.6.json`; link.click(); URL.revokeObjectURL(url);
     setMessage("CycloneDX 1.6 metadata downloaded. Schema validity is not runtime evidence, complete discovery, migration compatibility or bank approval.");
   }
   return <><section aria-label="Approved offline host evidence" style={{ marginTop: 24 }}>
@@ -257,8 +289,8 @@ export default function HostEvidencePanel() {
     {receipt && <div style={{ overflowWrap: "anywhere" }}><p>Evidence status: IMPORTED · Scan {receipt.scan_id} · {receipt.evidence_count} chained records.</p>
       <p>Snapshot SHA-256: {receipt.snapshot_sha256}</p><p>Runtime use: UNKNOWN · PQC assessment: UNKNOWN · Policy: NOT_EVALUATED. Complete-host coverage is not proven.</p></div>}
     {detail && <><h4>{detail.snapshot.manifest.host_id} · {detail.snapshot.manifest.environment}</h4><p>Stored content, chain and manifest integrity checked. Claimed collection time: {detail.snapshot.finished_at}. This does not authenticate the originating host.</p>
-      <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.provider_name || f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.image ? ` · verified layer bytes and virtual overlay · ${f.packages?.length} package DB records (not complete inventory); runtime image binding unverified` : ""}{f.process ? ` · ${f.runtime} ${f.container_id} · PID ${f.process.pid}; kernel cgroup membership only; image operator DECLARED` : ""}{f.manifest_sha256 ? ` · OCI manifest ${f.manifest_sha256} · ${f.image_os}/${f.image_architecture} · manifest/config only; layers, packages and runtime unverified · ports DECLARED: ${(f.declared_ports || []).join(", ") || "none declared"}` : ""}{f.provider_context ? ` · current-user default provider selection; not opened or invoked` : ""}{f.listeners ? ` · ${f.address_family}: ${f.listener_count} sampled TCP listener rows; TLS and process identity unverified` : ""}{f.tpm_specification ? ` · TPM ${f.tpm_specification} · OS reported; not attestation, firmware or key use` : ""}{f.registered_functions ? ` · ${f.registration_interface} registered labels: ${f.registered_functions.join(", ")} · registration only; capability/use UNKNOWN` : ""}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN{f.listeners?.slice(0, 10).map((row, index) => <span key={index} style={{ display: "block" }}>{row.address}:{row.port} · scope {row.scope_id} · OS-reported owning PID {row.owning_pid} (not process identity or TLS)</span>)}{f.listeners && f.listeners.length > 10 ? <span>Showing first 10 rows; full metadata remains in the authorized snapshot.</span> : null}</p>)}</td></tr>)}</tbody></table>
+      <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.provider_name || f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.kind === "NETWORK_TLS_SESSION" ? ` · one pinned ${f.tls_version} session · ${f.cipher_suite} · SNI ${f.sni}; certificate public key ${f.certificate?.algorithm} ${f.certificate?.key_size || "size UNKNOWN"}; CA/hostname/revocation not validated; key-exchange group and application linkage UNKNOWN; other TLS versions not tested` : ""}{f.image ? ` · verified layer bytes and virtual overlay · ${f.packages?.length} package DB records (not complete inventory); runtime image binding unverified` : ""}{f.process ? ` · ${f.runtime} ${f.container_id} · PID ${f.process.pid}; kernel cgroup membership only; image operator DECLARED` : ""}{f.manifest_sha256 ? ` · OCI manifest ${f.manifest_sha256} · ${f.image_os}/${f.image_architecture} · manifest/config only; layers, packages and runtime unverified · ports DECLARED: ${(f.declared_ports || []).join(", ") || "none declared"}` : ""}{f.provider_context ? ` · current-user default provider selection; not opened or invoked` : ""}{f.listeners ? ` · ${f.address_family}: ${f.listener_count} sampled TCP listener rows; TLS and process identity unverified` : ""}{f.tpm_specification ? ` · TPM ${f.tpm_specification} · OS reported; not attestation, firmware or key use` : ""}{f.registered_functions ? ` · ${f.registration_interface} registered labels: ${f.registered_functions.join(", ")} · registration only; capability/use UNKNOWN` : ""}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN{f.listeners?.slice(0, 10).map((row, index) => <span key={index} style={{ display: "block" }}>{row.address}:{row.port} · scope {row.scope_id} · OS-reported owning PID {row.owning_pid} (not process identity or TLS)</span>)}{f.listeners && f.listeners.length > 10 ? <span>Showing first 10 rows; full metadata remains in the authorized snapshot.</span> : null}</p>)}</td></tr>)}</tbody></table>
       <p>System-to-host scope is operator DECLARED, not host attestation. Endpoint/HSM/KMS use and six-BOM dependencies are not established by co-existence.</p>
-      <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button>{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_METADATA")) && <button disabled={busy} onClick={() => void download(true)}>Download CycloneDX 1.6 OCI image metadata SBOM</button>}{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_CONTENT")) && <><button disabled={busy} onClick={() => void download("content")}>Download verified layer and package-record SBOM</button><p>Container production admission: BLOCKED. Image/runtime binding, independent qualification and a qualified executor remain required.</p></>}<HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
+      <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button>{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_METADATA")) && <button disabled={busy} onClick={() => void download(true)}>Download CycloneDX 1.6 OCI image metadata SBOM</button>}{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_CONTENT")) && <><button disabled={busy} onClick={() => void download("content")}>Download verified layer and package-record SBOM</button><p>Container production admission: BLOCKED. Image/runtime binding, independent qualification and a qualified executor remain required.</p></>}{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "NETWORK_TLS_SESSION")) && <><button disabled={busy} onClick={() => void download("tls")}>Download CycloneDX 1.6 observed TLS session</button><p>Active TLS candidate: operator-run only; production execution BLOCKED. A matched public certificate pin is not host or application attestation.</p></>}<HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
   </section><CollectionCoveragePanel /></>;
 }

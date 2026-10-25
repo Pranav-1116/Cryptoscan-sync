@@ -469,6 +469,48 @@ def export_container_content(
     )
 
 
+@router.get("/approvals/{approval_id}/tls-session/cyclonedx-1.6")
+def export_tls_session(
+    approval_id: Key,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    from fastapi.responses import JSONResponse
+    from api.assurance.tls_export import session_bom
+    from cbom.cyclonedx16 import validate_cyclonedx16
+
+    row = store.latest(db, ctx.tenant_id, "host_intake", approval_id)
+    snapshot, scan, records, _ = _check(db, ctx.tenant_id, row)
+    try:
+        bom = session_bom(snapshot, records, approval_id)
+    except ValueError:
+        raise HTTPException(409, "No consistent parsed TLS session with retained evidence") from None
+    if not validate_cyclonedx16(bom)["ok"]:
+        raise HTTPException(503, "TLS session BOM failed official CycloneDX 1.6 validation")
+    _audit(
+        db,
+        user,
+        "host.tls-session.export",
+        scan.id,
+        {
+            "approval_id": approval_id,
+            "snapshot_sha256": digest(snapshot),
+            "document_sha256": digest(bom),
+            "profile": "PINNED_SINGLE_TLS_SESSION_NOT_CAPABILITY_SCAN",
+        },
+    )
+    db.commit()
+    return JSONResponse(
+        bom,
+        media_type="application/vnd.cyclonedx+json",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="tls-session-{approval_id}-cyclonedx-1.6.json"',
+        },
+    )
+
+
 @router.get("/approvals/{approval_id}/association-target")
 def association_target(
     approval_id: Key,

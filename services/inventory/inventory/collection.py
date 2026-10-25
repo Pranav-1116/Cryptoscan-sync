@@ -13,7 +13,7 @@ class OfflineLinuxCollector:
             or target.manifest.platform != "linux"
             or not sys.platform.startswith("linux")
             or any(
-                i.kind in {"OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"}
+                i.kind in {"OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS", "NETWORK_TLS_SESSION"}
                 for i in target.manifest.inputs
             )
         ):
@@ -124,5 +124,53 @@ class OfflineContainerCollector(OfflineOciMetadataCollector):
             "collector": "offline-container-content/candidate-v1",
             "production_execution_qualified": False,
             "server_execution": False,
+            "platform_supported": sys.platform.startswith("linux"),
+        }
+
+
+class ApprovedTlsSessionCollector:
+    """Explicit operator-run candidate only; no HTTP dispatch or production admission."""
+
+    def validate_scope(self, target: TargetSpec) -> None:
+        from datetime import datetime, timezone
+        from shared_models.tls_session import KIND, OPERATION, endpoint, tls_resource
+
+        if (
+            target.collection_method != "network"
+            or target.allowed_operations != [OPERATION]
+            or not target.manifest
+            or target.manifest.platform != "linux"
+            or not sys.platform.startswith("linux")
+            or target.credential_ref is not None
+            or target.environment != target.manifest.environment
+            or len(target.manifest.inputs) != 1
+            or target.manifest.inputs[0].kind != KIND
+            or target.manifest.inputs[0].input_id in target.exclusions
+            or not target.not_before <= datetime.now(timezone.utc) < target.manifest.expires_at
+        ):
+            raise ValueError("Exact single-session active TLS approval required")
+        address, port, *_ = tls_resource(target.manifest.inputs[0].path)
+        if target.address != endpoint(address, port):
+            raise ValueError("Target address must bind the approved numeric socket endpoint")
+
+    def collect(self, target: TargetSpec):
+        from inventory.tls_session import probe_session
+
+        self.validate_scope(target)
+        from shared_models.host_collection import digest
+
+        reviewed = digest(target)
+
+        def approved_probe(item, limit, charge, expires):
+            return probe_session(item, limit, charge, expires, reviewed_target_sha256=reviewed)
+
+        return collect(target.manifest, network_session=approved_probe)
+
+    def health(self):
+        return {
+            "collector": "approved-tls-session/candidate-v1",
+            "server_execution": False,
+            "production_execution_qualified": False,
+            "active_probe": True,
             "platform_supported": sys.platform.startswith("linux"),
         }

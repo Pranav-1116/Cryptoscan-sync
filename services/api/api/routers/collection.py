@@ -73,6 +73,22 @@ def collectors(ctx=Depends(estate), user=Depends(get_current_user)):
                     "TechBOM": "EXACT_PROCESS_CGROUP_MEMBERSHIP_NOT_VERIFIED_IMAGE_DEPLOYMENT",
                 },
             },
+            {
+                "id": "approved-tls-session/candidate-v1",
+                "method": "network",
+                "state": "OPERATOR_ACTIVE_CANDIDATE_NOT_ADMITTED",
+                "production_execution_qualified": False,
+                "server_execution": False,
+                "active_probe": True,
+                "capabilities": {
+                    "SBOM": "UNKNOWN",
+                    "CBOM": "PINNED_PEER_PUBLIC_METADATA_AND_ONE_SESSION",
+                    "NBOM": "ONE_EXACT_NEGOTIATED_TLS_SESSION_NOT_CAPABILITY_SCAN",
+                    "HBOM": "UNKNOWN",
+                    "VBOM": "UNKNOWN",
+                    "TechBOM": "SCOPED_ENDPOINT_SNI_SESSION_REFERENCES",
+                },
+            },
             *[
                 {
                     "method": method,
@@ -80,7 +96,7 @@ def collectors(ctx=Depends(estate), user=Depends(get_current_user)):
                     "production_execution_qualified": False,
                     "server_execution": False,
                 }
-                for method in ["windows", "source", "cloud", "network", "hsm", "hardware", "vendor", "ot"]
+                for method in ["windows", "source", "cloud", "hsm", "hardware", "vendor", "ot"]
             ],
         ],
     }

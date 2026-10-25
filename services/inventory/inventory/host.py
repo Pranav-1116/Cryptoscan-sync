@@ -453,7 +453,7 @@ def _registry(path, limit):
     return data, facts
 
 
-def collect(manifest: HostManifest) -> HostSnapshot:
+def collect(manifest: HostManifest, *, network_session=None) -> HostSnapshot:
     started = datetime.now(timezone.utc)
     platform = "windows" if sys.platform == "win32" else "linux" if sys.platform.startswith("linux") else "unsupported"
     receipts, total, fact_count = [], 0, 0
@@ -475,7 +475,13 @@ def collect(manifest: HostManifest) -> HostSnapshot:
             limit = min(manifest.max_file_bytes, manifest.max_total_bytes - total)
             if limit <= 0 or fact_count >= MAX_FACTS:
                 raise Refused("BUDGET_EXCEEDED", "LIMIT")
-            if item.kind.startswith("LINUX_") and item.kind != "LINUX_OS_RELEASE":
+            if item.kind == "NETWORK_TLS_SESSION":
+                if network_session is None:
+                    raise Refused("DENIED", "ACTIVE_PROBE_NOT_AUTHORIZED")
+                if platform != "linux":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                data, facts = network_session(item, limit, charge, manifest.expires_at)
+            elif item.kind.startswith("LINUX_") and item.kind != "LINUX_OS_RELEASE":
                 if platform != "linux":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
                 from inventory.linux_runtime import collect_live, ProbeError

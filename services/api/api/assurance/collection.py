@@ -99,7 +99,8 @@ def supported(spec):
         or not spec.manifest
         or spec.manifest.platform != "linux"
         or any(
-            i.kind in {"OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"} for i in spec.manifest.inputs
+            i.kind in {"OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS", "NETWORK_TLS_SESSION"}
+            for i in spec.manifest.inputs
         )
     ):
         raise HTTPException(409, "Collector is registered as a future capability, not an executable adapter")

@@ -9,6 +9,7 @@ from shared_models.windows_images import WindowsImageFact
 from shared_models.windows_cng import WindowsCngFact
 from shared_models.windows_tpm import WindowsTpmFact
 from shared_models.oci_image import OciImageFact
+from shared_models.tls_session import TlsSessionFact
 from shared_models.oci_content import OciContentFact, OciRuntimeFact
 from shared_models.windows_capi import WindowsCapiFact
 from shared_models.windows_listeners import WindowsListenerFact
@@ -33,7 +34,9 @@ class TargetSpec(Strict):
     collection_method: Method
     address: str = Field(min_length=1, max_length=1024, pattern=r"^[^\x00-\x1f\x7f]+$")
     credential_ref: str | None = Field(default=None, max_length=200, pattern=r"^vault://[A-Za-z0-9_./-]+$")
-    allowed_operations: list[Literal["READ_APPROVED_METADATA"]] = Field(min_length=1, max_length=1)
+    allowed_operations: list[Literal["READ_APPROVED_METADATA", "OBSERVE_APPROVED_TLS_SESSION"]] = Field(
+        min_length=1, max_length=1
+    )
     read_only: Literal[True] = True
     not_before: datetime
     manifest: HostManifest | None = None
@@ -46,6 +49,8 @@ class TargetSpec(Strict):
 
     @model_validator(mode="after")
     def scope(self):
+        if self.collection_method != "network" and self.allowed_operations != ["READ_APPROVED_METADATA"]:
+            raise ValueError("Active TLS operation is not permitted for this collection method")
         if self.collection_method == "offline_host":
             if self.manifest is None or self.credential_ref is not None:
                 raise ValueError("Offline host requires an explicit manifest, never credentials")
@@ -106,6 +111,7 @@ class Observation(Strict):
         | WindowsCngFact
         | WindowsTpmFact
         | OciImageFact
+        | TlsSessionFact
         | OciContentFact
         | OciRuntimeFact
         | WindowsCapiFact

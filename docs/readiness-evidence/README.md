@@ -119,3 +119,5 @@ no bank readiness, corporate certification, new collector or SLA is inferred.
 - [Executed implementation and regression results](bank-original45-2026-10-24.md)
 - [Every original question and remaining engineering/acceptance work](../operations/bank-original45-engineering-gaps.md)
 - [Synthetic native CycloneDX1.6 CBOM and report](../examples/bank-pqc-discovery/README.md)
+
+- [Approved single TLS session candidate — local validation](tls-session-candidate-2026-10-25.md): owned-loopback TLS 1.2/1.3, bounded/typed failures, existing custody and official-schema stored export; **not actual bank endpoint, Windows or production admission**.
