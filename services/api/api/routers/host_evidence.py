@@ -370,6 +370,48 @@ def export_cbom(
     return bom
 
 
+@router.get("/approvals/{approval_id}/oci-image/cyclonedx-1.6")
+def export_oci_image_sbom(
+    approval_id: Key,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    from fastapi.responses import JSONResponse
+    from api.assurance.oci_export import image_sbom
+    from cbom.cyclonedx16 import validate_cyclonedx16
+
+    row = store.latest(db, ctx.tenant_id, "host_intake", approval_id)
+    snapshot, scan, records, _ = _check(db, ctx.tenant_id, row)
+    try:
+        bom = image_sbom(snapshot, records, approval_id)
+    except ValueError:
+        raise HTTPException(409, "No consistent parsed OCI metadata with retained evidence") from None
+    if not validate_cyclonedx16(bom)["ok"]:
+        raise HTTPException(503, "OCI metadata SBOM failed official CycloneDX 1.6 validation")
+    _audit(
+        db,
+        user,
+        "host.oci-sbom.export",
+        scan.id,
+        {
+            "approval_id": approval_id,
+            "snapshot_sha256": digest(snapshot),
+            "document_sha256": digest(bom),
+            "profile": "OCI_METADATA_ONLY",
+        },
+    )
+    db.commit()
+    return JSONResponse(
+        bom,
+        media_type="application/vnd.cyclonedx+json",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="oci-image-{approval_id}-cyclonedx-1.6.json"',
+        },
+    )
+
+
 @router.get("/approvals/{approval_id}/association-target")
 def association_target(
     approval_id: Key,

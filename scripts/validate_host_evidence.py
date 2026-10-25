@@ -73,6 +73,11 @@ def main():
         action="store_true",
         help="Portable CAPI/TCP/extended-CNG custody, not actual Windows",
     )
+    parser.add_argument(
+        "--include-oci-metadata-candidate",
+        action="store_true",
+        help="Synthetic offline OCI metadata custody, not production image qualification",
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -123,6 +128,8 @@ def main():
                 files.append("services/api/tests/unit/test_windows_tpm_candidate_postgres.py")
             if args.include_windows_metadata_candidates:
                 files.append("services/api/tests/unit/test_windows_metadata_candidates_postgres.py")
+            if args.include_oci_metadata_candidate:
+                files.append("services/api/tests/unit/test_oci_metadata_candidate_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

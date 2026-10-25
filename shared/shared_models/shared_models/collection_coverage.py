@@ -13,7 +13,14 @@ from shared_models.host_runtime import domains
 
 SURFACES = {
     "os": {"LINUX_OS_RELEASE", "WINDOWS_OS_RELEASE"},
-    "software": {"DPKG_STATUS", "APK_INSTALLED", "RPM_SQLITE", "WINDOWS_UNINSTALL", "BINARY_METADATA"},
+    "software": {
+        "DPKG_STATUS",
+        "APK_INSTALLED",
+        "RPM_SQLITE",
+        "WINDOWS_UNINSTALL",
+        "BINARY_METADATA",
+        "OCI_IMAGE_METADATA",
+    },
     "certificates": {"PUBLIC_CERTIFICATE", "WINDOWS_CERTIFICATE"},
     "crypto_configuration": {"NGINX_TLS_CONFIG", "WINDOWS_CNG_REGISTRATION", "WINDOWS_CAPI_DEFAULT_PROVIDER"},
     "processes_and_libraries": {"LINUX_PROCESS", "LINUX_PROCESS_MAPS", "WINDOWS_PROCESS_MODULES"},

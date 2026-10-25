@@ -12,6 +12,7 @@ class OfflineLinuxCollector:
             or not target.manifest
             or target.manifest.platform != "linux"
             or not sys.platform.startswith("linux")
+            or any(i.kind == "OCI_IMAGE_METADATA" for i in target.manifest.inputs)
         ):
             raise ValueError("Collector/platform is not supported by offline-linux/v1")
         from datetime import datetime, timezone
@@ -60,4 +61,37 @@ class OfflineWindowsCollector:
             "windows_execution_qualified": False,
             "production_execution_qualified": False,
             "remote_execution": False,
+        }
+
+
+class OfflineOciMetadataCollector:
+    """Candidate inspection only; no image pulls, layer IO, extraction or runtime."""
+
+    def validate_scope(self, target: TargetSpec) -> None:
+        from datetime import datetime, timezone
+
+        if (
+            target.collection_method != "container"
+            or not target.manifest
+            or target.manifest.platform != "linux"
+            or not sys.platform.startswith("linux")
+            or target.credential_ref is not None
+            or target.environment != target.manifest.environment
+            or any(i.kind != "OCI_IMAGE_METADATA" or i.input_id in target.exclusions for i in target.manifest.inputs)
+            or not target.not_before <= datetime.now(timezone.utc) < target.manifest.expires_at
+        ):
+            raise ValueError("Exact offline OCI metadata candidate scope/window required")
+
+    def collect(self, target: TargetSpec):
+        self.validate_scope(target)
+        return collect(target.manifest)
+
+    def health(self):
+        return {
+            "collector": "offline-oci-metadata/candidate-v1",
+            "production_execution_qualified": False,
+            "server_execution": False,
+            "layer_contents_verified": False,
+            "runtime_observed": False,
+            "platform_supported": sys.platform.startswith("linux"),
         }

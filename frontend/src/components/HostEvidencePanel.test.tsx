@@ -211,3 +211,26 @@ describe("Windows legacy selection and TCP-table candidates", () => {
     await screen.findByText(/registered labels: RSA · registration only; capability\/use UNKNOWN/);
   });
 });
+
+describe("Offline OCI metadata candidate", () => {
+  const fact = { kind: "OCI_IMAGE_METADATA", local_basis: "OBSERVED", purpose: "PINNED_OCI_MANIFEST_CONFIG_METADATA", algorithm: "UNKNOWN", key_size: null, software_name: null, software_version: null, runtime_use: "UNKNOWN", operation_use: "UNKNOWN", policy_result: "NOT_EVALUATED", pqc_assessment: "UNKNOWN", capabilities_observed: false, interface: "OFFLINE_OCI_LAYOUT_METADATA", configuration_basis: "DECLARED", capture_basis: "MANIFEST_CONFIG_BYTES_NOT_LAYERS_OR_RUNTIME", layout_sha256: "1".repeat(64), index_sha256: "2".repeat(64), manifest_sha256: "3".repeat(64), manifest_size: 400, config_sha256: "4".repeat(64), config_size: 300, image_os: "linux", image_architecture: "amd64", image_variant: null, layers: [{ digest: "sha256:" + "5".repeat(64), diff_id: "sha256:" + "6".repeat(64), size: 12345, media_type: "application/vnd.oci.image.layer.v1.tar+gzip" }], declared_ports: ["443/tcp"], declared_base_digest: null, identity_key: "oci-manifest:sha256:" + "3".repeat(64) + ":linux:amd64:unspecified", interface_sha256: "a".repeat(64), layer_contents_verified: false, filesystem_materialized: false, package_inventory_verified: false, deployment_verified: false, vendor_identity_verified: false };
+  const value = (changes = {}) => ({ ...detail, snapshot: { ...detail.snapshot, receipts: [{ input_id: "image", status: "PARSED", reason: "METADATA_ONLY", facts: [{ ...fact, ...changes }] }] } });
+  it("shows only image metadata and declared ports, not package or runtime verification", async () => {
+    const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: value() }); mount(); inspect();
+    await screen.findByText(/manifest\/config only; layers, packages and runtime unverified/);
+    expect(screen.getByText(/ports DECLARED: 443\/tcp/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download CycloneDX 1.6 OCI image metadata SBOM" })).toBeTruthy();
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it.each([{ layer_contents_verified: true }, { package_inventory_verified: true }, { deployment_verified: true }, { vendor_identity_verified: true }, { algorithm: "AES" }, { image_os: "windows" }, { image_variant: "v8" }, { manifest_sha256: "0".repeat(64) }, { declared_ports: ["0/tcp"] }, { declared_ports: ["443/tcp", "443/tcp"] }, { layers: [{ ...fact.layers[0], size: -1 }] }, { layers: [{ ...fact.layers[0], digest: "md5:bad" }] }, { vendor: "Guessed supplier" }])("refuses invalid/promoted image metadata", async changes => {
+    mockFetch({ [`${P}/${id}/snapshot`]: value(changes) }); mount(); inspect();
+    await screen.findByText(/No verified receipt or security verdict assumed/);
+    expect(screen.queryByRole("button", { name: /OCI image metadata SBOM/ })).toBeNull();
+  });
+  it("rejects an image export bound to another snapshot", async () => {
+    mockFetch({ [`${P}/${id}/snapshot`]: value(), [`${P}/${id}/oci-image/cyclonedx-1.6`]: { bomFormat: "CycloneDX", specVersion: "1.6", metadata: { properties: [{ name: "cryptoscan:profile", value: "OCI_MANIFEST_CONFIG_METADATA_ONLY_NOT_PACKAGE_SBOM" }, { name: "cryptoscan:snapshot_sha256", value: "0".repeat(64) }] } } });
+    mount(); inspect(); await screen.findByText(/ports DECLARED/);
+    fireEvent.click(screen.getByRole("button", { name: /OCI image metadata SBOM/ }));
+    await screen.findByText(/OCI export scope or profile unverified. No document downloaded./);
+  });
+});

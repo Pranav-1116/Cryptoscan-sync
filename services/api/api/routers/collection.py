@@ -43,6 +43,21 @@ def collectors(ctx=Depends(estate), user=Depends(get_current_user)):
                     "TechBOM": "SCOPED_METADATA",
                 },
             },
+            {
+                "id": "offline-oci-metadata/candidate-v1",
+                "method": "container",
+                "state": "OFFLINE_CANDIDATE_NOT_ADMITTED",
+                "production_execution_qualified": False,
+                "server_execution": False,
+                "capabilities": {
+                    "SBOM": "MANIFEST_CONFIG_ARTIFACT_METADATA_NOT_PACKAGE_INVENTORY",
+                    "CBOM": "UNKNOWN",
+                    "NBOM": "UNKNOWN_DECLARED_PORTS_NOT_LISTENERS",
+                    "HBOM": "UNKNOWN",
+                    "VBOM": "UNKNOWN",
+                    "TechBOM": "SCOPED_ARTIFACT_METADATA",
+                },
+            },
             *[
                 {
                     "method": method,
@@ -50,7 +65,7 @@ def collectors(ctx=Depends(estate), user=Depends(get_current_user)):
                     "production_execution_qualified": False,
                     "server_execution": False,
                 }
-                for method in ["windows", "container", "source", "cloud", "network", "hsm", "hardware", "vendor", "ot"]
+                for method in ["windows", "source", "cloud", "network", "hsm", "hardware", "vendor", "ot"]
             ],
         ],
     }

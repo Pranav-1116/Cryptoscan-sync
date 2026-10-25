@@ -13,6 +13,10 @@ def certificate_resource(path):
 
 
 def resource(kind, path):
+    if kind == "OCI_IMAGE_METADATA":
+        from shared_models.oci_image import image_resource
+
+        return image_resource(path)
     if kind == "WINDOWS_CAPI_DEFAULT_PROVIDER":
         from shared_models.windows_capi import provider_resource
 
@@ -52,6 +56,11 @@ def resource(kind, path):
 
 
 def validate_runtime_facts(item, facts):
+    if item.kind == "OCI_IMAGE_METADATA":
+        from shared_models.oci_image import validate_image
+
+        validate_image(item, facts)
+        return
     selected = resource(item.kind, item.path)
     if selected is None:
         return

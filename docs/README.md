@@ -358,3 +358,11 @@ increment. It implements approvals, typed provenance, shared SQL budgets/fairnes
 stop checks, ownership/residency admission and fenced/outbox recovery for a
 **local-source-only support profile**. Production refuses other unqualified
 surfaces; it does not certify physical residency, isolation or all P0 acceptance.
+
+### Offline OCI candidate engineering (Phase 4)
+
+[Scope and evidence limits](bank-environment/77-offline-oci-image-metadata-candidate.md) ·
+[Operator packet](runbooks/offline-oci-metadata-candidate.md) ·
+[Stored image-artifact SBOM API](api-reference/oci-image-metadata-candidate.md) ·
+[Retained local validation](readiness-evidence/oci-metadata-candidate-2026-10-25.md).
+This is manifest/config metadata, not package/container-runtime inventory or production admission. Actual Windows qualification remains open.

@@ -490,6 +490,12 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                 from inventory.windows_runtime import collect_os_version
 
                 data, facts = collect_os_version(item, limit, charge)
+            elif item.kind == "OCI_IMAGE_METADATA":
+                if platform != "linux":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                from inventory.oci_image import collect_image
+
+                data, facts = collect_image(item, limit, charge)
             elif item.kind == "WINDOWS_CAPI_DEFAULT_PROVIDER":
                 if platform != "windows":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")

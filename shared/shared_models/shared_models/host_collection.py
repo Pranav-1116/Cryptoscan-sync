@@ -21,6 +21,7 @@ Digest = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 SignatureOid = Annotated[str, StringConstraints(max_length=100, pattern=r"^(UNKNOWN|[0-9]+(?:\.[0-9]+)+)$")]
 Kind = Literal[
     "PUBLIC_CERTIFICATE",
+    "OCI_IMAGE_METADATA",
     "NGINX_TLS_CONFIG",
     "BINARY_METADATA",
     "DPKG_STATUS",
@@ -59,6 +60,7 @@ from shared_models.host_runtime import RuntimeFact
 from shared_models.windows_images import WindowsImageFact
 from shared_models.windows_cng import WindowsCngFact
 from shared_models.windows_tpm import WindowsTpmFact
+from shared_models.oci_image import OciImageFact
 from shared_models.windows_capi import WindowsCapiFact
 from shared_models.windows_listeners import WindowsListenerFact
 
@@ -210,6 +212,7 @@ class HostReceipt(Strict):
         | WindowsImageFact
         | WindowsCngFact
         | WindowsTpmFact
+        | OciImageFact
         | WindowsCapiFact
         | WindowsListenerFact
     ] = Field(default_factory=list, max_length=MAX_FACTS)
@@ -276,6 +279,7 @@ class HostSnapshot(Strict):
             raise ValueError("total input byte limit")
         kinds = {
             "PUBLIC_CERTIFICATE": "CERTIFICATE",
+            "OCI_IMAGE_METADATA": "OCI_IMAGE_METADATA",
             "NGINX_TLS_CONFIG": "TLS_CONFIGURATION",
             "BINARY_METADATA": "BINARY",
             "DPKG_STATUS": "SOFTWARE",
@@ -307,6 +311,7 @@ class HostSnapshot(Strict):
 
             validate_runtime_facts(item, receipt.facts)
             if item.kind in {
+                "OCI_IMAGE_METADATA",
                 "WINDOWS_PROCESS_MODULES",
                 "WINDOWS_CNG_REGISTRATION",
                 "WINDOWS_TPM_DEVICE_INFO",
@@ -323,6 +328,7 @@ class HostSnapshot(Strict):
                 (
                     item.kind
                     in {
+                        "OCI_IMAGE_METADATA",
                         "DPKG_STATUS",
                         "RPM_SQLITE",
                         "APK_INSTALLED",

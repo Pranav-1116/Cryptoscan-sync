@@ -57,3 +57,5 @@ Every surface reconciles its totals to input rows. Failed inputs cannot have fac
 The console section is in the existing CBOM host-evidence area. It is read-only, never auto-loads/retries, bounds reads at 20 seconds and clears/fences old state on job/tenant/auth/storage/resume/history changes. No new dashboard or service is introduced.
 
 See [phase-wise build and advancement gates](../bank-environment/69-phasewise-universal-collection-build.md) and [validation record](../readiness-evidence/phasewise-foundation-2026-10-25.md).
+
+The [offline OCI metadata candidate](oci-image-metadata-candidate.md) maps `OCI_IMAGE_METADATA` to `software` and SBOM/TechBOM references only. It observes metadata bytes, **not installed packages, layer contents, runtime listeners or vendor identity**. Candidate intake through host custody is not an executable universal collection job; `container` and attempts to tunnel OCI through `offline_host` remain blocked at universal authorization. This mapping does not constitute full container capability/coverage.

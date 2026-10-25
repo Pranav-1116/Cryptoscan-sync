@@ -1,0 +1,250 @@
+{
+  "schema_version": "cryptoscan.local-readiness-manifest/v1",
+  "baseline_commit": "838be60086eda2ec7aec2d790bf742244a6c6965",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "recorded_at": "2026-10-25",
+  "classification": "LOCAL_SYNTHETIC_OCI_METADATA_CANDIDATE_NOT_LAYER_PACKAGE_RUNTIME_OR_PRODUCTION_QUALIFICATION",
+  "console_normalization": "ANSI escapes, trailing line whitespace and blank EOF lines removed; XML and schema-check script verbatim",
+  "files": [
+    {
+      "path": "docs/README.md",
+      "sha256": "7e956d89fd23366fcc9109587257679ab731bff0489d4e18a0193294a817a221",
+      "bytes": 26347
+    },
+    {
+      "path": "docs/api-reference/collection-surface-coverage.md",
+      "sha256": "f90dc6380d45d610495ef7791bc7cb14e139a5696455fdb5a57ba9c4faf5ddf7",
+      "bytes": 6311
+    },
+    {
+      "path": "docs/api-reference/oci-image-metadata-candidate.md",
+      "sha256": "a4edd7413e9f4a5dbb5c9e8e3762b6a8af848b53c67aa7249b503f6f108cc8ad",
+      "bytes": 4180
+    },
+    {
+      "path": "docs/bank-environment/69-phasewise-universal-collection-build.md",
+      "sha256": "c04b34b6ef89d822ef669ec35429ae8ae5fb42cb33513902d286ae39efcd79de",
+      "bytes": 12131
+    },
+    {
+      "path": "docs/bank-environment/77-offline-oci-image-metadata-candidate.md",
+      "sha256": "8df6fbb7aef30fc46d575fa6341bbb8a624629aeffb39a54774b67a4bfc9a929",
+      "bytes": 11961
+    },
+    {
+      "path": "docs/bank-environment/README.md",
+      "sha256": "0d0f6865eb3dba2890d0375d76b527c4667b8fa15e37c1432049f0f3bb47750a",
+      "bytes": 30022
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25.md",
+      "sha256": "7a400d66f0fc429385526a99bb3ffb84fd85b73bb0e2ff65d0f8e1f7f0910a18",
+      "bytes": 11458
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/build.txt",
+      "sha256": "c8202ba5695d0f9843bc11638baa3ba2831bee4aa792853a618929294081ca03",
+      "bytes": 7052
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/final-parser.txt",
+      "sha256": "f2bf7f5d80c46406b902b91cfd0ac782af29cd514444f439499075d34487b613",
+      "bytes": 260
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/final-parser.xml",
+      "sha256": "9579b1301c2d6c017385730995039eb16ea27a675eb06fa13027d9ac98f442c8",
+      "bytes": 23668
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/frontend.txt",
+      "sha256": "fbf3b5ad84feb4eb05c101b8b0590a24f46bbc10ac497929d5dd4fba14eca063",
+      "bytes": 25436
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/pip.txt",
+      "sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
+      "bytes": 30
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/postgres.txt",
+      "sha256": "c6fc1c034f0830a15c8960004e52bee880245258e60f694c0d554b76c4725a84",
+      "bytes": 6752
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/postgres.xml",
+      "sha256": "ef01ebe8a54f46fc571b983b3fb7747bc9ba183e045f8eada90574a4a0f94401",
+      "bytes": 17535
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/python.txt",
+      "sha256": "dbba9d7a6666938daedee73bf35f6504de0db7e2c965ef516b1ff3c12ef36e52",
+      "bytes": 4610
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/python.xml",
+      "sha256": "93b710f640479200404b2b52ae8803d0b22e797c40af58c6e5d3de17d7a715e3",
+      "bytes": 434224
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/schema-check.py",
+      "sha256": "ea57123fdb50ca459412a20b0e879869cacf8509e86efcaec781543f5a06a306",
+      "bytes": 2223
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/schema.txt",
+      "sha256": "be3d2607eea708ac2e66bdbc5fc0f09993dd9cc4f7795c10ecb602d9f9a6e3f7",
+      "bytes": 1268
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/static.txt",
+      "sha256": "f439d951b0e2e56d1debc78eb4d06998284a675ecd029f68854008431968700a",
+      "bytes": 2069
+    },
+    {
+      "path": "docs/readiness-evidence/oci-metadata-candidate-2026-10-25/typecheck.txt",
+      "sha256": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f",
+      "bytes": 50
+    },
+    {
+      "path": "docs/runbooks/offline-oci-metadata-candidate.md",
+      "sha256": "4827e625667490f8f45a27a28f2bf48ade9d30ba79c53c2661c56ce65e5f49ee",
+      "bytes": 7837
+    },
+    {
+      "path": "frontend/src/components/HostEvidencePanel.test.tsx",
+      "sha256": "4c3f8c8c973b4ad2fddab4f89c0184c8375b5a7436046cfb95237119fdc7b7ef",
+      "bytes": 23989
+    },
+    {
+      "path": "frontend/src/components/HostEvidencePanel.tsx",
+      "sha256": "0a9977b08cdd299c6bc04d13bd3002b8b2f75158b7314496b92a024675fd8ea6",
+      "bytes": 23406
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "sha256": "b3062f8f7582f3ac5735752ecad611c0c2c0757f1fbf9fcd3b7d71178f7cdb7c",
+      "bytes": 246173
+    },
+    {
+      "path": "scripts/collect_oci_metadata.py",
+      "sha256": "439770abee75029c8fa67e1a6c1fc87b28170547a5ff99fd1c7315ac4fe1c6af",
+      "bytes": 1314
+    },
+    {
+      "path": "scripts/validate_host_evidence.py",
+      "sha256": "bbe9fa2eeeef7cc2e58410f282e709107b6e9164050a462ea39668ddee4a2184",
+      "bytes": 6264
+    },
+    {
+      "path": "services/api/api/assurance/collection.py",
+      "sha256": "af887b24a552a6d7a780a9f3e935859f343c5ffa65b0913e7079949222c26674",
+      "bytes": 20020
+    },
+    {
+      "path": "services/api/api/assurance/oci_export.py",
+      "sha256": "3e3f1662b045b16fc25347c52f32ec64df45599908b0bf763c1ddcd31ad87c70",
+      "bytes": 4514
+    },
+    {
+      "path": "services/api/api/routers/collection.py",
+      "sha256": "8f457711ea2b32fba5c7af3b6055261a011eed6884b8e1545e3d2c7493ec2aeb",
+      "bytes": 10949
+    },
+    {
+      "path": "services/api/api/routers/host_evidence.py",
+      "sha256": "1f7ed9dbd8c9b5c584be725f717f20514a1ed7f7d08a8ae276f4313bb3266980",
+      "bytes": 19838
+    },
+    {
+      "path": "services/api/tests/unit/test_oci_metadata_candidate.py",
+      "sha256": "5e3bab3e5565db32c1b977343102819134eabdf2803feb6fc4a0cfa5a07d8269",
+      "bytes": 5890
+    },
+    {
+      "path": "services/api/tests/unit/test_oci_metadata_candidate_postgres.py",
+      "sha256": "e3aa9012528e0d9721c08dab93ae0968333ab272c46beab3c022ba523ab286a9",
+      "bytes": 710
+    },
+    {
+      "path": "services/container_scanner/container_scanner/image/image_metadata_parser.py",
+      "sha256": "b178798a36029201105fe6a67f348556aaea2e1527871519c17fda53d693299b",
+      "bytes": 2103
+    },
+    {
+      "path": "services/inventory/inventory/collection.py",
+      "sha256": "f2c1738984faf1ec6f8b52339d1b86de17a2360d51e2d3043d46f5cc92473d15",
+      "bytes": 3805
+    },
+    {
+      "path": "services/inventory/inventory/host.py",
+      "sha256": "50ee7548252bac7066e5bd58e82bf047e9c2f633aa1df01381e3e171fd33b632",
+      "bytes": 25483
+    },
+    {
+      "path": "services/inventory/inventory/oci_image.py",
+      "sha256": "3d70c511b6a46bb2f2850b10ff559add42ee45bf09f845852337852fe08d1741",
+      "bytes": 5862
+    },
+    {
+      "path": "services/inventory/tests/test_oci_image.py",
+      "sha256": "528b73fc8df5021843bda82d728535ef181bbc57bd026a97ac2373b7643155d7",
+      "bytes": 12423
+    },
+    {
+      "path": "shared/shared_models/shared_models/collection.py",
+      "sha256": "c3ca5b7c436066b4ab1e372c1d733e484a21911f645299f42aa6480d885e5883",
+      "bytes": 6794
+    },
+    {
+      "path": "shared/shared_models/shared_models/collection_coverage.py",
+      "sha256": "c4c3ccb4654a27c5680cce9607bfd746255a1bdf0126659c345a1914e01fc643",
+      "bytes": 10402
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_collection.py",
+      "sha256": "151cce9078b5d4509fe3a470a4d42680e636e79c63ea1988de5b429a6fab7577",
+      "bytes": 19577
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_runtime.py",
+      "sha256": "644cf31c634137232c7ef295df8122ff410f57a7f64e4106ab65218745a2c8da",
+      "bytes": 8181
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_runtime_scope.py",
+      "sha256": "2f2633f595a2d3db2dc06e325b65eea38597f666e13dead80b3c78ced66637a1",
+      "bytes": 4697
+    },
+    {
+      "path": "shared/shared_models/shared_models/oci_image.py",
+      "sha256": "550b73bda19e4eee04c3193d579ccb4ea522234f7301293e82143c403218a767",
+      "bytes": 6260
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/collection-evidence-v1.schema.json",
+      "sha256": "6d344b944ed4c3d78f5d7bd137ee4122aa76d7d121ceb065fce7261541559eff",
+      "bytes": 52509
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/collection-target-v1.schema.json",
+      "sha256": "67c2d75c257789ec5abb072361f8bf9ed29cdbd093bde4a4b28fb7bb27b6bb80",
+      "bytes": 5822
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/host-manifest-v1.schema.json",
+      "sha256": "776c9f06b2a18225f091ba368be91684676378db000770aad782a59a3ff59fd8",
+      "bytes": 3049
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/host-snapshot-v1.schema.json",
+      "sha256": "b80385249b9f50f6ccfb69930b58d422edcf862ac94cf9a72c5d3ce5e824e2d0",
+      "bytes": 49782
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/native-evidence-v1.schema.json",
+      "sha256": "da4eda4d7d9cf5fdcefde120b6ebd626f9f9b78a7a134a964dffd4b2a0df38f0",
+      "bytes": 56015
+    }
+  ]
+}

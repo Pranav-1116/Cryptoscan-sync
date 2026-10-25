@@ -11,6 +11,7 @@
         "kind": {
           "enum": [
             "PUBLIC_CERTIFICATE",
+            "OCI_IMAGE_METADATA",
             "NGINX_TLS_CONFIG",
             "BINARY_METADATA",
             "DPKG_STATUS",

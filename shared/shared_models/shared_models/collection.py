@@ -8,6 +8,7 @@ from shared_models.host_runtime import RuntimeFact
 from shared_models.windows_images import WindowsImageFact
 from shared_models.windows_cng import WindowsCngFact
 from shared_models.windows_tpm import WindowsTpmFact
+from shared_models.oci_image import OciImageFact
 from shared_models.windows_capi import WindowsCapiFact
 from shared_models.windows_listeners import WindowsListenerFact
 from shared_models.host_worker import WorkerPin
@@ -103,6 +104,7 @@ class Observation(Strict):
         | WindowsImageFact
         | WindowsCngFact
         | WindowsTpmFact
+        | OciImageFact
         | WindowsCapiFact
         | WindowsListenerFact
     )

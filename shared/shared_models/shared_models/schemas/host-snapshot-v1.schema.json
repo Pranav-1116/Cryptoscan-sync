@@ -219,6 +219,7 @@
         "kind": {
           "enum": [
             "PUBLIC_CERTIFICATE",
+            "OCI_IMAGE_METADATA",
             "NGINX_TLS_CONFIG",
             "BINARY_METADATA",
             "DPKG_STATUS",
@@ -373,6 +374,9 @@
                 "$ref": "#/$defs/WindowsTpmFact"
               },
               {
+                "$ref": "#/$defs/OciImageFact"
+              },
+              {
                 "$ref": "#/$defs/WindowsCapiFact"
               },
               {
@@ -426,6 +430,279 @@
         "reason"
       ],
       "title": "HostReceipt",
+      "type": "object"
+    },
+    "OciImageFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "capture_basis": {
+          "const": "MANIFEST_CONFIG_BYTES_NOT_LAYERS_OR_RUNTIME",
+          "default": "MANIFEST_CONFIG_BYTES_NOT_LAYERS_OR_RUNTIME",
+          "title": "Capture Basis",
+          "type": "string"
+        },
+        "config_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Config Sha256",
+          "type": "string"
+        },
+        "config_size": {
+          "maximum": 1048576,
+          "minimum": 1,
+          "title": "Config Size",
+          "type": "integer"
+        },
+        "configuration_basis": {
+          "const": "DECLARED",
+          "default": "DECLARED",
+          "title": "Configuration Basis",
+          "type": "string"
+        },
+        "declared_base_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Declared Base Digest"
+        },
+        "declared_ports": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Declared Ports",
+          "type": "array"
+        },
+        "deployment_verified": {
+          "const": false,
+          "default": false,
+          "title": "Deployment Verified",
+          "type": "boolean"
+        },
+        "filesystem_materialized": {
+          "const": false,
+          "default": false,
+          "title": "Filesystem Materialized",
+          "type": "boolean"
+        },
+        "identity_key": {
+          "maxLength": 150,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "image_architecture": {
+          "enum": [
+            "amd64",
+            "arm64"
+          ],
+          "title": "Image Architecture",
+          "type": "string"
+        },
+        "image_os": {
+          "const": "linux",
+          "default": "linux",
+          "title": "Image Os",
+          "type": "string"
+        },
+        "image_variant": {
+          "anyOf": [
+            {
+              "const": "v8",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Image Variant"
+        },
+        "index_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Index Sha256",
+          "type": "string"
+        },
+        "interface": {
+          "const": "OFFLINE_OCI_LAYOUT_METADATA",
+          "default": "OFFLINE_OCI_LAYOUT_METADATA",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "OCI_IMAGE_METADATA",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer_contents_verified": {
+          "const": false,
+          "default": false,
+          "title": "Layer Contents Verified",
+          "type": "boolean"
+        },
+        "layers": {
+          "items": {
+            "$ref": "#/$defs/OciLayer"
+          },
+          "maxItems": 128,
+          "title": "Layers",
+          "type": "array"
+        },
+        "layout_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Layout Sha256",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "manifest_size": {
+          "maximum": 1048576,
+          "minimum": 1,
+          "title": "Manifest Size",
+          "type": "integer"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "package_inventory_verified": {
+          "const": false,
+          "default": false,
+          "title": "Package Inventory Verified",
+          "type": "boolean"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "PINNED_OCI_MANIFEST_CONFIG_METADATA",
+          "default": "PINNED_OCI_MANIFEST_CONFIG_METADATA",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "vendor_identity_verified": {
+          "const": false,
+          "default": false,
+          "title": "Vendor Identity Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "layout_sha256",
+        "index_sha256",
+        "manifest_sha256",
+        "manifest_size",
+        "config_sha256",
+        "config_size",
+        "image_architecture",
+        "layers",
+        "declared_ports",
+        "identity_key",
+        "interface_sha256"
+      ],
+      "title": "OciImageFact",
+      "type": "object"
+    },
+    "OciLayer": {
+      "additionalProperties": false,
+      "properties": {
+        "diff_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Diff Id",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "enum": [
+            "application/vnd.oci.image.layer.v1.tar",
+            "application/vnd.oci.image.layer.v1.tar+gzip",
+            "application/vnd.oci.image.layer.v1.tar+zstd"
+          ],
+          "title": "Media Type",
+          "type": "string"
+        },
+        "size": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest",
+        "size",
+        "media_type",
+        "diff_id"
+      ],
+      "title": "OciLayer",
       "type": "object"
     },
     "RuntimeFact": {

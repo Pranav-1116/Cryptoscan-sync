@@ -87,7 +87,12 @@ def atomic(operation, db):
 
 
 def supported(spec):
-    if spec.collection_method != "offline_host" or not spec.manifest or spec.manifest.platform != "linux":
+    if (
+        spec.collection_method != "offline_host"
+        or not spec.manifest
+        or spec.manifest.platform != "linux"
+        or any(i.kind == "OCI_IMAGE_METADATA" for i in spec.manifest.inputs)
+    ):
         raise HTTPException(409, "Collector is registered as a future capability, not an executable adapter")
 
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { apiApproveHostScope, apiImportHostSnapshot, apiInspectHostSnapshot, apiHostCbom, HostImportReceipt, HostSnapshotInspection } from "../lib/api";
+import { apiApproveHostScope, apiImportHostSnapshot, apiInspectHostSnapshot, apiHostCbom, apiHostOciSbom, HostImportReceipt, HostSnapshotInspection } from "../lib/api";
 import CollectionCoveragePanel from "./CollectionCoveragePanel";
 import HostAssociationsPanel from "./HostAssociationsPanel";
 import { usePrivateScopeCurrent } from "./PrivateScope";
@@ -42,6 +42,24 @@ function tcpMetadata(f: MetadataFact) {
   });
 }
 
+function ociMetadata(f: MetadataFact) {
+  if (!basicMetadata(f, ["layout_sha256", "index_sha256", "manifest_sha256", "manifest_size", "config_sha256", "config_size", "image_os", "image_architecture", "image_variant", "layers", "declared_ports", "declared_base_digest", "configuration_basis", "layer_contents_verified", "filesystem_materialized", "package_inventory_verified", "deployment_verified", "vendor_identity_verified"])
+    || f.purpose !== "PINNED_OCI_MANIFEST_CONFIG_METADATA" || f.interface !== "OFFLINE_OCI_LAYOUT_METADATA"
+    || f.capture_basis !== "MANIFEST_CONFIG_BYTES_NOT_LAYERS_OR_RUNTIME" || f.configuration_basis !== "DECLARED"
+    || f.image_os !== "linux" || !["amd64", "arm64"].includes(f.image_architecture || "")
+    || !(f.image_variant === null || (f.image_architecture === "arm64" && f.image_variant === "v8"))
+    || f.identity_key !== `oci-manifest:sha256:${f.manifest_sha256}:linux:${f.image_architecture}:${f.image_variant || "unspecified"}`
+    || ![f.layout_sha256, f.index_sha256, f.manifest_sha256, f.config_sha256].every(v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v))
+    || ![f.manifest_size, f.config_size].every(v => typeof v === "number" && Number.isInteger(v) && v > 0 && v <= 1048576)
+    || f.layer_contents_verified !== false || f.filesystem_materialized !== false || f.package_inventory_verified !== false || f.deployment_verified !== false || f.vendor_identity_verified !== false
+    || !Array.isArray(f.layers) || f.layers.length > 128 || !f.layers.every(l => l && Object.keys(l).sort().join(",") === "diff_id,digest,media_type,size"
+      && /^sha256:[0-9a-f]{64}$/.test(l.digest) && /^sha256:[0-9a-f]{64}$/.test(l.diff_id) && Number.isSafeInteger(l.size) && l.size >= 0
+      && ["application/vnd.oci.image.layer.v1.tar", "application/vnd.oci.image.layer.v1.tar+gzip", "application/vnd.oci.image.layer.v1.tar+zstd"].includes(l.media_type))
+    || !Array.isArray(f.declared_ports) || f.declared_ports.length > 64 || !f.declared_ports.every((p, i, all) => typeof p === "string" && /^[1-9][0-9]{0,4}\/(tcp|udp)$/.test(p) && +p.split("/")[0] <= 65535 && (i === 0 || all[i - 1] < p))
+    || !(f.declared_base_digest === null || typeof f.declared_base_digest === "string" && /^sha256:[0-9a-f]{64}$/.test(f.declared_base_digest))) return false;
+  return true;
+}
+
 /** Existing CBOM console workflow. No auto-collection/upload/replay or sample data. */
 export default function HostEvidencePanel() {
   const current = usePrivateScopeCurrent(), generation = useRef(0), alive = useRef(true);
@@ -61,7 +79,7 @@ export default function HostEvidencePanel() {
       if (!r || typeof r.input_id !== "string" || typeof r.reason !== "string" || !["PARSED", "DENIED", "UNSUPPORTED", "INVALID", "BUDGET_EXCEEDED", "UNAVAILABLE"].includes(r.status) || !Array.isArray(r.facts)) return false;
       facts += r.facts.length;
       return facts <= 1000 && (r.status === "PARSED" ? r.facts.length > 0 : r.facts.length === 0)
-        && r.facts.every(f => f && ["CERTIFICATE", "TLS_CONFIGURATION", "SOFTWARE", "BINARY", "OS_RELEASE", "PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE", "WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE", "WINDOWS_CNG_REGISTRATION", "WINDOWS_TPM_METADATA", "WINDOWS_CAPI_DEFAULT_PROVIDER", "WINDOWS_TCP_LISTENER_TABLE"].includes(f.kind) && typeof f.algorithm === "string"
+        && r.facts.every(f => f && ["CERTIFICATE", "TLS_CONFIGURATION", "SOFTWARE", "BINARY", "OS_RELEASE", "PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE", "WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE", "WINDOWS_CNG_REGISTRATION", "WINDOWS_TPM_METADATA", "WINDOWS_CAPI_DEFAULT_PROVIDER", "WINDOWS_TCP_LISTENER_TABLE", "OCI_IMAGE_METADATA"].includes(f.kind) && typeof f.algorithm === "string"
           && ["OBSERVED", "DECLARED"].includes(f.local_basis) && f.runtime_use === "UNKNOWN"
           && (f.kind !== "OS_RELEASE" || (f.local_basis === "DECLARED" && f.algorithm === "UNKNOWN" && f.key_size === null))
           && (!["PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE"].includes(f.kind)
@@ -94,6 +112,7 @@ export default function HostEvidencePanel() {
               && f.registered_functions.every((n, i, all) => typeof n === "string" && /^[A-Za-z0-9][A-Za-z0-9_.+\-]{0,63}$/.test(n)
                 && (i === 0 || all[i - 1] < n))
               && new Set(f.registered_functions.map(n => n.toLowerCase())).size === f.registered_functions.length))
+          && (f.kind !== "OCI_IMAGE_METADATA" || ociMetadata(f))
           && (f.kind !== "WINDOWS_CAPI_DEFAULT_PROVIDER" || (basicMetadata(f, ["provider_context", "provider_type", "provider_name"])
             && f.purpose === "DEFAULT_PROVIDER_SELECTION_METADATA" && f.interface === "WINDOWS_CAPI_DEFAULT_PROVIDER_QUERY"
             && f.provider_context === "CURRENT_USER" && [1, 2, 3, 13, 24].includes(f.provider_type || 0)
@@ -161,17 +180,24 @@ export default function HostEvidencePanel() {
       setReceipt(value); setDetail(value);
     } else setMessage(`${result.error || "Host evidence unavailable or integrity unverified"}. No verified receipt or security verdict assumed.`);
   }
-  async function download() {
+  async function download(image = false) {
     if (busy || !detail) return;
     const id = approval.trim(), token = ++generation.current; if (!valid(token)) return;
     setBusy(true); setMessage("");
-    const result = await apiHostCbom(id); if (!valid(token)) return;
+    const result = await (image ? apiHostOciSbom(id) : apiHostCbom(id)); if (!valid(token)) return;
     setBusy(false);
     if (result.source !== "live" || !result.ok || result.data?.specVersion !== "1.6" || result.data?.bomFormat !== "CycloneDX") {
       setMessage(`${result.error || "Export unavailable"}. No validated document downloaded.`); return;
     }
+    if (image) {
+      const metadata = result.data?.metadata as { properties?: {name: string; value: string}[] } | undefined;
+      if (!Array.isArray(metadata?.properties) || !metadata.properties.some(p => p?.name === "cryptoscan:profile" && p.value === "OCI_MANIFEST_CONFIG_METADATA_ONLY_NOT_PACKAGE_SBOM")
+        || !metadata.properties.some(p => p?.name === "cryptoscan:snapshot_sha256" && p.value === detail.snapshot_sha256)) {
+        setMessage("OCI export scope or profile unverified. No document downloaded."); return;
+      }
+    }
     const url = URL.createObjectURL(new Blob([JSON.stringify(result.data, null, 2)], { type: "application/json" }));
-    const link = document.createElement("a"); link.href = url; link.download = `host-${id}-cyclonedx-1.6.json`; link.click(); URL.revokeObjectURL(url);
+    const link = document.createElement("a"); link.href = url; link.download = `${image ? "oci-image" : "host"}-${id}-cyclonedx-1.6.json`; link.click(); URL.revokeObjectURL(url);
     setMessage("CycloneDX 1.6 metadata downloaded. Schema validity is not runtime evidence, complete discovery, migration compatibility or bank approval.");
   }
   return <><section aria-label="Approved offline host evidence" style={{ marginTop: 24 }}>
@@ -190,8 +216,8 @@ export default function HostEvidencePanel() {
     {receipt && <div style={{ overflowWrap: "anywhere" }}><p>Evidence status: IMPORTED · Scan {receipt.scan_id} · {receipt.evidence_count} chained records.</p>
       <p>Snapshot SHA-256: {receipt.snapshot_sha256}</p><p>Runtime use: UNKNOWN · PQC assessment: UNKNOWN · Policy: NOT_EVALUATED. Complete-host coverage is not proven.</p></div>}
     {detail && <><h4>{detail.snapshot.manifest.host_id} · {detail.snapshot.manifest.environment}</h4><p>Stored content, chain and manifest integrity checked. Claimed collection time: {detail.snapshot.finished_at}. This does not authenticate the originating host.</p>
-      <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.provider_name || f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.provider_context ? ` · current-user default provider selection; not opened or invoked` : ""}{f.listeners ? ` · ${f.address_family}: ${f.listener_count} sampled TCP listener rows; TLS and process identity unverified` : ""}{f.tpm_specification ? ` · TPM ${f.tpm_specification} · OS reported; not attestation, firmware or key use` : ""}{f.registered_functions ? ` · ${f.registration_interface} registered labels: ${f.registered_functions.join(", ")} · registration only; capability/use UNKNOWN` : ""}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN{f.listeners?.slice(0, 10).map((row, index) => <span key={index} style={{ display: "block" }}>{row.address}:{row.port} · scope {row.scope_id} · OS-reported owning PID {row.owning_pid} (not process identity or TLS)</span>)}{f.listeners && f.listeners.length > 10 ? <span>Showing first 10 rows; full metadata remains in the authorized snapshot.</span> : null}</p>)}</td></tr>)}</tbody></table>
+      <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.provider_name || f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.manifest_sha256 ? ` · OCI manifest ${f.manifest_sha256} · ${f.image_os}/${f.image_architecture} · manifest/config only; layers, packages and runtime unverified · ports DECLARED: ${(f.declared_ports || []).join(", ") || "none declared"}` : ""}{f.provider_context ? ` · current-user default provider selection; not opened or invoked` : ""}{f.listeners ? ` · ${f.address_family}: ${f.listener_count} sampled TCP listener rows; TLS and process identity unverified` : ""}{f.tpm_specification ? ` · TPM ${f.tpm_specification} · OS reported; not attestation, firmware or key use` : ""}{f.registered_functions ? ` · ${f.registration_interface} registered labels: ${f.registered_functions.join(", ")} · registration only; capability/use UNKNOWN` : ""}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN{f.listeners?.slice(0, 10).map((row, index) => <span key={index} style={{ display: "block" }}>{row.address}:{row.port} · scope {row.scope_id} · OS-reported owning PID {row.owning_pid} (not process identity or TLS)</span>)}{f.listeners && f.listeners.length > 10 ? <span>Showing first 10 rows; full metadata remains in the authorized snapshot.</span> : null}</p>)}</td></tr>)}</tbody></table>
       <p>System-to-host scope is operator DECLARED, not host attestation. Endpoint/HSM/KMS use and six-BOM dependencies are not established by co-existence.</p>
-      <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button><HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
+      <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button>{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_METADATA")) && <button disabled={busy} onClick={() => void download(true)}>Download CycloneDX 1.6 OCI image metadata SBOM</button>}<HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
   </section><CollectionCoveragePanel /></>;
 }
