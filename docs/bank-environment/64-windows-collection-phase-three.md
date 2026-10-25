@@ -99,3 +99,7 @@ that the Linux host is a Windows witness.
 fixture runner, alongside signing-key and Linux isolation controls. Native Windows
 OS/SCM execution still requires an actual Windows ordinary-user fixture; no
 production authorization gate is changed.
+
+## Subsequent candidate increment
+
+[Guide 72](72-phase-three-windows-public-certificate-candidate.md) adds exact local public-certificate-store lookup with SHA-1 locator plus required SHA-256 binding, no private-key APIs or store-wide enumeration request. This does not complete the native checklist or enable universal Windows job authorization.

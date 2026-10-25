@@ -3,7 +3,18 @@
 import re
 
 
+def certificate_resource(path):
+    match = re.fullmatch(
+        r"windows-cert://(current-user|local-machine)/(MY|ROOT|CA)/sha1/([0-9a-f]{40})/sha256/([0-9a-f]{64})", path
+    )
+    if not match:
+        raise ValueError("Noncanonical or unsupported local certificate resource")
+    return match.groups()
+
+
 def resource(kind, path):
+    if kind == "WINDOWS_CERTIFICATE":
+        return certificate_resource(path)
     patterns = {
         "LINUX_PROCESS": r"linux-proc://(self|[1-9][0-9]{0,8})/process",
         "LINUX_PROCESS_MAPS": r"linux-proc://(self|[1-9][0-9]{0,8})/maps",
@@ -23,6 +34,10 @@ def resource(kind, path):
 def validate_runtime_facts(item, facts):
     selected = resource(item.kind, item.path)
     if selected is None:
+        return
+    if item.kind == "WINDOWS_CERTIFICATE":
+        if facts and (len(facts) != 1 or facts[0].kind != "CERTIFICATE" or facts[0].fingerprint_sha256 != selected[3]):
+            raise ValueError("Certificate observation does not match approved SHA-256")
         return
     if len({f.identity_key for f in facts}) != len(facts):
         raise ValueError("Duplicate runtime subject within one approved input")

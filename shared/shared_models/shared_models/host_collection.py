@@ -35,6 +35,7 @@ Kind = Literal[
     "APK_INSTALLED",
     "RPM_SQLITE",
     "WINDOWS_OS_RELEASE",
+    "WINDOWS_CERTIFICATE",
 ]
 Basis = Literal["OBSERVED", "DECLARED", "IMPORTED", "INFERRED", "UNKNOWN"]
 Protocol = Literal["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
@@ -263,6 +264,7 @@ class HostSnapshot(Strict):
             "APK_INSTALLED": "SOFTWARE",
             "RPM_SQLITE": "SOFTWARE",
             "WINDOWS_OS_RELEASE": "OS_RELEASE",
+            "WINDOWS_CERTIFICATE": "CERTIFICATE",
             "WINDOWS_UNINSTALL": "SOFTWARE",
             "LINUX_OS_RELEASE": "OS_RELEASE",
             "LINUX_PROCESS": "PROCESS",
@@ -280,6 +282,11 @@ class HostSnapshot(Strict):
             from shared_models.host_runtime_scope import validate_runtime_facts
 
             validate_runtime_facts(item, receipt.facts)
+            if item.kind == "WINDOWS_CERTIFICATE" and receipt.status == "PARSED":
+                from shared_models.host_runtime_scope import certificate_resource
+
+                if receipt.content_sha256 != certificate_resource(item.path)[3]:
+                    raise ValueError("Certificate DER commitment does not match approved SHA-256")
             if receipt.status == "PARSED" and (
                 (
                     item.kind
@@ -297,7 +304,7 @@ class HostSnapshot(Strict):
                     and self.execution_platform != "linux"
                 )
                 or (
-                    item.kind in {"WINDOWS_UNINSTALL", "WINDOWS_SERVICE", "WINDOWS_OS_RELEASE"}
+                    item.kind in {"WINDOWS_UNINSTALL", "WINDOWS_SERVICE", "WINDOWS_OS_RELEASE", "WINDOWS_CERTIFICATE"}
                     and self.execution_platform != "windows"
                 )
             ):

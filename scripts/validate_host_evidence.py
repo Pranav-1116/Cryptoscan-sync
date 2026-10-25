@@ -48,6 +48,11 @@ def main():
         action="store_true",
         help="Check Linux relationships and official CycloneDX export",
     )
+    parser.add_argument(
+        "--include-windows-certificate-candidate",
+        action="store_true",
+        help="Check portable Windows certificate receipt custody, not native qualification",
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -88,6 +93,8 @@ def main():
                 files.append("services/api/tests/unit/test_linux_software_inventory_postgres.py")
             if args.include_linux_projections:
                 files.append("services/api/tests/unit/test_linux_phase2_projections_postgres.py")
+            if args.include_windows_certificate_candidate:
+                files.append("services/api/tests/unit/test_windows_certificate_candidate_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

@@ -328,3 +328,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [70. Linux software evidence — Phase 2](70-linux-software-evidence-phase-two.md) — hardened Debian parsing and an evidence-linked, nonstandard metadata inventory with separate packages, binary presence and mapped paths; no rescan or completeness claim.
 
 - [71. Linux relationships and validated software BOM](71-linux-relationships-and-validated-sbom.md) — evidence-backed deterministic metadata joins, explicit unsupported relationships and a pinned-official-schema validated, incomplete CycloneDX 1.6 software export; no rescan or production qualification.
+
+- [72. Phase 3 — Windows public certificate candidate](72-phase-three-windows-public-certificate-candidate.md) — exact read-only native store lookup, dual-digest scope binding and existing evidence/CBOM custody; native qualification and universal Windows execution admission remain blocked.

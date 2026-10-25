@@ -24,7 +24,8 @@
             "WINDOWS_SERVICE",
             "APK_INSTALLED",
             "RPM_SQLITE",
-            "WINDOWS_OS_RELEASE"
+            "WINDOWS_OS_RELEASE",
+            "WINDOWS_CERTIFICATE"
           ],
           "title": "Kind",
           "type": "string"
