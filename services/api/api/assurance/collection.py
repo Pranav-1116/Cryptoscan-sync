@@ -87,11 +87,20 @@ def atomic(operation, db):
 
 
 def supported(spec):
+    if spec.collection_method == "container":
+        from shared_models.container_admission import require_container_profile, CONTENT_PROFILE
+
+        try:
+            require_container_profile(CONTENT_PROFILE)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from None
     if (
         spec.collection_method != "offline_host"
         or not spec.manifest
         or spec.manifest.platform != "linux"
-        or any(i.kind == "OCI_IMAGE_METADATA" for i in spec.manifest.inputs)
+        or any(
+            i.kind in {"OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"} for i in spec.manifest.inputs
+        )
     ):
         raise HTTPException(409, "Collector is registered as a future capability, not an executable adapter")
 

@@ -117,3 +117,7 @@ Windows qualification and its TPM discrepancy remain open independently. Network
 - [OCI Image Spec v1.1.0, pinned commit](https://github.com/opencontainers/image-spec/tree/e7f7c0ca69b21688c3cea7c87a04e4503e6099e2).
 - [Image layout](https://github.com/opencontainers/image-spec/blob/e7f7c0ca69b21688c3cea7c87a04e4503e6099e2/image-layout.md), [manifest](https://github.com/opencontainers/image-spec/blob/e7f7c0ca69b21688c3cea7c87a04e4503e6099e2/manifest.md), [config](https://github.com/opencontainers/image-spec/blob/e7f7c0ca69b21688c3cea7c87a04e4503e6099e2/config.md), [descriptors](https://github.com/opencontainers/image-spec/blob/e7f7c0ca69b21688c3cea7c87a04e4503e6099e2/descriptor.md).
 - [Retained local validation](../readiness-evidence/oci-metadata-candidate-2026-10-25.md).
+
+## Follow-on engineering
+
+[Guide 78](78-verified-oci-content-and-runtime-candidate.md) adds a separately approved/opted-in bounded content/runtime candidate. The original metadata-only resource/wrapper/export described above retain their exact scope; they do not silently read layers. Production admission and independently verified runtime-image binding remain open.

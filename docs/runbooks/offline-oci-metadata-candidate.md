@@ -101,3 +101,7 @@ Existing synthetic tests cover these contract boundaries. They are not independe
 ## Stop and advancement decision
 
 Stop for unexpected reads, raw secrets, new privileges/network calls, widened scope, contradictory commitments, silent missing inputs or promoted verification claims. Preserve evidence and involve the agreed reviewer; no automatic clean bill of health. Layer content/overlay/package handling and workload linkage remain the next Phase 4 engineering work. Real-image independent truth, resource/isolation/cancellation qualification, signed release provenance and explicit admission require separate evidence and decisions.
+
+## Explicit content/runtime extension
+
+[Guide 78](../bank-environment/78-verified-oci-content-and-runtime-candidate.md) documents new `OCI_IMAGE_CONTENT` / `OCI_RUNTIME_PROCESS` resources and `--include-verified-content-runtime`. A fresh reviewed target/hash must explicitly authorize full selected layer verification and/or exact PID+start+boot+cgroup scope; a metadata-only approval is insufficient. Retain original synthetic/approved image evidence in your controlled environment; do not upload full images, credentials or private-key-bearing bytes to chat/public issues. Supported package database records are not complete package or executable inventory. Runtime image binding and production admission remain blocked. Real operators/reviewers must agree independent expected truth before running; this document assigns nobody.

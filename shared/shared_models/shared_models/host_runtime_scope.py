@@ -13,6 +13,10 @@ def certificate_resource(path):
 
 
 def resource(kind, path):
+    if kind in {"OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"}:
+        from shared_models.oci_content import content_resource, runtime_resource
+
+        return (content_resource if kind == "OCI_IMAGE_CONTENT" else runtime_resource)(path)
     if kind == "OCI_IMAGE_METADATA":
         from shared_models.oci_image import image_resource
 
@@ -56,6 +60,11 @@ def resource(kind, path):
 
 
 def validate_runtime_facts(item, facts):
+    if item.kind in {"OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"}:
+        from shared_models.oci_content import validate_container
+
+        validate_container(item, facts)
+        return
     if item.kind == "OCI_IMAGE_METADATA":
         from shared_models.oci_image import validate_image
 

@@ -366,3 +366,7 @@ surfaces; it does not certify physical residency, isolation or all P0 acceptance
 [Stored image-artifact SBOM API](api-reference/oci-image-metadata-candidate.md) ·
 [Retained local validation](readiness-evidence/oci-metadata-candidate-2026-10-25.md).
 This is manifest/config metadata, not package/container-runtime inventory or production admission. Actual Windows qualification remains open.
+
+### Verified container content/runtime candidate
+
+[Phase 4 implementation and limits](bank-environment/78-verified-oci-content-and-runtime-candidate.md) · [Stored-evidence API](api-reference/container-content-candidate.md) · [Local validation](readiness-evidence/container-content-candidate-2026-10-25.md). Layer verification and supported package records do not prove runtime image binding, complete inventory or production admission; actual Windows qualification stays open.

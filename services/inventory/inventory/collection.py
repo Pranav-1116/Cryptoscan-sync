@@ -12,7 +12,10 @@ class OfflineLinuxCollector:
             or not target.manifest
             or target.manifest.platform != "linux"
             or not sys.platform.startswith("linux")
-            or any(i.kind == "OCI_IMAGE_METADATA" for i in target.manifest.inputs)
+            or any(
+                i.kind in {"OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS"}
+                for i in target.manifest.inputs
+            )
         ):
             raise ValueError("Collector/platform is not supported by offline-linux/v1")
         from datetime import datetime, timezone
@@ -93,5 +96,33 @@ class OfflineOciMetadataCollector:
             "server_execution": False,
             "layer_contents_verified": False,
             "runtime_observed": False,
+            "platform_supported": sys.platform.startswith("linux"),
+        }
+
+
+class OfflineContainerCollector(OfflineOciMetadataCollector):
+    """Explicit content/runtime candidate, not an admitted production executor."""
+
+    def validate_scope(self, target: TargetSpec) -> None:
+        from datetime import datetime, timezone
+        from shared_models.oci_content import KINDS
+
+        if (
+            target.collection_method != "container"
+            or not target.manifest
+            or target.manifest.platform != "linux"
+            or not sys.platform.startswith("linux")
+            or target.credential_ref is not None
+            or target.environment != target.manifest.environment
+            or any(i.kind not in KINDS or i.input_id in target.exclusions for i in target.manifest.inputs)
+            or not target.not_before <= datetime.now(timezone.utc) < target.manifest.expires_at
+        ):
+            raise ValueError("Explicit scoped container content/runtime candidate required")
+
+    def health(self):
+        return {
+            "collector": "offline-container-content/candidate-v1",
+            "production_execution_qualified": False,
+            "server_execution": False,
             "platform_supported": sys.platform.startswith("linux"),
         }

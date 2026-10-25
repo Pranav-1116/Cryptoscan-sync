@@ -12,6 +12,8 @@
           "enum": [
             "PUBLIC_CERTIFICATE",
             "OCI_IMAGE_METADATA",
+            "OCI_IMAGE_CONTENT",
+            "OCI_RUNTIME_PROCESS",
             "NGINX_TLS_CONFIG",
             "BINARY_METADATA",
             "DPKG_STATUS",

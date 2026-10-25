@@ -58,6 +58,21 @@ def collectors(ctx=Depends(estate), user=Depends(get_current_user)):
                     "TechBOM": "SCOPED_ARTIFACT_METADATA",
                 },
             },
+            {
+                "id": "offline-container-content/candidate-v1",
+                "method": "container",
+                "state": "OFFLINE_CANDIDATE_NOT_ADMITTED",
+                "production_execution_qualified": False,
+                "server_execution": False,
+                "capabilities": {
+                    "SBOM": "VERIFIED_LAYERS_AND_DPKG_APK_DATABASE_RECORDS_NOT_COMPLETE_INVENTORY",
+                    "CBOM": "UNKNOWN",
+                    "NBOM": "UNKNOWN",
+                    "HBOM": "UNKNOWN",
+                    "VBOM": "UNKNOWN",
+                    "TechBOM": "EXACT_PROCESS_CGROUP_MEMBERSHIP_NOT_VERIFIED_IMAGE_DEPLOYMENT",
+                },
+            },
             *[
                 {
                     "method": method,

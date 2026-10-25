@@ -246,6 +246,8 @@
           "enum": [
             "PUBLIC_CERTIFICATE",
             "OCI_IMAGE_METADATA",
+            "OCI_IMAGE_CONTENT",
+            "OCI_RUNTIME_PROCESS",
             "NGINX_TLS_CONFIG",
             "BINARY_METADATA",
             "DPKG_STATUS",
@@ -401,6 +403,12 @@
               },
               {
                 "$ref": "#/$defs/OciImageFact"
+              },
+              {
+                "$ref": "#/$defs/OciContentFact"
+              },
+              {
+                "$ref": "#/$defs/OciRuntimeFact"
               },
               {
                 "$ref": "#/$defs/WindowsCapiFact"
@@ -585,6 +593,179 @@
         "reviewer_reference"
       ],
       "title": "NativePlan",
+      "type": "object"
+    },
+    "OciContentFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "complete_inventory_verified": {
+          "const": false,
+          "default": false,
+          "title": "Complete Inventory Verified",
+          "type": "boolean"
+        },
+        "databases": {
+          "items": {
+            "$ref": "#/$defs/PackageDatabase"
+          },
+          "maxItems": 2,
+          "minItems": 2,
+          "title": "Databases",
+          "type": "array"
+        },
+        "deployment_verified": {
+          "const": false,
+          "default": false,
+          "title": "Deployment Verified",
+          "type": "boolean"
+        },
+        "filesystem_materialized": {
+          "const": false,
+          "default": false,
+          "title": "Filesystem Materialized",
+          "type": "boolean"
+        },
+        "final_filesystem_view_verified": {
+          "const": true,
+          "default": true,
+          "title": "Final Filesystem View Verified",
+          "type": "boolean"
+        },
+        "identity_key": {
+          "maxLength": 300,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "image": {
+          "$ref": "#/$defs/OciImageFact"
+        },
+        "interface": {
+          "const": "OFFLINE_OCI_VERIFIED_CONTENT",
+          "default": "OFFLINE_OCI_VERIFIED_CONTENT",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "OCI_IMAGE_CONTENT",
+          "default": "OCI_IMAGE_CONTENT",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer_contents_verified": {
+          "const": true,
+          "default": true,
+          "title": "Layer Contents Verified",
+          "type": "boolean"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "package_inventory_verified": {
+          "const": false,
+          "default": false,
+          "title": "Package Inventory Verified",
+          "type": "boolean"
+        },
+        "packages": {
+          "items": {
+            "$ref": "#/$defs/PackageRecord"
+          },
+          "maxItems": 500,
+          "title": "Packages",
+          "type": "array"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "VERIFIED_OCI_LAYERS_AND_PACKAGE_DATABASES",
+          "default": "VERIFIED_OCI_LAYERS_AND_PACKAGE_DATABASES",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "rootfs_view_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Rootfs View Sha256",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "unsupported_package_surfaces": {
+          "const": "RPM_LANGUAGE_BINARY_AND_EXECUTABLE_CONTENT",
+          "default": "RPM_LANGUAGE_BINARY_AND_EXECUTABLE_CONTENT",
+          "title": "Unsupported Package Surfaces",
+          "type": "string"
+        },
+        "vendor_identity_verified": {
+          "const": false,
+          "default": false,
+          "title": "Vendor Identity Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "interface_sha256",
+        "identity_key",
+        "image",
+        "rootfs_view_sha256",
+        "packages",
+        "databases"
+      ],
+      "title": "OciContentFact",
       "type": "object"
     },
     "OciImageFact": {
@@ -858,6 +1039,292 @@
         "diff_id"
       ],
       "title": "OciLayer",
+      "type": "object"
+    },
+    "OciRuntimeFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "cgroup_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Cgroup Sha256",
+          "type": "string"
+        },
+        "container_id": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Container Id",
+          "type": "string"
+        },
+        "deployment_verified": {
+          "const": false,
+          "default": false,
+          "title": "Deployment Verified",
+          "type": "boolean"
+        },
+        "identity_key": {
+          "maxLength": 300,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "image_binding_basis": {
+          "const": "OPERATOR_DECLARED_NOT_RUNTIME_VERIFIED",
+          "default": "OPERATOR_DECLARED_NOT_RUNTIME_VERIFIED",
+          "title": "Image Binding Basis",
+          "type": "string"
+        },
+        "image_manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Image Manifest Sha256",
+          "type": "string"
+        },
+        "interface": {
+          "const": "LINUX_PROCFS_CONTAINER_MEMBERSHIP",
+          "default": "LINUX_PROCFS_CONTAINER_MEMBERSHIP",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "OCI_RUNTIME_PROCESS",
+          "default": "OCI_RUNTIME_PROCESS",
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "process": {
+          "$ref": "#/$defs/RuntimeFact"
+        },
+        "process_observed": {
+          "const": true,
+          "default": true,
+          "title": "Process Observed",
+          "type": "boolean"
+        },
+        "purpose": {
+          "const": "EXACT_PROCESS_CONTAINER_CGROUP_MEMBERSHIP",
+          "default": "EXACT_PROCESS_CONTAINER_CGROUP_MEMBERSHIP",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "docker",
+            "containerd"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        },
+        "runtime_image_verified": {
+          "const": false,
+          "default": false,
+          "title": "Runtime Image Verified",
+          "type": "boolean"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "vendor_identity_verified": {
+          "const": false,
+          "default": false,
+          "title": "Vendor Identity Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "interface_sha256",
+        "identity_key",
+        "runtime",
+        "container_id",
+        "image_manifest_sha256",
+        "process",
+        "source_sha256",
+        "cgroup_sha256"
+      ],
+      "title": "OciRuntimeFact",
+      "type": "object"
+    },
+    "PackageDatabase": {
+      "additionalProperties": false,
+      "properties": {
+        "layer_index": {
+          "anyOf": [
+            {
+              "maximum": 127,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Layer Index"
+        },
+        "manager": {
+          "enum": [
+            "dpkg",
+            "apk"
+          ],
+          "title": "Manager",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "status": {
+          "enum": [
+            "PARSED",
+            "NOT_PRESENT_IN_VERIFIED_VIEW"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "manager",
+        "path",
+        "status"
+      ],
+      "title": "PackageDatabase",
+      "type": "object"
+    },
+    "PackageRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "const": "VERIFIED_IMAGE_PACKAGE_DATABASE_RECORD_NOT_EXECUTABLE_OR_USE",
+          "default": "VERIFIED_IMAGE_PACKAGE_DATABASE_RECORD_NOT_EXECUTABLE_OR_USE",
+          "title": "Basis",
+          "type": "string"
+        },
+        "layer_index": {
+          "maximum": 127,
+          "minimum": 0,
+          "title": "Layer Index",
+          "type": "integer"
+        },
+        "manager": {
+          "enum": [
+            "dpkg",
+            "apk"
+          ],
+          "title": "Manager",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "source_path": {
+          "title": "Source Path",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "manager",
+        "name",
+        "source_path",
+        "source_sha256",
+        "layer_index"
+      ],
+      "title": "PackageRecord",
       "type": "object"
     },
     "RuntimeFact": {

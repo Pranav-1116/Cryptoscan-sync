@@ -78,6 +78,11 @@ def main():
         action="store_true",
         help="Synthetic offline OCI metadata custody, not production image qualification",
     )
+    parser.add_argument(
+        "--include-container-content-candidate",
+        action="store_true",
+        help="Synthetic verified layers/package and runtime metadata custody",
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -130,6 +135,8 @@ def main():
                 files.append("services/api/tests/unit/test_windows_metadata_candidates_postgres.py")
             if args.include_oci_metadata_candidate:
                 files.append("services/api/tests/unit/test_oci_metadata_candidate_postgres.py")
+            if args.include_container_content_candidate:
+                files.append("services/api/tests/unit/test_container_content_candidate_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

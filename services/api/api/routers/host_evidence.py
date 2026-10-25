@@ -412,6 +412,63 @@ def export_oci_image_sbom(
     )
 
 
+@router.get("/approvals/{approval_id}/container/admission-readiness")
+def inspect_container_readiness(
+    approval_id: Key,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    from fastapi.responses import JSONResponse
+    from shared_models.container_admission import container_readiness
+
+    row = store.latest(db, ctx.tenant_id, "host_intake", approval_id)
+    snapshot, _, _, _ = _check(db, ctx.tenant_id, row)
+    return JSONResponse(container_readiness(snapshot), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/approvals/{approval_id}/container/cyclonedx-1.6")
+def export_container_content(
+    approval_id: Key,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    from fastapi.responses import JSONResponse
+    from api.assurance.container_export import container_sbom
+    from cbom.cyclonedx16 import validate_cyclonedx16
+
+    row = store.latest(db, ctx.tenant_id, "host_intake", approval_id)
+    snapshot, scan, records, _ = _check(db, ctx.tenant_id, row)
+    try:
+        bom = container_sbom(snapshot, records, approval_id)
+    except ValueError:
+        raise HTTPException(409, "No consistent verified container content with retained evidence") from None
+    if not validate_cyclonedx16(bom)["ok"]:
+        raise HTTPException(503, "Container SBOM failed official CycloneDX 1.6 validation")
+    _audit(
+        db,
+        user,
+        "host.container-sbom.export",
+        scan.id,
+        {
+            "approval_id": approval_id,
+            "snapshot_sha256": digest(snapshot),
+            "document_sha256": digest(bom),
+            "profile": "VERIFIED_OCI_LAYERS_SCOPED_PACKAGE_DATABASES",
+        },
+    )
+    db.commit()
+    return JSONResponse(
+        bom,
+        media_type="application/vnd.cyclonedx+json",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="container-{approval_id}-cyclonedx-1.6.json"',
+        },
+    )
+
+
 @router.get("/approvals/{approval_id}/association-target")
 def association_target(
     approval_id: Key,
