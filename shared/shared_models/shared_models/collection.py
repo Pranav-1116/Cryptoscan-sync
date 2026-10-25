@@ -7,6 +7,7 @@ from shared_models.host_collection import Strict, Token, Digest, HostManifest, H
 from shared_models.host_runtime import RuntimeFact
 from shared_models.windows_images import WindowsImageFact
 from shared_models.windows_cng import WindowsCngFact
+from shared_models.windows_tpm import WindowsTpmFact
 from shared_models.host_worker import WorkerPin
 
 Method = Literal[
@@ -94,7 +95,7 @@ class Observation(Strict):
     identity_basis: Literal["SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET"] = "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET"
     input_id: Token
     fact_ordinal: int = Field(ge=0, le=999)
-    fact: HostFact | RuntimeFact | WindowsImageFact | WindowsCngFact
+    fact: HostFact | RuntimeFact | WindowsImageFact | WindowsCngFact | WindowsTpmFact
     source: ObservationSource
     collected_at: str = Field(min_length=1, max_length=40)
     evidence_id: str

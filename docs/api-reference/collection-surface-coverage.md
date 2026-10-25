@@ -32,6 +32,8 @@ Withdrawal does not erase valid historic evidence or authorize new work. A repor
 
 Surfaces: `os`, `software`, `certificates`, `crypto_configuration`, `processes_and_libraries`, `services`, `network_listeners`, `hardware_metadata`. The mapping covers every current typed host input kind exactly once; a new input kind without explicit mapping fails the engineering contract test. This is not a capability claim for future container/cloud/vendor/OT adapters.
 
+The Windows [TPM device-info candidate](windows-tpm-device-info-candidate.md) maps only to `hardware_metadata`, with HBOM/TechBOM reference classification. This adds no attestation/firmware/key-use truth and does not bypass blocked universal Windows admission.
+
 Each surface contains:
 
 - `approved_inputs`, `parsed_inputs`, `failed_inputs`, `fact_count`.

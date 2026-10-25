@@ -266,3 +266,18 @@ PostgreSQL uncertain-job identities. Rebuild
 API/shared models/frontend and the worker together. Actual external assessment, owners,
 site exercises and customer acceptance remain external blockers. These workflows
 do not authorize an SLA, certify the product or re-enable refused live collectors.
+
+## Windows TPM metadata candidate — not production admission
+
+The [TPM device-info candidate](../bank-environment/75-phase-three-windows-tpm-device-info-candidate.md)
+adds only the exact `WINDOWS_TPM_DEVICE_INFO` / `windows-tpm://local/device-info`
+input to existing approved offline custody and UI. Coordinate updated collector,
+shared schemas/API and frontend; regenerate/review the approved source lock through
+the existing external-signature workflow. No migration, key setup, TPM commands or
+new service is required. Do not reuse old native acceptance as approval of this interface.
+
+TPM specification is OS-reported metadata, not attestation, firmware, physical
+identity or key/application use. Resolve the SDK/documentation structure-version
+disagreement on independently reviewed real Windows fixtures first. Missing native
+packet/lifecycle/cancellation truth remains NOT_RUN/BLOCKED. Universal Windows
+production authorization stays refused. Do not request or send private keys or credentials.

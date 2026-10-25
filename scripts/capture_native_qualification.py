@@ -40,12 +40,14 @@ def main():
         from shared_models.host_runtime import RuntimeFact
         from shared_models.windows_images import WindowsImageFact
         from shared_models.windows_cng import WindowsCngFact, unsupported_expected_value
+        from shared_models.windows_tpm import WindowsTpmFact
 
         fields = (
             set(HostFact.model_fields)
             | set(RuntimeFact.model_fields)
             | set(WindowsImageFact.model_fields)
             | set(WindowsCngFact.model_fields)
+            | set(WindowsTpmFact.model_fields)
         )
         if (
             not target.manifest

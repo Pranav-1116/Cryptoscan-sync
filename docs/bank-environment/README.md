@@ -334,3 +334,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [73. Phase 3 — Windows exact process/module candidate](73-phase-three-windows-process-module-candidate.md) — PID+string-FILETIME scope, repeated loader metadata, bounded read-only native handles and existing custody/UI; no crypto-use inference or Windows production admission.
 
 - [74. Phase 3 — Windows CNG registration candidate](74-phase-three-windows-cng-registration-candidate.md) — exact fixed-provider/user-mode cipher/hash metadata, bounded caller-owned native buffers, existing custody/qualification/UI and explicit registration ≠ capability/use boundaries; Windows production admission stays blocked.
+
+- [75. Phase 3 — Windows TPM device-info candidate](75-phase-three-windows-tpm-device-info-candidate.md) — exact local OS-reported TPM specification, fixed 16-byte caller buffer, existing custody/UI and HBOM/TechBOM classification; no attestation, firmware/key-use inference or Windows production admission.

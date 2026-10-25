@@ -19,7 +19,7 @@ SURFACES = {
     "processes_and_libraries": {"LINUX_PROCESS", "LINUX_PROCESS_MAPS", "WINDOWS_PROCESS_MODULES"},
     "services": {"LINUX_SERVICE", "WINDOWS_SERVICE"},
     "network_listeners": {"LINUX_LISTENERS"},
-    "hardware_metadata": {"LINUX_HARDWARE"},
+    "hardware_metadata": {"LINUX_HARDWARE", "WINDOWS_TPM_DEVICE_INFO"},
 }
 BOMS = ("SBOM", "CBOM", "NBOM", "HBOM", "VBOM", "TechBOM")
 

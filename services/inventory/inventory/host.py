@@ -490,6 +490,12 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                 from inventory.windows_runtime import collect_os_version
 
                 data, facts = collect_os_version(item, limit, charge)
+            elif item.kind == "WINDOWS_TPM_DEVICE_INFO":
+                if platform != "windows":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                from inventory.windows_tpm import collect_device
+
+                data, facts = collect_device(item, limit, charge)
             elif item.kind == "WINDOWS_CNG_REGISTRATION":
                 if platform != "windows":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")

@@ -159,3 +159,19 @@ describe("Windows CNG registration candidate", () => {
     expect(screen.queryByRole("button", { name: /Download CycloneDX/ })).toBeNull();
   });
 });
+
+describe("Windows TPM metadata candidate", () => {
+  const fact = { kind: "WINDOWS_TPM_METADATA", algorithm: "UNKNOWN", key_size: null, local_basis: "OBSERVED", runtime_use: "UNKNOWN", software_name: null, software_version: null, purpose: "OS_REPORTED_TPM_METADATA", operation_use: "UNKNOWN", capabilities_observed: false, identity_key: "windows-tpm:local:device-info", interface: "WINDOWS_TBS_DEVICE_INFO", interface_sha256: "a".repeat(64), hardware_type: "TPM", api_structure_version: 1, tpm_specification: "2.0", capture_basis: "OS_REPORTED_NOT_ATTESTED_OR_INVOKED", policy_result: "NOT_EVALUATED", pqc_assessment: "UNKNOWN" };
+  const device = (changes = {}) => ({ ...detail, snapshot: { ...detail.snapshot, receipts: [{ input_id: "tpm", status: "PARSED", reason: "METADATA_ONLY", facts: [{ ...fact, ...changes }] }] } });
+  it("displays only OS-reported TPM specification without hardware-use promotion", async () => {
+    const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: device() }); mount(); inspect();
+    await screen.findByText(/WINDOWS_TPM_METADATA · TPM/);
+    expect(screen.getByText(/TPM 2.0 · OS reported; not attestation, firmware or key use/)).toBeTruthy();
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it.each([{ tpm_specification: "3.0" }, { api_structure_version: 2 }, { algorithm: "RSA" }, { runtime_use: "OBSERVED" }, { capabilities_observed: true }, { manufacturer: "Attested Vendor" }, { identity_key: "physical-tpm-id" }, { capture_basis: "ATTESTED" }, { firmware_version: "attested firmware" }, { pqc_assessment: "SAFE" }, { policy_result: "PASS" }, { attested: true }])("rejects promoted or unsupported device claims", async changes => {
+    mockFetch({ [`${P}/${id}/snapshot`]: device(changes) }); mount(); inspect();
+    await screen.findByText(/No verified receipt or security verdict assumed/);
+    expect(screen.queryByRole("button", { name: /Download CycloneDX/ })).toBeNull();
+  });
+});

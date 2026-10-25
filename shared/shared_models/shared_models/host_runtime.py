@@ -163,6 +163,6 @@ def domains(fact):
         return ["SBOM", "TechBOM"]
     if fact.kind == "LISTENER":
         return ["NBOM", "TechBOM"]
-    if fact.kind == "HARDWARE":
+    if fact.kind in {"HARDWARE", "WINDOWS_TPM_METADATA"}:
         return ["HBOM", "TechBOM"]
     return ["TechBOM"]

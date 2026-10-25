@@ -261,7 +261,8 @@
             "WINDOWS_OS_RELEASE",
             "WINDOWS_CERTIFICATE",
             "WINDOWS_PROCESS_MODULES",
-            "WINDOWS_CNG_REGISTRATION"
+            "WINDOWS_CNG_REGISTRATION",
+            "WINDOWS_TPM_DEVICE_INFO"
           ],
           "title": "Kind",
           "type": "string"
@@ -391,6 +392,9 @@
               },
               {
                 "$ref": "#/$defs/WindowsCngFact"
+              },
+              {
+                "$ref": "#/$defs/WindowsTpmFact"
               }
             ]
           },
@@ -1404,6 +1408,129 @@
         "identity_key"
       ],
       "title": "WindowsImageFact",
+      "type": "object"
+    },
+    "WindowsTpmFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "api_structure_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Api Structure Version",
+          "type": "integer"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "capture_basis": {
+          "const": "OS_REPORTED_NOT_ATTESTED_OR_INVOKED",
+          "default": "OS_REPORTED_NOT_ATTESTED_OR_INVOKED",
+          "title": "Capture Basis",
+          "type": "string"
+        },
+        "hardware_type": {
+          "const": "TPM",
+          "default": "TPM",
+          "title": "Hardware Type",
+          "type": "string"
+        },
+        "identity_key": {
+          "const": "windows-tpm:local:device-info",
+          "default": "windows-tpm:local:device-info",
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "const": "WINDOWS_TBS_DEVICE_INFO",
+          "default": "WINDOWS_TBS_DEVICE_INFO",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "WINDOWS_TPM_METADATA",
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "OS_REPORTED_TPM_METADATA",
+          "default": "OS_REPORTED_TPM_METADATA",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "tpm_specification": {
+          "enum": [
+            "1.2",
+            "2.0"
+          ],
+          "title": "Tpm Specification",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "interface_sha256",
+        "tpm_specification"
+      ],
+      "title": "WindowsTpmFact",
       "type": "object"
     }
   },

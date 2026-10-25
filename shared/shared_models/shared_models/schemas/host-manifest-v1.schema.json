@@ -27,7 +27,8 @@
             "WINDOWS_OS_RELEASE",
             "WINDOWS_CERTIFICATE",
             "WINDOWS_PROCESS_MODULES",
-            "WINDOWS_CNG_REGISTRATION"
+            "WINDOWS_CNG_REGISTRATION",
+            "WINDOWS_TPM_DEVICE_INFO"
           ],
           "title": "Kind",
           "type": "string"
