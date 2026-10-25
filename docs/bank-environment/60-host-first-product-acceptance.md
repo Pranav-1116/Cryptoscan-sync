@@ -146,3 +146,16 @@ includes actual SQL races and native kernel witnesses. Earlier reports remain
 historical, not current-source requalification. Positive native systemd/DMI/TPM,
 Windows, host/boot/dependency attestation and independent whole-worker/bank
 acceptance remain open; production/Phase 4 admission is unchanged.
+
+## Native qualification and enrolled-key quote verification tooling
+
+[Guide 67](67-native-quotes-and-independent-qualification.md) adds original native
+evidence export, a bounded TPM2 quote verifier with fresh scope-bound challenges
+and durable replay refusal, and separate assessor/bank acceptance signatures over
+an exact artifact/check matrix. These are executable evidence controls, not a
+hardware enrollment or independent assessment supplied by the product. Current
+Linux systemd/DMI/TPM gaps and Windows native refusal are recorded in the
+[new execution report](../readiness-evidence/host-qualification-2026-10-25.md).
+EK/AK hardware-origin establishment, measured application/host trust, actual
+native positives, full deployed-worker qualification and production admission
+remain external gates. Six-BOM observation/provenance rules are unchanged.

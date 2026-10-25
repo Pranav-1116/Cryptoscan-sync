@@ -318,3 +318,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [65. Signed collector handoff, isolated Linux stage and native fixture gates](65-signed-collector-isolation-and-native-gates.md) — approval-pinned Ed25519, actual Landlock/seccomp file stage, bounded RPM exports, native qualification executor and next Windows OS candidate.
 
 - [66. Verified-source local host worker](66-verified-local-host-worker.md) — external source-lock signatures, verified stage copies, durable claims/results/cancellation, scoped native kernel isolation and external-signature intake; development only, not host attestation or full worker clearance.
+
+- [67. Native evidence capture, TPM quote verification and independent qualification records](67-native-quotes-and-independent-qualification.md) — explicit real-OS evidence, enrolled-key/PCR/challenge checks, one-time local quote consumption and separate assessor/bank signatures; no fabricated hardware/native success or automatic production clearance.

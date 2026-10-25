@@ -1,0 +1,65 @@
+{
+  "$defs": {
+    "ExpectedNativeInput": {
+      "additionalProperties": false,
+      "properties": {
+        "facts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "title": "Facts",
+          "type": "array"
+        },
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id",
+        "facts"
+      ],
+      "title": "ExpectedNativeInput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "expected": {
+      "items": {
+        "$ref": "#/$defs/ExpectedNativeInput"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Expected",
+      "type": "array"
+    },
+    "reviewer_reference": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Reviewer Reference",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "cryptoscan.native-fixture/v1",
+      "default": "cryptoscan.native-fixture/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Target Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_sha256",
+    "expected",
+    "reviewer_reference"
+  ],
+  "title": "NativePlan",
+  "type": "object"
+}

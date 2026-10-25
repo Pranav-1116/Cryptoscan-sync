@@ -1,0 +1,35 @@
+{
+  "api_postgres_frontend_full_suites_rerun": false,
+  "external_reviewers_supplied": false,
+  "genuine_tpm_positive_executed": false,
+  "genuine_windows_positive_executed": false,
+  "hardware_origin_verified": false,
+  "metadata_reconciliation": {
+    "original_checkout_head": "d70bdf3f283925cfe98a11d9833ad5bb28fbd0bc",
+    "restored_published_base": "a932bd06457bf71608419adb391e5c886b4b5152",
+    "working_files_reset": false,
+    "working_paths_hash_verified_unchanged": 4321
+  },
+  "new_protocol_cli_cases": 89,
+  "owned_native_witness_directories_remaining": [],
+  "private_keys_persisted": false,
+  "production_execution_qualified": false,
+  "schemas_checked": [
+    "shared/shared_models/shared_models/schemas/tpm-quote-policy-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/tpm-quote-challenge-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/qualification-policy-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/qualification-index-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/qualification-review-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/qualification-signed-review-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/native-evidence-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/native-evidence-plan-v1.schema.json"
+  ],
+  "selected_regression": {
+    "errors": 0,
+    "failures": 0,
+    "passed": 922,
+    "seconds": 28.292,
+    "skipped": 3,
+    "tests": 925
+  }
+}

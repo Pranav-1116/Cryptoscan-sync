@@ -1,0 +1,1177 @@
+{
+  "$defs": {
+    "ExpectedNativeInput": {
+      "additionalProperties": false,
+      "properties": {
+        "facts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "title": "Facts",
+          "type": "array"
+        },
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id",
+        "facts"
+      ],
+      "title": "ExpectedNativeInput",
+      "type": "object"
+    },
+    "HostFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "default": "UNKNOWN",
+          "enum": [
+            "RSA",
+            "EC",
+            "DSA",
+            "ED25519",
+            "ED448",
+            "UNKNOWN"
+          ],
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "binary_format": {
+          "default": "UNKNOWN",
+          "enum": [
+            "ELF",
+            "PE",
+            "UNKNOWN"
+          ],
+          "title": "Binary Format",
+          "type": "string"
+        },
+        "certificate_signature_oid": {
+          "default": "UNKNOWN",
+          "maxLength": 100,
+          "pattern": "^(UNKNOWN|[0-9]+(?:\\.[0-9]+)+)$",
+          "title": "Certificate Signature Oid",
+          "type": "string"
+        },
+        "cipher_suites": {
+          "items": {
+            "enum": [
+              "AES128-GCM-SHA256",
+              "AES256-GCM-SHA384",
+              "ECDHE-RSA-AES128-GCM-SHA256",
+              "ECDHE-RSA-AES256-GCM-SHA384",
+              "ECDHE-ECDSA-AES128-GCM-SHA256",
+              "ECDHE-ECDSA-AES256-GCM-SHA384"
+            ],
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Cipher Suites",
+          "type": "array"
+        },
+        "curve": {
+          "default": "UNKNOWN",
+          "enum": [
+            "secp256r1",
+            "secp384r1",
+            "secp521r1",
+            "UNKNOWN"
+          ],
+          "title": "Curve",
+          "type": "string"
+        },
+        "fingerprint_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fingerprint Sha256"
+        },
+        "key_size": {
+          "anyOf": [
+            {
+              "maximum": 16384,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Size"
+        },
+        "kind": {
+          "enum": [
+            "CERTIFICATE",
+            "TLS_CONFIGURATION",
+            "BINARY",
+            "SOFTWARE",
+            "OS_RELEASE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "enum": [
+            "OBSERVED",
+            "DECLARED"
+          ],
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "mode": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Mode",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "protocols": {
+          "items": {
+            "enum": [
+              "TLSv1",
+              "TLSv1.1",
+              "TLSv1.2",
+              "TLSv1.3"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Protocols",
+          "type": "array"
+        },
+        "purpose": {
+          "enum": [
+            "PUBLIC_KEY_METADATA",
+            "TLS_CONFIGURATION",
+            "FILE_PRESENCE",
+            "PACKAGE_DATABASE_RECORD",
+            "OS_RELEASE_METADATA"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "signature_hash": {
+          "default": "UNKNOWN",
+          "enum": [
+            "SHA1",
+            "SHA224",
+            "SHA256",
+            "SHA384",
+            "SHA512",
+            "UNKNOWN"
+          ],
+          "title": "Signature Hash",
+          "type": "string"
+        },
+        "software_name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Software Name"
+        },
+        "software_version": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Software Version"
+        },
+        "unparsed_directives": {
+          "default": false,
+          "title": "Unparsed Directives",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "local_basis",
+        "purpose"
+      ],
+      "title": "HostFact",
+      "type": "object"
+    },
+    "HostInput": {
+      "additionalProperties": false,
+      "properties": {
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "PUBLIC_CERTIFICATE",
+            "NGINX_TLS_CONFIG",
+            "BINARY_METADATA",
+            "DPKG_STATUS",
+            "WINDOWS_UNINSTALL",
+            "LINUX_OS_RELEASE",
+            "LINUX_PROCESS",
+            "LINUX_PROCESS_MAPS",
+            "LINUX_LISTENERS",
+            "LINUX_SERVICE",
+            "LINUX_HARDWARE",
+            "WINDOWS_SERVICE",
+            "APK_INSTALLED",
+            "RPM_SQLITE",
+            "WINDOWS_OS_RELEASE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id",
+        "kind",
+        "path"
+      ],
+      "title": "HostInput",
+      "type": "object"
+    },
+    "HostManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_reference": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Approval Reference",
+          "type": "string"
+        },
+        "environment": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Environment",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "host_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Host Id",
+          "type": "string"
+        },
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/HostInput"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Inputs",
+          "type": "array"
+        },
+        "max_file_bytes": {
+          "default": 1048576,
+          "maximum": 1048576,
+          "minimum": 1,
+          "title": "Max File Bytes",
+          "type": "integer"
+        },
+        "max_total_bytes": {
+          "default": 16777216,
+          "maximum": 16777216,
+          "minimum": 1,
+          "title": "Max Total Bytes",
+          "type": "integer"
+        },
+        "platform": {
+          "enum": [
+            "linux",
+            "windows"
+          ],
+          "title": "Platform",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cryptoscan.host-manifest/v1",
+          "default": "cryptoscan.host-manifest/v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_reference",
+        "host_id",
+        "environment",
+        "platform",
+        "expires_at",
+        "inputs"
+      ],
+      "title": "HostManifest",
+      "type": "object"
+    },
+    "HostReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_count": {
+          "default": 0,
+          "maximum": 1048576,
+          "minimum": 0,
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content Sha256"
+        },
+        "facts": {
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/HostFact"
+              },
+              {
+                "$ref": "#/$defs/RuntimeFact"
+              }
+            ]
+          },
+          "maxItems": 1000,
+          "title": "Facts",
+          "type": "array"
+        },
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "METADATA_ONLY",
+            "ACCESS_DENIED",
+            "UNSUPPORTED_PLATFORM",
+            "SYMLINK_OR_SPECIAL",
+            "INVALID_FORMAT",
+            "PRIVATE_MATERIAL_REFUSED",
+            "INPUT_CHANGED",
+            "LIMIT",
+            "NOT_FOUND",
+            "INTERFACE_UNAVAILABLE",
+            "EXPIRED",
+            "LEAST_PRIVILEGE_UNPROVEN"
+          ],
+          "title": "Reason",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PARSED",
+            "DENIED",
+            "UNSUPPORTED",
+            "INVALID",
+            "BUDGET_EXCEEDED",
+            "UNAVAILABLE"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "input_id",
+        "status",
+        "reason"
+      ],
+      "title": "HostReceipt",
+      "type": "object"
+    },
+    "HostSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "collector_version": {
+          "const": "1.0",
+          "default": "1.0",
+          "title": "Collector Version",
+          "type": "string"
+        },
+        "execution_platform": {
+          "enum": [
+            "linux",
+            "windows",
+            "unsupported"
+          ],
+          "title": "Execution Platform",
+          "type": "string"
+        },
+        "finished_at": {
+          "format": "date-time",
+          "title": "Finished At",
+          "type": "string"
+        },
+        "host_identity_attested": {
+          "const": false,
+          "default": false,
+          "title": "Host Identity Attested",
+          "type": "boolean"
+        },
+        "manifest": {
+          "$ref": "#/$defs/HostManifest"
+        },
+        "manifest_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "production_execution_qualified": {
+          "const": false,
+          "default": false,
+          "title": "Production Execution Qualified",
+          "type": "boolean"
+        },
+        "receipts": {
+          "items": {
+            "$ref": "#/$defs/HostReceipt"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Receipts",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "cryptoscan.host-snapshot/v1",
+          "default": "cryptoscan.host-snapshot/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_revision": {
+          "default": null,
+          "title": "Source Revision",
+          "type": "null"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "whole_host_coverage_verified": {
+          "const": false,
+          "default": false,
+          "title": "Whole Host Coverage Verified",
+          "type": "boolean"
+        },
+        "windows_execution_qualified": {
+          "const": false,
+          "default": false,
+          "title": "Windows Execution Qualified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "manifest",
+        "manifest_sha256",
+        "started_at",
+        "finished_at",
+        "execution_platform",
+        "receipts"
+      ],
+      "title": "HostSnapshot",
+      "type": "object"
+    },
+    "NativePlan": {
+      "additionalProperties": false,
+      "properties": {
+        "expected": {
+          "items": {
+            "$ref": "#/$defs/ExpectedNativeInput"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Expected",
+          "type": "array"
+        },
+        "reviewer_reference": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Reviewer Reference",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cryptoscan.native-fixture/v1",
+          "default": "cryptoscan.native-fixture/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Target Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_sha256",
+        "expected",
+        "reviewer_reference"
+      ],
+      "title": "NativePlan",
+      "type": "object"
+    },
+    "RuntimeFact": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Address"
+        },
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "boot_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boot Id"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "core_id": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Core Id"
+        },
+        "cpu_index": {
+          "anyOf": [
+            {
+              "maximum": 9999,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Index"
+        },
+        "firmware_version": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Firmware Version"
+        },
+        "hardware_type": {
+          "anyOf": [
+            {
+              "enum": [
+                "SYSTEM_DMI",
+                "TPM",
+                "CPU_TOPOLOGY"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hardware Type"
+        },
+        "identity_key": {
+          "maxLength": 300,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "enum": [
+            "LINUX_PROCFS",
+            "LINUX_SYSFS",
+            "SYSTEMD_READ_ONLY",
+            "WINDOWS_SCM"
+          ],
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Interface Sha256"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "enum": [
+            "PROCESS",
+            "LOADED_LIBRARY",
+            "LISTENER",
+            "SERVICE",
+            "HARDWARE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "library_path": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "pattern": "^/[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Library Path"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "manufacturer": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manufacturer"
+        },
+        "mapped_file_deleted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mapped File Deleted"
+        },
+        "mapping_basis": {
+          "anyOf": [
+            {
+              "const": "SHARED_OBJECT_PATH_SUFFIX_ONLY",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mapping Basis"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "network_namespace": {
+          "anyOf": [
+            {
+              "maxLength": 80,
+              "pattern": "^net:\\[[0-9]+\\]$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Network Namespace"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "package_id": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package Id"
+        },
+        "pid": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pid"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "process_name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Process Name"
+        },
+        "process_start_ticks": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Process Start Ticks"
+        },
+        "purpose": {
+          "const": "HOST_RUNTIME_METADATA",
+          "default": "HOST_RUNTIME_METADATA",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "service_name": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "pattern": "^[A-Za-z0-9_.@:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service Name"
+        },
+        "service_state": {
+          "anyOf": [
+            {
+              "enum": [
+                "active",
+                "inactive",
+                "activating",
+                "deactivating",
+                "failed",
+                "reloading",
+                "maintenance",
+                "refreshing",
+                "RUNNING",
+                "STOPPED",
+                "START_PENDING",
+                "STOP_PENDING",
+                "CONTINUE_PENDING",
+                "PAUSE_PENDING",
+                "PAUSED"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Service State"
+        },
+        "socket_inode": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Socket Inode"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "tpm_major_version": {
+          "anyOf": [
+            {
+              "enum": [
+                1,
+                2
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tpm Major Version"
+        },
+        "transport": {
+          "anyOf": [
+            {
+              "enum": [
+                "TCP",
+                "TCP6"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transport"
+        }
+      },
+      "required": [
+        "kind",
+        "interface",
+        "identity_key"
+      ],
+      "title": "RuntimeFact",
+      "type": "object"
+    },
+    "TargetSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+          "title": "Address",
+          "type": "string"
+        },
+        "allowed_operations": {
+          "items": {
+            "const": "READ_APPROVED_METADATA",
+            "type": "string"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Allowed Operations",
+          "type": "array"
+        },
+        "collection_method": {
+          "enum": [
+            "offline_host",
+            "windows",
+            "container",
+            "source",
+            "cloud",
+            "network",
+            "hsm",
+            "hardware",
+            "vendor",
+            "ot"
+          ],
+          "title": "Collection Method",
+          "type": "string"
+        },
+        "credential_ref": {
+          "anyOf": [
+            {
+              "maxLength": 200,
+              "pattern": "^vault://[A-Za-z0-9_./-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Credential Ref"
+        },
+        "environment": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Environment",
+          "type": "string"
+        },
+        "exclusions": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Exclusions",
+          "type": "array"
+        },
+        "manifest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostManifest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "not_before": {
+          "format": "date-time",
+          "title": "Not Before",
+          "type": "string"
+        },
+        "owner": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Owner",
+          "type": "string"
+        },
+        "read_only": {
+          "const": true,
+          "default": true,
+          "title": "Read Only",
+          "type": "boolean"
+        },
+        "system_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "System Id",
+          "type": "string"
+        },
+        "target_key": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Target Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_key",
+        "system_id",
+        "owner",
+        "environment",
+        "collection_method",
+        "address",
+        "allowed_operations",
+        "not_before"
+      ],
+      "title": "TargetSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "enum": [
+        "systemd",
+        "dmi",
+        "tpm",
+        "windows"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "native_system": {
+      "enum": [
+        "Linux",
+        "Windows"
+      ],
+      "title": "Native System",
+      "type": "string"
+    },
+    "plan": {
+      "$ref": "#/$defs/NativePlan"
+    },
+    "schema_version": {
+      "const": "cryptoscan.native-evidence/v1",
+      "default": "cryptoscan.native-evidence/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/HostSnapshot"
+    },
+    "source_binding": {
+      "const": "OPERATOR_SUPPLIED_IDENTIFIER_NOT_MEASURED_EXECUTION",
+      "default": "OPERATOR_SUPPLIED_IDENTIFIER_NOT_MEASURED_EXECUTION",
+      "title": "Source Binding",
+      "type": "string"
+    },
+    "source_lock_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Source Lock Sha256",
+      "type": "string"
+    },
+    "target": {
+      "$ref": "#/$defs/TargetSpec"
+    }
+  },
+  "required": [
+    "category",
+    "source_lock_sha256",
+    "native_system",
+    "target",
+    "plan",
+    "snapshot"
+  ],
+  "title": "NativeEvidence",
+  "type": "object"
+}
