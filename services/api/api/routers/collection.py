@@ -8,6 +8,8 @@ from api.assurance import collection as core, store
 from db.models.assurance import AssuranceRevision
 from shared_models.collection_coverage import CoverageReport
 from shared_models.linux_software import LinuxSoftwareInventory
+from shared_models.linux_relationships import LinuxRelationships
+from fastapi.responses import JSONResponse
 from shared_models.collection import (
     TargetSpec,
     TargetUpdate,
@@ -242,6 +244,28 @@ def linux_software(
     identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
 ):
     return core.linux_software(db, ctx.tenant_id, identifier)
+
+
+@router.get("/jobs/{identifier}/relationships/linux", response_model=LinuxRelationships)
+def linux_relationships(
+    identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
+):
+    return core.linux_relationships(db, ctx.tenant_id, identifier)
+
+
+@router.get("/jobs/{identifier}/software/linux/cyclonedx-1.6", response_class=JSONResponse)
+def linux_sbom(
+    identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
+):
+    return JSONResponse(
+        core.linux_sbom(db, ctx.tenant_id, identifier),
+        media_type="application/vnd.cyclonedx+json",
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": 'attachment; filename="linux-software.cdx.json"',
+            "X-CryptoScan-Validation": "CYCLONEDX_1_6_OFFICIAL_SCHEMA_AND_REFERENCES",
+        },
+    )
 
 
 @router.get("/jobs/{identifier}/errors")

@@ -1,0 +1,35 @@
+{
+  "artifacts": {
+    "docs/readiness-evidence/linux-projections-2026-10-25/build-final.txt": "81d01fe0ecf2b2935c164b85a63dddf2ac248ea68d8aab6ac200f11576b23b33",
+    "docs/readiness-evidence/linux-projections-2026-10-25/frontend-final.txt": "7241c4bb56b33869f9118c940befc666ebf1f16d3ccf92067acf81d46284f621",
+    "docs/readiness-evidence/linux-projections-2026-10-25/initial-contracts.txt": "5d58bd67caffa820f066a1592eccf850881775b621950990be2217cda0df25d2",
+    "docs/readiness-evidence/linux-projections-2026-10-25/postgres-final.txt": "89366eef35a252c6e7f8c9b6d2f76afe832b9b40140a02b40860c94a7f322f60",
+    "docs/readiness-evidence/linux-projections-2026-10-25/postgres-final.xml": "ff79daee17103b3441ba26375a6fcbebf9638fa4bfcd6e1db507c353150ac139",
+    "docs/readiness-evidence/linux-projections-2026-10-25/python-final.txt": "43cb521ee29284069ccf6be45ef44d03371ea66e5abe0d37050a88df60380ae0",
+    "docs/readiness-evidence/linux-projections-2026-10-25/python-final.xml": "d06ee2399593fecb47087e6b5db5809cff2df94dd76f9126bb2abd6548cd2c06",
+    "docs/readiness-evidence/linux-projections-2026-10-25/schema.txt": "5ae4c83bdd027782004764803a087b579476b56e968a16cfc7ade5329db9d57f",
+    "docs/readiness-evidence/linux-projections-2026-10-25/static.txt": "24228122f612ef1d81019aab62a57e37a6b8a1825a48031799f5d19aed1274e9",
+    "docs/readiness-evidence/linux-projections-2026-10-25/typecheck-final.txt": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f"
+  },
+  "baseline_commit": "392063f479b1b7a015d3bd09c939b1faccb5f496",
+  "purpose": "Local Linux relationship/official software document consistency, not authenticity or qualification",
+  "schema_version": "cryptoscan.local-readiness-manifest/v1",
+  "source_and_docs": {
+    "docs/api-reference/linux-relationships-and-sbom.md": "c247f483be5e39c877de80efd80c151a1e18f3956e6c08ddeeab0e07fad594db",
+    "docs/bank-environment/70-linux-software-evidence-phase-two.md": "3edd5afcdf4a5e6285c0eeefbb09e39315e5c3031dafbc5a74835d716757d3c8",
+    "docs/bank-environment/71-linux-relationships-and-validated-sbom.md": "27e51d4b6a9fffade92d582cc4b6d53cb37a51abba6d652eee5af5597d68de55",
+    "docs/bank-environment/README.md": "9fd5f0343296b54c8d586963a8f432ae4b1ad5ebab3fd2ae80a441e90fff3e08",
+    "docs/readiness-evidence/linux-projections-2026-10-25.md": "0bb41b44dd7d70aa772848595659ac27ef377be29dceb77e2c708ca134a79ded",
+    "frontend/src/components/CollectionCoveragePanel.tsx": "5b4a18745ad83a01459e66bb302c8ff3182b29a2ed79f54c5f76c1479c56e4b1",
+    "frontend/src/components/LinuxEvidenceOutputs.test.tsx": "8dcae8332745b8987f5c5d33b3a5122a528fa133cd7a582b7162c0fc2ba38151",
+    "frontend/src/components/LinuxEvidenceOutputs.tsx": "acf1c4f8401004d7f186219d4eed6dc52618e93b37954facbddd7b256cb21bff",
+    "scripts/validate_host_evidence.py": "496c5b710e5d1b74e5a6364dfdabcee2e069f18587d7c9fe011230e43fc6f19f",
+    "services/api/api/assurance/collection.py": "81b36aca4689555867d3c6af664afb0635043b54efd060c0430816154fdeee86",
+    "services/api/api/routers/collection.py": "9627fe2ca9d453d3e7980ec04b286fff128cfa0da849adb5520bd0e24bcdee01",
+    "services/api/tests/unit/test_linux_phase2_projections.py": "c940a698df94d9a44f7a0b49564ecc4a3193919ba842088cbd86173fa7ef5331",
+    "services/api/tests/unit/test_linux_phase2_projections_postgres.py": "d1c61b50e2eb7b53739b4ca69b22fe02655e8a1c3212a4e26fbd9c5aa3c28083",
+    "services/cbom/cbom/linux_sbom.py": "77f7c90dd180729685dccb99c64f9fbad42af8158a091fd75edeea5c4d0b53ee",
+    "shared/shared_models/shared_models/linux_relationships.py": "26b1bf68d02fe6d3ca2714bd66aefdea924c8f1a49cf741734577c1f62cfed7e",
+    "shared/shared_models/tests/test_linux_relationships.py": "5cf51b23a426f8251f8b1bf79e96d22efe3efab9037c6f6c2d1ec1d368a576e0"
+  }
+}

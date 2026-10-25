@@ -1,5 +1,7 @@
 # 70. Phase 2 — Linux software evidence
 
+**Follow-up:** [guide 71](71-linux-relationships-and-validated-sbom.md) implements a separate officially validated CycloneDX export and evidence-backed Linux relationship view. This guide still describes the unchanged intermediate endpoint.
+
 ## Delivered increment, not a completed phase
 
 Continue the ordered build in [guide 69](69-phasewise-universal-collection-build.md): foundation first, then Linux, then Windows, containers, network, cloud, hardware/HSM, vendor, correlation and production hardening. This increment implements a usable Linux software evidence view and hardens Debian input parsing. It does **not** qualify all Linux surfaces, finish all ten phases or admit new remote execution.

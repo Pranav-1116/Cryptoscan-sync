@@ -326,3 +326,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [69. Phase-wise universal collection build](69-phasewise-universal-collection-build.md) — ten ordered phases with real implementation/qualification gates; current foundation increment adds evidence-backed surface coverage without rescanning or treating unknown scope as absence.
 
 - [70. Linux software evidence — Phase 2](70-linux-software-evidence-phase-two.md) — hardened Debian parsing and an evidence-linked, nonstandard metadata inventory with separate packages, binary presence and mapped paths; no rescan or completeness claim.
+
+- [71. Linux relationships and validated software BOM](71-linux-relationships-and-validated-sbom.md) — evidence-backed deterministic metadata joins, explicit unsupported relationships and a pinned-official-schema validated, incomplete CycloneDX 1.6 software export; no rescan or production qualification.

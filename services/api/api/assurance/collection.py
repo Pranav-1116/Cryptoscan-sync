@@ -452,3 +452,30 @@ def linux_software(db, owner, identifier):
         ).model_dump(mode="json")
     except ValueError:
         raise HTTPException(409, "Linux software evidence/scope reconciliation failed") from None
+
+
+def linux_relationships(db, owner, identifier):
+    from shared_models.linux_relationships import project_linux_relationships
+
+    value = evidence(db, owner, identifier)
+    _, target, _ = resolve_job(db, owner, identifier)
+    if value["target_sha256"] != target.payload_sha256 or value["target_revision"] != target.revision:
+        raise HTTPException(409, "Relationship evidence target binding changed")
+    try:
+        result = CollectionResult.model_validate({k: v for k, v in value.items() if k != "envelope_sha256"})
+        return project_linux_relationships(
+            result, TargetSpec.model_validate(target.payload["target"]), value["envelope_sha256"]
+        ).model_dump(mode="json")
+    except ValueError:
+        raise HTTPException(409, "Linux relationship evidence/scope reconciliation failed") from None
+
+
+def linux_sbom(db, owner, identifier):
+    from cbom.linux_sbom import build_linux_sbom, LinuxSBOMValidationError
+    from shared_models.linux_software import LinuxSoftwareInventory
+
+    inventory = LinuxSoftwareInventory.model_validate(linux_software(db, owner, identifier))
+    try:
+        return build_linux_sbom(inventory)
+    except LinuxSBOMValidationError:
+        raise HTTPException(503, "Pinned official CycloneDX validation failed; no export available") from None

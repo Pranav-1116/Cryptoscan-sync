@@ -1,3 +1,4 @@
+import LinuxEvidenceOutputs from "./LinuxEvidenceOutputs";
 import LinuxSoftwarePanel from "./LinuxSoftwarePanel";
 import React, { useEffect, useRef, useState } from "react";
 import { activeTenantId, getToken, tenantFetch } from "../lib/api";
@@ -76,6 +77,7 @@ export default function CollectionCoveragePanel() {
       <p>All six projections reuse the same evidence (counts are not six collections): {Object.entries(report.bom_observation_counts).map(([name, count]) => `${name}: ${count}`).join(" · ")}. Zero references prove neither absence nor unsupported scope.</p>
       <p>Failed or unrequested inputs never prove asset absence. Parsed configuration remains DECLARED; library presence does not prove cryptographic use; a listener does not prove negotiated TLS.</p>
       <LinuxSoftwarePanel job={report.job_id} envelope={report.envelope_sha256} />
+      <LinuxEvidenceOutputs job={report.job_id} envelope={report.envelope_sha256} />
     </>}
   </section>;
 }
