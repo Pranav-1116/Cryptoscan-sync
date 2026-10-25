@@ -4,10 +4,10 @@ No new execution endpoint. Extend the existing explicitly approved offline host 
 
 ```text
 kind: WINDOWS_CNG_REGISTRATION
-path: windows-cng://local/microsoft-primitive/{cipher|hash}-registration
+path: windows-cng://local/microsoft-primitive/{cipher|hash|asymmetric-encryption|secret-agreement|signature|rng|key-derivation}-registration
 ```
 
-Only the fixed `Microsoft Primitive Provider`, user mode and the selected cipher/hash registration interface are supported. No global discovery, arbitrary provider, remote host, kernel/key-storage/Schannel/signature interface, encoded alias, query string or wildcard scope is accepted.
+Only the fixed `Microsoft Primitive Provider`, user mode and one of the seven exact interfaces above are supported. [Guide 76](../bank-environment/76-bounded-windows-metadata-and-operator-preflight.md) adds the five interfaces beyond the original cipher/hash scope; it does not qualify native execution. No global discovery, arbitrary provider, remote host, kernel/key-storage/Schannel interface, encoded alias, query string or wildcard scope is accepted.
 
 ## Fact and receipt
 

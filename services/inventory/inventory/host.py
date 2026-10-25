@@ -490,6 +490,18 @@ def collect(manifest: HostManifest) -> HostSnapshot:
                 from inventory.windows_runtime import collect_os_version
 
                 data, facts = collect_os_version(item, limit, charge)
+            elif item.kind == "WINDOWS_CAPI_DEFAULT_PROVIDER":
+                if platform != "windows":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                from inventory.windows_capi import collect_default_provider
+
+                data, facts = collect_default_provider(item, limit, charge)
+            elif item.kind == "WINDOWS_TCP_LISTENERS":
+                if platform != "windows":
+                    raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")
+                from inventory.windows_listeners import collect_listeners
+
+                data, facts = collect_listeners(item, limit, charge)
             elif item.kind == "WINDOWS_TPM_DEVICE_INFO":
                 if platform != "windows":
                     raise Refused("UNSUPPORTED", "UNSUPPORTED_PLATFORM")

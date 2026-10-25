@@ -41,6 +41,8 @@ def validate_plan(target, plan):
     from shared_models.windows_images import WindowsImageFact
     from shared_models.windows_cng import WindowsCngFact
     from shared_models.windows_tpm import WindowsTpmFact
+    from shared_models.windows_capi import WindowsCapiFact
+    from shared_models.windows_listeners import WindowsListenerFact
 
     if (
         not target.manifest
@@ -55,6 +57,8 @@ def validate_plan(target, plan):
         | set(WindowsImageFact.model_fields)
         | set(WindowsCngFact.model_fields)
         | set(WindowsTpmFact.model_fields)
+        | set(WindowsCapiFact.model_fields)
+        | set(WindowsListenerFact.model_fields)
     )
     for expected in plan.expected:
         for pattern in expected.facts:

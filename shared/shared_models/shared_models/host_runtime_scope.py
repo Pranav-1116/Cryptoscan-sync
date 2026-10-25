@@ -13,6 +13,14 @@ def certificate_resource(path):
 
 
 def resource(kind, path):
+    if kind == "WINDOWS_CAPI_DEFAULT_PROVIDER":
+        from shared_models.windows_capi import provider_resource
+
+        return provider_resource(path)
+    if kind == "WINDOWS_TCP_LISTENERS":
+        from shared_models.windows_listeners import listener_resource
+
+        return listener_resource(path)
     if kind == "WINDOWS_TPM_DEVICE_INFO":
         from shared_models.windows_tpm import device_resource
 
@@ -46,6 +54,16 @@ def resource(kind, path):
 def validate_runtime_facts(item, facts):
     selected = resource(item.kind, item.path)
     if selected is None:
+        return
+    if item.kind == "WINDOWS_CAPI_DEFAULT_PROVIDER":
+        from shared_models.windows_capi import validate_provider
+
+        validate_provider(item, facts)
+        return
+    if item.kind == "WINDOWS_TCP_LISTENERS":
+        from shared_models.windows_listeners import validate_listeners
+
+        validate_listeners(item, facts)
         return
     if item.kind == "WINDOWS_TPM_DEVICE_INFO":
         from shared_models.windows_tpm import validate_device

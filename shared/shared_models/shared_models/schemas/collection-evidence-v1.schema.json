@@ -389,6 +389,12 @@
             },
             {
               "$ref": "#/$defs/WindowsTpmFact"
+            },
+            {
+              "$ref": "#/$defs/WindowsCapiFact"
+            },
+            {
+              "$ref": "#/$defs/WindowsListenerFact"
             }
           ],
           "title": "Fact"
@@ -482,7 +488,9 @@
             "WINDOWS_CERTIFICATE",
             "WINDOWS_PROCESS_MODULES",
             "WINDOWS_CNG_REGISTRATION",
-            "WINDOWS_TPM_DEVICE_INFO"
+            "WINDOWS_TPM_DEVICE_INFO",
+            "WINDOWS_CAPI_DEFAULT_PROVIDER",
+            "WINDOWS_TCP_LISTENERS"
           ],
           "title": "Kind",
           "type": "string"
@@ -942,6 +950,134 @@
       "title": "RuntimeFact",
       "type": "object"
     },
+    "WindowsCapiFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "capture_basis": {
+          "const": "DEFAULT_SELECTION_NOT_OPENED_OR_INVOKED",
+          "default": "DEFAULT_SELECTION_NOT_OPENED_OR_INVOKED",
+          "title": "Capture Basis",
+          "type": "string"
+        },
+        "identity_key": {
+          "maxLength": 100,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "const": "WINDOWS_CAPI_DEFAULT_PROVIDER_QUERY",
+          "default": "WINDOWS_CAPI_DEFAULT_PROVIDER_QUERY",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "WINDOWS_CAPI_DEFAULT_PROVIDER",
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "provider_context": {
+          "const": "CURRENT_USER",
+          "default": "CURRENT_USER",
+          "title": "Provider Context",
+          "type": "string"
+        },
+        "provider_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,254}$",
+          "title": "Provider Name",
+          "type": "string"
+        },
+        "provider_type": {
+          "enum": [
+            1,
+            2,
+            3,
+            13,
+            24
+          ],
+          "title": "Provider Type",
+          "type": "integer"
+        },
+        "purpose": {
+          "const": "DEFAULT_PROVIDER_SELECTION_METADATA",
+          "default": "DEFAULT_PROVIDER_SELECTION_METADATA",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        }
+      },
+      "required": [
+        "kind",
+        "provider_type",
+        "provider_name",
+        "identity_key",
+        "interface_sha256"
+      ],
+      "title": "WindowsCapiFact",
+      "type": "object"
+    },
     "WindowsCngFact": {
       "additionalProperties": false,
       "properties": {
@@ -1045,7 +1181,12 @@
         "registration_interface": {
           "enum": [
             "cipher",
-            "hash"
+            "hash",
+            "asymmetric-encryption",
+            "secret-agreement",
+            "signature",
+            "rng",
+            "key-derivation"
           ],
           "title": "Registration Interface",
           "type": "string"
@@ -1221,6 +1362,188 @@
         "identity_key"
       ],
       "title": "WindowsImageFact",
+      "type": "object"
+    },
+    "WindowsListener": {
+      "additionalProperties": false,
+      "properties": {
+        "address": {
+          "maxLength": 45,
+          "minLength": 2,
+          "title": "Address",
+          "type": "string"
+        },
+        "owning_pid": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Owning Pid",
+          "type": "integer"
+        },
+        "port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Port",
+          "type": "integer"
+        },
+        "scope_id": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Scope Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "address",
+        "port",
+        "owning_pid",
+        "scope_id"
+      ],
+      "title": "WindowsListener",
+      "type": "object"
+    },
+    "WindowsListenerFact": {
+      "additionalProperties": false,
+      "properties": {
+        "address_family": {
+          "enum": [
+            "ipv4",
+            "ipv6"
+          ],
+          "title": "Address Family",
+          "type": "string"
+        },
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "asset_absence_proven": {
+          "const": false,
+          "default": false,
+          "title": "Asset Absence Proven",
+          "type": "boolean"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "capture_basis": {
+          "const": "REPEATED_TABLE_NOT_PROCESS_IDENTITY_OR_TLS",
+          "default": "REPEATED_TABLE_NOT_PROCESS_IDENTITY_OR_TLS",
+          "title": "Capture Basis",
+          "type": "string"
+        },
+        "identity_key": {
+          "maxLength": 100,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "const": "WINDOWS_IP_HELPER_TCP_TABLE",
+          "default": "WINDOWS_IP_HELPER_TCP_TABLE",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "WINDOWS_TCP_LISTENER_TABLE",
+          "title": "Kind",
+          "type": "string"
+        },
+        "listener_count": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Listener Count",
+          "type": "integer"
+        },
+        "listeners": {
+          "items": {
+            "$ref": "#/$defs/WindowsListener"
+          },
+          "maxItems": 256,
+          "title": "Listeners",
+          "type": "array"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "process_identity_verified": {
+          "const": false,
+          "default": false,
+          "title": "Process Identity Verified",
+          "type": "boolean"
+        },
+        "purpose": {
+          "const": "OS_TCP_LISTENER_TABLE_METADATA",
+          "default": "OS_TCP_LISTENER_TABLE_METADATA",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "tls_observed": {
+          "const": false,
+          "default": false,
+          "title": "Tls Observed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "address_family",
+        "listener_count",
+        "listeners",
+        "identity_key",
+        "interface_sha256"
+      ],
+      "title": "WindowsListenerFact",
       "type": "object"
     },
     "WindowsTpmFact": {

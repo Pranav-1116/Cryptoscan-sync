@@ -281,3 +281,20 @@ identity or key/application use. Resolve the SDK/documentation structure-version
 disagreement on independently reviewed real Windows fixtures first. Missing native
 packet/lifecycle/cancellation truth remains NOT_RUN/BLOCKED. Universal Windows
 production authorization stays refused. Do not request or send private keys or credentials.
+
+## Expanded bounded Windows metadata — operator packet required
+
+[Guide 76](../bank-environment/76-bounded-windows-metadata-and-operator-preflight.md)
+adds current-user legacy default-provider selection, five CNG registration
+interfaces and IPv4/IPv6 TCP table candidates through existing custody/UI.
+Coordinate collector/shared-schema/API/frontend updates; update pinned clients
+for additive v1 interfaces/unions and the new preflight schema. No migration or
+new service is introduced. Refresh externally reviewed source locks; old
+acceptance does not qualify the new API scopes.
+
+Use the [Windows operator packet](windows-bounded-qualification-packet.md) to
+preflight reviewed target/truth/source identifiers before actual ordinary-user
+Windows acquisition. Preflight is not a native receipt, dispatch, independent
+approval or production/container clearance. Missing operator returns, native
+ABI/lifecycle/isolation/cancellation truth and separate review remain BLOCKED.
+Do not infer TLS/application/HSM use from labels, PIDs or co-existence.

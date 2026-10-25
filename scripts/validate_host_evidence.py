@@ -68,6 +68,11 @@ def main():
         action="store_true",
         help="Check portable Windows TPM metadata custody, not native qualification",
     )
+    parser.add_argument(
+        "--include-windows-metadata-candidates",
+        action="store_true",
+        help="Portable CAPI/TCP/extended-CNG custody, not actual Windows",
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -116,6 +121,8 @@ def main():
                 files.append("services/api/tests/unit/test_windows_cng_candidate_postgres.py")
             if args.include_windows_tpm_candidate:
                 files.append("services/api/tests/unit/test_windows_tpm_candidate_postgres.py")
+            if args.include_windows_metadata_candidates:
+                files.append("services/api/tests/unit/test_windows_metadata_candidates_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

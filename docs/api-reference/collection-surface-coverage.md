@@ -34,6 +34,8 @@ Surfaces: `os`, `software`, `certificates`, `crypto_configuration`, `processes_a
 
 The Windows [TPM device-info candidate](windows-tpm-device-info-candidate.md) maps only to `hardware_metadata`, with HBOM/TechBOM reference classification. This adds no attestation/firmware/key-use truth and does not bypass blocked universal Windows admission.
 
+The [bounded Windows metadata extension](windows-bounded-metadata.md) maps CAPI default selection to `crypto_configuration` and TCP table metadata to `network_listeners`. TCP table observation count is not endpoint-row count; even an empty observed table cannot prove absence. These mappings do not enable universal Windows admission.
+
 Each surface contains:
 
 - `approved_inputs`, `parsed_inputs`, `failed_inputs`, `fact_count`.

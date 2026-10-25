@@ -52,7 +52,7 @@ class FakeBcrypt:
         self.BCryptQueryProviderRegistration = Function(self.query)
 
     def query(self, provider, mode, interface, size, pointer):
-        assert mode == 1 and interface in (1, 2)
+        assert mode == 1 and interface in range(1, 8)
         units = []
         for value in provider:
             if value == 0:
@@ -261,7 +261,7 @@ def test_invalid_size_query_does_not_read(monkeypatch, options):
     [
         "windows-cng://remote/microsoft-primitive/cipher-registration",
         "windows-cng://local/third-party/cipher-registration",
-        "windows-cng://local/microsoft-primitive/signature-registration",
+        "windows-cng://local/microsoft-primitive/key-storage-registration",
         "windows-cng://local/microsoft-primitive/cipher-registration?keys=true",
         "windows-cng://local/microsoft-primitive/cipher-registration/",
         "windows-cng://local/microsoft-primitive/CIPHER-registration",
@@ -463,3 +463,26 @@ def test_missing_native_binding_is_an_explicit_interface_gap(monkeypatch, missin
     with pytest.raises(Refused) as caught:
         cng._api()
     assert (caught.value.status, caught.value.reason) == ("UNAVAILABLE", "INTERFACE_UNAVAILABLE")
+
+
+@pytest.mark.parametrize(
+    "interface,number",
+    [("asymmetric-encryption", 3), ("secret-agreement", 4), ("signature", 5), ("rng", 6), ("key-derivation", 7)],
+)
+def test_extended_registration_interfaces_remain_metadata_only(monkeypatch, interface, number):
+    from shared_models.windows_cng import INTERFACES
+    from shared_models.host_runtime import domains
+    import inventory.host as host
+
+    fake = FakeBcrypt(functions=["RSA", "ECDSA_P256"])
+    install(monkeypatch, fake)
+    monkeypatch.setattr(host, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(host, "elevated", lambda: False)
+    value = collect(manifest(interface))
+    assert value.receipts[0].status == "PARSED", value.receipts[0]
+    fact = value.receipts[0].facts[0]
+    assert INTERFACES[interface] == number and fact.registration_interface == interface
+    assert fact.registered_functions == ["ECDSA_P256", "RSA"]
+    assert fact.algorithm == fact.runtime_use == fact.operation_use == "UNKNOWN"
+    assert fact.capabilities_observed is False and domains(fact) == ["TechBOM"]
+    assert fake.calls == ["size", "read"] and not value.windows_execution_qualified

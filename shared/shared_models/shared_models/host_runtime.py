@@ -161,7 +161,7 @@ def domains(fact):
         return ["CBOM", "TechBOM"]
     if fact.kind in {"BINARY", "SOFTWARE", "LOADED_LIBRARY", "WINDOWS_MODULE"}:
         return ["SBOM", "TechBOM"]
-    if fact.kind == "LISTENER":
+    if fact.kind in {"LISTENER", "WINDOWS_TCP_LISTENER_TABLE"}:
         return ["NBOM", "TechBOM"]
     if fact.kind in {"HARDWARE", "WINDOWS_TPM_METADATA"}:
         return ["HBOM", "TechBOM"]

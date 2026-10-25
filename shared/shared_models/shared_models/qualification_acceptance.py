@@ -84,6 +84,8 @@ def evaluate_native(evidence):
     from shared_models.windows_images import WindowsImageFact
     from shared_models.windows_cng import WindowsCngFact, unsupported_expected_value
     from shared_models.windows_tpm import WindowsTpmFact
+    from shared_models.windows_capi import WindowsCapiFact
+    from shared_models.windows_listeners import WindowsListenerFact
 
     fields = (
         set(HostFact.model_fields)
@@ -91,6 +93,8 @@ def evaluate_native(evidence):
         | set(WindowsImageFact.model_fields)
         | set(WindowsCngFact.model_fields)
         | set(WindowsTpmFact.model_fields)
+        | set(WindowsCapiFact.model_fields)
+        | set(WindowsListenerFact.model_fields)
     )
     matched = True
     for receipt in snapshot.receipts:

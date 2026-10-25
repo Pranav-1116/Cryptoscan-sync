@@ -15,10 +15,10 @@ SURFACES = {
     "os": {"LINUX_OS_RELEASE", "WINDOWS_OS_RELEASE"},
     "software": {"DPKG_STATUS", "APK_INSTALLED", "RPM_SQLITE", "WINDOWS_UNINSTALL", "BINARY_METADATA"},
     "certificates": {"PUBLIC_CERTIFICATE", "WINDOWS_CERTIFICATE"},
-    "crypto_configuration": {"NGINX_TLS_CONFIG", "WINDOWS_CNG_REGISTRATION"},
+    "crypto_configuration": {"NGINX_TLS_CONFIG", "WINDOWS_CNG_REGISTRATION", "WINDOWS_CAPI_DEFAULT_PROVIDER"},
     "processes_and_libraries": {"LINUX_PROCESS", "LINUX_PROCESS_MAPS", "WINDOWS_PROCESS_MODULES"},
     "services": {"LINUX_SERVICE", "WINDOWS_SERVICE"},
-    "network_listeners": {"LINUX_LISTENERS"},
+    "network_listeners": {"LINUX_LISTENERS", "WINDOWS_TCP_LISTENERS"},
     "hardware_metadata": {"LINUX_HARDWARE", "WINDOWS_TPM_DEVICE_INFO"},
 }
 BOMS = ("SBOM", "CBOM", "NBOM", "HBOM", "VBOM", "TechBOM")

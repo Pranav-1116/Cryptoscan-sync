@@ -39,6 +39,8 @@ Kind = Literal[
     "WINDOWS_PROCESS_MODULES",
     "WINDOWS_CNG_REGISTRATION",
     "WINDOWS_TPM_DEVICE_INFO",
+    "WINDOWS_CAPI_DEFAULT_PROVIDER",
+    "WINDOWS_TCP_LISTENERS",
 ]
 Basis = Literal["OBSERVED", "DECLARED", "IMPORTED", "INFERRED", "UNKNOWN"]
 Protocol = Literal["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
@@ -57,6 +59,8 @@ from shared_models.host_runtime import RuntimeFact
 from shared_models.windows_images import WindowsImageFact
 from shared_models.windows_cng import WindowsCngFact
 from shared_models.windows_tpm import WindowsTpmFact
+from shared_models.windows_capi import WindowsCapiFact
+from shared_models.windows_listeners import WindowsListenerFact
 
 
 def digest(value) -> str:
@@ -200,9 +204,15 @@ class HostReceipt(Strict):
     reason: ReceiptReason
     byte_count: int = Field(default=0, ge=0, le=MAX_FILE_BYTES)
     content_sha256: Digest | None = None
-    facts: list[HostFact | RuntimeFact | WindowsImageFact | WindowsCngFact | WindowsTpmFact] = Field(
-        default_factory=list, max_length=MAX_FACTS
-    )
+    facts: list[
+        HostFact
+        | RuntimeFact
+        | WindowsImageFact
+        | WindowsCngFact
+        | WindowsTpmFact
+        | WindowsCapiFact
+        | WindowsListenerFact
+    ] = Field(default_factory=list, max_length=MAX_FACTS)
 
     @model_validator(mode="after")
     def disposition(self):
@@ -282,6 +292,8 @@ class HostSnapshot(Strict):
             "LINUX_HARDWARE": "HARDWARE",
             "WINDOWS_SERVICE": "SERVICE",
             "WINDOWS_TPM_DEVICE_INFO": "WINDOWS_TPM_METADATA",
+            "WINDOWS_CAPI_DEFAULT_PROVIDER": "WINDOWS_CAPI_DEFAULT_PROVIDER",
+            "WINDOWS_TCP_LISTENERS": "WINDOWS_TCP_LISTENER_TABLE",
             "WINDOWS_CNG_REGISTRATION": "WINDOWS_CNG_REGISTRATION",
             "WINDOWS_PROCESS_MODULES": {"WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE"},
         }
@@ -294,9 +306,13 @@ class HostSnapshot(Strict):
             from shared_models.host_runtime_scope import validate_runtime_facts
 
             validate_runtime_facts(item, receipt.facts)
-            if item.kind in {"WINDOWS_PROCESS_MODULES", "WINDOWS_CNG_REGISTRATION", "WINDOWS_TPM_DEVICE_INFO"} and any(
-                f.interface_sha256 != receipt.content_sha256 for f in receipt.facts
-            ):
+            if item.kind in {
+                "WINDOWS_PROCESS_MODULES",
+                "WINDOWS_CNG_REGISTRATION",
+                "WINDOWS_TPM_DEVICE_INFO",
+                "WINDOWS_CAPI_DEFAULT_PROVIDER",
+                "WINDOWS_TCP_LISTENERS",
+            } and any(f.interface_sha256 != receipt.content_sha256 for f in receipt.facts):
                 raise ValueError("Windows metadata source commitment mismatch")
             if item.kind == "WINDOWS_CERTIFICATE" and receipt.status == "PARSED":
                 from shared_models.host_runtime_scope import certificate_resource
@@ -329,6 +345,8 @@ class HostSnapshot(Strict):
                         "WINDOWS_PROCESS_MODULES",
                         "WINDOWS_CNG_REGISTRATION",
                         "WINDOWS_TPM_DEVICE_INFO",
+                        "WINDOWS_CAPI_DEFAULT_PROVIDER",
+                        "WINDOWS_TCP_LISTENERS",
                     }
                     and self.execution_platform != "windows"
                 )

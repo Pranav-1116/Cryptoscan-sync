@@ -175,3 +175,39 @@ describe("Windows TPM metadata candidate", () => {
     expect(screen.queryByRole("button", { name: /Download CycloneDX/ })).toBeNull();
   });
 });
+
+describe("Windows legacy selection and TCP-table candidates", () => {
+  const base = { algorithm: "UNKNOWN", key_size: null, local_basis: "OBSERVED", runtime_use: "UNKNOWN", software_name: null, software_version: null, operation_use: "UNKNOWN", capabilities_observed: false, policy_result: "NOT_EVALUATED", pqc_assessment: "UNKNOWN", interface_sha256: "a".repeat(64) };
+  const capi = { ...base, kind: "WINDOWS_CAPI_DEFAULT_PROVIDER", purpose: "DEFAULT_PROVIDER_SELECTION_METADATA", interface: "WINDOWS_CAPI_DEFAULT_PROVIDER_QUERY", provider_context: "CURRENT_USER", provider_type: 24, provider_name: "Reviewed Provider", identity_key: "windows-capi:current-user:24:default-provider", capture_basis: "DEFAULT_SELECTION_NOT_OPENED_OR_INVOKED" };
+  const tcp = { ...base, kind: "WINDOWS_TCP_LISTENER_TABLE", purpose: "OS_TCP_LISTENER_TABLE_METADATA", interface: "WINDOWS_IP_HELPER_TCP_TABLE", address_family: "ipv4", listener_count: 1, listeners: [{ address: "127.0.0.1", port: 443, owning_pid: 1234, scope_id: 0 }], identity_key: "windows-tcp-table:ipv4:owner-pid-listener", capture_basis: "REPEATED_TABLE_NOT_PROCESS_IDENTITY_OR_TLS", process_identity_verified: false, tls_observed: false, asset_absence_proven: false };
+  const value = (fact: unknown) => ({ ...detail, snapshot: { ...detail.snapshot, receipts: [{ input_id: "metadata", status: "PARSED", reason: "METADATA_ONLY", facts: [fact] }] } });
+  it.each([capi, tcp])("shows bounded metadata without inferred operation/use", async fact => {
+    const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: value(fact) }); mount(); inspect();
+    await screen.findByText(/default provider selection; not opened|sampled TCP listener rows/);
+    if (fact.kind === "WINDOWS_TCP_LISTENER_TABLE") expect(screen.getByText(/OS-reported owning PID 1234/)).toBeTruthy();
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it("supports explicit IPv6 scope without a process link", async () => {
+    const fact = { ...tcp, address_family: "ipv6", identity_key: "windows-tcp-table:ipv6:owner-pid-listener", listeners: [{ address: "fe80::1", port: 443, owning_pid: 1234, scope_id: 3 }] };
+    mockFetch({ [`${P}/${id}/snapshot`]: value(fact) }); mount(); inspect();
+    await screen.findByText(/fe80::1:443 · scope 3/);
+  });
+  it("keeps empty table capture distinct from hardware/network absence", async () => {
+    mockFetch({ [`${P}/${id}/snapshot`]: value({ ...tcp, listener_count: 0, listeners: [] }) }); mount(); inspect();
+    await screen.findByText(/0 sampled TCP listener rows; TLS and process identity unverified/);
+  });
+  it.each([
+    { ...capi, provider_context: "LOCAL_MACHINE" }, { ...capi, provider_type: 99 }, { ...capi, algorithm: "RSA" }, { ...capi, provider_name: "unsafe\nname" }, { ...capi, capabilities_observed: true },
+    { ...tcp, listener_count: 2 }, { ...tcp, tls_observed: true }, { ...tcp, process_identity_verified: true }, { ...tcp, asset_absence_proven: true }, { ...tcp, listeners: [{ ...tcp.listeners[0], port: 0 }] },
+    { ...tcp, listeners: [{ ...tcp.listeners[0], address: "::1" }] }, { ...tcp, listeners: [{ ...tcp.listeners[0], owning_pid: -1 }] }, { ...tcp, listener_count: 2, listeners: [tcp.listeners[0], tcp.listeners[0]] }, { ...tcp, attested: true }, { ...tcp, policy_result: "PASS" }
+  ])("refuses invalid/promoted selection or TCP metadata", async fact => {
+    mockFetch({ [`${P}/${id}/snapshot`]: value(fact) }); mount(); inspect();
+    await screen.findByText(/No verified receipt or security verdict assumed/);
+    expect(screen.queryByRole("button", { name: /Download CycloneDX/ })).toBeNull();
+  });
+  it.each(["asymmetric-encryption", "secret-agreement", "signature", "rng", "key-derivation"])("supports reviewed %s registration labels without capability", async selected => {
+    const fact = { ...base, kind: "WINDOWS_CNG_REGISTRATION", purpose: "PROVIDER_REGISTRATION_METADATA", provider_name: "Microsoft Primitive Provider", interface: "WINDOWS_CNG_REGISTRATION_QUERY", registration_mode: "USER", registration_interface: selected, registration_flags: 0, registered_functions: ["RSA"], identity_key: `microsoft-primitive:user:${selected}`, capture_basis: "REGISTERED_NOT_OPENED_OR_INVOKED" };
+    mockFetch({ [`${P}/${id}/snapshot`]: value(fact) }); mount(); inspect();
+    await screen.findByText(/registered labels: RSA · registration only; capability\/use UNKNOWN/);
+  });
+});

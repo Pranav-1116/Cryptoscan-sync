@@ -336,3 +336,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [74. Phase 3 — Windows CNG registration candidate](74-phase-three-windows-cng-registration-candidate.md) — exact fixed-provider/user-mode cipher/hash metadata, bounded caller-owned native buffers, existing custody/qualification/UI and explicit registration ≠ capability/use boundaries; Windows production admission stays blocked.
 
 - [75. Phase 3 — Windows TPM device-info candidate](75-phase-three-windows-tpm-device-info-candidate.md) — exact local OS-reported TPM specification, fixed 16-byte caller buffer, existing custody/UI and HBOM/TechBOM classification; no attestation, firmware/key-use inference or Windows production admission.
+
+- [76. Bounded Windows CAPI/CNG/TCP metadata and operator preflight](76-bounded-windows-metadata-and-operator-preflight.md) — exact current-user default CSP selection, seven CNG registration interfaces, IPv4/IPv6 listener tables and pre-acquisition target/truth/source binding; actual operator runs and production/later-phase admission remain blocked.

@@ -28,7 +28,9 @@
             "WINDOWS_CERTIFICATE",
             "WINDOWS_PROCESS_MODULES",
             "WINDOWS_CNG_REGISTRATION",
-            "WINDOWS_TPM_DEVICE_INFO"
+            "WINDOWS_TPM_DEVICE_INFO",
+            "WINDOWS_CAPI_DEFAULT_PROVIDER",
+            "WINDOWS_TCP_LISTENERS"
           ],
           "title": "Kind",
           "type": "string"

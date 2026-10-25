@@ -12,6 +12,36 @@ function validReceipt(value: HostImportReceipt, approval: string) {
     && Number.isInteger(value.evidence_count) && value.evidence_count > 0 && value.evidence_count <= 1100;
 }
 
+type MetadataFact = HostSnapshotInspection["snapshot"]["receipts"][number]["facts"][number];
+const metadataKeys = ["kind", "local_basis", "purpose", "algorithm", "key_size", "software_name", "software_version", "runtime_use", "operation_use", "policy_result", "pqc_assessment", "capabilities_observed", "interface", "identity_key", "interface_sha256", "capture_basis"];
+function basicMetadata(f: MetadataFact, extra: string[]) {
+  return f.local_basis === "OBSERVED" && f.algorithm === "UNKNOWN" && f.key_size === null
+    && f.software_name === null && f.software_version === null && f.runtime_use === "UNKNOWN" && f.operation_use === "UNKNOWN"
+    && f.policy_result === "NOT_EVALUATED" && f.pqc_assessment === "UNKNOWN" && f.capabilities_observed === false
+    && /^[0-9a-f]{64}$/.test(f.interface_sha256 || "") && Object.keys(f).every(k => [...metadataKeys, ...extra].includes(k));
+}
+function tcpMetadata(f: MetadataFact) {
+  if (!basicMetadata(f, ["address_family", "listener_count", "listeners", "process_identity_verified", "tls_observed", "asset_absence_proven"])
+    || f.purpose !== "OS_TCP_LISTENER_TABLE_METADATA" || f.interface !== "WINDOWS_IP_HELPER_TCP_TABLE"
+    || !["ipv4", "ipv6"].includes(f.address_family || "") || f.identity_key !== `windows-tcp-table:${f.address_family}:owner-pid-listener`
+    || f.capture_basis !== "REPEATED_TABLE_NOT_PROCESS_IDENTITY_OR_TLS" || f.process_identity_verified !== false || f.tls_observed !== false || f.asset_absence_proven !== false
+    || !Array.isArray(f.listeners) || f.listeners.length > 256 || f.listener_count !== f.listeners.length) return false;
+  return f.listeners.every((row, i, rows) => {
+    if (!row || Object.keys(row).sort().join(",") !== "address,owning_pid,port,scope_id" || typeof row.address !== "string"
+      || !Number.isInteger(row.port) || row.port < 1 || row.port > 65535 || !Number.isInteger(row.owning_pid) || row.owning_pid < 0 || row.owning_pid > 0xffffffff
+      || !Number.isInteger(row.scope_id) || row.scope_id < 0 || row.scope_id > 0xffffffff) return false;
+    if (f.address_family === "ipv4") {
+      if (row.scope_id !== 0 || !/^(0|[1-9]\d{0,2})(\.(0|[1-9]\d{0,2})){3}$/.test(row.address) || row.address.split(".").some(n => +n > 255)) return false;
+    } else {
+      try { if (row.address.includes("%") || new URL(`http://[${row.address}]/`).hostname !== `[${row.address}]`) return false; } catch { return false; }
+    }
+    if (i === 0) return true;
+    const prev = rows[i - 1];
+    return prev.address < row.address || (prev.address === row.address && (prev.scope_id < row.scope_id
+      || (prev.scope_id === row.scope_id && (prev.port < row.port || (prev.port === row.port && prev.owning_pid < row.owning_pid)))));
+  });
+}
+
 /** Existing CBOM console workflow. No auto-collection/upload/replay or sample data. */
 export default function HostEvidencePanel() {
   const current = usePrivateScopeCurrent(), generation = useRef(0), alive = useRef(true);
@@ -31,7 +61,7 @@ export default function HostEvidencePanel() {
       if (!r || typeof r.input_id !== "string" || typeof r.reason !== "string" || !["PARSED", "DENIED", "UNSUPPORTED", "INVALID", "BUDGET_EXCEEDED", "UNAVAILABLE"].includes(r.status) || !Array.isArray(r.facts)) return false;
       facts += r.facts.length;
       return facts <= 1000 && (r.status === "PARSED" ? r.facts.length > 0 : r.facts.length === 0)
-        && r.facts.every(f => f && ["CERTIFICATE", "TLS_CONFIGURATION", "SOFTWARE", "BINARY", "OS_RELEASE", "PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE", "WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE", "WINDOWS_CNG_REGISTRATION", "WINDOWS_TPM_METADATA"].includes(f.kind) && typeof f.algorithm === "string"
+        && r.facts.every(f => f && ["CERTIFICATE", "TLS_CONFIGURATION", "SOFTWARE", "BINARY", "OS_RELEASE", "PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE", "WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE", "WINDOWS_CNG_REGISTRATION", "WINDOWS_TPM_METADATA", "WINDOWS_CAPI_DEFAULT_PROVIDER", "WINDOWS_TCP_LISTENER_TABLE"].includes(f.kind) && typeof f.algorithm === "string"
           && ["OBSERVED", "DECLARED"].includes(f.local_basis) && f.runtime_use === "UNKNOWN"
           && (f.kind !== "OS_RELEASE" || (f.local_basis === "DECLARED" && f.algorithm === "UNKNOWN" && f.key_size === null))
           && (!["PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE"].includes(f.kind)
@@ -54,7 +84,7 @@ export default function HostEvidencePanel() {
               && f.software_name === null && f.software_version === null && f.operation_use === "UNKNOWN"
               && f.capabilities_observed === false && f.purpose === "PROVIDER_REGISTRATION_METADATA"
               && f.interface === "WINDOWS_CNG_REGISTRATION_QUERY" && f.provider_name === "Microsoft Primitive Provider"
-              && f.registration_mode === "USER" && ["cipher", "hash"].includes(f.registration_interface || "")
+              && f.registration_mode === "USER" && ["cipher", "hash", "asymmetric-encryption", "secret-agreement", "signature", "rng", "key-derivation"].includes(f.registration_interface || "")
               && typeof f.registration_flags === "number" && Number.isInteger(f.registration_flags)
               && f.registration_flags >= 0 && f.registration_flags <= 4294967295
               && f.identity_key === `microsoft-primitive:user:${f.registration_interface}`
@@ -64,6 +94,12 @@ export default function HostEvidencePanel() {
               && f.registered_functions.every((n, i, all) => typeof n === "string" && /^[A-Za-z0-9][A-Za-z0-9_.+\-]{0,63}$/.test(n)
                 && (i === 0 || all[i - 1] < n))
               && new Set(f.registered_functions.map(n => n.toLowerCase())).size === f.registered_functions.length))
+          && (f.kind !== "WINDOWS_CAPI_DEFAULT_PROVIDER" || (basicMetadata(f, ["provider_context", "provider_type", "provider_name"])
+            && f.purpose === "DEFAULT_PROVIDER_SELECTION_METADATA" && f.interface === "WINDOWS_CAPI_DEFAULT_PROVIDER_QUERY"
+            && f.provider_context === "CURRENT_USER" && [1, 2, 3, 13, 24].includes(f.provider_type || 0)
+            && typeof f.provider_name === "string" && /^[A-Za-z0-9][A-Za-z0-9 ._()+-]{0,254}$/.test(f.provider_name) && f.provider_name.trim() === f.provider_name
+            && f.identity_key === `windows-capi:current-user:${f.provider_type}:default-provider` && f.capture_basis === "DEFAULT_SELECTION_NOT_OPENED_OR_INVOKED"))
+          && (f.kind !== "WINDOWS_TCP_LISTENER_TABLE" || tcpMetadata(f))
           && (f.kind !== "WINDOWS_TPM_METADATA"
             || (f.local_basis === "OBSERVED" && f.algorithm === "UNKNOWN" && f.key_size === null
               && f.software_name === null && f.software_version === null && f.operation_use === "UNKNOWN"
@@ -154,7 +190,7 @@ export default function HostEvidencePanel() {
     {receipt && <div style={{ overflowWrap: "anywhere" }}><p>Evidence status: IMPORTED · Scan {receipt.scan_id} · {receipt.evidence_count} chained records.</p>
       <p>Snapshot SHA-256: {receipt.snapshot_sha256}</p><p>Runtime use: UNKNOWN · PQC assessment: UNKNOWN · Policy: NOT_EVALUATED. Complete-host coverage is not proven.</p></div>}
     {detail && <><h4>{detail.snapshot.manifest.host_id} · {detail.snapshot.manifest.environment}</h4><p>Stored content, chain and manifest integrity checked. Claimed collection time: {detail.snapshot.finished_at}. This does not authenticate the originating host.</p>
-      <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.provider_name || f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.tpm_specification ? ` · TPM ${f.tpm_specification} · OS reported; not attestation, firmware or key use` : ""}{f.registered_functions ? ` · ${f.registration_interface} registered labels: ${f.registered_functions.join(", ")} · registration only; capability/use UNKNOWN` : ""}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN</p>)}</td></tr>)}</tbody></table>
+      <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.provider_name || f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.provider_context ? ` · current-user default provider selection; not opened or invoked` : ""}{f.listeners ? ` · ${f.address_family}: ${f.listener_count} sampled TCP listener rows; TLS and process identity unverified` : ""}{f.tpm_specification ? ` · TPM ${f.tpm_specification} · OS reported; not attestation, firmware or key use` : ""}{f.registered_functions ? ` · ${f.registration_interface} registered labels: ${f.registered_functions.join(", ")} · registration only; capability/use UNKNOWN` : ""}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN{f.listeners?.slice(0, 10).map((row, index) => <span key={index} style={{ display: "block" }}>{row.address}:{row.port} · scope {row.scope_id} · OS-reported owning PID {row.owning_pid} (not process identity or TLS)</span>)}{f.listeners && f.listeners.length > 10 ? <span>Showing first 10 rows; full metadata remains in the authorized snapshot.</span> : null}</p>)}</td></tr>)}</tbody></table>
       <p>System-to-host scope is operator DECLARED, not host attestation. Endpoint/HSM/KMS use and six-BOM dependencies are not established by co-existence.</p>
       <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button><HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
   </section><CollectionCoveragePanel /></>;

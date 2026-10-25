@@ -8,11 +8,22 @@ from pydantic import Field, model_validator
 from shared_models.host_common import Strict
 
 PROVIDER = "Microsoft Primitive Provider"
-INTERFACES = {"cipher": 1, "hash": 2}
+INTERFACES = {
+    "cipher": 1,
+    "hash": 2,
+    "asymmetric-encryption": 3,
+    "secret-agreement": 4,
+    "signature": 5,
+    "rng": 6,
+    "key-derivation": 7,
+}
 
 
 def registration_resource(path):
-    match = re.fullmatch(r"windows-cng://local/microsoft-primitive/(cipher|hash)-registration", path)
+    match = re.fullmatch(
+        r"windows-cng://local/microsoft-primitive/(cipher|hash|asymmetric-encryption|secret-agreement|signature|rng|key-derivation)-registration",
+        path,
+    )
     if not match:
         raise ValueError("Exact supported local CNG registration resource required")
     return match[1]
@@ -48,7 +59,9 @@ class WindowsCngFact(Strict):
     interface: Literal["WINDOWS_CNG_REGISTRATION_QUERY"] = "WINDOWS_CNG_REGISTRATION_QUERY"
     provider_name: Literal["Microsoft Primitive Provider"] = PROVIDER
     registration_mode: Literal["USER"] = "USER"
-    registration_interface: Literal["cipher", "hash"]
+    registration_interface: Literal[
+        "cipher", "hash", "asymmetric-encryption", "secret-agreement", "signature", "rng", "key-derivation"
+    ]
     registration_flags: int = Field(ge=0, le=0xFFFFFFFF)
     registered_functions: list[str] = Field(min_length=1, max_length=64)
     identity_key: str = Field(min_length=1, max_length=120)
@@ -81,7 +94,11 @@ def validate_registration(item, facts):
 
 
 def unsupported_expected_value(key, value):
-    """Only the new bounded flat registration label list extends scalar assertions."""
+    """Only bounded canonical registration labels / TCP metadata rows extend scalars."""
+    if key == "listeners" and isinstance(value, list):
+        from shared_models.windows_listeners import validate_expected_listeners
+
+        return not validate_expected_listeners(value)
     if key == "registered_functions" and isinstance(value, list):
         return not (
             1 <= len(value) <= 64

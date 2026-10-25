@@ -1,0 +1,7 @@
+host-manifest-v1: schema/model/Draft2020-12/old-fact compatibility PASS (only additive input/union/CNG-interface extensions removed)
+host-snapshot-v1: schema/model/Draft2020-12/old-fact compatibility PASS (only additive input/union/CNG-interface extensions removed)
+collection-target-v1: schema/model/Draft2020-12/old-fact compatibility PASS (only additive input/union/CNG-interface extensions removed)
+collection-evidence-v1: schema/model/Draft2020-12/old-fact compatibility PASS (only additive input/union/CNG-interface extensions removed)
+native-evidence-v1: schema/model/Draft2020-12/old-fact compatibility PASS (only additive input/union/CNG-interface extensions removed)
+windows-qualification-preflight-v1: new preflight schema/model/Draft2020-12 PASS; all native/approval/admission claims false
+Source-lock inclusion PASS: 87 files; no signature, independent approval or native-source execution attestation generated.
