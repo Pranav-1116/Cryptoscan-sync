@@ -23,11 +23,21 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     a = p.parse_args()
     try:
-        approval = OperationApproval.model_validate(read_json(a.approval))
+        raw_approval = read_json(a.approval)
+        approval_model, evidence_model, verifier = OperationApproval, OperationEvidence, verify_operation
+        if raw_approval.get("schema_version") == "cryptoscan.operation-approval/v2":
+            from shared_models.operation_evidence_v2 import (
+                OperationApprovalV2,
+                OperationEvidenceV2,
+                verify_operation_v2,
+            )
+
+            approval_model, evidence_model, verifier = OperationApprovalV2, OperationEvidenceV2, verify_operation_v2
+        approval = approval_model.model_validate(raw_approval)
         if sha(approval) != a.approved_sha256:
             raise ValueError("Reviewed approval changed")
-        evidence = OperationEvidence.model_validate(read_json(a.evidence))
-        report = verify_operation(approval, evidence, datetime.now(timezone.utc))
+        evidence = evidence_model.model_validate(read_json(a.evidence))
+        report = verifier(approval, evidence, datetime.now(timezone.utc))
         with ChallengeStore(a.state_dir) as ledger:
             with os.fdopen(
                 os.open(a.output, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb"

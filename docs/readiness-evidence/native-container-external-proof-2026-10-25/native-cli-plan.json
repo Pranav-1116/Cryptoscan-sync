@@ -1,0 +1,31 @@
+{
+  "plan": {
+    "schema_version": "cryptoscan.owned-namespace-container-plan/v1",
+    "scope": "ONLY_NEW_DISPOSABLE_OWNED_ROOTFS_NO_CUSTOMER_TARGET",
+    "probe_source_sha256": "82bfd7fa26b1617996f1c6fa5110a2acfb88992726a12014ae1998c6e6ea7a1a",
+    "runner_source_sha256": "db08e4f7abdbbc700535e7051395f37c8a0fd92a3f22e43bc415a273f288a83e",
+    "expected_database_sha256": "29cf6eace7fbea33f69b23367a01bf9ff9465562d8aece8bf9cd8f153c330808",
+    "expected_package": [
+      "owned-namespace-probe",
+      "1"
+    ],
+    "required_namespaces": [
+      "user",
+      "mnt",
+      "pid",
+      "net",
+      "ipc",
+      "uts"
+    ],
+    "rootfs_readonly": true,
+    "capabilities_dropped": true,
+    "no_new_privileges": true,
+    "memory_bytes": 134217728,
+    "max_file_descriptors": 32,
+    "output_bytes": 65536,
+    "cpu_seconds": 2,
+    "wall_seconds": 3,
+    "expected_cancellation": "SIGKILL_OWNED_NAMESPACE_INIT_ONLY"
+  },
+  "plan_sha256": "9068cac87f8a789a57b63b634bc0ec3c629cb1c169bd458b53924d2469fbc6e8"
+}

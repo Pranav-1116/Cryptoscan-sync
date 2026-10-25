@@ -1,0 +1,4 @@
+Actual software signature mechanisms: ['RSA_PKCS1_SHA256', 'RSA_PSS_SHA256', 'ECDSA_P256_SHA256']
+Signed fixture register: 12 of 12 units; not actual estate truth
+Actual owned namespace-container: True cancellation: True cleanup: True
+Customer/physical HSM, Windows, Docker/Kubernetes, authoritative estate, independent/production acceptance: NOT executed/qualified.

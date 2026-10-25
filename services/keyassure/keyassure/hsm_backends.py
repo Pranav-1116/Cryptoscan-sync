@@ -1,9 +1,8 @@
 """Concrete ``Backend`` adapters for :mod:`keyassure.hsm_connectivity`.
 
-``hsm_connectivity`` decides *whether a key really lives in hardware*, but it
-only ever spoke to an injected ``Backend``. No real adapter existed, so in a
-live estate the question could not actually be answered -- only a test fake
-could satisfy the protocol. These are the real ones.
+``hsm_connectivity`` classifies provider-reported residence, not hardware
+attestation. These adapters perform SDK calls when explicitly selected; a
+successful response must not be confused with customer-application execution.
 
 Each adapter:
 
@@ -17,8 +16,8 @@ Each adapter:
   with: they read attributes and signatures, never private components.
 
 The sign challenge is the load-bearing probe: a hardware key signs inside the
-boundary, so a successful signature over a caller-supplied nonce proves the key
-is usable in-hardware without the material ever leaving it.
+boundary, but a nonempty SDK response is not signature verification or hardware proof.
+Approved public-key verification is separate; application/hardware origin remains unknown.
 
     from keyassure.hsm_backends import AwsKmsBackend
     from keyassure.hsm_connectivity import check_key
@@ -40,9 +39,7 @@ def _require(module: str, package: str):
     try:
         return __import__(module, fromlist=["*"])
     except ImportError as exc:  # pragma: no cover - environment-dependent
-        raise BackendUnavailable(
-            f"{package} is required for this backend: pip install {package}"
-        ) from exc
+        raise BackendUnavailable(f"{package} is required for this backend: pip install {package}") from exc
 
 
 # --------------------------------------------------------------------- AWS KMS
@@ -58,11 +55,14 @@ class AwsKmsBackend:
     dedicated-HSM backed -- can apply.
     """
 
-    def __init__(self, *, region: str | None = None, session: Any = None) -> None:
+    def __init__(self, *, region: str | None = None, session: Any = None, client: Any = None) -> None:
         self._session = session
+        self._injected_client = client
         self._region = region
 
     def _client(self):
+        if self._injected_client is not None:
+            return self._injected_client
         if self._session is not None:
             return self._session.client("kms", region_name=self._region)
         boto3 = _require("boto3", "boto3")
@@ -85,19 +85,24 @@ class AwsKmsBackend:
             "exportable": False,
         }
 
-    def sign_challenge(self, key_ref: str, nonce: bytes) -> dict[str, Any]:
+    def sign_challenge(self, key_ref: str, nonce: bytes, *, algorithm: str | None = None) -> dict[str, Any]:
         client = self._client()
         meta = client.describe_key(KeyId=key_ref).get("KeyMetadata", {}) or {}
         algorithms = meta.get("SigningAlgorithms") or []
         if not algorithms:
             raise ValueError(f"key {key_ref} has no signing algorithms (KeyUsage={meta.get('KeyUsage')})")
+        if algorithm is not None and algorithm not in algorithms:
+            raise ValueError("Approved signing algorithm is not offered by this key")
+        chosen = algorithm or algorithms[0]
         resp = client.sign(
             KeyId=key_ref,
             Message=nonce,
             MessageType="RAW",
-            SigningAlgorithm=algorithms[0],
+            SigningAlgorithm=chosen,
         )
-        return {"signature": resp.get("Signature"), "algorithm": algorithms[0]}
+        if resp.get("SigningAlgorithm", chosen) != chosen:
+            raise ValueError("Provider changed approved signing algorithm")
+        return {"signature": resp.get("Signature"), "algorithm": chosen}
 
 
 # ------------------------------------------------------------- Azure Key Vault
@@ -222,8 +227,9 @@ class Pkcs11Backend:
     import is lazy.
     """
 
-    def __init__(self, *, lib_path: str | None = None, slot: int | None = None,
-                 pin: str | None = None, session: Any = None) -> None:
+    def __init__(
+        self, *, lib_path: str | None = None, slot: int | None = None, pin: str | None = None, session: Any = None
+    ) -> None:
         self.lib_path = lib_path or os.environ.get("PKCS11_LIB", "")
         self.slot = slot
         # Read from the environment so a PIN need not be passed through call sites.
@@ -263,8 +269,14 @@ class Pkcs11Backend:
         pkcs11 = _require("PyKCS11", "PyKCS11")
         session = self._open()
         obj = self._find(session, key_ref)
-        wanted = [pkcs11.CKA_EXTRACTABLE, pkcs11.CKA_SENSITIVE, pkcs11.CKA_TOKEN,
-                  pkcs11.CKA_KEY_TYPE, pkcs11.CKA_MODULUS_BITS, pkcs11.CKA_SIGN]
+        wanted = [
+            pkcs11.CKA_EXTRACTABLE,
+            pkcs11.CKA_SENSITIVE,
+            pkcs11.CKA_TOKEN,
+            pkcs11.CKA_KEY_TYPE,
+            pkcs11.CKA_MODULUS_BITS,
+            pkcs11.CKA_SIGN,
+        ]
         values = dict(zip(wanted, session.getAttributeValue(obj, wanted)))
         extractable = bool(values.get(pkcs11.CKA_EXTRACTABLE))
         sensitive = bool(values.get(pkcs11.CKA_SENSITIVE))
@@ -292,15 +304,13 @@ class Pkcs11Backend:
         session = self._open()
         obj = self._find(session, key_ref)
         key_type = session.getAttributeValue(obj, [pkcs11.CKA_KEY_TYPE])[0]
-        mech = (pkcs11.CKM_ECDSA_SHA256 if _PKCS11_KEY_TYPES.get(key_type) == "EC"
-                else pkcs11.CKM_SHA256_RSA_PKCS)
+        mech = pkcs11.CKM_ECDSA_SHA256 if _PKCS11_KEY_TYPES.get(key_type) == "EC" else pkcs11.CKM_SHA256_RSA_PKCS
         signature = session.sign(obj, nonce, pkcs11.Mechanism(mech, None))
         return {"signature": bytes(signature), "algorithm": _PKCS11_KEY_TYPES.get(key_type, "")}
 
 
 # CKK_* numeric key types -> readable names (values are fixed by the standard).
-_PKCS11_KEY_TYPES = {0x00000000: "RSA", 0x00000001: "DSA", 0x00000002: "DH",
-                     0x00000003: "EC", 0x0000001F: "AES"}
+_PKCS11_KEY_TYPES = {0x00000000: "RSA", 0x00000001: "DSA", 0x00000002: "DH", 0x00000003: "EC", 0x0000001F: "AES"}
 
 
 BACKENDS = {

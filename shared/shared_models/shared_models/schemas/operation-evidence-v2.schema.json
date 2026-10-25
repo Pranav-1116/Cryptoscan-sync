@@ -1,0 +1,128 @@
+{
+  "$defs": {
+    "OperationLogV2": {
+      "additionalProperties": false,
+      "properties": {
+        "application_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Application Id",
+          "type": "string"
+        },
+        "approval_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Approval Sha256",
+          "type": "string"
+        },
+        "event": {
+          "enum": [
+            "APPLICATION_OPERATION_COMPLETED",
+            "PROVIDER_SIGN_COMPLETED"
+          ],
+          "title": "Event",
+          "type": "string"
+        },
+        "mechanism": {
+          "enum": [
+            "RSA_PKCS1_SHA256",
+            "RSA_PSS_SHA256",
+            "ECDSA_P256_SHA256"
+          ],
+          "title": "Mechanism",
+          "type": "string"
+        },
+        "message_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Message Sha256",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_signature_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Operation Signature Sha256",
+          "type": "string"
+        },
+        "outcome": {
+          "const": "SUCCESS",
+          "title": "Outcome",
+          "type": "string"
+        },
+        "provider_key_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Provider Key Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "approval_sha256",
+        "event",
+        "application_id",
+        "provider_key_id",
+        "operation_id",
+        "message_sha256",
+        "operation_signature_sha256",
+        "mechanism",
+        "outcome",
+        "occurred_at"
+      ],
+      "title": "OperationLogV2",
+      "type": "object"
+    },
+    "SignedOperationLogV2": {
+      "additionalProperties": false,
+      "properties": {
+        "signature": {
+          "maxLength": 88,
+          "minLength": 88,
+          "title": "Signature",
+          "type": "string"
+        },
+        "statement": {
+          "$ref": "#/$defs/OperationLogV2"
+        }
+      },
+      "required": [
+        "statement",
+        "signature"
+      ],
+      "title": "SignedOperationLogV2",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "application_log": {
+      "$ref": "#/$defs/SignedOperationLogV2"
+    },
+    "operation_signature": {
+      "maxLength": 1368,
+      "minLength": 12,
+      "title": "Operation Signature",
+      "type": "string"
+    },
+    "provider_log": {
+      "$ref": "#/$defs/SignedOperationLogV2"
+    },
+    "schema_version": {
+      "const": "cryptoscan.operation-evidence/v2",
+      "default": "cryptoscan.operation-evidence/v2",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_signature",
+    "application_log",
+    "provider_log"
+  ],
+  "title": "OperationEvidenceV2",
+  "type": "object"
+}

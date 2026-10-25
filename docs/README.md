@@ -382,3 +382,7 @@ This is manifest/config metadata, not package/container-runtime inventory or pro
 ### Actual hybrid, operation correlation and agreed package truth
 
 [Guide 81](bank-environment/81-actual-hybrid-operation-and-software-truth.md) · [Operator packet](runbooks/hybrid-operation-software-evidence.md) · [Contracts/API](api-reference/hybrid-operation-software-evidence.md) · [Validation](readiness-evidence/hybrid-operation-software-2026-10-25.md). Real owned TCP X25519MLKEM768 now runs through the collector. Signed operation logs remain imported claims, scoped package matches are not whole-host completeness, and actual physical-HSM/Windows/container qualification remains open.
+
+### Native container and external proof paths
+
+[Guide82](bank-environment/82-native-container-and-external-proof-paths.md) · [Operator packet](runbooks/native-container-and-external-proof-paths.md) · [Contracts](api-reference/native-container-and-external-proof-paths.md) · [Validation](readiness-evidence/native-container-external-proof-2026-10-25.md). Actual owned rootless Linux namespace/container execution now exercises limits/cancellation/cleanup. RSA/ECDSA verification, approved one-attempt AWS capture and exact asset×six-surface reconciliation support operator returns; no manufactured physical-HSM/customer/Windows/whole-estate acceptance.

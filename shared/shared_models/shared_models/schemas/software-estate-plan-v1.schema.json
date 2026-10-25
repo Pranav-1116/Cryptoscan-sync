@@ -1,0 +1,225 @@
+{
+  "$defs": {
+    "EstateAsset": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "platform": {
+          "enum": [
+            "linux",
+            "windows",
+            "container",
+            "application",
+            "appliance"
+          ],
+          "title": "Platform",
+          "type": "string"
+        },
+        "producer_public_key": {
+          "maxLength": 44,
+          "minLength": 44,
+          "title": "Producer Public Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "platform",
+        "producer_public_key"
+      ],
+      "title": "EstateAsset",
+      "type": "object"
+    },
+    "EstateAssetRegister": {
+      "additionalProperties": false,
+      "properties": {
+        "assets": {
+          "items": {
+            "$ref": "#/$defs/EstateAsset"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Assets",
+          "type": "array"
+        },
+        "estate_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Estate Id",
+          "type": "string"
+        },
+        "register_reference": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Register Reference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "estate_id",
+        "register_reference",
+        "assets"
+      ],
+      "title": "EstateAssetRegister",
+      "type": "object"
+    },
+    "EstateSurfaceScope": {
+      "additionalProperties": false,
+      "properties": {
+        "applicability": {
+          "default": "REQUIRED",
+          "enum": [
+            "REQUIRED",
+            "NOT_APPLICABLE"
+          ],
+          "title": "Applicability",
+          "type": "string"
+        },
+        "asset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "expected_records": {
+          "items": {
+            "$ref": "#/$defs/SoftwareRecord"
+          },
+          "maxItems": 1000,
+          "title": "Expected Records",
+          "type": "array"
+        },
+        "expected_source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Expected Source Sha256",
+          "type": "string"
+        },
+        "scope_reason": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Scope Reason",
+          "type": "string"
+        },
+        "surface": {
+          "enum": [
+            "os_packages",
+            "language_dependencies",
+            "unpackaged_binaries",
+            "loaded_code",
+            "container_images",
+            "firmware"
+          ],
+          "title": "Surface",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_id",
+        "surface",
+        "expected_records",
+        "expected_source_sha256",
+        "scope_reason"
+      ],
+      "title": "EstateSurfaceScope",
+      "type": "object"
+    },
+    "SoftwareRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Sha256"
+        },
+        "identity": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Identity",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version"
+        }
+      },
+      "required": [
+        "identity",
+        "version",
+        "content_sha256"
+      ],
+      "title": "SoftwareRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "asset_register": {
+      "$ref": "#/$defs/EstateAssetRegister"
+    },
+    "asset_register_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Asset Register Sha256",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "not_before": {
+      "format": "date-time",
+      "title": "Not Before",
+      "type": "string"
+    },
+    "release_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Sha256",
+      "type": "string"
+    },
+    "reviewer_reference": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Reviewer Reference",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "cryptoscan.software-estate-plan/v1",
+      "default": "cryptoscan.software-estate-plan/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scopes": {
+      "items": {
+        "$ref": "#/$defs/EstateSurfaceScope"
+      },
+      "maxItems": 120,
+      "minItems": 6,
+      "title": "Scopes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "asset_register",
+    "asset_register_sha256",
+    "release_sha256",
+    "reviewer_reference",
+    "not_before",
+    "expires_at",
+    "scopes"
+  ],
+  "title": "SoftwareEstatePlan",
+  "type": "object"
+}

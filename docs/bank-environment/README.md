@@ -348,3 +348,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [80. TLS 1.3 selected-group evidence](80-tls13-selected-group-evidence.md) — direct final ServerHello group/cipher evidence with explicit operator opt-in, bounded framing and existing custody/export/UI. One selection, not all-capability/PQC/app/HSM/native qualification.
 
 - [81. Actual hybrid TLS, signed operation correlation and software truth](81-actual-hybrid-operation-and-software-truth.md) — real owned TCP X25519MLKEM768, pinned signed-operation verification, exact package-record denominator and honest native/HSM/whole-host blockers.
+
+- [82. Native container execution and external proof paths](82-native-container-and-external-proof-paths.md) — actual rootless kernel namespace/container controls, RSA/ECDSA public operation verification and approved one-attempt AWS capture, exact asset×six-surface register; not customer/HSM/Windows/estate or production closure.
