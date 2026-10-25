@@ -17,7 +17,9 @@ def props(value):
 
 
 def session_bom(snapshot, records, approval_id):
-    requested = {i.input_id for i in snapshot.manifest.inputs if i.kind == "NETWORK_TLS_SESSION"}
+    requested = {
+        i.input_id for i in snapshot.manifest.inputs if i.kind in {"NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE"}
+    }
     certs, components, services, failures = {}, [], {}, []
     for receipt in snapshot.receipts:
         if receipt.input_id not in requested:
@@ -63,7 +65,22 @@ def session_bom(snapshot, records, approval_id):
                         "cipher_bits": f.cipher_bits,
                         "sni": f.sni,
                         "source": source,
-                        "key_exchange_group": "UNKNOWN",
+                        "key_exchange_group": f.key_exchange_group,
+                        **(
+                            {
+                                "selected_group_id": f.selected_group_id,
+                                "group_classification": f.group_classification,
+                                "group_classification_basis": f.group_classification_basis,
+                                "server_hello_sha256": f.server_hello_sha256,
+                                "server_hello_hex": f.server_hello_hex,
+                                "hello_retry_request_seen": f.hello_retry_request_seen,
+                                "pqc_implementation_verified": False,
+                                "pqc_readiness_verified": False,
+                                "all_groups_tested": False,
+                            }
+                            if f.kind == "NETWORK_TLS13_KEY_SHARE"
+                            else {}
+                        ),
                         "server_signature_scheme": "UNKNOWN",
                         "certificate_chain_validated": False,
                         "hostname_validated": False,

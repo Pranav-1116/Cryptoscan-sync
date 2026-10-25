@@ -20,7 +20,19 @@ from shared_models.tls_session import (
 def probe_session(item, limit, charge, expires_at, *, reviewed_target_sha256):
     from inventory.host import Refused, _certificate
 
-    address, port, sni, version, pin = tls_resource(item.path)
+    from shared_models.tls_key_share import (
+        KIND,
+        ServerHelloReader,
+        TlsKeyShareFact,
+        key_share_resource,
+        parse_hello,
+        GROUPS,
+        group_classification,
+    )
+
+    detailed = item.kind == KIND
+    address, port, sni, version, pin = (key_share_resource if detailed else tls_resource)(item.path)
+    reader = ServerHelloReader() if detailed else None
     budget = min(limit, WIRE_LIMIT)
     if budget < 8192:
         raise Refused("BUDGET_EXCEEDED", "LIMIT")
@@ -90,6 +102,8 @@ def probe_session(item, limit, charge, expires_at, *, reviewed_target_sha256):
                         raise Refused("UNAVAILABLE", "TLS_HANDSHAKE_FAILED")
                     counted(data)
                     received += len(data)
+                    if reader is not None:
+                        reader.feed(data)
                     incoming.write(data)
             else:
                 raise Refused("BUDGET_EXCEEDED", "LIMIT")
@@ -106,7 +120,23 @@ def probe_session(item, limit, charge, expires_at, *, reviewed_target_sha256):
             cipher = obj.cipher()
             if obj.version() != version or not cipher:
                 raise Refused("UNAVAILABLE", "TLS_HANDSHAKE_FAILED")
+            detail = {}
+            if reader is not None:
+                if reader.final is None:
+                    raise Refused("INVALID", "UNSUPPORTED_FORMAT")
+                counted(reader.final)
+                _, group_id, _ = parse_hello(reader.final)
+                detail = {
+                    "fact_model": TlsKeyShareFact,
+                    "selected_group_id": group_id,
+                    "key_exchange_group": GROUPS.get(group_id, "UNKNOWN"),
+                    "group_classification": group_classification(group_id),
+                    "server_hello_hex": reader.final.hex(),
+                    "server_hello_sha256": hashlib.sha256(reader.final).hexdigest(),
+                    "hello_retry_request_seen": bool(reader.retries),
+                }
             fact = seal_session(
+                **detail,
                 on_selected=counted,
                 reviewed_target_sha256=reviewed_target_sha256,
                 address=address,

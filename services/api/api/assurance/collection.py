@@ -99,7 +99,14 @@ def supported(spec):
         or not spec.manifest
         or spec.manifest.platform != "linux"
         or any(
-            i.kind in {"OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS", "NETWORK_TLS_SESSION"}
+            i.kind
+            in {
+                "OCI_IMAGE_METADATA",
+                "OCI_IMAGE_CONTENT",
+                "OCI_RUNTIME_PROCESS",
+                "NETWORK_TLS_SESSION",
+                "NETWORK_TLS13_KEY_SHARE",
+            }
             for i in spec.manifest.inputs
         )
     ):

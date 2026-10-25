@@ -89,6 +89,11 @@ def main():
         action="store_true",
         help="Owned-loopback TLS custody parity, not network/production qualification",
     )
+    parser.add_argument(
+        "--include-tls-key-share-candidate",
+        action="store_true",
+        help="Owned TLS 1.3 group/custody parity, not PQC qualification",
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -145,6 +150,8 @@ def main():
                 files.append("services/api/tests/unit/test_container_content_candidate_postgres.py")
             if args.include_tls_session_candidate:
                 files.append("services/api/tests/unit/test_tls_session_candidate_postgres.py")
+            if args.include_tls_key_share_candidate:
+                files.append("services/api/tests/unit/test_tls_key_share_candidate_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()

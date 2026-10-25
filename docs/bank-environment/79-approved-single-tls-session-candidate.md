@@ -79,3 +79,7 @@ The existing stored-evidence API now exports an incomplete **official-schema-val
 ## 6. What is still next
 
 This is an owned-loopback-tested **Linux operator candidate**. Independent agreed truth on actual authorized endpoints, certificate-rotation/ACL/IPv6/provider/timeout negatives, release review, resource-isolated/cancellable qualified executor, complete-target custody review and explicit server-owned admission remain open. Native Windows TLS execution is not qualified; earlier Windows/container blockers remain. Do not contact bank/customer systems or publish private endpoint/organizational identifiers without separate approval. **Do not send credentials or private keys.**
+
+## Additive selected-group profile
+
+[Guide 80](80-tls13-selected-group-evidence.md) implements an explicit new TLS 1.3 public ServerHello profile. The original `NETWORK_TLS_SESSION` schema/defaults and UNKNOWN group fields above are unchanged; old snapshots are not promoted. New measurement needs a new reviewed resource/digest and `--include-key-share`. Actual hybrid/PQC/app/HSM/native/production qualification is not implied.

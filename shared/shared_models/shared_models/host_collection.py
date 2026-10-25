@@ -22,6 +22,7 @@ SignatureOid = Annotated[str, StringConstraints(max_length=100, pattern=r"^(UNKN
 Kind = Literal[
     "PUBLIC_CERTIFICATE",
     "NETWORK_TLS_SESSION",
+    "NETWORK_TLS13_KEY_SHARE",
     "OCI_IMAGE_METADATA",
     "OCI_IMAGE_CONTENT",
     "OCI_RUNTIME_PROCESS",
@@ -65,6 +66,7 @@ from shared_models.windows_cng import WindowsCngFact
 from shared_models.windows_tpm import WindowsTpmFact
 from shared_models.oci_image import OciImageFact
 from shared_models.tls_session import TlsSessionFact
+from shared_models.tls_key_share import TlsKeyShareFact
 from shared_models.oci_content import OciContentFact, OciRuntimeFact
 from shared_models.windows_capi import WindowsCapiFact
 from shared_models.windows_listeners import WindowsListenerFact
@@ -224,6 +226,7 @@ class HostReceipt(Strict):
         | WindowsTpmFact
         | OciImageFact
         | TlsSessionFact
+        | TlsKeyShareFact
         | OciContentFact
         | OciRuntimeFact
         | WindowsCapiFact
@@ -298,6 +301,7 @@ class HostSnapshot(Strict):
         kinds = {
             "PUBLIC_CERTIFICATE": "CERTIFICATE",
             "NETWORK_TLS_SESSION": "NETWORK_TLS_SESSION",
+            "NETWORK_TLS13_KEY_SHARE": "NETWORK_TLS13_KEY_SHARE",
             "OCI_IMAGE_METADATA": "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT": "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS": "OCI_RUNTIME_PROCESS",
@@ -331,14 +335,18 @@ class HostSnapshot(Strict):
             from shared_models.host_runtime_scope import validate_runtime_facts
 
             validate_runtime_facts(item, receipt.facts)
-            if item.kind == "NETWORK_TLS_SESSION" and receipt.status == "PARSED":
+            if item.kind in {"NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE"} and receipt.status == "PARSED":
                 from shared_models.tls_session import selected_bytes
 
                 f = receipt.facts[0]
                 if (
                     receipt.content_sha256 != f.interface_sha256
                     or receipt.byte_count
-                    != f.wire_bytes_sent + f.wire_bytes_received + f.peer_der_bytes + len(selected_bytes(f))
+                    != f.wire_bytes_sent
+                    + f.wire_bytes_received
+                    + f.peer_der_bytes
+                    + len(selected_bytes(f))
+                    + (len(bytes.fromhex(f.server_hello_hex)) if item.kind == "NETWORK_TLS13_KEY_SHARE" else 0)
                 ):
                     raise ValueError("TLS source/budget commitment mismatch")
             if item.kind in {
@@ -362,6 +370,7 @@ class HostSnapshot(Strict):
                     item.kind
                     in {
                         "NETWORK_TLS_SESSION",
+                        "NETWORK_TLS13_KEY_SHARE",
                         "OCI_IMAGE_METADATA",
                         "OCI_IMAGE_CONTENT",
                         "OCI_RUNTIME_PROCESS",

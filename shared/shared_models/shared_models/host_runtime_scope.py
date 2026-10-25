@@ -13,6 +13,10 @@ def certificate_resource(path):
 
 
 def resource(kind, path):
+    if kind == "NETWORK_TLS13_KEY_SHARE":
+        from shared_models.tls_key_share import key_share_resource
+
+        return key_share_resource(path)
     if kind == "NETWORK_TLS_SESSION":
         from shared_models.tls_session import tls_resource
 
@@ -64,6 +68,23 @@ def resource(kind, path):
 
 
 def validate_runtime_facts(item, facts):
+    if item.kind == "NETWORK_TLS13_KEY_SHARE":
+        from shared_models.tls_key_share import key_share_resource
+
+        if facts and (
+            len(facts) != 1
+            or (
+                facts[0].address,
+                facts[0].port,
+                facts[0].sni,
+                facts[0].tls_version,
+                facts[0].certificate.fingerprint_sha256,
+            )
+            != key_share_resource(item.path)
+        ):
+            raise ValueError("Key-share fact outside exact approved scope")
+        return
+
     if item.kind == "NETWORK_TLS_SESSION":
         from shared_models.tls_session import validate_session
 

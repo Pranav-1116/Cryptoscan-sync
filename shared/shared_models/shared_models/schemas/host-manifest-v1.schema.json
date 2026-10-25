@@ -12,6 +12,7 @@
           "enum": [
             "PUBLIC_CERTIFICATE",
             "NETWORK_TLS_SESSION",
+            "NETWORK_TLS13_KEY_SHARE",
             "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS",

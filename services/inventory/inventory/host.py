@@ -475,7 +475,7 @@ def collect(manifest: HostManifest, *, network_session=None) -> HostSnapshot:
             limit = min(manifest.max_file_bytes, manifest.max_total_bytes - total)
             if limit <= 0 or fact_count >= MAX_FACTS:
                 raise Refused("BUDGET_EXCEEDED", "LIMIT")
-            if item.kind == "NETWORK_TLS_SESSION":
+            if item.kind in {"NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE"}:
                 if network_session is None:
                     raise Refused("DENIED", "ACTIVE_PROBE_NOT_AUTHORIZED")
                 if platform != "linux":

@@ -121,3 +121,5 @@ no bank readiness, corporate certification, new collector or SLA is inferred.
 - [Synthetic native CycloneDX1.6 CBOM and report](../examples/bank-pqc-discovery/README.md)
 
 - [Approved single TLS session candidate — local validation](tls-session-candidate-2026-10-25.md): owned-loopback TLS 1.2/1.3, bounded/typed failures, existing custody and official-schema stored export; **not actual bank endpoint, Windows or production admission**.
+
+- [TLS 1.3 selected-group evidence — local validation](tls13-key-share-2026-10-25.md): owned classical TLS, synthetic hybrid registry vectors, framing/negative/custody/UI checks; no actual hybrid/Windows/container/bank qualification.

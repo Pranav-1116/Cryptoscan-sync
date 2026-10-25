@@ -374,3 +374,7 @@ This is manifest/config metadata, not package/container-runtime inventory or pro
 ### Approved single TLS session candidate (Phase 5)
 
 [Scope and implementation](bank-environment/79-approved-single-tls-session-candidate.md) · [Operator packet](runbooks/approved-single-tls-session-candidate.md) · [Stored session API](api-reference/tls-session-candidate.md) · [Local validation](readiness-evidence/tls-session-candidate-2026-10-25.md). One exact numeric endpoint/SNI/version/public pin, explicit active consent and byte/time-bounded session; no discovery, software/application/HSM-use inference or production network-job admission.
+
+### TLS 1.3 selected-group evidence
+
+[Guide 80](bank-environment/80-tls13-selected-group-evidence.md) · [Operator packet](runbooks/tls13-selected-group-evidence.md) · [API](api-reference/tls13-selected-group-evidence.md) · [Validation](readiness-evidence/tls13-key-share-2026-10-25.md). Final public ServerHello on the same pinned completed handshake identifies one selected group. Hybrid registry parsing is not actual PQC implementation/readiness, app/HSM use, complete software inventory or Windows/container qualification.

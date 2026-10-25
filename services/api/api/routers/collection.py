@@ -89,6 +89,22 @@ def collectors(ctx=Depends(estate), user=Depends(get_current_user)):
                     "TechBOM": "SCOPED_ENDPOINT_SNI_SESSION_REFERENCES",
                 },
             },
+            {
+                "id": "approved-tls13-key-share/candidate-v1",
+                "method": "network",
+                "state": "OPERATOR_ACTIVE_CANDIDATE_NOT_ADMITTED",
+                "production_execution_qualified": False,
+                "server_execution": False,
+                "active_probe": True,
+                "capabilities": {
+                    "SBOM": "UNKNOWN",
+                    "CBOM": "FINAL_TLS13_SELECTED_GROUP_NOT_PQC_READINESS",
+                    "NBOM": "ONE_PINNED_COMPLETED_TLS13_SESSION",
+                    "HBOM": "UNKNOWN",
+                    "VBOM": "UNKNOWN",
+                    "TechBOM": "SCOPED_SESSION_CERTIFICATE_GROUP_REFERENCES",
+                },
+            },
             *[
                 {
                     "method": method,

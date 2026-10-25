@@ -20,12 +20,19 @@ def main():
     p.add_argument("--approved-target-sha256", required=True)
     p.add_argument("--acknowledge-active-tls", action="store_true", required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument(
+        "--include-key-share", action="store_true", help="Explicit TLS 1.3 public ServerHello evidence profile"
+    )
     args = p.parse_args()
     try:
         target = TargetSpec.model_validate(read_json(args.target))
         if sha(target) != args.approved_target_sha256:
             raise ValueError("Reviewed target changed")
-        collector = ApprovedTlsSessionCollector()
+        collector = (
+            ApprovedTlsSessionCollector(include_key_share=True)
+            if args.include_key_share
+            else ApprovedTlsSessionCollector()
+        )
         collector.validate_scope(target)
         # Reserve the private output before active IO. No path-read/exists race or overwrite.
         with os.fdopen(

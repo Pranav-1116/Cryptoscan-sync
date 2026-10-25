@@ -153,11 +153,11 @@ class TlsSessionFact(Strict):
         return self
 
 
-def seal_session(*, on_selected=None, **value):
-    fact = TlsSessionFact.model_construct(**value, interface_sha256="0" * 64)
+def seal_session(*, on_selected=None, fact_model=TlsSessionFact, **value):
+    fact = fact_model.model_construct(**value, interface_sha256="0" * 64)
     if on_selected is not None:
         on_selected(selected_bytes(fact))
-    return TlsSessionFact.model_validate(
+    return fact_model.model_validate(
         {**fact.model_dump(mode="json"), "interface_sha256": hashlib.sha256(selected_bytes(fact)).hexdigest()}
     )
 

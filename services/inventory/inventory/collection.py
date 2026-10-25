@@ -13,7 +13,14 @@ class OfflineLinuxCollector:
             or target.manifest.platform != "linux"
             or not sys.platform.startswith("linux")
             or any(
-                i.kind in {"OCI_IMAGE_METADATA", "OCI_IMAGE_CONTENT", "OCI_RUNTIME_PROCESS", "NETWORK_TLS_SESSION"}
+                i.kind
+                in {
+                    "OCI_IMAGE_METADATA",
+                    "OCI_IMAGE_CONTENT",
+                    "OCI_RUNTIME_PROCESS",
+                    "NETWORK_TLS_SESSION",
+                    "NETWORK_TLS13_KEY_SHARE",
+                }
                 for i in target.manifest.inputs
             )
         ):
@@ -131,9 +138,13 @@ class OfflineContainerCollector(OfflineOciMetadataCollector):
 class ApprovedTlsSessionCollector:
     """Explicit operator-run candidate only; no HTTP dispatch or production admission."""
 
+    def __init__(self, *, include_key_share=False):
+        self.include_key_share = include_key_share
+
     def validate_scope(self, target: TargetSpec) -> None:
         from datetime import datetime, timezone
         from shared_models.tls_session import KIND, OPERATION, endpoint, tls_resource
+        from shared_models.tls_key_share import KIND as KEY_KIND, key_share_resource
 
         if (
             target.collection_method != "network"
@@ -144,12 +155,13 @@ class ApprovedTlsSessionCollector:
             or target.credential_ref is not None
             or target.environment != target.manifest.environment
             or len(target.manifest.inputs) != 1
-            or target.manifest.inputs[0].kind != KIND
+            or target.manifest.inputs[0].kind not in ({KIND, KEY_KIND} if self.include_key_share else {KIND})
             or target.manifest.inputs[0].input_id in target.exclusions
             or not target.not_before <= datetime.now(timezone.utc) < target.manifest.expires_at
         ):
             raise ValueError("Exact single-session active TLS approval required")
-        address, port, *_ = tls_resource(target.manifest.inputs[0].path)
+        item = target.manifest.inputs[0]
+        address, port, *_ = (key_share_resource if item.kind == KEY_KIND else tls_resource)(item.path)
         if target.address != endpoint(address, port):
             raise ValueError("Target address must bind the approved numeric socket endpoint")
 
