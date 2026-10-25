@@ -1,0 +1,70 @@
+{
+  "schema_version": "cryptoscan.phasewise-engineering-validation/v1",
+  "date": "2026-10-25",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "baseline_commit": "d929d4cb76bf3476efd137ca1b63e9a2706c3b40",
+  "increment": "Phase 1 evidence-backed per-surface coverage and ten-phase ordered build contract; not completion of all phases",
+  "runs": {
+    "foundation": {
+      "tests": 1069,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 3,
+      "passed": 1066
+    },
+    "final-contracts": {
+      "tests": 37,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 37
+    },
+    "postgres": {
+      "tests": 57,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 57
+    },
+    "final-postgres": {
+      "tests": 25,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 25
+    },
+    "frontend": {
+      "tests": 45,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 45
+    },
+    "full-frontend": {
+      "tests": 643,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "passed": 643
+    }
+  },
+  "overlap_do_not_sum": true,
+  "broad_runs_precede_final_schema_and_response_hardening": true,
+  "python": "3.11.2 (main, Apr  8 2026, 01:58:00) [GCC 12.2.0]",
+  "node": "v22.22.3",
+  "packages": {
+    "pydantic": "2.14.1",
+    "fastapi": "0.162.0",
+    "SQLAlchemy": "2.1.6",
+    "pytest": "9.1.1",
+    "jsonschema": "4.26.0",
+    "pgserver": "0.1.4"
+  },
+  "native_windows_execution": false,
+  "bank_execution_or_approval": false,
+  "production_execution_qualified": false,
+  "private_keys_or_bank_credentials_delivered": false,
+  "new_collectors_enabled": false,
+  "new_services_or_databases": false,
+  "notes": "Synthetic engineering inputs. Final 37/25 contracts and full frontend use finalized code. Three genuine Windows-native skips in broader selected regression. Owned PostgreSQL cleanup reported; no customer deployment changed."
+}

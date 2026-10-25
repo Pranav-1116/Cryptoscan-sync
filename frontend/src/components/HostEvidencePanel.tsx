@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { apiApproveHostScope, apiImportHostSnapshot, apiInspectHostSnapshot, apiHostCbom, HostImportReceipt, HostSnapshotInspection } from "../lib/api";
+import CollectionCoveragePanel from "./CollectionCoveragePanel";
 import HostAssociationsPanel from "./HostAssociationsPanel";
 import { usePrivateScopeCurrent } from "./PrivateScope";
 
@@ -100,7 +101,7 @@ export default function HostEvidencePanel() {
     const link = document.createElement("a"); link.href = url; link.download = `host-${id}-cyclonedx-1.6.json`; link.click(); URL.revokeObjectURL(url);
     setMessage("CycloneDX 1.6 metadata downloaded. Schema validity is not runtime evidence, complete discovery, migration compatibility or bank approval.");
   }
-  return <section aria-label="Approved offline host evidence" style={{ marginTop: 24 }}>
+  return <><section aria-label="Approved offline host evidence" style={{ marginTop: 24 }}>
     <h3>Approved host collection · no Git required</h3>
     <p>Explicit files and supported package metadata only. No remote execution, privileged scan, automatic upload or unrestricted filesystem discovery. Run the offline collector as an unprivileged user after scope approval.</p>
     <p><strong>IMPORTED evidence — host identity and runtime use unverified.</strong> Windows execution and production host admission are not qualified. Library presence does not establish algorithm use; configured TLS does not establish effective TLS.</p>
@@ -119,5 +120,5 @@ export default function HostEvidencePanel() {
       <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN</p>)}</td></tr>)}</tbody></table>
       <p>System-to-host scope is operator DECLARED, not host attestation. Endpoint/HSM/KMS use and six-BOM dependencies are not established by co-existence.</p>
       <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button><HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
-  </section>;
+  </section><CollectionCoveragePanel /></>;
 }

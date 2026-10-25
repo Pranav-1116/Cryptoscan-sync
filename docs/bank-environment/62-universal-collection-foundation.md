@@ -2,6 +2,8 @@
 
 **2026-10-24 · implemented development/offline foundation; not production clearance**
 
+The [phase-wise build and surface-coverage increment](69-phasewise-universal-collection-build.md) adds a read-only, exact-input-denominator report without changing original envelope commitments or implying complete-host coverage.
+
 Engineering rule: **a BOM is a projection of evidence, not a source of truth.**
 Facts, provenance, identity and justified relationships remain authoritative.
 No AI output is accepted as an observed fact. Failure is not evidence of absence.

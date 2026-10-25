@@ -6,6 +6,7 @@ from api.dependencies import get_current_user, get_db_session
 from api.routers.assurance_boundary import estate, author, Key
 from api.assurance import collection as core, store
 from db.models.assurance import AssuranceRevision
+from shared_models.collection_coverage import CoverageReport
 from shared_models.collection import (
     TargetSpec,
     TargetUpdate,
@@ -31,10 +32,10 @@ def collectors(ctx=Depends(estate), user=Depends(get_current_user)):
                 "production_execution_qualified": False,
                 "server_execution": False,
                 "capabilities": {
-                    "SBOM": "PACKAGE_BINARY_METADATA",
+                    "SBOM": "PACKAGE_BINARY_MAPPED_PATH_METADATA_NOT_OPERATIONAL_USE",
                     "CBOM": "CERTIFICATE_CONFIG_METADATA",
-                    "NBOM": "UNKNOWN",
-                    "HBOM": "UNKNOWN",
+                    "NBOM": "EXPLICIT_TCP_LISTENER_METADATA_NOT_NEGOTIATED_TLS",
+                    "HBOM": "EXPLICIT_KERNEL_DMI_TPM_METADATA_NOT_HARDWARE_ATTESTATION",
                     "VBOM": "UNKNOWN",
                     "TechBOM": "SCOPED_METADATA",
                 },
@@ -226,6 +227,13 @@ def coverage(
     identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
 ):
     return core.evidence(db, ctx.tenant_id, identifier)["coverage"]
+
+
+@router.get("/jobs/{identifier}/coverage/surfaces", response_model=CoverageReport)
+def surface_coverage(
+    identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
+):
+    return core.surface_coverage(db, ctx.tenant_id, identifier)
 
 
 @router.get("/jobs/{identifier}/errors")

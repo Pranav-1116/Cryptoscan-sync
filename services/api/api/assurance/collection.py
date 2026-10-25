@@ -420,3 +420,19 @@ def identity_approval_fields(policy):
     import secrets
 
     return {"collector_identity": policy.model_dump(mode="json"), "collector_nonce": secrets.token_hex(32)}
+
+
+def surface_coverage(db, owner, identifier):
+    from shared_models.collection_coverage import project_coverage
+
+    value = evidence(db, owner, identifier)  # reopens originals; no execution or new scan
+    _, target, _ = resolve_job(db, owner, identifier)
+    if value["target_sha256"] != target.payload_sha256 or value["target_revision"] != target.revision:
+        raise HTTPException(409, "Coverage target binding changed")
+    try:
+        result = CollectionResult.model_validate({k: v for k, v in value.items() if k != "envelope_sha256"})
+        return project_coverage(
+            result, TargetSpec.model_validate(target.payload["target"]), value["envelope_sha256"]
+        ).model_dump(mode="json")
+    except ValueError:
+        raise HTTPException(409, "Coverage evidence/approved-input reconciliation failed") from None
