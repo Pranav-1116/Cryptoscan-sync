@@ -5,6 +5,8 @@ Use with the [operator handoff](../runbooks/approved-host-qualification-handoff.
 
 ## A. Before execution — owner completes
 
+- Product campaign subject ID / current revision (if created):
+- Immutable return-channel approval reference (not credentials; transport approved externally):
 - Campaign / tenant / system references:
 - Approved scope and acceptance criteria reference:
 - Approved runtime release and platform source-lock identifiers:
@@ -13,6 +15,7 @@ Use with the [operator handoff](../runbooks/approved-host-qualification-handoff.
 - Read-only resources/service names and exclusions:
 - Approved collection window, timezone and stop contact:
 - Data classification and approved transfer/retention channel:
+- Actual tenant user IDs for Linux / Windows / verifier / assessor / acceptor (no invented identities):
 - Linux operator / Windows operator:
 - TPM/enrollment custodian / verifier operator:
 - Independent assessor / organization / independence-check reference:

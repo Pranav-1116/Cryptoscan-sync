@@ -6,6 +6,8 @@ import {
   apiTrustStore, apiPqcDowngrade, apiCodeRuleScan,
 } from "../lib/api.js";
 
+import HostQualification from "../components/HostQualification.js";
+
 /* Crypto & key assurance — active TLS/cipher enumeration, certificate-
    transparency monitoring, key/cert expiry alerts + SLA, HSM/KMS key residence,
    trust-store inventory, hybrid-PQC downgrade detection, and deterministic
@@ -310,7 +312,7 @@ function CodePanel() {
 
 export default function CryptoAssurance() {
   const [tab, setTab] = useState(0);
-  const tabs = ["TLS audit", "CT monitoring", "Expiry & SLA", "HSM / KMS", "Trust store", "Hybrid-PQC", "Code rules"];
+  const tabs = ["TLS audit", "CT monitoring", "Expiry & SLA", "HSM / KMS", "Trust store", "Hybrid-PQC", "Code rules", "Host qualification"];
   return (
     <>
       <PageHead
@@ -327,6 +329,7 @@ export default function CryptoAssurance() {
       {tab === 4 && <TrustPanel />}
       {tab === 5 && <PqcPanel />}
       {tab === 6 && <CodePanel />}
+      {tab === 7 && <HostQualification />}
     </>
   );
 }

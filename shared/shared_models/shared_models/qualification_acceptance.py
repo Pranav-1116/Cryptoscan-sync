@@ -228,20 +228,11 @@ class SignedReview(Strict):
     signature: str = Field(min_length=88, max_length=88)
 
 
-def verify_acceptance(policy, index, reviews, artifacts, now):
-    """Verify retained external evidence; never enable an execution adapter.
-
-    artifacts maps exact SHA256 to bounded public bytes. All required artifacts
-    are read and hashed before accepting signatures. Signed human checks remain
-    assertions by pinned external identities, not observations invented here.
-    """
+def verify_evidence(policy, index, artifacts):
+    """Verify original artifacts before freezing product evidence or reviewing it."""
     import hashlib
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-    from cryptography.exceptions import InvalidSignature
     from shared_models.qualified_export import bounded_json
 
-    if now.tzinfo is None:
-        raise ValueError("Aware verifier time required")
     if (
         index.campaign_id != policy.campaign_id
         or index.tenant_id != policy.tenant_id
@@ -270,36 +261,55 @@ def verify_acceptance(policy, index, reviews, artifacts, now):
             raise ValueError("Native qualification is missing, stale, cross-scope or not positive")
         if digest not in index.checks["native_" + category]:
             raise ValueError("Native check does not bind its original artifact")
-    pinned = {r.reviewer_id: r for r in policy.reviewers}
+    return len(required)
+
+
+def verify_signed_review(policy, index, proof, now):
+    """Validate identity, binding, time and signature, including signed rejections."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from cryptography.exceptions import InvalidSignature
+
+    if now.tzinfo is None:
+        raise ValueError("Aware verifier time required")
+    statement = proof.statement
+    reviewer = next((r for r in policy.reviewers if r.reviewer_id == statement.reviewer_id), None)
+    if reviewer is None:
+        raise ValueError("Unknown reviewer")
+    if (
+        statement.campaign_id != policy.campaign_id
+        or statement.tenant_id != policy.tenant_id
+        or statement.policy_sha256 != sha(policy)
+        or statement.release_sha256 != policy.release_sha256
+        or statement.index_sha256 != sha(index)
+    ):
+        raise ValueError("Review scope/release/evidence mismatch")
+    if not statement.signed_at <= now < statement.expires_at:
+        raise ValueError("Review expired or not yet valid")
+    try:
+        Ed25519PublicKey.from_public_bytes(decode(reviewer.public_key, 32)).verify(
+            decode(proof.signature, 64), canonical(statement)
+        )
+    except InvalidSignature:
+        raise ValueError("Independent review signature invalid") from None
+    return reviewer
+
+
+def verify_acceptance(policy, index, reviews, artifacts, now):
+    """Verify retained evidence and two approved signatures, never enable execution."""
+    if now.tzinfo is None:
+        raise ValueError("Aware verifier time required")
+    count = verify_evidence(policy, index, artifacts)
+    if not 2 <= len(reviews) <= len(policy.reviewers):
+        raise ValueError("Both approved review roles required")
     seen = set()
     roles = set()
-    if not 2 <= len(reviews) <= len(pinned):
-        raise ValueError("Both approved review roles required")
     for proof in reviews:
+        reviewer = verify_signed_review(policy, index, proof, now)
         statement = proof.statement
-        reviewer = pinned.get(statement.reviewer_id)
-        if reviewer is None or statement.reviewer_id in seen:
-            raise ValueError("Unknown or repeated reviewer")
-        if (
-            statement.campaign_id != policy.campaign_id
-            or statement.tenant_id != policy.tenant_id
-            or statement.policy_sha256 != sha(policy)
-            or statement.release_sha256 != policy.release_sha256
-            or statement.index_sha256 != sha(index)
-        ):
-            raise ValueError("Review scope/release/evidence mismatch")
-        if (
-            not statement.signed_at <= now < statement.expires_at
-            or statement.decision != "ACCEPT_SCOPED_EVIDENCE"
-            or any(v != "PASS" for v in statement.checks.values())
-        ):
-            raise ValueError("Review expired, rejected or has unresolved checks")
-        try:
-            Ed25519PublicKey.from_public_bytes(decode(reviewer.public_key, 32)).verify(
-                decode(proof.signature, 64), canonical(statement)
-            )
-        except InvalidSignature:
-            raise ValueError("Independent review signature invalid") from None
+        if statement.reviewer_id in seen:
+            raise ValueError("Repeated reviewer")
+        if statement.decision != "ACCEPT_SCOPED_EVIDENCE" or any(v != "PASS" for v in statement.checks.values()):
+            raise ValueError("Review rejected or has unresolved checks")
         seen.add(statement.reviewer_id)
         roles.add(reviewer.role)
     if roles != {"independent_assessor", "bank_acceptor"}:
@@ -313,7 +323,7 @@ def verify_acceptance(policy, index, reviews, artifacts, now):
         "index_sha256": sha(index),
         "release_sha256": policy.release_sha256,
         "reviewers": sorted(seen),
-        "verified_artifacts": len(required),
+        "verified_artifacts": count,
         "required_checks": sorted(CHECKS),
         "independent_signatures_verified": True,
         "organizational_independence_verified": False,

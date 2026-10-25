@@ -320,3 +320,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [66. Verified-source local host worker](66-verified-local-host-worker.md) — external source-lock signatures, verified stage copies, durable claims/results/cancellation, scoped native kernel isolation and external-signature intake; development only, not host attestation or full worker clearance.
 
 - [67. Native evidence capture, TPM quote verification and independent qualification records](67-native-quotes-and-independent-qualification.md) — explicit real-OS evidence, enrolled-key/PCR/challenge checks, one-time local quote consumption and separate assessor/bank signatures; no fabricated hardware/native success or automatic production clearance.
+
+- [68. Assigned-operator qualification workflow](68-assigned-operator-qualification-workflow.md) — real tenant-user responsibilities, immutable original public return, frozen evidence and separate external decisions; no dispatch, channel certification or production clearance.

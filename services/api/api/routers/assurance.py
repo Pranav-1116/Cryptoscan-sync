@@ -13,9 +13,11 @@ from shared_models.software_identity import scope_key
 
 router = APIRouter(prefix="/assurance", tags=["assurance"])
 @router.get("/records")
-def records(kind: str = Query(min_length=1, max_length=30), limit: int = Query(100, ge=1, le=200),
+def records(request: Request, kind: str = Query(min_length=1, max_length=30), limit: int = Query(100, ge=1, le=200),
             offset: int = Query(0, ge=0, le=1000000), user=Depends(get_current_user),
             db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    if kind == "host_qualification":
+        author(db, request, user, "crypto.read")  # protected kind must not bypass human-only qualification reads
     query = store.rows(db, AssuranceRevision, ctx.tenant_id).filter_by(kind=kind)
     values = query.order_by(AssuranceRevision.created_at, AssuranceRevision.id).offset(offset).limit(limit + 1).all()
     return {"records": [store.public(r) for r in values[:limit]], "has_more": len(values) > limit,
@@ -23,9 +25,11 @@ def records(kind: str = Query(min_length=1, max_length=30), limit: int = Query(1
 
 
 @router.get("/records/{kind}/{identifier}")
-def history(kind: Annotated[str, Path(min_length=1, max_length=30)], identifier: Key,
+def history(request: Request, kind: Annotated[str, Path(min_length=1, max_length=30)], identifier: Key,
             after_revision: int = Query(0, ge=0), user=Depends(get_current_user),
             db: Session = Depends(get_db_session), ctx=Depends(estate)):
+    if kind == "host_qualification":
+        author(db, request, user, "crypto.read")
     store.latest(db, ctx.tenant_id, kind, identifier)
     values = store.rows(db, AssuranceRevision, ctx.tenant_id).filter_by(kind=kind, subject_id=identifier).filter(
         AssuranceRevision.revision > after_revision).order_by(AssuranceRevision.revision).limit(201).all()

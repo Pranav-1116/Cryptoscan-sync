@@ -1,0 +1,24 @@
+
+> zelinx-frontend@1.0.0 test
+> vitest run src/components/HostQualification.test.tsx src/components/AuthenticatedDownload.scope.test.tsx --reporter=default --reporter=junit --outputFile.junit=/home/user/qualification-product-final-ui.xml
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv5.0.5 [39m[90m/home/user/CryproScan/frontend[39m
+
+ [32m✓[39m src/components/HostQualification.test.tsx [2m([22m[2m13 tests[22m[2m)[22m[33m 2057[2mms[22m[39m
+   [32m✓[39m Assigned-human qualification product controls [2m(13)[22m
+     [33m[2m✓[22m[39m is reachable from the existing page, empty/offline, without synthetic acceptance or dispatch[33m 733[2mms[22m[39m
+ [32m✓[39m src/components/AuthenticatedDownload.scope.test.tsx [2m([22m[2m12 tests[22m[2m)[22m[33m 921[2mms[22m[39m
+   [32m✓[39m Authenticated export privacy [2m(12)[22m
+     [33m[2m✓[22m[39m blocks a same-turn double click before the busy render[33m 338[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m25 passed[39m[22m[90m (25)[39m
+[2m   Start at [22m 01:58:03
+[2m   Duration [22m 12.73s[2m (import 35%, environment 33%, tests 25%, setup 6%, worker 1%, transform 1%)[22m
+
+[2mEnvironment [22m [33mjsdom was created 2 times[39m[2m · 3.93s total, 33% of tracked time[22m
+[2m            [22m [2mcreate it once per worker with [22m[33mpool: 'vmThreads'[39m[2m (keeps per-file isolation) or [22m[33misolate: false[39m[2m (shares it across files)[22m
+[2m            [22m [2mlearn more: https://vitest.dev/guide/improving-performance#test-environments[22m
+
+JUNIT report written to /home/user/qualification-product-final-ui.xml

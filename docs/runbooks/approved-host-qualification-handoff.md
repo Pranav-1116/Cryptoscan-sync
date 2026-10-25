@@ -3,6 +3,8 @@
 **Execution status: awaiting named host operators, approvals and reviewers.**
 This is the handoff for running the implemented packet, not evidence that anyone has run or accepted it. Runtime/tool baseline: `73818352d629b3dbeced631ebed1542f889a2d43`.
 
+The product now has [assigned-human intake and review controls](../bank-environment/68-assigned-operator-qualification-workflow.md) under Crypto & key assurance → Host qualification. These receive authorized real returns; they do not execute this packet, contact operators or certify a transport channel.
+
 Use [guide 67](../bank-environment/67-native-quotes-and-independent-qualification.md) for contract details and limits. Complete the [intake form](../templates/host-qualification-intake.md) before scheduling. Never send host passwords, login tokens, private keys or TPM authorization secrets.
 
 ## 1. Assign owners and freeze scope before execution

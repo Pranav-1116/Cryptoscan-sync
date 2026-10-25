@@ -263,3 +263,9 @@ def cancel_worker_job(
     actor = author(db, request, user)
     username = user
     return host_worker.cancel(db, ctx.tenant_id, job_id, body.expected_revision, actor, username)
+
+
+# Metadata receipt workflow only; no handler dispatches external host execution.
+from api.routers.host_qualification import router as qualification_router  # noqa: E402
+
+router.include_router(qualification_router)
