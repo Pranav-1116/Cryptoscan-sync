@@ -324,3 +324,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [68. Assigned-operator qualification workflow](68-assigned-operator-qualification-workflow.md) — real tenant-user responsibilities, immutable original public return, frozen evidence and separate external decisions; no dispatch, channel certification or production clearance.
 
 - [69. Phase-wise universal collection build](69-phasewise-universal-collection-build.md) — ten ordered phases with real implementation/qualification gates; current foundation increment adds evidence-backed surface coverage without rescanning or treating unknown scope as absence.
+
+- [70. Linux software evidence — Phase 2](70-linux-software-evidence-phase-two.md) — hardened Debian parsing and an evidence-linked, nonstandard metadata inventory with separate packages, binary presence and mapped paths; no rescan or completeness claim.

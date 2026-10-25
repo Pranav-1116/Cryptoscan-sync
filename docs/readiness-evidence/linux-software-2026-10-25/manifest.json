@@ -1,0 +1,39 @@
+{
+  "artifacts": {
+    "docs/readiness-evidence/linux-software-2026-10-25/build.txt": "93629de1a78d0b36743325a785fd7929a2f9d7e4658380dc4330bd3d3c4b7a20",
+    "docs/readiness-evidence/linux-software-2026-10-25/final-contracts.txt": "525429915f85e21959c0e5de0ea9ce4a6c0925c4d06f8b927b5c9427c831c912",
+    "docs/readiness-evidence/linux-software-2026-10-25/final-contracts.xml": "2795634712142b3c38b4fe4dcff33f5f21cfbe2362ae7eaff34e7a5eb565852f",
+    "docs/readiness-evidence/linux-software-2026-10-25/final-postgres.txt": "0a529fc44e07c7cc457753a4bc241a1c25e741b636bc1aa69d2396c4c53a0220",
+    "docs/readiness-evidence/linux-software-2026-10-25/final-postgres.xml": "727c4d3a50cc84979dacc5e851798d469531c76bc0ca3207c9fcd47cc96e1c90",
+    "docs/readiness-evidence/linux-software-2026-10-25/frontend.txt": "fd6fd6b58aa3de15fe87f20413cdbdcc10c1e4b2f09a78d82ccd7bd489ea202a",
+    "docs/readiness-evidence/linux-software-2026-10-25/full-frontend.txt": "7e606213088d4aa7744f3043db8c004088014a3fb799414b23e051c7ed55c6ec",
+    "docs/readiness-evidence/linux-software-2026-10-25/postgres.txt": "92cb61a0f5ff40d83ef2ca549d44f13de94f526e9ef308eb539fffd162e32a5b",
+    "docs/readiness-evidence/linux-software-2026-10-25/postgres.xml": "9e351339fc6712a28b7bc81cc3524cfa834b8d03ca3ff9c0c7b01e1cbe1c4240",
+    "docs/readiness-evidence/linux-software-2026-10-25/python.txt": "c9b70f7e34bbdc77c11e4d1525d24baeef25fc1f4dd3a6e5fe2db3a8fbfe61f1",
+    "docs/readiness-evidence/linux-software-2026-10-25/python.xml": "e2b1aea56432836bb5bf8c2927a5fac1d73219764dd68fa46eeb199e5ace78ef",
+    "docs/readiness-evidence/linux-software-2026-10-25/schema-source.txt": "2369e8680bda2cc01b179b890b274e6d2c387d6fb66a8ab7761816912c5e467d",
+    "docs/readiness-evidence/linux-software-2026-10-25/static.txt": "24228122f612ef1d81019aab62a57e37a6b8a1825a48031799f5d19aed1274e9",
+    "docs/readiness-evidence/linux-software-2026-10-25/typecheck.txt": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f"
+  },
+  "baseline_commit": "163661511a0f6badc278795ee43c2c6a764f29da",
+  "purpose": "Local synthetic Linux software increment consistency; not authenticity or bank qualification",
+  "schema_version": "cryptoscan.local-readiness-manifest/v1",
+  "source_and_docs": {
+    "docs/api-reference/linux-software-inventory.md": "e959edf7294bdc04b008aa79efa18d42ad4d04151811aaeab2ba65544d604168",
+    "docs/bank-environment/70-linux-software-evidence-phase-two.md": "9069246465ee2294d7d644deca29d5215868aaaad070e6585293aa88cd98a4e6",
+    "docs/bank-environment/README.md": "9c6e7e1517d28ee225fb72c103c9a6ad140ca3defa0ddc9285a72bef1310b2db",
+    "docs/readiness-evidence/linux-software-2026-10-25.md": "ef5fcac9f5ef042f0f9bf06bc424e92c0d19bb97181d05a4a59d4b118e753445",
+    "frontend/src/components/CollectionCoveragePanel.tsx": "cf4a2e7062016f830796b2d65247653070989c53b4c12f42dc6b92dc1e13f517",
+    "frontend/src/components/LinuxSoftwarePanel.test.tsx": "e5b7c5e3ab5db16d493d927bde0ea89a63a4e210c71b1df5b4b312bd990b5e64",
+    "frontend/src/components/LinuxSoftwarePanel.tsx": "3b3870e21c66ad20bbd8a7a422708da029144f97fc259c2919a18f8ab25bc51e",
+    "scripts/validate_host_evidence.py": "bc6a17838a9e93ceec3684f6160e068897b31f20c2b946cd746a42c6da2ada47",
+    "services/api/api/assurance/collection.py": "c7418a887e21be8e2e2fa6212ef4eb145eb6c87dc9a613fff5eca89903496743",
+    "services/api/api/routers/collection.py": "8d89490452daf19cb302e862999f7ae795142770834ff171486f2ded839b4113",
+    "services/api/tests/unit/test_linux_software_inventory.py": "d40a360edc9e3819e7ce132ecf045368f186b8790259128c6dfa3ef7488917bc",
+    "services/api/tests/unit/test_linux_software_inventory_postgres.py": "c35a9b7a03da052cbd20e35059f02e660ff5bcf2f1e007037003970d61880e5c",
+    "services/inventory/inventory/host.py": "59534d93c880396f5bb58d244ccab3d0f6f7e651983762efbf412b6cb9d986b4",
+    "services/inventory/inventory/linux_packages.py": "b19f0ccd7f761cf61946bba16cd60998fb5961679d8ed274500201a4384ef922",
+    "services/inventory/tests/test_dpkg_metadata.py": "dda38bf46dc587e596973a1e02b20907d71e36769d54e9c818ca202b54e7984f",
+    "shared/shared_models/shared_models/linux_software.py": "825a04cfb8d764ce81250e8fbd34081ef9528e5823ec515cf6b471fe2724c1a1"
+  }
+}

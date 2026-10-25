@@ -436,3 +436,19 @@ def surface_coverage(db, owner, identifier):
         ).model_dump(mode="json")
     except ValueError:
         raise HTTPException(409, "Coverage evidence/approved-input reconciliation failed") from None
+
+
+def linux_software(db, owner, identifier):
+    from shared_models.linux_software import project_linux_software
+
+    value = evidence(db, owner, identifier)
+    _, target, _ = resolve_job(db, owner, identifier)
+    if value["target_sha256"] != target.payload_sha256 or value["target_revision"] != target.revision:
+        raise HTTPException(409, "Software evidence target binding changed")
+    try:
+        result = CollectionResult.model_validate({k: v for k, v in value.items() if k != "envelope_sha256"})
+        return project_linux_software(
+            result, TargetSpec.model_validate(target.payload["target"]), value["envelope_sha256"]
+        ).model_dump(mode="json")
+    except ValueError:
+        raise HTTPException(409, "Linux software evidence/scope reconciliation failed") from None

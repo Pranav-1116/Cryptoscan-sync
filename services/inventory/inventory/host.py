@@ -354,25 +354,9 @@ def _config(data):
 
 
 def _packages(data):
-    result = []
-    for stanza in re.split(r"\r?\n\r?\n", data.decode("utf-8", errors="strict")):
-        values = dict(re.findall(r"(?m)^(Package|Version|Status): ([^\r\n]+)$", stanza))
-        if values.get("Status") != "install ok installed":
-            continue
-        result.append(
-            HostFact(
-                kind="SOFTWARE",
-                local_basis="OBSERVED",
-                purpose="PACKAGE_DATABASE_RECORD",
-                software_name=values["Package"],
-                software_version=values.get("Version"),
-            )
-        )
-        if len(result) > MAX_FACTS:
-            raise Refused("BUDGET_EXCEEDED", "LIMIT")
-    if not result:
-        raise Refused("UNSUPPORTED", "INVALID_FORMAT")
-    return result
+    from inventory.linux_packages import dpkg_status
+
+    return dpkg_status(data)
 
 
 def _os_release(data):

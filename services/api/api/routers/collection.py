@@ -7,6 +7,7 @@ from api.routers.assurance_boundary import estate, author, Key
 from api.assurance import collection as core, store
 from db.models.assurance import AssuranceRevision
 from shared_models.collection_coverage import CoverageReport
+from shared_models.linux_software import LinuxSoftwareInventory
 from shared_models.collection import (
     TargetSpec,
     TargetUpdate,
@@ -234,6 +235,13 @@ def surface_coverage(
     identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
 ):
     return core.surface_coverage(db, ctx.tenant_id, identifier)
+
+
+@router.get("/jobs/{identifier}/software/linux", response_model=LinuxSoftwareInventory)
+def linux_software(
+    identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
+):
+    return core.linux_software(db, ctx.tenant_id, identifier)
 
 
 @router.get("/jobs/{identifier}/errors")

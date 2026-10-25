@@ -40,6 +40,9 @@ def main():
         action="store_true",
         help="Check read-only per-surface coverage over existing evidence",
     )
+    parser.add_argument(
+        "--include-linux-software", action="store_true", help="Check Linux software projections over original evidence"
+    )
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="cryptoscan-host-witness-", dir=Path.home()) as owned:
         root = Path(owned)
@@ -76,6 +79,8 @@ def main():
                 files.append("services/api/tests/unit/test_qualification_workflow_postgres.py")
             if args.include_surface_coverage:
                 files.append("services/api/tests/unit/test_collection_surface_coverage_postgres.py")
+            if args.include_linux_software:
+                files.append("services/api/tests/unit/test_linux_software_inventory_postgres.py")
             return pytest.main(["-q", *files, "--junitxml=" + args.junitxml])
         finally:
             server.cleanup()
