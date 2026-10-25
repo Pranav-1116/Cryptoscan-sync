@@ -20,6 +20,7 @@ from shared_models.host_collection import Token, digest
 from shared_models.qualified_export import bounded_json
 from inventory.collection import OfflineLinuxCollector, OfflineWindowsCollector
 from inventory.host import elevated
+from shared_models.windows_cng import unsupported_expected_value
 
 
 class ExpectedInput(Strict):
@@ -38,6 +39,7 @@ def validate_plan(target, plan):
     from shared_models.host_collection import HostFact
     from shared_models.host_runtime import RuntimeFact
     from shared_models.windows_images import WindowsImageFact
+    from shared_models.windows_cng import WindowsCngFact
 
     if (
         not target.manifest
@@ -46,14 +48,19 @@ def validate_plan(target, plan):
         or len({e.input_id for e in plan.expected}) != len(plan.expected)
     ):
         raise ValueError("Fixture scope mismatch")
-    fields = set(HostFact.model_fields) | set(RuntimeFact.model_fields) | set(WindowsImageFact.model_fields)
+    fields = (
+        set(HostFact.model_fields)
+        | set(RuntimeFact.model_fields)
+        | set(WindowsImageFact.model_fields)
+        | set(WindowsCngFact.model_fields)
+    )
     for expected in plan.expected:
         for pattern in expected.facts:
             if (
                 not pattern
                 or "kind" not in pattern
                 or set(pattern) - fields
-                or any(isinstance(v, (dict, list)) for v in pattern.values())
+                or any(unsupported_expected_value(k, v) for k, v in pattern.items())
             ):
                 raise ValueError("Invalid fixture assertion")
 
@@ -79,7 +86,7 @@ def evaluate(target, plan, snapshot):
             if (
                 not pattern
                 or "kind" not in pattern
-                or any(not isinstance(k, str) or isinstance(v, (dict, list)) for k, v in pattern.items())
+                or any(not isinstance(k, str) or unsupported_expected_value(k, v) for k, v in pattern.items())
             ):
                 raise ValueError("Invalid fixture assertion")
             indices = [

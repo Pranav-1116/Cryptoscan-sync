@@ -39,8 +39,14 @@ def main():
         from shared_models.host_collection import HostFact
         from shared_models.host_runtime import RuntimeFact
         from shared_models.windows_images import WindowsImageFact
+        from shared_models.windows_cng import WindowsCngFact, unsupported_expected_value
 
-        fields = set(HostFact.model_fields) | set(RuntimeFact.model_fields) | set(WindowsImageFact.model_fields)
+        fields = (
+            set(HostFact.model_fields)
+            | set(RuntimeFact.model_fields)
+            | set(WindowsImageFact.model_fields)
+            | set(WindowsCngFact.model_fields)
+        )
         if (
             not target.manifest
             or {e.input_id for e in plan.expected} != {i.input_id for i in target.manifest.inputs}
@@ -48,7 +54,7 @@ def main():
         ):
             raise ValueError("Exact plan scope required")
         if any(
-            not f or "kind" not in f or set(f) - fields or any(isinstance(v, (dict, list)) for v in f.values())
+            not f or "kind" not in f or set(f) - fields or any(unsupported_expected_value(k, v) for k, v in f.items())
             for e in plan.expected
             for f in e.facts
         ):

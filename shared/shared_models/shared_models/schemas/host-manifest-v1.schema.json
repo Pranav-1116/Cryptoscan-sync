@@ -26,7 +26,8 @@
             "RPM_SQLITE",
             "WINDOWS_OS_RELEASE",
             "WINDOWS_CERTIFICATE",
-            "WINDOWS_PROCESS_MODULES"
+            "WINDOWS_PROCESS_MODULES",
+            "WINDOWS_CNG_REGISTRATION"
           ],
           "title": "Kind",
           "type": "string"

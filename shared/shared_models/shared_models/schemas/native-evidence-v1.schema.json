@@ -260,7 +260,8 @@
             "RPM_SQLITE",
             "WINDOWS_OS_RELEASE",
             "WINDOWS_CERTIFICATE",
-            "WINDOWS_PROCESS_MODULES"
+            "WINDOWS_PROCESS_MODULES",
+            "WINDOWS_CNG_REGISTRATION"
           ],
           "title": "Kind",
           "type": "string"
@@ -387,6 +388,9 @@
               },
               {
                 "$ref": "#/$defs/WindowsImageFact"
+              },
+              {
+                "$ref": "#/$defs/WindowsCngFact"
               }
             ]
           },
@@ -1119,6 +1123,147 @@
         "not_before"
       ],
       "title": "TargetSpec",
+      "type": "object"
+    },
+    "WindowsCngFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "capture_basis": {
+          "const": "REGISTERED_NOT_OPENED_OR_INVOKED",
+          "default": "REGISTERED_NOT_OPENED_OR_INVOKED",
+          "title": "Capture Basis",
+          "type": "string"
+        },
+        "identity_key": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "const": "WINDOWS_CNG_REGISTRATION_QUERY",
+          "default": "WINDOWS_CNG_REGISTRATION_QUERY",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "WINDOWS_CNG_REGISTRATION",
+          "default": "WINDOWS_CNG_REGISTRATION",
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "provider_name": {
+          "const": "Microsoft Primitive Provider",
+          "default": "Microsoft Primitive Provider",
+          "title": "Provider Name",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "PROVIDER_REGISTRATION_METADATA",
+          "default": "PROVIDER_REGISTRATION_METADATA",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "registered_functions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Registered Functions",
+          "type": "array"
+        },
+        "registration_flags": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "title": "Registration Flags",
+          "type": "integer"
+        },
+        "registration_interface": {
+          "enum": [
+            "cipher",
+            "hash"
+          ],
+          "title": "Registration Interface",
+          "type": "string"
+        },
+        "registration_mode": {
+          "const": "USER",
+          "default": "USER",
+          "title": "Registration Mode",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        }
+      },
+      "required": [
+        "registration_interface",
+        "registration_flags",
+        "registered_functions",
+        "identity_key",
+        "interface_sha256"
+      ],
+      "title": "WindowsCngFact",
       "type": "object"
     },
     "WindowsImageFact": {

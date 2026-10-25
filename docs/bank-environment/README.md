@@ -332,3 +332,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [72. Phase 3 — Windows public certificate candidate](72-phase-three-windows-public-certificate-candidate.md) — exact read-only native store lookup, dual-digest scope binding and existing evidence/CBOM custody; native qualification and universal Windows execution admission remain blocked.
 
 - [73. Phase 3 — Windows exact process/module candidate](73-phase-three-windows-process-module-candidate.md) — PID+string-FILETIME scope, repeated loader metadata, bounded read-only native handles and existing custody/UI; no crypto-use inference or Windows production admission.
+
+- [74. Phase 3 — Windows CNG registration candidate](74-phase-three-windows-cng-registration-candidate.md) — exact fixed-provider/user-mode cipher/hash metadata, bounded caller-owned native buffers, existing custody/qualification/UI and explicit registration ≠ capability/use boundaries; Windows production admission stays blocked.

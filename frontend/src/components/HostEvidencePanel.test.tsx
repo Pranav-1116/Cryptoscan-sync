@@ -137,3 +137,25 @@ describe("Windows exact process/module candidate", () => {
     expect(screen.queryByRole("button", { name: /Download CycloneDX/ })).toBeNull();
   });
 });
+
+describe("Windows CNG registration candidate", () => {
+  const fact = { kind: "WINDOWS_CNG_REGISTRATION", algorithm: "UNKNOWN", key_size: null, local_basis: "OBSERVED", runtime_use: "UNKNOWN", software_name: null, software_version: null, purpose: "PROVIDER_REGISTRATION_METADATA", operation_use: "UNKNOWN", capabilities_observed: false, identity_key: "microsoft-primitive:user:cipher", interface: "WINDOWS_CNG_REGISTRATION_QUERY", interface_sha256: "a".repeat(64), provider_name: "Microsoft Primitive Provider", registration_mode: "USER", registration_interface: "cipher", registration_flags: 0, registered_functions: ["3DES", "AES"], capture_basis: "REGISTERED_NOT_OPENED_OR_INVOKED" };
+  const registration = (changes = {}) => ({ ...detail, snapshot: { ...detail.snapshot, receipts: [{ input_id: "registration", status: "PARSED", reason: "METADATA_ONLY", facts: [{ ...fact, ...changes }] }] } });
+  it("displays registration labels without upgrading capability or invocation", async () => {
+    const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: registration() }); mount(); inspect();
+    await screen.findByText(/WINDOWS_CNG_REGISTRATION · Microsoft Primitive Provider/);
+    expect(screen.getByText(/cipher registered labels: 3DES, AES · registration only; capability\/use UNKNOWN/)).toBeTruthy();
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it.each([
+    { algorithm: "AES" }, { capabilities_observed: true }, { runtime_use: "OBSERVED" }, { operation_use: "OBSERVED" },
+    { software_version: "1.0" }, { provider_name: "Another Provider" }, { registration_mode: "KERNEL" },
+    { registered_functions: [] }, { registered_functions: ["AES", "3DES"] }, { registered_functions: ["AES", "aes"] },
+    { registered_functions: ["has spaces"] }, { registered_functions: Array(65).fill("AES") },
+    { registration_interface: "signature" }, { capture_basis: "INVOKED" }, { registration_flags: -1 },
+  ])("refuses promoted or malformed registration metadata", async changes => {
+    mockFetch({ [`${P}/${id}/snapshot`]: registration(changes) }); mount(); inspect();
+    await screen.findByText(/No verified receipt or security verdict assumed/);
+    expect(screen.queryByRole("button", { name: /Download CycloneDX/ })).toBeNull();
+  });
+});

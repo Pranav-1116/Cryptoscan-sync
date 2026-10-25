@@ -37,6 +37,7 @@ Kind = Literal[
     "WINDOWS_OS_RELEASE",
     "WINDOWS_CERTIFICATE",
     "WINDOWS_PROCESS_MODULES",
+    "WINDOWS_CNG_REGISTRATION",
 ]
 Basis = Literal["OBSERVED", "DECLARED", "IMPORTED", "INFERRED", "UNKNOWN"]
 Protocol = Literal["TLSv1", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
@@ -53,6 +54,7 @@ Cipher = Literal[
 from shared_models.host_common import Strict
 from shared_models.host_runtime import RuntimeFact
 from shared_models.windows_images import WindowsImageFact
+from shared_models.windows_cng import WindowsCngFact
 
 
 def digest(value) -> str:
@@ -196,7 +198,9 @@ class HostReceipt(Strict):
     reason: ReceiptReason
     byte_count: int = Field(default=0, ge=0, le=MAX_FILE_BYTES)
     content_sha256: Digest | None = None
-    facts: list[HostFact | RuntimeFact | WindowsImageFact] = Field(default_factory=list, max_length=MAX_FACTS)
+    facts: list[HostFact | RuntimeFact | WindowsImageFact | WindowsCngFact] = Field(
+        default_factory=list, max_length=MAX_FACTS
+    )
 
     @model_validator(mode="after")
     def disposition(self):
@@ -275,6 +279,7 @@ class HostSnapshot(Strict):
             "LINUX_SERVICE": "SERVICE",
             "LINUX_HARDWARE": "HARDWARE",
             "WINDOWS_SERVICE": "SERVICE",
+            "WINDOWS_CNG_REGISTRATION": "WINDOWS_CNG_REGISTRATION",
             "WINDOWS_PROCESS_MODULES": {"WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE"},
         }
         for item, receipt in zip(self.manifest.inputs, self.receipts):
@@ -286,10 +291,10 @@ class HostSnapshot(Strict):
             from shared_models.host_runtime_scope import validate_runtime_facts
 
             validate_runtime_facts(item, receipt.facts)
-            if item.kind == "WINDOWS_PROCESS_MODULES" and any(
+            if item.kind in {"WINDOWS_PROCESS_MODULES", "WINDOWS_CNG_REGISTRATION"} and any(
                 f.interface_sha256 != receipt.content_sha256 for f in receipt.facts
             ):
-                raise ValueError("Windows image source commitment mismatch")
+                raise ValueError("Windows metadata source commitment mismatch")
             if item.kind == "WINDOWS_CERTIFICATE" and receipt.status == "PARSED":
                 from shared_models.host_runtime_scope import certificate_resource
 
@@ -319,6 +324,7 @@ class HostSnapshot(Strict):
                         "WINDOWS_OS_RELEASE",
                         "WINDOWS_CERTIFICATE",
                         "WINDOWS_PROCESS_MODULES",
+                        "WINDOWS_CNG_REGISTRATION",
                     }
                     and self.execution_platform != "windows"
                 )

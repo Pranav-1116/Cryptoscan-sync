@@ -31,7 +31,7 @@ export default function HostEvidencePanel() {
       if (!r || typeof r.input_id !== "string" || typeof r.reason !== "string" || !["PARSED", "DENIED", "UNSUPPORTED", "INVALID", "BUDGET_EXCEEDED", "UNAVAILABLE"].includes(r.status) || !Array.isArray(r.facts)) return false;
       facts += r.facts.length;
       return facts <= 1000 && (r.status === "PARSED" ? r.facts.length > 0 : r.facts.length === 0)
-        && r.facts.every(f => f && ["CERTIFICATE", "TLS_CONFIGURATION", "SOFTWARE", "BINARY", "OS_RELEASE", "PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE", "WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE"].includes(f.kind) && typeof f.algorithm === "string"
+        && r.facts.every(f => f && ["CERTIFICATE", "TLS_CONFIGURATION", "SOFTWARE", "BINARY", "OS_RELEASE", "PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE", "WINDOWS_PROCESS_IMAGE", "WINDOWS_MODULE", "WINDOWS_CNG_REGISTRATION"].includes(f.kind) && typeof f.algorithm === "string"
           && ["OBSERVED", "DECLARED"].includes(f.local_basis) && f.runtime_use === "UNKNOWN"
           && (f.kind !== "OS_RELEASE" || (f.local_basis === "DECLARED" && f.algorithm === "UNKNOWN" && f.key_size === null))
           && (!["PROCESS", "LOADED_LIBRARY", "LISTENER", "SERVICE", "HARDWARE"].includes(f.kind)
@@ -49,6 +49,21 @@ export default function HostEvidencePanel() {
               && typeof f.image_path === "string" && typeof f.identity_key === "string"
               && f.capture_basis === "REPEATED_MATCHING_METADATA_NOT_INVOCATION"
               && /^[0-9a-f]{64}$/.test(f.interface_sha256 || "")))
+          && (f.kind !== "WINDOWS_CNG_REGISTRATION"
+            || (f.local_basis === "OBSERVED" && f.algorithm === "UNKNOWN" && f.key_size === null
+              && f.software_name === null && f.software_version === null && f.operation_use === "UNKNOWN"
+              && f.capabilities_observed === false && f.purpose === "PROVIDER_REGISTRATION_METADATA"
+              && f.interface === "WINDOWS_CNG_REGISTRATION_QUERY" && f.provider_name === "Microsoft Primitive Provider"
+              && f.registration_mode === "USER" && ["cipher", "hash"].includes(f.registration_interface || "")
+              && typeof f.registration_flags === "number" && Number.isInteger(f.registration_flags)
+              && f.registration_flags >= 0 && f.registration_flags <= 4294967295
+              && f.identity_key === `microsoft-primitive:user:${f.registration_interface}`
+              && f.capture_basis === "REGISTERED_NOT_OPENED_OR_INVOKED"
+              && /^[0-9a-f]{64}$/.test(f.interface_sha256 || "")
+              && Array.isArray(f.registered_functions) && f.registered_functions.length > 0 && f.registered_functions.length <= 64
+              && f.registered_functions.every((n, i, all) => typeof n === "string" && /^[A-Za-z0-9][A-Za-z0-9_.+\-]{0,63}$/.test(n)
+                && (i === 0 || all[i - 1] < n))
+              && new Set(f.registered_functions.map(n => n.toLowerCase())).size === f.registered_functions.length))
           && (f.key_size === null || Number.isInteger(f.key_size)));
     });
   }
@@ -128,7 +143,7 @@ export default function HostEvidencePanel() {
     {receipt && <div style={{ overflowWrap: "anywhere" }}><p>Evidence status: IMPORTED · Scan {receipt.scan_id} · {receipt.evidence_count} chained records.</p>
       <p>Snapshot SHA-256: {receipt.snapshot_sha256}</p><p>Runtime use: UNKNOWN · PQC assessment: UNKNOWN · Policy: NOT_EVALUATED. Complete-host coverage is not proven.</p></div>}
     {detail && <><h4>{detail.snapshot.manifest.host_id} · {detail.snapshot.manifest.environment}</h4><p>Stored content, chain and manifest integrity checked. Claimed collection time: {detail.snapshot.finished_at}. This does not authenticate the originating host.</p>
-      <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN</p>)}</td></tr>)}</tbody></table>
+      <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.provider_name || f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.registered_functions ? ` · ${f.registration_interface} registered labels: ${f.registered_functions.join(", ")} · registration only; capability/use UNKNOWN` : ""}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN</p>)}</td></tr>)}</tbody></table>
       <p>System-to-host scope is operator DECLARED, not host attestation. Endpoint/HSM/KMS use and six-BOM dependencies are not established by co-existence.</p>
       <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button><HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
   </section><CollectionCoveragePanel /></>;

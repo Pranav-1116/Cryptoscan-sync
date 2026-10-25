@@ -13,6 +13,10 @@ def certificate_resource(path):
 
 
 def resource(kind, path):
+    if kind == "WINDOWS_CNG_REGISTRATION":
+        from shared_models.windows_cng import registration_resource
+
+        return registration_resource(path)
     if kind == "WINDOWS_PROCESS_MODULES":
         from shared_models.windows_images import process_resource
 
@@ -38,6 +42,11 @@ def resource(kind, path):
 def validate_runtime_facts(item, facts):
     selected = resource(item.kind, item.path)
     if selected is None:
+        return
+    if item.kind == "WINDOWS_CNG_REGISTRATION":
+        from shared_models.windows_cng import validate_registration
+
+        validate_registration(item, facts)
         return
     if item.kind == "WINDOWS_PROCESS_MODULES":
         from shared_models.windows_images import validate_images

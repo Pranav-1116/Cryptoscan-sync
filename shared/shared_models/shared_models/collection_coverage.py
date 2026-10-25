@@ -15,7 +15,7 @@ SURFACES = {
     "os": {"LINUX_OS_RELEASE", "WINDOWS_OS_RELEASE"},
     "software": {"DPKG_STATUS", "APK_INSTALLED", "RPM_SQLITE", "WINDOWS_UNINSTALL", "BINARY_METADATA"},
     "certificates": {"PUBLIC_CERTIFICATE", "WINDOWS_CERTIFICATE"},
-    "crypto_configuration": {"NGINX_TLS_CONFIG"},
+    "crypto_configuration": {"NGINX_TLS_CONFIG", "WINDOWS_CNG_REGISTRATION"},
     "processes_and_libraries": {"LINUX_PROCESS", "LINUX_PROCESS_MAPS", "WINDOWS_PROCESS_MODULES"},
     "services": {"LINUX_SERVICE", "WINDOWS_SERVICE"},
     "network_listeners": {"LINUX_LISTENERS"},
