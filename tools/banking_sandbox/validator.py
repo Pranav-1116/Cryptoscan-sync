@@ -24,6 +24,7 @@ def integrity(root, full_schemas=False):
     cdx, spdx = validators()
     banks = sorted((public / "banks").glob("*.json"))
     n = 0
+    lb_totals = Counter()
     for b in banks:
         bank = b.stem
         systems = {r["system_id"]: r for r in records(public / "systems" / f"{bank}.jsonl")}
@@ -60,7 +61,13 @@ def integrity(root, full_schemas=False):
                 if full_schemas or i < 2:
                     (spdx if path.name.endswith("-spdx.jsonl") else cdx).validate(row["document"])
                     n += 1
+        from tools.banking_sandbox.load_balancers.validator import validate_bank
+
+        lb_result = validate_bank(public, bank, full_schemas)
+        lb_totals.update(lb_result)
+        n += lb_result["bom_documents"]
     return {
+        "load_balancer_validation": dict(lb_totals),
         "status": "FIXTURE_INTEGRITY_VALIDATED_NOT_PRODUCT_DISCOVERY",
         "banks": len(banks),
         "file_hashes_checked": len(names),

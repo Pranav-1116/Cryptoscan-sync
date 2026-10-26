@@ -78,6 +78,9 @@ def apply_drift(root, destination):
             )
         network.unlink()
         stream(network, rows)
+    from tools.banking_sandbox.load_balancers.drift import apply as apply_lb_drift
+
+    lb_changes = apply_lb_drift(destination)
     manifest = destination / "manifest.json"
     previous = file_hash(manifest)
     manifest.unlink()
@@ -99,6 +102,7 @@ def apply_drift(root, destination):
     return {
         "status": "CONFIG_FIXTURE_DRIFT_APPLIED",
         "changes": len(changes),
+        "load_balancer_changes": len(lb_changes),
         "clock_kind": "SIMULATED",
         "live_protocol_change": False,
     }

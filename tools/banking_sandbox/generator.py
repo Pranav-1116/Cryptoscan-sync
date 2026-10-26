@@ -174,6 +174,11 @@ def generate(
     counts = {
         k: 0
         for k in (
+            "load_balancers",
+            "lb_scenarios",
+            "lb_crypto_hops",
+            "lb_certificates",
+            "lb_sbom_documents",
             "banks",
             "systems",
             "applications",
@@ -834,7 +839,13 @@ def generate(
                 "actual_faults_executed": False,
             },
         )
+        from tools.banking_sandbox.load_balancers.generator import generate_bank
+
+        lb_counts = generate_bank(
+            public, control, bank, metadata, apps, systems, seed, epoch, legacy=legacy, conflicts=conflicts, drift=drift
+        )
         local = {
+            **lb_counts,
             "banks": 1,
             "systems": count,
             "applications": len(apps),

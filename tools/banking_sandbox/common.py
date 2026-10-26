@@ -7,6 +7,7 @@ import re
 
 LABEL = "SYNTHETIC/LAB — NOT A REAL BANK OR PRODUCTION ASSET"
 DIRECTORIES = [
+    "load_balancers",
     "banks",
     "organizations",
     "assets",

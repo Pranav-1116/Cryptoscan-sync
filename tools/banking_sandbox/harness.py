@@ -14,7 +14,9 @@ from tools.banking_sandbox.validator import score_static, integrity
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def run_static(root, output, timeout=600):
+def run_static(root, output, timeout=600, mode="static"):
+    if mode not in ("static", "lb-config"):
+        raise ValueError("unsupported collection mode")
     root, meta = open_estate(root)
     integrity(root)
     output = Path(output)
@@ -27,7 +29,21 @@ def run_static(root, output, timeout=600):
         raise ValueError("one staged run per generated estate; create a fresh copy for another run")
     stage.mkdir(mode=0o700)
     (stage / "SYNTHETIC-LAB.txt").write_text("SYNTHETIC LAB SCAN INPUTS ONLY\n")
-    shutil.copytree(root / "public/source", stage / "source", symlinks=False)
+    if mode == "static":
+        shutil.copytree(root / "public/source", stage / "source", symlinks=False)
+    else:
+        (stage / "source").mkdir()
+        for path in sorted((root / "public/load_balancers").rglob("*")):
+            if path.is_file() and path.name in (
+                "nginx.conf",
+                "haproxy.cfg",
+                "envoy.yaml",
+                "gateway.yaml",
+                "loadbalancer.json",
+            ):
+                target = stage / "source" / path.relative_to(root / "public/load_balancers")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, target)
     # This sentinel is ONLY a boundary proof, contains no expected result.
     (root / "control/ground_truth/ORACLE-SENTINEL.txt").write_text("FORBIDDEN TO COLLECTOR\n")
     output.mkdir(parents=True, mode=0o700)
@@ -35,7 +51,7 @@ def run_static(root, output, timeout=600):
     failure = None
     with (output / "findings.jsonl").open("xb") as stdout, (output / "collector.log").open("xb") as stderr:
         process = subprocess.Popen(
-            [sys.executable, str(Path(__file__).with_name("scan_child.py")), "--stage", str(stage)],
+            [sys.executable, str(Path(__file__).with_name("scan_child.py")), "--stage", str(stage), "--mode", mode],
             stdout=stdout,
             stderr=stderr,
             stdin=subprocess.DEVNULL,
@@ -68,7 +84,7 @@ def run_static(root, output, timeout=600):
                 pass
     summary = summaries[-1] if summaries else None
     metrics = {
-        "mode": "static",
+        "mode": mode,
         "collector": "scanner.registry.language_scanners.scan_file",
         "core_modified_for_test": False,
         "collector_source_sha256": file_hash(ROOT / "services/scanner/scanner/registry/language_scanners.py"),
@@ -88,11 +104,18 @@ def run_static(root, output, timeout=600):
         "unknown_reason": "NOT_EXERCISED_IN_THIS_OFFLINE_STATIC_RUN",
         "synthetic": True,
     }
-    if failure is None:
+    if failure is None and mode == "static":
         score = score_static(root, output / "findings.jsonl")
         dump(output / "accuracy.json", score)
         metrics["files"] = score["files"]
         metrics["failure_rate"] = score["failure_rate"]
         metrics["worker_files_per_second"] = score["files"] / metrics["wall_seconds"]
+    if failure is None and mode == "lb-config":
+        metrics.update(
+            files=summary["files"],
+            failure_rate=summary["errors"] / summary["files"] if summary["files"] else None,
+            scope="ACTUAL_CONFIG_FINDINGS_NOT_NETWORK_NEGOTIATION",
+            accuracy=None,
+        )
     dump(output / "metrics.json", metrics)
     return metrics

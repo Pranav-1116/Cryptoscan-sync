@@ -18,6 +18,7 @@ from tools.banking_sandbox.boundary import apply
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--stage", type=Path, required=True)
+    p.add_argument("--mode", choices=("static", "lb-config"), default="static")
     args = p.parse_args()
     stage = args.stage.resolve(strict=True)
     if stage.name != "scanner-inputs" or not (stage / "SYNTHETIC-LAB.txt").is_file():
@@ -72,6 +73,8 @@ def main():
         ".cbl",
         ".config",
     }
+    if args.mode == "lb-config":
+        source_extensions = {".conf", ".cfg", ".yaml", ".json"}
     for path in sorted((stage / "source").rglob("*")):
         if path.suffix not in source_extensions or not path.is_file():
             continue
@@ -80,6 +83,8 @@ def main():
             with contextlib.redirect_stdout(sys.stderr), per_file_timeout(2):
                 findings = scan_file(path, stage)
             row = {
+                "evidence_type": "STATIC_OBSERVED",
+                "semantic_scope": "CONFIGURATION_NOT_NEGOTIATION" if args.mode == "lb-config" else "SOURCE_NOT_RUNTIME",
                 "source_file": str(path.relative_to(stage)),
                 "status": "COMPLETE",
                 "algorithms": sorted({f.crypto.algorithm for f in findings if f.crypto.algorithm}),

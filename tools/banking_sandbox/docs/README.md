@@ -54,3 +54,7 @@ Generator, validator, schemas, Docker recipes and documentation live in `tools/b
 All institutions, hardware-equivalent identities, vendors and addresses are synthetic. Names end in `.invalid`; documentation-range addresses are labels only. Never substitute production networks, credentials, customer data or real bank exports. Only pinned public RSA SPKIs and public certificates persist. Fixture CA/public-key derivation is synthetic, not a secure PKI or a recommended key-generation practice. The live guest creates disposable private keys only inside its RAM filesystem; they are not exported.
 
 See [architecture and evidence](architecture.md), [scenarios and coverage](coverage.md), [operator exercises](operations.md), and the [measured readiness record](../../../docs/readiness-evidence/banking-sandbox-2026-10-26.md).
+
+## Load balancer / ADC extension
+
+The generator now builds bank-scoped LB/ADC inventories, separate TLS hops, public certificate stores, HA scenarios, configuration variants and six BOM projections. Use the [LB runbook](load-balancers.md) for `lb-scan`, `lb-live`, `lb-compare`, drift and the distinction between fixtures and actual namespace-isolated handshakes.
