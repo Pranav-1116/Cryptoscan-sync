@@ -1,13 +1,13 @@
-"""Real-bank look for the sandbox — customer-facing banking UI, not lab dark theme.
+"""Synthetic customer-look sandbox, separate from the lab's dark theme.
 
-Static, same-origin, public-only. Derives realistic balances/transactions
-deterministically from bank_id so every generated estate looks like a real bank.
+Static, same-origin, public-only. Balances and transactions are deterministic
+fixtures, not customer accounts or bank operating claims.
 """
 
 from pathlib import Path
 
 HTML_REALBANKS = r"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Global Trust Bank — Online Banking</title>
+<title>Synthetic Banking Preview</title>
 <style>
 *{box-sizing:border-box}
 :root{--nav:#0a2540;--nav2:#123058;--accent:#635bff;--accent2:#00d4ff;--bg:#f6f8fb;--card:#fff;--line:#e6e8f0;--text:#0a2540;--muted:#5b6b85;--ok:#00b67a;--warn:#ff8f00}
@@ -55,7 +55,7 @@ main{padding:18px 18px 28px;max-width:1400px;width:100%}
 @media(max-width:1050px){.wrap{grid-template-columns:1fr}aside{display:none}.grid4{grid-template-columns:repeat(2,1fr)}.row2{grid-template-columns:1fr}.branches{grid-template-columns:1fr}}
 </style></head><body>
 <div class="topbar">
-  <div class="brand"><div class="logo">GT</div><div>Global Trust Bank<br><span style="font-weight:400;opacity:.8;font-size:11px">Personal • Business • Private</span></div></div>
+  <div class="brand"><div class="logo">LAB</div><div>Banking Sandbox<br><span style="font-weight:400;opacity:.8;font-size:11px">Synthetic fixtures • No customer accounts</span></div></div>
   <nav class="topnav">
     <a class="active" href="#">Accounts</a><a href="#">Payments</a><a href="#">Cards</a><a href="#">Loans</a><a href="#">Invest</a><a href="#">Support</a>
     <span class="pill">EN • Help • Sign out</span>
@@ -76,7 +76,7 @@ main{padding:18px 18px 28px;max-width:1400px;width:100%}
     <div class="side-head">Data centers</div>
     <div id="dcList" class="muted"></div>
     <div class="side-head">Need help?</div>
-    <div class="card" style="padding:12px">24/7 support: 1-800-GT-BANK<br><span class="muted">Sandbox demo — no real customer data</span></div>
+    <div class="card" style="padding:12px">No customer support service<br><span class="muted">Sandbox demonstration only</span></div>
     <div style="margin-top:12px"><a href="./" style="color:var(--muted)">← Lab dashboard (index.html)</a> &nbsp; <a href="./realbanks.html" style="color:var(--muted)">Real-bank view</a></div>
   </aside>
   <main>
@@ -84,7 +84,7 @@ main{padding:18px 18px 28px;max-width:1400px;width:100%}
       <div>
         <div style="opacity:.9;font-size:11px;letter-spacing:.1em;text-transform:uppercase">Welcome back</div>
         <h1 id="welcome">Good morning, Alex — here's your money</h1>
-        <p id="subtitle">Private banking • Est. 1984 • Member FDIC</p>
+        <p id="subtitle">Synthetic lab • No deposit-insurance claim</p>
       </div>
       <div style="display:flex;gap:10px;align-items:center">
         <select id="bank2" class="select"></select>
@@ -118,7 +118,7 @@ main{padding:18px 18px 28px;max-width:1400px;width:100%}
       <div class="branches" style="margin-top:10px">
         <div class="card" style="margin:0"><div class="kicker" id="dcA">DC-A</div><div class="map">🗺️ Map preview</div><div style="margin-top:8px" class="muted" id="dcAInfo"></div></div>
         <div class="card" style="margin:0"><div class="kicker" id="dcB">DC-B</div><div class="map">🗺️ Map preview</div><div style="margin-top:8px" class="muted" id="dcBInfo"></div></div>
-        <div class="card" style="margin:0"><div class="kicker">Security</div><div style="font-size:12px;line-height:1.7" class="muted">All sessions TLS 1.2+ • HSM-backed keys • 24/7 fraud monitoring<br><span id="secLine">—</span></div><div class="accent"></div></div>
+        <div class="card" style="margin:0"><div class="kicker">Security</div><div style="font-size:12px;line-height:1.7" class="muted">Fixture security metadata • No live bank controls verified<br><span id="secLine">—</span></div><div class="accent"></div></div>
       </div>
     </div>
 
@@ -179,10 +179,10 @@ async function render(){
   // welcome
   let idx=seedNum(b)%realNames.length;
   $('welcome').textContent='Good morning, Alex — '+realNames[idx]+'  •  '+b;
-  $('subtitle').textContent=(systems.length)+' systems • '+(apps.length)+' applications • Est. 1984 • Member FDIC';
+  $('subtitle').textContent=(systems.length)+' systems • '+(apps.length)+' applications • synthetic fixtures, not insured accounts';
   $('txBank').textContent=b;
   $('lastLogin').textContent=new Date().toLocaleDateString()+' 08:42';
-  $('secLine').textContent= dcs.length+' data centers • '+systems.length+' systems • '+techbom.length+' components • TLS 1.2+ mandatory';
+  $('secLine').textContent= dcs.length+' fixture data centers • '+systems.length+' systems • '+techbom.length+' components • protocol use unverified';
 
   // balances derived deterministically from bank
   let seed=seedNum(b);

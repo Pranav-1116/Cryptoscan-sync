@@ -111,8 +111,8 @@ a{color:#7dd7ff}footer{color:#92a0b8;line-height:1.7;font-size:11px;margin-top:1
 </main>
 <script>
 'use strict';
-async function j(path){let r=await fetch(path,{cache:'no-store'});if(!r.ok) throw Error(path+': '+r.status);return r.json()}
-function txt(path){return fetch(path,{cache:'no-store'}).then(r=>{if(!r.ok) throw Error(path);return r.text()})}
+async function j(path){let r=await fetch('../'+path,{cache:'no-store'});if(!r.ok) throw Error(path+': '+r.status);return r.json()}
+function txt(path){return fetch('../'+path,{cache:'no-store'}).then(r=>{if(!r.ok) throw Error(path);return r.text()})}
 function fmt(v){return v===null||v===undefined?'—':typeof v==='number'? (Number.isInteger(v)? v.toLocaleString(): v.toFixed(3)): String(v)}
 (async()=>{
  let cat=await j('estate/catalog.json').catch(()=>null);
@@ -164,13 +164,13 @@ function fmt(v){return v===null||v===undefined?'—':typeof v==='number'? (Numbe
  document.getElementById('scanmetrics').textContent=JSON.stringify({static: sc, lb: lb},null,2);
 
  const bomrows=[
-   ['CBOM', 'CbomGenerator.from_records', fmt(boms.cbom?.components)+' components', '<a href=\"boms/cbom.json\">cbom.json</a> · <a href=\"boms/cbom.xml\">xml</a>'],
-   ['SBOM', 'TechBOM sbom layer (app_component)', fmt(boms.sbom?.components), '<a href=\"boms/sbom.json\">sbom.json</a>'],
-   ['TechBOM', 'materialize_technology_bom', fmt(boms.techbom?.total_components)+' total · fp '+ (boms.techbom?.fingerprint||'').slice(0,12)+'…', '<a href=\"boms/techbom.json\">techbom.json</a>'],
-   ['HBOM', 'generate_hbom', fmt(boms.hbom?.component_count)+' devices · hsm '+fmt(boms.hbom?.hsm_count), '<a href=\"boms/hbom.json\">hbom.json</a> · <a href=\"boms/hbom.cyclonedx.json\">cyclonedx</a>'],
-   ['VBOM', 'VbomGenerator', fmt(boms.vbom?.vendors)+' vendors · '+fmt(boms.vbom?.crypto_entries)+' entries', '<a href=\"boms/vbom.json\">vbom.json</a>'],
-   ['NBOM', 'build_nbom', 'unobserved '+fmt(boms.nbom?.unobserved)+' · components '+fmt((nbom?.components||[]).length), '<a href=\"boms/nbom.json\">nbom.json</a>'],
-   ['LB NBOM', 'build_nbom (LB devices)', fmt(boms['lb-nbom']?.unobserved??0)+' unobserved', '<a href=\"boms/lb-nbom.json\">lb-nbom.json</a>'],
+   ['CBOM', 'CbomGenerator.from_records', fmt(boms.cbom?.components)+' components', '<a href=\"../boms/cbom.json\">cbom.json</a> · <a href=\"../boms/cbom.xml\">xml</a>'],
+   ['SBOM', 'TechBOM sbom layer (app_component)', fmt(boms.sbom?.components), '<a href=\"../boms/sbom.json\">sbom.json</a>'],
+   ['TechBOM', 'materialize_technology_bom', fmt(boms.techbom?.total_components)+' total · fp '+ (boms.techbom?.fingerprint||'').slice(0,12)+'…', '<a href=\"../boms/techbom.json\">techbom.json</a>'],
+   ['HBOM', 'generate_hbom', fmt(boms.hbom?.component_count)+' devices · hsm '+fmt(boms.hbom?.hsm_count), '<a href=\"../boms/hbom.json\">hbom.json</a> · <a href=\"../boms/hbom.cyclonedx.json\">cyclonedx</a>'],
+   ['VBOM', 'VbomGenerator', fmt(boms.vbom?.vendors)+' vendors · '+fmt(boms.vbom?.crypto_entries)+' entries', '<a href=\"../boms/vbom.json\">vbom.json</a>'],
+   ['NBOM', 'build_nbom', 'unobserved '+fmt(boms.nbom?.unobserved)+' · components '+fmt((nbom?.components||[]).length), '<a href=\"../boms/nbom.json\">nbom.json</a>'],
+   ['LB NBOM', 'build_nbom (LB devices)', fmt(boms['lb-nbom']?.unobserved??0)+' unobserved', '<a href=\"../boms/lb-nbom.json\">lb-nbom.json</a>'],
  ];
  document.getElementById('bomtable').innerHTML=bomrows.map(r=>'<tr><td><b>'+r[0]+'</b></td><td class=muted>'+r[1]+'</td><td>'+r[2]+'</td><td>'+r[3]+'</td></tr>').join('');
  document.getElementById('techbom').textContent=tech? JSON.stringify({fingerprint: tech.fingerprint, snapshot_id: tech.snapshot_id, layers: tech.components_by_layer, deps: tech.dependency_count},null,2): '—';

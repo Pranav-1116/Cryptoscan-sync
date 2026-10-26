@@ -25,6 +25,15 @@ def _ensure_fresh(p: Path):
     p.mkdir(parents=True, mode=0o700)
 
 
+def _guard_confirmed(metrics: dict[str, Any]) -> bool:
+    guard = (metrics.get("boundary_receipt") or {}).get("guard") or {}
+    return (metrics.get("failure") is None
+            and guard.get("oracle_read_denied") is True
+            and guard.get("socket_creation_denied") is True
+            and guard.get("seccomp") == "ACTIVE_NETWORK_DENIED"
+            and type(guard.get("landlock_abi")) is int and guard["landlock_abi"] >= 2)
+
+
 def _clean_staging(estate: Path):
     stage = estate / "scanner-inputs"
     if stage.exists():
@@ -206,23 +215,35 @@ def _build_boms(estate: Path, inventory: dict[str, Any], output: Path, scan_metr
     boms_dir = output / "boms"
     boms_dir.mkdir(parents=True, exist_ok=True)
 
-    # CBOM from scanner-observed crypto
+    # Preserve the generator's legacy XML, but publish its allowlisted native 1.6 JSON profile.
+    from cbom.cyclonedx16 import to_cyclonedx16, validate_cyclonedx16
+
     cbom_gen = CbomGenerator()
-    cbom_doc = cbom_gen.from_records(inventory["crypto"], name=f"cryptoscan-cbom-{estate.name}", version="demo")
-    # add provenance metadata property
-    cbom_doc.setdefault("metadata", {}).setdefault("properties", []).append({"name": "cryptoscan:provenance", "value": "SCANNER_OBSERVED"})
-    cbom_doc["metadata"]["properties"].append({"name": "cryptoscan:connector_version", "value": PRODUCT_VERSION})
+    legacy_cbom = cbom_gen.from_records(inventory["crypto"], name=f"cryptoscan-cbom-{estate.name}", version="demo")
+    cbom_doc = to_cyclonedx16(legacy_cbom, omit_inventory_dependencies=True)
+    cbom_doc["metadata"].setdefault("properties", []).extend([
+        {"name": "cryptoscan:provenance", "value": "SCANNER_OBSERVED"},
+        {"name": "cryptoscan:connector_version", "value": PRODUCT_VERSION},
+    ])
+    if not validate_cyclonedx16(cbom_doc)["ok"]:
+        raise RuntimeError("Connected CBOM failed native CycloneDX 1.6 validation")
     (boms_dir / "cbom.json").write_text(_json.dumps(cbom_doc, indent=2))
-    # also CBOM xml
-    try:
-        (boms_dir / "cbom.xml").write_text(cbom_gen.to_xml(cbom_doc))
-    except Exception as e:
-        (boms_dir / "cbom.xml").write_text(f"<!-- xml not available: {e} -->")
+    (boms_dir / "cbom.xml").write_text(cbom_gen.to_xml(legacy_cbom))
 
     # TechBOM (unified)
     techbom = materialize_technology_bom(inventory, environment=estate.name, state_version=1)
     (boms_dir / "techbom.json").write_text(_json.dumps(techbom, indent=2))
-    # SBOM is techbom layer's sbom projection
+    # TechBOM application rows are a native projection; only standard component
+    # fields belong at the CycloneDX top level. Retain declared context as properties.
+    sbom_components = []
+    for row in techbom.get("layers", {}).get("sbom", {}).get("components", []):
+        component = {key: row[key] for key in ("type", "name", "version", "bom-ref") if row.get(key) is not None}
+        component["properties"] = [
+            {"name": "cryptoscan:source_basis", "value": "FIXTURE_DERIVED_NOT_LIVE_PROBED"},
+            *({"name": f"cryptoscan:{key}", "value": str(row[key])}
+              for key in ("asset", "criticality", "environment", "supplier") if row.get(key)),
+        ]
+        sbom_components.append(component)
     sbom_doc = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
@@ -231,7 +252,7 @@ def _build_boms(estate: Path, inventory: dict[str, Any], output: Path, scan_metr
             "timestamp": techbom.get("generated_at"),
             "properties": [{"name": "cryptoscan:provenance", "value": "SBOM_PROJECTION_OF_TECHBOM_SYNTHETIC_FIXTURE_DERIVED_NOT_LIVE_PROBED"}],
         },
-        "components": techbom.get("layers", {}).get("sbom", {}).get("components", []),
+        "components": sbom_components,
     }
     (boms_dir / "sbom.json").write_text(_json.dumps(sbom_doc, indent=2))
 
@@ -275,7 +296,30 @@ def _build_boms(estate: Path, inventory: dict[str, Any], output: Path, scan_metr
         )
     vbom_doc = vbom_gen.to_document(name=f"{estate.name}-vbom")
     (boms_dir / "vbom.json").write_text(_json.dumps(vbom_doc, indent=2))
-    vbom_cdx = vbom_gen.to_cyclonedx(name=f"{estate.name}-vbom")
+    vbom_legacy = vbom_gen.to_cyclonedx(name=f"{estate.name}-vbom")
+    # The legacy service root and vendor-only components are not valid
+    # CycloneDX crypto components. Retain vendor-only entries in native VBOM,
+    # disclose their count, and convert actual crypto entries with supplier IDs.
+    vbom_legacy["metadata"]["component"]["type"] = "application"
+    vendor_only = [c for c in vbom_legacy["components"] if c["type"] == "service"]
+    vbom_legacy["components"] = [c for c in vbom_legacy["components"] if c["type"] != "service"]
+    vbom_cdx = to_cyclonedx16(vbom_legacy)
+    original = {c["bom-ref"]: c for c in vbom_legacy["components"]}
+    vendor_fields = {"cryptoscan:vendor-id", "cryptoscan:criticality", "cryptoscan:vendor-type",
+                     "cryptoscan:use-case", "cryptoscan:key-management", "cryptoscan:pqc-ready",
+                     "cryptoscan:discovery-method", "cryptoscan:confidence"}
+    for component in vbom_cdx["components"]:
+        source = original[component["bom-ref"]]
+        component["supplier"] = source["supplier"]
+        component.setdefault("properties", []).extend(
+            p for p in source.get("properties", []) if p.get("name") in vendor_fields
+        )
+        component["properties"].append({"name": "cryptoscan:source_basis", "value": "FIXTURE_DERIVED_NOT_LIVE_PROBED"})
+    vbom_cdx["metadata"].setdefault("properties", []).append(
+        {"name": "cryptoscan:vendor_only_in_native_document", "value": str(len(vendor_only))}
+    )
+    if not validate_cyclonedx16(vbom_cdx)["ok"]:
+        raise RuntimeError("Connected VBOM failed native CycloneDX 1.6 validation")
     (boms_dir / "vbom.cyclonedx.json").write_text(_json.dumps(vbom_cdx, indent=2))
 
     # NBOM from network endpoints (honest: none live-probed)
@@ -370,20 +414,31 @@ def _validate(estate: Path, output: Path, scan: dict[str, Any]) -> dict[str, Any
         for name, path in [
             ("cbom", output / "boms/cbom.json"),
             ("sbom", output / "boms/sbom.json"),
+            ("hbom_cyclonedx", output / "boms/hbom.cyclonedx.json"),
+            ("vbom_cyclonedx", output / "boms/vbom.cyclonedx.json"),
             ("techbom", output / "boms/techbom.json"),
+            ("hbom", output / "boms/hbom.json"),
+            ("vbom", output / "boms/vbom.json"),
             ("nbom", output / "boms/nbom.json"),
         ]:
             if path.exists():
                 doc = json.loads(path.read_text())
-                # For techbom/nbom native formats, just check presence; cdx only for cyclonedx docs
-                if name in ("cbom", "sbom"):
+                # Native BOMs are present, not schema-qualified by a CycloneDX validator.
+                if name in ("cbom", "sbom", "hbom_cyclonedx", "vbom_cyclonedx"):
                     try:
-                        cdx.validate(doc["document"] if "document" in doc else doc)
+                        if name in ("cbom", "vbom_cyclonedx"):
+                            from cbom.cyclonedx16 import validate_cyclonedx16
+
+                            result = validate_cyclonedx16(doc)
+                            if not result["ok"]:
+                                raise ValueError("; ".join(result["errors"]))
+                        else:
+                            cdx.validate(doc)
                         schema_checks[name] = {"ok": True}
                     except Exception as ex:
                         schema_checks[name] = {"ok": False, "error": str(ex)[:500]}
                 else:
-                    schema_checks[name] = {"ok": True, "note": "native format, not CycloneDX schema"}
+                    schema_checks[name] = {"ok": None, "status": "PRESENT_NATIVE_NOT_SCHEMA_VALIDATED"}
     except Exception as e:
         schema_checks["error"] = str(e)
 
@@ -430,6 +485,8 @@ def connect(estate: Path, output: Path) -> dict[str, Any]:
     log_lines.append(f"static scan: {scan_static_metrics}")
     # harness leaves scanner-inputs; remove to allow second run
     _clean_staging(estate)
+    if not _guard_confirmed(scan_static_metrics):
+        raise RuntimeError("Static collector failed or its isolation proof is unavailable; no connected BOM was built")
 
     # 2. Product 2 LB scan (configs only)
     try:
@@ -439,6 +496,8 @@ def connect(estate: Path, output: Path) -> dict[str, Any]:
         scan_lb_metrics = {"failure": str(e)[:500], "note": "lb-config scan failed or no load_balancers"}
         log_lines.append(f"lb scan failed: {e}")
     _clean_staging(estate)
+    if (estate / "public/load_balancers").is_dir() and not _guard_confirmed(scan_lb_metrics):
+        raise RuntimeError("LB config collector failed or its isolation proof is unavailable; no connected BOM was built")
 
     # 3. Build BOMs from scan + public
     crypto_rows = _findings_to_crypto(output / "scan/static/findings.jsonl")
@@ -450,6 +509,9 @@ def connect(estate: Path, output: Path) -> dict[str, Any]:
     validation = _validate(estate, output, scan_static_metrics)
     (output / "reports").mkdir(exist_ok=True)
     (output / "reports/validation.json").write_text(json.dumps(validation, indent=2))
+    if not all(validation.get("schema_checks", {}).get(name, {}).get("ok")
+               for name in ("cbom", "sbom", "hbom_cyclonedx", "vbom_cyclonedx")):
+        raise RuntimeError("Connected BOM schema validation failed; inspect reports/validation.json")
 
     (output / "boms/summary.json").write_text(json.dumps(bom_summary, indent=2))
     (output / "scan/static/metrics.json").write_text(json.dumps(scan_static_metrics, indent=2))

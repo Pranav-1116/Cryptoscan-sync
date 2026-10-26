@@ -285,6 +285,15 @@ def test_dashboard_never_serves_control(estate):
     assert h.translate_path("/index.html") == str(estate / "public/index.html")
 
 
+def test_customer_preview_does_not_claim_real_bank_assurance():
+    from tools.banking_sandbox.realbanks import HTML_REALBANKS
+
+    assert "Synthetic Banking Preview" in HTML_REALBANKS
+    assert "No customer accounts" in HTML_REALBANKS
+    for unsupported in ("Member FDIC", "24/7 fraud monitoring", "24/7 support", "TLS 1.2+ mandatory"):
+        assert unsupported not in HTML_REALBANKS
+
+
 def test_kubernetes_exports_secret_metadata_only(estate):
     rows = json.loads((estate / "public/kubernetes/bank-0001.json").read_text())["items"]
     assert {

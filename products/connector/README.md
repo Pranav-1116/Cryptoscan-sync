@@ -36,8 +36,9 @@ ESTATE/control/ground_truth ──► Validator only (operator) → reports/vali
 # Or via sandbox CLI (same implementation)
 .venv/bin/python -m tools.banking_sandbox.cli connect --estate /tmp/lab-estate-10 --output /tmp/cryptoscan-output-10
 
-# Preview the product output
-.venv/bin/python -m products.connector.serve --output /tmp/cryptoscan-output-10 --port 8080
+# Preview the product output through the local connected-output server
+.venv/bin/python -m tools.banking_sandbox.cli serve-output \
+  --output /tmp/cryptoscan-output-10 --host 127.0.0.1 --port 8080
 # Also: tools.banking_sandbox.docs/load-balancers.md for lb-scan/lb-live/lb-compare
 ```
 
@@ -45,7 +46,7 @@ ESTATE/control/ground_truth ──► Validator only (operator) → reports/vali
 
 1. `scan/static/metrics.json` — wall/cpu/rss, files, failure_rate, boundary_receipt, scope
 2. `scan/lb-config/metrics.json` — same for load-balancer configs (5 filenames only)
-3. `boms/{cbom,sbom,techbom,hbom,vbom,nbom}.json` — each with `source_provenance` header, schema-checked
+3. `boms/{cbom,sbom,techbom,hbom,vbom,nbom}.json` — six provenance-labelled outputs. CBOM 1.6, SBOM 1.5, and separate HBOM 1.5 / VBOM 1.6 CycloneDX exports receive schema checks. Native TechBOM/HBOM/VBOM/NBOM documents are present but not schema-qualified by those checks; vendor-only entries remain in native VBOM and their count is disclosed in the CycloneDX export.
 4. `boms/hbom.json` + `boms/hbom.cyclonedx.json`, `boms/vbom.cyclonedx.json`, `boms/cbom.xml`
 5. `reports/validation.json` — precision/recall/FN, per-language, key_size/attribution UNKNOWN with reason, LB hop correlation accuracy
 6. `dashboard/index.html` — Product 1 pane, Product 2 pane, Validation pane, honest limitations

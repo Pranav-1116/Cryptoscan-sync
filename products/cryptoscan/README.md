@@ -38,4 +38,4 @@ python -m products.connector.run --estate /tmp/estate --output /tmp/cryptoscan-o
 - `cbom`/`techbom` components carry `source_basis: SCANNER_OBSERVED` when from `scan_file`, else `FIXTURE_DERIVED_NOT_LIVE_PROBED` with low confidence.
 - `sbom`/`hbom`/`vbom`/`nbom` carry `lab:synthetic`, `vendor_declared`, `observed: false` where the estate marks `UNKNOWN`.
 - Network verdicts exclude `observed: false` (absence ≠ pass). Load-balancer hop owner comes from controlled LB topology, not auto-detection — stated in the dashboard.
-- Six BOM schema checks reuse the estate's `validators()` (CycloneDX + SPDX); results in `reports/validation.json`.
+- The connected CBOM 1.6, SBOM 1.5, HBOM CycloneDX 1.5 and VBOM CycloneDX 1.6 exports receive schema checks in `reports/validation.json`. Native TechBOM/HBOM/VBOM/NBOM formats are separate outputs; the CycloneDX checks do not qualify those native formats.

@@ -47,9 +47,10 @@ This repository contains **two separately runnable products** that exchange only
 .venv/bin/python -m products.connector.run --estate /tmp/lab-estate-10 \
   --output /tmp/cryptoscan-output-10
 
-# 3. Open the connected output
-python -m http.server --directory /tmp/cryptoscan-output-10/dashboard 8080
-# → /dashboard, /boms (6 BOMs), /scan, /reports/validation
+# 3. Serve the connected output (dashboard and evidence under one origin)
+python -m tools.banking_sandbox.cli serve-output \
+  --output /tmp/cryptoscan-output-10 --host 127.0.0.1 --port 8080
+# → /dashboard/, /boms/, /scan/, /reports/validation.json
 ```
 
 See `products/sandbox/README.md`, `products/cryptoscan/README.md`, `products/connector/README.md`.
