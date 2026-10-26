@@ -1,0 +1,200 @@
+{
+  "binding": {
+    "expires_at": "2026-10-26T05:02:00.802351Z",
+    "issued_at": "2026-10-26T04:02:01.169352Z",
+    "job_id": "1e1fd291-a39c-5a8b-ae9c-f13da04f6c3e",
+    "nonce": "24b8820bf09351f513e39809b832065e8a41d92f046c3088a5835d2d1de7c3d3",
+    "schema_version": "cryptoscan.oci-capture-binding/v1",
+    "target_id": "7756c836-26df-5702-9b0b-31dbd18ba23f",
+    "target_record_sha256": "905c007ba096b25bed4bb39989918b44067827485140a235e0769156b64e74cd",
+    "target_revision": 2,
+    "target_sha256": "ba8efb57742bd09b287e8b0fba73727390e6cfc8aa3177b276fa5097d88a0543"
+  },
+  "evidence": {
+    "authenticity_verified": false,
+    "blobs": [
+      {
+        "byte_count": 415,
+        "role": "MANIFEST",
+        "sha256": "b88aa5d7b050dd41ee879bbacc0cfca69e2769d5a7826a67b79e1aa59fc5475a"
+      },
+      {
+        "byte_count": 366,
+        "role": "CONFIG",
+        "sha256": "8e4d729fcdc39c4b2bdec1e7bde329a35f94cd9938d6899318cae3dfa476f24a"
+      },
+      {
+        "byte_count": 10240,
+        "role": "LAYER",
+        "sha256": "d663cef9a18d2f41f7cbfb17899f8b06cc9dabb10779a82633197553e540be61"
+      }
+    ],
+    "collector": "offline-oci/candidate-v1",
+    "config_sha256": "8e4d729fcdc39c4b2bdec1e7bde329a35f94cd9938d6899318cae3dfa476f24a",
+    "coverage": {
+      "approved_inputs": 3,
+      "basis": "APPROVED_METADATA_INPUTS_ONLY",
+      "parsed_inputs": 3,
+      "whole_image_coverage_verified": false,
+      "whole_image_percent": null
+    },
+    "declarations": {
+      "base_image_digest": null,
+      "base_image_name": null,
+      "base_image_verified": false,
+      "exposed_ports": [
+        "443/tcp"
+      ],
+      "live_listeners_observed": false,
+      "provenance": "DECLARED",
+      "vendor": "Fixture Vendor"
+    },
+    "diff_ids": [
+      "d663cef9a18d2f41f7cbfb17899f8b06cc9dabb10779a82633197553e540be61"
+    ],
+    "finished_at": "2026-10-26T04:02:01.413965Z",
+    "full_image_software_complete": false,
+    "hardware_origin": "UNKNOWN",
+    "image_executed": false,
+    "production_execution_qualified": false,
+    "provenance": "IMPORTED",
+    "receipts": [
+      {
+        "asset_absence_proven": false,
+        "byte_count": 63,
+        "content_sha256": "ebb5c60553f59570ca74fd724413f5845bacc28ff445f6d12c374122233aeb97",
+        "facts": [
+          {
+            "algorithm": "UNKNOWN",
+            "binary_format": "UNKNOWN",
+            "certificate_signature_oid": "UNKNOWN",
+            "cipher_suites": [],
+            "curve": "UNKNOWN",
+            "fingerprint_sha256": null,
+            "key_size": null,
+            "kind": "SOFTWARE",
+            "local_basis": "OBSERVED",
+            "mode": "UNKNOWN",
+            "policy_result": "NOT_EVALUATED",
+            "pqc_assessment": "UNKNOWN",
+            "protocols": [],
+            "purpose": "PACKAGE_DATABASE_RECORD",
+            "runtime_use": "UNKNOWN",
+            "signature_hash": "UNKNOWN",
+            "software_name": "openssl",
+            "software_version": "3.0.17",
+            "unparsed_directives": false
+          }
+        ],
+        "input_id": "packages",
+        "layer_sha256": "d663cef9a18d2f41f7cbfb17899f8b06cc9dabb10779a82633197553e540be61",
+        "path": "var/lib/dpkg/status",
+        "reason": "METADATA_ONLY",
+        "status": "PARSED"
+      },
+      {
+        "asset_absence_proven": false,
+        "byte_count": 48,
+        "content_sha256": "d3960cbfb16dd9940203b45f25b79a7e9327b4d3ed1782f61a468ba7fe580f22",
+        "facts": [
+          {
+            "algorithm": "UNKNOWN",
+            "binary_format": "UNKNOWN",
+            "certificate_signature_oid": "UNKNOWN",
+            "cipher_suites": [],
+            "curve": "UNKNOWN",
+            "fingerprint_sha256": null,
+            "key_size": null,
+            "kind": "OS_RELEASE",
+            "local_basis": "DECLARED",
+            "mode": "UNKNOWN",
+            "policy_result": "NOT_EVALUATED",
+            "pqc_assessment": "UNKNOWN",
+            "protocols": [],
+            "purpose": "OS_RELEASE_METADATA",
+            "runtime_use": "UNKNOWN",
+            "signature_hash": "UNKNOWN",
+            "software_name": "debian",
+            "software_version": "12",
+            "unparsed_directives": false
+          }
+        ],
+        "input_id": "os",
+        "layer_sha256": "d663cef9a18d2f41f7cbfb17899f8b06cc9dabb10779a82633197553e540be61",
+        "path": "etc/os-release",
+        "reason": "METADATA_ONLY",
+        "status": "PARSED"
+      },
+      {
+        "asset_absence_proven": false,
+        "byte_count": 34,
+        "content_sha256": "1d4cd811c683e62632e977d5cc84e2a14ca97edb648f0d1cba4ea957e32bb1d2",
+        "facts": [
+          {
+            "algorithm": "UNKNOWN",
+            "binary_format": "ELF",
+            "certificate_signature_oid": "UNKNOWN",
+            "cipher_suites": [],
+            "curve": "UNKNOWN",
+            "fingerprint_sha256": null,
+            "key_size": null,
+            "kind": "BINARY",
+            "local_basis": "OBSERVED",
+            "mode": "UNKNOWN",
+            "policy_result": "NOT_EVALUATED",
+            "pqc_assessment": "UNKNOWN",
+            "protocols": [],
+            "purpose": "FILE_PRESENCE",
+            "runtime_use": "UNKNOWN",
+            "signature_hash": "UNKNOWN",
+            "software_name": null,
+            "software_version": null,
+            "unparsed_directives": false
+          }
+        ],
+        "input_id": "library",
+        "layer_sha256": "d663cef9a18d2f41f7cbfb17899f8b06cc9dabb10779a82633197553e540be61",
+        "path": "usr/lib/libcrypto.so.3",
+        "reason": "METADATA_ONLY",
+        "status": "PARSED"
+      }
+    ],
+    "runtime_use": "UNKNOWN",
+    "schema_version": "cryptoscan.oci-evidence/v1",
+    "started_at": "2026-10-26T04:02:01.411858Z",
+    "status": "COMPLETED",
+    "target": {
+      "architecture": "amd64",
+      "authorization_reference": "change/approved-oci",
+      "environment": "prod",
+      "expires_at": "2026-10-26T05:02:00.802351Z",
+      "inputs": [
+        {
+          "input_id": "packages",
+          "kind": "DPKG_STATUS",
+          "path": "var/lib/dpkg/status"
+        },
+        {
+          "input_id": "os",
+          "kind": "LINUX_OS_RELEASE",
+          "path": "etc/os-release"
+        },
+        {
+          "input_id": "library",
+          "kind": "BINARY_METADATA",
+          "path": "usr/lib/libcrypto.so.3"
+        }
+      ],
+      "layout_path": "/tmp/pytest-of-user/pytest-1/test_bound_cli_return_is_accep0/oci",
+      "manifest_sha256": "b88aa5d7b050dd41ee879bbacc0cfca69e2769d5a7826a67b79e1aa59fc5475a",
+      "not_before": "2026-10-26T04:01:00.802351Z",
+      "schema_version": "cryptoscan.oci-target/v1",
+      "system_id": "system-a",
+      "target_id": "payments-image"
+    },
+    "target_sha256": "ba8efb57742bd09b287e8b0fba73727390e6cfc8aa3177b276fa5097d88a0543"
+  },
+  "producer_authenticity_verified": false,
+  "runtime_use": "UNKNOWN",
+  "schema_version": "cryptoscan.oci-job-return/v1"
+}

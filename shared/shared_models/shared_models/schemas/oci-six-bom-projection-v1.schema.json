@@ -1,0 +1,403 @@
+{
+  "$defs": {
+    "HostFact": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "default": "UNKNOWN",
+          "enum": [
+            "RSA",
+            "EC",
+            "DSA",
+            "ED25519",
+            "ED448",
+            "UNKNOWN"
+          ],
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "binary_format": {
+          "default": "UNKNOWN",
+          "enum": [
+            "ELF",
+            "PE",
+            "UNKNOWN"
+          ],
+          "title": "Binary Format",
+          "type": "string"
+        },
+        "certificate_signature_oid": {
+          "default": "UNKNOWN",
+          "maxLength": 100,
+          "pattern": "^(UNKNOWN|[0-9]+(?:\\.[0-9]+)+)$",
+          "title": "Certificate Signature Oid",
+          "type": "string"
+        },
+        "cipher_suites": {
+          "items": {
+            "enum": [
+              "AES128-GCM-SHA256",
+              "AES256-GCM-SHA384",
+              "ECDHE-RSA-AES128-GCM-SHA256",
+              "ECDHE-RSA-AES256-GCM-SHA384",
+              "ECDHE-ECDSA-AES128-GCM-SHA256",
+              "ECDHE-ECDSA-AES256-GCM-SHA384"
+            ],
+            "type": "string"
+          },
+          "maxItems": 6,
+          "title": "Cipher Suites",
+          "type": "array"
+        },
+        "curve": {
+          "default": "UNKNOWN",
+          "enum": [
+            "secp256r1",
+            "secp384r1",
+            "secp521r1",
+            "UNKNOWN"
+          ],
+          "title": "Curve",
+          "type": "string"
+        },
+        "fingerprint_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fingerprint Sha256"
+        },
+        "key_size": {
+          "anyOf": [
+            {
+              "maximum": 16384,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Size"
+        },
+        "kind": {
+          "enum": [
+            "CERTIFICATE",
+            "TLS_CONFIGURATION",
+            "BINARY",
+            "SOFTWARE",
+            "OS_RELEASE"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "enum": [
+            "OBSERVED",
+            "DECLARED"
+          ],
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "mode": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Mode",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "protocols": {
+          "items": {
+            "enum": [
+              "TLSv1",
+              "TLSv1.1",
+              "TLSv1.2",
+              "TLSv1.3"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "title": "Protocols",
+          "type": "array"
+        },
+        "purpose": {
+          "enum": [
+            "PUBLIC_KEY_METADATA",
+            "TLS_CONFIGURATION",
+            "FILE_PRESENCE",
+            "PACKAGE_DATABASE_RECORD",
+            "OS_RELEASE_METADATA"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "signature_hash": {
+          "default": "UNKNOWN",
+          "enum": [
+            "SHA1",
+            "SHA224",
+            "SHA256",
+            "SHA384",
+            "SHA512",
+            "UNKNOWN"
+          ],
+          "title": "Signature Hash",
+          "type": "string"
+        },
+        "software_name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Software Name"
+        },
+        "software_version": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Software Version"
+        },
+        "unparsed_directives": {
+          "default": false,
+          "title": "Unparsed Directives",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "local_basis",
+        "purpose"
+      ],
+      "title": "HostFact",
+      "type": "object"
+    },
+    "ImageFactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "content_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Content Sha256",
+          "type": "string"
+        },
+        "evidence_id": {
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "fact": {
+          "$ref": "#/$defs/HostFact"
+        },
+        "image_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Image Sha256",
+          "type": "string"
+        },
+        "input_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Input Id",
+          "type": "string"
+        },
+        "layer_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Layer Sha256",
+          "type": "string"
+        },
+        "ordinal": {
+          "maximum": 999,
+          "minimum": 0,
+          "title": "Ordinal",
+          "type": "integer"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "provenance": {
+          "const": "IMPORTED",
+          "default": "IMPORTED",
+          "title": "Provenance",
+          "type": "string"
+        },
+        "relationship": {
+          "const": "CONTAINS_METADATA_RECORD",
+          "default": "CONTAINS_METADATA_RECORD",
+          "title": "Relationship",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "input_id",
+        "ordinal",
+        "image_sha256",
+        "content_sha256",
+        "layer_sha256",
+        "path",
+        "fact"
+      ],
+      "title": "ImageFactRef",
+      "type": "object"
+    },
+    "ImageView": {
+      "additionalProperties": false,
+      "properties": {
+        "complete": {
+          "const": false,
+          "default": false,
+          "title": "Complete",
+          "type": "boolean"
+        },
+        "declared_vendor": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Declared Vendor"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/$defs/ImageFactRef"
+          },
+          "maxItems": 1000,
+          "title": "Facts",
+          "type": "array"
+        },
+        "state": {
+          "enum": [
+            "SCOPED_METADATA",
+            "DECLARED_ONLY",
+            "UNKNOWN"
+          ],
+          "title": "State",
+          "type": "string"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "ImageView",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "CBOM": {
+      "$ref": "#/$defs/ImageView"
+    },
+    "HBOM": {
+      "$ref": "#/$defs/ImageView"
+    },
+    "NBOM": {
+      "$ref": "#/$defs/ImageView"
+    },
+    "SBOM": {
+      "$ref": "#/$defs/ImageView"
+    },
+    "TechBOM": {
+      "$ref": "#/$defs/ImageView"
+    },
+    "VBOM": {
+      "$ref": "#/$defs/ImageView"
+    },
+    "cyclonedx_export": {
+      "const": false,
+      "default": false,
+      "title": "Cyclonedx Export",
+      "type": "boolean"
+    },
+    "evidence_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Evidence Sha256",
+      "type": "string"
+    },
+    "graph_persisted": {
+      "const": false,
+      "default": false,
+      "title": "Graph Persisted",
+      "type": "boolean"
+    },
+    "image_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Image Sha256",
+      "type": "string"
+    },
+    "pqc_readiness": {
+      "const": "UNKNOWN",
+      "default": "UNKNOWN",
+      "title": "Pqc Readiness",
+      "type": "string"
+    },
+    "runtime_use": {
+      "const": "UNKNOWN",
+      "default": "UNKNOWN",
+      "title": "Runtime Use",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "cryptoscan.oci-six-bom-projection/v1",
+      "default": "cryptoscan.oci-six-bom-projection/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "system_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "System Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_sha256",
+    "image_sha256",
+    "system_id",
+    "SBOM",
+    "CBOM",
+    "NBOM",
+    "HBOM",
+    "VBOM",
+    "TechBOM"
+  ],
+  "title": "OciProjection",
+  "type": "object"
+}
