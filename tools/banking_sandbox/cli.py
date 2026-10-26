@@ -32,6 +32,16 @@ def main():
     s.add_argument("--output", type=Path, required=True)
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8080)
+    s = sub.add_parser("live-synthetic")
+    s.add_argument("--estate", type=Path, required=True)
+    s.add_argument("--output", type=Path, required=True)
+    s.add_argument("--port-base", type=int, default=21000)
+    s.add_argument("--max-services", type=int, default=20)
+    s.add_argument("--duration", type=float, default=12.0)
+    s = sub.add_parser("live-daemon")
+    s.add_argument("--estate", type=Path, required=True)
+    s.add_argument("--port-base", type=int, default=21000)
+    s.add_argument("--max-services", type=int, default=20)
     sub.add_parser("modes")
     a = p.parse_args()
     if a.command == "validate":
@@ -73,6 +83,14 @@ def main():
         from tools.banking_sandbox.connector.dashboard import serve_output
 
         return serve_output(a.output, a.host, a.port)
+    elif a.command == "live-synthetic":
+        from tools.banking_sandbox.live_synthetic import run_live
+
+        value = run_live(a.estate, a.output, port_base=a.port_base, max_services=a.max_services, duration=a.duration)
+    elif a.command == "live-daemon":
+        from tools.banking_sandbox.live_synthetic import run_daemon
+
+        return run_daemon(a.estate, port_base=a.port_base, max_services=a.max_services)
     else:
         from tools.banking_sandbox import operations
 

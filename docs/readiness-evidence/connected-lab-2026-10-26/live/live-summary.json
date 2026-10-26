@@ -1,0 +1,1 @@
+{"estate":"/tmp/demo-estate-10","live_failed":0,"live_listeners":8,"live_probed":8,"note":"Fresh synthetic private keys in 0700 tmpdir, destroyed after run. No production credentials. LB hop ownership from controlled topology, not inferred.","ports":[21000,21001,21002,21003,21004,21005,21006,21007],"services_total":8,"synthetic":true,"wall_seconds":2.6674979719998646}
