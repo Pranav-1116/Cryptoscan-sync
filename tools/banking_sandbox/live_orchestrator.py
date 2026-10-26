@@ -1,9 +1,9 @@
 """Live orchestrator: sandbox runs fake hardware/network/crypto/vendors/software,
-mutates every 5s (traffic + LB + drift), reconnects to CryptoScan, monitors live all BOMs.
+waits the configured interval after each synthetic change-and-scan pass, then monitors the next BOMs.
 
 One command: python -m tools.banking_sandbox.cli live-orchestrator --estate /tmp/estate --output-root /tmp/live --port 8080
 - Generates estate if missing
-- Every interval: pick random fake change (network cipher, LB termination, vendor algo, hardware fw, crypto evidence)
+- After each completed pass, wait the configured interval before the next synthetic fixture change
 - Writes change into estate/public/*, runs isolated scan (Landlock+seccomp), builds 6 BOMs, validates
 - Dashboard polls /api/status every 2s, shows 6 BOM live counts, traffic feed, LB, hardware, network, validation
 """
@@ -13,13 +13,12 @@ import json
 import random
 import time
 import threading
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import urllib.parse
 
-from tools.banking_sandbox.common import records, dump, stream
+from tools.banking_sandbox.common import records, stream
 # ensure PYTHONPATH for cbom/scanner/shared_models so live ticks work
 import sys
 ROOT = Path(__file__).resolve().parents[2]
@@ -60,7 +59,7 @@ a{color:#7dd7ff}
 </style></head><body>
 <div class=topbar>
  <b style="font-size:14px">🔴 LIVE SANDBOX → CRYPTOSCAN</b>
- <span class="pill live" id=liveDot>● LIVE • tick <b id=tick>—</b> • <span id=wall>—</span>s • every <span id=interval>5</span>s</span>
+ <span class="pill live" id=liveDot>● LIVE • tick <b id=tick>—</b> • <span id=wall>—</span>s • next pass after <span id=interval>5</span>s</span>
  <span class=pill>estate: <code id=estate>—</code></span>
  <span class=pill>output: <code id=output>—</code> • <a id=olink href="#">open</a></span>
  <span class=pill>interval <input id=intv type=range min=3 max=15 value=5 style="width:80px"> <span id=intvV>5</span>s <button onclick="post('/api/tick-now')">tick now</button> <button onclick="post('/api/pause')"><span id=pauseT>pause</span></button></span>
@@ -74,8 +73,8 @@ a{color:#7dd7ff}
 <div class=grid id=boms></div>
 
 <div class=columns>
- <div class=card><h2>🚦 Live Traffic Feed (5s mutations)</h2><div id=feed class=feed></div></div>
- <div class=card><h2>⚖️ LoadBalancer — live hops</h2><div id=lb></div><pre id=lbRaw></pre></div>
+ <div class=card><h2>🚦 Synthetic fixture change feed</h2><div id=feed class=feed></div></div>
+ <div class=card><h2>⚖️ LoadBalancer — configured fixture hops</h2><div id=lb></div><pre id=lbRaw></pre></div>
 </div>
 
 <div class=columns>
@@ -310,9 +309,6 @@ def refresh_manifest(estate: Path):
 
 def collect_snapshot(estate: Path) -> dict:
     """Quick counts for dashboard before scan."""
-    def count(globpat):
-        import glob as g
-        return sum(1 for f in Path(estate).glob(globpat) for _ in records(Path(f)))
     # lightweight
     net_eps = sum(1 for f in (estate/"public/network").glob("*.jsonl") for _ in records(f))
     hw = sum(1 for f in (estate/"public/hbom").glob("*.jsonl") for _ in records(f))
@@ -325,9 +321,14 @@ def collect_snapshot(estate: Path) -> dict:
 # ---- ORCHESTRATOR -----------------------------------------------------------
 
 class Orchestrator:
-    def __init__(self, estate: Path, output_root: Path, port: int = 8080, interval: float = 5.0, banks: int = 4, profile: str = "worst-case-bank"):
+    def __init__(self, estate: Path, output_root: Path, port: int = 8080, interval: float = 5.0, banks: int = 4, profile: str = "worst-case-bank", host: str = "127.0.0.1"):
+        if host != "127.0.0.1":
+            raise ValueError("Live lab controls may listen on loopback only")
+        if not 3 <= interval <= 15:
+            raise ValueError("Live lab tick interval must be between 3 and 15 seconds")
         self.estate = Path(estate)
         self.output_root = Path(output_root)
+        self.host = host
         self.port = port
         self.interval = interval
         self.banks = banks
@@ -355,6 +356,7 @@ class Orchestrator:
             "validation": {},
         }
         self._lock = threading.Lock()
+        self._tick_lock = threading.Lock()
         self._t0 = time.monotonic()
 
     def _push_feed(self, entry):
@@ -371,17 +373,30 @@ class Orchestrator:
             self.estate.parent.mkdir(parents=True, exist_ok=True)
             print(f"[live-orchestrator] generating estate banks={self.banks} profile={self.profile} → {self.estate}", flush=True)
             generate(output=self.estate, banks=self.banks, profile=self.profile, seed="LIVE-ORCH-1")
-            print(f"[live-orchestrator] estate ready", flush=True)
+            print("[live-orchestrator] estate ready", flush=True)
         else:
             print(f"[live-orchestrator] using existing estate {self.estate}", flush=True)
         self.output_root.mkdir(parents=True, exist_ok=True)
 
     def do_tick(self):
+        if not self._tick_lock.acquire(blocking=False):
+            return False
+        try:
+            return self._do_tick()
+        finally:
+            self._tick_lock.release()
+
+    def _do_tick(self):
         with self._lock:
-            self.state["tick"] += 1
-            tick = self.state["tick"]
+            tick = self.state["tick"] + 1
+        out = self.output_root / f"tick-{tick:04d}"
+        if out.exists() or out.is_symlink():
+            with self._lock:
+                self._push_feed({"kind": "ERROR", "msg": "tick output already exists; no files changed"})
+            return False
+        with self._lock:
+            self.state["tick"] = tick
         print(f"\n[live] ===== TICK {tick} =====", flush=True)
-        t_tick = time.monotonic()
         # 1. mutate 1-2 random subsystems (fake hardware/network/crypto/vendors/software + LB)
         mutators = [mutate_network, mutate_lb, mutate_hardware, mutate_vendors, mutate_crypto_software]
         picks = random.sample(mutators, k=random.randint(2,3))
@@ -406,10 +421,6 @@ class Orchestrator:
         snap = collect_snapshot(self.estate)
 
         # 2. run CryptoScan connector into tick output
-        out = self.output_root / f"tick-{tick:04d}"
-        # ensure clean
-        if out.exists():
-            shutil.rmtree(out)
         scan_wall = 0
         try:
             from tools.banking_sandbox.connector.connector import connect
@@ -417,7 +428,6 @@ class Orchestrator:
             res = connect(self.estate, out)
             scan_wall = res.get("wall_seconds", 0)
             boms = res.get("boms", {})
-            val = res.get("validation", {})
             # also capture validation details
             import json as _j
             vpath = out / "reports/validation.json"
@@ -471,7 +481,6 @@ class Orchestrator:
                 except Exception: pass
                 # crypto
                 try:
-                    from tools.banking_sandbox.catalog import ALGORITHMS
                     # top algos from boms cbom
                     cbom_p = out/"boms/cbom.json"
                     algos=[]
@@ -510,7 +519,7 @@ class Orchestrator:
                     "ts": datetime.now(timezone.utc).isoformat(),
                     "cbom": (boms.get("cbom",{}) or {}).get("components") if isinstance(boms.get("cbom"), dict) else 0,
                     "sbom": (boms.get("sbom",{}) or {}).get("components") if isinstance(boms.get("sbom"), dict) else 0,
-                    "nbom": (boms.get("nbom",{}) or {}).get("devices") if isinstance(boms.get("nbom"), dict) else (boms.get("nbom",{}) or {}).get("count") if isinstance(boms.get("nbom"), dict) else 0,
+                    "nbom": (boms.get("nbom", {}) or {}).get("components", 0),
                     "p": self.state["last_precision"],
                     "r": self.state["last_recall"],
                     "wall": scan_wall,
@@ -541,17 +550,19 @@ class Orchestrator:
         # initial tick immediately
         self.do_tick()
         while True:
-            # sleep with pause support and dynamic interval
-            slept=0
-            step=0.2
-            while slept < self.interval:
+            # Only unpaused time counts, and interval changes apply to this wait.
+            elapsed = 0.0
+            step = 0.2
+            while True:
                 time.sleep(step)
-                slept+=step
                 with self._lock:
                     if self.state["paused"]:
-                        # reset slept to avoid immediate tick after unpause
-                        slept = max(0, slept - step*0.5)
                         continue
+                    elapsed += step
+                    interval = self.state["interval"]
+                if elapsed >= interval:
+                    break
+            self.do_tick()
 
     def start_http(self):
         estate = self.estate
@@ -638,35 +649,51 @@ class Orchestrator:
                     self.end_headers(); self.wfile.write(target.read_bytes()); return
                 self.send_error(404)
             def do_POST(self):
+                expected_origin = f"http://{self.server.server_address[0]}:{self.server.server_address[1]}"
+                if self.headers.get("Origin") not in (None, expected_origin):
+                    self.send_error(403, "Cross-origin lab controls refused"); return
                 parsed = urllib.parse.urlparse(self.path)
                 p=parsed.path
-                length = int(self.headers.get('Content-Length',0) or 0)
+                try:
+                    length = int(self.headers.get('Content-Length', 0) or 0)
+                except ValueError:
+                    self.send_error(400, "Invalid body length"); return
+                if length < 0 or length > 4096:
+                    self.send_error(413, "Lab control body exceeds limit"); return
                 body = self.rfile.read(length) if length else b""
-                data={}
-                try: data=json.loads(body) if body else {}
-                except: pass
+                try:
+                    data = json.loads(body) if body else {}
+                except ValueError:
+                    self.send_error(400, "Invalid JSON"); return
+                if not isinstance(data, dict):
+                    self.send_error(400, "Object body required"); return
                 if p=="/api/interval":
-                    iv=int(data.get("interval",5))
+                    try:
+                        iv = int(data.get("interval", 5))
+                    except (ValueError, TypeError):
+                        self.send_error(400, "Invalid interval"); return
                     iv=max(3,min(15,iv))
                     with lock: state_ref["interval"]=iv
                     self.send_response(200); self.send_header("Content-Type","application/json"); self.end_headers()
                     self.wfile.write(json.dumps({"interval":iv}).encode()); return
                 if p=="/api/tick-now":
+                    if self.server.orch._tick_lock.locked():
+                        self.send_error(409, "A lab tick is already running"); return
                     threading.Thread(target=self.server.orch.do_tick, daemon=True).start()
-                    self.send_response(200); self.end_headers(); self.wfile.write(b"ok"); return
+                    self.send_response(202); self.end_headers(); self.wfile.write(b"accepted"); return
                 if p=="/api/pause":
                     with lock: state_ref["paused"]=not state_ref["paused"]
                     self.send_response(200); self.end_headers(); self.wfile.write(b"ok"); return
                 self.send_error(404)
 
-        server = ThreadingHTTPServer(("0.0.0.0", self.port), Handler)
+        server = ThreadingHTTPServer((self.host, self.port), Handler)
         server.orch = self  # type: ignore
-        print(f"[live] dashboard http://0.0.0.0:{self.port}/ → estate {estate} output {output_root}", flush=True)
+        print(f"[live] dashboard http://{self.host}:{self.port}/ → estate {estate} output {output_root}", flush=True)
         # also serve estate public directly for convenience?
         server.serve_forever()
 
-def run_orchestrator(estate: Path, output_root: Path, port: int = 8080, interval: float = 5.0, banks: int = 4, profile: str = "worst-case-bank"):
-    orch = Orchestrator(estate=estate, output_root=output_root, port=port, interval=interval, banks=banks, profile=profile)
+def run_orchestrator(estate: Path, output_root: Path, port: int = 8080, interval: float = 5.0, banks: int = 4, profile: str = "worst-case-bank", host: str = "127.0.0.1"):
+    orch = Orchestrator(estate=estate, output_root=output_root, port=port, interval=interval, banks=banks, profile=profile, host=host)
     # http in daemon thread
     t_http = threading.Thread(target=orch.start_http, daemon=True)
     t_http.start()

@@ -48,6 +48,7 @@ def main():
     s.add_argument("--port", type=int, default=8082)
     s.add_argument("--no-serve", action="store_true", help="render realbanks.html only, don't serve")
     s = sub.add_parser("live-orchestrator")
+    s.add_argument("--host", choices=("127.0.0.1",), default="127.0.0.1")
     s.add_argument("--estate", type=Path, required=True)
     s.add_argument("--output-root", type=Path, required=True)
     s.add_argument("--port", type=int, default=8080)
@@ -114,7 +115,7 @@ def main():
     elif a.command == "live-orchestrator":
         from tools.banking_sandbox.live_orchestrator import run_orchestrator
 
-        return run_orchestrator(a.estate, a.output_root, port=a.port, interval=a.interval, banks=a.banks, profile=a.profile)
+        return run_orchestrator(a.estate, a.output_root, host=a.host, port=a.port, interval=a.interval, banks=a.banks, profile=a.profile)
     else:
         from tools.banking_sandbox import operations
 
