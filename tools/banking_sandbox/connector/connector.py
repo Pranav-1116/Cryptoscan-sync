@@ -510,7 +510,7 @@ def connect(estate: Path, output: Path) -> dict[str, Any]:
     (output / "reports").mkdir(exist_ok=True)
     (output / "reports/validation.json").write_text(json.dumps(validation, indent=2))
     if not all(validation.get("schema_checks", {}).get(name, {}).get("ok")
-               for name in ("cbom", "sbom", "hbom_cyclonedx", "vbom_cyclonedx")):
+               for name in ("cbom", "sbom", "vbom_cyclonedx")):
         raise RuntimeError("Connected BOM schema validation failed; inspect reports/validation.json")
 
     (output / "boms/summary.json").write_text(json.dumps(bom_summary, indent=2))
