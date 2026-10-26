@@ -486,6 +486,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(collection.router, prefix=prefix)
     from api.routers import oci_collection
     app.include_router(oci_collection.router, prefix=prefix)
+    from api.routers import collection_views
+    app.include_router(collection_views.router, prefix=prefix)
     app.include_router(host_evidence.router, prefix=prefix)
     app.include_router(container.router, prefix=prefix)
     app.include_router(container_scans.router, prefix=prefix)

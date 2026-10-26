@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "baseline_snapshot_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Baseline Snapshot Id",
+      "type": "string"
+    },
+    "candidate_snapshot_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Candidate Snapshot Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "baseline_snapshot_id",
+    "candidate_snapshot_id"
+  ],
+  "title": "DriftRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

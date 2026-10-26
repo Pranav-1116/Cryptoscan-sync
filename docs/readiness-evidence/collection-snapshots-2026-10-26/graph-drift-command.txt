@@ -1,0 +1,1 @@
+/home/user/CryproScan/.venv/bin/python -m pytest services/graph_engine/tests services/drift/tests -q --tb=short --junitxml=/home/user/CryproScan/docs/readiness-evidence/collection-snapshots-2026-10-26/graph-drift.xml

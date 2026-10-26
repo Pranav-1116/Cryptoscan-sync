@@ -1,0 +1,1 @@
+/home/user/CryproScan/.venv/bin/python -m pytest shared/shared_models/tests services/inventory/tests -q --tb=short --junitxml=/home/user/CryproScan/docs/readiness-evidence/collection-snapshots-2026-10-26/models-inventory.xml

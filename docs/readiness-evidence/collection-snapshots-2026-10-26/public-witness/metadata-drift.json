@@ -1,0 +1,119 @@
+{
+  "created_at": "2026-10-26T04:48:27.033102+00:00",
+  "created_by": "c9da1712-f6f6-4488-90a1-68b9b9322fd7",
+  "id": "96a852d3-e934-45ed-8112-9c6711085808",
+  "kind": "collection_metadata_drift",
+  "payload": {
+    "baseline_record_sha256": "af05575e609d9bf38c26a00f87cdf400baa4362e13552ea5f661d4ab43ae54f9",
+    "baseline_snapshot_id": "b81495ab-100c-581f-95ab-4e6c3dc53775",
+    "candidate_record_sha256": "a7b3901eacd47757a4554051be85e2ab8e3527e4de5350744ee13bcb090e7e7b",
+    "candidate_snapshot_id": "a9f163ac-497c-5803-bd55-2b5761776cda",
+    "report": {
+      "baseline_inputs": [
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "cert",
+          "kind": "PUBLIC_CERTIFICATE",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/certificate.pem",
+          "reason": "METADATA_ONLY",
+          "status": "PARSED"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "tls",
+          "kind": "NGINX_TLS_CONFIG",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/tls.conf",
+          "reason": "METADATA_ONLY",
+          "status": "PARSED"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "lib",
+          "kind": "BINARY_METADATA",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/libcrypto.so",
+          "reason": "METADATA_ONLY",
+          "status": "PARSED"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "denied",
+          "kind": "PUBLIC_CERTIFICATE",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/unavailable.pem",
+          "reason": "NOT_FOUND",
+          "status": "UNAVAILABLE"
+        }
+      ],
+      "baseline_sha256": "4362dde86cd8349c21f1c8902087d0ad30792dfa0fdb55dc3af49ddac2e16908",
+      "candidate_inputs": [
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "cert",
+          "kind": "PUBLIC_CERTIFICATE",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/certificate.pem",
+          "reason": "NOT_FOUND",
+          "status": "UNAVAILABLE"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "tls",
+          "kind": "NGINX_TLS_CONFIG",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/tls.conf",
+          "reason": "METADATA_ONLY",
+          "status": "PARSED"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "lib",
+          "kind": "BINARY_METADATA",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/libcrypto.so",
+          "reason": "METADATA_ONLY",
+          "status": "PARSED"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "denied",
+          "kind": "PUBLIC_CERTIFICATE",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/unavailable.pem",
+          "reason": "NOT_FOUND",
+          "status": "UNAVAILABLE"
+        }
+      ],
+      "candidate_sha256": "00c09dd51375bcf9d3e4f1dda65da063801678603f7617d6549e48db5b339f7a",
+      "changes": [
+        {
+          "asset_absence_proven": false,
+          "baseline_fact_counts": {
+            "377f6d6d7b5b91373c661871e248882b4f19d2fef50e82e3fb156bca87e08a80": 1
+          },
+          "baseline_observation_ids": [
+            "cf38cd29-6e57-55ab-a2d5-6c2288111af7"
+          ],
+          "candidate_fact_counts": {},
+          "candidate_observation_ids": [],
+          "identity_slot": "d0a120dc-8296-5a75-bd83-0c1699f6aa9a",
+          "installation_or_removal_proven": false,
+          "state": "UNRESOLVED_COLLECTION_GAP"
+        }
+      ],
+      "materialized_without_collection": true,
+      "operational_use": "UNKNOWN",
+      "schema_version": "cryptoscan.collection-drift/v1",
+      "unchanged_slots": 2,
+      "whole_asset_coverage_verified": false
+    }
+  },
+  "payload_sha256": "86615a49b39fa4b877139820e492744ac908dbf8b4f4c8ad009b4dfa48c143bf",
+  "previous_sha256": null,
+  "revision": 1,
+  "subject_id": "b35a8c65-fc81-52f4-ade5-bea1d5fb9382",
+  "tenant_id": "a",
+  "updated_at": "2026-10-26T04:48:27.033107+00:00"
+}

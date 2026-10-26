@@ -1,0 +1,142 @@
+{
+  "collector": {
+    "name": "offline-linux/v1",
+    "version": "1.0"
+  },
+  "coverage": {
+    "approved_inputs": 4,
+    "basis": "APPROVED_INPUT_RECEIPTS_ONLY",
+    "parsed_inputs": 2,
+    "whole_host_coverage_verified": false,
+    "whole_host_percent": null
+  },
+  "envelope_sha256": "062adfd5aaaf61a2846b7978de16a7dd601000819b2f0973a738743041e9959a",
+  "environment": "prod",
+  "errors": [
+    {
+      "asset_absence_proven": false,
+      "input_id": "cert",
+      "reason": "NOT_FOUND",
+      "status": "UNAVAILABLE"
+    },
+    {
+      "asset_absence_proven": false,
+      "input_id": "denied",
+      "reason": "NOT_FOUND",
+      "status": "UNAVAILABLE"
+    }
+  ],
+  "evidence_manifest": {
+    "approval_id": "64ff7984-1b0d-475e-8e7a-c7e46770f112",
+    "scan_id": "0591cbe7-5ee9-44ac-a906-cccdb8574008",
+    "scan_manifest_sha256": "d767da350cb5b89c406c12d53c34d967effcce9b95b9525ec62fc2547d7d76e7",
+    "snapshot_sha256": "6c0c75ae5e045db6995bd7ca759d8c507e689dc25411035ef6d8bd25c5542130"
+  },
+  "finished_at": "2026-10-26T04:48:26.815706+00:00",
+  "host_identity_attested": false,
+  "job_id": "2afa8ff2-eef5-5998-ae67-f3d581ea0d66",
+  "observations": [
+    {
+      "collected_at": "2026-10-26T04:48:26.815706+00:00",
+      "content_hash": "f08278d585b344572da160942d1253a86607f1d2de81b518be214327f8a6c6d4",
+      "contributes_to": [
+        "CBOM",
+        "TechBOM"
+      ],
+      "evidence_id": "3f66d206-2b7f-42f5-afe1-69a00e0b7438",
+      "fact": {
+        "algorithm": "UNKNOWN",
+        "binary_format": "UNKNOWN",
+        "certificate_signature_oid": "UNKNOWN",
+        "cipher_suites": [
+          "AES256-GCM-SHA384"
+        ],
+        "curve": "UNKNOWN",
+        "fingerprint_sha256": null,
+        "key_size": null,
+        "kind": "TLS_CONFIGURATION",
+        "local_basis": "DECLARED",
+        "mode": "UNKNOWN",
+        "policy_result": "NOT_EVALUATED",
+        "pqc_assessment": "UNKNOWN",
+        "protocols": [
+          "TLSv1.2",
+          "TLSv1.3"
+        ],
+        "purpose": "TLS_CONFIGURATION",
+        "runtime_use": "UNKNOWN",
+        "signature_hash": "UNKNOWN",
+        "software_name": null,
+        "software_version": null,
+        "unparsed_directives": false
+      },
+      "fact_ordinal": 0,
+      "fact_sha256": "b1841ac13a3f8b743395f343db819c0499a8d2143b8806df6f59650bdcfd638d",
+      "identity_basis": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+      "identity_slot": "a789d5bc-7887-5a0a-9b39-98f4906452e3",
+      "input_id": "tls",
+      "observation_id": "8c9a2d2c-7316-5e88-a5f2-ff19a72ffdd0",
+      "provenance": "IMPORTED",
+      "source": {
+        "host_id": "payments-1",
+        "input_content_sha256": "916d14f108360058b41a6cdb3bde2f742fa3c9203d21bd4e06a5ea693fbe7751",
+        "kind": "NGINX_TLS_CONFIG",
+        "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/tls.conf"
+      }
+    },
+    {
+      "collected_at": "2026-10-26T04:48:26.815706+00:00",
+      "content_hash": "dcfa69ca2263a66ad2702f4104c3f4fae9f0e219079b57813e51c8c0d3165a89",
+      "contributes_to": [
+        "SBOM",
+        "TechBOM"
+      ],
+      "evidence_id": "8cb1faf2-6b9b-43cf-8d95-9780595d71c8",
+      "fact": {
+        "algorithm": "UNKNOWN",
+        "binary_format": "ELF",
+        "certificate_signature_oid": "UNKNOWN",
+        "cipher_suites": [],
+        "curve": "UNKNOWN",
+        "fingerprint_sha256": null,
+        "key_size": null,
+        "kind": "BINARY",
+        "local_basis": "OBSERVED",
+        "mode": "UNKNOWN",
+        "policy_result": "NOT_EVALUATED",
+        "pqc_assessment": "UNKNOWN",
+        "protocols": [],
+        "purpose": "FILE_PRESENCE",
+        "runtime_use": "UNKNOWN",
+        "signature_hash": "UNKNOWN",
+        "software_name": null,
+        "software_version": null,
+        "unparsed_directives": false
+      },
+      "fact_ordinal": 0,
+      "fact_sha256": "50093dddf92f6c2347613c99bbc912eed07978fa70ead122253992b273061ec1",
+      "identity_basis": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+      "identity_slot": "14865e40-45d2-5412-ace6-92ef01807e4f",
+      "input_id": "lib",
+      "observation_id": "a9857685-a4e0-5b56-9c5f-e3c24b00dca5",
+      "provenance": "IMPORTED",
+      "source": {
+        "host_id": "payments-1",
+        "input_content_sha256": "d7a83c66a07944835644080ffc91da5d3b14a3ee00ff22e4e0dc76d5d2549b62",
+        "kind": "BINARY_METADATA",
+        "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/libcrypto.so"
+      }
+    }
+  ],
+  "pqc_use": "UNKNOWN",
+  "provenance": "IMPORTED",
+  "runtime_use": "UNKNOWN",
+  "schema_version": "cryptoscan.collection-evidence/v1",
+  "source_revision": null,
+  "started_at": "2026-10-26T04:48:26.814813+00:00",
+  "status": "PARTIAL",
+  "system_id": "system-a",
+  "target_id": "38e731db-a401-5f5a-8cb0-b03a0833a495",
+  "target_revision": 4,
+  "target_sha256": "e715d6857916c7923a98974a1f63357f7641b8739a023c9d77c043b613bf833e"
+}
