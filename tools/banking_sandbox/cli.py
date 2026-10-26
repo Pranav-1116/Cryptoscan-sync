@@ -25,12 +25,23 @@ def main():
     s.add_argument("--port", type=int, default=8080)
     s = sub.add_parser("lb-live")
     s.add_argument("--output", type=Path, required=True)
+    s = sub.add_parser("connect")
+    s.add_argument("--estate", type=Path, required=True)
+    s.add_argument("--output", type=Path, required=True)
+    s = sub.add_parser("serve-output")
+    s.add_argument("--output", type=Path, required=True)
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8080)
     sub.add_parser("modes")
     a = p.parse_args()
     if a.command == "validate":
         from tools.banking_sandbox.validator import integrity
 
         value = integrity(a.root, a.full_schemas)
+    elif a.command == "connect":
+        from tools.banking_sandbox.connector.connector import connect
+
+        value = connect(a.estate, a.output)
     elif a.command == "lb-live":
         from tools.banking_sandbox.load_balancers.live import run
 
@@ -58,6 +69,10 @@ def main():
 
         value = compare_facts(a.root, a.results)
         dump(a.output, value)
+    elif a.command == "serve-output":
+        from tools.banking_sandbox.connector.dashboard import serve_output
+
+        return serve_output(a.output, a.host, a.port)
     else:
         from tools.banking_sandbox import operations
 

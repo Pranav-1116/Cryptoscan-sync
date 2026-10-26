@@ -1,0 +1,75 @@
+{
+  "cbom": {
+    "components": 334,
+    "bomFormat": "CycloneDX",
+    "specVersion": "1.5"
+  },
+  "techbom": {
+    "total_components": 1288,
+    "layers": {
+      "sbom": 412,
+      "cbom": 334,
+      "hbom": 312,
+      "vendor": 230
+    },
+    "fingerprint": "32ed16e87a5024a60a73f66f22936a5f99d4afaecf48bb45c76e845b525d5f62",
+    "snapshot_id": "TECHBOM-20261026-094812"
+  },
+  "sbom": {
+    "components": 412
+  },
+  "hbom": {
+    "component_count": 312,
+    "hsm_count": 74,
+    "content_hash": "43d0e130f50a3f0c086ec500d6618322acd3b329c18f2ba7a9165b7623d65a80"
+  },
+  "vbom": {
+    "vendors": 86,
+    "crypto_entries": 258,
+    "pqc_ready_entries": 0,
+    "pqc_ready_pct": 0.0,
+    "vendors_with_inventory": 86,
+    "systems_linked": 86,
+    "entries_by_confidence": {
+      "LOW": 258
+    },
+    "vendors_missing_contract_end": 86
+  },
+  "nbom": {
+    "components": 946,
+    "by_kind": {
+      "certificate": 824,
+      "device": 10,
+      "endpoint": 112
+    },
+    "unobserved": 112,
+    "findings": 0,
+    "by_severity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0,
+      "info": 0
+    },
+    "migration_priority": []
+  },
+  "lb-nbom": {
+    "components": 227,
+    "by_kind": {
+      "certificate": 106,
+      "device": 15,
+      "endpoint": 106
+    },
+    "unobserved": 106,
+    "findings": 0,
+    "by_severity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0,
+      "info": 0
+    },
+    "migration_priority": []
+  },
+  "provenance": "ALL_BOMS_GENERATED_BY_REAL_PRODUCT_GENERATORS_FROM_SCANNER_FINDINGS_AND_PUBLIC_FIXTURES_NOT_FROM_TRUTH"
+}
