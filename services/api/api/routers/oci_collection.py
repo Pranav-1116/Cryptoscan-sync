@@ -160,3 +160,46 @@ def projections(
     identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
 ):
     return core.projections(db, ctx.tenant_id, identifier)
+
+
+# Expected truth is reviewed separately; these routes never execute a collector.
+from api.assurance import oci_truth as truth
+from shared_models.oci_truth import OciTruthProposal, OciTruthDecision
+
+
+@router.post("/jobs/{identifier}/truth", status_code=201)
+def propose_truth(
+    identifier: Key,
+    body: OciTruthProposal,
+    request: Request,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    return truth.propose(db, ctx.tenant_id, identifier, body, author(db, request, user), user)
+
+
+@router.post("/jobs/{identifier}/truth/approve")
+def approve_truth(
+    identifier: Key,
+    body: OciTruthDecision,
+    request: Request,
+    ctx=Depends(estate),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    return truth.approve(db, ctx.tenant_id, identifier, body, author(db, request, user, "assurance.review"), user)
+
+
+@router.get("/jobs/{identifier}/truth")
+def truth_history(
+    identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
+):
+    return truth.history(db, ctx.tenant_id, identifier)
+
+
+@router.get("/jobs/{identifier}/truth/reconciliation")
+def truth_comparison(
+    identifier: Key, ctx=Depends(estate), db: Session = Depends(get_db_session), user=Depends(get_current_user)
+):
+    return truth.reconciliation(db, ctx.tenant_id, identifier)

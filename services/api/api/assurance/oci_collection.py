@@ -183,6 +183,14 @@ def transition(db, owner, identifier, body, actor, user, *, cancel=False):
         spec = admitted(db, owner, current, target.revision)
         if job.payload["state"] != "READY":
             raise HTTPException(409, "OCI job is not ready")
+        # A planned truth workflow cannot bypass its separate review at handoff.
+        truth = store.latest(db, owner, "oci_truth_plan", identifier, required=False)
+        if truth is not None:
+            from api.assurance.oci_truth import reviewer
+
+            if truth.payload.get("state") != "APPROVED":
+                raise HTTPException(409, "Planned OCI truth needs separate approval before handoff")
+            reviewer(db, owner, truth.created_by)
         binding = OciCaptureBinding(
             job_id=identifier,
             target_id=target.subject_id,
