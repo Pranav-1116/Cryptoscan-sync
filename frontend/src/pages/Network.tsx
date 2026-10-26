@@ -1,3 +1,4 @@
+import ResourceMonitoring from "../components/ResourceMonitoring";
 import { Link } from "react-router-dom";
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
@@ -238,6 +239,7 @@ export default function Network() {
           </>
         }
       />
+      <ResourceMonitoring />
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         {[["TLS endpoints", c.endpoints], ["with policy issues", c.policyIssues], ["valid chain", c.chainValid], ["discovered (open)", c.discovered]].map(([k, v]) => (
           <div className="kpi" key={k as string}><span className="k">{k}</span>

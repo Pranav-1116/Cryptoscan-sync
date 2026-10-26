@@ -1,0 +1,68 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "system_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "System Id",
+      "type": "string"
+    },
+    "environment": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Environment",
+      "type": "string"
+    },
+    "host_label": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Host Label",
+      "type": "string"
+    },
+    "interfaces": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,14}$",
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Interfaces",
+      "type": "array"
+    },
+    "mount_paths": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Mount Paths",
+      "type": "array"
+    },
+    "interval_seconds": {
+      "default": 5,
+      "maximum": 30,
+      "minimum": 1,
+      "title": "Interval Seconds",
+      "type": "integer"
+    },
+    "not_before": {
+      "format": "date-time",
+      "title": "Not Before",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "system_id",
+    "environment",
+    "host_label",
+    "interfaces",
+    "mount_paths",
+    "not_before",
+    "expires_at"
+  ],
+  "title": "ResourceScope",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

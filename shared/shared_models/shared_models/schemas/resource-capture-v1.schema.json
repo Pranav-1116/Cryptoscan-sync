@@ -1,0 +1,472 @@
+{
+  "$defs": {
+    "NetworkCounters": {
+      "additionalProperties": false,
+      "properties": {
+        "rx_bytes": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Rx Bytes",
+          "type": "integer"
+        },
+        "tx_bytes": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Tx Bytes",
+          "type": "integer"
+        },
+        "rx_packets": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Rx Packets",
+          "type": "integer"
+        },
+        "tx_packets": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Tx Packets",
+          "type": "integer"
+        },
+        "rx_errors": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Rx Errors",
+          "type": "integer"
+        },
+        "tx_errors": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Tx Errors",
+          "type": "integer"
+        },
+        "rx_dropped": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Rx Dropped",
+          "type": "integer"
+        },
+        "tx_dropped": {
+          "maximum": 18446744073709551615,
+          "minimum": 0,
+          "title": "Tx Dropped",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rx_bytes",
+        "tx_bytes",
+        "rx_packets",
+        "tx_packets",
+        "rx_errors",
+        "tx_errors",
+        "rx_dropped",
+        "tx_dropped"
+      ],
+      "title": "NetworkCounters",
+      "type": "object"
+    },
+    "NetworkReading": {
+      "additionalProperties": false,
+      "properties": {
+        "interface": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,14}$",
+          "title": "Interface",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "MEASURED",
+            "UNAVAILABLE",
+            "DENIED",
+            "INVALID",
+            "COUNTER_RESET",
+            "IDENTITY_CHANGED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "first": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NetworkCounters"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "second": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NetworkCounters"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "first_ifindex": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Ifindex"
+        },
+        "second_ifindex": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Second Ifindex"
+        }
+      },
+      "required": [
+        "interface",
+        "status"
+      ],
+      "title": "NetworkReading",
+      "type": "object"
+    },
+    "ResourceAuthorization": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cryptoscan.resource-authorization/v1",
+          "default": "cryptoscan.resource-authorization/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "plan_id": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "plan_record_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Plan Record Sha256",
+          "type": "string"
+        },
+        "scope_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Scope Sha256",
+          "type": "string"
+        },
+        "nonce": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Nonce",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/ResourceScope"
+        },
+        "authorizes_remote_execution": {
+          "const": false,
+          "default": false,
+          "title": "Authorizes Remote Execution",
+          "type": "boolean"
+        },
+        "authorizes_packet_capture": {
+          "const": false,
+          "default": false,
+          "title": "Authorizes Packet Capture",
+          "type": "boolean"
+        },
+        "authorizes_configuration_change": {
+          "const": false,
+          "default": false,
+          "title": "Authorizes Configuration Change",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "plan_id",
+        "plan_record_sha256",
+        "scope_sha256",
+        "nonce",
+        "scope"
+      ],
+      "title": "ResourceAuthorization",
+      "type": "object"
+    },
+    "ResourceScope": {
+      "additionalProperties": false,
+      "properties": {
+        "system_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "System Id",
+          "type": "string"
+        },
+        "environment": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Environment",
+          "type": "string"
+        },
+        "host_label": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Host Label",
+          "type": "string"
+        },
+        "interfaces": {
+          "items": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,14}$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Interfaces",
+          "type": "array"
+        },
+        "mount_paths": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Mount Paths",
+          "type": "array"
+        },
+        "interval_seconds": {
+          "default": 5,
+          "maximum": 30,
+          "minimum": 1,
+          "title": "Interval Seconds",
+          "type": "integer"
+        },
+        "not_before": {
+          "format": "date-time",
+          "title": "Not Before",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "system_id",
+        "environment",
+        "host_label",
+        "interfaces",
+        "mount_paths",
+        "not_before",
+        "expires_at"
+      ],
+      "title": "ResourceScope",
+      "type": "object"
+    },
+    "StorageReading": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "MEASURED",
+            "UNAVAILABLE",
+            "DENIED",
+            "UNSUPPORTED",
+            "INVALID"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "total_bytes": {
+          "anyOf": [
+            {
+              "maximum": 18446744073709551615,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Total Bytes"
+        },
+        "free_bytes": {
+          "anyOf": [
+            {
+              "maximum": 18446744073709551615,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Free Bytes"
+        },
+        "available_bytes": {
+          "anyOf": [
+            {
+              "maximum": 18446744073709551615,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Available Bytes"
+        },
+        "filesystem_device": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "pattern": "^[0-9]+:[0-9]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filesystem Device"
+        }
+      },
+      "required": [
+        "path",
+        "status"
+      ],
+      "title": "StorageReading",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "cryptoscan.resource-capture/v1",
+      "default": "cryptoscan.resource-capture/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "capture_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Capture Id",
+      "type": "string"
+    },
+    "authorization": {
+      "$ref": "#/$defs/ResourceAuthorization"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "elapsed_ns": {
+      "maximum": 120000000000,
+      "minimum": 100000000,
+      "title": "Elapsed Ns",
+      "type": "integer"
+    },
+    "boot_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Boot Id",
+      "type": "string"
+    },
+    "network_namespace_inode": {
+      "maximum": 18446744073709551615,
+      "minimum": 1,
+      "title": "Network Namespace Inode",
+      "type": "integer"
+    },
+    "mount_namespace_inode": {
+      "maximum": 18446744073709551615,
+      "minimum": 1,
+      "title": "Mount Namespace Inode",
+      "type": "integer"
+    },
+    "network": {
+      "items": {
+        "$ref": "#/$defs/NetworkReading"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Network",
+      "type": "array"
+    },
+    "storage": {
+      "items": {
+        "$ref": "#/$defs/StorageReading"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Storage",
+      "type": "array"
+    },
+    "provenance": {
+      "const": "IMPORTED",
+      "default": "IMPORTED",
+      "title": "Provenance",
+      "type": "string"
+    },
+    "producer_authenticity_verified": {
+      "const": false,
+      "default": false,
+      "title": "Producer Authenticity Verified",
+      "type": "boolean"
+    },
+    "whole_host_or_network_complete": {
+      "const": false,
+      "default": false,
+      "title": "Whole Host Or Network Complete",
+      "type": "boolean"
+    },
+    "packet_payload_captured": {
+      "const": false,
+      "default": false,
+      "title": "Packet Payload Captured",
+      "type": "boolean"
+    },
+    "configuration_changed": {
+      "const": false,
+      "default": false,
+      "title": "Configuration Changed",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "capture_id",
+    "authorization",
+    "started_at",
+    "finished_at",
+    "elapsed_ns",
+    "boot_id",
+    "network_namespace_inode",
+    "mount_namespace_inode",
+    "network",
+    "storage"
+  ],
+  "title": "ResourceCapture",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

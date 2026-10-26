@@ -1,0 +1,77 @@
+{
+  "schema_version": "cryptoscan.resource-capture/v1",
+  "capture_id": "ba7d3b66-cc48-42b9-9b22-a031474adb78",
+  "authorization": {
+    "schema_version": "cryptoscan.resource-authorization/v1",
+    "plan_id": "c5ae3690-e19f-4971-ac4f-893c32c15cea",
+    "plan_record_sha256": "a3e31ac615b2f2a50a5232b9e252a4f96f673cf7380ab0e32f70dcb9201ea8ce",
+    "scope_sha256": "9451391c7a7ce29aaf71c0c832a6626fcb86363a5eaa787d8a5bd5a911901885",
+    "nonce": "95633190ca12106e9f92e3868dd7f6a8705c148ec1c6aeee074b6f3a9f8391c4",
+    "scope": {
+      "system_id": "system-a",
+      "environment": "prod",
+      "host_label": "synthetic-host",
+      "interfaces": [
+        "lo"
+      ],
+      "mount_paths": [
+        "/"
+      ],
+      "interval_seconds": 1,
+      "not_before": "2026-10-26T05:25:45.625927Z",
+      "expires_at": "2026-10-26T05:36:45.625927Z"
+    },
+    "authorizes_remote_execution": false,
+    "authorizes_packet_capture": false,
+    "authorizes_configuration_change": false
+  },
+  "started_at": "2026-10-26T05:26:46.707934Z",
+  "finished_at": "2026-10-26T05:26:47.709003Z",
+  "elapsed_ns": 1000234768,
+  "boot_id": "7b0855bc-f0a8-4d24-b70a-1151226e8045",
+  "network_namespace_inode": 4026531840,
+  "mount_namespace_inode": 4026531841,
+  "network": [
+    {
+      "interface": "lo",
+      "status": "MEASURED",
+      "first": {
+        "rx_bytes": 399532,
+        "tx_bytes": 399532,
+        "rx_packets": 1994,
+        "tx_packets": 1994,
+        "rx_errors": 0,
+        "tx_errors": 0,
+        "rx_dropped": 0,
+        "tx_dropped": 0
+      },
+      "second": {
+        "rx_bytes": 399532,
+        "tx_bytes": 399532,
+        "rx_packets": 1994,
+        "tx_packets": 1994,
+        "rx_errors": 0,
+        "tx_errors": 0,
+        "rx_dropped": 0,
+        "tx_dropped": 0
+      },
+      "first_ifindex": 1,
+      "second_ifindex": 1
+    }
+  ],
+  "storage": [
+    {
+      "path": "/",
+      "status": "MEASURED",
+      "total_bytes": 21834924032,
+      "free_bytes": 19413794816,
+      "available_bytes": 19128582144,
+      "filesystem_device": "254:0"
+    }
+  ],
+  "provenance": "IMPORTED",
+  "producer_authenticity_verified": false,
+  "whole_host_or_network_complete": false,
+  "packet_payload_captured": false,
+  "configuration_changed": false
+}
