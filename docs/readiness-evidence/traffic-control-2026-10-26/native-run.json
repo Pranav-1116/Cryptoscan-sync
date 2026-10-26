@@ -1,0 +1,26 @@
+{
+  "scope": "Sandbox diagnostic only; request/proposal/review identifiers and commitments are synthetic, not retained human approval or enrolled device authority.",
+  "runs": [
+    {
+      "command": "preflight",
+      "exit_code": 0,
+      "stdout": "OUTPUT_SHA256=eef49c0d00fb4acaa7928b15e062f8e772846185bd657279ceaad46161ad26b1\n",
+      "stderr": ""
+    },
+    {
+      "command": "isolated-drill",
+      "exit_code": 2,
+      "stdout": "OUTPUT_SHA256=831bd6328418cbb6fbfbb2a993cfda525065bd379f821abc5882b5002c2847f0\n",
+      "stderr": ""
+    },
+    {
+      "command": "report",
+      "exit_code": 0,
+      "stdout": "OUTPUT_SHA256=ee748d5c02d99469b71572e503daa6ccf048ab5904241ebc777cd0967d2918eb\n",
+      "stderr": ""
+    }
+  ],
+  "parent_eth0_policy_bytes_unchanged": true,
+  "parent_context_unchanged": true,
+  "diagnostic": "Separate isolated diagnostic returned tc error: Specified qdisc kind is unknown. No module load or host fallback."
+}

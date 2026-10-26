@@ -1,0 +1,20 @@
+
+> zelinx-frontend@1.0.0 test
+> vitest run src/components/TrafficControlReview.test.tsx src/components/ResourceMonitoring.test.tsx
+
+
+ RUN  v5.0.5 /home/user/.cache/traffic-control-release/frontend
+
+ ✓ src/components/ResourceMonitoring.test.tsx (7 tests) 1179ms
+   ✓ renders real zero traffic but unavailable capacity as Unknown without adding filesystems 419ms
+ ✓ src/components/TrafficControlReview.test.tsx (4 tests) 549ms
+   ✓ retains exact uint64 JSON on import without parse and reserialization 302ms
+
+ Test Files  2 passed (2)
+      Tests  11 passed (11)
+   Start at  06:01:32
+   Duration  5.45s (environment 47%, tests 35%, setup 8%, transform 7%, import 2%, worker 1%)
+
+Environment  jsdom was created 2 times · 2.31s total, 47% of tracked time
+             create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
+             learn more: https://vitest.dev/guide/improving-performance#test-environments

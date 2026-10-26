@@ -1,3 +1,4 @@
+import TrafficControlReview from "../components/TrafficControlReview";
 import ResourceMonitoring from "../components/ResourceMonitoring";
 import { Link } from "react-router-dom";
 import React, { useEffect, useMemo, useState } from "react";
@@ -240,6 +241,7 @@ export default function Network() {
         }
       />
       <ResourceMonitoring />
+      <TrafficControlReview />
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         {[["TLS endpoints", c.endpoints], ["with policy issues", c.policyIssues], ["valid chain", c.chainValid], ["discovered (open)", c.discovered]].map(([k, v]) => (
           <div className="kpi" key={k as string}><span className="k">{k}</span>

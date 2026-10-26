@@ -1,0 +1,156 @@
+{
+  "$id": "https://cryptoscan.local/schemas/linux-traffic-drill-result-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "after_qdisc_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "After Qdisc Sha256"
+    },
+    "applied_qdisc_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied Qdisc Sha256"
+    },
+    "authorization_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Authorization Sha256",
+      "type": "string"
+    },
+    "before_qdisc_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Before Qdisc Sha256"
+    },
+    "child_namespace_distinct": {
+      "title": "Child Namespace Distinct",
+      "type": "boolean"
+    },
+    "child_network_namespace_inode": {
+      "anyOf": [
+        {
+          "maximum": 18446744073709551615,
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Child Network Namespace Inode"
+    },
+    "duration_seconds": {
+      "maximum": 5,
+      "minimum": 1,
+      "title": "Duration Seconds",
+      "type": "integer"
+    },
+    "egress_limit_mbps": {
+      "maximum": 100000,
+      "minimum": 1,
+      "title": "Egress Limit Mbps",
+      "type": "integer"
+    },
+    "failure": {
+      "enum": [
+        "NONE",
+        "UNSHARE_OR_KERNEL_UNAVAILABLE",
+        "CHILD_REFUSED_OR_FAILED",
+        "TIMEOUT",
+        "PARENT_CONTEXT_CHANGED"
+      ],
+      "title": "Failure",
+      "type": "string"
+    },
+    "parent_namespace_unchanged": {
+      "title": "Parent Namespace Unchanged",
+      "type": "boolean"
+    },
+    "parent_network_namespace_inode": {
+      "maximum": 18446744073709551615,
+      "minimum": 1,
+      "title": "Parent Network Namespace Inode",
+      "type": "integer"
+    },
+    "production_execution_qualified": {
+      "const": false,
+      "default": false,
+      "title": "Production Execution Qualified",
+      "type": "boolean"
+    },
+    "qdisc_applied_in_child": {
+      "title": "Qdisc Applied In Child",
+      "type": "boolean"
+    },
+    "real_host_interface_changed": {
+      "const": false,
+      "default": false,
+      "title": "Real Host Interface Changed",
+      "type": "boolean"
+    },
+    "rollback_verified_in_child": {
+      "title": "Rollback Verified In Child",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": "cryptoscan.linux-traffic-drill/v1",
+      "default": "cryptoscan.linux-traffic-drill/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "throughput_enforcement_measured": {
+      "const": false,
+      "default": false,
+      "title": "Throughput Enforcement Measured",
+      "type": "boolean"
+    },
+    "verdict": {
+      "enum": [
+        "APPLIED_AND_ROLLED_BACK_IN_OWNED_NAMESPACE",
+        "REFUSED_OR_FAILED"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "required": [
+    "authorization_sha256",
+    "verdict",
+    "parent_namespace_unchanged",
+    "child_namespace_distinct",
+    "qdisc_applied_in_child",
+    "rollback_verified_in_child",
+    "parent_network_namespace_inode",
+    "egress_limit_mbps",
+    "duration_seconds",
+    "failure"
+  ],
+  "title": "DrillResult",
+  "type": "object"
+}
