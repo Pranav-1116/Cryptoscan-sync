@@ -63,6 +63,7 @@ def run_static(root, output, timeout=600, mode="static"):
                 "PYTHONDONTWRITEBYTECODE": "1",
                 "PYTHONHASHSEED": "0",
                 "HOME": "/nonexistent",
+                **({"CRYPTOSCAN_ALLOW_CAPS": "1"} if os.environ.get("CRYPTOSCAN_ALLOW_CAPS") == "1" else {}),
             },
         )
         try:

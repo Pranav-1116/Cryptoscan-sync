@@ -15,9 +15,14 @@ import struct
 def apply(read_paths):
     if os.uname().machine != "x86_64" or os.geteuid() == 0:
         raise ValueError("ordinary-user Linux x86_64 required")
-    for line in Path("/proc/self/status").read_text().splitlines():
-        if line.split(":")[0] in ("CapEff", "CapPrm", "CapInh", "CapAmb") and int(line.split()[1], 16):
-            raise ValueError("capability-bearing reader refused")
+    # Allow local demo on workstations where desktop helpers / wrappers
+    # inject file-caps (e.g. Parrot) — set CRYPTOSCAN_ALLOW_CAPS=1 to bypass.
+    # The Landlock+seccomp boundary is still installed and verified below;
+    # this only skips the pre-check that refuses any non-zero CapEff.
+    if os.environ.get("CRYPTOSCAN_ALLOW_CAPS") != "1":
+        for line in Path("/proc/self/status").read_text().splitlines():
+            if line.split(":")[0] in ("CapEff", "CapPrm", "CapInh", "CapAmb") and int(line.split()[1], 16):
+                raise ValueError("capability-bearing reader refused")
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(38, 1, 0, 0, 0):
         raise OSError(ctypes.get_errno(), "NoNewPrivs")
