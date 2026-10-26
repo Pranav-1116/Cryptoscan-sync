@@ -1,0 +1,20 @@
+{
+  "schema_version": "cryptoscan.routed-tbf-acceptance/v1",
+  "decision": "User selected engineering gates before measurements",
+  "udp_fraction": [0.8, 1.1],
+  "tcp_fraction": [0.7, 1.1],
+  "baseline_min_mbps": 30,
+  "recovery_min_mbps": 30,
+  "recovery_baseline_fraction": 0.8,
+  "management_delivery_min": 0.99,
+  "management_p95_max_ms": 100,
+  "management_p99_max_ms": 250,
+  "recovery_deadline_seconds": 5,
+  "measurement_seconds": 10,
+  "warmup_seconds": 1,
+  "drain_seconds": 0.5,
+  "vm_deadline_seconds": 300,
+  "application_latency_sla": null,
+  "lossless_delivery_required": false,
+  "production_execution_qualified": false
+}

@@ -1,0 +1,288 @@
+{
+  "base_commit": "ae507792",
+  "files": [
+    {
+      "bytes": 6185,
+      "path": "docs/bank-environment/89-routed-tbf-application-and-recovery.md",
+      "sha256": "2fd80d4fd2cc04bb8075d485f40a9da82fb797941c25c61b389f27ad35fabb13"
+    },
+    {
+      "bytes": 12375,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26.md",
+      "sha256": "af228779291a8dbd982dbf89fd1fbbae5b822b1cc22c494e81b29df6cd40af50"
+    },
+    {
+      "bytes": 1217,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/bison-build-tail.txt",
+      "sha256": "12272c9db03c31e552fe5b399c01ac048b44652a161ca50de0f86cfbe75a8bff"
+    },
+    {
+      "bytes": 1255,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/build-record.json",
+      "sha256": "4d21abc388a847c986c3c518f2e2b8e05912d3369821177cc12c9a22b38ae941"
+    },
+    {
+      "bytes": 138825,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/bundle-manifest.json",
+      "sha256": "ba247fa6fa7cfa25c8939dc1815c93a77104cf987fe34e0312058e13d2c8b22e"
+    },
+    {
+      "bytes": 10048,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/dependency-review.json",
+      "sha256": "00bb6dd829455ed942e1a04f62826e09a8314bcb125997317abd4cee4aaf9aad"
+    },
+    {
+      "bytes": 941,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/diagnostic-01/grant.json",
+      "sha256": "da6dc9ff8768a9420d833247a0af38cc9fa681b949fb310120a8ebbd787f0e14"
+    },
+    {
+      "bytes": 6379,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/diagnostic-01/result.json",
+      "sha256": "87130bfd30edfef846225c9d63b86f01e6d2935c9f4593ee835b0c48f2f52ce0"
+    },
+    {
+      "bytes": 159,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/diagnostic-01/serial.log",
+      "sha256": "667efbc5f5709340d30523d68c76a84abee2ae3f9ff20036c1442f72d17acd62"
+    },
+    {
+      "bytes": 941,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/diagnostic-02/grant.json",
+      "sha256": "37aa1c9c0095c9f36fef19f2185448c81487a4eb072b4afacb23d2f6f36f6a61"
+    },
+    {
+      "bytes": 6378,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/diagnostic-02/result.json",
+      "sha256": "58e453cdb90354f65d30bd59b747d6fc307ddc64fd8fd736304a99b1ef769c8b"
+    },
+    {
+      "bytes": 327,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/diagnostic-02/serial.log",
+      "sha256": "05a1e4ba2e96baae9128ee7ac614e55d9862bcbc47a26a4002c551502f490018"
+    },
+    {
+      "bytes": 941,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/failed-initial-profile/grant.json",
+      "sha256": "53a24ee7ffc7aebbc0e69e498aa3c827d97b6d1ef1b998e61b12bc97c4ec9c62"
+    },
+    {
+      "bytes": 179219,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/failed-initial-profile/result.json",
+      "sha256": "c60473be1f3d932e6af677730ffea2e53879a26e12319f4a407430456409c050"
+    },
+    {
+      "bytes": 112066,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/failed-initial-profile/serial.log",
+      "sha256": "9f74c18ff1540a13420c668d29be56c4ab3138563907dee6d93c06ad5e40ae79"
+    },
+    {
+      "bytes": 17685,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/failed-initial-profile/source-snapshots/guest.py",
+      "sha256": "0b71979cf0d7dd341449b8a89793d5c1e08352ec92dd9c4651f006416208cd1f"
+    },
+    {
+      "bytes": 12819,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/failed-initial-profile/source-snapshots/report.py",
+      "sha256": "29a70620c975e7088512057125eada2659609b3c5124a80dfa1847793119d46c"
+    },
+    {
+      "bytes": 1240,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/flex-build-tail.txt",
+      "sha256": "5961f1a134c286662965fc56dd276d41d5e975af8e2997767c592f3ad40e8d47"
+    },
+    {
+      "bytes": 440,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/kernel-build-tail.txt",
+      "sha256": "ecd0ba9a6a5351f77286705a57ae764469339eec68f9c0e8bb08293e6e523f07"
+    },
+    {
+      "bytes": 41699,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/kernel.config",
+      "sha256": "2624b8f29ff06a95c3f2a676b8a7b62cf3ec574db0288e51b6f5c539ca15de0b"
+    },
+    {
+      "bytes": 14821,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/local-validation.json",
+      "sha256": "dd085ebe394f61efe2010468fbd5293965d44f442f4a34de1e6e3cbba005de97"
+    },
+    {
+      "bytes": 1119,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/m4-build-tail.txt",
+      "sha256": "9d84a57e575e059e959a970ef7be9eb05ab75cb3c1090c1deb075e6dd44ec1c7"
+    },
+    {
+      "bytes": 1369,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/musl-build-tail.txt",
+      "sha256": "e366082f76176422937532129939466cfce22c802013dfa381a6e6fa6a5f62ab"
+    },
+    {
+      "bytes": 178,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/public-keys.json",
+      "sha256": "1a925123a8dac46612d048e2e28eefcf7b683a54eaf852df91dae81fe2467851"
+    },
+    {
+      "bytes": 2502,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/python-tests.txt",
+      "sha256": "ef5cabfbab97c9dbbac0a4d621b51aaf46d69dff95b8211e9fc32e3c6b4ab311"
+    },
+    {
+      "bytes": 94256,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/python-tests.xml",
+      "sha256": "5dd2c6ab941e6f7c15b59ef211b04992432139634f81314d4dd613077853ec7b"
+    },
+    {
+      "bytes": 279,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/revocation-check.json",
+      "sha256": "d123f6f44a012a71f9fa1e6fd100a227d2f219b7568328405a3f9428727990e8"
+    },
+    {
+      "bytes": 937,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/revocation/grant.json",
+      "sha256": "d8ef98c934c7eca0b65e05ce207f9e4bbc4650aa3cd46cd7e79dfbf1c5bb928d"
+    },
+    {
+      "bytes": 6391,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/revocation/result.json",
+      "sha256": "9d29278fb917ecc8bb7056e718718ceb56cfd4fd192900f850e04a00d98654b0"
+    },
+    {
+      "bytes": 47,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/revocation/serial.log",
+      "sha256": "aa3bc735d375d36c2bc02c902db1cb9fc774d9fcc4dd9410eca57d6e46f513f7"
+    },
+    {
+      "bytes": 941,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/run-01/grant.json",
+      "sha256": "cb54b8496126b29c327ecf62a4d1e42b0ea16d9f37d5a7ca4ce9cc9eee5846cf"
+    },
+    {
+      "bytes": 178887,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/run-01/result.json",
+      "sha256": "12065c93f551077767efc39b6e714f9523ac6ab7fa4ef2d5b524cd3b9a55f26b"
+    },
+    {
+      "bytes": 112070,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/run-01/serial.log",
+      "sha256": "39c7a8a9287de521f948cc2ce6b96cb0b073d4b085da259876171f01b860d315"
+    },
+    {
+      "bytes": 941,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/run-02/grant.json",
+      "sha256": "91246585175887c4aedc336d87917dbb4cb58bfdb27b4559c9e0bd5a889984cb"
+    },
+    {
+      "bytes": 178903,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/run-02/result.json",
+      "sha256": "9010928b30e5c089a03bc0b6b58a1a52daf2ee7c0dfcb297b09042d600903117"
+    },
+    {
+      "bytes": 112075,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/run-02/serial.log",
+      "sha256": "8fa03d5e79da3034c2b6b81e5f3b26b5c6854ac5f85fb6ecdb9f6af8d192a9f2"
+    },
+    {
+      "bytes": 76,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/static-checks.txt",
+      "sha256": "9ffa5babd7e3194259c30ebdbd0e6bc082bcd235e34f82ff84469165f499e9ae"
+    },
+    {
+      "bytes": 2066,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/test-environment.txt",
+      "sha256": "3cbc0a7134b7f6cd6d9e30281162b86be63db5eb84bdd5b2d7b8a728f4dd0e2f"
+    },
+    {
+      "bytes": 2692,
+      "path": "docs/readiness-evidence/routed-tbf-2026-10-26/verify-artifacts.py",
+      "sha256": "871d0cf2e1eec6667de95eb848b5332c3b1a23f73a4e64b2844fc307b720ab19"
+    },
+    {
+      "bytes": 8522,
+      "path": "docs/runbooks/routed-tbf.md",
+      "sha256": "2df0fb44f517cc93316316ae806eb26a28535f203733af6d0acb13516d3dae33"
+    },
+    {
+      "bytes": 4799,
+      "path": "scripts/qualify_routed_tbf.py",
+      "sha256": "da90a1e41deba9a3240f35373c347777ffcbdb9fb20ac8625e41ba54d6f53393"
+    },
+    {
+      "bytes": 2767,
+      "path": "tools/routed_tbf/README.md",
+      "sha256": "f67ae636920bb70c3ec3dfbb662f07d4a2392509934dbe40c6e3a67a55b2008c"
+    },
+    {
+      "bytes": 4198,
+      "path": "tools/routed_tbf/SECURITY-REVIEW.md",
+      "sha256": "8ffdf9ac79f66e21efcb6dc1c3d6934ab8274a3064a24eb851f07b48886734ab"
+    },
+    {
+      "bytes": 638,
+      "path": "tools/routed_tbf/acceptance.json",
+      "sha256": "ae5a2791b9c9b55cbc766653f4a85bea8c05f3521fd3606093fe8b4940e242ee"
+    },
+    {
+      "bytes": 2799,
+      "path": "tools/routed_tbf/assets.lock.json",
+      "sha256": "924006ceac3c5877b68eac8e3a0101363aeb643ceaeddeff93885444f48b06e3"
+    },
+    {
+      "bytes": 10510,
+      "path": "tools/routed_tbf/authority.py",
+      "sha256": "2ffe2ddf627a7cdbeb5385403c2850030b40f68a59af67490ad8351e15222fbf"
+    },
+    {
+      "bytes": 1673,
+      "path": "tools/routed_tbf/build.py",
+      "sha256": "ba21abc12288254cdee2e9c292dfa03e3898144826d8975dea3b64e9ff397484"
+    },
+    {
+      "bytes": 17685,
+      "path": "tools/routed_tbf/guest.py",
+      "sha256": "82c7f962fc1e6928f6ec31cb9bbf7c8fc599a0e75f4e444f0b26668b28adc30e"
+    },
+    {
+      "bytes": 1330,
+      "path": "tools/routed_tbf/kernel.config",
+      "sha256": "2645ce04a4794d5acda032d9f65aa30a68c936e705168811eebc23da4a1a5ecf"
+    },
+    {
+      "bytes": 8931,
+      "path": "tools/routed_tbf/probe.c",
+      "sha256": "5361e75faae28d20c17f2bc410617ffc4fc30db323a30adf470ddb9efab9a3ce"
+    },
+    {
+      "bytes": 12819,
+      "path": "tools/routed_tbf/report.py",
+      "sha256": "9b7ec6a11ed82a1057f80b81eb2ee4a61ce77a97a7b63db409e908c1a66d0714"
+    },
+    {
+      "bytes": 10204,
+      "path": "tools/routed_tbf/runner.py",
+      "sha256": "50b9222d3b1cd6e996d8f5933075a728d7ec3361b4bc77194ecc1362d6492d15"
+    },
+    {
+      "bytes": 8322,
+      "path": "tools/routed_tbf/sandbox.c",
+      "sha256": "080219d3803199cfeacec5af9eac75a6d4adaa2e3daf581e38390fb2c04405c6"
+    },
+    {
+      "bytes": 8687,
+      "path": "tools/routed_tbf/schemas/capture-v1.schema.json",
+      "sha256": "0c06b2bfc74da511abe72cf0d3cd4bd456c0315732cf50aa9e5856f69d64f59e"
+    },
+    {
+      "bytes": 21431,
+      "path": "tools/routed_tbf/test_routed.py",
+      "sha256": "6f06938b4cd9705ad11f31538e3cd450d17ca9074f02fddb94271008ee24b1a6"
+    },
+    {
+      "bytes": 7347,
+      "path": "tools/routed_tbf/trust.py",
+      "sha256": "c2d4412e0accf3ea9f97a56107102090bac0620f40b9a2649d288a5b191da7bf"
+    }
+  ],
+  "independent_review_complete": false,
+  "production_execution_qualified": false,
+  "version": "ROUTED_TBF_ENGINEERING_EVIDENCE_V1"
+}
