@@ -1,0 +1,91 @@
+{
+  "status": "SUPERSEDED_FAILED_ATTEMPT_NOT_ACCEPTANCE",
+  "reason": "Lab operator.py shadowed stdlib operator; failure before boundary initialization",
+  "samples": [
+    {
+      "banks": 10,
+      "collection": {
+        "api_latency_ms": null,
+        "cbom_generation_seconds": null,
+        "collector": "scanner.registry.language_scanners.scan_file",
+        "collector_source_sha256": "ab043bcc434ff424c5c0583c64ef84408c061af88fb2ff4eac86bb2c16b411bd",
+        "core_modified_for_test": false,
+        "correlation_seconds": null,
+        "database_bytes": null,
+        "failure": "COLLECTOR_EXIT_1",
+        "mode": "static",
+        "network_calls": "DENIED_BY_SECCOMP",
+        "network_scan_throughput": null,
+        "queue_time_seconds": null,
+        "runtime_collection_throughput": null,
+        "synthetic": true,
+        "unknown_reason": "NOT_EXERCISED_IN_THIS_OFFLINE_STATIC_RUN",
+        "wall_seconds": 0.03240215200094099
+      }
+    },
+    {
+      "banks": 50,
+      "collection": {
+        "api_latency_ms": null,
+        "cbom_generation_seconds": null,
+        "collector": "scanner.registry.language_scanners.scan_file",
+        "collector_source_sha256": "ab043bcc434ff424c5c0583c64ef84408c061af88fb2ff4eac86bb2c16b411bd",
+        "core_modified_for_test": false,
+        "correlation_seconds": null,
+        "database_bytes": null,
+        "failure": "COLLECTOR_EXIT_1",
+        "mode": "static",
+        "network_calls": "DENIED_BY_SECCOMP",
+        "network_scan_throughput": null,
+        "queue_time_seconds": null,
+        "runtime_collection_throughput": null,
+        "synthetic": true,
+        "unknown_reason": "NOT_EXERCISED_IN_THIS_OFFLINE_STATIC_RUN",
+        "wall_seconds": 0.03224892700018245
+      }
+    },
+    {
+      "banks": 100,
+      "collection": {
+        "api_latency_ms": null,
+        "cbom_generation_seconds": null,
+        "collector": "scanner.registry.language_scanners.scan_file",
+        "collector_source_sha256": "ab043bcc434ff424c5c0583c64ef84408c061af88fb2ff4eac86bb2c16b411bd",
+        "core_modified_for_test": false,
+        "correlation_seconds": null,
+        "database_bytes": null,
+        "failure": "COLLECTOR_EXIT_1",
+        "mode": "static",
+        "network_calls": "DENIED_BY_SECCOMP",
+        "network_scan_throughput": null,
+        "queue_time_seconds": null,
+        "runtime_collection_throughput": null,
+        "synthetic": true,
+        "unknown_reason": "NOT_EXERCISED_IN_THIS_OFFLINE_STATIC_RUN",
+        "wall_seconds": 0.03245292100109509
+      }
+    },
+    {
+      "banks": 150,
+      "collection": {
+        "api_latency_ms": null,
+        "cbom_generation_seconds": null,
+        "collector": "scanner.registry.language_scanners.scan_file",
+        "collector_source_sha256": "ab043bcc434ff424c5c0583c64ef84408c061af88fb2ff4eac86bb2c16b411bd",
+        "core_modified_for_test": false,
+        "correlation_seconds": null,
+        "database_bytes": null,
+        "failure": "COLLECTOR_EXIT_1",
+        "mode": "static",
+        "network_calls": "DENIED_BY_SECCOMP",
+        "network_scan_throughput": null,
+        "queue_time_seconds": null,
+        "runtime_collection_throughput": null,
+        "synthetic": true,
+        "unknown_reason": "NOT_EXERCISED_IN_THIS_OFFLINE_STATIC_RUN",
+        "wall_seconds": 0.03208423199976096
+      }
+    }
+  ],
+  "historical_network_denial_claim_invalid": "Collector failed before guard; ignore historical network_calls value. No containment proof from this attempt."
+}
