@@ -1,0 +1,12 @@
+./tools/install.sh -D -m 644 include/ucontext.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/ucontext.h
+./tools/install.sh -D -m 644 include/ulimit.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/ulimit.h
+./tools/install.sh -D -m 644 include/unistd.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/unistd.h
+./tools/install.sh -D -m 644 include/utime.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/utime.h
+./tools/install.sh -D -m 644 include/utmp.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/utmp.h
+./tools/install.sh -D -m 644 include/utmpx.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/utmpx.h
+./tools/install.sh -D -m 644 include/values.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/values.h
+./tools/install.sh -D -m 644 include/wait.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/wait.h
+./tools/install.sh -D -m 644 include/wchar.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/wchar.h
+./tools/install.sh -D -m 644 include/wctype.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/wctype.h
+./tools/install.sh -D -m 644 include/wordexp.h /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/include/wordexp.h
+./tools/install.sh -D obj/musl-gcc /home/user/.cache/disposable-tbf-clean-build-02/musl-runtime/bin/musl-gcc

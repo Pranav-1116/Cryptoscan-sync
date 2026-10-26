@@ -1,0 +1,251 @@
+{
+  "bundle_sha256": "ff9e3756f80fbdf541c07ccbae313000301cdda75d725604c53de791253978c0",
+  "failure": null,
+  "guest": {
+    "baseline": {
+      "attempted_packets_total": 24685,
+      "elapsed_ns": 4000146390,
+      "invalid_packets": 0,
+      "payload_bytes": 1200,
+      "receive_errors": 0,
+      "received_bytes": 23724000,
+      "received_packets": 19770,
+      "send_backpressure": 0,
+      "send_errors": 0,
+      "sent_packets_total": 24685,
+      "warmup_seconds": 1
+    },
+    "baseline_policy": {
+      "backlog": 0,
+      "bytes": 0,
+      "drops": 0,
+      "handle": "0:",
+      "kind": "noqueue",
+      "options": {},
+      "overlimits": 0,
+      "packets": 0,
+      "qlen": 0,
+      "refcnt": 2,
+      "requeues": 0,
+      "root": true
+    },
+    "caps": [
+      {
+        "after_measurement": {
+          "backlog": 89550,
+          "bytes": 6360282,
+          "drops": 0,
+          "handle": "7e01:",
+          "kind": "tbf",
+          "options": {
+            "burst": "64Kb/1",
+            "lat": 50000,
+            "linklayer": "ethernet",
+            "mpu": 0,
+            "rate": 1250000
+          },
+          "overlimits": 10133,
+          "packets": 5121,
+          "qlen": 91,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        },
+        "applied": {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "handle": "7e01:",
+          "kind": "tbf",
+          "options": {
+            "burst": "64Kb/1",
+            "lat": 50000,
+            "linklayer": "ethernet",
+            "mpu": 0,
+            "rate": 1250000
+          },
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        },
+        "measurement": {
+          "attempted_packets_total": 24975,
+          "elapsed_ns": 4000182058,
+          "invalid_packets": 0,
+          "payload_bytes": 1200,
+          "receive_errors": 0,
+          "received_bytes": 4830000,
+          "received_packets": 4025,
+          "send_backpressure": 19799,
+          "send_errors": 0,
+          "sent_packets_total": 5176,
+          "warmup_seconds": 1
+        },
+        "rate_mbps": 10,
+        "restored_policy": {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "handle": "0:",
+          "kind": "noqueue",
+          "options": {},
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        }
+      },
+      {
+        "after_measurement": {
+          "backlog": 88524,
+          "bytes": 3201876,
+          "drops": 22345,
+          "handle": "7e01:",
+          "kind": "tbf",
+          "options": {
+            "burst": "64Kb/1",
+            "lat": 50000,
+            "linklayer": "ethernet",
+            "mpu": 0,
+            "rate": 625000
+          },
+          "overlimits": 27318,
+          "packets": 2578,
+          "qlen": 76,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        },
+        "applied": {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "handle": "7e01:",
+          "kind": "tbf",
+          "options": {
+            "burst": "64Kb/1",
+            "lat": 50000,
+            "linklayer": "ethernet",
+            "mpu": 0,
+            "rate": 625000
+          },
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        },
+        "measurement": {
+          "attempted_packets_total": 24990,
+          "elapsed_ns": 4001445180,
+          "invalid_packets": 0,
+          "payload_bytes": 1200,
+          "receive_errors": 0,
+          "received_bytes": 2415600,
+          "received_packets": 2013,
+          "send_backpressure": 0,
+          "send_errors": 0,
+          "sent_packets_total": 24990,
+          "warmup_seconds": 1
+        },
+        "rate_mbps": 5,
+        "restored_policy": {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "handle": "0:",
+          "kind": "noqueue",
+          "options": {},
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        }
+      }
+    ],
+    "final_policy": {
+      "backlog": 0,
+      "bytes": 0,
+      "drops": 0,
+      "handle": "0:",
+      "kind": "noqueue",
+      "options": {},
+      "overlimits": 0,
+      "packets": 0,
+      "qlen": 0,
+      "refcnt": 2,
+      "requeues": 0,
+      "root": true
+    },
+    "guest_monotonic_finished_ns": 26250598393,
+    "interface": "lo",
+    "kernel_release": "6.12.58-cryptoscan-disposable-tbf",
+    "nonce": "511c273f746b3f6e11e809148969b29437a945b3cf43d74c792922abb38ae86d",
+    "restored": {
+      "attempted_packets_total": 24265,
+      "elapsed_ns": 4002126839,
+      "invalid_packets": 0,
+      "payload_bytes": 1200,
+      "receive_errors": 0,
+      "received_bytes": 23282400,
+      "received_packets": 19402,
+      "send_backpressure": 0,
+      "send_errors": 0,
+      "sent_packets_total": 24265,
+      "warmup_seconds": 1
+    },
+    "rollback_verified": true,
+    "schema_version": "cryptoscan.disposable-tbf-guest/v1"
+  },
+  "host_wall_seconds": 26.576768332999563,
+  "parent_after": {
+    "boot_id": "7b0855bc-f0a8-4d24-b70a-1151226e8045",
+    "mount_namespace_inode": 4026531841,
+    "network_namespace_inode": 4026531840
+  },
+  "parent_before": {
+    "boot_id": "7b0855bc-f0a8-4d24-b70a-1151226e8045",
+    "mount_namespace_inode": 4026531841,
+    "network_namespace_inode": 4026531840
+  },
+  "production_execution_qualified": false,
+  "report": {
+    "baseline_payload_mbps": 47.446263585368435,
+    "blockers": [],
+    "capped_payload_mbps": [
+      9.659560349940453,
+      4.82945514200447
+    ],
+    "management_network_present": false,
+    "production_execution_qualified": false,
+    "real_host_change_authorized": false,
+    "restored_payload_mbps": 46.540054199416645,
+    "schema_version": "cryptoscan.disposable-tbf-report/v1",
+    "scope": "SYNTHETIC_UDP_GUEST_LOOPBACK_ONLY",
+    "source_authenticity_verified": false,
+    "verdict": "VERIFIED_IN_DISPOSABLE_VM"
+  },
+  "schema_version": "cryptoscan.disposable-tbf-run/v1",
+  "scope": {
+    "authorizes_real_host_change": false,
+    "bundle_sha256": "ff9e3756f80fbdf541c07ccbae313000301cdda75d725604c53de791253978c0",
+    "expires_at": "2026-10-26T07:07:18.369952Z",
+    "independent_change_approval_verified": false,
+    "issued_at": "2026-10-26T06:57:18.369952Z",
+    "nonce": "511c273f746b3f6e11e809148969b29437a945b3cf43d74c792922abb38ae86d",
+    "profile": "DISKLESS_TCG_NO_NIC_V1",
+    "schema_version": "cryptoscan.disposable-tbf-scope/v1",
+    "target_label": "qualified-disposable-02"
+  },
+  "scope_sha256": "eee86b495430ceddb1594c72e95539ea333c14ddb12070d592a97c7b2ca42ad2",
+  "serial_sha256": "ef70d927f827f3905f7d0d5246c34073cd7685bab0340fe1138e4b4b9eef393b",
+  "verdict": "VERIFIED_IN_DISPOSABLE_VM"
+}

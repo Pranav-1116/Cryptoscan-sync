@@ -1,0 +1,228 @@
+{
+  "files": [
+    {
+      "bytes": 5450,
+      "path": "docs/bank-environment/88-disposable-linux-tbf-qualification.md",
+      "sha256": "4f27dffb3cc7bb1dc5086dc5e09a6b8d726b7d46af0dd44a5d58405e8d8ce9e3"
+    },
+    {
+      "bytes": 10043,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26.md",
+      "sha256": "a41b6becb3511077a5eb621ab7b0a79b5fc721ca6dd17479505c23c70f3372b7"
+    },
+    {
+      "bytes": 1289,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/bison-build-tail.txt",
+      "sha256": "3da9a6042cadcbfc57a6e79e9a1e3e2db819dc3b4f879f55609b0304eac21e0e"
+    },
+    {
+      "bytes": 1836,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/build-record.json",
+      "sha256": "0094fbbbf8439833202d36ae2b0e09fb793dd6c9737b9656ea315d355682619b"
+    },
+    {
+      "bytes": 137747,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/bundle-manifest.json",
+      "sha256": "ff9e3756f80fbdf541c07ccbae313000301cdda75d725604c53de791253978c0"
+    },
+    {
+      "bytes": 191,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/cli-01.txt",
+      "sha256": "b8dc4ab3fe3069033a9d0cb4238de1cd779d89dceaa1aa9b06198d2460bf1847"
+    },
+    {
+      "bytes": 191,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/cli-02.txt",
+      "sha256": "e6c02e77f6451137af566d6e1cb4c3ca07ac0c675f669d23f9bd59f9e73533b0"
+    },
+    {
+      "bytes": 1304,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/flex-build-tail.txt",
+      "sha256": "ea5a31446184a2bacfac710b58aff2c371b5983963a94a2af95fe5cabe997d08"
+    },
+    {
+      "bytes": 457,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/kernel-build-tail.txt",
+      "sha256": "1fc88ab3c2abcbe886c031274dc360d10a04602e267bc0b35dadb06ee82f1405"
+    },
+    {
+      "bytes": 39677,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/kernel.config",
+      "sha256": "70bbd5b111288d9ee180e73e6b200443e6e5cc8e526cf4af9c613e141670ae44"
+    },
+    {
+      "bytes": 1183,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/m4-build-tail.txt",
+      "sha256": "34063d38dfefa527c0465cf820ca86f2f8a701c5cca891bf1922c64c5c104207"
+    },
+    {
+      "bytes": 1465,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/musl-build-tail.txt",
+      "sha256": "598731eb7b4d929d92d60a6d36d681030951d1215fe69c267206a715015f1ead"
+    },
+    {
+      "bytes": 146,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/parent-qdisc-after.json",
+      "sha256": "f4cea90fd7d3ed7146cbfd2510c569593ba70bde00120dd2835e1c61b80539c9"
+    },
+    {
+      "bytes": 146,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/parent-qdisc-before.json",
+      "sha256": "f4cea90fd7d3ed7146cbfd2510c569593ba70bde00120dd2835e1c61b80539c9"
+    },
+    {
+      "bytes": 2467,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/python-tests.txt",
+      "sha256": "3d82eb9d16e9326ba9c44a12fa5b7150958ae7358f1bd138987070ace225e8e6"
+    },
+    {
+      "bytes": 83748,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/python-tests.xml",
+      "sha256": "293fa448976514e0ae468c467e312eb3562b9a11b228525bcf518ae32658a67f"
+    },
+    {
+      "bytes": 7019,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/run-01/result.json",
+      "sha256": "431be98ca96975dab3206a3aeb7a275b00f4d6e73429cb2ac45ab8ff2c55bb25"
+    },
+    {
+      "bytes": 493,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/run-01/scope.json",
+      "sha256": "5a8b8d2bce1ab0117c6978c4dbef76dbce000aa5e8b2213cf8f80dcc40912e5e"
+    },
+    {
+      "bytes": 3127,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/run-01/serial.log",
+      "sha256": "99be5f16eceb22482f4afee7987ad9b25c8f835fa824f0907bc59c1556fbc0de"
+    },
+    {
+      "bytes": 7020,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/run-02/result.json",
+      "sha256": "8c95c75986167d1ff5c200984ab18f6b41246d09adb2afea6893512656584129"
+    },
+    {
+      "bytes": 493,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/run-02/scope.json",
+      "sha256": "3b1b28afa2d9a6fc54a29e3ecb39096a561006d2a096567a58fb699ce995665e"
+    },
+    {
+      "bytes": 3127,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/run-02/serial.log",
+      "sha256": "ef70d927f827f3905f7d0d5246c34073cd7685bab0340fe1138e4b4b9eef393b"
+    },
+    {
+      "bytes": 493,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/scope-01.json",
+      "sha256": "bddce1803f53aa9fbe2989e9e5fb25b61626074e3020ab85074b30e912d4e17e"
+    },
+    {
+      "bytes": 493,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/scope-02.json",
+      "sha256": "b591d8e301270dcf76c937eacb07e8914c773eba7eeaf5683dd820d984afa230"
+    },
+    {
+      "bytes": 75,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/static-checks.txt",
+      "sha256": "d802ec031964d70cad120bd007ffc0b722f4fddd92e33339d8f9743d20f3a7af"
+    },
+    {
+      "bytes": 2067,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/test-environment.txt",
+      "sha256": "a9e06dfa00df60a81f6ae19d923d9ac20d92516ccc6fd0cc321e8d441671246d"
+    },
+    {
+      "bytes": 55,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/verify-01.txt",
+      "sha256": "dd7a0eb74e54b961273b6b3dfda24c1272a9ed755701eb7a17b90324935d7d29"
+    },
+    {
+      "bytes": 55,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/verify-02.txt",
+      "sha256": "dd7a0eb74e54b961273b6b3dfda24c1272a9ed755701eb7a17b90324935d7d29"
+    },
+    {
+      "bytes": 3264,
+      "path": "docs/readiness-evidence/disposable-tbf-2026-10-26/verify-artifacts.py",
+      "sha256": "8ba916ba94bab2d60bba51bbc9c6181f2f1cac0a3d6289053935be556d6f5309"
+    },
+    {
+      "bytes": 7151,
+      "path": "docs/runbooks/disposable-tbf.md",
+      "sha256": "e44b51b398a1c8468524f98ffe2e4f10607adc4ef8d0f7b5245c1353cb19164a"
+    },
+    {
+      "bytes": 5095,
+      "path": "scripts/qualify_tbf.py",
+      "sha256": "f167a99b1c25923aec68c24dea60b058cbb423a58a7a9616fe72e4264bba27b6"
+    },
+    {
+      "bytes": 4920,
+      "path": "tools/disposable_tbf/README.md",
+      "sha256": "fa2f7e7ef4cb4a91fda2a3f30189c2f10042705c2199cace3b8f335885ddc8b8"
+    },
+    {
+      "bytes": 2799,
+      "path": "tools/disposable_tbf/assets.lock.json",
+      "sha256": "924006ceac3c5877b68eac8e3a0101363aeb643ceaeddeff93885444f48b06e3"
+    },
+    {
+      "bytes": 14039,
+      "path": "tools/disposable_tbf/build.py",
+      "sha256": "b8a74a3cee8f83aee704f70d0817f134e5e084002dc2e769c221d92d2b3942ac"
+    },
+    {
+      "bytes": 9912,
+      "path": "tools/disposable_tbf/contracts.py",
+      "sha256": "bfffb39b59bfea087566f9c5330cb71e1909346c228f8c07f6302c4472460789"
+    },
+    {
+      "bytes": 4966,
+      "path": "tools/disposable_tbf/guest.py",
+      "sha256": "caa1029bbb72a595c00f628fc8aa7db530a719306c60df1261ec947b8fad1a78"
+    },
+    {
+      "bytes": 989,
+      "path": "tools/disposable_tbf/kernel.config",
+      "sha256": "945d21eee668b8fd0033cf0863cb20f7743c815d6ec399e575778f4f9c18703e"
+    },
+    {
+      "bytes": 4482,
+      "path": "tools/disposable_tbf/probe.c",
+      "sha256": "81cfcdacf984fa6d668fad8d06d33fb96e52955523ee1cbc176611feef5b84a1"
+    },
+    {
+      "bytes": 9766,
+      "path": "tools/disposable_tbf/runner.py",
+      "sha256": "26216b65d93e1c94d472a4d00f9443c5353c8e3de0679d0b20c7330df71b109f"
+    },
+    {
+      "bytes": 8322,
+      "path": "tools/disposable_tbf/sandbox.c",
+      "sha256": "0825320adef7ff61cd3e4e593b7c382bcb34c09b44eeb3d1b9b94efc1d9d4d33"
+    },
+    {
+      "bytes": 4887,
+      "path": "tools/disposable_tbf/schemas/guest-v1.schema.json",
+      "sha256": "69a033addac2a3fb8f097565c5023bf8e9ea0642d2a732282ca7bc2a9cdd6b71"
+    },
+    {
+      "bytes": 9869,
+      "path": "tools/disposable_tbf/schemas/run-v1.schema.json",
+      "sha256": "01e6f7db531de820c0a8df11883328a14935a74d3d2553ce2b14d944916a63b7"
+    },
+    {
+      "bytes": 1562,
+      "path": "tools/disposable_tbf/schemas/scope-v1.schema.json",
+      "sha256": "fae1b9d5b81b36a52bc50235f2cf5296ecc4c8a8ebfefcb6f43221ade7f475aa"
+    },
+    {
+      "bytes": 16350,
+      "path": "tools/disposable_tbf/test_qualification.py",
+      "sha256": "7d454b10e7bfae695c1fd209e7c23520fb82558adf7755d6cd74e3b1c24403b1"
+    }
+  ],
+  "parent_commit": "99913d75959071a72f8c794297bc484fcd0ec9cb",
+  "production_execution_qualified": false,
+  "schema_version": "cryptoscan.disposable-tbf-engineering-manifest/v1",
+  "source_authenticity_verified": false
+}
