@@ -901,9 +901,11 @@ def generate(
             "actual_product_results": "NOT_YET_RUN",
         },
     )
-    from tools.banking_sandbox.dashboard import render
+    from tools.banking_sandbox.dashboard import render as render_dashboard
+    from tools.banking_sandbox.realbanks import render as render_realbanks
 
-    render(public)
+    render_dashboard(public)
+    render_realbanks(public)
     files = [
         {"path": str(p.relative_to(public)), "sha256": file_hash(p), "bytes": p.stat().st_size}
         for p in sorted(public.rglob("*"))
