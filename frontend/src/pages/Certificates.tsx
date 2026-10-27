@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Panel, Badge, Table, PageHead, Drawer, Code } from "../components/ui.jsx";
+import { Panel, Badge, Table, PageHead, Drawer, Code, Ring, Bar } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
-import { StatusMark } from "../components/icons";
+import { StatusMark, IconCertificate, IconClock, IconSecurity, IconCloud } from "../components/icons";
 import {
   apiLiveInventory,
   apiExpiryCalendar,
@@ -373,13 +373,26 @@ function CertLifecyclePanel() {
   const due = (queue.data as any)?.due ?? [];
 
   return (
-    <Panel title="Certificate lifecycle" sub="issue · renew (key rotation) · revoke (CRL) — deterministic local PKI" className="mt">
+    <Panel title="Certificate lifecycle" sub="CSR → Issue · Rotate · Revoke — local PKI" className="mt">
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+        {[
+          ["CSR", "Generate request", "var(--cyan)"],
+          ["Issue", "New leaf cert", "var(--green)"],
+          ["Rotate", "Renew + new key", "var(--amber)"],
+          ["Revoke", "CRL entry", "var(--red)"],
+        ].map(([k,v,c]) => (
+          <div key={k} style={{ flex: 1, minWidth: 110, padding: "10px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderTop: `2px solid ${c}`, borderRadius: "var(--r)", textAlign: "center" }}>
+            <div style={{ fontSize: 10, letterSpacing: .08, color: "var(--dim)" }}>{k}</div>
+            <div style={{ fontSize: 11, fontWeight: 600 }}>{v}</div>
+          </div>
+        ))}
+      </div>
       <div className="row" style={{ flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
         <input style={input} placeholder="common name (e.g. tls.payments.example.invalid)" value={cn} onChange={(e) => setCn(e.target.value)} />
         <input style={input} placeholder="SAN hostnames (comma-separated)" value={san} onChange={(e) => setSan(e.target.value)} />
-        <label style={{ fontSize: 12.5, color: "var(--dim)", display: "flex", flexDirection: "column", gap: 2 }}>
+        <label style={{ fontSize: 11, color: "var(--dim)", display: "flex", flexDirection: "column", gap: 2 }}>
           validity (days)
-          <input type="number" min={1} max={3998} style={{ ...input, minWidth: 120 }} value={days} onChange={(e) => setDays(Number(e.target.value))} />
+          <input type="number" min={1} max={3998} style={{ ...input, minWidth: 100 }} value={days} onChange={(e) => setDays(Number(e.target.value))} />
         </label>
         <button className="btn sm" onClick={() => void genCsr()} disabled={busy}>{busy ? "…" : "Generate CSR"}</button>
         <button className="btn primary" onClick={() => void issue()} disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button>
@@ -411,7 +424,7 @@ function CertLifecyclePanel() {
           </span>,
         ])}
       />
-      {issued.length === 0 && <p className="dim" style={{ fontSize: 13 }}>No certificates issued in this session. Issue a leaf above; renewed/revoked certs stay here for the session.</p>}
+      {issued.length === 0 && <div style={{ textAlign: "center", padding: "16px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)", marginTop: 8 }}><div className="dim" style={{ fontSize: 12 }}>No certificates this session — issue a leaf above</div></div>}
 
       {showPem && (
         <div style={{ marginTop: 12 }}>
@@ -449,7 +462,7 @@ export default function Certificates() {
       <PageHead
         crumb="inventory / certificates"
         title="Certificates"
-        sub="Expiration · chains · signature · key size — observed live on TLS endpoints"
+        sub="Live expiries · chains · signatures — visual certificate posture"
         right={
           <>
             {live && <LiveBadge source="live" label="LIVE" />}
@@ -459,18 +472,29 @@ export default function Certificates() {
       />
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         {[
-          ["expired", center.expired, "red"],
-          ["expiring <30d", center.expiring30, "amber"],
-          ["weak signature", center.weak_algorithm, "red"],
-          ["total", center.total, "cyan"],
-        ].map(([k, v, tone]) => (
-          <div className="kpi" key={k as string}>
-            <span className="k">{k}</span>
-            <span className="v" style={{ color: `var(--${tone})` }}>{v}</span>
+          ["EXPIRED", center.expired, "red", "past due"],
+          ["EXPIRING <30d", center.expiring30, "amber", "renew soon"],
+          ["WEAK SIG", center.weak_algorithm, "red", "upgrade needed"],
+          ["TOTAL", center.total, "cyan", "in inventory"],
+        ].map(([k, v, tone, hint]) => (
+          <div className="kpi" key={k as string} style={{ borderTop: `2px solid var(--${tone})`, background: "var(--panel)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 10, color: "var(--dim)", display: "flex", alignItems: "center", gap: 6 }}><span className="dot" style={{ background: `var(--${tone})`, width: 6, height: 6, borderRadius: 99 }} />{k}</span>
+            <span className="v" style={{ color: `var(--${tone})`, fontSize: 22, fontWeight: 700, lineHeight: 1 }}>{v as any}</span>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>{hint}</span>
+            {Number(v) > 0 && tone !== "cyan" && <Bar value={Math.min(1, Number(v) / Math.max(1, Number(center.total)))} tone={tone as any} />}
           </div>
         ))}
       </div>
-      <Panel title="Certificate inventory" sub="from live TLS scans — click a row to inspect the chain">
+      <Panel title="Certificate inventory" sub="Live TLS observations — tap a row to open the chain" style={{ overflow: "hidden" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}>
+          <IconCertificate size={14} style={{ color: "var(--accent)" }} />
+          <span style={{ fontSize: 11, color: "var(--dim)" }}>Ephemeral scan run · {certs.length ? `${certs.length} observed` : "no observations yet"}</span>
+          <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--red)" }} />
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--amber)" }} />
+            <span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--green)" }} />
+          </span>
+        </div>
         <Table
           clickable
           selected={sel ?? -1}
@@ -478,9 +502,9 @@ export default function Certificates() {
           head={["common name", "signature", "key", "days left", "SAN", "EKU", "issuer / endpoint", "status"]}
           rows={certs.map((c) => [
             <span className="mono" style={{ fontWeight: 600 }}>{c.cn}</span>,
-            c.sig,
+            <Badge tone={c.sig?.includes("SHA1") || c.sig?.includes("MD5") ? "red" : "slate"}>{c.sig}</Badge>,
             <span className="num">{c.key}</span>,
-            <span className="num">{c.days ?? "—"}</span>,
+            <span className="num" style={{ color: (c.days ?? 999) < 7 ? "var(--red)" : (c.days ?? 999) < 30 ? "var(--amber)" : undefined }}>{c.days ?? "—"}</span>,
             <span title={c.san}>{(c.sanCount ?? 0) || "—"}</span>,
             <span style={{ fontSize: 12 }}>{c.eku}</span>,
             <span style={{ fontSize: 12 }}>{c.owner}<br /><span className="dim mono">{c.endpoint}</span></span>,
@@ -488,8 +512,12 @@ export default function Certificates() {
           ])}
         />
         {!certs.length && (
-          <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
-            No certificates yet — run a live network scan with a host:port target in Operations → Realtime scanners.
+          <div style={{ textAlign: "center", padding: "28px 16px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)", marginTop: 10 }}>
+            <IconCertificate size={28} style={{ color: "var(--faint)", marginBottom: 8 }} />
+            <div style={{ fontWeight: 600, fontSize: 13 }}>No certificates yet</div>
+            <div className="dim" style={{ fontSize: 12, marginTop: 4, maxWidth: 420, marginInline: "auto" }}>
+              Run a live network scan (host:port) in <span style={{ color: "var(--accent)" }}>Operations → Realtime scanners</span> to populate this visual inventory.
+            </div>
           </div>
         )}
       </Panel>
@@ -497,15 +525,14 @@ export default function Certificates() {
       {estateDetail && <EstateCertDrawer cert={estateDetail} onClose={() => setEstateSel(null)} />}
       <Panel
         title="Persisted certificate estate"
-        sub="certificates deduped by SHA-256 fingerprint — the durable inventory with owner, usages and revocation state"
+        sub="SHA-256 · owner · revocation · renewal"
         className="mt"
       >
-        <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px solid var(--line)", flexWrap: "wrap" }}>
           {estate.source === "live" && <LiveBadge source="live" label="LIVE" />}
-          <Badge tone={estateRows.length ? "cyan" : ""}>
-            <span className="dot" /> {estateRows.length.toLocaleString()} ESTATE ROWS
-          </Badge>
+          <Badge tone={estateRows.length ? "cyan" : ""}><span className="dot" /> {estateRows.length.toLocaleString()} ROWS</Badge>
           <Badge tone={unknownOwner ? "amber" : "green"}>{unknownOwner} UNKNOWN OWNER</Badge>
+          <span className="dim" style={{ fontSize: 11, marginLeft: "auto" }}>Deduped by fingerprint · <span style={{ color: "var(--accent)" }}>tap to assign owner</span></span>
         </div>
         <Table
           clickable
@@ -513,31 +540,27 @@ export default function Certificates() {
           onSelect={setEstateSel}
           head={["subject", "issuer", "key", "days left", "owner", "revocation", "renewal"]}
           rows={estateRows.map((c) => [
-            <span className="mono" style={{ fontWeight: 600 }}>{c.subject || c.fingerprint_sha256.slice(0, 16)}</span>,
+            <span className="mono" style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180, display: "inline-block" }} title={c.subject}>{c.subject || c.fingerprint_sha256.slice(0, 16)}</span>,
             <span style={{ fontSize: 12 }}>{c.issuer || "—"}</span>,
             <span className="num">{c.public_key_algorithm || "—"}{c.public_key_size ? ` ${c.public_key_size}` : ""}</span>,
-            <span className="num">{c.days_until_expiry ?? "—"}</span>,
+            <span className="num" style={{ color: (c.days_until_expiry ?? 999) < 0 ? "var(--red)" : (c.days_until_expiry ?? 999) < 30 ? "var(--amber)" : undefined }}>{c.days_until_expiry ?? "—"}</span>,
             c.owner
               ? <span style={{ fontSize: 12 }}>{c.owner}</span>
               : <Badge tone="amber">UNKNOWN</Badge>,
             <Badge tone={String(c.revocation_status || "").toUpperCase().includes("REVOK") ? "red" : ""}>
               {c.revocation_status ? String(c.revocation_status).toUpperCase() : "UNCHECKED"}
             </Badge>,
-            <span style={{ fontSize: 12 }}>{c.renewal_status || "NONE"}</span>,
+            <span style={{ fontSize: 12 }}>{c.renewal_status || "—"}</span>,
           ])}
         />
         {!estateRows.length && (
-          <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
-            {estate.source === "live"
-              ? "The persisted estate is empty — certificates land here when scans or CT monitoring store them (deduped by fingerprint)."
-              : "Estate unavailable — the durable inventory could not be loaded."}
+          <div style={{ textAlign: "center", padding: "24px 16px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)", marginTop: 10 }}>
+            <IconCloud size={22} style={{ color: "var(--faint)", marginBottom: 6 }} />
+            <div className="dim" style={{ fontSize: 12, maxWidth: 480, marginInline: "auto" }}>
+              Estate empty — certificates appear here when scans or CT monitoring store them. Whole-estate view, not just last run.
+            </div>
           </div>
         )}
-        <div className="dim" style={{ fontSize: 12, marginTop: 8 }}>
-          Distinct from the live panel above: this is the whole persisted estate (every stored
-          certificate), not one scan-run's observation. UNKNOWN owner is a fact, not an
-          inference — assign one from the row.
-        </div>
       </Panel>
       <CertLifecyclePanel />
       <ExpiryCalendarPanel />
