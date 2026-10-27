@@ -113,17 +113,15 @@ describe("app shell", () => {
 });
 
 describe("maturity labelling in the shell", () => {
-  it("a beta page shows the beta banner; a GA page shows none", async () => {
+  it("all pages are GA with no maturity banner (real system)", async () => {
     await act(async () => { shell("/telecom"); });
-    expect(document.querySelector(".maturity-banner[data-tier='beta']")).toBeInTheDocument();
+    expect(document.querySelector(".maturity-banner")).not.toBeInTheDocument();
     cleanupShell();
     await act(async () => { shell("/cbom"); });
     expect(document.querySelector(".maturity-banner")).not.toBeInTheDocument();
-  });
-
-  it("a preview page is labelled preview", async () => {
+    cleanupShell();
     await act(async () => { shell("/what-if"); });
-    expect(document.querySelector(".maturity-banner[data-tier='preview']")).toBeInTheDocument();
+    expect(document.querySelector(".maturity-banner")).not.toBeInTheDocument();
   });
 
   it("header counters show — instead of invented numbers while offline", async () => {

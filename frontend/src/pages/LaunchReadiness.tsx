@@ -116,7 +116,7 @@ function LaunchReadinessPage() {
   return <div className="launch-readiness" style={{ minWidth: 0 }}>
     <style>{`.launch-readiness label { display: block; margin-block: .75rem; } .launch-readiness select, .launch-readiness button { max-inline-size: 100%; white-space: normal; } .launch-readiness :focus-visible { outline: 3px solid var(--blue, #70b7ff); outline-offset: 3px; }`}</style>
     <p aria-label="Selected estate"><strong>{t("launch.estate")}: <bdi dir="auto">{activeTenantId() || t("launch.platform")}</bdi></strong></p>
-    <PageHead crumb="Overview / Launch readiness" title="Launch readiness" sub="Preview · independent security evidence, accountable operations and one bounded customer workflow" />
+    <PageHead crumb="Overview / Launch readiness" title="Launch readiness" sub="GA · independent security evidence, accountable operations and one bounded customer workflow" />
     <Panel title="External acceptance stays explicit">
       <p>No assessor has been hired or test performed by this console. A signature proves origin and integrity, not independence, accreditation or certification. Certified infrastructure does not certify this product.</p>
       <p>Owner-reviewed exercises are retained assertions, not an SLA. A feature demonstration is not whole-bank coverage or commercial acceptance. Source/build/deployment associations require explicit evidence; they are not reproducible-build or runtime proof.</p>

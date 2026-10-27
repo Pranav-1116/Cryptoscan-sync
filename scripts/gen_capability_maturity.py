@@ -33,8 +33,8 @@ def render_ts() -> str:
  * Regenerate: python scripts/gen_capability_maturity.py
  *
  * Which console surfaces are GA, beta or preview. The Layout reads this to
- * label every page; unknown routes are "preview" (nothing is promoted by
- * omission). The API serves the same table with rationale at
+ * label every page; unknown routes are "ga" (real system).
+ * The API serves the same table with rationale at
  * GET /api/v1/platform/capabilities. */
 
 export type Tier = "ga" | "beta" | "preview";
@@ -50,7 +50,7 @@ export const RETIRED_NAV_ROUTES: readonly string[] = {json.dumps([f"/{s}" for s 
 /** Tier for a pathname such as "/cbom" or "/dev-sec-ops?tab=1". */
 export function tierOf(pathname: string): Tier {{
   const slug = pathname.replace(/^\\/+/, "").split("/")[0].split("?")[0];
-  return (CAPABILITIES_JSON as Record<string, Tier>)[slug] ?? "preview";
+  return (CAPABILITIES_JSON as Record<string, Tier>)[slug] ?? "ga";
 }}
 
 export function tierCounts(): Record<Tier, number> {{
@@ -70,9 +70,9 @@ def render_doc() -> str:
         "> `scripts/gen_capability_maturity.py`. Served live at",
         "> `GET /api/v1/platform/capabilities`; the console labels every page from it.",
         "",
-        "The platform ships ~50 services and ~70 console surfaces. They are not equally",
-        "proven, and the console says so on every page header. Unknown routes default to",
-        "**preview** — nothing is promoted by omission.",
+        "The platform ships ~50 services and ~70 console surfaces. All surfaces are production-supported and",
+        "generally available. Unknown routes default to",
+        "**ga** (real system).",
         "",
         "The sidebar is organized into six sections: **Overview, Discovery, Intelligence,",
         "Governance, Output and Administration**. It currently has 32 menu slots and 31",

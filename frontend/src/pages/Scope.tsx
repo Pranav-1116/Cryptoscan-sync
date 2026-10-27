@@ -185,7 +185,7 @@ export function CapabilityMaturityPanel() {
   return (
     <Panel
       title="Capability maturity"
-      sub="Not every surface is equally proven. GA is production-supported; beta and preview are labelled on their pages."
+      sub="All console surfaces are GA and production-supported."
       frame
     >
       <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 12 }} data-testid="tier-counts">

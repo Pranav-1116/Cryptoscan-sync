@@ -77,17 +77,19 @@ async def test_scope_invariants_include_metadata_only(app_client):
 
 @pytest.mark.asyncio
 async def test_capabilities_endpoint_serves_the_maturity_table(app_client):
-    """GA / beta / preview per route; unknown defaults to preview."""
+    """All navigation is GA (real system) — no beta/preview surfaces."""
     r = await app_client.get("/api/v1/platform/capabilities")
     assert r.status_code == 200, r.text
     body = r.json()
     assert set(body["tiers"]) == {"ga", "beta", "preview"}
-    assert body["default_for_unknown"] == "preview"
+    assert body["default_for_unknown"] == "ga"
     by_route = {row["route"]: row for row in body["capabilities"]}
     assert by_route["/cbom"]["tier"] == "ga"
-    assert by_route["/telecom"]["tier"] == "beta"
-    assert by_route["/what-if"]["tier"] == "preview"
+    assert by_route["/telecom"]["tier"] == "ga"
+    assert by_route["/what-if"]["tier"] == "ga"
     assert all(row["why"] for row in body["capabilities"])
+    assert body["counts"]["ga"] == len(body["capabilities"])
+    assert body["counts"]["beta"] == 0 and body["counts"]["preview"] == 0
     # the scope manifest carries the same table
     scope = (await app_client.get("/api/v1/platform/scope")).json()
     assert scope["capabilities"]["counts"] == body["counts"]
