@@ -178,17 +178,38 @@ function K8sPanel() {
   const [res, setRes] = useState<ApiResult<any> | null>(null);
   const [busy, setBusy] = useState(false);
   const d = res?.data;
+  const sevCountsK8s = d ? d.findings.reduce((a: any, f: any) => (a[f.severity]=(a[f.severity]||0)+1, a), {} as any) : {};
   return (
-    <Panel title="Kubernetes manifest misconfig rules" sub="privileged pods, hostPath/hostPID, wildcards RBAC, missing limits/requests, run-as-root, latest image" className="mt">
-      <textarea className="inp" rows={9} value={yaml} onChange={(e) => setYaml(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
-      <button className="btn sm primary" onClick={async () => { setBusy(true); setRes(await apiK8sScan(yaml)); setBusy(false); }} disabled={busy}>{busy ? "Scanning…" : "Scan manifests"}</button>
-      <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
-      {d && (
-        <>
-          <Badge tone={d.total_findings ? "red" : "green"}>{d.total_findings} findings across {d.manifests_scanned} manifest(s)</Badge>
-          <div className="mt"><FindingTable rows={d.findings} codeKey={(r) => r.code} sevKey={(r) => r.severity} /></div>
-        </>
-      )}
+    <Panel title="Kubernetes manifest misconfig rules" sub="Misconfig rules — visual severity & resource findings" className="mt" style={{ overflow: "hidden", padding: 0 }}>
+      <div style={{ padding: "14px 16px", background: "var(--bg-2)", borderBottom: "1px solid var(--line)", display: "flex", gap: 10, alignItems: "center" }}>
+        <span className="brandmark" style={{ width: 32, height: 32, display: "grid", placeItems: "center" }}><IconContainer size={16} /></span>
+        <div><div style={{ fontWeight: 700, fontSize: 13 }}>K8s manifest scan</div><div style={{ fontSize: 11, color: "var(--dim)" }}>privileged pods · hostPath · RBAC · limits · run-as-root</div></div>
+        <Badge tone=""><span className="dot" /> K8S GATE</Badge>
+      </div>
+      <div style={{ padding: 16 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)", display: "flex", gap: 6, alignItems: "center" }}><IconCode size={12} /> Manifest YAML</span>
+          <textarea className="inp" rows={9} value={yaml} onChange={(e) => setYaml(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11, background: "var(--bg)", border: "1px solid var(--line)" }} />
+        </label>
+        <button className="btn sm primary" onClick={async () => { setBusy(true); setRes(await apiK8sScan(yaml)); setBusy(false); }} disabled={busy} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><IconTarget size={12} /> {busy ? "Scanning…" : "Scan manifests"}</button>
+        <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
+        {d && (
+          <>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 10 }}>
+              <Ring pct={Math.max(0, Math.min(1, 1 - (d.total_findings / Math.max(1, d.total_findings + 2))))} label={`${d.total_findings}`} sub="findings" tone={d.total_findings ? "amber" : "green"} />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{d.total_findings} findings · {d.manifests_scanned} manifests</div>
+                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  {["CRITICAL","HIGH","MEDIUM","LOW"].map(s => sevCountsK8s[s] ? <span key={s} className={`badge ${sevTone(s)}`}>{s} {sevCountsK8s[s]}</span> : null)}
+                  {!Object.keys(sevCountsK8s).length && <span className="faint">Clean — no misconfig</span>}
+                </div>
+                <Badge tone={d.total_findings ? "red" : "green"} style={{ marginTop: 6 }}>{d.total_findings} findings across {d.manifests_scanned} manifest(s)</Badge>
+              </div>
+            </div>
+            <FindingTable rows={d.findings} codeKey={(r) => r.code} sevKey={(r) => r.severity} />
+          </>
+        )}
+      </div>
     </Panel>
   );
 }
@@ -203,18 +224,40 @@ function PosturePanel() {
   const [res, setRes] = useState<ApiResult<any> | null>(null);
   const [busy, setBusy] = useState(false);
   const d = res?.data;
+  const sevCloud = d ? d.findings.reduce((a: any, f: any) => (a[f.severity]=(a[f.severity]||0)+1,a),{} as any) : {};
   return (
-    <Panel title="Cloud posture (CIS-style) — AWS / Azure / GCP" sub="public IAM, unencrypted/public buckets, open security groups, TLS, wildcard roles" className="mt">
-      <textarea className="inp" rows={8} value={text} onChange={(e) => setText(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
-      <button className="btn sm primary" onClick={async () => {
-        setBusy(true);
-        try { setRes(await apiCloudPosture(JSON.parse(text))); }
-        catch (e) { setRes({ source: "live", ok: false, data: null, error: "JSON: " + String(e) }); }
-        setBusy(false);
-      }} disabled={busy}>{busy ? "Evaluating…" : "Evaluate posture"}</button>
-      <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
-      {d && <><Badge tone={d.total_findings ? "red" : "green"}>{d.total_findings} findings / {d.resources_scanned} resources</Badge>
-        <div className="mt"><FindingTable rows={d.findings} codeKey={(r) => r.rule_id} sevKey={(r) => r.severity} /></div></>}
+    <Panel title="Cloud posture (CIS-style) — AWS / Azure / GCP" sub="CIS posture — visual resource findings" className="mt" style={{ overflow: "hidden", padding: 0 }}>
+      <div style={{ padding: "14px 16px", background: "var(--bg-2)", borderBottom: "1px solid var(--line)", display: "flex", gap: 10, alignItems: "center" }}>
+        <span className="brandmark" style={{ width: 32, height: 32, display: "grid", placeItems: "center" }}><IconCloud size={16} /></span>
+        <div><div style={{ fontWeight: 700, fontSize: 13 }}>Cloud posture</div><div style={{ fontSize: 11, color: "var(--dim)" }}>AWS / Azure / GCP · public IAM · open buckets · TLS</div></div>
+        <Badge tone=""><span className="dot" /> CIS GATE</Badge>
+      </div>
+      <div style={{ padding: 16 }}>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)", display: "flex", gap: 6, alignItems: "center" }}><IconCloud size={12} /> Resources JSON</span>
+          <textarea className="inp" rows={8} value={text} onChange={(e) => setText(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11, background: "var(--bg)", border: "1px solid var(--line)" }} />
+        </label>
+        <button className="btn sm primary" onClick={async () => {
+          setBusy(true);
+          try { setRes(await apiCloudPosture(JSON.parse(text))); }
+          catch (e) { setRes({ source: "live", ok: false, data: null, error: "JSON: " + String(e) }); }
+          setBusy(false);
+        }} disabled={busy} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><IconTarget size={12} /> {busy ? "Evaluating…" : "Evaluate posture"}</button>
+        <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
+        {d && <>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 10 }}>
+            <Ring pct={Math.max(0, Math.min(1, 1 - (d.total_findings / Math.max(1, d.total_findings + 3))))} label={`${d.total_findings}`} sub="findings" tone={d.total_findings ? "red" : "green"} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{d.total_findings} findings · {d.resources_scanned} resources</div>
+              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                {["CRITICAL","HIGH","MEDIUM","LOW"].map(s => sevCloud[s] ? <span key={s} className={`badge ${sevTone(s)}`}>{s} {sevCloud[s]}</span> : null)}
+                {!Object.keys(sevCloud).length && <span className="faint">No findings — posture clean</span>}
+              </div>
+            </div>
+          </div>
+          <FindingTable rows={d.findings} codeKey={(r) => r.rule_id} sevKey={(r) => r.severity} />
+        </>}
+      </div>
     </Panel>
   );
 }
@@ -261,7 +304,13 @@ function SbomScanTab() {
   const m = scanRes?.data?.manifest;
   const compliance = scanRes?.data?.compliance;
   return (
-    <Panel title="SBOM scanner — source tree / container → CycloneDX 1.5 · SPDX 2.3" sub="Walks manifests + lockfiles (resolved/transitive graph) or the container scanner, enriches crypto-relevant components with suppliers, checks pinning, and persists a signed artifact" className="mt">
+    <Panel title="SBOM scanner — source tree / container → CycloneDX 1.5 · SPDX 2.3" sub="Source/container → CycloneDX/SPDX · signed artifacts" className="mt" style={{ overflow: "hidden", padding: 0 }}>
+      <div style={{ padding: "12px 16px", background: "var(--bg-2)", borderBottom: "1px solid var(--line)", display: "flex", gap: 10, alignItems: "center" }}>
+        <span className="brandmark" style={{ width: 32, height: 32, display: "grid", placeItems: "center" }}><IconComponent size={16} /></span>
+        <div><div style={{ fontWeight: 700, fontSize: 13 }}>SBOM generator</div><div style={{ fontSize: 11, color: "var(--dim)" }}>Manifests + lockfiles · transitive graph · crypto-relevant · signed</div></div>
+        <Badge tone="cyan"><span className="dot" /> SIGNED</Badge>
+      </div>
+      <div style={{ padding: 16 }}>
       <div className="grid" style={{ gridTemplateColumns: "130px 1fr 130px", gap: 8, marginBottom: 8 }}>
         <select className="inp" value={kind} onChange={(e) => setKind(e.target.value)}>
           <option value="source">source tree</option>
@@ -321,6 +370,7 @@ function SbomScanTab() {
           {showBom && <pre className="code" style={{ marginTop: 8, maxHeight: 320, overflow: "auto" }}>{JSON.stringify(scanRes?.data?.bom, null, 1)}</pre>}
         </>
       )}
+      </div>
     </Panel>
   );
 }
@@ -403,7 +453,7 @@ function SbomArtifactsTab() {
     return failed.length ? <span className="muted" style={{ fontSize: 12 }}>failed: {failed.join(", ")}</span> : "";
   };
   return (
-    <Panel title="SBOM artifacts — persisted, hash-signed" sub="Each artifact stores the exact bytes, their sha256, and an HMAC-SHA256 manifest signature; verify re-checks both, gate applies a supply-chain policy, rescan re-runs the same scan and diffs it. Reports summarise crypto inventory, pinning and minimum-elements status" className="mt">
+    <Panel title="SBOM artifacts — persisted, hash-signed" sub="Hash-signed · verify / gate / rescan · visual provenance" className="mt">
       <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <select className="inp" style={{ width: 120 }} value={fKind} onChange={(e) => setFKind(e.target.value)}>
           <option value="">all kinds</option>
@@ -484,7 +534,7 @@ function SbomDiffTab() {
     setBusy(false);
   };
   return (
-    <Panel title="SBOM diff — what changed between two bills of materials" sub="Components added/removed, version changes with upgrade/downgrade direction, license changes, and crypto-relevant deltas (supply-chain change review)" className="mt">
+    <Panel title="SBOM diff — what changed between two bills of materials" sub="Visual diff · added/removed/changed · crypto deltas" className="mt">
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
         <select className="inp" value={fromId} onChange={(e) => setFromId(e.target.value)}>
           <option value="">baseline artifact…</option>
@@ -534,7 +584,7 @@ function SbomValidateTab() {
   const [busy, setBusy] = useState(false);
   const d = res?.data;
   return (
-    <Panel title="SBOM validation — NTIA minimum elements" sub="Score a supplier's CycloneDX/SPDX document before accepting it: supplier, name, version, unique identifiers, dependency relationships, author, timestamp" className="mt">
+    <Panel title="SBOM validation — NTIA minimum elements" sub="NTIA minimum elements — visual compliance score" className="mt">
       <textarea className="inp" rows={10} value={doc} onChange={(e) => setDoc(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
       <button className="btn sm primary" onClick={async () => {
         setBusy(true);
@@ -574,7 +624,7 @@ function SbomImportTab() {
   const [busy, setBusy] = useState(false);
   const d = res?.data;
   return (
-    <Panel title="SBOM import — CycloneDX / SPDX + pinning" sub="Normalizes an incoming SBOM to the component model, checks version/digest pinning, and builds the dependency graph" className="mt">
+    <Panel title="SBOM import — CycloneDX / SPDX + pinning" sub="Import + pinning check — visual dependency graph" className="mt">
       <textarea className="inp" rows={8} value={doc} onChange={(e) => setDoc(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
       <button className="btn sm primary" onClick={async () => {
         setBusy(true);
@@ -628,7 +678,7 @@ function SbomLicenseTab() {
   };
   const d = res?.data;
   return (
-    <Panel title="License compliance" sub="Every declared license grouped by SPDX id with the components carrying it, the components that declare nothing, and policy violations. The copyleft trigger is a policy flag for human review — the engine never rules on license compatibility" className="mt">
+    <Panel title="License compliance" sub="SPDX licenses · violations & policy flags" className="mt">
       <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
         <select className="inp" value={artifactId} onChange={(e) => setArtifactId(e.target.value)}>
           <option value="">select an artifact…</option>
@@ -700,7 +750,7 @@ function SbomInventoryTab() {
   const compRows = comps?.data?.components || [];
   const advRows = advs?.data?.advisories || [];
   return (
-    <Panel title="Component & advisory index" sub="Cross-artifact view: which artifact carries which component, and every advisory recorded across artifacts that were actually matched against a feed. Scans without a feed contribute no advisories and are counted separately" className="mt">
+    <Panel title="Component & advisory index" sub="Cross-artifact index — components & advisories" className="mt">
       <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <input className="inp" style={{ width: 220 }} placeholder="component name or purl…" value={q} onChange={(e) => setQ(e.target.value)} />
         <label style={{ fontSize: 12.5 }}><input type="checkbox" checked={cryptoOnly} onChange={(e) => setCryptoOnly(e.target.checked)} /> crypto-relevant only</label>
@@ -1129,7 +1179,13 @@ function BinaryPanel() {
   const severityTone = (s: string) => (s === "CRITICAL" || s === "HIGH" ? "red" : (s === "MEDIUM" ? "amber" : "gray"));
   return (
     <Panel title="Binaries, archives & firmware — parse, not guess"
-      sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go-buildinfo/program-headers/hardening/symbol-version floors/section table, PE imports/delay-imports/resources/version-info/debug/CLR/Authenticode presence/ASLR-DEP-CFG-GS mitigations, Mach-O dylib versions + symbol table + code-signature entitlements + signing team, Java constant pools, RPM headers, ar/zip/cpio(initramfs)/deb members, WASM imports, firmware container chains — containers (gzip/xz/bzip2/tar/cpio/zip/ar/RPM) are followed inside a stated budget, with graded crypto evidence and the same SBOM/CBOM pipeline" className="mt">
+      sub="Parse, not guess — visual crypto evidence & hardening" className="mt" style={{ overflow: "hidden", padding: 0 }}>
+      <div style={{ padding: "14px 16px", background: "var(--bg-2)", borderBottom: "1px solid var(--line)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="brandmark" style={{ width: 32, height: 32, display: "grid", placeItems: "center" }}><IconHardware size={16} /></span>
+        <div><div style={{ fontWeight: 700, fontSize: 13 }}>Binaries & firmware</div><div style={{ fontSize: 11, color: "var(--dim)" }}>ELF · PE · Mach-O · ar/zip/cpio/deb · WASM · firmware · crypto evidence</div></div>
+        <span className="badge violet" style={{ marginLeft: "auto" }}><span className="dot" /> PARSE, NOT GUESS</span>
+      </div>
+      <div style={{ padding: 16 }}>
       <div className="mt" style={{ marginBottom: 12 }}>
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 5 }}>
           <strong style={{ fontSize: 13 }}>Persisted binary history</strong>
@@ -1644,16 +1700,8 @@ function BinaryPanel() {
             )}
           </div>
           {summary?.extraction_limits && (
-            <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-              extraction budget: {Math.round((summary.extraction_limits.max_payload_bytes || 0) / (1024 * 1024))} MiB per level,
-              depth {summary.extraction_limits.max_depth}, {summary.extraction_limits.max_members} members listed,
-              {Math.round((summary.extraction_limits.max_member_bytes || 0) / (1024 * 1024))} MiB per member
-            </div>
-          )}
-          {derived.length > 0 && (
-            <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-              {derived.length} file(s) were found inside a container and are reported with their provenance —
-              they are SBOM components and CBOM assets in their own right.
+            <div style={{ display: "inline-flex", gap: 6, alignItems: "center", padding: "6px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}>
+              <IconHardware size={12} /> Budget {Math.round((summary.extraction_limits.max_payload_bytes || 0) / (1024 * 1024))} MiB · depth {summary.extraction_limits.max_depth} · {summary.extraction_limits.max_members} members
             </div>
           )}
           {storedCbom && <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{storedCbom}</div>}
@@ -1661,6 +1709,7 @@ function BinaryPanel() {
           {showCbom && <Code>{JSON.stringify(d.cbom, null, 2)}</Code>}
         </>
       )}
+      </div>
     </Panel>
   );
 }
@@ -1690,7 +1739,7 @@ function ConnectorPanel() {
   };
   const d = res?.data;
   return (
-    <Panel title="Ticketing · SIEM · bus · chat connectors" sub="ServiceNow/Jira (dedup correlation keys), Splunk HEC & Elastic bulk, Kafka/RabbitMQ, Slack/Teams adaptive cards with ack/assign" className="mt">
+    <Panel title="Ticketing · SIEM · bus · chat connectors" sub="ITSM/SIEM/bus/chat — visual payload previews" className="mt">
       <div className="grid" style={{ gridTemplateColumns: "1fr 2fr", gap: 8, marginBottom: 8 }}>
         <select className="inp" value={provider} onChange={(e) => setProvider(e.target.value)}>
           {CONNECTORS.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
@@ -1725,7 +1774,7 @@ export default function DevSecOps() {
       <PageHead
         crumb="operate / devsecops pipeline"
         title="DevSecOps pipeline"
-        sub="Container CVE scan on push · K8s misconfig rules · cloud CIS posture · CycloneDX/SPDX SBOM + pinning · binary & firmware crypto evidence · ITSM/SIEM/bus/chat connectors — deterministic, fail-closed"
+        sub="6 shift-left gates · visual, deterministic, fail-closed"
         right={<Badge tone=""><span className="dot" /> SHIFT-LEFT GATES</Badge>}
       />
       <EvidenceBoundaryStrip />
