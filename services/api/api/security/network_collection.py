@@ -185,7 +185,17 @@ def persist_network(db, result, run, *, kind="hosts", phase_admission=None, coll
     """Stage ledger + materialized projections; caller completes atomically.
 
     Never swallow storage failures and never label port discovery as TLS.
+
+    Evidence records are linked into the tenant hash chain here, so every code
+    path that stores evidence (active, passive, watch, IPsec, message layer) gets
+    the same tamper-evident treatment instead of each caller remembering to.
     """
+    from api.security.network_evidence_chain import append as append_to_chain, ensure_evidence_ids
+
+    evidence = ensure_evidence_ids(result.get("network_evidence") or [])
+    if evidence:
+        # keep the caller's list in sync so the response carries the same ids
+        result["network_evidence"] = evidence
     payload = {
         **result,
         "collection": {
@@ -205,7 +215,10 @@ def persist_network(db, result, run, *, kind="hosts", phase_admission=None, coll
     for usage in result.get("usages") or []:
         if usage.get("fingerprint_sha256") and usage.get("location"):
             usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
-    return {**payload, "job_id": run.job_id, "run_id": row.id}
+    chain_receipt = (
+        append_to_chain(db, evidence, run_id=row.id, tenant_id=current_tenant(), user=None) if evidence else None
+    )
+    return {**payload, "job_id": run.job_id, "run_id": row.id, "evidence_chain": chain_receipt}
 
 
 def network_coverage(result):

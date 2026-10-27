@@ -4,7 +4,7 @@ import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import { IconNetwork, IconCloud, IconHardware, IconSecurity, IconTarget, IconSatellite } from "../components/icons";
-import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse, apiNetworkCryptoIntegrity, NetworkEvidenceIntegrity, apiNetworkMessageLayer, apiObserveNetworkMessageLayer, MessageLayerResponse, MessageLayerRecord, apiNetworkCryptoCorrelate, NetworkCorrelationResponse } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -510,6 +510,281 @@ function NetworkCryptoScopePanel() {
   );
 }
 
+/* ── Hop attribution: where TLS terminates (spec §15–§17) ── */
+function AttributionStrip({ path }: { path: NetworkCryptoPathResponse | null }) {
+  const attr = path?.attribution;
+  if (!attr) return null;
+  const verdictTone = (verdict: string) =>
+    verdict === "TERMINATES_AND_REORIGINATES" ? "cyan" : verdict === "PASS_THROUGH" ? "green" : "amber";
+  return (
+    <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <span className="kicker">hop roles</span>
+        {Object.entries(attr.roles).map(([node, role]) => (
+          <span
+            key={node}
+            className="mono"
+            style={{ fontSize: 10, padding: "2px 7px", borderRadius: 999, border: "1px solid var(--line)", background: "var(--bg-2)" }}
+            title={`${node} · ${attr.role_sources[node] || "UNDECLARED"}`}
+          >
+            {role}
+            {attr.role_sources[node] === "INFERRED_FROM_LABEL" && <span style={{ color: "var(--amber)" }}> ·inferred</span>}
+          </span>
+        ))}
+      </div>
+      {attr.termination_points.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {attr.termination_points.map((point) => (
+            <div
+              key={point.node}
+              style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "6px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--panel)" }}
+            >
+              <Badge tone={verdictTone(point.verdict)}>{point.verdict.replace(/_/g, " ")}</Badge>
+              <span className="mono" style={{ fontSize: 11 }}>{point.node}</span>
+              <span className="dim" style={{ fontSize: 11 }}>
+                {point.client_side_from ?? "client"} → <b>{point.node}</b> → {point.internal_side_to ?? "?"}
+              </span>
+              <span className="faint" style={{ fontSize: 10.5 }}>{point.reason}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {attr.sidecars.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {attr.sidecars.map((sidecar) => (
+            <Badge key={sidecar.node} tone="violet">sidecar {sidecar.node} — not app crypto</Badge>
+          ))}
+        </div>
+      )}
+      {attr.unattributed_nodes.length > 0 && (
+        <span className="faint" style={{ fontSize: 10.5 }}>role UNKNOWN: {attr.unattributed_nodes.join(", ")}</span>
+      )}
+    </div>
+  );
+}
+
+/* ── Evidence integrity: tamper-evident hash chain (spec §24) ── */
+function EvidenceIntegrityStrip() {
+  const integrity = usePollingApi(() => apiNetworkCryptoIntegrity(), 30000);
+  const data = integrity.data as NetworkEvidenceIntegrity | null;
+  if (!data) return null;
+  const tone = data.verified ? "green" : data.entries === 0 ? "slate" : "red";
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12, padding: "8px 12px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--panel)" }}>
+      <Badge tone={tone}>{data.verified ? "CHAIN VERIFIED" : data.entries === 0 ? "NO EVIDENCE YET" : "CHAIN BROKEN"}</Badge>
+      <span className="dim" style={{ fontSize: 11 }}>{data.entries} chained · {data.checked_records} re-hashed</span>
+      <span className="mono faint" style={{ fontSize: 10 }}>head {data.head_hash.slice(0, 16)}…</span>
+      {data.tampered_records.length > 0 && <Badge tone="red">{data.tampered_records.length} tampered</Badge>}
+      {data.unverifiable_entries.length > 0 && <Badge tone="amber">{data.unverifiable_entries.length} unverifiable</Badge>}
+      <span className="faint" style={{ fontSize: 10 }}>{data.anchoring} · not distributed</span>
+    </div>
+  );
+}
+
+/* ── Message layer: Kafka/MQ transport crypto vs message crypto (spec §19) ── */
+function MessageLayerPanel() {
+  const layer = usePollingApi(() => apiNetworkMessageLayer(5), 20000);
+  const data = layer.data as MessageLayerResponse | null;
+  const summary = data?.summary;
+  const records: MessageLayerRecord[] = data?.evidence ?? [];
+  const [endpoint, setEndpoint] = useState("kafka-01.bank:9093");
+  const [listener, setListener] = useState("SASL_SSL");
+  const [mechanism, setMechanism] = useState("SCRAM-SHA-512");
+  const [payloadClaim, setPayloadClaim] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const submit = async () => {
+    setSaving(true);
+    setMsg(null);
+    const broker: Record<string, unknown> = {
+      endpoint,
+      protocol: "KAFKA",
+      listener_security: listener,
+      sasl_mechanism: mechanism,
+      client_authentication: "mTLS",
+      authorization_model: "ACL",
+    };
+    if (payloadClaim.trim()) {
+      broker.payload_encryption = payloadClaim.trim();
+      broker.payload_encryption_source = "BANK_DECLARATION";
+    }
+    const result = await apiObserveNetworkMessageLayer([broker]);
+    if (result.data) {
+      setMsg(`stored ${result.data.stored} listener · ${result.data.active_packets} active packets`);
+      layer.run();
+    } else {
+      setMsg(result.error || "ingest failed");
+    }
+    setSaving(false);
+  };
+
+  return (
+    <Panel
+      title="Message layer — Kafka / MQ crypto"
+      sub="transport TLS and SASL are not message encryption: a TLS listener says nothing about whether payloads are encrypted"
+      className="mt"
+    >
+      <div className="grid cols-4" style={{ marginBottom: 12 }}>
+        {[
+          ["listeners", summary?.records ?? 0, undefined],
+          ["transport encrypted", summary?.transport_encrypted ?? 0, "var(--green)"],
+          ["transport plaintext", summary?.transport_plaintext ?? 0, (summary?.transport_plaintext ?? 0) ? "var(--red)" : undefined],
+          ["payload DECLARED / UNKNOWN", `${summary?.payload_encryption_states?.DECLARED ?? 0} / ${summary?.payload_encryption_states?.UNKNOWN ?? 0}`, "var(--amber)"],
+        ].map(([k, v, color]) => (
+          <div className="kpi" key={k as string}>
+            <span className="k">{k}</span>
+            <span className="v" style={{ fontSize: 20, color: color as string | undefined }}>{v as string | number}</span>
+          </div>
+        ))}
+      </div>
+
+      {records.length === 0 ? (
+        <div className="dim" style={{ fontSize: 13, padding: "8px 4px" }}>
+          No broker declared — an unobserved listener is <b>UNKNOWN</b>, not “no encryption”.
+        </div>
+      ) : (
+        <Table
+          head={["endpoint", "listener", "SASL", "client auth", "transport", "message payload", "issues"]}
+          rows={records.map((r) => [
+            <span className="mono" style={{ fontSize: 11 }}>{r.target.endpoint}</span>,
+            <Badge tone={r.listener.security === "SASL_SSL" || r.listener.security === "SSL" ? "green" : r.listener.security === "UNKNOWN" ? "slate" : "red"}>
+              {r.listener.security}
+            </Badge>,
+            <span className="mono" style={{ fontSize: 10.5 }}>{r.sasl.mechanism}</span>,
+            <span style={{ fontSize: 11 }}>{r.client_authentication}</span>,
+            <Badge tone={r.listener.transport_encrypted ? "green" : r.listener.transport_encrypted === false ? "red" : "slate"}>
+              {r.listener.transport_encrypted ? "TLS" : r.listener.transport_encrypted === false ? "CLEARTEXT" : "UNKNOWN"}
+            </Badge>,
+            <Badge tone={r.payload_encryption.status === "DECLARED" ? "violet" : "slate"}>
+              {r.payload_encryption.status}{r.payload_encryption.algorithm ? ` · ${r.payload_encryption.algorithm}` : ""}
+            </Badge>,
+            <span className="faint" style={{ fontSize: 10 }}>{r.policy_issues.length ? r.policy_issues.join(", ") : "—"}</span>,
+          ])}
+        />
+      )}
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
+        <input
+          value={endpoint}
+          onChange={(event) => setEndpoint(event.target.value)}
+          aria-label="Broker endpoint"
+          placeholder="broker:port"
+          style={{ flex: "1 1 160px", fontSize: 11, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }}
+        />
+        <select value={listener} onChange={(event) => setListener(event.target.value)} aria-label="Listener security" className="input" style={{ fontSize: 11 }}>
+          {["SASL_SSL", "SSL", "SASL_PLAINTEXT", "PLAINTEXT"].map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+        <select value={mechanism} onChange={(event) => setMechanism(event.target.value)} aria-label="SASL mechanism" className="input" style={{ fontSize: 11 }}>
+          {["SCRAM-SHA-512", "SCRAM-SHA-256", "GSSAPI", "OAUTHBEARER", "PLAIN", "NONE"].map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+        <input
+          value={payloadClaim}
+          onChange={(event) => setPayloadClaim(event.target.value)}
+          aria-label="Declared payload encryption"
+          placeholder="declared payload crypto (optional)"
+          style={{ flex: "1 1 180px", fontSize: 11, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }}
+        />
+        <button className="btn sm" type="button" onClick={() => void submit()} disabled={saving}>
+          {saving ? "Recording…" : "Record listener"}
+        </button>
+        {msg && <span className="dim" style={{ fontSize: 11 }}>{msg}</span>}
+      </div>
+      <div className="faint" style={{ fontSize: 10.5, marginTop: 6 }}>
+        A declared payload algorithm is stored as <b>DECLARED</b> with its source — network telemetry cannot observe message encryption.
+      </div>
+    </Panel>
+  );
+}
+
+/* ── Cross-layer correlation: STATIC + RUNTIME + NETWORK (spec §26, §27) ── */
+function CrossLayerCorrelationPanel() {
+  const [service, setService] = useState("payments-api");
+  const [host, setHost] = useState("payments.bank");
+  const [declaredTls, setDeclaredTls] = useState("TLS1.2");
+  const [report, setReport] = useState<NetworkCorrelationResponse | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    setMsg(null);
+    const result = await apiNetworkCryptoCorrelate({
+      services: [{ name: service, hosts: [host], endpoints: [`${host}:443`] }],
+      static: declaredTls.trim()
+        ? [{ service, kind: "tls_version", role: "network-transport", value: declaredTls.trim(), source: "declared policy" }]
+        : [],
+      use_latest_network_evidence: true,
+    });
+    if (result.data) setReport(result.data);
+    else setMsg(result.error || "correlation failed");
+    setBusy(false);
+  };
+
+  const layerTone = (present: boolean) => (present ? "green" : "amber");
+
+  return (
+    <Panel
+      title="Cross-layer correlation — static + runtime + network"
+      sub="each layer keeps its own facts; only the same artifact (TLS policy, certificate identity) is compared — transport crypto never stands in for application crypto"
+      className="mt"
+    >
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+        <input value={service} onChange={(event) => setService(event.target.value)} aria-label="Service name" placeholder="service" style={{ flex: "1 1 140px", fontSize: 11, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />
+        <input value={host} onChange={(event) => setHost(event.target.value)} aria-label="Service host" placeholder="host" style={{ flex: "1 1 140px", fontSize: 11, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />
+        <input value={declaredTls} onChange={(event) => setDeclaredTls(event.target.value)} aria-label="Declared TLS version" placeholder="declared TLS (e.g. TLS1.2)" style={{ flex: "0 1 150px", fontSize: 11, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />
+        <button className="btn sm" type="button" onClick={() => void run()} disabled={busy}>{busy ? "Correlating…" : "Correlate"}</button>
+        {msg && <span className="dim" style={{ fontSize: 11 }}>{msg}</span>}
+      </div>
+
+      {report && (
+        <>
+          <div className="grid cols-4" style={{ marginBottom: 12 }}>
+            {[
+              ["match", report.summary.matches, "var(--green)"],
+              ["mismatch (review)", report.summary.mismatches, report.summary.mismatches ? "var(--amber)" : undefined],
+              ["not comparable", report.summary.not_comparable, undefined],
+              ["no network evidence", report.summary.services_without_network_evidence, report.summary.services_without_network_evidence ? "var(--amber)" : undefined],
+            ].map(([k, v, color]) => (
+              <div className="kpi" key={k as string}>
+                <span className="k">{k}</span>
+                <span className="v" style={{ color: color as string | undefined }}>{v as number}</span>
+              </div>
+            ))}
+          </div>
+          {report.services.map((item) => (
+            <div key={item.service} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="mono" style={{ fontSize: 12 }}>{item.service}</span>
+                {["STATIC", "RUNTIME", "NETWORK"].map((layer) => (
+                  <Badge key={layer} tone={layerTone(item.layers_present.includes(layer))}>
+                    {layer}{item.layers_present.includes(layer) ? "" : " · NOT_OBSERVED"}
+                  </Badge>
+                ))}
+              </div>
+              {item.comparisons.length === 0 ? (
+                <span className="faint" style={{ fontSize: 11 }}>no comparable facts yet — supply a declared policy or run a network observation</span>
+              ) : (
+                item.comparisons.map((comparison, index) => (
+                  <div key={index} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "6px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--panel)" }}>
+                    <Badge tone={comparison.result === "MATCH" ? "green" : comparison.result === "MISMATCH" ? "amber" : "slate"}>{comparison.result}</Badge>
+                    <span className="mono" style={{ fontSize: 11 }}>{comparison.kind}</span>
+                    <span className="dim" style={{ fontSize: 11 }}>{comparison.left.layer} {String(comparison.left.value)}</span>
+                    <span className="faint">↔</span>
+                    <span className="dim" style={{ fontSize: 11 }}>{comparison.right.layer} {String(comparison.right.value)}</span>
+                    {comparison.reason && <span className="faint" style={{ fontSize: 10 }}>{comparison.reason}</span>}
+                  </div>
+                ))
+              )}
+            </div>
+          ))}
+          <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>{report.boundary}</div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 /* ── Cryptographic Network Intelligence — observed crypto (spec §24, §25, §28) ── */
 function evidenceTone(type: string): "green" | "amber" | "slate" {
   if (type === "NETWORK_ACTIVE_OBSERVED") return "green";
@@ -555,6 +830,7 @@ function NetworkCryptoIntelligencePanel() {
       sub="TLS version · cipher · key exchange · certificate curve · mTLS — network transport layer only, never application or storage crypto"
       className="mt"
     >
+      <EvidenceIntegrityStrip />
       <div className="grid cols-4" style={{ marginBottom: 12 }}>
         {[
           ["observed endpoints", summary?.observed ?? 0, "var(--green)"],
@@ -586,7 +862,7 @@ function NetworkCryptoIntelligencePanel() {
 
       {records.length === 0 ? (
         <div className="dim" style={{ fontSize: 13, padding: "12px 4px" }}>
-          No observations yet — configure an approved scope above, then run <code>POST /api/v1/network/crypto-observe</code>.
+          No observations yet — approve a scope above, then start the observation worker or record a listener.
           Empty means <b>NOT_OBSERVED</b>, never “no crypto”.
         </div>
       ) : (
@@ -633,6 +909,7 @@ function NetworkCryptoIntelligencePanel() {
             </span>
           )}
         </div>
+        {path && <AttributionStrip path={path} />}
         {path && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
             {path.edges.map((edge, index) => (
@@ -739,6 +1016,8 @@ export default function Network() {
       {/* ── approved scope + observed crypto (spec 67) ── */}
       <NetworkCryptoScopePanel />
       <NetworkCryptoIntelligencePanel />
+      <MessageLayerPanel />
+      <CrossLayerCorrelationPanel />
       <ScopeImportPanel />
       <CryptoWatchPanel />
 

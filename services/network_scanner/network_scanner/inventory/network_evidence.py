@@ -11,6 +11,7 @@ builders and the graph can consume the same object.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -79,7 +80,7 @@ def build_evidence(
     record: dict[str, Any] = {
         "schema": SCHEMA,
         "evidence_type": evidence_type,
-        "evidence_id": finding.get("finding_id"),
+        "evidence_id": finding.get("finding_id") or f"ev-{uuid.uuid4().hex}",
         "target": {
             "endpoint": finding.get("endpoint"),
             "host": finding.get("metadata", {}).get("endpoint_hostname") or finding.get("endpoint", "").rsplit(":", 1)[0],
@@ -148,6 +149,133 @@ def build_evidence(
     elif record["mutual_tls"] == "UNKNOWN":
         record["limitations"].append("mutual TLS requirement is not determinable without a completed handshake")
     record["limitations"].append("application-layer, storage and HSM/KMS crypto are out of network reach")
+
+    if extra:
+        record["context"] = dict(extra)
+    return record
+
+
+#: §13 — IPsec roles, kept distinct from TLS roles in the CBOM
+ROLE_IKE_KEX = "ike-key-exchange"
+ROLE_IKE_ENC = "ike-encryption"
+ROLE_IKE_INTEG = "ike-integrity"
+ROLE_ESP_ENC = "esp-encryption"
+ROLE_ESP_INTEG = "esp-integrity"
+
+
+def build_ipsec_evidence(
+    probe: dict[str, Any],
+    *,
+    scanner_version: str = "network-ipsec-scanner-v1.0",
+    scope_revision: str | None = None,
+    observed_at: str | None = None,
+    scope_name: str | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """One §13/§24 evidence record from an IKEv2 SA_INIT observation.
+
+    ``IKE_AUTH`` is never attempted, so authentication method, peer identity and
+    the ESP transform set remain ``UNKNOWN``/``NOT_OBSERVED``. A responder that
+    refused the proposal is reported as a refusal with its notify reason — that
+    is still not evidence that the gateway has no crypto.
+    """
+    status = str(probe.get("status") or "UNKNOWN").upper()
+    ike = probe.get("ike") or None
+    esp = probe.get("esp") or {"status": "NOT_OBSERVED"}
+    endpoint = str(probe.get("endpoint") or "")
+    host, _, port_text = endpoint.rpartition(":")
+    observed = status == "OK" and bool(ike)
+    evidence_type = "NETWORK_ACTIVE_OBSERVED" if observed else "UNKNOWN"
+
+    record: dict[str, Any] = {
+        "schema": SCHEMA,
+        "evidence_type": evidence_type,
+        # assigned at build time so the response, the stored run and the hash
+        # chain all reference the same identity
+        "evidence_id": f"ev-{uuid.uuid4().hex}",
+        "target": {
+            "endpoint": endpoint or None,
+            "host": host or None,
+            "port": int(port_text) if port_text.isdigit() else None,
+            "ip_address": host if host and host[0].isdigit() else None,
+        },
+        "protocol": "IPsec",
+        "observation_status": status,
+        # IKE decomposition in the shared shape so the summary/CBOM builders do
+        # not need a second code path; ESP stays separately labelled.
+        "decomposition": {
+            "key_exchange": (ike or {}).get("dh_group"),
+            "authentication": None,  # IKE_AUTH not attempted
+            "encryption": (ike or {}).get("encryption"),
+            "mode": "AEAD" if (ike or {}).get("integrity") == "AEAD" else None,
+            "mac_or_prf": (ike or {}).get("prf") or (ike or {}).get("integrity"),
+            "key_size_bits": None,
+        },
+        "ike": {
+            "version": "IKEv2" if probe.get("status") else None,
+            "encryption": (ike or {}).get("encryption"),
+            "prf": (ike or {}).get("prf"),
+            "integrity": (ike or {}).get("integrity"),
+            "dh_group": (ike or {}).get("dh_group"),
+            "esn": (ike or {}).get("esn"),
+            # Certificate vs PSK vs EAP is only visible in IKE_AUTH.
+            "authentication": "UNKNOWN",
+        },
+        "esp": {
+            "status": esp.get("status") or "NOT_OBSERVED",
+            "encryption": esp.get("encryption"),
+            "integrity": esp.get("integrity"),
+            "dh_group": esp.get("dh_group"),
+            # PFS applies to the CHILD_SA; without an ESP proposal this is unknown.
+            "pfs": esp.get("pfs") or "UNKNOWN",
+            "reason": esp.get("reason"),
+        },
+        "ke": probe.get("ke"),
+        "header": probe.get("header"),
+        "notifies": list(probe.get("notifies") or []),
+        "certificate": {
+            "fingerprint_sha256": None,
+            "subject": None,
+            "issuer": None,
+            "not_before": None,
+            "not_after": None,
+            "public_key_algorithm": None,
+            "public_key_bits": None,
+            "curve": None,
+            "signature_algorithm": None,
+            "san_count": None,
+        },
+        "certificate_chain": {"length": None, "structural_status": None, "trust_status": None, "completeness": None},
+        # Gateway identity is authenticated in IKE_AUTH; a SA_INIT reply proves
+        # the responder speaks IKE, not who it is.
+        "mutual_tls": "NOT_APPLICABLE",
+        "mtls_evidence": "NOT_APPLICABLE",
+        "policy_issues": list(probe.get("issues") or []),
+        "algorithm_verdict": {},
+        "observed_at": observed_at or _now(),
+        "scanner_version": scanner_version,
+        "scope_revision": scope_revision,
+        "scope_name": scope_name,
+        "confidence": "MEDIUM" if observed else "LOW",
+        "limitations": [],
+    }
+
+    if not observed:
+        record["limitations"].append(
+            "no IKE SA accepted: reachability/refusal is not proof that the gateway has no crypto"
+            if status in {"NO_PROPOSAL_CHOSEN", "INVALID_KE", "NO_PROPOSAL"}
+            else "gateway did not answer IKE on the probed UDP port — NOT_OBSERVED, not NO_CRYPTO"
+        )
+    else:
+        record["limitations"].append(
+            "IKE_AUTH was not attempted: peer authentication (certificate/PSK/EAP) and identity are UNKNOWN"
+        )
+    record["limitations"].append(
+        "ESP/CHILD_SA transforms are negotiated inside IKE_AUTH and are NOT_OBSERVED here"
+    )
+    record["limitations"].append(
+        "an IKE proposal is the responder's offer, not a VPN policy verdict — tunnel selectors and traffic are out of scope"
+    )
 
     if extra:
         record["context"] = dict(extra)
@@ -283,6 +411,26 @@ def to_cbom_assets(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
             continue
         decomposition = record.get("decomposition") or {}
         certificate = record.get("certificate") or {}
+        if str(record.get("protocol") or "").upper() == "IPSEC":
+            ike = record.get("ike") or {}
+            esp = record.get("esp") or {}
+            assets.extend(
+                item
+                for item in (
+                    _asset(record, algorithm=ike.get("dh_group"), role=ROLE_IKE_KEX),
+                    _asset(record, algorithm=ike.get("encryption"), role=ROLE_IKE_ENC),
+                    _asset(record, algorithm=ike.get("integrity"), role=ROLE_IKE_INTEG),
+                    # only emit ESP assets when the responder actually proposed them
+                    _asset(record, algorithm=esp.get("encryption"), role=ROLE_ESP_ENC)
+                    if esp.get("status") == "DECLARED_IN_SA_INIT"
+                    else None,
+                    _asset(record, algorithm=esp.get("integrity"), role=ROLE_ESP_INTEG)
+                    if esp.get("status") == "DECLARED_IN_SA_INIT"
+                    else None,
+                )
+                if item
+            )
+            continue
         candidates = [
             _asset(
                 record,
@@ -516,7 +664,7 @@ def build_passive_evidence(
     record = {
         "schema": SCHEMA,
         "evidence_type": "NETWORK_PASSIVE_OBSERVED",
-        "evidence_id": None,
+        "evidence_id": f"ev-{uuid.uuid4().hex}",
         "target": {
             "endpoint": endpoint,
             "host": observation.get("server_name") or dst or None,

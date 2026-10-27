@@ -1438,12 +1438,13 @@ def crypto_observe(
         "probe_telemetry": result.get("probe_telemetry"),
         "certificates": result.get("certificates") or [],
         "budget": {"reserved": budget, "settled": settled},
+        "evidence_chain": stored.get("evidence_chain"),
         "model": "cryptoscan.network-crypto-observation/1",
     }
 
 
 #: durable run kinds that carry Cryptographic Network Intelligence evidence
-EVIDENCE_RUN_KINDS = ("crypto-observe", "crypto-passive", "crypto-watch")
+EVIDENCE_RUN_KINDS = ("crypto-observe", "crypto-passive", "crypto-watch", "ipsec-observe")
 
 
 def _latest_evidence_runs(db: Session, *, limit: int = 5) -> list[dict]:
@@ -1533,7 +1534,12 @@ def network_crypto_cbom(
 
 
 class CryptoPathRequest(BaseModel):
-    """Declared hop chain to annotate with observed crypto (§25)."""
+    """Declared hop chain to annotate with observed crypto (§25).
+
+    A hop may carry ``from_role``/``to_role`` (see
+    ``network_scanner.inventory.crypto_attribution.HOP_ROLES``); without a role
+    the label is used to *infer* one, and the response says so.
+    """
 
     hops: list[dict[str, Any]] = Field(default_factory=list, max_length=50)
     inventory_id: str = Field(default="default", max_length=160)
@@ -1551,8 +1557,13 @@ def network_crypto_path(
     Hops are declared by the operator or imported from the reviewed network
     inventory; CryptoScan never invents an edge. A hop without an observation is
     returned as ``UNKNOWN`` with a note, and ``complete`` stays false.
+
+    The ``attribution`` block adds §15–§17 answers: each hop's role (declared, or
+    inferred from its label and labelled as inferred), the segment kind, where
+    TLS terminates (only from differing observed certificate fingerprints), and
+    which hops are sidecars whose crypto is *not* the application's crypto.
     """
-    from network_scanner.inventory.network_evidence import build_crypto_path
+    from network_scanner.inventory.crypto_attribution import attribute_path
 
     hops = list(body.hops)
     if body.use_inventory_topology:
@@ -1572,7 +1583,7 @@ def network_crypto_path(
             detail="no hops declared — supply hops[] or use_inventory_topology=true with a reviewed inventory",
         )
     evidence = _latest_evidence(db, limit=5)
-    return build_crypto_path(evidence, hops)
+    return attribute_path(evidence, hops)
 
 
 class IpsecObserveRequest(BaseModel):
@@ -1599,6 +1610,7 @@ def ipsec_observe(
     observation gap rather than "no crypto".
     """
     from api.security.network_scope import ScopeViolation, check_scope
+    from network_scanner.inventory.network_evidence import build_ipsec_evidence, summarize
     from network_scanner.probing.ipsec_probe import probe_ike
 
     scope = _load_crypto_scope(db, body.inventory_id)
@@ -1626,7 +1638,21 @@ def ipsec_observe(
             probe = {"endpoint": endpoint, "status": "ERROR", "proposals": [], "issues": [], "detail": str(exc)}
         results.append(probe)
 
-    observed = [item for item in results if item.get("status") == "OK" and item.get("proposals")]
+    observed_at = datetime.now(timezone.utc).isoformat()
+    evidence = [
+        build_ipsec_evidence(
+            probe,
+            scope_revision=str((scope or {}).get("saved_at") or "") or None,
+            observed_at=observed_at,
+            scope_name=scope_admission["scope_name"],
+            extra={"operation": "IKE_PROBE", "transport": "UDP", "sa_established": False},
+        )
+        for probe in results
+    ]
+    summary = summarize(evidence)
+    observed = [
+        item for item in results if item.get("status") == "OK" and (item.get("proposals") or item.get("ike"))
+    ]
     observation = {
         "model": "cryptoscan.network-ipsec-observation/1",
         "scope": scope_admission,
@@ -1634,7 +1660,13 @@ def ipsec_observe(
         "observed": len(observed),
         "not_observed": len(results) - len(observed),
         "evidence_type": "NETWORK_ACTIVE_OBSERVED" if observed else "UNKNOWN",
-        "boundary": "IKE SA_INIT observation only — ESP traffic, PFS in use and tunnel policy remain UNKNOWN",
+        # §13/§29: an accepted IKE SA_INIT tells us the IKE suite; ESP lives in
+        # IKE_AUTH, which we never perform, so it stays NOT_OBSERVED.
+        "boundary": (
+            "IKE SA_INIT observation only — no IKE_AUTH, no SA established, no traffic. "
+            "ESP transforms, PFS in use and tunnel selectors remain NOT_OBSERVED/UNKNOWN"
+        ),
+        "esp_observed": any((item.get("esp") or {}).get("status") == "DECLARED_IN_SA_INIT" for item in results),
     }
     with network_run(
         db,
@@ -1652,15 +1684,28 @@ def ipsec_observe(
     ) as run:
         stored = persist_network(
             db,
-            {"ipsec": results, "observation": observation},
+            {
+                "ipsec": results,
+                "observation": observation,
+                "network_evidence": evidence,
+                "network_evidence_summary": summary,
+            },
             run,
             kind="ipsec-observe",
-            collection_metadata={"protocol": "IPsec", "scope_name": scope_admission["scope_name"]},
+            collection_metadata={
+                "protocol": "IPsec",
+                "scope_name": scope_admission["scope_name"],
+                "evidence_schema": "cryptoscan.network-evidence/1",
+                "sa_established": False,
+            },
         )
         run.succeed(coverage={"protocol": "ipsec", "observed": len(observed)})
     observation["run_id"] = stored["run_id"]
     observation["scan_id"] = stored["job_id"]
     observation["budget"] = budget
+    observation["evidence"] = evidence
+    observation["summary"] = summary
+    observation["evidence_chain"] = stored.get("evidence_chain")
     return observation
 
 
@@ -1786,6 +1831,7 @@ def network_crypto_passive(
         "evidence": evidence,
         "summary": summary,
         "active_packets": 0,
+        "evidence_chain": stored.get("evidence_chain"),
         "note": "passive evidence covers only the traffic the sensor saw; absence is NOT_OBSERVED",
     }
 
@@ -1959,3 +2005,282 @@ def network_crypto_watch_tick(
     watcher = get_watcher()
     watcher.inventory_id = watcher.inventory_id or "default"
     return watcher.tick()
+
+
+# ---------------------------------------------------------------------------
+# Evidence integrity (spec 67 §24, §29) — tamper-evident hash chain
+# ---------------------------------------------------------------------------
+
+
+def _evidence_by_run(db: Session, run_ids) -> dict[str, list[dict]]:
+    """Load the evidence records of the runs a chain entry references."""
+    repo = ScanRunRepository(db)
+    out: dict[str, list[dict]] = {}
+    for run_id in run_ids:
+        if not run_id:
+            continue
+        row = repo.get_run(run_id, owner=current_tenant())
+        if row is None:
+            continue
+        result = (row.to_dict() or {}).get("result") or {}
+        out[str(run_id)] = list(result.get("network_evidence") or [])
+    return out
+
+
+@router.get("/network/crypto-evidence/integrity")
+def network_crypto_evidence_integrity(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Recompute the evidence hash chain and report any broken link.
+
+    ``verified: false`` with ``tampered_records``/``problems`` means a stored
+    record no longer matches the hash it was chained with. ``unverifiable_entries``
+    are honest gaps (records outside the loaded window), not passes.
+    """
+    from api.security.network_evidence_chain import read_chain, verify
+
+    chain = read_chain(db, tenant_id=current_tenant())
+    run_ids = [{str(entry.get("run_id")) for entry in chain.get("entries") or []}]
+    by_run = _evidence_by_run(db, run_ids[0])
+    report = verify(chain, records_by_run=by_run)
+    report["chain"] = {
+        "entries": len(chain.get("entries") or []),
+        "seq": chain.get("seq"),
+        "head_hash": chain.get("head"),
+        "updated_at": chain.get("updated_at"),
+    }
+    return report
+
+
+@router.get("/network/crypto-evidence/chained")
+def network_crypto_evidence_chained(
+    limit: int = 5,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Evidence read-back with each record's chain position attached (§24)."""
+    from api.security.network_evidence_chain import attach_integrity, read_chain, verify
+
+    if limit < 1 or limit > 50:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 50")
+    evidence = _latest_evidence(db, limit=limit)
+    chain = read_chain(db, tenant_id=current_tenant())
+    chained = attach_integrity(evidence, chain)
+    run_ids = {str(entry.get("run_id")) for entry in chain.get("entries") or []}
+    return {
+        "model": "cryptoscan.network-evidence-chained/1",
+        "count": len(chained),
+        "evidence": chained,
+        "integrity": verify(chain, records_by_run=_evidence_by_run(db, run_ids)),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Message layer (spec 67 §19) — transport vs payload, declared vs observed
+# ---------------------------------------------------------------------------
+
+
+class MessageLayerRequest(BaseModel):
+    """Broker/queue listener observations (§19).
+
+    ``listener_security`` is the broker's own listener setting; ``observed`` is
+    only true when the caller really performed the TLS handshake and supplies
+    the negotiated parameters. Message-level encryption is never observable and
+    is accepted only as a declaration with its source.
+    """
+
+    brokers: list[dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=200)
+    inventory_id: str = Field(default="default", max_length=160)
+    scope_name: str | None = Field(default=None, max_length=120)
+
+
+@router.post("/network/message-layer-observe")
+def network_message_layer_observe(
+    body: MessageLayerRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Record broker/queue crypto: transport TLS, SASL, mTLS and payload claims.
+
+    Transport facts are ``NETWORK_CONFIGURED`` unless the caller declares a real
+    handshake (then ``NETWORK_ACTIVE_OBSERVED``). Payload encryption is
+    ``DECLARED`` at best — network telemetry cannot see it, and SASL is
+    authentication to the broker, not message encryption (§19, §27).
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    from network_scanner.inventory.message_layer import (
+        MessageLayerRejected,
+        build_message_evidence,
+        summarize,
+        to_cbom_assets,
+    )
+
+    scope = _load_crypto_scope(db, body.inventory_id)
+    received_at = _dt.now(_tz.utc).isoformat()
+    try:
+        evidence = [
+            build_message_evidence(
+                broker,
+                scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                scope_name=body.scope_name or (scope or {}).get("name"),
+                received_at=received_at,
+            )
+            for broker in body.brokers
+        ]
+    except MessageLayerRejected as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "message_layer_rejected", "reason": str(exc)},
+        ) from exc
+
+    summary = summarize(evidence)
+    with network_run(
+        db,
+        user=user,
+        target=f"message-layer:{len(evidence)} listeners",
+        admission={
+            "schema": "cryptoscan.network-admission/1",
+            "decision": "CONFIG_INGEST",
+            "protocol": "MESSAGE_LAYER",
+            # configuration ingest opens no socket: charged zero targets, and
+            # the field is present because the ledger contract requires it.
+            "active": False,
+            "checked_targets": 0,
+        },
+        kind="message-layer",
+        profile={"source": "broker_config", "count": len(evidence)},
+    ) as run:
+        stored = persist_network(
+            db,
+            {"network_evidence": evidence, "network_evidence_summary": summary},
+            run,
+            kind="message-layer",
+            collection_metadata={
+                "source": "MESSAGE_LAYER",
+                "evidence_schema": "cryptoscan.message-layer-evidence/1",
+                "active_packets": 0,
+            },
+        )
+        run.succeed(coverage={"protocol": "message", "observed": summary["observed"]})
+    return {
+        "model": "cryptoscan.message-layer-ingest/1",
+        "run_id": stored["run_id"],
+        "scan_id": stored["job_id"],
+        "stored": len(evidence),
+        "evidence": evidence,
+        "summary": summary,
+        "cbom": to_cbom_assets(evidence),
+        "active_packets": 0,
+        "evidence_chain": stored.get("evidence_chain"),
+        "note": (
+            "transport encryption and SASL are not message encryption; a declared payload "
+            "encryption stays DECLARED and is never reported as observed"
+        ),
+    }
+
+
+def _latest_message_layer_runs(db: Session, *, limit: int = 5) -> list[dict]:
+    rows = ScanRunRepository(db).list_runs(limit=limit, target_kind="message-layer", owner=current_tenant())
+    return [row.to_dict() for row in rows]
+
+
+@router.get("/network/message-layer-evidence")
+def network_message_layer_evidence(
+    limit: int = 5,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Latest message-layer evidence plus its CBOM projection (§19, §28)."""
+    from network_scanner.inventory.message_layer import summarize, to_cbom_assets
+
+    if limit < 1 or limit > 50:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 50")
+    runs = _latest_message_layer_runs(db, limit=limit)
+    evidence: list[dict] = []
+    seen: set[str] = set()
+    for run in runs:
+        for record in (run.get("result") or {}).get("network_evidence") or []:
+            key = str(record.get("evidence_id") or (record.get("target") or {}).get("endpoint") or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            evidence.append(record)
+    return {
+        "model": "cryptoscan.message-layer-evidence-list/1",
+        "count": len(evidence),
+        "evidence": evidence,
+        "summary": summarize(evidence),
+        "cbom": to_cbom_assets(evidence),
+        "runs": [
+            {
+                "run_id": run.get("run_id"),
+                "job_id": run.get("job_id"),
+                "captured_at": run.get("created_at"),
+                "target_kind": run.get("target_kind"),
+            }
+            for run in runs
+        ],
+        "note": "no runs yet means NOT_OBSERVED — it does not mean the brokers are unencrypted",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Cross-layer correlation (spec 67 §26, §27)
+# ---------------------------------------------------------------------------
+
+
+class CorrelationRequest(BaseModel):
+    """Three-layer correlation input (§26).
+
+    ``services`` declare the identity keys (name/hosts/endpoints); each layer
+    supplies facts carrying ``kind``/``value``/``role``. Network facts can be
+    pulled from the latest stored evidence instead of being hand-written.
+    """
+
+    services: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
+    static: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+    runtime: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+    network: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+    use_latest_network_evidence: bool = True
+    evidence_limit: int = Field(default=5, ge=1, le=50)
+    inventory_id: str = Field(default="default", max_length=160)
+
+
+@router.post("/network/crypto-correlate")
+def network_crypto_correlate(
+    body: CorrelationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Correlate STATIC + RUNTIME + NETWORK facts per service, without merging layers.
+
+    Only facts describing the same artifact are compared (declared TLS policy vs
+    negotiated version, configured vs presented certificate fingerprint, mTLS
+    policy vs observed requirement). Anything else is ``NOT_COMPARABLE`` with a
+    reason: TLS AES-256 is transport crypto, not evidence about application
+    crypto (§27). A ``MISMATCH`` is a review item, never an automatic verdict.
+    """
+    from api.security.network_correlation import correlate, network_facts_from_evidence
+
+    network_facts = list(body.network)
+    derived = 0
+    if body.use_latest_network_evidence:
+        derived_facts = network_facts_from_evidence(_latest_evidence(db, limit=body.evidence_limit))
+        network_facts.extend(derived_facts)
+        derived = len(derived_facts)
+
+    report = correlate(
+        services=body.services,
+        static=body.static,
+        runtime=body.runtime,
+        network=network_facts,
+    )
+    report["sources"] = {
+        "network_facts_supplied": len(body.network),
+        "network_facts_from_stored_evidence": derived,
+        "evidence_limit": body.evidence_limit,
+        "inventory_id": body.inventory_id,
+    }
+    return report

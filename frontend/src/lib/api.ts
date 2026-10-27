@@ -4718,29 +4718,162 @@ export interface NetworkCbomResponse {
 export const apiNetworkCryptoCbom = (limit = 5): Promise<ApiResult<NetworkCbomResponse>> =>
   call(`/api/v1/network/crypto-cbom?limit=${limit}`);
 
+export interface NetworkHopAttribution {
+  model: string;
+  roles: Record<string, string>;
+  role_sources: Record<string, string>;
+  segments: Array<{ from: string; to: string; kind: string; from_role: string; to_role: string; crypto: { evidence_type: string; evidence_mode: string | null; tls_version: string | null; cipher_suite: string | null; mutual_tls: string | null; certificate_fingerprint_sha256: string | null; evidence_id: string | null }; attack_surface_note: string | null }>;
+  segment_kinds: Record<string, number>;
+  termination_points: Array<{ node: string; role: string; role_source: string | null; client_side_from: string | null; internal_side_to: string | null; client_facing_observed: boolean; internal_observed: boolean; verdict: string; reason: string; certificate_comparison: string }>;
+  terminating_nodes: string[];
+  sidecars: Array<{ node: string; role: string; note: string; observed: boolean }>;
+  unattributed_nodes: string[];
+  nodes_observed: number;
+  nodes_declared: number;
+  complete: boolean;
+  limitations: string[];
+  boundary: string;
+}
+
 export interface NetworkCryptoPathResponse {
   model: string;
-  nodes: Array<{ id: string; label: string; observed: boolean; evidence_type: string }>;
-  edges: Array<{ from: string; to: string; layer: string; evidence_type: string; evidence_id: string | null; tls_version: string | null; cipher_suite: string | null; decomposition: Record<string, unknown>; mutual_tls: string | null; observed_at: string | null; note: string | null }>;
+  nodes: Array<{ id: string; label: string; observed: boolean; evidence_type: string; role?: string; role_source?: string; role_inferred?: boolean }>;
+  edges: Array<{ from: string; to: string; layer: string; evidence_type: string; evidence_id: string | null; tls_version: string | null; cipher_suite: string | null; decomposition: Record<string, unknown>; mutual_tls: string | null; observed_at: string | null; note: string | null; segment?: string; from_role?: string; to_role?: string }>;
   node_count: number;
   edge_count: number;
   observed_edges: number;
   unknown_edges: number;
   complete: boolean;
   boundary: string;
+  attribution?: NetworkHopAttribution;
 }
 
 export const apiNetworkCryptoPath = (hops: Array<{ from: string; to: string; label?: string }>, options: { use_inventory_topology?: boolean; inventory_id?: string } = {}): Promise<ApiResult<NetworkCryptoPathResponse>> =>
   call("/api/v1/network/crypto-path", { method: "POST", body: JSON.stringify({ hops, ...options }) });
 
+export interface NetworkEvidenceIntegrity {
+  schema: string;
+  verified: boolean;
+  entries: number;
+  checked_records: number;
+  seq: number | null;
+  head_hash: string;
+  anchored_prev_hash: string;
+  truncated: boolean;
+  complete_from_seq: number | null;
+  problems: Array<{ problem: string; seq?: number; detail?: string }>;
+  tampered_records: Array<{ seq: number; evidence_id: string; expected: string; actual: string; problem: string }>;
+  missing_records: Array<{ seq: number; evidence_id: string; run_id: string | null }>;
+  unverifiable_entries: Array<{ seq: number; evidence_id: string; reason: string }>;
+  unchained_records: string[];
+  reason: string | null;
+  distributed: boolean;
+  anchoring: string;
+  boundary: string;
+}
+
+export const apiNetworkCryptoIntegrity = (): Promise<ApiResult<NetworkEvidenceIntegrity>> =>
+  call("/api/v1/network/crypto-evidence/integrity");
+
+export interface MessageLayerRecord {
+  evidence_id: string;
+  evidence_type: string;
+  layer: string;
+  protocol: string;
+  observation_status: string;
+  target: { endpoint: string | null; host: string | null; port: number | null; broker: string | null; service: string | null };
+  listener: { security: string; name: string | null; transport_encrypted: boolean | null };
+  tls_version: string | null;
+  cipher_suite: string | null;
+  certificate: { fingerprint_sha256: string | null; public_key_algorithm: string | null; signature_algorithm: string | null; not_after: string | null };
+  sasl: { mechanism: string; authenticates: string; encrypts_messages: boolean; mechanism_is_crypto: boolean };
+  client_authentication: string;
+  authorization: string | null;
+  payload_encryption: { status: string; algorithm: string | null; source: string; observed: boolean; note: string };
+  policy_issues: string[];
+  confidence: string;
+}
+
+export interface MessageLayerSummary {
+  records: number;
+  observed: number;
+  configured: number;
+  unknown: number;
+  transport_encrypted: number;
+  transport_plaintext: number;
+  client_authenticated: number;
+  protocols: Record<string, number>;
+  listeners: Record<string, number>;
+  sasl_mechanisms: Record<string, number>;
+  payload_encryption_states: Record<string, number>;
+  policy_issues: Record<string, number>;
+  boundary: string;
+}
+
+export interface MessageLayerResponse {
+  model: string;
+  count: number;
+  evidence: MessageLayerRecord[];
+  summary: MessageLayerSummary;
+  cbom: { asset_count: number; layers: Record<string, number>; roles: Record<string, number>; boundary: string };
+  runs: Array<{ run_id: string | null; job_id: string | null; captured_at: string | null }>;
+  note: string;
+}
+
+export const apiNetworkMessageLayer = (limit = 5): Promise<ApiResult<MessageLayerResponse>> =>
+  call(`/api/v1/network/message-layer-evidence?limit=${limit}`);
+
+export const apiObserveNetworkMessageLayer = (
+  brokers: Array<Record<string, unknown>>,
+): Promise<ApiResult<{ stored: number; evidence: MessageLayerRecord[]; summary: MessageLayerSummary; cbom: { asset_count: number; layers: Record<string, number> }; active_packets: number; note: string }>> =>
+  call("/api/v1/network/message-layer-observe", { method: "POST", body: JSON.stringify({ brokers }) });
+
+export interface CrossLayerComparison {
+  kind: string;
+  meaning: string | null;
+  result: "MATCH" | "MISMATCH" | "NOT_COMPARABLE";
+  reason: string | null;
+  left: { layer: string; value: unknown; role: string; source: string | null; evidence_id: string | null };
+  right: { layer: string; value: unknown; role: string; source: string | null; evidence_id: string | null };
+}
+
+export interface NetworkCorrelationResponse {
+  model: string;
+  services: Array<{
+    service: string;
+    layers_present: string[];
+    layers_missing: string[];
+    layers: Record<string, { present: boolean; facts: Array<Record<string, unknown>> }>;
+    comparisons: CrossLayerComparison[];
+    risk_hints: Array<Record<string, unknown>>;
+    coverage: { complete: boolean; note: string };
+  }>;
+  summary: { services: number; services_with_all_layers: number; services_without_network_evidence: number; comparisons: number; matches: number; mismatches: number; not_comparable: number; unattributed_facts: number; risk_hints: number };
+  unattributed_facts: Array<Record<string, unknown>>;
+  limitations: string[];
+  boundary: string;
+  sources?: Record<string, unknown>;
+}
+
+export const apiNetworkCryptoCorrelate = (payload: {
+  services: Array<{ name: string; hosts?: string[]; endpoints?: string[] }>;
+  static?: Array<Record<string, unknown>>;
+  runtime?: Array<Record<string, unknown>>;
+  network?: Array<Record<string, unknown>>;
+  use_latest_network_evidence?: boolean;
+}): Promise<ApiResult<NetworkCorrelationResponse>> =>
+  call("/api/v1/network/crypto-correlate", { method: "POST", body: JSON.stringify(payload) });
+
 export interface NetworkIpsecObservation {
   model: string;
   scope: Record<string, unknown>;
-  results: Array<{ endpoint: string; status: string; proposals?: Array<Record<string, unknown>>; issues?: string[]; detail?: string }>;
+  results: Array<{ endpoint: string; status: string; proposals?: Array<Record<string, unknown>>; issues?: string[]; detail?: string; ike?: Record<string, unknown> | null; esp?: Record<string, unknown> | null; notifies?: Array<Record<string, unknown>> }>;
   observed: number;
   not_observed: number;
   evidence_type: string;
+  esp_observed?: boolean;
   boundary: string;
+  evidence?: NetworkEvidenceRecord[];
   run_id?: string;
   scan_id?: string;
 }
