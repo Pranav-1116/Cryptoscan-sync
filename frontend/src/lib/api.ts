@@ -4900,6 +4900,63 @@ export const apiNetworkCryptoProbe = (
 ): Promise<ApiResult<CryptoProbeResponse>> =>
   call("/api/v1/network/crypto-probe", { method: "POST", body: JSON.stringify({ endpoints, ...options }) });
 
+export interface NetworkRiskFinding {
+  rule_id: string;
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  status: "FAIL" | "PASS" | "UNKNOWN" | "NOT_APPLICABLE";
+  layer: string;
+  protocol: string | null;
+  endpoint: string | null;
+  evidence_id: string | null;
+  evidence_type: string | null;
+  observed: unknown;
+  expected: unknown;
+  message: string;
+  reference: string | null;
+}
+
+export interface NetworkPqcReport {
+  verdict: string;
+  summary: { endpoints: number; observed: number; not_observed: number; hybrid_kex: number; classical_only: number };
+  endpoints: Array<{
+    endpoint: string | null;
+    readiness: string;
+    key_exchange: string | null;
+    certificate_signature: string | null;
+    harvest_now_decrypt_later_exposed: boolean;
+    note: string;
+  }>;
+  limitations: string[];
+}
+
+export interface NetworkRiskReport {
+  model: string;
+  verdict: string;
+  policy: { policy_id: string; version: string; min_tls_version: string; require_forward_secrecy: boolean };
+  layer: string;
+  findings: NetworkRiskFinding[];
+  failed: NetworkRiskFinding[];
+  coverage_gaps: NetworkRiskFinding[];
+  summary: { endpoints: number; records: number; protocols: Record<string, number>; by_severity: Record<string, number>; by_status: Record<string, number>; failed: number; unknown: number; rules: string[] };
+  limitations: string[];
+  pqc?: NetworkPqcReport;
+}
+
+export const apiNetworkCryptoRisk = (body: { policy?: Record<string, unknown> } = {}): Promise<ApiResult<NetworkRiskReport>> =>
+  call("/api/v1/network/crypto-risk", { method: "POST", body: JSON.stringify(body) });
+
+export interface DeviceInventoryResponse {
+  model: string;
+  stored: number;
+  summary: { devices: number; surfaces: number; by_plane: Record<string, number>; issues: Record<string, number>; telnet_devices: string[]; legacy_snmp_devices: string[]; declared: number; observed: number; not_observed: number; read_only: boolean; configuration_changes: number };
+  read_only: boolean;
+  configuration_changes: number;
+  note: string;
+}
+
+export const apiNetworkDeviceInventory = (devices: Array<Record<string, unknown>>): Promise<ApiResult<DeviceInventoryResponse>> =>
+  call("/api/v1/network/device-inventory", { method: "POST", body: JSON.stringify({ devices }) });
+
 export interface NetworkSafetyState {
   schema: string;
   engaged: boolean;

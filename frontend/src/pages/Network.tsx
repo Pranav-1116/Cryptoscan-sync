@@ -4,7 +4,7 @@ import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import { IconNetwork, IconCloud, IconHardware, IconSecurity, IconTarget, IconSatellite } from "../components/icons";
-import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse, apiNetworkCryptoIntegrity, NetworkEvidenceIntegrity, apiNetworkMessageLayer, apiObserveNetworkMessageLayer, MessageLayerResponse, MessageLayerRecord, apiNetworkCryptoCorrelate, NetworkCorrelationResponse, apiNetworkCryptoProbe, CryptoProbeResponse, ProtocolDetection, apiNetworkCryptoSafety, apiNetworkCryptoStop, NetworkSafetyState } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse, apiNetworkCryptoIntegrity, NetworkEvidenceIntegrity, apiNetworkMessageLayer, apiObserveNetworkMessageLayer, MessageLayerResponse, MessageLayerRecord, apiNetworkCryptoCorrelate, NetworkCorrelationResponse, apiNetworkCryptoProbe, CryptoProbeResponse, ProtocolDetection, apiNetworkCryptoSafety, apiNetworkCryptoStop, NetworkSafetyState, apiNetworkCryptoRisk, NetworkRiskReport, NetworkRiskFinding } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -645,6 +645,94 @@ function ProtocolProbePanel() {
   );
 }
 
+/* ── Policy, risk and PQC readiness over what was observed (spec §28–§31) ── */
+function severityTone(severity: string): string {
+  if (severity === "critical") return "red";
+  if (severity === "high") return "amber";
+  if (severity === "medium") return "cyan";
+  return "slate";
+}
+
+function verdictTone(verdict: string): string {
+  if (verdict === "FAIL") return "red";
+  if (verdict === "PASS") return "green";
+  return "amber";
+}
+
+function RiskFindingList({ findings }: { findings: NetworkRiskFinding[] }) {
+  if (!findings.length) return <div className="dim" style={{ fontSize: 11 }}>no failed rule</div>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+      {findings.map((finding) => (
+        <div key={`${finding.rule_id}-${finding.endpoint}-${finding.evidence_id}`} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <Badge tone={severityTone(finding.severity)}>{finding.severity}</Badge>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 11 }}>
+              <span className="mono" style={{ color: "var(--cyan)" }}>{finding.rule_id}</span>
+              <span className="dim"> · {finding.endpoint ?? "—"}</span>
+            </div>
+            <div className="dim" style={{ fontSize: 11 }}>{finding.message}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NetworkRiskPanel() {
+  const risk = usePollingApi(() => apiNetworkCryptoRisk({}), 30000);
+  const report = risk.data as NetworkRiskReport | null;
+  const pqc = report?.pqc;
+  return (
+    <Panel
+      title="Crypto risk & PQC readiness — network transport"
+      sub="only negotiated parameters are judged; an endpoint nobody observed stays UNKNOWN and is never counted as compliant"
+      className="mt"
+    >
+      {!report && <div className="dim" style={{ fontSize: 12 }}>{risk.error ? risk.error : "evaluating stored observations…"}</div>}
+      {report && (
+        <>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <Badge tone={verdictTone(report.verdict)}>{report.verdict}</Badge>
+            <Badge tone="slate">{report.summary.endpoints} endpoints</Badge>
+            <Badge tone="red">{report.summary.failed} failed</Badge>
+            <Badge tone="amber">{report.summary.unknown} UNKNOWN</Badge>
+            <span className="faint" style={{ fontSize: 10.5 }}>
+              baseline {report.policy.policy_id} v{report.policy.version} · TLS ≥ {report.policy.min_tls_version}
+              {report.policy.require_forward_secrecy ? " · forward secrecy required" : ""}
+            </span>
+          </div>
+
+          <RiskFindingList findings={report.failed.slice(0, 12)} />
+
+          {pqc && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="dim" style={{ fontSize: 11 }}>post-quantum readiness</span>
+                <Badge tone={pqc.verdict === "HYBRID_KEX_PRESENT" ? "green" : pqc.verdict === "NOT_OBSERVED" ? "slate" : "amber"}>
+                  {pqc.verdict}
+                </Badge>
+                <Badge tone="violet">{pqc.summary.hybrid_kex} hybrid</Badge>
+                <Badge tone="slate">{pqc.summary.classical_only} classical</Badge>
+                <Badge tone="amber">{pqc.summary.not_observed} not observed</Badge>
+              </div>
+              <div className="faint" style={{ fontSize: 10.5, marginTop: 6 }}>
+                classical key agreement only → recorded traffic is harvest-now-decrypt-later exposed; certificates are judged separately
+              </div>
+            </div>
+          )}
+
+          {report.coverage_gaps.length > 0 && (
+            <div className="faint" style={{ fontSize: 10.5, marginTop: 10 }}>
+              {report.coverage_gaps.length} coverage gap(s): declared or unobserved endpoints whose crypto is UNKNOWN, not clean
+            </div>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
 /* ── Hop attribution: where TLS terminates (spec §15–§17) ── */
 function AttributionStrip({ path }: { path: NetworkCryptoPathResponse | null }) {
   const attr = path?.attribution;
@@ -1153,6 +1241,7 @@ export default function Network() {
       <SafetyStopPanel />
       <NetworkCryptoIntelligencePanel />
       <ProtocolProbePanel />
+      <NetworkRiskPanel />
       <MessageLayerPanel />
       <CrossLayerCorrelationPanel />
       <ScopeImportPanel />

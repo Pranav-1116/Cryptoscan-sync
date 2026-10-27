@@ -10,8 +10,6 @@ detector and the scanners.
 from __future__ import annotations
 
 import socket
-import ssl
-import struct
 import threading
 from datetime import datetime, timedelta, timezone
 
@@ -719,3 +717,219 @@ def test_kubernetes_endpoint_reports_sources(client):
     assert body["model"] == "cryptoscan.kubernetes-correlation/1"
     assert body["sources"]["manifests_supplied"] == 3
     assert body["summary"]["sidecar_pods"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# §28–§31 — policy, risk, PQC readiness, NBOM/TechBOM
+# --------------------------------------------------------------------------- #
+
+
+def _weak_tls_record() -> dict:
+    return {
+        "schema": "cryptoscan.network-evidence/1",
+        "evidence_type": "NETWORK_ACTIVE_OBSERVED",
+        "evidence_id": "ev-weak",
+        "protocol": "TLS",
+        "target": {"endpoint": "payments.bank:443", "host": "payments.bank", "port": 443},
+        "tls_version": "TLSv1.2",
+        "cipher_suite": "TLS_RSA_WITH_AES_128_CBC_SHA",
+        "decomposition": {
+            "key_exchange": "RSA",
+            "authentication": "RSA",
+            "encryption": "AES-128-CBC",
+            "mac_or_prf": "SHA1",
+            "key_size_bits": 2048,
+        },
+        "certificate": {
+            "subject": "CN=payments.bank",
+            "issuer": "CN=Bank Issuing CA",
+            "public_key_algorithm": "RSA",
+            "public_key_bits": 1024,
+            "signature_algorithm": "sha1WithRSAEncryption",
+            "not_after": "2026-11-01T00:00:00Z",
+        },
+        "certificate_chain": {"length": 1, "structural_status": "INCOMPLETE", "trust_status": "UNTRUSTED"},
+        "mutual_tls": "NOT_REQUIRED",
+        "observed_at": "2026-10-27T00:00:00Z",
+    }
+
+
+def test_policy_fails_weak_tls_and_never_calls_it_compliant():
+    from network_scanner.inventory.network_policy import evaluate
+
+    report = evaluate([_weak_tls_record()])
+    assert report["verdict"] == "FAIL"
+    rules = {finding["rule_id"] for finding in report["failed"]}
+    assert {"NET-TLS-FORWARD-SECRECY", "NET-CERT-KEY-SIZE", "NET-CERT-SIGNATURE", "NET-CERT-EXPIRY"} <= rules
+    assert all(finding["layer"] == "NETWORK_TRANSPORT" for finding in report["findings"])
+    assert report["policy"]["min_tls_version"] == "TLSv1.2"
+
+
+def test_policy_treats_unobserved_evidence_as_a_gap_not_a_pass():
+    from network_scanner.inventory.network_policy import evaluate
+
+    record = {
+        "evidence_type": "NETWORK_CONFIGURED",
+        "evidence_id": "ev-config",
+        "protocol": "TLS",
+        "target": {"endpoint": "gw.bank:8443", "host": "gw.bank", "port": 8443},
+        "tls_version": "TLSv1.3",
+    }
+    report = evaluate([record])
+    assert report["verdict"] == "NOT_ASSESSABLE"
+    assert report["failed"] == []
+    assert report["coverage_gaps"]
+    assert "UNKNOWN" in report["coverage_gaps"][0]["message"]
+    assert report["coverage_gaps"][0]["status"] == "UNKNOWN"
+
+
+def test_policy_passes_modern_tls_but_still_reports_unknowns():
+    from network_scanner.inventory.network_policy import evaluate
+
+    record = _weak_tls_record()
+    record.update(
+        {
+            "evidence_id": "ev-strong",
+            "tls_version": "TLSv1.3",
+            "cipher_suite": "TLS_AES_256_GCM_SHA384",
+            "decomposition": {
+                "key_exchange": "X25519",
+                "authentication": "ECDSA",
+                "encryption": "AES-256-GCM",
+                "mac_or_prf": "SHA384",
+                "key_size_bits": 253,
+            },
+            "certificate": {
+                "subject": "CN=payments.bank",
+                "issuer": "CN=Bank Issuing CA",
+                "public_key_algorithm": "ECDSA",
+                "public_key_bits": 256,
+                "signature_algorithm": "ecdsa-with-SHA256",
+                "not_after": "2027-10-01T00:00:00Z",
+            },
+            "certificate_chain": {"length": 3, "structural_status": "COMPLETE", "trust_status": "TRUSTED"},
+            "mutual_tls": "CLIENT_CERT_REQUESTED",
+        }
+    )
+    report = evaluate([record], {"require_mtls_endpoints": ["payments.bank:443"]})
+    assert report["verdict"] == "PASS"
+    assert report["failed"] == []
+    assert all(finding["status"] in {"PASS", "UNKNOWN"} for finding in report["findings"])
+
+
+def test_policy_flags_ssh_and_database_weaknesses():
+    from network_scanner.inventory.network_policy import evaluate
+
+    ssh = {
+        "evidence_type": "NETWORK_ACTIVE_OBSERVED",
+        "evidence_id": "ev-ssh",
+        "protocol": "SSH",
+        "target": {"endpoint": "10.0.0.5:22", "host": "10.0.0.5", "port": 22},
+        "ssh": {
+            "algorithms_offered": {
+                "kex": ["diffie-hellman-group14-sha1", "curve25519-sha256"],
+                "host_key": ["ssh-rsa", "ssh-ed25519"],
+                "cipher": ["aes128-cbc", "aes256-gcm@openssh.com"],
+                "mac": ["hmac-sha1", "hmac-sha2-256"],
+            },
+            "host_keys": [{"key_type": "ssh-rsa", "bits": 1024}],
+        },
+    }
+    db = {
+        "evidence_type": "NETWORK_ACTIVE_OBSERVED",
+        "evidence_id": "ev-db",
+        "protocol": "PostgreSQL",
+        "target": {"endpoint": "10.0.0.9:5432", "host": "10.0.0.9", "port": 5432},
+        "database": {"engine": "POSTGRESQL", "transport": {"tls_negotiated": False, "ssl_supported": False}},
+    }
+    report = evaluate([ssh, db])
+    rules = {finding["rule_id"] for finding in report["failed"]}
+    assert {"NET-SSH-KEX", "NET-SSH-HOST-KEY", "NET-SSH-CIPHER", "NET-SSH-MAC", "NET-SSH-HOST-KEY-SIZE"} <= rules
+    assert "NET-DB-TLS" in rules
+    storage = [f for f in report["findings"] if f["rule_id"] == "NET-DB-STORAGE"]
+    assert storage and storage[0]["status"] == "UNKNOWN"
+
+
+def test_pqc_readiness_never_claims_readiness_without_observation():
+    from network_scanner.inventory.network_policy import pqc_readiness
+
+    report = pqc_readiness(
+        [
+            {"evidence_type": "UNKNOWN", "protocol": "TLS", "target": {"endpoint": "a.bank:443"}},
+            {
+                "evidence_type": "NETWORK_ACTIVE_OBSERVED",
+                "protocol": "TLS",
+                "target": {"endpoint": "b.bank:443"},
+                "decomposition": {"key_exchange": "X25519"},
+                "certificate": {"signature_algorithm": "ecdsa-with-SHA256"},
+            },
+        ]
+    )
+    assert report["verdict"] == "CLASSICAL_ONLY"
+    assert report["summary"]["not_observed"] == 1
+    assert report["endpoints"][0]["readiness"] == "NOT_OBSERVED"
+    assert report["endpoints"][1]["harvest_now_decrypt_later_exposed"] is True
+
+
+def test_pqc_readiness_detects_hybrid_key_exchange():
+    from network_scanner.inventory.network_policy import pqc_readiness
+
+    report = pqc_readiness(
+        [
+            {
+                "evidence_type": "NETWORK_ACTIVE_OBSERVED",
+                "protocol": "TLS",
+                "target": {"endpoint": "pq.bank:443"},
+                "decomposition": {"key_exchange": "X25519MLKEM768"},
+            }
+        ]
+    )
+    assert report["verdict"] == "HYBRID_KEX_PRESENT"
+    assert report["summary"]["hybrid_kex"] == 1
+
+
+def test_nbom_inventories_unobserved_endpoints_without_verdicts():
+    from network_scanner.inventory.network_policy import to_nbom, to_techbom
+
+    nbom = to_nbom(
+        [
+            _weak_tls_record(),
+            {"evidence_type": "UNKNOWN", "protocol": "TLS", "target": {"endpoint": "dead.bank:443", "host": "dead.bank", "port": 443}},
+        ],
+        estate="payments",
+    )
+    assert nbom["bomFormat"] == "CycloneDX"
+    assert any(
+        component.get("properties")
+        and any(prop.get("name") == "cryptoscan:host" and prop.get("value") == "dead.bank"
+                for prop in component["properties"])
+        for component in nbom["components"]
+    )
+    assert any(
+        prop["name"] == "cryptoscan:unobserved_endpoints" and prop["value"] == "1"
+        for prop in nbom["metadata"]["properties"]
+    )
+    techbom = to_techbom([_weak_tls_record()])
+    assert techbom["protocols"][0]["protocol"] == "TLS"
+    assert techbom["bom_type"] == "TECHBOM"
+
+
+def test_risk_endpoint_scores_stored_evidence(client):
+    http, session = client
+    from db.models.network_scan_run import NetworkScanRun
+
+    run = NetworkScanRun(result={"network_evidence": [_weak_tls_record()]}, target_kind="crypto-observe")
+    session.add(run)
+    session.commit()
+
+    response = http.post("/api/v1/network/crypto-risk", json={})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["model"] == "cryptoscan.network-risk/1"
+    assert body["verdict"] == "FAIL"
+    assert body["sources"]["origin"] == "stored_evidence"
+    assert body["pqc"]["verdict"] == "CLASSICAL_ONLY"
+
+    bom = http.post("/api/v1/network/crypto-nbom", json={})
+    assert bom.status_code == 200, bom.text
+    assert bom.json()["nbom"]["bomFormat"] == "CycloneDX"

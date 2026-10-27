@@ -407,3 +407,47 @@ Status legend: **[done]** shipped on `arena/bb4b80dd-cryproscan`, **[partial]**,
 7. **Remaining** — policy, dashboard, safety guards. **[done]** — traffic budget metering (`GET …/crypto-budget`, rolling 24 h), 24/7 scope-bound worker (`/network/crypto-watch` start/stop/status/tick), transport CBOM projection (`GET …/crypto-cbom`), message-layer crypto (`POST …/message-layer-observe`, `GET …/message-layer-evidence` — SASL ≠ message encryption, payload crypto `DECLARED` or `UNKNOWN` only), and a tamper-evident evidence hash chain (`GET …/crypto-evidence/integrity`, `GET …/crypto-evidence/chained`) that detects modified, deleted or re-ordered records. Safety STOP (§30): `GET …/crypto-safety` + `POST …/crypto-stop` engage a tenant-local kill switch — every active path (probe, observe, IPsec, SSH, watch tick) returns `409 network_observation_stopped` while passive metadata ingest and config import keep working (`distributed:false`), so an IDS alert means STOP/ESCALATE, never disabling the IDS. Frontend: `Network.tsx` carries the safety switch, a detection panel (protocol, mismatches, attempts) and the SSH/database evidence views. **[open]** — external anchoring/signature for the chain (it is currently `local-database-only`), distributed scheduling, and policy packs over the correlated estate.
 
 Each step adds API + scanner + normalizer + CBOM/NBOM mapping with `UNKNOWN≠SAFE` honesty.
+
+## Section-by-section status
+
+`done` = implemented and tested on `arena/bb4b80dd-cryproscan`; `partial` = implemented with a named
+limit; `open` = not built. "Done" never means "proves everything" — §29 lists what a network scan
+cannot see, and every response carries its own limitations.
+
+| § | Capability | Status | Where / limit |
+|---|---|---|---|
+| 1 | Purpose: who speaks what, TLS version, cipher, cert, KEX, auth, exposure | done | `POST /network/crypto-observe`, `POST /network/crypto-probe` |
+| 2 | Scope → discovery → protocol → TLS/SSH/IPsec → evidence → normalize → CBOM/NBOM/TechBOM → risk → dashboard | done | router + inventory modules + `Network.tsx` |
+| 3 | Explicit approved scope (destinations/ports/protocols/operations/budget/valid_until) | done | `api/security/network_scope.py`, CIDR sweeps refused |
+| 4 | Discovery sources: inventory / approved active / passive | partial | import + passive + approved active; **open**: live CMDB/K8s/cloud collectors |
+| 5 | Port ≠ protocol, detect from the response | done | `discovery/protocol_detector.py`, `port_matches_protocol` |
+| 6 | TLS observation (version, suite, KEX, group, cert, ALPN, SNI, mTLS) | done | `probing/tls_handshaker.py` → evidence |
+| 7 | TLS 1.3 cipher decomposition | done | `decomposition{}` on every record |
+| 8 | TLS 1.2 decomposition (KEX / auth / bulk / PRF) | done | same, per-record |
+| 9 | Certificate discovery (public key only) | done | `certificates/cert_extractor.py` |
+| 10 | Full chain root → intermediate → leaf | done | `chain_order.py`, `chain_validator.py` |
+| 11 | mTLS: required vs not requested | done | `mutual_tls` + `mtls_evidence` |
+| 12 | SSH KEX / host key / cipher / MAC | done | `probing/ssh_kex.py`, offer ≠ negotiation |
+| 13 | IPsec / IKE / ESP | partial | IKEv2 SA_INIT, notifies, KE; **open**: IKEv1 and ESP/PFS *in use* (IKE_AUTH) |
+| 14 | Routers / firewalls / LB / VPN / SD-WAN crypto, read-only | done | `inventory/network_devices.py`, `POST /network/device-inventory`, no write path, credentials rejected |
+| 15 | Load balancer: external vs internal TLS, pass-through vs re-origination | done | `build_crypto_path` + attribution on `/network/crypto-path` |
+| 16 | API gateway / service-mesh hops | done | hop roles, declared or inventory-imported |
+| 17 | Service mesh sidecar ≠ application crypto | done | sidecar labelled in K8s correlation and hop attribution |
+| 18 | Database transport vs TDE | done | `inventory/protocol_evidence.py` (`DB_TRANSPORT_TLS_NOT_OFFERED`, TDE `NOT_OBSERVED`) |
+| 19 | Kafka / MQ: transport vs message encryption | done | `inventory/message_layer.py`, `POST /network/message-layer-observe` |
+| 20 | Kubernetes ingress/service/pod correlation | done | `POST /network/kubernetes-correlate` |
+| 21 | Cloud endpoints (LB / API GW / private endpoint / KMS) | partial | `POST /network/cloud-correlate` from caller-supplied metadata; **open**: read-only cloud API collectors |
+| 22 | Passive TAP/SPAN metadata-only | done | `POST /network/crypto-passive`, strict field whitelist, `NOT_OBSERVED ≠ NO_CRYPTO` |
+| 23 | Evidence taxonomy (7 values) | done | `cryptoscan.network-evidence/1` |
+| 24 | Evidence record (target, protocol, params, cert, mTLS, scope revision) | done | `inventory/network_evidence.py` |
+| 25 | Network crypto graph (path, not a list) | done | `POST /network/crypto-path` |
+| 26 | Static + Runtime + Network correlation | done | `POST /network/crypto-correlate`, same-artifact comparisons only |
+| 27 | NETWORK ≠ APPLICATION ≠ RUNTIME ≠ STORAGE ≠ HSM | done | every asset/finding carries its layer; cross-role comparisons refused |
+| 28 | CBOM / NBOM / TechBOM with context + evidence ID | done | `POST /network/crypto-nbom` (CycloneDX 1.5), `GET /network/crypto-cbom` |
+| 29 | Explicit limitations; UNKNOWN is a valid result | done | per-record `limitations[]`, report-level limitations, coverage gaps |
+| 30 | Safety: scope, budget, stop, escalation, never disable IDS | done | `api/security/network_safety.py`, `POST /network/crypto-stop` (local, `distributed:false`) |
+| 31 | Policy / risk, PQC readiness, drift, dashboard | partial | `POST /network/crypto-risk` (baseline pack + PQC), `GET /network/scan-drifts`; **open**: threat-intelligence enrichment, external chain anchoring |
+
+Still open, in priority order: live cloud/Kubernetes collectors (the current paths accept
+caller-supplied metadata), IKEv1, ESP/PFS *in use*, hash-chain anchoring outside the local
+database, and distributed scheduling (both safety and the chain are single-node today).

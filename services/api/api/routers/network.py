@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
@@ -1459,7 +1459,15 @@ def crypto_observe(
 
 
 #: durable run kinds that carry Cryptographic Network Intelligence evidence
-EVIDENCE_RUN_KINDS = ("crypto-observe", "crypto-passive", "crypto-watch", "ipsec-observe", "crypto-probe")
+EVIDENCE_RUN_KINDS = (
+    "crypto-observe",
+    "crypto-passive",
+    "crypto-watch",
+    "ipsec-observe",
+    "crypto-probe",
+    "message-layer",
+    "device-inventory",
+)
 
 
 def _latest_evidence_runs(db: Session, *, limit: int = 5) -> list[dict]:
@@ -2748,6 +2756,196 @@ def network_kubernetes_correlate(
     report = correlate_kubernetes(body.manifests, evidence)
     report["sources"] = {
         "manifests_supplied": len(body.manifests),
+        "evidence_records": len(evidence),
+        "evidence_limit": body.evidence_limit,
+    }
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Policy / risk / PQC / BOM over the network estate (spec 67 §28–§31)
+# ---------------------------------------------------------------------------
+
+
+class NetworkRiskRequest(BaseModel):
+    """Evaluate network observations against the bank crypto baseline."""
+
+    policy: dict[str, Any] | None = None
+    evidence: list[dict[str, Any]] | None = None
+    evidence_limit: int = Field(default=10, ge=1, le=50)
+    include_pqc: bool = True
+
+
+@router.post("/network/crypto-risk")
+def network_crypto_risk(
+    body: NetworkRiskRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Score observed network crypto against the policy pack (§28–§31).
+
+    Records that were never observed become coverage gaps with status
+    ``UNKNOWN`` — never passes. Every finding is labelled
+    ``layer=NETWORK_TRANSPORT`` so a TLS suite is not read as application crypto.
+    """
+    from network_scanner.inventory.network_policy import evaluate as evaluate_policy
+    from network_scanner.inventory.network_policy import merge_policy
+    from network_scanner.inventory.network_policy import pqc_readiness
+
+    records = body.evidence if body.evidence is not None else _latest_evidence(db, limit=body.evidence_limit)
+    report = evaluate_policy(records, merge_policy(body.policy))
+    report["sources"] = {"records": len(records), "origin": "request" if body.evidence is not None else "stored_evidence"}
+    if body.include_pqc:
+        report["pqc"] = pqc_readiness(records)
+    return report
+
+
+class NetworkBomRequest(BaseModel):
+    evidence: list[dict[str, Any]] | None = None
+    evidence_limit: int = Field(default=10, ge=1, le=50)
+    estate: str | None = None
+
+
+@router.post("/network/crypto-nbom")
+def network_crypto_nbom(
+    body: NetworkBomRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """CycloneDX NBOM + TechBOM projected from network evidence (§28).
+
+    Unobserved endpoints are inventoried with ``observed: false`` and excluded
+    from every verdict; the TechBOM records exposed protocols without making a
+    crypto claim.
+    """
+    from network_scanner.inventory.network_policy import to_nbom, to_techbom
+
+    records = body.evidence if body.evidence is not None else _latest_evidence(db, limit=body.evidence_limit)
+    nbom = to_nbom(records, estate=body.estate)
+    return {"model": "cryptoscan.network-bom/1", "nbom": nbom, "techbom": to_techbom(records), "records": len(records)}
+
+
+class DeviceInventoryRequest(BaseModel):
+    """Read-only device crypto surface (spec 67 §14)."""
+
+    devices: list[dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=200)
+    inventory_id: str = Field(default="default", max_length=160)
+    persist: bool = True
+
+    @field_validator("devices")
+    @classmethod
+    def _no_secrets(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        from network_scanner.inventory.network_devices import UnsafeDeviceRecord, validate_device
+
+        for device in value:
+            try:
+                validate_device(device)
+            except UnsafeDeviceRecord as exc:
+                raise ValueError(str(exc)) from exc
+        return value
+
+
+@router.post("/network/device-inventory")
+def network_device_inventory(
+    body: DeviceInventoryRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Ingest network device crypto surfaces (management/control/data/VPN).
+
+    Read-only by construction: the builder has no write path and opens no
+    connection, so importing a device export cannot touch the device. Any
+    credential-shaped field rejects the request (422) before anything is stored.
+    Declared surfaces stay ``NETWORK_CONFIGURED``; only a probe result with
+    negotiated parameters becomes ``NETWORK_ACTIVE_OBSERVED``.
+    """
+    from network_scanner.inventory.network_devices import (
+        build_device_evidence,
+        summarize_devices,
+        to_device_cbom_assets,
+    )
+
+    scope = _load_crypto_scope(db, body.inventory_id)
+    evidence: list[dict[str, Any]] = []
+    for device in body.devices:
+        evidence.extend(
+            build_device_evidence(
+                device,
+                scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                scope_name=(scope or {}).get("name"),
+            )
+        )
+    summary = summarize_devices(evidence)
+    cbom = to_device_cbom_assets(evidence)
+    stored: dict[str, Any] = {}
+    if body.persist:
+        with network_run(
+            db,
+            user=user,
+            target=f"devices:{summary['devices']}",
+            admission={
+                "schema": "cryptoscan.network-admission/1",
+                "decision": "READ_ONLY_IMPORT",
+                "active": False,
+                "checked_targets": 0,
+            },
+            kind="device-inventory",
+            profile={"source": "device_export", "devices": summary["devices"]},
+        ) as run:
+            stored = persist_network(
+                db,
+                {"network_evidence": evidence, "network_evidence_summary": summary},
+                run,
+                kind="device-inventory",
+                collection_metadata={
+                    "source": "DEVICE_EXPORT",
+                    "evidence_schema": "cryptoscan.network-evidence/1",
+                    "active_packets": 0,
+                    "read_only": True,
+                },
+            )
+            run.succeed(coverage={"protocol": "device", "declared": summary["declared"]})
+    return {
+        "model": "cryptoscan.network-device-inventory/1",
+        "stored": len(evidence),
+        "evidence": evidence,
+        "summary": summary,
+        "cbom": cbom,
+        "run_id": stored.get("run_id"),
+        "scan_id": stored.get("job_id"),
+        "evidence_chain": stored.get("evidence_chain"),
+        "read_only": True,
+        "configuration_changes": 0,
+        "note": "device surfaces are declarations unless a probe observed them; nothing was written to any device",
+    }
+
+
+class CloudCorrelationRequest(BaseModel):
+    """Cloud network resources to correlate with observed crypto (§21)."""
+
+    resources: list[dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=500)
+    use_latest_evidence: bool = True
+    evidence_limit: int = Field(default=5, ge=1, le=50)
+
+
+@router.post("/network/cloud-correlate")
+def network_cloud_correlate(
+    body: CloudCorrelationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Correlate cloud LB/API-gateway/private-endpoint metadata with observations.
+
+    Declarations are ``NETWORK_CONFIGURED``; a matched handshake keeps its own
+    evidence type. A declared/observed version difference is reported as drift
+    for review, never auto-corrected. No cloud API is called.
+    """
+    from api.security.network_cloud import correlate as correlate_cloud
+
+    evidence = _latest_evidence(db, limit=body.evidence_limit) if body.use_latest_evidence else []
+    report = correlate_cloud(body.resources, evidence)
+    report["sources"] = {
+        "resources_supplied": len(body.resources),
         "evidence_records": len(evidence),
         "evidence_limit": body.evidence_limit,
     }
