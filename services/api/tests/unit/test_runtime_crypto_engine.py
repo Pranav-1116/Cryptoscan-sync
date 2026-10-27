@@ -428,3 +428,164 @@ def test_risk_endpoint_scores_stored_events(client):
     assert body["verdict"] == "FAIL"
     assert body["sources"]["origin"] == "stored_events"
     assert body["pqc"]["verdict"] in {"SYMMETRIC_ONLY", "CLASSICAL_ONLY", "NOT_OBSERVED"}
+
+
+# --------------------------------------------------------------------------- #
+# Evidence integrity chain (spec 92 §11, §16)
+# --------------------------------------------------------------------------- #
+
+
+def _ingest(http, observations=None):
+    saved = http.put("/api/v1/runtime/crypto-scope", json=_scope())
+    assert saved.status_code == 200, saved.text
+    response = http.post(
+        "/api/v1/runtime/crypto-events",
+        json={"observations": observations or [_observation()]},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_ingest_chains_events_and_verification_is_intact(client):
+    http, _session = client
+    body = _ingest(http, [_observation(), _observation(observation_count=3)])
+
+    receipt = body["evidence_chain"]
+    assert receipt["namespace"] == "runtime"
+    assert receipt["appended"] == 2
+    assert receipt["head"] != "0" * 64
+
+    verify = http.get("/api/v1/runtime/crypto-events/verify").json()
+    assert verify["namespace"] == "runtime"
+    assert verify["verified"] is True
+    assert verify["entries"] == 2
+    assert verify["chain"]["seq"] >= 2
+    assert verify["distributed"] is False
+    assert verify["anchoring"] == "local-database-only"
+
+    listed = http.get("/api/v1/runtime/crypto-events").json()
+    assert all("integrity" in event for event in listed["events"])
+    assert listed["integrity"]["verified"] is True
+
+
+def test_a_modified_event_breaks_the_chain(client):
+    http, session = client
+    body = _ingest(http)
+
+    from db.repositories.scan_run_repository import ScanRunRepository
+
+    row = ScanRunRepository(session).get_run(body["run_id"], owner=None)
+    assert row is not None
+    events = list((row.result or {}).get("runtime_events") or [])
+    events[0] = {**events[0], "algorithm": "DES"}  # a quiet rewrite of stored evidence
+    row.result = {**(row.result or {}), "runtime_events": events}
+    session.commit()
+
+    verify = http.get("/api/v1/runtime/crypto-events/verify").json()
+    assert verify["verified"] is False
+    assert [item["event_id"] for item in verify["tampered_records"]] == [events[0]["event_id"]]
+    assert verify["tampered_records"][0]["problem"] == "RECORD_HASH_MISMATCH"
+    assert verify["reason"] == "chain does not verify: RECORD_HASH_MISMATCH"
+
+
+def test_runtime_chain_never_mixes_with_the_network_chain(client, monkeypatch):
+    http, session = client
+    _ingest(http)
+
+    from api.security.network_evidence_chain import append as append_network
+
+    append_network(
+        session,
+        [{"evidence_id": "ev-network-1", "evidence_type": "NETWORK_ACTIVE_OBSERVED", "protocol": "TLS"}],
+        run_id="run-network",
+        tenant_id=None,
+    )
+    session.commit()
+
+    runtime = http.get("/api/v1/runtime/crypto-events/verify").json()
+    assert runtime["verified"] is True
+    assert runtime["entries"] == 1  # the network record did not enter the runtime chain
+
+    from api.security.network_evidence_chain import read_chain as read_network
+    from api.security.runtime_evidence_chain import read_chain as read_runtime
+
+    assert read_runtime(session, tenant_id=None)["head"] != read_network(session, tenant_id=None)["head"]
+
+
+# --------------------------------------------------------------------------- #
+# Drift and runtime <-> network correlation (spec 92 §12-§13)
+# --------------------------------------------------------------------------- #
+
+
+def test_drift_reports_new_removed_and_changed_without_claiming_stop(client):
+    http, _session = client
+    previous = [
+        {"event_id": "a", "algorithm": "AES", "key_size": 256, "mode": "GCM", "operation": "ENCRYPT",
+         "identity": {"application": "payments-api", "process": "java", "host": "h1"}, "attribution_level": 1},
+        {"event_id": "b", "algorithm": "RSA", "key_size": 2048, "operation": "SIGN",
+         "identity": {"application": "payments-api", "process": "java", "host": "h1"}, "attribution_level": 1},
+    ]
+    current = [
+        {"event_id": "a", "algorithm": "AES", "key_size": 256, "mode": "GCM", "operation": "ENCRYPT",
+         "identity": {"application": "payments-api", "process": "java", "host": "h1"}, "attribution_level": 1},
+        {"event_id": "c", "algorithm": "ECDSA", "key_size": 256, "operation": "SIGN",
+         "identity": {"application": "payments-api", "process": "java", "host": "h1"}, "attribution_level": 1},
+    ]
+    report = http.post(
+        "/api/v1/runtime/crypto-drift",
+        json={"previous_events": previous, "current_events": current},
+    ).json()
+
+    assert report["verdict"] == "DRIFT"
+    assert report["summary"]["new"] == 1
+    assert report["summary"]["removed"] == 1
+    assert report["model"] == "cryptoscan.runtime-crypto-drift/1"
+    removed = report["removed"][0]
+    assert "not observed in the newer window" in str(removed)
+
+
+def test_drift_needs_two_windows_and_says_so(client):
+    http, _session = client
+    response = http.post("/api/v1/runtime/crypto-drift", json={})
+    assert response.status_code == 409
+    assert response.json()["detail"]["error"] == "runtime_drift_needs_two_windows"
+
+
+def test_runtime_network_correlation_compares_only_transport_fields(client):
+    http, _session = client
+    runtime_events = [
+        {
+            "event_id": "rt-1",
+            "algorithm": "AES",
+            "key_size": 256,
+            "operation": "ENCRYPT",
+            "transport": {"tls_version": "TLSv1.2", "cipher_suite": "TLS_AES_256_GCM_SHA384"},
+            "identity": {"host": "payments-prod-01", "application": "payments-api"},
+        }
+    ]
+    network_records = [
+        {
+            "evidence_id": "ev-1",
+            "evidence_type": "NETWORK_ACTIVE_OBSERVED",
+            "protocol": "TLS",
+            "target": {"endpoint": "10.20.10.15:443", "host": "payments-prod-01", "port": 443},
+            "tls_version": "TLSv1.2",
+            "cipher_suite": "TLS_AES_256_GCM_SHA384",
+            "decomposition": {"key_exchange": "ECDHE"},
+        }
+    ]
+    report = http.post(
+        "/api/v1/runtime/network-correlation",
+        json={"runtime_events": runtime_events, "network_evidence": network_records},
+    ).json()
+
+    assert report["model"] == "cryptoscan.runtime-network-correlation/1"
+    assert report["sources"]["runtime"] == "request"
+    subject = report["subjects"][0]
+    comparisons = subject["comparisons"]
+    results = {item["field"]: item["result"] for item in comparisons if "field" in item}
+    assert results["tls_version"] == "MATCH"
+    assert results["cipher_suite"] == "MATCH"
+    # application algorithm is never compared against transport crypto
+    assert all(item.get("field") in {"tls_version", "cipher_suite"} for item in comparisons)
+    assert report["refused_comparisons"]

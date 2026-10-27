@@ -4,7 +4,7 @@ import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import { IconNetwork, IconCloud, IconHardware, IconSecurity, IconTarget, IconSatellite } from "../components/icons";
-import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse, apiNetworkCryptoIntegrity, NetworkEvidenceIntegrity, apiNetworkMessageLayer, apiObserveNetworkMessageLayer, MessageLayerResponse, MessageLayerRecord, apiNetworkCryptoCorrelate, NetworkCorrelationResponse, apiNetworkCryptoProbe, CryptoProbeResponse, ProtocolDetection, apiNetworkCryptoSafety, apiNetworkCryptoStop, NetworkSafetyState, apiNetworkCryptoRisk, NetworkRiskReport, NetworkRiskFinding } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse, apiNetworkCryptoIntegrity, NetworkEvidenceIntegrity, apiNetworkMessageLayer, apiObserveNetworkMessageLayer, MessageLayerResponse, MessageLayerRecord, apiNetworkCryptoCorrelate, NetworkCorrelationResponse, apiNetworkCryptoProbe, CryptoProbeResponse, ProtocolDetection, apiNetworkCryptoSafety, apiNetworkCryptoStop, NetworkSafetyState, apiNetworkCryptoRisk, NetworkRiskReport, NetworkRiskFinding, apiNetworkAnchorStatus, apiNetworkCreateAnchor, apiNetworkVerifyAnchor, apiNetworkWatchLease, NetworkAnchorStatus, NetworkAnchorReceipt, NetworkAnchorVerification, NetworkWatchLease } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -733,6 +733,105 @@ function NetworkRiskPanel() {
   );
 }
 
+
+/* ── Evidence integrity: chain verification, anchor receipts, single-writer lease ── */
+function EvidenceIntegrityPanel() {
+  const integrity = usePollingApi(() => apiNetworkCryptoIntegrity(), 30000);
+  const [anchorStatus, setAnchorStatus] = useState<NetworkAnchorStatus | null>(null);
+  const [receipt, setReceipt] = useState<NetworkAnchorReceipt | null>(null);
+  const [verification, setVerification] = useState<NetworkAnchorVerification | null>(null);
+  const [lease, setLease] = useState<NetworkWatchLease | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const report = integrity.data as NetworkEvidenceIntegrity | null;
+
+  const loadStatus = () => {
+    apiNetworkAnchorStatus().then((result) => {
+      if (result.ok) setAnchorStatus(result.data as NetworkAnchorStatus);
+    });
+    apiNetworkWatchLease().then((result) => {
+      if (result.ok) setLease(result.data as NetworkWatchLease);
+    });
+  };
+  useEffect(loadStatus, []);
+
+  const createAnchor = async () => {
+    setBusy(true);
+    setNotice(null);
+    const result = await apiNetworkCreateAnchor("operator anchor from dashboard");
+    setBusy(false);
+    if (!result.ok) {
+      setNotice(result.error ?? "anchor refused");
+      return;
+    }
+    const created = (result.data as { receipt: NetworkAnchorReceipt }).receipt;
+    setReceipt(created);
+    const verified = await apiNetworkVerifyAnchor(created);
+    if (verified.ok) setVerification(verified.data as NetworkAnchorVerification);
+    loadStatus();
+  };
+
+  const anchorTone = (status?: string) =>
+    status === "HEAD_INTACT" || status === "ADVANCED" ? "green" : status === "HISTORY_REWRITTEN" || status === "SIGNATURE_INVALID" ? "red" : "amber";
+
+  return (
+    <Panel
+      title="Evidence integrity — chain, anchor, single writer"
+      sub="the chain detects a rewritten record inside this database; an exported anchor receipt detects a rewritten database"
+      className="mt"
+    >
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {report ? (
+          <Badge tone={report.verified ? "green" : "red"}>
+            {report.verified ? "CHAIN VERIFIED" : report.reason ?? "CHAIN BROKEN"}
+          </Badge>
+        ) : (
+          <Badge tone="slate">chain: {integrity.error ? "unavailable" : "checking…"}</Badge>
+        )}
+        {report && <Badge tone="slate">{report.entries} entries</Badge>}
+        {report && report.tampered_records.length > 0 && <Badge tone="red">{report.tampered_records.length} tampered</Badge>}
+        {report && report.unverifiable_entries.length > 0 && <Badge tone="amber">{report.unverifiable_entries.length} unverifiable</Badge>}
+        <Badge tone={anchorStatus?.key.configured ? "cyan" : "amber"}>
+          anchor key {anchorStatus?.key.configured ? anchorStatus.key.source : "NOT CONFIGURED"}
+        </Badge>
+        {anchorStatus && <Badge tone="violet">{anchorStatus.anchors} anchor receipt(s)</Badge>}
+        {lease && (
+          <Badge tone={lease.lease.held ? "green" : "slate"}>
+            lease {lease.lease.held ? lease.lease.holder : "free"} · {lease.mode}
+          </Badge>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn btn-sm" disabled={busy || !anchorStatus?.key.configured} onClick={createAnchor}>
+          {busy ? "signing…" : "sign chain head"}
+        </button>
+        {verification && (
+          <Badge tone={anchorTone(verification.status)}>{verification.status}</Badge>
+        )}
+        {receipt && (
+          <span className="mono faint" style={{ fontSize: 10.5 }}>
+            seq {receipt.chain.seq} · {receipt.chain.head.slice(0, 16)}… · {receipt.signature_scheme}
+          </span>
+        )}
+      </div>
+
+      {notice && <div style={{ color: "var(--red, #f87171)", fontSize: 11, marginTop: 8 }}>{notice}</div>}
+      {anchorStatus && !anchorStatus.key.configured && (
+        <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>
+          anchoring refused until CRYPTOSCAN_ANCHOR_KEY is set outside the database — an unsigned anchor is a claim, not evidence
+        </div>
+      )}
+      {verification && (
+        <div className="dim" style={{ fontSize: 11, marginTop: 8 }}>{verification.reason}</div>
+      )}
+      <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>
+        {report?.boundary ?? "the chain is local to this database; export the receipt to make it external"}
+      </div>
+    </Panel>
+  );
+}
+
 /* ── Hop attribution: where TLS terminates (spec §15–§17) ── */
 function AttributionStrip({ path }: { path: NetworkCryptoPathResponse | null }) {
   const attr = path?.attribution;
@@ -1242,6 +1341,7 @@ export default function Network() {
       <NetworkCryptoIntelligencePanel />
       <ProtocolProbePanel />
       <NetworkRiskPanel />
+      <EvidenceIntegrityPanel />
       <MessageLayerPanel />
       <CrossLayerCorrelationPanel />
       <ScopeImportPanel />

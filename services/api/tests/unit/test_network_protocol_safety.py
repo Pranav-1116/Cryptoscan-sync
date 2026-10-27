@@ -933,3 +933,63 @@ def test_risk_endpoint_scores_stored_evidence(client):
     bom = http.post("/api/v1/network/crypto-nbom", json={})
     assert bom.status_code == 200, bom.text
     assert bom.json()["nbom"]["bomFormat"] == "CycloneDX"
+
+
+def test_mysql_tls_is_observed_through_its_own_capability_exchange(client, monkeypatch):
+    """§18: MySQL needs a CLIENT_SSL exchange before a real handshake, not a TLS ClientHello."""
+    http, _session = client
+    import network_scanner.probing.db_probe as db_probe
+    import network_scanner.discovery.protocol_detector as detector
+
+    assert save_scope(
+        http,
+        destinations=["10.20.10.50:3306"],
+        protocols=["TLS"],
+        allowed_operations=["CONNECT", "TLS_HANDSHAKE", "CERTIFICATE_READ"],
+    ).status_code == 200
+    monkeypatch.setattr(
+        detector,
+        "detect_protocol",
+        lambda host, port, **kwargs: {
+            "schema": "cryptoscan.protocol-detection/1",
+            "host": host,
+            "port": port,
+            "detected": "MYSQL",
+            "detection_method": "HANDSHAKE_PACKET",
+            "confidence": "HIGH",
+            "service_guess": {"name": "MYSQL", "source": "PORT_REGISTRY"},
+            "port_matches_protocol": True,
+            "tls_capable": True,
+            "attempts": [{"probe": "MYSQL_HANDSHAKE", "result": "CLIENT_SSL"}],
+            "details": {"mysql": {"server_version": "8.0.36", "ssl_capable": True}},
+            "limitations": [],
+        },
+    )
+    monkeypatch.setattr(
+        db_probe,
+        "probe_mysql_tls",
+        lambda host, port, **kwargs: {
+            "schema": "cryptoscan.db-probe/1",
+            "engine": "MYSQL",
+            "host": host,
+            "port": port,
+            "status": "TLS_AVAILABLE",
+            "tls_version": "TLSv1.3",
+            "cipher_suite": "TLS_AES_256_GCM_SHA384",
+            "certificate": {"subject": "CN=mysql.internal"},
+        },
+    )
+
+    response = http.post(
+        "/api/v1/network/crypto-probe",
+        json={"endpoints": ["10.20.10.50:3306"], "protocol": "TLS", "operations": ["CONNECT", "TLS_HANDSHAKE"]},
+    )
+    assert response.status_code == 200, response.text
+    record = next(item for item in response.json()["evidence"] if item["protocol"] == "MYSQL")
+    assert record["database"]["engine"] == "MYSQL"
+    assert record["database"]["transport"]["tls_negotiated"] is True
+    assert record["tls_version"] == "TLSv1.3"
+    assert record["cipher_suite"] == "TLS_AES_256_GCM_SHA384"
+    # storage crypto is still explicitly out of reach
+    assert record["database"]["tde"] == "NOT_OBSERVED"
+    assert record["database"]["column_encryption"] == "NOT_OBSERVED"

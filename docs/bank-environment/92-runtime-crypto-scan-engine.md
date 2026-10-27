@@ -238,9 +238,15 @@ RUNTIME → "what cryptography actually operated?"
 | 14 | Custom crypto = Level 6 | done | unknown source → level 6, `UNKNOWN` evidence, policy `RT-OBSERVATION-GAP` |
 | 15 | Risk + PQC readiness over runtime facts | done | `runtime/engine/policy.py`, `POST /runtime/crypto-risk` |
 | 16 | Console | done | `Runtime.tsx`: scope panel, operations table, level badges, risk findings |
-| — | Live kernel/eBPF collection, fleet scheduling, runtime→network correlation | open | agent-side collection is the existing `/proc` + LD_PRELOAD tracer; no kernel code ships |
+| 17 | Tamper-evident runtime evidence chain, own namespace | done | `api/security/runtime_evidence_chain.py` (generic `evidence_chain.py`), `GET /runtime/crypto-events/verify`, chain position on read-back |
+| 18 | Drift between two observation windows | done | `runtime/engine/drift.py`, `POST /runtime/crypto-drift` — a removal says "not observed in the newer window" |
+| 19 | Runtime ↔ network correlation, transport fields only | done | `api/security/runtime_network_correlation.py`, `POST /runtime/network-correlation` |
+| 20 | Agent bridge: collector output → engine events | done | `runtime/agent/crypto_events.py` (`observations_from_trace`, `scope_candidates`) — never invents algorithm or parameters |
+| — | Live kernel/eBPF collection, fleet scheduling, agent `trace --submit` wire-up | open | agent-side collection is the existing `/proc` + LD_PRELOAD tracer; no kernel code ships |
 
 Still open, honestly: the engine consumes observations that an approved collector
-produces (the `/proc` scanner and the LD_PRELOAD shim in `services/runtime`); it
-does not itself attach to processes, and there is no distributed runtime fleet
-scheduler or runtime↔network correlation endpoint yet.
+produces (the `/proc` scanner and the LD_PRELOAD shim in `services/runtime`), and
+`runtime/agent/crypto_events.py` now converts those collector rows into engine
+observations — but the agent CLI does not post them to `POST /runtime/crypto-events`
+yet. There is still no distributed runtime fleet scheduler and no kernel/eBPF
+collector; scripting-level crypto in custom interpreters remains Level 6.

@@ -4873,6 +4873,88 @@ export interface NetworkEvidenceIntegrity {
 export const apiNetworkCryptoIntegrity = (): Promise<ApiResult<NetworkEvidenceIntegrity>> =>
   call("/api/v1/network/crypto-evidence/integrity");
 
+/* §28/§31 — signed anchor receipts for the evidence chain head. A receipt is a
+ * claim until it leaves this database, so the UI keeps `external` visible. */
+export interface NetworkAnchorReceipt {
+  schema: string;
+  anchor_id: string;
+  tenant: string;
+  created_at: string;
+  created_by: string | null;
+  note: string | null;
+  chain: { namespace: string; seq: number; head: string; entries: number; truncated: boolean };
+  signature_scheme: string;
+  signature: string;
+  key_source: string;
+  external: boolean;
+  export_hint: string;
+  boundary: string;
+}
+
+export interface NetworkAnchorStatus {
+  schema: string;
+  anchoring: string;
+  distributed: boolean;
+  external: boolean;
+  anchors: number;
+  last_anchor: NetworkAnchorReceipt | null;
+  key: { configured: boolean; source: string; variable: string; scheme: string; note: string };
+  limitations: string[];
+}
+
+export interface NetworkAnchorVerification {
+  schema: string;
+  anchor_id: string | null;
+  status: "HEAD_INTACT" | "ADVANCED" | "HISTORY_REWRITTEN" | "SIGNATURE_INVALID" | "UNKNOWN";
+  signature_valid: boolean | null;
+  rewritten: boolean | null;
+  anchored_seq?: number;
+  anchored_head?: string;
+  current_seq?: number;
+  current_head?: string;
+  reason: string;
+  external?: boolean;
+  limitations?: string[];
+}
+
+export const apiNetworkAnchorStatus = (): Promise<ApiResult<NetworkAnchorStatus>> =>
+  call("/api/v1/network/crypto-evidence/anchor");
+
+export const apiNetworkAnchors = (): Promise<ApiResult<{ count: number; anchors: NetworkAnchorReceipt[]; key: NetworkAnchorStatus["key"]; note: string }>> =>
+  call("/api/v1/network/crypto-evidence/anchors");
+
+export const apiNetworkCreateAnchor = (note?: string): Promise<ApiResult<{ model: string; receipt: NetworkAnchorReceipt }>> =>
+  call("/api/v1/network/crypto-evidence/anchor", { method: "POST", body: JSON.stringify({ note: note ?? null }) });
+
+export const apiNetworkVerifyAnchor = (receipt: NetworkAnchorReceipt): Promise<ApiResult<NetworkAnchorVerification>> =>
+  call("/api/v1/network/crypto-evidence/anchor/verify", { method: "POST", body: JSON.stringify({ receipt }) });
+
+/* §30/§31 — single-writer observation lease: two replicas must not spend one budget. */
+export interface NetworkWatchLease {
+  schema: string;
+  mode: string;
+  distributed: boolean;
+  lease: { held: boolean; holder: string | null; expires_at: string | null; expired: boolean; expires_in_seconds: number };
+  limitations?: string[];
+}
+
+export interface NetworkLeaseDecision extends NetworkWatchLease {
+  acquired?: boolean;
+  released?: boolean;
+  outcome: string;
+  owner?: string;
+  reason?: string;
+}
+
+export const apiNetworkWatchLease = (): Promise<ApiResult<NetworkWatchLease>> =>
+  call("/api/v1/network/crypto-watch/lease");
+
+export const apiNetworkAcquireWatchLease = (owner?: string): Promise<ApiResult<NetworkLeaseDecision>> =>
+  call("/api/v1/network/crypto-watch/lease", { method: "POST", body: JSON.stringify({ owner: owner ?? null }) });
+
+export const apiNetworkReleaseWatchLease = (owner: string): Promise<ApiResult<NetworkLeaseDecision>> =>
+  call("/api/v1/network/crypto-watch/lease", { method: "POST", body: JSON.stringify({ owner, release: true }) });
+
 export interface MessageLayerRecord {
   evidence_id: string;
   evidence_type: string;

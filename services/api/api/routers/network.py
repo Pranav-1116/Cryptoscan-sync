@@ -88,7 +88,11 @@ def _guard_network_stop(db: Session) -> dict:
     except NetworkStopped as exc:
         raise HTTPException(
             status_code=409,
-            detail={"error": exc.code, "reason": exc.reason, **exc.detail},
+            detail={
+                "error": exc.code,
+                "reason": exc.reason,
+                "engaged_by": exc.engaged_by,
+            },
         ) from exc
 
 
@@ -2019,18 +2023,86 @@ def network_crypto_watch_stop(user: str = Depends(require_auditor)):
     return get_watcher().stop()
 
 
+class WatchTickRequest(BaseModel):
+    """One scheduler tick, executed under a single-writer database lease.
+
+    ``owner`` identifies the worker (a scheduler sets it explicitly); a worker
+    that cannot take the lease is refused instead of probing the same approved
+    scope twice (§30 traffic budget).
+    """
+
+    owner: str | None = Field(default=None, max_length=200)
+    ttl_seconds: int = Field(default=180, ge=60, le=3600)
+
+
 @router.post("/network/crypto-watch/tick")
 def network_crypto_watch_tick(
+    body: WatchTickRequest | None = None,
     user: str = Depends(require_auditor),
     db: Session = Depends(get_db_session),
 ):
-    """Run exactly one observation tick now (useful to verify the loop and budget)."""
+    """Run exactly one observation tick now, as the single lease holder.
+
+    The lease answers a real bank deployment question: several API replicas share
+    one approved scope, so without coordination each replica would spend the
+    traffic budget on the same endpoints. The second worker gets 409 with the
+    holder and the remaining seconds — visible, not silent.
+    """
     from api.security.network_watch import get_watcher
+    from api.security.network_watch_lease import acquire, default_owner, release
 
     _guard_network_stop(db)
+    owner = (body.owner if body and body.owner else default_owner())
+    ttl = body.ttl_seconds if body else 180
+    lease = acquire(db, tenant_id=current_tenant(), owner=owner, ttl_seconds=ttl, user=user)
+    if not lease["acquired"]:
+        raise HTTPException(status_code=409, detail={"error": "network_watch_lease_held", **lease})
     watcher = get_watcher()
     watcher.inventory_id = watcher.inventory_id or "default"
-    return watcher.tick()
+    result = watcher.tick()
+    released = None if watcher.running else release(db, tenant_id=current_tenant(), owner=owner, user=user)
+    return {**result, "lease": lease, "lease_after_tick": released}
+
+
+class WatchLeaseRequest(BaseModel):
+    """Acquire or release the single-writer network observation lease."""
+
+    release: bool = False
+    owner: str | None = Field(default=None, max_length=200)
+    ttl_seconds: int = Field(default=180, ge=60, le=3600)
+
+
+@router.get("/network/crypto-watch/lease")
+def network_crypto_watch_lease_status(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Who is the single writer for this tenant's network observation, and until when."""
+    from api.security.network_watch_lease import status as lease_status
+
+    return lease_status(db, tenant_id=current_tenant())
+
+
+@router.post("/network/crypto-watch/lease")
+def network_crypto_watch_lease(
+    body: WatchLeaseRequest,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Take or hand back the observation lease (a scheduled worker holds it between ticks)."""
+    from api.security.network_watch_lease import acquire, default_owner, release
+
+    owner = body.owner or default_owner()
+    if body.release:
+        return release(db, tenant_id=current_tenant(), owner=owner, user=user)
+    return acquire(
+        db,
+        tenant_id=current_tenant(),
+        owner=owner,
+        ttl_seconds=body.ttl_seconds,
+        inventory_id="default",
+        user=user,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2100,6 +2172,72 @@ def network_crypto_evidence_chained(
         "evidence": chained,
         "integrity": verify(chain, records_by_run=_evidence_by_run(db, run_ids)),
     }
+
+
+# ---------------------------------------------------------------------------
+# Evidence anchoring (spec 67 §28, §31) — signed receipt for the chain head
+# ---------------------------------------------------------------------------
+
+
+class AnchorRequest(BaseModel):
+    """Sign the current chain head into an exportable anchor receipt."""
+
+    note: str | None = Field(default=None, max_length=400)
+
+
+@router.get("/network/crypto-evidence/anchor")
+def network_crypto_evidence_anchor_status(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Anchoring status: key location, receipts held, and what an anchor does not prove."""
+    from api.security.network_evidence_anchor import status as anchor_status
+
+    return anchor_status(db, tenant_id=current_tenant())
+
+
+@router.get("/network/crypto-evidence/anchors")
+def network_crypto_evidence_anchors(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every anchor receipt this tenant holds, newest last."""
+    from api.security.network_evidence_anchor import list_anchors
+
+    return list_anchors(db, tenant_id=current_tenant())
+
+
+@router.post("/network/crypto-evidence/anchor")
+def network_crypto_evidence_anchor(
+    body: AnchorRequest,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Sign the chain head so a later database rewrite stops matching.
+
+    Fail-closed: with no anchor key configured the request is refused rather than
+    producing an unsigned "anchor" that proves nothing.
+    """
+    from api.security.network_evidence_anchor import AnchorError, create_anchor
+
+    try:
+        receipt = create_anchor(db, tenant_id=current_tenant(), user=user, note=body.note)
+    except AnchorError as exc:
+        raise HTTPException(status_code=409, detail={"error": exc.code, "reason": exc.reason}) from exc
+    return {"model": "cryptoscan.network-evidence-anchor-receipt/1", "receipt": receipt}
+
+
+@router.post("/network/crypto-evidence/anchor/verify")
+def network_crypto_evidence_anchor_verify(
+    body: dict,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Verify a receipt (stored or pasted from the external store) against the live chain."""
+    from api.security.network_evidence_anchor import verify_anchor
+
+    receipt = body.get("receipt") if isinstance(body.get("receipt"), dict) else body
+    return verify_anchor(db, receipt, tenant_id=current_tenant())
 
 
 # ---------------------------------------------------------------------------
@@ -2532,7 +2670,7 @@ def network_crypto_probe(
                     )
             elif protocol == "POSTGRESQL":
                 if _approves(endpoint, "TLS", sorted({"CONNECT", "TLS_HANDSHAKE"}))[0]:
-                    db_tls_targets.append(detection)
+                    db_tls_targets.append({**detection, "engine": "POSTGRESQL"})
                 else:
                     evidence.append(
                         build_database_evidence(
@@ -2546,21 +2684,26 @@ def network_crypto_probe(
                         )
                     )
             elif protocol == "MYSQL":
-                evidence.append(
-                    build_database_evidence(
-                        endpoint=endpoint,
-                        engine="MYSQL",
-                        detection=detection,
-                        observed_at=observed_at,
-                        scope_name=scope_admission["scope_name"],
-                        scope_revision=str((scope or {}).get("saved_at") or "") or None,
-                        extra={
-                            "run_id": run.job_id,
-                            "tls_handshake": "NOT_ATTEMPTED",
-                            "reason": "MySQL TLS needs a client SSLRequest packet after the server handshake",
-                        },
+                if _approves(endpoint, "TLS", sorted({"CONNECT", "TLS_HANDSHAKE"}))[0]:
+                    # MySQL negotiates TLS only after its own handshake packet and a
+                    # CLIENT_SSL capability exchange, so it needs its own probe path.
+                    db_tls_targets.append({**detection, "engine": "MYSQL"})
+                else:
+                    evidence.append(
+                        build_database_evidence(
+                            endpoint=endpoint,
+                            engine="MYSQL",
+                            detection=detection,
+                            observed_at=observed_at,
+                            scope_name=scope_admission["scope_name"],
+                            scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                            extra={
+                                "run_id": run.job_id,
+                                "tls_handshake": "NOT_APPROVED_BY_SCOPE",
+                                "reason": "TLS_HANDSHAKE is not in the approved operations for this endpoint",
+                            },
+                        )
                     )
-                )
             else:
                 evidence.append(
                     build_protocol_evidence(
@@ -2592,18 +2735,28 @@ def network_crypto_probe(
             )
 
         # Databases that answered "TLS supported" get a real handshake, but only
-        # once TLS_HANDSHAKE is approved for that exact endpoint.
+        # once TLS_HANDSHAKE is approved for that exact endpoint. PostgreSQL asks
+        # with an 8-byte SSLRequest and MySQL with a CLIENT_SSL capability
+        # exchange; both then perform a real TLS handshake (never a login).
         if db_tls_targets:
             from network_scanner.discovery.protocol_detector import postgres_tls_handshake
+            from network_scanner.probing.db_probe import probe_mysql_tls
 
             for detection in db_tls_targets:
-                tls = postgres_tls_handshake(
-                    detection["host"], detection["port"], timeout=max(2.0, body.timeout)
-                )
+                engine = str(detection.get("engine") or "POSTGRESQL").upper()
+                timeout = max(2.0, body.timeout)
+                if engine == "MYSQL":
+                    probe = probe_mysql_tls(detection["host"], detection["port"], timeout=timeout)
+                    # a refused or failed handshake is evidence of a refusal, not of absence
+                    tls = probe if probe.get("status") == "TLS_AVAILABLE" else None
+                    refusal = probe.get("status") if tls is None else None
+                else:
+                    tls = postgres_tls_handshake(detection["host"], detection["port"], timeout=timeout)
+                    refusal = None if tls else "TLS_NOT_NEGOTIATED"
                 evidence.append(
                     build_database_evidence(
                         endpoint=detection["endpoint"],
-                        engine="POSTGRESQL",
+                        engine=engine,
                         detection=detection,
                         tls=tls,
                         observed_at=observed_at,
@@ -2612,6 +2765,7 @@ def network_crypto_probe(
                         extra={
                             "run_id": run.job_id,
                             "tls_handshake": "COMPLETED" if tls else "FAILED",
+                            "probe_status": refusal,
                         },
                     )
                 )
@@ -2797,6 +2951,84 @@ def network_crypto_risk(
     report["sources"] = {"records": len(records), "origin": "request" if body.evidence is not None else "stored_evidence"}
     if body.include_pqc:
         report["pqc"] = pqc_readiness(records)
+    return report
+
+
+class EstateRiskRequest(BaseModel):
+    """Estate-level policy over correlated STATIC + RUNTIME + NETWORK facts."""
+
+    services: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
+    static: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+    runtime: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+    runtime_events: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+    network: list[dict[str, Any]] = Field(default_factory=list, max_length=2000)
+    use_latest_network_evidence: bool = True
+    evidence_limit: int = Field(default=10, ge=1, le=50)
+    policy: dict[str, Any] | None = None
+    inventory_id: str = Field(default="default", max_length=160)
+
+
+@router.post("/network/crypto-estate-risk")
+def network_crypto_estate_risk(
+    body: EstateRiskRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Policy packs over the correlated estate, one verdict per service.
+
+    The three layers are scored by their own engines and joined by service
+    identity; the estate report never copies a network failure onto the
+    application layer (§27). A service missing a layer is
+    ``INCOMPLETE_COVERAGE`` — blindness is the finding.
+    """
+    from api.security.network_correlation import correlate, network_facts_from_evidence
+    from api.security.network_estate_policy import evaluate_estate, runtime_facts_from_events
+    from network_scanner.inventory.network_policy import evaluate as evaluate_policy
+    from network_scanner.inventory.network_policy import merge_policy, pqc_readiness
+
+    evidence = _latest_evidence(db, limit=body.evidence_limit) if body.use_latest_network_evidence else []
+    network_facts = list(body.network) + network_facts_from_evidence(evidence)
+    runtime_facts = list(body.runtime) + runtime_facts_from_events(body.runtime_events)
+    correlation = correlate(
+        services=body.services,
+        static=body.static,
+        runtime=runtime_facts,
+        network=network_facts,
+    )
+    policy = merge_policy(body.policy)
+    network_report = evaluate_policy(evidence, policy) if evidence else None
+    pqc = pqc_readiness(evidence) if evidence else None
+
+    runtime_report = None
+    if body.runtime_events:
+        try:
+            from runtime.engine.policy import evaluate_runtime
+
+            runtime_report = evaluate_runtime(body.runtime_events, body.policy)
+        except Exception as exc:  # noqa: BLE001 - a runtime scoring failure is a gap, not a pass
+            runtime_report = {
+                "model": "cryptoscan.runtime-crypto-risk/1",
+                "findings": [],
+                "error": f"runtime scoring unavailable: {type(exc).__name__}: {exc}"[:200],
+            }
+
+    report = evaluate_estate(
+        correlation=correlation,
+        services=body.services,
+        network=network_report,
+        runtime=runtime_report,
+        network_pqc=pqc,
+        policy=body.policy,
+    )
+    report["sources"] = {
+        "services_declared": len(body.services),
+        "static_facts": len(body.static),
+        "runtime_facts": len(runtime_facts),
+        "runtime_events": len(body.runtime_events),
+        "network_facts": len(network_facts),
+        "network_evidence_records": len(evidence),
+        "inventory_id": body.inventory_id,
+    }
     return report
 
 

@@ -446,8 +446,28 @@ cannot see, and every response carries its own limitations.
 | 28 | CBOM / NBOM / TechBOM with context + evidence ID | done | `POST /network/crypto-nbom` (CycloneDX 1.5), `GET /network/crypto-cbom` |
 | 29 | Explicit limitations; UNKNOWN is a valid result | done | per-record `limitations[]`, report-level limitations, coverage gaps |
 | 30 | Safety: scope, budget, stop, escalation, never disable IDS | done | `api/security/network_safety.py`, `POST /network/crypto-stop` (local, `distributed:false`) |
-| 31 | Policy / risk, PQC readiness, drift, dashboard | partial | `POST /network/crypto-risk` (baseline pack + PQC), `GET /network/scan-drifts`; **open**: threat-intelligence enrichment, external chain anchoring |
+| 31 | Policy / risk, PQC readiness, drift, dashboard | partial | `POST /network/crypto-risk` (baseline pack + PQC), `POST /network/crypto-estate-risk` (policy over the correlated estate, one verdict per service), `GET /network/scan-drifts`; signed anchor receipts (`POST /network/crypto-evidence/anchor`), database lease for single-writer scheduling (`GET/POST /network/crypto-watch/lease`); **open**: threat-intelligence enrichment, an *external* store for the receipts |
 
 Still open, in priority order: live cloud/Kubernetes collectors (the current paths accept
-caller-supplied metadata), IKEv1, ESP/PFS *in use*, hash-chain anchoring outside the local
-database, and distributed scheduling (both safety and the chain are single-node today).
+caller-supplied metadata), IKEv1, ESP/PFS *in use*, threat-intelligence enrichment, and a
+bank-operated external store for anchor receipts (the receipt is signed with a key the
+database does not hold, but CryptoScan does not write it to WORM/CMDB itself).
+
+Closed in this round, each with tests in `services/api/tests/unit/`:
+
+* **estate policy packs** — `POST /network/crypto-estate-risk` joins STATIC + RUNTIME +
+  NETWORK facts per service, keeps each finding on its own layer, and reports a missing
+  layer as `INCOMPLETE_COVERAGE` rather than a pass
+  (`api/security/network_estate_policy.py`, `test_network_estate_anchor_lease.py`);
+* **evidence anchoring** — `POST /network/crypto-evidence/anchor` signs the chain head with
+  `CRYPTOSCAN_ANCHOR_KEY` held outside the database, refuses when no key exists, and
+  verification reports `HEAD_INTACT | ADVANCED | HISTORY_REWRITTEN | SIGNATURE_INVALID`
+  (`api/security/network_evidence_anchor.py`);
+* **scheduling** — a tenant-local database lease makes `POST /network/crypto-watch/tick`
+  single-writer; a second replica gets `409 network_watch_lease_held` with the holder and
+  the seconds remaining, instead of spending the same approved traffic budget twice
+  (`api/security/network_watch_lease.py`);
+* **MySQL transport TLS** — `POST /network/crypto-probe` now negotiates a real MySQL TLS
+  session (32-byte SSLRequest + `CLIENT_SSL` capability) instead of reporting
+  `NOT_ATTEMPTED`, while TDE/column encryption stay `NOT_OBSERVED`
+  (`network_scanner/probing/db_probe.py`).

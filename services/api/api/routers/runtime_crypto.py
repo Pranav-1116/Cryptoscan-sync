@@ -262,6 +262,12 @@ def ingest_runtime_crypto_events(
             detail={"error": "runtime_observation_rejected", "reason": str(exc)},
         ) from exc
 
+    from api.security.runtime_evidence_chain import append as append_to_chain
+    from api.security.runtime_evidence_chain import ensure_event_ids
+
+    # ids are assigned before storage so the run, the response and the hash
+    # chain all reference the same event identity
+    events = ensure_event_ids(events)
     summary = summarize_runtime_events(events)
     payload = {
         "runtime_events": events,
@@ -275,6 +281,7 @@ def ingest_runtime_crypto_events(
         },
     }
     row = ScanRunRepository(db).create_run(payload, target_kind=RUN_KIND)
+    chain_receipt = append_to_chain(db, events, run_id=row.id, tenant_id=current_tenant(), user=user)
     db.commit()
     return {
         "model": "cryptoscan.runtime-crypto-ingest/1",
@@ -282,6 +289,7 @@ def ingest_runtime_crypto_events(
         "stored": len(events),
         "events": events,
         "summary": summary,
+        "evidence_chain": chain_receipt,
         "note": "Level 6 and algorithm-less observations are blind spots, not clean results",
     }
 
@@ -303,21 +311,73 @@ def _latest_events(db: Session, *, limit: int = 5) -> list[dict[str, Any]]:
     return events
 
 
+def _events_by_run(db: Session, run_ids) -> dict[str, list[dict[str, Any]]]:
+    """Load the events of the runs a chain entry references."""
+    repo = ScanRunRepository(db)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for run_id in run_ids:
+        if not run_id:
+            continue
+        row = repo.get_run(run_id, owner=current_tenant())
+        if row is None:
+            continue
+        result = (row.to_dict() or {}).get("result") or {}
+        out[str(run_id)] = list(result.get("runtime_events") or [])
+    return out
+
+
+def _integrity(db: Session) -> dict[str, Any]:
+    """Recompute the runtime chain against the events it references."""
+    from api.security.runtime_evidence_chain import read_chain, verify
+
+    chain = read_chain(db, tenant_id=current_tenant())
+    run_ids = {str(entry.get("run_id")) for entry in chain.get("entries") or []}
+    return verify(chain, events_by_run=_events_by_run(db, run_ids))
+
+
 @router.get("/runtime/crypto-events")
 def list_runtime_crypto_events(
     limit: int = Query(default=5, ge=1, le=50),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Latest runtime crypto events with their attribution levels."""
+    """Latest runtime crypto events with their attribution levels and chain position."""
+    from api.security.runtime_evidence_chain import attach_integrity, read_chain
+
     events = _latest_events(db, limit=limit)
+    chained = attach_integrity(events, read_chain(db, tenant_id=current_tenant()))
     return {
         "model": "cryptoscan.runtime-crypto-events/1",
-        "events": events,
+        "events": chained,
         "summary": summarize_runtime_events(events),
+        "integrity": _integrity(db),
         "limit": limit,
         "note": "an application with no event is NOT_OBSERVED — it is not crypto-free",
     }
+
+
+@router.get("/runtime/crypto-events/verify")
+def verify_runtime_crypto_events(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Recompute the runtime evidence chain and report any broken link.
+
+    ``verified: false`` with ``tampered_records``/``problems`` means a stored
+    event no longer matches the hash it was chained with. ``unverifiable_entries``
+    are honest gaps (events outside the loaded window), not passes.
+    """
+    from api.security.runtime_evidence_chain import read_chain
+
+    chain = read_chain(db, tenant_id=current_tenant())
+    report = _integrity(db)
+    report["chain"] = {
+        "entries": len(chain.get("entries") or []),
+        "seq": chain.get("seq"),
+        "head_hash": chain.get("head"),
+        "updated_at": chain.get("updated_at"),
+    }
+    return report
 
 
 @router.get("/runtime/crypto-cbom")
@@ -355,4 +415,119 @@ def runtime_crypto_risk(
     report["sources"] = {"events": len(events), "origin": "request" if body.events is not None else "stored_events"}
     if body.include_pqc:
         report["pqc"] = runtime_pqc_readiness(events)
+    return report
+
+
+# --------------------------------------------------------------------------- #
+# Drift and runtime <-> network correlation (spec 92 §12-§13)
+# --------------------------------------------------------------------------- #
+
+
+class RuntimeDriftRequest(BaseModel):
+    """Compare two observation windows without pretending a missing event is a removal."""
+
+    previous_run_id: str | None = None
+    current_run_id: str | None = None
+    previous_events: list[dict[str, Any]] | None = None
+    current_events: list[dict[str, Any]] | None = None
+    limit: int = Field(default=10, ge=2, le=50)
+
+
+def _run_events(db: Session, run_id: str) -> list[dict[str, Any]]:
+    row = ScanRunRepository(db).get_run(run_id, owner=current_tenant())
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "runtime_run_not_found", "reason": f"no runtime run {run_id!r} for this tenant"},
+        )
+    return list(((row.to_dict() or {}).get("result") or {}).get("runtime_events") or [])
+
+
+@router.post("/runtime/crypto-drift")
+def runtime_crypto_drift(
+    body: RuntimeDriftRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Diff two runtime observation windows: new, removed, changed operations.
+
+    A removal means "not observed in the newer window", never "the process stopped
+    using it" — the response says so on every removed entry.
+    """
+    from runtime.engine.drift import compare_runs
+
+    if body.previous_events is not None and body.current_events is not None:
+        previous, current = body.previous_events, body.current_events
+        source = "request"
+    else:
+        runs = _latest_runs(db, limit=body.limit)
+        previous_id = body.previous_run_id or (runs[1].id if len(runs) > 1 else None)
+        current_id = body.current_run_id or (runs[0].id if runs else None)
+        if not previous_id or not current_id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "runtime_drift_needs_two_windows",
+                    "reason": "drift needs two observed windows; supply events or run two collections first",
+                },
+            )
+        previous, current = _run_events(db, str(previous_id)), _run_events(db, str(current_id))
+        source = "stored_runs"
+        body = body.model_copy(update={"previous_run_id": str(previous_id), "current_run_id": str(current_id)})
+
+    report = compare_runs(previous, current)
+    report["sources"] = {
+        "origin": source,
+        "previous_run_id": body.previous_run_id,
+        "current_run_id": body.current_run_id,
+        "previous_events": len(previous),
+        "current_events": len(current),
+    }
+    return report
+
+
+class RuntimeNetworkCorrelationRequest(BaseModel):
+    """Correlate runtime crypto events with network transport observations."""
+
+    runtime_events: list[dict[str, Any]] | None = None
+    runtime_limit: int = Field(default=5, ge=1, le=50)
+    network_evidence: list[dict[str, Any]] | None = None
+    network_limit: int = Field(default=10, ge=1, le=50)
+    host_map: dict[str, str] = Field(default_factory=dict)
+
+
+@router.post("/runtime/network-correlation")
+def runtime_network_correlation(
+    body: RuntimeNetworkCorrelationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Join runtime events to network evidence without merging the layers.
+
+    Only comparable transport fields are compared, host identity comes from a
+    declared ``host_map`` (never inferred), and every other pair is reported as
+    ``NOT_COMPARABLE`` with the reason.
+    """
+    from api.security.runtime_network_correlation import correlate
+
+    if body.runtime_events is not None:
+        runtime_events, runtime_source = body.runtime_events, "request"
+    else:
+        runtime_events, runtime_source = _latest_events(db, limit=body.runtime_limit), "stored_events"
+
+    if body.network_evidence is not None:
+        network, network_source = body.network_evidence, "request"
+    else:
+        from api.routers.network import _latest_evidence
+
+        network, network_source = _latest_evidence(db, limit=body.network_limit), "stored_evidence"
+
+    report = correlate(runtime_events, network, host_map=body.host_map)
+    report["sources"] = {
+        "runtime": runtime_source,
+        "network": network_source,
+        "runtime_events": len(runtime_events),
+        "network_records": len(network),
+        "host_map_entries": len(body.host_map),
+    }
     return report
