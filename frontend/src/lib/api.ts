@@ -4795,6 +4795,63 @@ export interface PassiveObservationInput {
   direction?: string;
 }
 
+export interface ScopeImportPreview {
+  schema: string;
+  source: string;
+  source_description: string;
+  generated_at: string;
+  candidates: Array<{ endpoint: string; evidence_type: string; source: string; declared: boolean; observed: boolean }>;
+  accepted_count: number;
+  rejected: Array<{ endpoint: string; reason: string }>;
+  duplicate_count: number;
+  truncated: boolean;
+  probing_performed: false;
+  note: string;
+}
+
+export interface ScopeImportResponse {
+  preview: ScopeImportPreview;
+  applied: boolean;
+  probing_performed: false;
+  apply_blocked?: string;
+  merge?: { destinations: string[]; added: string[]; already_present: string[]; dropped_over_limit: string[]; total: number };
+  scope?: NetworkCryptoScope;
+}
+
+/** §4 declared/imported scope candidates — importing never probes. */
+export const apiImportNetworkScope = (body: { source: string; text?: string; entries?: Array<Record<string, unknown>>; apply?: boolean; inventory_id?: string }): Promise<ApiResult<ScopeImportResponse>> =>
+  call("/api/v1/network/crypto-scope/import", { method: "POST", body: JSON.stringify(body) });
+
+export interface NetworkWatchStatus {
+  schema: string;
+  running: boolean;
+  interval_seconds: number;
+  inventory_id: string;
+  started_at: string | null;
+  last_tick_at: string | null;
+  last_result: { status: string; reason?: string; observed?: number; summary?: NetworkEvidenceSummary } | null;
+  ticks: number;
+  observed_ticks: number;
+  skipped_ticks: number;
+  failed_ticks: number;
+  distributed: boolean;
+  boundary: string;
+  scope?: { state: string; expired: boolean; reason: string };
+  note?: string;
+}
+
+export const apiNetworkCryptoWatch = (): Promise<ApiResult<NetworkWatchStatus>> =>
+  call("/api/v1/network/crypto-watch");
+
+export const apiStartNetworkCryptoWatch = (intervalSeconds: number, inventoryId = "default"): Promise<ApiResult<NetworkWatchStatus>> =>
+  call("/api/v1/network/crypto-watch", { method: "POST", body: JSON.stringify({ interval_seconds: intervalSeconds, inventory_id: inventoryId }) });
+
+export const apiStopNetworkCryptoWatch = (): Promise<ApiResult<NetworkWatchStatus>> =>
+  call("/api/v1/network/crypto-watch", { method: "DELETE" });
+
+export const apiTickNetworkCryptoWatch = (): Promise<ApiResult<{ status: string; reason?: string; observed?: number; run_id?: string }>> =>
+  call("/api/v1/network/crypto-watch/tick", { method: "POST" });
+
 /** Metadata-only sensor intake (§22): payload/password/private-key fields are refused server-side. */
 export const apiNetworkCryptoPassive = (observations: PassiveObservationInput[], options: { inventory_id?: string; scope_name?: string } = {}): Promise<ApiResult<{ model: string; stored: number; evidence: NetworkEvidenceRecord[]; summary: NetworkEvidenceSummary; active_packets: number; note: string }>> =>
   call("/api/v1/network/crypto-passive", { method: "POST", body: JSON.stringify({ observations, ...options }) });

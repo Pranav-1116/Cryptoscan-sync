@@ -4,7 +4,7 @@ import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import { IconNetwork, IconCloud, IconHardware, IconSecurity, IconTarget, IconSatellite } from "../components/icons";
-import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -240,6 +240,126 @@ function BudgetStrip() {
         <div className="faint" style={{ fontSize: 10.5, marginTop: 4 }}>{b.distributed === false ? "single-process counter" : "distributed"}</div>
       </div>
     </div>
+  );
+}
+
+/* §4 declared/imported candidates — an import is a declaration, never a probe. */
+function ScopeImportPanel() {
+  const [source, setSource] = useState("CMDB");
+  const [text, setText] = useState("");
+  const [result, setResult] = useState<ScopeImportResponse | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (apply: boolean) => {
+    if (!text.trim()) {
+      setMessage("Paste a CMDB/load-balancer export first (CSV, TSV, JSON or one host per line).");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    const response = await apiImportNetworkScope({ source, text, apply });
+    if (response.data) {
+      setResult(response.data);
+      setMessage(
+        apply
+          ? response.data.applied
+            ? `Applied — ${response.data.merge?.added.length ?? 0} destination(s) added to the approved scope`
+            : response.data.apply_blocked || "Apply blocked"
+          : `Preview — ${response.data.preview.accepted_count} accepted, ${response.data.preview.rejected.length} rejected (nothing probed)`
+      );
+    } else {
+      setMessage(response.error || "Import failed");
+    }
+    setBusy(false);
+  };
+  return (
+    <Panel
+      title="Import declared destinations"
+      sub="CMDB · load balancer · Kubernetes · cloud export — declarations only, no probing, approval still required"
+      className="mt"
+    >
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+        <select value={source} onChange={(e) => setSource(e.target.value)} style={{ padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--panel)", color: "var(--text)", fontSize: 12 }}>
+          {["CMDB", "LOAD_BALANCER", "KUBERNETES", "CLOUD", "FIREWALL", "DNS", "MANUAL"].map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+        <span className="dim" style={{ fontSize: 11 }}>nothing is probed; imported rows are CONFIG_IMPORTED candidates</span>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        aria-label="Declared destinations export"
+        placeholder={"host,port\n10.20.10.15,443\n10.20.10.16,8443"}
+        style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 11, padding: 8, borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }}
+      />
+      <div className="row" style={{ marginTop: 8 }}>
+        <button className="btn sm" type="button" disabled={busy} onClick={() => void run(false)}>Preview import</button>
+        <button className="btn sm primary" type="button" disabled={busy} onClick={() => void run(true)}>Apply to scope</button>
+        {message && <span className="dim" style={{ fontSize: 11 }}>{message}</span>}
+      </div>
+      {result && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            <Badge tone="cyan">{result.preview.source}</Badge>
+            <Badge tone="green">{result.preview.accepted_count} accepted</Badge>
+            {result.preview.rejected.length > 0 && <Badge tone="red">{result.preview.rejected.length} rejected</Badge>}
+            {result.preview.duplicate_count > 0 && <Badge tone="amber">{result.preview.duplicate_count} duplicate</Badge>}
+            {result.preview.truncated && <Badge tone="amber">truncated</Badge>}
+            <span className="faint" style={{ fontSize: 10.5 }}>probing performed: {String(result.probing_performed)}</span>
+          </div>
+          {result.preview.candidates.slice(0, 8).map((candidate) => (
+            <span key={candidate.endpoint} className="mono" style={{ fontSize: 11 }}>{candidate.endpoint} <span className="faint">· {candidate.evidence_type}</span></span>
+          ))}
+          {result.preview.rejected.slice(0, 5).map((row) => (
+            <span key={row.endpoint} className="mono" style={{ fontSize: 10.5, color: "var(--red)" }}>{row.endpoint} — {row.reason}</span>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/* 24/7 scope-bound observation worker (§3, §30). */
+function CryptoWatchPanel() {
+  const watch = usePollingApi(apiNetworkCryptoWatch, 10000);
+  const status = watch.data as NetworkWatchStatus | null;
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const act = async (fn: () => Promise<{ data: unknown; error?: string }>, label: string) => {
+    setBusy(true);
+    const response = await fn();
+    setMessage(response.error ? `${label} failed: ${response.error}` : `${label} ok`);
+    void watch.run();
+    setBusy(false);
+  };
+  const last = status?.last_result;
+  return (
+    <Panel
+      title="24/7 observation worker"
+      sub="Re-reads the approved scope every tick · reserves traffic budget · skipped ticks are reported, never counted as observations"
+      className="mt"
+    >
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+        <Badge tone={status?.running ? "green" : "slate"}>{status?.running ? "RUNNING" : "STOPPED"}</Badge>
+        <Badge tone={status?.scope?.state === "APPROVED" ? "green" : "amber"}>scope {status?.scope?.state ?? "—"}</Badge>
+        <span className="mono" style={{ fontSize: 11 }}>every {status?.interval_seconds ?? 900}s</span>
+        <span className="dim" style={{ fontSize: 11 }}>ticks {status?.ticks ?? 0} · observed {status?.observed_ticks ?? 0} · skipped {status?.skipped_ticks ?? 0} · failed {status?.failed_ticks ?? 0}</span>
+        <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button className="btn sm" type="button" disabled={busy || status?.running} onClick={() => void act(() => apiStartNetworkCryptoWatch(300), "Start")}>Start</button>
+          <button className="btn sm" type="button" disabled={busy || !status?.running} onClick={() => void act(() => apiStopNetworkCryptoWatch(), "Stop")}>Stop</button>
+          <button className="btn sm" type="button" disabled={busy} onClick={() => void act(() => apiTickNetworkCryptoWatch(), "Tick")}>Tick now</button>
+        </div>
+      </div>
+      {last && (
+        <div className="dim" style={{ fontSize: 11 }}>
+          last tick: <b style={{ color: last.status === "OBSERVED" ? "var(--green)" : last.status === "SKIPPED" ? "var(--amber)" : "var(--red)" }}>{last.status}</b>
+          {last.reason ? ` — ${last.reason}` : ""}
+          {typeof last.observed === "number" ? ` · ${last.observed} observed` : ""}
+        </div>
+      )}
+      {message && <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>{message}</div>}
+      {status?.boundary && <div className="faint" style={{ fontSize: 10.5, marginTop: 6 }}>{status.boundary}</div>}
+    </Panel>
   );
 }
 
@@ -619,6 +739,8 @@ export default function Network() {
       {/* ── approved scope + observed crypto (spec 67) ── */}
       <NetworkCryptoScopePanel />
       <NetworkCryptoIntelligencePanel />
+      <ScopeImportPanel />
+      <CryptoWatchPanel />
 
       {/* ── hero topology — visual first, not theory ── */}
       <div className="panel" style={{ padding: 0, overflow: "hidden", border: "1px solid var(--line)", background: "var(--panel)" }}>

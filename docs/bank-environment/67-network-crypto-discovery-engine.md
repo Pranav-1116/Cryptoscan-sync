@@ -396,12 +396,14 @@ Authorization → Exact destination/port/protocol/operation → Traffic budget �
 
 ## Build steps
 
-1. **Spec file** — this document.
-2. **Step 1 scope model** — explicit approved scope with `destinations, protocols, allowed_operations, traffic_budget, valid_until` (fail-closed).
-3. **Step 2 discovery taxonomy** — bank inventory / approved active / passive → evidence taxonomy.
-4. **Steps 3-5** — service discovery + TLS observation schema + cipher decomposition.
-5. **Steps 6-9** — cert chain/mTLS, SSH, IPsec.
-6. **Steps 10-12** — LB/API-gw/mesh hop graph + correlation engine separation.
-7. **Remaining** — policy, dashboard, safety guards.
+Status legend: **[done]** shipped on `arena/bb4b80dd-cryproscan`, **[partial]**, **[open]**.
+
+1. **Spec file** — this document. **[done]**
+2. **Step 1 scope model** — explicit approved scope with `destinations, protocols, allowed_operations, traffic_budget, valid_until` (fail-closed). **[done]** — `GET/PUT /api/v1/network/crypto-scope`, `POST …/validate`; `api/security/network_scope.py::check_scope` is the single decision used by observation *and* the legacy scan/due/SSH paths (CIDR sweeps are refused under a scope).
+3. **Step 2 discovery taxonomy** — bank inventory / approved active / passive → evidence taxonomy. **[partial]** — `POST …/crypto-scope/import` (CMDB/LB/K8s/cloud/firewall/DNS) produces `CONFIG_IMPORTED` candidates with provenance and zero probing; `POST …/crypto-passive` ingests metadata-only sensor rows under a strict field whitelist. Kubernetes/cloud auto-discovery is **open**.
+4. **Steps 3-5** — service discovery + TLS observation schema + cipher decomposition. **[done]** for TLS (`POST …/crypto-observe`, evidence schema `cryptoscan.network-evidence/1`), **[partial]** for service discovery (registry-based naming, no fingerprinting of unknown services).
+5. **Steps 6-9** — cert chain/mTLS, SSH, IPsec. **[done]** certificate chain/trust, mTLS as *not required* vs unobservable, SSH host-key/KEX, IPsec IKEv2 SA_INIT (`POST …/ipsec-observe`). **[open]** — IKEv1 and ESP/PFS-in-use.
+6. **Steps 10-12** — LB/API-gw/mesh hop graph + correlation engine separation. **[partial]** — `POST …/crypto-path` annotates declared hops with ACTIVE/PASSIVE/UNKNOWN evidence; automatic external↔internal termination pairing and static+runtime+network correlation are **open**.
+7. **Remaining** — policy, dashboard, safety guards. **[partial]** — traffic budget is metered (`GET …/crypto-budget`, rolling 24 h window), 24/7 scope-bound worker (`/network/crypto-watch` start/stop/status/tick) exists, and CBOM projection (`GET …/crypto-cbom`) is transport-layer only. **[open]** — hash-chained evidence integrity, message-layer (Kafka/MQ) crypto, distributed scheduling.
 
 Each step adds API + scanner + normalizer + CBOM/NBOM mapping with `UNKNOWN≠SAFE` honesty.

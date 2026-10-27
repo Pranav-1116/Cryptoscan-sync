@@ -1170,6 +1170,9 @@ class NetworkCryptoScopeIn(BaseModel):
     traffic_budget: TrafficBudget = Field(default_factory=TrafficBudget)
     valid_until: datetime | None = Field(default=None, description="ISO8601 expiry; null = no expiry, but still requires re-approval")
     inventory_id: str = Field(default="default", max_length=160)
+    #: provenance of destinations added from a bank export (§4). Kept so an
+    #: approved scope can always name where a destination came from.
+    imports: list[dict[str, Any]] = Field(default_factory=list, max_length=20)
 
 
 def _scope_key(tenant_id: str | None, inventory_id: str) -> str:
@@ -1440,7 +1443,7 @@ def crypto_observe(
 
 
 #: durable run kinds that carry Cryptographic Network Intelligence evidence
-EVIDENCE_RUN_KINDS = ("crypto-observe", "crypto-passive")
+EVIDENCE_RUN_KINDS = ("crypto-observe", "crypto-passive", "crypto-watch")
 
 
 def _latest_evidence_runs(db: Session, *, limit: int = 5) -> list[dict]:
@@ -1785,3 +1788,174 @@ def network_crypto_passive(
         "active_packets": 0,
         "note": "passive evidence covers only the traffic the sensor saw; absence is NOT_OBSERVED",
     }
+
+
+# ---------------------------------------------------------------------------
+# Declared / imported scope candidates (spec 67 §4) — declarations, not probes
+# ---------------------------------------------------------------------------
+
+
+class ScopeImportRequest(BaseModel):
+    source: Literal["CMDB", "LOAD_BALANCER", "KUBERNETES", "CLOUD", "FIREWALL", "DNS", "MANUAL"] = "CMDB"
+    text: str | None = Field(default=None, max_length=200_000, description="CSV/TSV/JSON/newline export")
+    entries: list[Any] | None = Field(default=None, max_length=1000, description="pre-parsed rows")
+    inventory_id: str = Field(default="default", max_length=160)
+    apply: bool = Field(default=False, description="merge accepted candidates into the saved scope (still requires an approved scope to probe)")
+    max_candidates: int = Field(default=100, ge=1, le=200)
+
+
+@router.post("/network/crypto-scope/import")
+def import_network_scope_candidates(
+    body: ScopeImportRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Preview (default) or merge import of bank-declared destinations (§4).
+
+    Importing never probes and never enables scanning: accepted rows are
+    ``CONFIG_IMPORTED`` candidates, and the scope must still be saved/approved
+    before a probe can run. Rejected rows are returned with their reason so an
+    operator can fix the export instead of wondering why a host vanished.
+    """
+    from api.security.network_import import build_candidates, merge_candidates, parse_import_payload
+
+    if body.text is None and not body.entries:
+        raise HTTPException(status_code=422, detail="supply text (CSV/TSV/JSON/newline) or entries")
+    try:
+        declared = parse_import_payload(text=body.text, entries=body.entries)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"unparseable import: {exc}") from exc
+    if not declared:
+        raise HTTPException(status_code=422, detail="import produced no destinations")
+
+    existing_scope = _load_crypto_scope(db, body.inventory_id)
+    current = list((existing_scope or {}).get("destinations") or [])
+    try:
+        preview = build_candidates(
+            declared,
+            source=body.source,
+            existing=current,
+            max_candidates=body.max_candidates,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    response: dict[str, Any] = {"preview": preview, "applied": False, "probing_performed": False}
+    if body.apply:
+        merged = merge_candidates(
+            current_destinations=current,
+            candidates=preview["candidates"],
+            max_total=100,
+        )
+        if existing_scope is None:
+            response["apply_blocked"] = (
+                "no approved scope exists — save an initial scope first, then apply imports to it"
+            )
+        else:
+            updated = dict(existing_scope)
+            updated.pop("_key", None)
+            updated.pop("_updated_by", None)
+            updated.pop("_tenant", None)
+            updated["destinations"] = merged["destinations"]
+            imports = list(updated.get("imports") or [])
+            imports.append(
+                {
+                    "source": preview["source"],
+                    "at": preview["generated_at"],
+                    "by": user,
+                    "added": merged["added"],
+                    "added_count": len(merged["added"]),
+                    "rejected_count": len(preview["rejected"]),
+                }
+            )
+            updated["imports"] = imports[-20:]
+            scope_model = NetworkCryptoScopeIn(**updated)
+            _save_crypto_scope(db, scope_model, user)
+            response["applied"] = True
+            response["merge"] = merged
+            response["scope"] = _load_crypto_scope(db, body.inventory_id)
+    return response
+
+
+# ---------------------------------------------------------------------------
+# 24/7 scope-bound observation worker (spec 67 §3, §30)
+# ---------------------------------------------------------------------------
+
+
+class WatchStartRequest(BaseModel):
+    interval_seconds: int = Field(default=900, ge=120, le=86400)
+    inventory_id: str = Field(default="default", max_length=160)
+
+
+@router.get("/network/crypto-watch")
+def network_crypto_watch_status(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Status of the continuous observation worker plus scope readiness."""
+    from api.security.network_watch import get_watcher
+
+    watcher = get_watcher()
+    scope = _load_crypto_scope(db, watcher.inventory_id)
+    return {
+        **watcher.status(),
+        "scope": _scope_status(scope),
+        "note": (
+            "the worker re-reads the approved scope every tick; with no scope, "
+            "or an expired/foreign one, ticks are SKIPPED and nothing is probed"
+        ),
+    }
+
+
+@router.post("/network/crypto-watch")
+def network_crypto_watch_start(
+    body: WatchStartRequest,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Start continuous observation of the approved scope.
+
+    Refused when there is no usable scope: an always-on worker with nothing
+    approved to observe is how a bank ends up with an unintentional sweep.
+    """
+    from api.security.network_watch import get_watcher
+
+    scope = _load_crypto_scope(db, body.inventory_id)
+    status = _scope_status(scope)
+    if status["state"] != "APPROVED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "scope_not_approved",
+                "reason": status["reason"],
+                "state": status["state"],
+            },
+        )
+    watcher = get_watcher()
+    result = watcher.start(
+        interval=body.interval_seconds,
+        inventory_id=body.inventory_id,
+        tenant_id=current_tenant(),
+    )
+    return {**result, "scope": status, "started_by": user}
+
+
+@router.delete("/network/crypto-watch")
+def network_crypto_watch_stop(user: str = Depends(require_auditor)):
+    """Stop the continuous observation worker."""
+    from api.security.network_watch import get_watcher
+
+    return get_watcher().stop()
+
+
+@router.post("/network/crypto-watch/tick")
+def network_crypto_watch_tick(
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Run exactly one observation tick now (useful to verify the loop and budget)."""
+    from api.security.network_watch import get_watcher
+
+    watcher = get_watcher()
+    watcher.inventory_id = watcher.inventory_id or "default"
+    return watcher.tick()
