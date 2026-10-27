@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
 import React, { useEffect, useState } from "react";
-import { Panel, Badge, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
+import { Panel, Badge, Kpi, Feed, PageHead } from "../components/ui.jsx";
 import {
-  apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveInventory,
+  apiStatsSummary, apiDeliveries, isBackendLive, apiLiveInventory,
   apiLiveScanStatus, apiLiveAlerts, apiLiveScanRun, apiLiveBom, apiLiveDrift,
-  ApiResult, LiveBadge,
+  LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent, useRealtimeRefresh, RealtimeChip } from "../lib/realtime.js";
@@ -36,12 +36,10 @@ export default function CommandCenter() {
   const [firstScanBusy, setFirstScanBusy] = useState(false);
   const [firstScanMsg, setFirstScanMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [backend, setBackend] = useState<boolean | null>(null);
-  const [scope, setScope] = useState<ApiResult<Record<string, unknown>>>({ source: "offline", data: null });
   const rt = useRealtime();
 
   useEffect(() => {
     void isBackendLive().then(setBackend);
-    void apiScope().then(setScope);
   }, []);
 
   const liveStats = usePollingApi(apiStatsSummary, 15000);
@@ -128,12 +126,6 @@ export default function CommandCenter() {
           <Badge tone="amber">PQC READINESS: NOT MEASURED</Badge>
         </>}
       />
-
-      {scope.data && (
-        <Panel title="Platform scope (live manifest)" sub={scope.source === "live" ? "Live scope manifest from the control plane" : "no live data yet — connect the control plane"} className="mt">
-          <Code>{JSON.stringify(scope.data, null, 2)}</Code>
-        </Panel>
-      )}
 
       {stats && (
         <Panel title="Platform records" sub="Persisted scans and findings, all time; delivery counts are tracked separately" className="mt">
