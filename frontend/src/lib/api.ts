@@ -5125,6 +5125,79 @@ export interface NetworkRiskReport {
 export const apiNetworkCryptoRisk = (body: { policy?: Record<string, unknown> } = {}): Promise<ApiResult<NetworkRiskReport>> =>
   call("/api/v1/network/crypto-risk", { method: "POST", body: JSON.stringify(body) });
 
+/* ── Unified estate evidence graph (spec 93) ───────────────────────────────
+   One discovery job, six BOM projections of ONE evidence graph. Coverage is
+   attempted/expected per plane — never "percent of crypto discovered" — and a
+   failed plane arrives as FAILED with an impact statement, not as empty. */
+
+export interface EstateCoverageRow {
+  target: string; expected: number; collected: number; status: string;
+  reason: string | null; impact: string | null; note: string | null;
+}
+
+export interface EstateCoverage {
+  schema: string;
+  targets: EstateCoverageRow[];
+  summary: {
+    target_classes: number; expected: number; collected: number;
+    coverage_percent: number | null; by_status: Record<string, number>; failed_targets: string[];
+  };
+  meaning: string;
+  not_observed: string[];
+}
+
+export interface EstateCollectorOutcome {
+  plane: string; status: string; expected: number; collected: number;
+  reason: string | null; impact: string | null; is_failure: boolean;
+}
+
+export interface EstateBom {
+  bom: string; projection_id: string; components: Array<Record<string, unknown>>;
+  counts: Record<string, number>;
+}
+
+export interface EstateScanReport {
+  model: string;
+  run_id: number | null;
+  estate: string;
+  scope: string | null;
+  projection_id: string;
+  collectors: EstateCollectorOutcome[];
+  lifecycle: Array<{ phase: string; status: string; detail: unknown }>;
+  summary: { assets: number; evidence: number; relationships: number; projection_id: string } & Record<string, unknown>;
+  coverage: EstateCoverage;
+  unknown: Record<string, unknown>;
+  conflicts: unknown[];
+  failed_planes: string[];
+  partial_planes: string[];
+  skipped_planes: string[];
+  coverage_gaps: string[];
+  verdict: string;
+  verdict_detail: string;
+  boms?: Record<string, EstateBom>;
+  bom_counts?: Record<string, number>;
+  consistency?: unknown;
+  meaning: string;
+  limitations: string[];
+}
+
+export interface EstatePlan {
+  model: string;
+  planes: Array<{ plane: string; source: string; boms: string; limitation: string; enabled: boolean; status: string; impact: string | null }>;
+  enabled: string[];
+  skipped: string[];
+  note: string;
+}
+
+export const apiEstatePlan = (): Promise<ApiResult<EstatePlan>> =>
+  _rsGet<EstatePlan>("/api/v1/estate/evidence/plan");
+
+export const apiEstateScan = (body: { estate?: string; scope?: string | null; planes?: string[]; include_boms?: boolean; persist?: boolean } = {}): Promise<ApiResult<EstateScanReport>> =>
+  _rsPost<EstateScanReport>("/api/v1/estate/evidence/scan", body);
+
+export const apiEstateBoms = (bom?: string): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsGet<Record<string, unknown>>(`/api/v1/estate/evidence/boms${bom ? `?bom=${encodeURIComponent(bom)}` : ""}`);
+
 export interface DeviceInventoryResponse {
   model: string;
   stored: number;

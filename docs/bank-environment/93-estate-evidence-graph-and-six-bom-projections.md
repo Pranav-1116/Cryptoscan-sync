@@ -533,24 +533,38 @@ STATIC PLANE            RUNTIME PLANE            NETWORK PLANE
 
 ## 18. Build status
 
+Status legend: **done** = implemented and tested on `arena/bb4b80dd-cryproscan`;
+**partial** = implemented with a named limit; **open** = not built.
+
 | Capability | Status | Where |
 |---|---|---|
-| Canonical asset model with deterministic ids | done | `shared_models/estate_graph.py` (`asset_id`, `normalize_asset`) |
-| Evidence layer with provenance + confidence | done | `EstateGraph.add_evidence` — every asset/relationship cites evidence ids |
-| Identity resolution across planes | done | `EstateGraph.resolve_identity` (host, image digest, certificate fingerprint, key id, vendor product) |
-| Relationship engine that refuses unsupported edges | done | `EstateGraph.assert_relationship` — no basis ⇒ `UNKNOWN` in `unresolved_relationships` |
-| Estate graph + unknown inventory | done | `EstateGraph.unknown_inventory` |
-| Coverage matrix (attempted vs expected, not "crypto found") | done | `coverage_matrix` / `EstateGraph.coverage` |
-| Collector-failure semantics (FAILED ≠ none) | done | `collector_outcome` — failed plane reports `UNKNOWN` + impact |
-| Conflict detection | done | `EstateGraph.conflicts` |
-| Six BOM projections from one snapshot | done | `project_all` — SBOM, CBOM, HBOM, NBOM, VBOM, TechBOM share `projection_id` |
-| SUPPORTED ≠ CONFIGURED ≠ NEGOTIATED ≠ OBSERVED | done | `usage_state` on every CBOM artefact |
-| API: discovery, graph, coverage, BOMs | done | `POST /estate/discover`, `GET /estate/graph`, `/estate/coverage`, `/estate/boms` |
-| Console: coverage matrix + unknown inventory + BOM switch | done | `EstatePanel` on `Network.tsx` |
-| Live collector fan-out (one job calling every plane) | partial | the API ingests evidence from every plane; wiring every existing collector into one orchestrator is the next step |
-| Signed/anchored projected BOMs | open | BOM export currently reuses the existing CBOM signing path |
+| Canonical asset model with deterministic ids | done | `shared_models/estate_graph.py` (`asset_id`, `normalize_asset`, identity `estate:v1`) |
+| Evidence layer with provenance + confidence | done | `make_evidence` — every asset/relationship cites evidence ids; 10 evidence types with HIGH/MEDIUM/LOW confidence |
+| Identity resolution across planes | done | `EstateGraph.resolve_identity` (host, image digest, certificate fingerprint, key id, vendor product); merges are reported in `merged_identities` |
+| Relationship engine that refuses unsupported edges | done | `EstateGraph.assert_relationship` — no approved basis or no evidence ⇒ `UNKNOWN` in `unresolved_relationships`, never drawn |
+| Estate graph + unknown inventory | done | `EstateGraph.unknown_inventory` (usage state, capability-only, assets without evidence, failed collectors) |
+| Coverage matrix (attempted vs expected, not "crypto found") | done | `coverage_matrix` / `EstateGraph.coverage` — carries `meaning` and `not_observed` in every response |
+| Collector-failure semantics (FAILED ≠ none) | done | `collector_outcome` — a failed plane reports `UNKNOWN` + an impact naming the BOMs that lose coverage |
+| Conflict detection | done | `EstateGraph.conflicts` — disagreeing facts are reported, not silently resolved |
+| Six BOM projections from one snapshot | done | `project_all` — SBOM, CBOM, HBOM, NBOM, VBOM, TechBOM share one `projection_id` |
+| SUPPORTED ≠ CONFIGURED ≠ NEGOTIATED ≠ OBSERVED | done | `usage_state` on every CBOM artefact; vendor/imported evidence can never establish in-use usage |
+| API: discovery payload, scan, graph, coverage, BOMs | done | `POST /api/v1/estate/evidence/discover`, `POST …/scan`, `GET …/plan`, `GET …/{summary,graph,coverage,boms}` (`routers/estate_graph.py`; the pre-existing `/estate` campaign router is untouched) |
+| Live collector fan-out (one job calling every plane) | done | `api/estate_discovery.py` — six read-only adapters (NETWORK, RUNTIME, STATIC, PKI, HARDWARE, VENDOR) reading *persisted* evidence, joined into one graph, with a collector plan, lifecycle phases and per-plane coverage |
+| Console: coverage matrix + unknown inventory + BOM switch | done | `EstatePanel` (`frontend/src/components/EstatePanel.tsx`) mounted on `Network.tsx` |
+| Signed/anchored projected BOMs | open | projection ids are content hashes; signing still goes through the existing CBOM snapshot path rather than a dedicated projected-BOM signature |
+| Drift baseline / PQC scoring over the estate graph | open | drift and PQC exist per plane (§67 `/network/crypto-risk`, §92 runtime risk); an estate-wide baseline is not stored yet |
 
 Honest limits: this engine is the **joining and projection layer**. It proves that the
-six BOMs are consistent views of one evidence graph; it does not itself fly drones over
-the estate. Collectors feed it, and any plane that did not run is reported as coverage
-debt with an impact statement.
+six BOMs are consistent views of one evidence graph; it does not fly drones over the
+estate. The fan-out job reads persisted evidence only — it does not probe or scan
+anything itself, and a plane that did not run is coverage debt with an impact
+statement, never an empty plane. Active collection keeps its own approved scope
+(`/network/crypto-observe`, `/runtime/crypto-events`), which is what makes re-running
+the estate job free of packets.
+
+Verified by `services/api/tests/unit/test_estate_graph.py` (22 tests: identity merges,
+layer separation, refusals, capability≠usage, conflicts, coverage semantics, API) and
+`services/api/tests/unit/test_estate_discovery_job.py` (15 tests: fan-out, FAILED
+plane ⇒ impact, partial read ⇒ `PARTIAL`, empty store ≠ empty estate, six BOMs on one
+`projection_id`, lifecycle order, API plan/scan). Together with the network and
+runtime suites the six-file API run is **198 passed**.

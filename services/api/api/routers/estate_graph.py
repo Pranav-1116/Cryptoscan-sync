@@ -30,6 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from api import estate_discovery
 from api.dependencies import get_current_user, get_db_session
 from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
@@ -38,6 +39,20 @@ from shared_models.estate_graph import BOM_KINDS, SCHEMA, build_graph
 router = APIRouter(prefix="/estate/evidence", tags=["estate-evidence"])
 
 RUN_KIND = "estate-discovery"
+
+
+class EstateScanRequest(BaseModel):
+    """One estate-discovery job over the planes this deployment can read."""
+
+    estate: str = Field(default="default", max_length=160)
+    scope: str | None = Field(default=None, max_length=160)
+    planes: list[str] | None = Field(
+        default=None,
+        max_length=len(estate_discovery.PLANES),
+        description="subset of the discovery planes; omitting it runs every plane",
+    )
+    include_boms: bool = True
+    persist: bool = True
 
 
 class EstateDiscoverRequest(BaseModel):
@@ -101,6 +116,46 @@ def _latest_run(db: Session) -> Any:
 def _graph_from_run(run) -> Any:
     payload = (run.result or {}).get("estate_discovery") or {}
     return build_graph(payload)
+
+
+@router.get("/plan")
+def estate_plan(user: str = Depends(get_current_user)):
+    """The collector plan: which planes run, from which source, and what each cannot see."""
+    return estate_discovery.plan()
+
+
+@router.post("/scan")
+def estate_scan(
+    body: EstateScanRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Run **one** estate-discovery job and project the six BOMs from its graph.
+
+    This is the fan-out the directive asked for: a single job reads every plane's
+    persisted evidence, joins it into one graph, and reports coverage per plane.
+    A collector that fails is reported as ``FAILED`` with an impact statement —
+    never as an empty plane — and the response carries the lifecycle phases that
+    actually ran.
+    """
+    try:
+        return estate_discovery.run(
+            db,
+            estate=body.estate,
+            scope=body.scope,
+            planes=body.planes,
+            persist=body.persist,
+            include_boms=body.include_boms,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "estate_scan_rejected",
+                "reason": str(exc),
+                "note": "a known plane must be requested; an unseen plane is NOT_ATTEMPTED, not empty",
+            },
+        ) from exc
 
 
 @router.post("/discover")
