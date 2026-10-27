@@ -553,6 +553,7 @@ Status legend: **done** = implemented and tested on `arena/bb4b80dd-cryproscan`;
 | Console: coverage matrix + unknown inventory + BOM switch | done | `EstatePanel` (`frontend/src/components/EstatePanel.tsx`) mounted on `Network.tsx` |
 | Signed/anchored projected BOMs | done | `api/security/estate_bom_anchor.py` + `POST /estate/evidence/boms/anchor`, `GET …/boms/anchors`, `POST …/boms/anchor/verify` — HMAC-SHA256 over `{projection_id, per-BOM digests}` with `CRYPTOSCAN_ANCHOR_KEY` held outside the database; no key ⇒ `409 anchor_key_not_configured`, and the receipt says `external: false` until the operator exports it |
 | Drift baseline over the estate graph | done | `api/estate_drift.py` + `GET /estate/evidence/drift` — component-level diff of the six projections between the two newest snapshots, plus coverage deltas; a coverage loss is reported as coverage debt, and a BOM empty in both snapshots is `NOT_COMPARABLE`, never "unchanged" |
+| Unknown inventory as a workflow | done | `EstateGraph.unknown_workflow` + `GET /estate/evidence/unknown` — every asset in exactly one state (`ESTABLISHED_RUNTIME_OBSERVED` … `UNKNOWN_UNRESOLVED`), each with a next action; `IMPORTED`/`VENDOR_DECLARED`/`INFERRED` are listed as open work, and unresolved relationships plus failed collectors are counted in `open_work` |
 | Estate-wide PQC scoring | partial | PQC readiness is computed per plane (§67 `/network/crypto-risk` `pqc`, §92 runtime risk); there is no single estate PQC score yet, deliberately — mixing layers into one number is the failure mode §27 warns about |
 
 Honest limits: this engine is the **joining and projection layer**. It proves that the
@@ -571,7 +572,8 @@ impact, partial read ⇒ `PARTIAL`, empty store ≠ empty estate, six BOMs on on
 (14 tests: anchor refuses without a key, signature/`PROJECTION_CHANGED` detection,
 `NO_BASELINE` vs `NO_DRIFT` vs `DRIFT`, coverage debt ≠ estate change,
 `NOT_COMPARABLE` for one-sided or empty-in-both BOMs). With the network and runtime
-suites the eight-file API run is **212 passed**.
+suites the eight-file API run is **218 passed**, including the unknown-workflow tests
+(vendor claims are open work, not answers; every asset is accounted for exactly once).
 
 Two properties had to be fixed in the engine to make anchoring and drift mean
 anything, both with tests:

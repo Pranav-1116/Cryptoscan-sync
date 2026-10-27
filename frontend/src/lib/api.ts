@@ -5198,6 +5198,14 @@ export interface EstateScanReport {
   summary: { assets: number; evidence: number; relationships: number; projection_id: string } & Record<string, unknown>;
   coverage: EstateCoverage;
   unknown: Record<string, unknown>;
+  unknown_workflow: {
+    by_state: Record<string, number>;
+    open_work: number;
+    stages: Array<{ state: string; meaning: string; count: number; next_action: string; truncated: boolean }>;
+    unresolved_relationships: Array<Record<string, unknown>>;
+    failed_collectors: Array<Record<string, unknown>>;
+    note: string;
+  };
   conflicts: unknown[];
   failed_planes: string[];
   partial_planes: string[];

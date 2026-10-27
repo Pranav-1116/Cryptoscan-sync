@@ -810,6 +810,83 @@ class EstateGraph:
             ),
         }
 
+    def unknown_workflow(self) -> dict[str, Any]:
+        """§13/§25 — the unknown inventory as a workflow, not a count.
+
+        Every asset lands in exactly one state, from strongest evidence to
+        weakest. The point is that ``VENDOR_DECLARED`` and ``INFERRED`` are
+        *open work*, not answers: each carries what would move it forward.
+        Unresolved relationships and failed collectors are listed separately
+        because they are not asset states — they are places where the estate is
+        not described at all.
+        """
+        rollup = self._asset_rollup()
+        ranked = (
+            ("ESTABLISHED_RUNTIME_OBSERVED", ("RUNTIME_OBSERVED",),
+             "observed at runtime — the strongest evidence this engine holds"),
+            ("ESTABLISHED_NETWORK_OBSERVED", ("NETWORK_ACTIVE_OBSERVED", "NETWORK_PASSIVE_OBSERVED"),
+             "observed on the wire — transport crypto only, never application crypto"),
+            ("ESTABLISHED_CERTIFICATE_OBSERVED", ("CERTIFICATE_OBSERVED",),
+             "certificate metadata observed (public fields only)"),
+            ("ESTABLISHED_STATIC_OBSERVED", ("STATIC_OBSERVED",),
+             "present in code/artefacts — presence is not usage"),
+            ("CONFIGURED", ("CONFIGURED",), "declared by configuration — not proven to run"),
+            ("VENDOR_DECLARED", ("VENDOR_DECLARED",), "vendor says so — never proof of bank usage"),
+            ("IMPORTED", ("IMPORTED",), "imported from another register — provenance is the register"),
+            ("INFERRED", ("INFERRED",), "inferred, not observed — must be promoted or dropped"),
+            ("UNKNOWN_UNRESOLVED", (), "no evidence at all — the estate does not describe this asset"),
+        )
+        buckets: dict[str, list[dict[str, Any]]] = {name: [] for name, _types, _meaning in ranked}
+        for entry in rollup.values():
+            types = set(entry["evidence_types"])
+            state = "UNKNOWN_UNRESOLVED"
+            for name, wanted, _meaning in ranked:
+                if wanted and types & set(wanted):
+                    state = name
+                    break
+            buckets[state].append(
+                {
+                    "asset_id": entry["asset_id"],
+                    "name": entry["name"],
+                    "type": entry["type"],
+                    "evidence": entry["evidence"],
+                    "evidence_types": entry["evidence_types"],
+                }
+            )
+
+        stages = [
+            {
+                "state": name,
+                "meaning": meaning,
+                "count": len(buckets[name]),
+                "assets": buckets[name][:50],
+                "truncated": len(buckets[name]) > 50,
+                "next_action": (
+                    "run a runtime collector inside the approved scope"
+                    if name == "UNKNOWN_UNRESOLVED" else
+                    "promote with stronger evidence or retire the claim"
+                    if name in {"VENDOR_DECLARED", "INFERRED", "IMPORTED"} else
+                    "corroborate on a second plane before treating it as established"
+                ),
+            }
+            for name, _types, meaning in ranked
+        ]
+        unresolved = list(self._unresolved)
+        failed = [collector for collector in self._collectors if collector.get("is_failure")]
+        return {
+            "schema": "cryptoscan.estate-unknown-workflow/1",
+            "estate": self.estate,
+            "stages": stages,
+            "by_state": {stage["state"]: stage["count"] for stage in stages},
+            "open_work": len(buckets["UNKNOWN_UNRESOLVED"]) + len(unresolved) + len(failed),
+            "unresolved_relationships": unresolved,
+            "failed_collectors": failed,
+            "note": (
+                "UNKNOWN is a workflow state with an owner and a next action, not a rounding error; "
+                "IMPORTED/VENDOR_DECLARED/INFERRED are open work, never answers"
+            ),
+        }
+
     # -- projections -------------------------------------------------------- #
 
     def fingerprint(self) -> str:

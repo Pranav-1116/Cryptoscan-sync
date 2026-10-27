@@ -240,3 +240,36 @@ def test_api_scan_rejects_an_unknown_plane(api):
     response = http.post("/api/v1/estate/evidence/scan", json={"planes": ["MAINFRAME"], "persist": False})
     assert response.status_code == 422
     assert response.json()["detail"]["error"] == "estate_scan_rejected"
+
+
+def test_scan_report_carries_the_unknown_workflow():
+    report = estate_discovery.run(
+        object(), persist=False,
+        collectors=_collectors(NETWORK=_network_plane()))
+    workflow = report["unknown_workflow"]
+    assert workflow["schema"] == "cryptoscan.estate-unknown-workflow/1"
+    assert sum(workflow["by_state"].values()) == report["summary"]["assets"]
+
+
+def test_api_unknown_workflow_reads_the_stored_run(api):
+    http, _session = api
+    created = http.post("/api/v1/estate/evidence/discover", json={
+        "estate": "workflow-estate",
+        "assets": [{"ref": "v", "type": "VENDOR", "name": "VendorX"},
+                   {"ref": "h", "type": "HOST", "name": "app-01"}],
+        "evidence": [{"source": "vendor", "evidence_type": "VENDOR_DECLARED", "target": "v",
+                      "layer": "APPLICATION", "facts": {"algorithm": "AES-256"}}],
+    })
+    assert created.status_code == 200, created.text
+    response = http.get("/api/v1/estate/evidence/unknown")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["by_state"]["VENDOR_DECLARED"] == 1
+    assert body["open_work"] >= 1
+
+
+def test_api_unknown_workflow_without_a_run_says_not_observed(api):
+    http, _session = api
+    response = http.get("/api/v1/estate/evidence/unknown")
+    assert response.status_code == 404
+    assert response.json()["detail"]["error"] == "no_estate_discovery"

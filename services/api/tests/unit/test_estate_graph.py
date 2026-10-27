@@ -450,3 +450,56 @@ def test_boms_without_a_discovery_say_not_observed(api):
     assert response.status_code == 404
     assert response.json()["detail"]["error"] == "no_estate_discovery"
     assert "NOT_OBSERVED" in response.json()["detail"]["reason"]
+
+
+def test_unknown_workflow_puts_every_asset_in_one_state():
+    graph = build_graph(_payload())
+    workflow = graph.unknown_workflow()
+    assert workflow["schema"] == "cryptoscan.estate-unknown-workflow/1"
+    states = workflow["by_state"]
+    assert sum(states.values()) == len(graph.assets()), "every asset must be accounted for exactly once"
+    assert set(states) == {
+        "ESTABLISHED_RUNTIME_OBSERVED",
+        "ESTABLISHED_NETWORK_OBSERVED",
+        "ESTABLISHED_CERTIFICATE_OBSERVED",
+        "ESTABLISHED_STATIC_OBSERVED",
+        "CONFIGURED",
+        "VENDOR_DECLARED",
+        "IMPORTED",
+        "INFERRED",
+        "UNKNOWN_UNRESOLVED",
+    }
+    for stage in workflow["stages"]:
+        assert stage["meaning"]
+        assert stage["next_action"]
+
+
+def test_unknown_workflow_treats_vendor_claims_as_open_work():
+    payload = {
+        "estate": "vendor-estate",
+        "assets": [
+            {"ref": "v", "type": "VENDOR", "name": "VendorX"},
+            {"ref": "h", "type": "HOST", "name": "app-01"},
+        ],
+        "evidence": [
+            {"source": "vendor", "evidence_type": "VENDOR_DECLARED", "target": "v", "layer": "APPLICATION",
+             "facts": {"algorithm": "AES-256"}},
+        ],
+    }
+    workflow = build_graph(payload).unknown_workflow()
+    assert workflow["by_state"]["VENDOR_DECLARED"] == 1
+    assert workflow["by_state"]["UNKNOWN_UNRESOLVED"] == 1
+    vendor_stage = next(item for item in workflow["stages"] if item["state"] == "VENDOR_DECLARED")
+    assert "promote" in vendor_stage["next_action"]
+    # open work = the unresolved asset + its collector gap, never the vendor claim as an answer
+    assert workflow["open_work"] >= 1
+
+
+def test_unknown_workflow_counts_unresolved_edges_and_failed_collectors_as_open_work():
+    payload = _payload()
+    payload["relationships"] = [{"subject": "api", "predicate": "uses", "object": "hsm"}]
+    payload["collectors"] = [{"plane": "KMS", "status": "FAILED", "reason": "API unavailable"}]
+    workflow = build_graph(payload).unknown_workflow()
+    assert len(workflow["unresolved_relationships"]) == 1
+    assert workflow["failed_collectors"][0]["plane"] == "KMS"
+    assert workflow["open_work"] >= 2

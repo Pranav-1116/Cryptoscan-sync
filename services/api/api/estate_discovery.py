@@ -698,6 +698,7 @@ def run(
         "summary": graph.summary(),
         "coverage": graph.coverage(),
         "unknown": graph.unknown_inventory(),
+        "unknown_workflow": graph.unknown_workflow(),
         "conflicts": graph.conflicts(),
         "unresolved_relationships": graph.unresolved_relationships(),
         "merged_identities": graph.merged_identities(),

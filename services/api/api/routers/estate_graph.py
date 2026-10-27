@@ -408,6 +408,20 @@ def estate_coverage(
     return {"run_id": run.id, **_graph_from_run(run).coverage()}
 
 
+@router.get("/unknown")
+def estate_unknown_workflow(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The unknown inventory as a workflow: one state per asset, plus open work.
+
+    ``IMPORTED``, ``VENDOR_DECLARED`` and ``INFERRED`` appear here as *open work*
+    with a next action — never as answers about how the bank uses crypto.
+    """
+    run = _latest_run(db)
+    return {"run_id": run.id, **_graph_from_run(run).unknown_workflow()}
+
+
 @router.get("/boms")
 def estate_boms(
     bom: str | None = Query(default=None, description="SBOM | CBOM | HBOM | NBOM | VBOM | TECHBOM"),

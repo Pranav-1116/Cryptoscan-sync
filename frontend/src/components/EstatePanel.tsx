@@ -165,6 +165,11 @@ export default function EstatePanel() {
         {report && <Badge tone="cyan">{report.summary.assets} assets</Badge>}
         {report && <Badge tone="slate">{report.summary.evidence} evidence</Badge>}
         {report && <Badge tone="amber">{unknownCount} unknown</Badge>}
+        {report?.unknown_workflow && (
+          <Badge tone={report.unknown_workflow.open_work ? "amber" : "green"}>
+            {report.unknown_workflow.open_work} open
+          </Badge>
+        )}
       </div>
 
       {error && <div className="dim" style={{ fontSize: 11.5, marginTop: 8, color: "var(--red)" }}>{error}</div>}
@@ -201,6 +206,19 @@ export default function EstatePanel() {
                     </span>
                   </div>
                 ))}
+            </div>
+          )}
+
+          {report.unknown_workflow && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+              {report.unknown_workflow.stages.filter((stage) => stage.count > 0).map((stage) => (
+                <Badge
+                  key={stage.state}
+                  tone={stage.state === "UNKNOWN_UNRESOLVED" ? "red" : stage.state.startsWith("ESTABLISHED") ? "green" : "amber"}
+                >
+                  {stage.state.replace("ESTABLISHED_", "")} · {stage.count}
+                </Badge>
+              ))}
             </div>
           )}
 
