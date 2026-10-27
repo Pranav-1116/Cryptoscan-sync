@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import React, { useEffect, useRef, useState } from "react";
-import { Badge } from "../components/ui";
+import { Badge, Bar, Ring } from "../components/ui";
 import {
   apiCbomCoverage,
   apiCbomIngest,
@@ -16,7 +16,7 @@ import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import CbomLegacyReview from "../components/CbomLegacyReview";
 import HostEvidencePanel from "../components/HostEvidencePanel";
 import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
-import { ICON_SM, IconCaretDown, IconCaretRight } from "../components/icons";
+import { ICON_SM, IconCaretDown, IconCaretRight, IconComponent, IconSecurity, IconCloud, IconSearch, IconTarget } from "../components/icons";
 
 /* One row per canonical identity from the unified cross-BOM query.
  * Every field below is echoed from the backend response — nothing is
@@ -261,44 +261,34 @@ function CbomContent() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
-      {/* CBOM Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
-        <div>
-          <div style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            CycloneDX 1.6 JSON · schema-validated metadata
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)" }}><IconComponent size={16} style={{ color: "var(--accent)" }} /></span>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: .12, fontFamily: "var(--mono)", color: "var(--accent)" }}>CYCLONEDX 1.6 · LIVE QUERY · NO INFERENCE</div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, margin: "2px 0 2px", lineHeight: 1 }}>Cryptographic Bill of Materials</h1>
+            <div style={{ fontSize: 12, color: "var(--dim)" }}>Cross-BOM identity spine — linked, conflicts and coverage at a glance</div>
           </div>
-          <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Cryptographic Bill of Materials</h1>
-          <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
-            Cross-BOM identity inventory from live query results — no client-side inference.
-          </p>
         </div>
-
-        <div style={{ display: "flex", gap: "10px" }}>
-          <AuthenticatedDownload
-            path="/api/v1/cbom/portfolio?fmt=cyclonedx16"
-            filename="cryptoscan-cbom-1.6.json"
-            className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
-          >
-            Export CycloneDX 1.6 JSON
-          </AuthenticatedDownload>
-          <Link
-            to="/dependency-graph"
-            className="btn primary"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
-          >
-            View Dependency Graph
-          </Link>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {!loading && components.length > 0 && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Ring pct={components.length ? linkedCount / components.length : 0} label={`${components.length ? Math.round((linkedCount / components.length) * 100) : 0}%`} sub="linked" tone="cyan" /><div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.3 }}>{linkedCount} / {components.length} multi-BOM<br />{conflictCount ? <span style={{ color: "var(--red)" }}>{conflictCount} conflicts</span> : <span style={{ color: "var(--green)" }}>no conflicts</span>}</div></div>}
+          <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
+            <AuthenticatedDownload path="/api/v1/cbom/portfolio?fmt=cyclonedx16" filename="cryptoscan-cbom-1.6.json" className="btn outline" style={{ fontSize: 12, padding: "7px 12px", borderRadius: "var(--r)" }}>Export CycloneDX 1.6 JSON</AuthenticatedDownload>
+            <Link to="/dependency-graph" className="btn primary" style={{ textDecoration: "none", fontSize: 12, padding: "7px 12px", borderRadius: "var(--r)", textAlign: "center" }}>View Dependency Graph</Link>
+          </div>
         </div>
       </div>
 
-      <section className="panel" aria-label="Import CBOM metadata" style={{ padding: 18, marginBottom: 18 }}>
-        <h2 style={{ marginTop: 0, fontSize: 17 }}>Import CBOM metadata</h2>
-        <p style={{ color: "var(--dim)", fontSize: 13 }}>
-          Uploaded declarations are not scanner observations, deployment approval or complete estate coverage.
-          Imports require a security analyst, CISO or administrator. The server caps requests at 2 MiB. Existing scanner timestamps and evidence are preserved.
-          Re-import refreshes matching declarations; absent components are not automatically retired.
-        </p>
+      <section className="panel" aria-label="Import CBOM metadata" style={{ padding: 16, marginBottom: 16, borderTop: "2px solid var(--accent)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <IconCloud size={14} style={{ color: "var(--accent)" }} />
+            <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Import CBOM metadata</h2>
+            <Badge tone="slate">DECLARED</Badge><Badge tone="cyan">2 MiB cap</Badge>
+          </div>
+          <span style={{ fontSize: 11, color: "var(--dim)" }}>Declared ≠ observed · not coverage · timestamps preserved</span>
+        </div>
+        <p style={{ color: "var(--dim)", fontSize: 12, margin: "0 0 10px" }}>Analyst/CISO import — refreshes matching declarations; missing components not auto-retired.</p>
         <form onSubmit={importDocument} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
           <label>System name<br /><input aria-label="Import system name" value={importName} maxLength={200} required
             disabled={importBusy} onChange={(event) => setImportName(event.target.value)} /></label>
@@ -321,97 +311,56 @@ function CbomContent() {
       <CbomLegacyReview refresh={refresh} onCommitted={() => setRefresh(value => value + 1)} />
 
       {offline && !loading && (
-        <div className="panel" style={{ padding: "14px 18px", marginBottom: "18px", border: "1px solid var(--amber)", color: "var(--amber)", fontSize: "13px" }}>
-          BOM sources are unreachable. The table below is empty because no live query result is available — nothing is shown from cache or guesswork.
+        <div className="panel" style={{ padding: "12px 14px", marginBottom: 14, border: "1px solid var(--amber)", borderLeft: "3px solid var(--amber)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <IconTarget size={14} style={{ color: "var(--amber)" }} />
+          <div style={{ fontSize: 12, color: "var(--amber)" }}><strong>Offline</strong> — no live query · table empty · no cache fallback</div>
         </div>
       )}
 
-      {/* Stats bar */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px", marginBottom: "20px" }}>
-        <div className="panel" style={{ padding: "16px" }}>
-          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Identities
-          </div>
-          <div style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0" }}>
-            {loading ? "..." : components.length}
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Distinct canonical identities across all BOMs
-          </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
+        <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--line-strong)" }}>
+          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--accent)", width: 6, height: 6, borderRadius: 99 }} />IDENTITIES</div>
+          <div style={{ fontSize: 22, fontWeight: 800, margin: "4px 0 2px" }}>{loading ? "…" : components.length}</div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>Canonical spine</div>
+          {!loading && components.length > 0 && <Bar value={1} tone="cyan" />}
         </div>
-
-        <div className="panel" style={{ padding: "16px" }}>
-          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Linked Identities
-          </div>
-          <div style={{ fontSize: "26px", fontWeight: 700, color: "var(--cyan)", margin: "4px 0" }}>
-            {loading ? "..." : linkedCount}
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Present in 2 or more BOMs (association, not asset identity)
-          </div>
+        <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--cyan)" }}>
+          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--cyan)", width: 6, height: 6, borderRadius: 99 }} />LINKED</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--cyan)", margin: "4px 0 2px" }}>{loading ? "…" : linkedCount}</div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>2+ BOMs · association</div>
+          {!loading && <Bar value={components.length ? linkedCount / components.length : 0} tone="cyan" />}
         </div>
-
-        <div className="panel" style={{ padding: "16px" }}>
-          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Cross-BOM Conflicts
-          </div>
-          <div style={{ fontSize: "26px", fontWeight: 700, color: conflictCount > 0 ? "var(--red)" : "var(--text)", margin: "4px 0" }}>
-            {loading ? "..." : conflictCount}
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Unambiguous value disagreements between BOMs
-          </div>
+        <div className="panel" style={{ padding: "12px 14px", borderTop: conflictCount > 0 ? "2px solid var(--red)" : "2px solid var(--line-strong)" }}>
+          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: conflictCount > 0 ? "var(--red)" : "var(--green)", width: 6, height: 6, borderRadius: 99 }} />CONFLICTS</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: conflictCount > 0 ? "var(--red)" : "var(--text)", margin: "4px 0 2px" }}>{loading ? "…" : conflictCount}</div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>{conflictCount > 0 ? "Value disagreements" : "No disagreements"}</div>
+          {!loading && conflictCount > 0 && <Bar value={Math.min(1, conflictCount / Math.max(1, components.length))} tone="red" />}
         </div>
-
-        <div className="panel" style={{ padding: "16px" }}>
-          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Recorded scan coverage
-          </div>
-          <div style={{ fontSize: "26px", fontWeight: 700, color: "var(--cyan)", margin: "4px 0" }}>
-            {loading ? "..." : coverage?.coverage_pct == null ? "Unknown" : `${coverage.coverage_pct}%`}
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Systems with current or stale scans: {coverage?.with_cbom ?? "—"} / {coverage?.systems ?? "—"}. Imports are excluded; this is not discovery completeness.
-          </div>
+        <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--accent)" }}>
+          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--accent)", width: 6, height: 6, borderRadius: 99 }} />COVERAGE</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--accent)", margin: "4px 0 2px" }}>{loading ? "…" : coverage?.coverage_pct == null ? "—" : `${coverage.coverage_pct}%`}</div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>{coverage?.with_cbom ?? "—"} / {coverage?.systems ?? "—"} systems · scans only</div>
+          {!loading && coverage?.coverage_pct != null && <Bar value={coverage.coverage_pct / 100} tone="cyan" />}
         </div>
       </div>
 
-      {/* Search & Linkage Filter */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px", flexWrap: "wrap", marginBottom: "16px" }}>
-        <div style={{ position: "relative", flex: "1", minWidth: "260px", maxWidth: "420px" }}>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search identity, label, kind or BOM…"
-            style={{
-              width: "100%", padding: "9px 14px", fontSize: "13px",
-              background: "var(--bg-2)", color: "var(--text)",
-              border: "1px solid var(--line)", borderRadius: "var(--r)",
-              fontFamily: "var(--mono)"
-            }}
-          />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12, padding: "10px 12px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
+        <div style={{ position: "relative", flex: "1", minWidth: 240, maxWidth: 420, display: "flex", alignItems: "center", gap: 8 }}>
+          <IconSearch size={13} style={{ color: "var(--faint)" }} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search identity, label, kind or BOM…" style={{ flex: 1, padding: "8px 12px", fontSize: 12.5, background: "var(--bg-2)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontFamily: "var(--mono)" }} />
         </div>
-        <div style={{ display: "flex", gap: "8px" }}>
+        <div style={{ display: "flex", gap: 6 }}>
           {LINKAGE_FILTERS.map((r) => (
-            <button
-              key={r}
-              onClick={() => setFilterLinkage(r)}
-              className="btn sm"
-              style={{
-                background: filterLinkage === r ? "var(--cyan)" : undefined,
-                color: filterLinkage === r ? "var(--on-accent)" : undefined,
-                fontWeight: filterLinkage === r ? 700 : 500
-              }}
-            >
-              {r}
-            </button>
+            <button key={r} onClick={() => setFilterLinkage(r)} className="btn sm" style={{ background: filterLinkage === r ? "var(--cyan)" : undefined, color: filterLinkage === r ? "var(--on-accent)" : undefined, fontWeight: filterLinkage === r ? 700 : 500, fontSize: 11, padding: "6px 10px" }}>{r}</button>
           ))}
         </div>
       </div>
 
-      {/* CBOM Table with Expandable Rows */}
-      <div className="panel" style={{ padding: "20px" }}>
+      <div className="panel" style={{ padding: "14px 16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><IconComponent size={14} style={{ color: "var(--accent)" }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Identity inventory</span><Badge tone={components.length ? "cyan" : "slate"}>{filtered.length} / {components.length}</Badge>{conflictCount > 0 && <Badge tone="red">{conflictCount} conflicts</Badge>}{linkedCount > 0 && <Badge tone="cyan">{linkedCount} linked</Badge>}</div>
+          <span style={{ fontSize: 11, color: "var(--dim)" }}>Tap row → observations · PQC sim</span>
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table className="tbl" style={{ width: "100%" }}>
             <thead>
@@ -545,17 +494,15 @@ function CbomContent() {
         )}
       </div>
 
-      {/* Pinned snapshots — §4.4: the live query above regenerates from
-          current evidence; a pinned snapshot freezes ONE content-addressed
-          rendering tied to the exact scan and serves it verbatim. */}
-      <div className="panel" style={{ padding: "20px", marginTop: "20px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "8px" }}>
-          <div>
-            <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Pinned Snapshots</h3>
-            <p style={{ margin: 0, fontSize: "12px", color: "var(--dim)" }}>
-              A pinned snapshot freezes one rendering of a scan's CBOM — content-addressed (SHA-256), served verbatim, traceable to the exact scan and its evidence.
-              The live routes regenerate from current evidence and may differ.
-            </p>
+      <div className="panel" style={{ padding: 16, marginTop: 16, borderTop: "2px solid var(--violet)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)" }}><IconSecurity size={14} style={{ color: "var(--violet)" }} /></span>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Pinned Snapshots</h3>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>SHA-256 content-addressed · scan-bound · verbatim proof</div>
+            </div>
+            {snapshots.length > 0 && <Badge tone="violet">{snapshots.length} pins</Badge>}
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             <select
