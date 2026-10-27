@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Badge } from "../components/ui";
+import { Badge, Panel, Bar, Ring } from "../components/ui";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import { activeTenantId, tenantFetch } from "../lib/api";
+import { IconCertificate, IconCrypto, IconHardware, IconTarget, IconClock, IconSecurity, IconTrendUp, IconTrendDown, IconInfo, IconWarn, IconSearch } from "../components/icons";
 
 // GET /drift returns persisted, tenant-scoped events; it does not return an
 // estate-wide comparison verdict or remediation verification.
@@ -55,6 +56,25 @@ function finding(value: unknown): string {
   return parts.length ? parts.join(" · ") : "Not supplied by this drift event";
 }
 
+const FAMILY_META: Record<Exclude<Family,"all">, { label: string; color: string; bg: string; icon: string }> = {
+  code: { label: "Finding changes", color: "var(--accent)", bg: "color-mix(in srgb, var(--accent) 12%, transparent)", icon: "◈" },
+  config: { label: "Configuration", color: "var(--violet)", bg: "color-mix(in srgb, var(--violet) 12%, transparent)", icon: "⬡" },
+  keys: { label: "Key inventory", color: "var(--amber)", bg: "color-mix(in srgb, var(--amber) 12%, transparent)", icon: "⬢" },
+};
+
+const SEV_TONE: Record<string, { tone: string; dot: string; bar: string }> = {
+  CRITICAL: { tone: "red", dot: "var(--red)", bar: "red" },
+  HIGH: { tone: "orange", dot: "var(--orange)", bar: "red" },
+  MEDIUM: { tone: "amber", dot: "var(--amber)", bar: "amber" },
+  LOW: { tone: "green", dot: "var(--green)", bar: "green" },
+};
+
+const RESOLUTION_META: Record<string, { label: string; tone: string; desc: string }> = {
+  OPEN: { label: "OPEN", tone: "red", desc: "requires triage" },
+  ACKNOWLEDGED: { label: "ACKNOWLEDGED", tone: "amber", desc: "triage — not verified" },
+  RESOLVED: { label: "RESOLVED", tone: "green", desc: "administrative closure" },
+};
+
 export default function Drift() {
   const [events, setEvents] = useState<DriftEvent[]>([]);
   const [total, setTotal] = useState<number | null>(null);
@@ -82,6 +102,24 @@ export default function Drift() {
   const selectedEvent = events.find(event => event.drift_id === selectedId) ?? null;
   const visible = events.filter(event => family === "all" || familyOf(event) === family);
   const canLoadMore = nextPage !== null;
+
+  // Analytics
+  const analytics = useMemo(() => {
+    const bySev: Record<string, number> = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    const byFamily: Record<string, number> = { code: 0, config: 0, keys: 0 };
+    const byStatus: Record<string, number> = { OPEN: 0, ACKNOWLEDGED: 0, RESOLVED: 0 };
+    events.forEach(e => {
+      const s = (e.severity || "LOW").toUpperCase();
+      if (s in bySev) bySev[s]++; else bySev.LOW++;
+      const f = familyOf(e); byFamily[f]++;
+      const r = (e.resolution_status || "OPEN").toUpperCase();
+      if (r in byStatus) byStatus[r]++; else byStatus.OPEN++;
+    });
+    const criticalPct = events.length ? bySev.CRITICAL / events.length : 0;
+    const openPct = events.length ? byStatus.OPEN / events.length : 0;
+    const resolvedPct = events.length ? byStatus.RESOLVED / events.length : 0;
+    return { bySev, byFamily, byStatus, criticalPct, openPct, resolvedPct };
+  }, [events]);
 
   useEffect(() => {
     const reset = () => {
@@ -139,8 +177,6 @@ export default function Drift() {
       }
     }
     async function loadComparison() {
-      // Scan statistics carry the persisted per-scan baseline_comparison value.
-      // The latest scan is context only, never an estate-wide all-clear.
       try {
         const response = await tenantFetch("/api/v1/scans?page=1&page_size=1", { signal: AbortSignal.timeout(8000) });
         if (!current()) return;
@@ -236,105 +272,314 @@ export default function Drift() {
     COMPARED: "Compared",
   };
 
+  const criticalCount = analytics.bySev.CRITICAL;
+  const openCount = analytics.byStatus.OPEN;
+  const resolvedCount = analytics.byStatus.RESOLVED;
+  const ringTone = criticalCount ? "red" : openCount ? "amber" : "green";
+  const ringPct = total !== null && events.length ? Math.max(0, 1 - (criticalCount / Math.max(1, events.length))) : 0;
+
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
-        <div>
-          <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Persisted Drift Events</div>
-          <h1 style={{ fontSize: 26, fontWeight: 700, margin: "4px 0 6px" }}>Cryptographic Drift Timeline</h1>
-          <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)" }}>Recorded scan-to-baseline deviations and their administrative dispositions in the current API scope.</p>
+      {/* Header — visual */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
+        <div style={{ flex: "1 1 420px", minWidth: 280 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+            <span style={{ width: 6, height: 6, borderRadius: 99, background: criticalCount ? "var(--red)" : openCount ? "var(--amber)" : "var(--green)" }} /> PERSISTED DRIFT EVENTS · TENANT-SCOPED
+          </div>
+          <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--accent)", color: "var(--on-accent)" }}><IconCrypto size={18} /></span>
+            Cryptographic Drift
+          </h1>
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
+            Recorded <b style={{ color: "var(--text)" }}>scan-to-baseline deviations</b> and their administrative dispositions. Every event is <span style={{ color: "var(--accent)" }}>persisted and attributed</span> — not an estate-wide verdict.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <span className="kicker" style={{ fontSize: 10 }}>BASELINE ≠ VERDICT</span>
+            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span className="kicker" style={{ fontSize: 10 }}>DISPOSITION ≠ VERIFIED</span>
+            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>per-scan comparison</span>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <AuthenticatedDownload path="/api/v1/drift?page=1&page_size=50" filename="cryptoscan-drift-first-50.json" className="btn outline" style={{ fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)" }}>Download first 50 events (JSON)</AuthenticatedDownload>
-          <Link to="/scanners" className="btn primary" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)" }}>Open Scanners</Link>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 16 }}>
-        <div className="panel" style={{ padding: 16 }}>
-          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase" }}>Persisted events</div>
-          <div style={{ fontSize: 26, fontWeight: 700, margin: "4px 0" }}>{total === null ? "—" : total}</div>
-          <div style={{ fontSize: 12, color: "var(--dim)" }}>{total === null ? "Count unavailable" : `Server total · ${events.length} loaded`}</div>
-        </div>
-        <div className="panel" style={{ padding: 16 }}>
-          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase" }}>Critical events in loaded pages</div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: "var(--red)", margin: "4px 0" }}>{total === null ? "—" : events.filter(event => event.severity === "CRITICAL").length}</div>
-          <div style={{ fontSize: 12, color: "var(--dim)" }}>All dispositions; not a count of active violations</div>
-        </div>
-        <div className="panel" style={{ padding: 16 }}>
-          <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase" }}>Latest scan comparison</div>
-          <div style={{ fontSize: 16, fontWeight: 700, margin: "7px 0" }}>{comparisonState ? comparisonLabel[comparisonState] || comparisonState : "Comparison status unavailable"}</div>
-          <div style={{ fontSize: 12, color: "var(--dim)" }}>
-            {comparisonError || (comparison ? `Scan ${comparison.scan_id} · ${comparison.status} · ended ${timestamp(comparison.scan_end)}` : "No scan status returned; no estate-wide comparison claim.")}
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
+            <Ring pct={ringPct} label={total === null ? "…" : String(total)} sub="events" tone={ringTone} />
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>DRIFT POSTURE</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{criticalCount ? `${criticalCount} critical need triage` : openCount ? `${openCount} open events` : total === 0 ? "No drift recorded" : "All triaged"}</div>
+              <div style={{ marginTop: 6 }}><Bar value={total ? 1 - criticalCount / total : 0} tone={ringTone} /></div>
+            </div>
+          </Panel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <AuthenticatedDownload path="/api/v1/drift?page=1&page_size=50" filename="cryptoscan-drift-first-50.json" className="btn outline" style={{ fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)" }}>Export 50 events</AuthenticatedDownload>
+            <Link to="/scanners" className="btn primary" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center" }}>Open Scanners →</Link>
+            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{events.length} loaded · {total ?? "—"} total</span>
           </div>
         </div>
       </div>
-      <p style={{ fontSize: 12, color: "var(--dim)", margin: "0 0 20px" }}>
-        Source: persisted drift events · {scope ? `selected tenant ${scope}` : "server-resolved authorization scope"} · {fetchedAt ? `last page fetched ${timestamp(fetchedAt)}` : "event feed not loaded"}. Comparison, when available, comes from the latest scan’s recorded baseline comparison; it is per scan, not proof that the estate is clear.
+
+      {/* Top 4 metric cards — visual */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--accent)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconTarget size={12} /> PERSISTED EVENTS</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : total === null ? "—" : total.toLocaleString()}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{events.length} loaded · server total</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconHardware size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{scope ? `tenant ${scope.slice(0, 8)}` : "server scope"}</span><span style={{ color: "var(--accent)" }}>● persisted</span></div>
+            <Bar value={total ? Math.min(1, events.length / total) : 0} tone="cyan" />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{total !== null && events.length < total ? `${total - events.length} more on server` : "all loaded"}</div>
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${criticalCount ? "var(--red)" : "var(--green)"}` }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconWarn size={12} /> CRITICAL DRIFT</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: criticalCount ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : criticalCount}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>All dispositions · loaded pages</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: criticalCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${criticalCount ? "var(--red)" : "var(--green)"}`, color: criticalCount ? "var(--red)" : "var(--green)" }}>{criticalCount ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{criticalCount ? `${Math.round(analytics.criticalPct * 100)}% of loaded` : "no critical"}</span><span style={{ color: criticalCount ? "var(--red)" : "var(--green)" }}>{criticalCount ? "triage now" : "clear"}</span></div>
+            <Bar value={analytics.criticalPct} tone={criticalCount ? "red" : "green"} />
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${openCount ? "var(--amber)" : "var(--green)"}` }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconClock size={12} /> OPEN DISPOSITIONS</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: openCount ? "var(--amber)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : openCount}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{analytics.byStatus.ACKNOWLEDGED} acknowledged</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: openCount ? "color-mix(in srgb, var(--amber) 12%, transparent)" : "color-mix(in srgb, var(--green) 12%, transparent)", border: `1px solid ${openCount ? "var(--amber)" : "var(--green)"}`, color: openCount ? "var(--amber)" : "var(--green)" }}><IconClock size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+              <Badge tone={openCount ? "amber" : "green"}>{openCount} open</Badge>
+              <Badge tone="slate">{analytics.byStatus.ACKNOWLEDGED} ack</Badge>
+            </div>
+            <Bar value={analytics.openPct} tone={openCount ? "amber" : "green"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Requires analyst disposition</div>
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--violet)", background: "color-mix(in srgb, var(--violet) 4%, var(--panel))" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>SCAN COMPARISON</div>
+              <div style={{ fontSize: 15, fontWeight: 800, margin: "8px 0 2px", color: comparisonState === "COMPARED" ? "var(--green)" : comparisonState ? "var(--amber)" : "var(--dim)", lineHeight: 1.2 }}>{comparisonState ? comparisonLabel[comparisonState] || comparisonState : "Unavailable"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{comparison ? `${comparison.scan_id.slice(0, 8)} · ${comparison.status}` : comparisonError ? "comparison error" : "no scan returned"}</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconCertificate size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
+              <div style={{ width: comparisonState === "COMPARED" ? "100%" : comparisonState ? "55%" : "12%", height: "100%", background: comparisonState === "COMPARED" ? "var(--green)" : comparisonState ? "var(--amber)" : "var(--line-strong)", opacity: .9 }} />
+            </div>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{comparison ? `ended ${timestamp(comparison.scan_end)}` : "Per-scan · not estate verdict"}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Analytics strip — severity + family + resolution */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginBottom: 18 }}>
+        <Panel title="Drift by severity" sub="loaded pages — not active violations" style={{ padding: "14px 16px" }}>
+          {(["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const).map((sev) => {
+            const n = analytics.bySev[sev] ?? 0;
+            const pct = events.length ? n / events.length : 0;
+            const tone = SEV_TONE[sev]?.bar || "cyan";
+            return (
+              <div key={sev} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <span style={{ width: 80, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 99, background: SEV_TONE[sev]?.dot }} /> {sev}</span>
+                <div style={{ flex: 1 }}><Bar value={pct} tone={tone} /></div>
+                <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)", minWidth: 42, textAlign: "right" }}>{n} · {Math.round(pct * 100)}%</span>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 8 }}>Critical + High = triage priority · source: drift list</div>
+        </Panel>
+
+        <Panel title="Drift by family" sub="code · config · keys" style={{ padding: "14px 16px" }}>
+          {(["code", "config", "keys"] as const).map((f) => {
+            const n = analytics.byFamily[f] ?? 0;
+            const pct = events.length ? n / events.length : 0;
+            const m = FAMILY_META[f];
+            return (
+              <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <span style={{ width: 110, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)", display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 18, height: 18, borderRadius: 6, display: "grid", placeItems: "center", background: m.bg, border: `1px solid ${m.color}`, color: m.color, fontSize: 9 }}>{m.icon}</span> {m.label}</span>
+                <div style={{ flex: 1 }}><Bar value={pct} tone={f === "code" ? "cyan" : f === "config" ? "violet" : "amber"} /></div>
+                <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)", minWidth: 42, textAlign: "right" }}>{n}</span>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 8 }}>Family from drift_type prefix · KEY_* → keys, CONFIG_* → config</div>
+        </Panel>
+
+        <Panel title="Disposition progress" sub="OPEN → ACK → RESOLVED" style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <div style={{ width: 54, height: 54, borderRadius: 999, background: resolvedCount === events.length && events.length ? "color-mix(in srgb, var(--green) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `2px solid ${resolvedCount === events.length && events.length ? "var(--green)" : resolvedCount ? "var(--amber)" : "var(--red)"}`, display: "grid", placeItems: "center", color: resolvedCount === events.length && events.length ? "var(--green)" : "var(--amber)", fontSize: 18, fontWeight: 800 }}>{events.length ? Math.round(analytics.resolvedPct * 100) : 0}%</div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Closure progress</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{resolvedCount} of {events.length} resolved</div>
+              <div style={{ fontSize: 10, color: resolvedCount === events.length && events.length ? "var(--green)" : "var(--amber)", marginTop: 2 }}>{resolvedCount === events.length && events.length ? "all closed" : `${openCount} need disposition`}</div>
+            </div>
+          </div>
+          <div style={{ height: 8, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
+            <div style={{ width: `${analytics.openPct * 100}%`, background: "var(--red)" }} title={`${openCount} open`} />
+            <div style={{ width: `${events.length ? (analytics.byStatus.ACKNOWLEDGED / events.length) * 100 : 0}%`, background: "var(--amber)" }} title={`${analytics.byStatus.ACKNOWLEDGED} ack`} />
+            <div style={{ flex: 1, background: "var(--green)" }} title={`${resolvedCount} resolved`} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>● open</span><span>● acknowledged</span><span>● resolved</span></div>
+        </Panel>
+      </div>
+
+      <p style={{ fontSize: 11, color: "var(--faint)", margin: "0 0 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <span>Source: persisted drift events</span><span>·</span><span>{scope ? `tenant ${scope.slice(0, 12)}` : "server scope"}</span><span>·</span><span>{fetchedAt ? `last fetch ${timestamp(fetchedAt)}` : "not loaded"}</span>
+        <span style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>GET /drift · GET /scans baseline_comparison</span>
       </p>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 440px), 1fr))", gap: 24 }}>
-        <section className="panel" style={{ padding: 20 }} aria-label="Detected drift stream">
-          <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 600 }}>Detected Drift Stream</h2>
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--dim)" }}>Persisted events, newest first. Filters apply to loaded pages only.</p>
-          {error && <p role="alert" style={{ color: "var(--amber)" }}>{error}</p>}
-          {loading && <p role="status">Loading drift events…</p>}
-          {total !== null && <p style={{ fontSize: 12, color: "var(--dim)" }}>Loaded {events.length} of {total} events</p>}
-          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }} aria-label="Filter loaded drift events">
-            {([ ["all", `All loaded (${events.length})`], ["code", "Finding changes"], ["config", "Configuration"], ["keys", "Key inventory"] ] as const).map(([id, label]) => (
-              <button key={id} type="button" className={`btn sm ${family === id ? "primary" : "outline"}`} aria-pressed={family === id} onClick={() => setFamily(id)} style={{ fontSize: 11 }}>{label}</button>
-            ))}
+      {/* Two-column: stream + deviation analysis */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 440px), 1fr))", gap: 16 }}>
+        <section className="panel" style={{ padding: 0, overflow: "hidden" }} aria-label="Detected drift stream">
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)", background: "var(--bg-2)", display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}><IconInfo size={14} style={{ color: "var(--accent)" }} /> Drift Stream</h2>
+              <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--dim)" }}>Persisted events, newest first · filters apply to loaded pages only</p>
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <Badge tone={visible.length ? "cyan" : "slate"}>{visible.length} shown</Badge>
+              <Badge tone="slate">{events.length} loaded</Badge>
+            </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 560, overflowY: "auto" }}>
-            {visible.map(event => <button key={event.drift_id} type="button" onClick={() => { setSelectedId(event.drift_id); setNotes(""); setActionError(null); setActionSuccess(null); }} aria-pressed={selectedId === event.drift_id}
-              style={{ textAlign: "left", padding: "12px 14px", background: selectedId === event.drift_id ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--bg-2)", border: `1px solid ${selectedId === event.drift_id ? "var(--cyan)" : "var(--line)"}`, borderRadius: "var(--r)", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, color: "var(--text)" }}>
-              <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}><strong>{event.drift_type || event.drift_id}</strong><Badge variant={event.severity === "CRITICAL" ? "danger" : event.severity === "HIGH" ? "warning" : "info"}>{event.severity || "Unknown severity"}</Badge></span>
-              <span style={{ fontSize: 12 }}>{text(event.drift_details?.reason) || "Reason not provided"}</span>
-              <span style={{ fontSize: 11, color: "var(--dim)" }}>Scan {event.current_scan_id || "not provided"} · {event.resolution_status || "Status unavailable"}</span>
-              <span style={{ fontSize: 11, color: "var(--dim)" }}>Detected {timestamp(event.detected_at)}</span>
-            </button>)}
-            {!loading && !error && total === 0 && <div style={{ textAlign: "center", padding: 40, color: "var(--dim)" }}><strong style={{ color: "var(--text)" }}>No drift events returned</strong><p>The event feed has no recorded events in this API scope. This is not evidence that a baseline was approved or a comparison completed.</p></div>}
-            {!loading && !error && total !== null && total > 0 && !visible.length && <p style={{ color: "var(--dim)" }}>No matching events in loaded pages. Other pages may contain matches.</p>}
+          <div style={{ padding: "12px 14px 8px" }}>
+            {error && <p role="alert" style={{ color: "var(--amber)", fontSize: 12 }}>{error}</p>}
+            {loading && <p role="status" style={{ fontSize: 12, color: "var(--dim)" }}>Loading drift events…</p>}
+            {total !== null && <div style={{ fontSize: 11, color: "var(--faint)", marginBottom: 10, display: "flex", justifyContent: "space-between" }}><span>Loaded {events.length} of {total} events</span><span style={{ fontFamily: "var(--mono)" }}>page {nextPage ? nextPage - 1 : 1}</span></div>}
+            <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }} aria-label="Filter loaded drift events">
+              {([ ["all", `All (${events.length})`], ["code", `Code ${analytics.byFamily.code}`], ["config", `Config ${analytics.byFamily.config}`], ["keys", `Keys ${analytics.byFamily.keys}`] ] as const).map(([id, label]) => (
+                <button key={id} type="button" className={`btn sm ${family === id ? "primary" : "outline"}`} aria-pressed={family === id} onClick={() => setFamily(id)} style={{ fontSize: 11, padding: "5px 10px" }}>{label}</button>
+              ))}
+            </div>
           </div>
-          {pageError && <p role="alert" style={{ color: "var(--amber)" }}>{pageError}</p>}
-          {canLoadMore && !error && <button type="button" className="btn sm outline" onClick={() => void loadMore()} disabled={pageLoading} style={{ marginTop: 12 }}>{pageLoading ? "Loading…" : "Load more events"}</button>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 560, overflowY: "auto", padding: "0 12px 12px" }}>
+            {visible.map(event => {
+              const sev = SEV_TONE[(event.severity || "").toUpperCase()] || SEV_TONE.LOW;
+              const resMeta = RESOLUTION_META[(event.resolution_status || "OPEN").toUpperCase()] || RESOLUTION_META.OPEN;
+              const fam = FAMILY_META[familyOf(event)];
+              const isSelected = selectedId === event.drift_id;
+              return (
+                <button key={event.drift_id} type="button" onClick={() => { setSelectedId(event.drift_id); setNotes(""); setActionError(null); setActionSuccess(null); }} aria-pressed={isSelected}
+                  style={{ textAlign: "left", padding: 0, overflow: "hidden", background: isSelected ? "color-mix(in srgb, var(--accent) 8%, var(--panel-2))" : "var(--panel-2)", border: `1px solid ${isSelected ? "var(--accent)" : "var(--line)"}`, borderLeft: `2px solid ${sev.dot}`, borderRadius: "var(--r)", cursor: "pointer", display: "flex", flexDirection: "column", color: "var(--text)" }}>
+                  <div style={{ padding: "10px 12px 8px", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                      <span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: fam.bg, border: `1px solid ${fam.color}`, color: fam.color, fontSize: 9, flexShrink: 0 }}>{fam.icon}</span>
+                      <strong style={{ fontSize: 12.5, fontFamily: "var(--mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{event.drift_type || event.drift_id.slice(0, 12)}</strong>
+                    </span>
+                    <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <Badge tone={sev.tone}>{event.severity || "—"}</Badge>
+                    </span>
+                  </div>
+                  <div style={{ padding: "0 12px 6px", fontSize: 11.5, color: "var(--dim)", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2 as any, WebkitBoxOrient: "vertical" as any, overflow: "hidden" }}>{text(event.drift_details?.reason) || "Reason not provided"}</div>
+                  <div style={{ padding: "8px 12px 10px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", borderTop: "1px dashed var(--line)", background: "var(--bg-2)" }}>
+                    <span style={{ fontSize: 10, color: "var(--faint)", fontFamily: "var(--mono)" }}>Scan {event.current_scan_id ? event.current_scan_id.slice(0, 8) : "—"} · {timestamp(event.detected_at).slice(0, 16)}</span>
+                    <Badge tone={resMeta.tone}>{resMeta.label}</Badge>
+                  </div>
+                </button>
+              );
+            })}
+            {!loading && !error && total === 0 && <div style={{ textAlign: "center", padding: 32, color: "var(--dim)", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px dashed var(--line-strong)" }}><div style={{ width: 40, height: 40, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--panel)", border: "1px solid var(--line)", margin: "0 auto 10px" }}><IconSearch size={16} style={{ color: "var(--faint)" }} /></div><strong style={{ color: "var(--text)" }}>No drift events</strong><p style={{ fontSize: 12, margin: "6px 0 0" }}>No recorded events in this scope. Not evidence of baseline approval or clean comparison.</p></div>}
+            {!loading && !error && total !== null && total > 0 && !visible.length && <p style={{ color: "var(--dim)", fontSize: 12, textAlign: "center", padding: 16 }}>No matching events in loaded pages — other pages may contain matches. Try another family filter.</p>}
+          </div>
+          {pageError && <p role="alert" style={{ color: "var(--amber)", fontSize: 12, padding: "0 14px" }}>{pageError}</p>}
+          {canLoadMore && !error && <div style={{ padding: "8px 14px 14px" }}><button type="button" className="btn sm outline" onClick={() => void loadMore()} disabled={pageLoading} style={{ width: "100%" }}>{pageLoading ? "Loading…" : `Load more — ${total !== null ? `${total - events.length} remaining` : "next page"}`}</button></div>}
         </section>
 
-        <section className="panel" style={{ padding: 24 }} aria-label="Drift event details">
-          <h2 style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 600 }}>Deviation Analysis</h2>
-          <p style={{ margin: "0 0 16px", fontSize: 12, color: "var(--dim)" }}>Event details reported by the drift list endpoint; no verification is implied.</p>
-          {selectedEvent ? <div style={{ display: "flex", flexDirection: "column", gap: 14, overflowWrap: "anywhere" }}>
-            <div style={{ padding: 12, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}><strong>{selectedEvent.drift_type}</strong><div style={{ fontSize: 12, color: "var(--dim)" }}>Event {selectedEvent.drift_id} · baseline {selectedEvent.baseline_id || "not supplied"}</div></div>
-            <div><div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase" }}>Baseline finding (recorded, not independently verified)</div><div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 12 }}>{finding(selectedEvent.drift_details?.baseline_finding)}</div></div>
-            <div><div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase" }}>Current scan finding</div><div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 12 }}>{finding(selectedEvent.drift_details?.current_finding)}</div></div>
-            <div style={{ fontSize: 12 }}>Reason: {text(selectedEvent.drift_details?.reason) || "Not supplied by this drift event"}</div>
-            <div style={{ fontSize: 12 }}>Disposition: <strong>{selectedEvent.resolution_status || "Unavailable"}</strong>{selectedEvent.resolution_status === "RESOLVED" && " · administrative closure, not remediation VERIFIED"}{selectedEvent.resolution_status === "ACKNOWLEDGED" && " · analyst triage — neither resolves nor verifies remediation"}</div>
-            {selectedEvent.verification_status === "VERIFIED" && (
-              <div style={{ fontSize: 12, color: "var(--green)" }}>Condition verified by rescan {selectedEvent.verified_by_scan_id || "unknown scan"} at {timestamp(selectedEvent.verified_at)} — the rescan observed the affected file and the condition is gone.</div>
-            )}
-            {selectedEvent.verification_status === "CONDITION_PRESENT" && (
-              <div style={{ fontSize: 12, color: "var(--red)" }}>Condition still present in rescan {selectedEvent.verified_by_scan_id || "unknown scan"} evidence — the administrative closure closed nothing.</div>
-            )}
-            {selectedEvent.acknowledged_at && <div style={{ fontSize: 12 }}>Acknowledged {timestamp(selectedEvent.acknowledged_at)} by {selectedEvent.acknowledged_by || "unknown actor"}</div>}
-            {selectedEvent.resolved_at && <div style={{ fontSize: 12 }}>Closed {timestamp(selectedEvent.resolved_at)} by {selectedEvent.resolved_by || "unknown actor"}</div>}
-            {selectedEvent.resolution_notes && <div style={{ fontSize: 12, whiteSpace: "pre-wrap" }}>Notes: {selectedEvent.resolution_notes}</div>}
-            {!!selectedEvent.remediation_task_ids?.length && <div style={{ fontSize: 12 }}>Created remediation task IDs: {selectedEvent.remediation_task_ids.join(", ")} (verification not provided)</div>}
-            {selectedEvent.resolution_status === "OPEN" || selectedEvent.resolution_status === "ACKNOWLEDGED" ? <>
-              <label htmlFor="drift-notes" style={{ fontSize: 12 }}>Disposition notes (required for administrative resolution)</label>
-              <textarea id="drift-notes" value={notes} onChange={event => setNotes(event.target.value)} rows={3} style={{ width: "100%", boxSizing: "border-box", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", color: "var(--text)" }} />
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                {selectedEvent.resolution_status === "OPEN" && <button type="button" className="btn sm outline" disabled={!!action} onClick={() => void changeDisposition("acknowledge")}>{action === "acknowledge" ? "Acknowledging…" : "Acknowledge"}</button>}
-                <button type="button" className="btn sm outline" disabled={!!action || !notes.trim()} onClick={() => void changeDisposition("resolve")}>{action === "resolve" ? "Resolving…" : "Administratively resolve"}</button>
+        <section className="panel" style={{ padding: 0, overflow: "hidden" }} aria-label="Drift event details">
+          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
+            <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 8, height: 8, borderRadius: 99, background: selectedEvent ? "var(--accent)" : "var(--line-strong)" }} /> Deviation Analysis</h2>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--dim)" }}>Event details from drift list · no verification implied</p>
+          </div>
+          {selectedEvent ? <div style={{ display: "flex", flexDirection: "column", gap: 0, overflowWrap: "anywhere" }}>
+            {/* Event header visual */}
+            <div style={{ padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <span style={{ width: 32, height: 32, borderRadius: 10, display: "grid", placeItems: "center", background: (SEV_TONE[(selectedEvent.severity || "").toUpperCase()]?.dot || "var(--line-strong)"), color: "#fff", fontSize: 12 }}>◈</span>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13, fontFamily: "var(--mono)" }}>{selectedEvent.drift_type}</div>
+                  <div style={{ fontSize: 11, color: "var(--faint)", fontFamily: "var(--mono)" }}>{selectedEvent.drift_id.slice(0, 16)} · baseline {selectedEvent.baseline_id ? selectedEvent.baseline_id.slice(0, 8) : "—"}</div>
+                </div>
               </div>
-              <p style={{ fontSize: 12, color: "var(--dim)", margin: 0 }}>These actions require server-side auditor or admin authorization. Resolution closes the drift record; it does not verify a fix.</p>
-            </> : null}
-            {actionEventId === selectedEvent.drift_id && actionError && <p role="alert" style={{ color: "var(--amber)" }}>{actionError}</p>}
-            {actionEventId === selectedEvent.drift_id && actionSuccess && <p role="status" style={{ color: "var(--text)" }}>{actionSuccess}</p>}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <Link to="/what-if" className="btn sm primary" style={{ textDecoration: "none" }}>Open What-if (not event-specific)</Link>
-              <Link to="/evidence" className="btn sm outline" style={{ textDecoration: "none" }}>Open Evidence (not linked proof)</Link>
+              <div style={{ display: "flex", gap: 6 }}>
+                <Badge tone={(SEV_TONE[(selectedEvent.severity || "").toUpperCase()]?.tone) || "slate"}>{selectedEvent.severity || "—"}</Badge>
+                <Badge tone={(RESOLUTION_META[(selectedEvent.resolution_status || "OPEN").toUpperCase()]?.tone) || "slate"}>{selectedEvent.resolution_status || "—"}</Badge>
+              </div>
             </div>
-          </div> : <div style={{ textAlign: "center", padding: 40, color: "var(--dim)", fontSize: 13 }}>Select a loaded drift event to view its recorded details.</div>}
+
+            {/* Baseline vs Current visual diff */}
+            <div style={{ padding: "0 16px 14px", display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 8, alignItems: "stretch" }}>
+              <div style={{ padding: "10px 12px", background: "color-mix(in srgb, var(--slate) 8%, var(--panel-2))", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
+                <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", textTransform: "uppercase", marginBottom: 6 }}>Baseline finding</div>
+                <div style={{ fontSize: 12, fontFamily: "var(--mono)", lineHeight: 1.5, color: "var(--dim)" }}>{finding(selectedEvent.drift_details?.baseline_finding)}</div>
+                <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>recorded — not independently verified</div>
+              </div>
+              <div style={{ display: "grid", placeItems: "center", color: "var(--accent)", fontSize: 14, padding: "0 2px" }}>→</div>
+              <div style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderLeft: `2px solid ${SEV_TONE[(selectedEvent.severity || "").toUpperCase()]?.dot || "var(--accent)"}`, borderRadius: "var(--r)" }}>
+                <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", textTransform: "uppercase", marginBottom: 6 }}>Current scan finding</div>
+                <div style={{ fontSize: 12, fontFamily: "var(--mono)", lineHeight: 1.5 }}>{finding(selectedEvent.drift_details?.current_finding)}</div>
+              </div>
+            </div>
+
+            <div style={{ padding: "0 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ padding: "10px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderLeft: "2px solid var(--accent)", borderRadius: "var(--r)", fontSize: 12 }}>
+                <span style={{ fontWeight: 700 }}>Reason:</span> {text(selectedEvent.drift_details?.reason) || "Not supplied by this drift event"}
+              </div>
+              <div style={{ fontSize: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span>Disposition:</span> <Badge tone={(RESOLUTION_META[(selectedEvent.resolution_status || "OPEN").toUpperCase()]?.tone) || "slate"}>{selectedEvent.resolution_status || "Unavailable"}</Badge>
+                <span style={{ color: "var(--dim)", fontSize: 11 }}>{RESOLUTION_META[(selectedEvent.resolution_status || "").toUpperCase()]?.desc || ""}</span>
+              </div>
+              {selectedEvent.resolution_status === "RESOLVED" && <div style={{ fontSize: 11, color: "var(--faint)" }}>Administrative closure — not remediation VERIFIED</div>}
+              {selectedEvent.resolution_status === "ACKNOWLEDGED" && <div style={{ fontSize: 11, color: "var(--faint)" }}>Analyst triage — neither resolves nor verifies remediation</div>}
+              {selectedEvent.verification_status === "VERIFIED" && (
+                <div style={{ padding: "10px 12px", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid var(--green)", borderRadius: "var(--r)", fontSize: 12, color: "var(--green)" }}>✓ Condition verified by rescan {selectedEvent.verified_by_scan_id || "unknown"} at {timestamp(selectedEvent.verified_at)} — gone from evidence.</div>
+              )}
+              {selectedEvent.verification_status === "CONDITION_PRESENT" && (
+                <div style={{ padding: "10px 12px", background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid var(--red)", borderRadius: "var(--r)", fontSize: 12, color: "var(--red)" }}>CONDITION STILL PRESENT in rescan {selectedEvent.verified_by_scan_id || "unknown"} — closure closed nothing.</div>
+              )}
+              {selectedEvent.acknowledged_at && <div style={{ fontSize: 11, color: "var(--dim)" }}>Acknowledged {timestamp(selectedEvent.acknowledged_at)} by {selectedEvent.acknowledged_by || "unknown"}</div>}
+              {selectedEvent.resolved_at && <div style={{ fontSize: 11, color: "var(--dim)" }}>Closed {timestamp(selectedEvent.resolved_at)} by {selectedEvent.resolved_by || "unknown"}</div>}
+              {selectedEvent.resolution_notes && <div style={{ fontSize: 12, whiteSpace: "pre-wrap", padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>Notes: {selectedEvent.resolution_notes}</div>}
+              {!!selectedEvent.remediation_task_ids?.length && <div style={{ fontSize: 11, color: "var(--dim)" }}>Created remediation tasks: <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{selectedEvent.remediation_task_ids.join(", ")}</span> (verification not provided)</div>}
+
+              {(selectedEvent.resolution_status === "OPEN" || selectedEvent.resolution_status === "ACKNOWLEDGED") ? <>
+                <label htmlFor="drift-notes" style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)", letterSpacing: ".06em", textTransform: "uppercase" }}>Disposition notes {selectedEvent.resolution_status === "ACKNOWLEDGED" ? "(required for resolve)" : ""}</label>
+                <textarea id="drift-notes" value={notes} onChange={event => setNotes(event.target.value)} rows={3} style={{ width: "100%", boxSizing: "border-box", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", color: "var(--text)", padding: "8px 12px", fontFamily: "var(--sans)", fontSize: 12 }} placeholder="Required for administrative resolution…" />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {selectedEvent.resolution_status === "OPEN" && <button type="button" className="btn sm outline" disabled={!!action} onClick={() => void changeDisposition("acknowledge")} style={{ fontSize: 12 }}>{action === "acknowledge" ? "Acknowledging…" : "Acknowledge"}</button>}
+                  <button type="button" className="btn sm primary" disabled={!!action || !notes.trim()} onClick={() => void changeDisposition("resolve")} style={{ fontSize: 12 }}>{action === "resolve" ? "Resolving…" : "Administratively resolve"}</button>
+                </div>
+                <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>Requires server-side auditor/admin authorization. Resolution closes the record; it does not verify a fix.</p>
+              </> : null}
+              {actionEventId === selectedEvent.drift_id && actionError && <p role="alert" style={{ color: "var(--amber)", fontSize: 12, padding: "8px 12px", background: "color-mix(in srgb, var(--amber) 10%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)" }}>{actionError}</p>}
+              {actionEventId === selectedEvent.drift_id && actionSuccess && <p role="status" style={{ color: "var(--green)", fontSize: 12, padding: "8px 12px", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid var(--green)", borderRadius: "var(--r)" }}>{actionSuccess}</p>}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "14px 16px", borderTop: "1px solid var(--line)", marginTop: 14, background: "var(--bg-2)" }}>
+              <Link to="/what-if" className="btn sm outline" style={{ textDecoration: "none", fontSize: 12 }}>Open What-if →</Link>
+              <Link to="/evidence" className="btn sm outline" style={{ textDecoration: "none", fontSize: 12 }}>Open Evidence →</Link>
+              <Link to="/remediation" className="btn sm outline" style={{ textDecoration: "none", fontSize: 12 }}>Remediation →</Link>
+            </div>
+          </div> : <div style={{ textAlign: "center", padding: 40, color: "var(--dim)", fontSize: 13 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, display: "grid", placeItems: "center", background: "var(--panel-2)", border: "1px solid var(--line)", margin: "0 auto 10px" }}><IconSearch size={18} style={{ color: "var(--faint)" }} /></div>
+            <div style={{ fontWeight: 600, color: "var(--text)" }}>No event selected</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}>Select a drift event from the stream to view baseline vs current, disposition, and verification state.</div>
+          </div>}
         </section>
       </div>
     </div>
