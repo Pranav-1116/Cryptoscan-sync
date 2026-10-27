@@ -98,6 +98,7 @@ from api.routers import (
     pentest,
     repo_configs,
     runtime,
+    runtime_crypto,
     scans,
     stats,
     systems,
@@ -456,6 +457,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     # catch-all GET /scans/{scan_id} which would otherwise shadow the static
     # path /scans/runtime-findings (FastAPI matches routes in include order).
     app.include_router(runtime.router, prefix=prefix)
+    app.include_router(runtime_crypto.router, prefix=prefix)
     app.include_router(scans.router, prefix=prefix)
     app.include_router(accuracy.router, prefix=prefix)
     app.include_router(findings.router, prefix=prefix)
@@ -486,12 +488,6 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(collection.router, prefix=prefix)
     from api.routers import oci_collection
     app.include_router(oci_collection.router, prefix=prefix)
-    from api.routers import collection_views
-    app.include_router(collection_views.router, prefix=prefix)
-    from api.routers import resource_monitoring
-    app.include_router(resource_monitoring.router, prefix=prefix)
-    from api.routers import traffic_control
-    app.include_router(traffic_control.router, prefix=prefix)
     app.include_router(host_evidence.router, prefix=prefix)
     app.include_router(container.router, prefix=prefix)
     app.include_router(container_scans.router, prefix=prefix)

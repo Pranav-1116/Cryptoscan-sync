@@ -711,6 +711,104 @@ export interface LiveProcess {
   tls_libraries: string[]; listening_ports: number[];
   containerized: boolean | null; status: string;
 }
+/* ── Runtime crypto scan engine (spec 92) ── */
+
+export interface RuntimeCryptoScope {
+  configured: boolean;
+  permitted: boolean;
+  window: { state: string; open: boolean; reason: string };
+  scope: {
+    name?: string;
+    hosts?: string[];
+    applications?: string[];
+    processes?: string[];
+    runtime_methods?: string[];
+    data_restrictions?: string[];
+    collection_window?: { from: string; to: string } | null;
+    saved_by?: string;
+    saved_at?: string;
+  } | null;
+}
+
+export interface RuntimeCryptoEvent {
+  event_id: string;
+  evidence_type: string;
+  attribution_level: number;
+  source: string;
+  adapter: string | null;
+  operation: string;
+  algorithm: string | null;
+  key_size: number | string;
+  decomposition: Record<string, string | null>;
+  parameters: Record<string, number | string | boolean | null>;
+  identity: {
+    host: string | null;
+    application: string | null;
+    process: string | null;
+    pid: number | string;
+    container_digest: string | null;
+    pod: string | null;
+    deployment: string | null;
+  };
+  limitations: string[];
+  observed_at: string;
+}
+
+export interface RuntimeCryptoSummary {
+  events: number;
+  hosts: number;
+  applications: number;
+  operations: Record<string, number>;
+  attribution_levels: Record<string, number>;
+  algorithms: Record<string, number>;
+  level6_events: number;
+  unknown_algorithm_events: number;
+  note: string;
+}
+
+export interface RuntimeRiskFinding {
+  rule_id: string;
+  severity: string;
+  status: string;
+  application: string | null;
+  process: string | null;
+  algorithm: string | null;
+  operation: string | null;
+  message: string;
+}
+
+export interface RuntimeRiskReport {
+  model: string;
+  verdict: string;
+  layer: string;
+  failed: RuntimeRiskFinding[];
+  coverage_gaps: RuntimeRiskFinding[];
+  summary: { events: number; applications: number; by_status: Record<string, number>; failed: number; unknown: number };
+  pqc?: { verdict: string; summary: Record<string, number> };
+  limitations: string[];
+}
+
+export interface RuntimeAdapterCatalog {
+  adapter_count: number;
+  adapters: Array<{ id: string; source: string; framework: string; reports: string[]; cannot_report: string[] }>;
+  levels: Array<{ level: number; name: string; description: string; sources: string[]; evidence_type: string }>;
+}
+
+export const apiRuntimeCryptoScope = (): Promise<ApiResult<RuntimeCryptoScope>> =>
+  call("/api/v1/runtime/crypto-scope");
+
+export const apiRuntimeCryptoScopeSave = (body: Record<string, unknown>): Promise<ApiResult<RuntimeCryptoScope>> =>
+  call("/api/v1/runtime/crypto-scope", { method: "PUT", body: JSON.stringify(body) });
+
+export const apiRuntimeCryptoEvents = (limit = 50): Promise<ApiResult<{ events: RuntimeCryptoEvent[]; summary: RuntimeCryptoSummary }>> =>
+  call(`/api/v1/runtime/crypto-events?limit=${limit}`);
+
+export const apiRuntimeCryptoRisk = (): Promise<ApiResult<RuntimeRiskReport>> =>
+  call("/api/v1/runtime/crypto-risk", { method: "POST", body: JSON.stringify({}) });
+
+export const apiRuntimeCryptoAdapters = (): Promise<ApiResult<RuntimeAdapterCatalog>> =>
+  call("/api/v1/runtime/crypto-adapters");
+
 export interface LiveInventory {
   generated_at: string | null;
   host: string | null;

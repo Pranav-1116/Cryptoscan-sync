@@ -1,6 +1,21 @@
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
-import { apiRuntimeFindings, apiLiveInventory, ApiResult, LiveInventory } from "../lib/api.js";
+import {
+  apiRuntimeFindings,
+  apiLiveInventory,
+  ApiResult,
+  LiveInventory,
+  apiRuntimeCryptoScope,
+  apiRuntimeCryptoScopeSave,
+  apiRuntimeCryptoEvents,
+  apiRuntimeCryptoRisk,
+  apiRuntimeCryptoAdapters,
+  RuntimeCryptoScope,
+  RuntimeCryptoEvent,
+  RuntimeCryptoSummary,
+  RuntimeRiskReport,
+  RuntimeAdapterCatalog,
+} from "../lib/api.js";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 
@@ -244,6 +259,9 @@ export default function Runtime() {
             </Panel>
           </div>
 
+          <RuntimeScopePanel />
+          <RuntimeOperationsPanel />
+
           <Panel title="Deploy the runtime agent" sub="run on any Linux host to inventory its live cryptography — read-only, no root needed" className="mt">
             <AgentInstructions />
           </Panel>
@@ -256,6 +274,175 @@ export default function Runtime() {
         </DrawerLite>
       )}
     </>
+  );
+}
+
+/* ── Runtime crypto scan engine (spec 92) ──
+   Scope → observation → attribution level → risk. Everything shown here is an
+   observed operation; an application with no event stays NOT_OBSERVED. */
+
+const LEVEL_TONE: Record<number, string> = { 1: "green", 2: "cyan", 3: "violet", 4: "slate", 5: "amber", 6: "red" };
+
+function levelLabel(level: number): string {
+  if (level === 1) return "L1 crypto API";
+  if (level === 2) return "L2 framework";
+  if (level === 3) return "L3 audit";
+  if (level === 4) return "L4 network";
+  if (level === 5) return "L5 binary";
+  return "L6 unknown";
+}
+
+function RuntimeScopePanel() {
+  const scope = usePollingApi(() => apiRuntimeCryptoScope() as unknown as Promise<ApiResult<RuntimeCryptoScope>>, 20000, []);
+  const [hosts, setHosts] = useState("");
+  const [app, setApp] = useState("");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const state = scope.data;
+
+  const save = async () => {
+    setBusy(true);
+    setMsg(null);
+    const now = Date.now();
+    const result = await apiRuntimeCryptoScopeSave({
+      name: "runtime-scope",
+      hosts: hosts.split(",").map((item) => item.trim()).filter(Boolean),
+      applications: app ? [app.trim()] : [],
+      runtime_methods: ["CRYPTO_API_TRACE", "PROCESS_TELEMETRY"],
+      data_restrictions: ["NO_PLAINTEXT", "NO_PRIVATE_KEYS", "NO_SECRET_KEYS", "NO_CUSTOMER_DATA"],
+      collection_window: {
+        from: new Date(now - 5 * 60 * 1000).toISOString(),
+        to: new Date(now + 8 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+    if (result.data) {
+      setMsg(result.data.permitted ? "scope saved — window open" : "scope saved — window closed");
+      scope.run();
+    } else {
+      setMsg(result.error || "scope refused");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <Panel
+      title="Runtime scope — what may be instrumented"
+      sub="no approved scope, no observation: hosts, applications, methods, collection window and data restrictions are enforced per batch"
+      className="mt"
+    >
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <Badge tone={state?.configured ? "green" : "red"}>{state?.configured ? "SCOPE SAVED" : "NO SCOPE"}</Badge>
+        <Badge tone={state?.permitted ? "green" : "amber"}>{state?.window?.state ?? "—"}</Badge>
+        <span className="dim" style={{ fontSize: 11 }}>
+          {state?.scope?.hosts?.length ? state.scope.hosts.join(", ") : "no approved host"}
+          {state?.scope?.applications?.length ? ` · ${state.scope.applications.join(", ")}` : ""}
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+        <input
+          value={hosts}
+          onChange={(event) => setHosts(event.target.value)}
+          aria-label="Approved hosts"
+          placeholder="payments-prod-01, payments-prod-02"
+          style={{ flex: "1 1 220px", fontSize: 11, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }}
+        />
+        <input
+          value={app}
+          onChange={(event) => setApp(event.target.value)}
+          aria-label="Approved application"
+          placeholder="payments-api"
+          style={{ flex: "0 1 160px", fontSize: 11, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }}
+        />
+        <button className="btn sm" type="button" onClick={() => void save()} disabled={busy}>
+          {busy ? "Saving…" : "Approve scope"}
+        </button>
+        {msg && <span className="dim" style={{ fontSize: 11 }}>{msg}</span>}
+      </div>
+      <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>
+        plaintext, key material and customer data are refused per batch · the window closes collection automatically
+      </div>
+    </Panel>
+  );
+}
+
+function RuntimeOperationsPanel() {
+  const events = usePollingApi(
+    () => apiRuntimeCryptoEvents(50) as unknown as Promise<ApiResult<{ events: RuntimeCryptoEvent[]; summary: RuntimeCryptoSummary }>>,
+    15000,
+    [],
+  );
+  const risk = usePollingApi(() => apiRuntimeCryptoRisk() as unknown as Promise<ApiResult<RuntimeRiskReport>>, 30000, []);
+  const adapters = usePollingApi(() => apiRuntimeCryptoAdapters() as unknown as Promise<ApiResult<RuntimeAdapterCatalog>>, 60000, []);
+  const rows = events.data?.events ?? [];
+  const summary = events.data?.summary;
+  const report = risk.data;
+
+  return (
+    <Panel
+      title="Runtime crypto operations"
+      sub="one row per observed operation — algorithm, mode, key size and parameters as reported, with the attribution level it came from"
+      className="mt"
+    >
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <Badge tone="slate">{summary?.events ?? 0} events</Badge>
+        <Badge tone="cyan">{summary?.applications ?? 0} applications</Badge>
+        {Object.entries(summary?.operations ?? {}).map(([operation, count]) => (
+          <Badge key={operation} tone="violet">{operation} · {count as number}</Badge>
+        ))}
+        {(summary?.level6_events ?? 0) > 0 && <Badge tone="red">{summary?.level6_events} Level 6 blind spot</Badge>}
+        {report && <Badge tone={report.verdict === "FAIL" ? "red" : report.verdict === "PASS" ? "green" : "amber"}>{report.verdict}</Badge>}
+        {report?.pqc && <Badge tone="slate">PQC {report.pqc.verdict}</Badge>}
+      </div>
+
+      {rows.length === 0 && (
+        <div className="dim" style={{ fontSize: 12, marginTop: 10 }}>
+          no runtime event yet — an application with no event is NOT_OBSERVED, not crypto-free
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <Table
+            head={["application", "process", "algorithm", "key size", "mode", "operation", "level", "provider"]}
+            rows={rows.map((event) => [
+              <span>{event.identity.application ?? "—"}</span>,
+              <span className="mono" style={{ fontSize: 11 }}>{event.identity.process ?? "—"}</span>,
+              <span className="mono" style={{ fontSize: 11 }}>{event.algorithm ?? "UNKNOWN"}</span>,
+              <span className="num">{String(event.key_size)}</span>,
+              <span className="mono" style={{ fontSize: 10.5 }}>{event.decomposition.mode ?? "—"}</span>,
+              <Badge tone="violet">{event.operation}</Badge>,
+              <Badge tone={LEVEL_TONE[event.attribution_level] ?? "slate"}>{levelLabel(event.attribution_level)}</Badge>,
+              <span className="dim" style={{ fontSize: 10.5 }}>{event.source}</span>,
+            ])}
+          />
+        </div>
+      )}
+
+      {report && report.failed.length > 0 && (
+        <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+          {report.failed.slice(0, 8).map((finding) => (
+            <div key={`${finding.rule_id}-${finding.application}-${finding.algorithm}`} style={{ display: "flex", gap: 8 }}>
+              <Badge tone={finding.severity === "critical" ? "red" : "amber"}>{finding.severity}</Badge>
+              <div>
+                <div style={{ fontSize: 11 }}>
+                  <span className="mono" style={{ color: "var(--cyan)" }}>{finding.rule_id}</span>
+                  <span className="dim"> · {finding.application ?? "—"} · {finding.algorithm ?? "UNKNOWN"}</span>
+                </div>
+                <div className="dim" style={{ fontSize: 11 }}>{finding.message}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {adapters.data && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
+          {adapters.data.adapters.map((adapter) => (
+            <Badge key={adapter.id} tone="slate">{adapter.framework}</Badge>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
 }
 

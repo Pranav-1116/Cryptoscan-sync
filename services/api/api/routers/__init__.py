@@ -37,6 +37,7 @@ Modules:
 - reachability: Blast-radius and reachability analysis
 - repo_configs: Repository configuration CRUD
 - runtime: Ingest runtime (eBPF / mesh) crypto findings without requiring a kernel agent
+- runtime_crypto: Runtime crypto scan engine — scope, events, attribution levels, CBOM, risk (spec 92)
 - scans: Scan list and detail
 - stats: Dashboard summary stats
 - systems: System inventory, CMDB import, and per-system scan

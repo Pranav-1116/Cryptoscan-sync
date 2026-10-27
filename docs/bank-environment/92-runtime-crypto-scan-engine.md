@@ -1,6 +1,6 @@
 # 92 — Runtime Cryptography Scan Engine
 
-Status: **building** on `arena/bb4b80dd-cryproscan`.
+Status: **engine + API + console shipped** on `arena/bb4b80dd-cryproscan`.
 Companion to [`67-network-crypto-discovery-engine.md`](67-network-crypto-discovery-engine.md).
 
 ## 1. The question this engine answers
@@ -218,3 +218,29 @@ RUNTIME → "what cryptography actually operated?"
 * infer key size, padding or mode that the adapter did not report;
 * present a network TLS fact as application crypto (see spec 67 §27);
 * claim a distributed runtime fleet where only one node exists.
+
+## 16. Build status
+
+| § | Capability | Status | Where |
+|---|---|---|---|
+| 2 | Runtime scope: hosts, applications, processes, methods, window, restrictions | done | `runtime/engine/scope.py`, `GET/PUT /runtime/crypto-scope`, `POST …/validate` |
+| 3 | Fail-closed authorization per observation | done | `check_runtime_scope`, `403` with a code per violation |
+| 4 | Process/executable/container identity chain | done | `identity{}` on every event (`executable_digest`, `container_digest`, `pod`, `deployment`) |
+| 5 | Adapter registry, per-adapter blind spots | done | `runtime/engine/adapters.py`, `GET /runtime/crypto-adapters` |
+| 6 | Level 1–6 hierarchy, never promoted | done | `runtime/engine/levels.py`; Level 4 labelled `NETWORK_OBSERVED` |
+| 7 | Event shape with parameter metadata only | done | `runtime/engine/events.py` (`cryptoscan.runtime-crypto-event/1`) |
+| 8 | Operation taxonomy (12 operations) | done | `normalize_operation`, unknown spellings → `UNKNOWN` |
+| 9 | Per-family parameters (AES/RSA/ECDSA/ECDH/hash/HMAC/KDF/TLS) | done | `decomposition{}` + `parameters{}` + `observed_fields` / `unobserved_fields` |
+| 10 | HSM / KMS / database / VPN / SSH telemetry | done | adapters `pkcs11-hsm`, `kms-audit`, `database-audit`, `vpn-telemetry`, `ssh-telemetry` (Level 3) |
+| 11 | Types, operations and CBOM projection | done | `runtime/engine/assets.py`, `GET /runtime/crypto-cbom` |
+| 12 | Containers / Kubernetes attribution | done | identity chain on the asset; image digest grouping |
+| 13 | Hardware acceleration is not an algorithm | done | documented boundary; algorithm comes from the provider |
+| 14 | Custom crypto = Level 6 | done | unknown source → level 6, `UNKNOWN` evidence, policy `RT-OBSERVATION-GAP` |
+| 15 | Risk + PQC readiness over runtime facts | done | `runtime/engine/policy.py`, `POST /runtime/crypto-risk` |
+| 16 | Console | done | `Runtime.tsx`: scope panel, operations table, level badges, risk findings |
+| — | Live kernel/eBPF collection, fleet scheduling, runtime→network correlation | open | agent-side collection is the existing `/proc` + LD_PRELOAD tracer; no kernel code ships |
+
+Still open, honestly: the engine consumes observations that an approved collector
+produces (the `/proc` scanner and the LD_PRELOAD shim in `services/runtime`); it
+does not itself attach to processes, and there is no distributed runtime fleet
+scheduler or runtime↔network correlation endpoint yet.
