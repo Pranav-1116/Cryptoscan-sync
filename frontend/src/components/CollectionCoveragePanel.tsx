@@ -1,5 +1,7 @@
 import LinuxEvidenceOutputs from "./LinuxEvidenceOutputs";
 import LinuxSoftwarePanel from "./LinuxSoftwarePanel";
+import { Badge, Bar } from "./ui";
+import { IconComponent, IconSearch, IconTarget, IconHardware } from "./icons";
 import React, { useEffect, useRef, useState } from "react";
 import { activeTenantId, getToken, tenantFetch } from "../lib/api";
 import { watchPrivateScope } from "../lib/privateScope";
@@ -61,20 +63,43 @@ export default function CollectionCoveragePanel() {
     } catch (e) { if (current()) setError(e instanceof Error ? e.message : "Coverage unavailable"); }
     finally { if (timeout) clearTimeout(timeout); if (current()) { active.current = null; setBusy(false); } }
   };
-  return <section aria-label="Collection surface coverage" style={{ marginTop: 24 }}>
-    <h3>Phase 1 · Evidence-backed collection coverage</h3>
-    <p>Read a completed universal collection job. This does not start collection. Percentages describe parsed approved inputs, not whole-host, surface or bank inventory completeness.</p>
-    <label>Collection job ID<input maxLength={36} value={job} onChange={e => { invalidate(); setJob(e.target.value); }} /></label>
-    <button disabled={busy || !job.trim()} onClick={() => void inspect()}>Inspect collection coverage</button>
-    {busy && <p role="status">Reading committed evidence…</p>}{error && <p role="alert">{error}</p>}
-    {!report && !busy && !error && <p>No committed coverage loaded. Unrequested scope is UNKNOWN, not zero assets.</p>}
+  return <section className="panel" aria-label="Collection surface coverage" style={{ marginTop: 16, padding: 16, borderTop: "2px solid var(--cyan)" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)" }}><IconTarget size={14} style={{ color: "var(--accent)" }} /></span>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Phase 1 · Collection Coverage</h3>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>Committed job read-only · parsed / approved · not whole-host completeness</div>
+        </div>
+        <Badge tone="cyan">EVIDENCE</Badge><Badge tone="slate">READ ONLY</Badge>
+      </div>
+      <span style={{ fontSize: 11, color: "var(--dim)" }}>Unrequested = UNKNOWN · does not start collection</span>
+    </div>
+    <div style={{ display: "flex", gap: 8, alignItems: "end", flexWrap: "wrap", marginBottom: 12 }}>
+      <label style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: "var(--dim)" }}>Collection job ID<input style={{ padding: "7px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 12.5 }} maxLength={36} value={job} onChange={e => { invalidate(); setJob(e.target.value); }} /></label>
+      <button className="btn primary sm" disabled={busy || !job.trim()} onClick={() => void inspect()}>{busy ? "Reading…" : "Inspect collection coverage"}</button>
+    </div>
+    {busy && <div style={{ padding: "8px 10px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 12, display: "flex", gap: 8, alignItems: "center" }}><span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--accent)" }} />Reading committed evidence…</div>}{error && <div role="alert" style={{ padding: "8px 10px", background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid var(--red)", borderRadius: "var(--r)", fontSize: 12, color: "var(--red)" }}>{error}</div>}
+    {!report && !busy && !error && <div style={{ padding: "12px", textAlign: "center", background: "var(--bg-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", fontSize: 12, color: "var(--dim)" }}><IconSearch size={16} style={{ color: "var(--faint)" }} /><div style={{ marginTop: 4 }}>No committed coverage loaded — enter a job ID above</div><div style={{ fontSize: 11, color: "var(--faint)" }}>Unrequested scope is <strong>UNKNOWN</strong>, not zero assets</div></div>}
     {report && <>
-      <p>Original evidence finish time: {report.finished_at || "UNKNOWN"} (operator-supplied, not attested UTC). Historical scope, not a current estate inventory.</p>
-      <p>IMPORTED evidence · envelope {report.envelope_sha256}. Host identity, operational use and production qualification remain unverified.</p>
-      <table><thead><tr><th>Surface</th><th>Scoped input outcome</th><th>Parsed / approved inputs</th><th>Facts</th><th>Gaps / provenance</th></tr></thead><tbody>
-        {Object.entries(report.surfaces).map(([name, s]) => <tr key={name}><td>{name}</td><td>{s.outcome}</td><td>{s.approved_inputs ? `${s.parsed_inputs}/${s.approved_inputs} (${s.approved_input_parse_percent}% input parsing only)` : "Not requested — no denominator"}</td><td>{s.fact_count}</td><td>{s.inputs.map(i => <p key={i.input_id}>{i.input_id}: {i.status} · {i.reason} · local OBSERVED {i.local_basis_counts.OBSERVED}, DECLARED {i.local_basis_counts.DECLARED}</p>)}</td></tr>)}
-      </tbody></table>
-      <p>All six projections reuse the same evidence (counts are not six collections): {Object.entries(report.bom_observation_counts).map(([name, count]) => `${name}: ${count}`).join(" · ")}. Zero references prove neither absence nor unsupported scope.</p>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", alignItems: "center" }}>
+        <Badge tone="slate">{report.job_id.slice(0,8)}…</Badge><span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)", overflowWrap: "anywhere" }}>envelope {report.envelope_sha256.slice(0,16)}… · {report.finished_at || "UNKNOWN"}</span><Badge tone="amber">NOT ATTESTED</Badge><Badge tone="slate">HISTORICAL</Badge>
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+        <span style={{ fontSize: 10, padding: "4px 8px", borderRadius: "var(--r)", background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--dim)" }}>IMPORTED evidence</span><span style={{ fontSize: 10, padding: "4px 8px", borderRadius: "var(--r)", background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--dim)" }}>Host identity unverified</span><span style={{ fontSize: 10, padding: "4px 8px", borderRadius: "var(--r)", background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--dim)" }}>Production not qualified</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 8, marginTop: 10 }}>
+        {Object.entries(report.surfaces).map(([name, s]) => (
+          <div key={name} style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderTop: `2px solid ${s.outcome === "PARSED_WITH_FACTS" ? "var(--green)" : s.outcome === "FAILED" ? "var(--red)" : s.outcome === "PARTIAL" ? "var(--amber)" : "var(--line-strong)"}`, borderRadius: "var(--r)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: .06 }}>{name.replaceAll("_"," ")}</span><Badge tone={s.outcome === "PARSED_WITH_FACTS" ? "green" : s.outcome === "PARTIAL" ? "amber" : s.outcome === "FAILED" ? "red" : "slate"}>{s.outcome}</Badge></div>
+            <div style={{ fontSize: 12, marginTop: 6, fontFamily: "var(--mono)" }}>{s.approved_inputs ? `${s.parsed_inputs}/${s.approved_inputs} · ${s.approved_input_parse_percent}%` : "— / — · not requested"}</div>
+            <Bar value={s.approved_inputs ? s.parsed_inputs / s.approved_inputs : 0} tone={s.outcome === "FAILED" ? "red" : s.outcome === "PARTIAL" ? "amber" : "cyan"} />
+            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>{s.fact_count} facts · {s.inputs.length} inputs</div>
+          </div>
+        ))}
+      </div>
+      <details style={{ marginTop: 10 }}><summary style={{ fontSize: 12, color: "var(--accent)", cursor: "pointer" }}>Provenance per surface (inputs · reasons)</summary><div style={{ marginTop: 8, maxHeight: 240, overflow: "auto", padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>{Object.entries(report.surfaces).map(([name, s]) => (<div key={name} style={{ marginBottom: 10 }}><div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)" }}>{name}</div>{s.inputs.map(i => <div key={i.input_id} style={{ fontSize: 11, color: "var(--dim)", padding: "2px 0", borderBottom: "1px solid var(--line)" }}>{i.input_id}: <Badge tone={i.status === "PARSED" ? "green" : i.status === "FAILED" ? "red" : "slate"}>{i.status}</Badge> {i.reason} · OBS {i.local_basis_counts.OBSERVED} / DECL {i.local_basis_counts.DECLARED}</div>)}</div>))}</div></details>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10, padding: "8px 10px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>{Object.entries(report.bom_observation_counts).map(([name, count]) => (<span key={name} style={{ fontSize: 11, padding: "4px 8px", borderRadius: "var(--r)", background: "var(--bg-2)", border: "1px solid var(--line)", fontFamily: "var(--mono)" }}>{name}: <strong>{count}</strong></span>))}<span style={{ fontSize: 11, color: "var(--faint)", marginLeft: 6 }}>Same evidence · 6 projections · zero ≠ absence</span></div>
       <p>Failed or unrequested inputs never prove asset absence. Parsed configuration remains DECLARED; library presence does not prove cryptographic use; a listener does not prove negotiated TLS.</p>
       <LinuxSoftwarePanel job={report.job_id} envelope={report.envelope_sha256} />
       <LinuxEvidenceOutputs job={report.job_id} envelope={report.envelope_sha256} />

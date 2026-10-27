@@ -3,6 +3,8 @@ import { apiApproveHostScope, apiImportHostSnapshot, apiInspectHostSnapshot, api
 import CollectionCoveragePanel from "./CollectionCoveragePanel";
 import HostAssociationsPanel from "./HostAssociationsPanel";
 import { usePrivateScopeCurrent } from "./PrivateScope";
+import { Badge, Bar } from "./ui";
+import { IconComponent, IconSecurity, IconCloud, IconHardware, IconCrypto, IconTarget } from "./icons";
 
 function validReceipt(value: HostImportReceipt, approval: string) {
   return value?.approval_id === approval && value.source_basis === "IMPORTED"
@@ -319,24 +321,60 @@ export default function HostEvidencePanel() {
     const link = document.createElement("a"); link.href = url; link.download = `${image === "tls" ? "tls-session" : image ? "oci-image" : "host"}-${id}-cyclonedx-1.6.json`; link.click(); URL.revokeObjectURL(url);
     setMessage("CycloneDX 1.6 metadata downloaded. Schema validity is not runtime evidence, complete discovery, migration compatibility or bank approval.");
   }
-  return <><section aria-label="Approved offline host evidence" style={{ marginTop: 24 }}>
-    <h3>Approved host collection · no Git required</h3>
-    <p>Explicit files and supported package metadata only. No remote execution, privileged scan, automatic upload or unrestricted filesystem discovery. Run the offline collector as an unprivileged user after scope approval.</p>
-    <p><strong>IMPORTED evidence — host identity and runtime use unverified.</strong> Windows execution and production host admission are not qualified. Library presence does not establish algorithm use; configured TLS does not establish effective TLS.</p>
-    <p>Admin/CISO approve the scope; analysts import; auditors/viewers inspect without changing scans.</p>
-    <label>Host system ID<input maxLength={120} value={system} disabled={busy} onChange={e => { resetProof(); setSystem(e.target.value); setManifest(null); setSnapshot(null); setApproval(""); }} /></label>
-    <label>Approved host manifest JSON<input type="file" accept="application/json,.json" disabled={busy} onChange={e => { void read(e.target.files?.[0], "manifest"); e.target.value = ""; }} /></label>
-    <button disabled={busy || !manifest || !system.trim()} onClick={() => void approve()}>Approve host scope</button>
-    <label>Host approval ID<input maxLength={36} value={approval} disabled={busy} onChange={e => { resetProof(); setApproval(e.target.value); setSnapshot(null); }} /></label>
-    <label>Offline host snapshot JSON<input type="file" accept="application/json,.json" disabled={busy} onChange={e => { void read(e.target.files?.[0], "snapshot"); e.target.value = ""; }} /></label>
-    <button disabled={busy || !snapshot || !approval.trim()} onClick={() => void ingest()}>Import approved metadata</button>
-    <button disabled={busy || !approval.trim()} onClick={() => void inspect()}>Inspect host evidence</button>
-    {busy && <p role="status">Processing scoped host metadata…</p>}{message && <p role="status">{message}</p>}
-    {receipt && <div style={{ overflowWrap: "anywhere" }}><p>Evidence status: IMPORTED · Scan {receipt.scan_id} · {receipt.evidence_count} chained records.</p>
-      <p>Snapshot SHA-256: {receipt.snapshot_sha256}</p><p>Runtime use: UNKNOWN · PQC assessment: UNKNOWN · Policy: NOT_EVALUATED. Complete-host coverage is not proven.</p></div>}
-    {detail && <><h4>{detail.snapshot.manifest.host_id} · {detail.snapshot.manifest.environment}</h4><p>Stored content, chain and manifest integrity checked. Claimed collection time: {detail.snapshot.finished_at}. This does not authenticate the originating host.</p>
+  return <><section className="panel" aria-label="Approved offline host evidence" style={{ marginTop: 16, padding: 16, borderTop: "2px solid var(--accent)" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)" }}><IconHardware size={14} style={{ color: "var(--accent)" }} /></span>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Host Evidence — Offline Collector</h3>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>Approved scope · offline files only · no Git · unprivileged run</div>
+        </div>
+        <Badge tone="cyan">OFFLINE</Badge><Badge tone="slate">NO EXEC</Badge>
+      </div>
+      <span style={{ fontSize: 11, color: "var(--dim)" }}>Admin → Analyst → Auditor — no privilege, no auto-upload</span>
+    </div>
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+      {[
+        ["Explicit files only", "var(--line-strong)"],
+        ["No remote execution", "var(--accent)"],
+        ["No privileged scan", "var(--line-strong)"],
+        ["No filesystem discovery", "var(--line-strong)"],
+      ].map(([t,c]) => <span key={t} style={{ fontSize: 10, padding: "4px 8px", borderRadius: "var(--r)", border: `1px solid ${c}`, background: "var(--bg-2)", color: "var(--dim)" }}>{t}</span>)}
+    </div>
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10, padding: "8px 10px", background: "color-mix(in srgb, var(--amber) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 30%, var(--line))", borderRadius: "var(--r)" }}>
+      <Badge tone="amber">IMPORTED</Badge>
+      <span style={{ fontSize: 11, color: "var(--dim)" }}>Host identity <strong style={{ color: "var(--amber)" }}>UNVERIFIED</strong> · runtime <strong>UNKNOWN</strong> · library ≠ use · configured TLS ≠ effective TLS</span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
+      {[
+        ["1 · Approve", "Admin/CISO · manifest → approval ID", "var(--accent)"],
+        ["2 · Import", "Analyst · snapshot → IMPORTED", "var(--cyan)"],
+        ["3 · Inspect", "Auditor · verify → no scan change", "var(--green)"],
+      ].map(([title, sub, col]) => (
+        <div key={title} style={{ padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderTop: `2px solid ${col}`, borderRadius: "var(--r)" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: .06, color: col }}>{title}</div>
+          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{sub}</div>
+        </div>
+      ))}
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, alignItems: "end" }}>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: "var(--dim)" }}>Host system ID<input style={{ padding: "7px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--text)", fontSize: 12.5 }} maxLength={120} value={system} disabled={busy} onChange={e => { resetProof(); setSystem(e.target.value); setManifest(null); setSnapshot(null); setApproval(""); }} /></label>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: "var(--dim)" }}>Approved host manifest JSON<input type="file" accept="application/json,.json" disabled={busy} onChange={e => { void read(e.target.files?.[0], "manifest"); e.target.value = ""; }} /></label>
+      <button className="btn primary sm" disabled={busy || !manifest || !system.trim()} onClick={() => void approve()} style={{ height: 32 }}>Approve host scope</button>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, alignItems: "end", marginTop: 10 }}>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: "var(--dim)" }}>Host approval ID<input style={{ padding: "7px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--text)", fontSize: 12.5, fontFamily: "var(--mono)" }} maxLength={36} value={approval} disabled={busy} onChange={e => { resetProof(); setApproval(e.target.value); setSnapshot(null); }} /></label>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: "var(--dim)" }}>Offline host snapshot JSON<input type="file" accept="application/json,.json" disabled={busy} onChange={e => { void read(e.target.files?.[0], "snapshot"); e.target.value = ""; }} /></label>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button className="btn sm" disabled={busy || !snapshot || !approval.trim()} onClick={() => void ingest()}>Import approved metadata</button>
+        <button className="btn outline sm" disabled={busy || !approval.trim()} onClick={() => void inspect()}>Inspect host evidence</button>
+      </div>
+    </div>
+    {busy && <div style={{ marginTop: 10, padding: "8px 10px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--accent)", display: "inline-block" }} />Processing scoped host metadata…</div>}{message && <div role="status" style={{ marginTop: 10, padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 12, color: "var(--dim)" }}>{message}</div>}
+    {receipt && <div style={{ marginTop: 12, padding: "12px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderLeft: "3px solid var(--green)", borderRadius: "var(--r)", overflowWrap: "anywhere" }}><div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}><Badge tone="green">IMPORTED</Badge><Badge tone="cyan">Scan {receipt.scan_id.slice(0,8)}…</Badge><Badge tone="slate">{receipt.evidence_count} records</Badge></div><div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)" }}>SHA-256 {receipt.snapshot_sha256.slice(0,24)}… · runtime UNKNOWN · PQC UNKNOWN · NOT_EVALUATED</div><Bar value={Math.min(1, receipt.evidence_count/100)} tone="green" /></div>}
+    {detail && <><div style={{ marginTop: 12, padding: "10px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><IconComponent size={14} style={{ color: "var(--accent)" }} /><span style={{ fontWeight: 700, fontSize: 12 }}>{detail.snapshot.manifest.host_id}</span><Badge tone="slate">{detail.snapshot.manifest.environment}</Badge><Badge tone="green">CHAIN PASS</Badge></div><span style={{ fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>{detail.snapshot.finished_at} · not host attestation</span></div>
       <table><thead><tr><th>Approved input</th><th>Receipt</th><th>Metadata / limitations</th></tr></thead><tbody>{detail.snapshot.receipts.map(r => <tr key={r.input_id}><td>{r.input_id}</td><td>{r.status} · {r.reason}</td><td>{r.facts.map((f, i) => <p key={i}>{f.kind} · {f.provider_name || f.image_path || f.process_name || f.library_path || f.service_name || (f.address ? `${f.address}:${f.port}` : null) || f.model || f.hardware_type || f.software_name || f.algorithm} · {f.software_version || f.key_size || "size/version UNKNOWN"}{f.kind === "NETWORK_TLS13_HYBRID" ? ` · completed hybrid TLS X25519MLKEM768 session; ${f.openssl_version}; provider version self-reported; not HSM/application or PQC readiness proof` : ""}{f.kind === "NETWORK_TLS13_KEY_SHARE" ? ` · final TLS 1.3 ServerHello selected group ${f.key_exchange_group} (#${f.selected_group_id}); registry classification ${f.group_classification}; PQC readiness, application/HSM use UNKNOWN; CA/hostname/revocation not validated; other groups/versions not tested` : ""}{f.kind === "NETWORK_TLS_SESSION" ? ` · one pinned ${f.tls_version} session · ${f.cipher_suite} · SNI ${f.sni}; certificate public key ${f.certificate?.algorithm} ${f.certificate?.key_size || "size UNKNOWN"}; CA/hostname/revocation not validated; key-exchange group and application linkage UNKNOWN; other TLS versions not tested` : ""}{f.image ? ` · verified layer bytes and virtual overlay · ${f.packages?.length} package DB records (not complete inventory); runtime image binding unverified` : ""}{f.process ? ` · ${f.runtime} ${f.container_id} · PID ${f.process.pid}; kernel cgroup membership only; image operator DECLARED` : ""}{f.manifest_sha256 ? ` · OCI manifest ${f.manifest_sha256} · ${f.image_os}/${f.image_architecture} · manifest/config only; layers, packages and runtime unverified · ports DECLARED: ${(f.declared_ports || []).join(", ") || "none declared"}` : ""}{f.provider_context ? ` · current-user default provider selection; not opened or invoked` : ""}{f.listeners ? ` · ${f.address_family}: ${f.listener_count} sampled TCP listener rows; TLS and process identity unverified` : ""}{f.tpm_specification ? ` · TPM ${f.tpm_specification} · OS reported; not attestation, firmware or key use` : ""}{f.registered_functions ? ` · ${f.registration_interface} registered labels: ${f.registered_functions.join(", ")} · registration only; capability/use UNKNOWN` : ""}{f.creation_filetime ? ` · PID ${f.pid} · creation FILETIME ${f.creation_filetime} · repeated module metadata, not invocation` : ""}{f.service_state ? ` · ${f.service_state}` : ""} · local claim {f.local_basis} · runtime UNKNOWN{f.listeners?.slice(0, 10).map((row, index) => <span key={index} style={{ display: "block" }}>{row.address}:{row.port} · scope {row.scope_id} · OS-reported owning PID {row.owning_pid} (not process identity or TLS)</span>)}{f.listeners && f.listeners.length > 10 ? <span>Showing first 10 rows; full metadata remains in the authorized snapshot.</span> : null}</p>)}</td></tr>)}</tbody></table>
-      <p>System-to-host scope is operator DECLARED, not host attestation. Endpoint/HSM/KMS use and six-BOM dependencies are not established by co-existence.</p>
-      <button disabled={busy} onClick={() => void download()}>Download CycloneDX 1.6 host CBOM</button>{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_METADATA")) && <button disabled={busy} onClick={() => void download(true)}>Download CycloneDX 1.6 OCI image metadata SBOM</button>}{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_CONTENT")) && <><button disabled={busy} onClick={() => void download("content")}>Download verified layer and package-record SBOM</button><p>Container production admission: BLOCKED. Image/runtime binding, independent qualification and a qualified executor remain required.</p></>}{detail.snapshot.receipts.some(r => r.facts.some(f => ["NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE", "NETWORK_TLS13_HYBRID"].includes(f.kind))) && <><button disabled={busy} onClick={() => void download("tls")}>Download CycloneDX 1.6 observed TLS session</button><p>Active TLS candidate: operator-run only; production execution BLOCKED. A matched public certificate pin is not host or application attestation.</p></>}<HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--faint)", padding: "8px 10px", border: "1px dashed var(--line)", borderRadius: "var(--r)", background: "var(--bg-2)" }}>Operator DECLARED scope — not host attestation · Endpoint/HSM/KMS & 6-BOM dependencies not established by co-existence</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}><button className="btn primary sm" disabled={busy} onClick={() => void download()}><IconCloud size={12} /> Download CycloneDX 1.6 host CBOM</button>{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_METADATA")) && <button disabled={busy} onClick={() => void download(true)}>Download CycloneDX 1.6 OCI image metadata SBOM</button>}{detail.snapshot.receipts.some(r => r.facts.some(f => f.kind === "OCI_IMAGE_CONTENT")) && <><button disabled={busy} onClick={() => void download("content")}>Download verified layer and package-record SBOM</button><div style={{ fontSize: 11, color: "var(--amber)", padding: "6px 8px", border: "1px solid var(--amber)", borderRadius: "var(--r)" }}>Container admission BLOCKED — binding + qualification required</div></>}{detail.snapshot.receipts.some(r => r.facts.some(f => ["NETWORK_TLS_SESSION", "NETWORK_TLS13_KEY_SHARE", "NETWORK_TLS13_HYBRID"].includes(f.kind))) && <><button disabled={busy} onClick={() => void download("tls")}>Download CycloneDX 1.6 observed TLS session</button><div style={{ fontSize: 11, color: "var(--amber)", padding: "6px 8px", border: "1px solid var(--amber)", borderRadius: "var(--r)", background: "color-mix(in srgb, var(--amber) 10%, transparent)" }}>Active TLS: operator-run only · production BLOCKED</div></div></>}<HostAssociationsPanel key={detail.approval_id + detail.snapshot_sha256} detail={detail} /></>}
   </section><CollectionCoveragePanel /></>;
 }

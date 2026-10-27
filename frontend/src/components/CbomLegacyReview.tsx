@@ -3,6 +3,8 @@ import { apiCbomLegacyImports, apiCbomLegacyReview, apiCbomReconcileLegacy, Lega
 import { MixedHistoryDecision, UnassignedHistory } from "./CbomControlledHistory";
 import CbomRescanInspection from "./CbomRescanInspection";
 import { usePrivateScopeCurrent } from "./PrivateScope";
+import { Badge, Bar } from "./ui";
+import { IconClock, IconWarn, IconComponent, IconSecurity } from "./icons";
 
 /** Existing CBOM workflow, not a separate dashboard. No automatic write/retry. */
 export default function CbomLegacyReview({ refresh, onCommitted }: { refresh: number; onCommitted: () => void }) {
@@ -64,33 +66,66 @@ export default function CbomLegacyReview({ refresh, onCommitted }: { refresh: nu
     }
   }
   function controlledCommitted(value: string) { setReceipt(value); setReview(null); onCommitted(); }
-  return <section className="panel" style={{ padding: 20, marginBottom: 20 }} aria-label="Historical import review">
-    <h2 style={{ fontSize: 18 }}>Historical import review</h2>
-    <p>Old imports can carry HIGH confidence or CURRENT coverage without measured proof. Original records are retained; unresolved historical imports block clean CBOM exports and assessments.</p>
-    <button type="button" className="btn outline" disabled={busy} onClick={() => {
+  return <section className="panel" style={{ padding: 16, marginBottom: 16, borderTop: "2px solid var(--amber)" }} aria-label="Historical import review">
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--amber) 14%, transparent)", border: "1px solid var(--amber)" }}><IconClock size={14} style={{ color: "var(--amber)" }} /></span>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Historical Import Review</h2>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>Legacy HIGH/CURRENT claims · retained records · blocks clean export</div>
+        </div>
+        <Badge tone="amber">HISTORICAL</Badge><Badge tone="red">BLOCKS EXPORT</Badge>
+      </div>
+      <span style={{ fontSize: 11, color: "var(--dim)" }}>Reimport first, then reconcile with rationale</span>
+    </div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
+      {[
+        ["1 · Surface", "Old claims without proof", "var(--amber)"],
+        ["2 · Reimport", "Upload replacement document", "var(--accent)"],
+        ["3 · Reconcile", "Rationale + audit receipt", "var(--green)"],
+      ].map(([t, d, c]) => (
+        <div key={t} style={{ padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderTop: `2px solid ${c}`, borderRadius: "var(--r)" }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: c }}>{t}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{d}</div>
+        </div>
+      ))}
+    </div>
+    <button type="button" className="btn primary sm" disabled={busy} onClick={() => {
       if (open) void load(page?.page || 1); else setOpen(true);
     }}>{open ? "Refresh historical review" : "Review historical imports"}</button>
-    {busy && <p role="status">Loading or submitting historical review…</p>}
-    {message && <p role="status">{message}</p>}
-    {receipt && <p role="status" style={{ overflowWrap: "anywhere" }}>{receipt}</p>}
+    {busy && <div role="status" style={{ marginTop: 8, padding: "8px 10px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 12, display: "flex", gap: 8, alignItems: "center" }}><span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--accent)" }} />Loading historical review…</div>}
+    {message && <div role="status" style={{ marginTop: 8, padding: "8px 10px", background: "color-mix(in srgb, var(--amber) 10%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)", fontSize: 12, color: "var(--dim)" }}>{message}</div>}
+    {receipt && <div role="status" style={{ marginTop: 8, padding: "8px 10px", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid var(--green)", borderRadius: "var(--r)", fontSize: 12, color: "var(--text)", overflowWrap: "anywhere" }}><Badge tone="green">AUDIT</Badge> {receipt}</div>}
     {page && <>
-      <p>{page.total} systems require review. {page.unassigned_review_required} unassigned historical records require controlled operator review.</p>
-      {page.systems.map(system => <p key={system.id}><button type="button" className="btn outline" disabled={busy} onClick={() => void inspect(system.id)}>Review {system.name}</button></p>)}
-      {page.page > 1 && <button disabled={busy} onClick={() => void load(page.page - 1)}>Previous review page</button>}
-      {page.page * page.page_size < page.total && <button disabled={busy} onClick={() => void load(page.page + 1)}>Next review page</button>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", alignItems: "center" }}>
+        <Badge tone="amber">{page.total} systems need review</Badge><Badge tone={page.unassigned_review_required ? "red" : "green"}>{page.unassigned_review_required} unassigned</Badge><span style={{ fontSize: 11, color: "var(--dim)" }}>Controlled operator review required</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginTop: 10 }}>
+        {page.systems.map(system => (
+          <div key={system.id} style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>{system.name}</span>
+            <button type="button" className="btn sm primary" disabled={busy} onClick={() => void inspect(system.id)}>Review</button>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        {page.page > 1 && <button className="btn sm" disabled={busy} onClick={() => void load(page.page - 1)}>Previous</button>}
+        {page.page * page.page_size < page.total && <button className="btn sm" disabled={busy} onClick={() => void load(page.page + 1)}>Next</button>}
+      </div>
     </>}
     {open && <UnassignedHistory key={refresh} onCommitted={controlledCommitted} />}
     {open && <CbomRescanInspection key={`rescan-${refresh}-${inspectionEpoch}`} />}
-    {review && <div>
-      <h3>{review.system_name}: {review.pending_assets} historical records</h3>
-      <p>{review.message}</p>
-      <p style={{ overflowWrap: "anywhere" }}>Replacement document SHA-256: {review.replacement_document_sha256 || "None — first reimport the original CBOM using the import form above, then refresh this review."}</p>
-      {review.mixed_evidence_assets > 0 && <p role="status">{review.mixed_evidence_assets} records have linked scanner evidence. Automatic reconciliation is blocked. Preserve evidence and use the controlled two-human review below.</p>}
+    {review && <div style={{ marginTop: 12, padding: 12, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>{review.system_name}</span><Badge tone="amber">{review.pending_assets} pending</Badge>{review.mixed_evidence_assets > 0 ? <Badge tone="red">{review.mixed_evidence_assets} linked evidence</Badge> : <Badge tone="green">No mixed evidence</Badge>}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>{review.message}</div>
+      <div style={{ marginTop: 8, padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontFamily: "var(--mono)", fontSize: 11, overflowWrap: "anywhere" }}>Replacement SHA-256: {review.replacement_document_sha256 || "— none — reimport first via import form, then refresh"}</div>
+      {review.mixed_evidence_assets > 0 && <div role="status" style={{ marginTop: 8, padding: "8px 10px", background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid var(--red)", borderRadius: "var(--r)", fontSize: 12, color: "var(--red)" }}><IconWarn size={12} style={{ marginRight: 6 }} />{review.mixed_evidence_assets} records have linked scanner evidence — auto-reconcile blocked → use controlled two-human review below.</div>}
       {review.mixed_evidence_assets > 0 && <MixedHistoryDecision key={review.snapshot_sha256} review={review} onCommitted={controlledCommitted} />}
-      <ul>{review.assets.map(asset => <li key={asset.id}>{asset.algorithm}: historically reported {asset.reported_confidence}; {asset.linked_evidence_count} linked evidence records. Review required, not measured confidence.</li>)}</ul>
-      <label>Review rationale (no secrets)<textarea value={reason} maxLength={500} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
-      <label style={{ display: "block" }}><input type="checkbox" checked={accepted} disabled={busy} onChange={event => setAccepted(event.target.checked)} />I reviewed the original declaration and replacement fingerprint. This retires historical associations, not scanner evidence, and does not establish scan coverage.</label>
-      <button type="button" className="btn outline" disabled={busy || !accepted || reason.trim().length < 20 || !review.replacement_document_sha256 || review.mixed_evidence_assets > 0 || review.pending_assets === 0} onClick={() => void submit()}>Reconcile historical declarations</button>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, maxHeight: 180, overflow: "auto" }}>{review.assets.map(asset => (<div key={asset.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11 }}><span><strong>{asset.algorithm}</strong> · {asset.reported_confidence} · {asset.linked_evidence_count} evidence</span><Badge tone="slate">REVIEW</Badge></div>))}</div>
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10, fontSize: 11, color: "var(--dim)" }}>Review rationale (no secrets)<textarea style={{ padding: "8px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--text)", fontSize: 12.5, minHeight: 60 }} value={reason} maxLength={500} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
+      <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8, padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11, color: "var(--dim)" }}><input type="checkbox" checked={accepted} disabled={busy} onChange={event => setAccepted(event.target.checked)} /><span>I reviewed original declaration and replacement fingerprint — retires historical associations only, not scanner evidence, does not establish coverage.</span></label>
+      <button type="button" className="btn primary sm" disabled={busy || !accepted || reason.trim().length < 20 || !review.replacement_document_sha256 || review.mixed_evidence_assets > 0 || review.pending_assets === 0} onClick={() => void submit()} style={{ marginTop: 8 }}>Reconcile historical declarations</button>
     </div>}
   </section>;
 }
