@@ -45,7 +45,11 @@ export default function Login() {
   const navigate = useNavigate();
 
   React.useEffect(() => {
-    void isBackendLive().then(setBackendUp);
+    let mounted = true;
+    const check = () => { void isBackendLive().then((up) => { if (mounted) setBackendUp(up); }); };
+    check();
+    const timer = window.setInterval(check, 6000);
+    return () => { mounted = false; window.clearInterval(timer); };
   }, []);
 
   const submit = async (e: React.FormEvent) => {

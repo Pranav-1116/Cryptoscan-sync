@@ -2,8 +2,8 @@
 # Bring up the whole product locally: PostgreSQL, the API, and the console.
 #
 # run_stack.sh starts only the API and leaves the database and frontend to
-# you. This starts all three against a real PostgreSQL (not SQLite), which is
-# what production mandates, so what you look at is the shipping data path.
+# you. This starts the local product against real PostgreSQL (not SQLite).
+# Development-mode availability is not production qualification.
 #
 #   bash scripts/run_local_stack.sh up      # start everything, print URLs
 #   bash scripts/run_local_stack.sh status  # what is listening
@@ -14,6 +14,10 @@
 # The estate boots EMPTY. There is no demo data and no seeding: inventory
 # appears only when a real scan runs against a target you configure. Pages
 # with nothing to show render honest empty states rather than samples.
+# Privately configure LOCAL_ADMIN_PASS before the FIRST user registers if this
+# estate needs an operator: bootstrap only works while the users table is empty.
+# Store local database/signing secrets in an operator-controlled secret store for
+# restarts; this launcher neither records nor prints them.
 #
 # Scan targets are confined to CRYPTOSCAN_SOURCE_ROOTS, which defaults to this
 # repository. To scan code checked out elsewhere, widen it deliberately:
@@ -45,7 +49,9 @@ PY="${PY:-$ROOT/.venv/bin/python}"
 RUN="${LOCAL_RUN_DIR:-$ROOT/.local-stack}"
 
 ADMIN_USER="${LOCAL_ADMIN_USER:-admin}"
-ADMIN_PASS="${LOCAL_ADMIN_PASS:-cryptoscan}"
+# Bootstrap only with an operator-supplied private password. A known default
+# would create a privileged account on every fresh local database.
+ADMIN_PASS="${LOCAL_ADMIN_PASS-}"
 
 export DATABASE_URL="postgresql+psycopg2://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_USER}"
 export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}/0"
@@ -116,6 +122,9 @@ up() {
     docker exec "$REDIS_NAME" redis-cli ping 2>/dev/null | grep -q PONG && break
     sleep 1
   done
+  if ! docker exec "$REDIS_NAME" redis-cli ping 2>/dev/null | grep -q PONG; then
+    log "FATAL: redis never became ready"; return 1
+  fi
   log "redis ready"
 
   # ---- schema ------------------------------------------------------------
@@ -143,9 +152,12 @@ up() {
     log "api starting on ${API_PORT}"
   fi
   for _ in $(seq 90); do
-    curl -sf --max-time 2 "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1 && break
+    curl -sf --max-time 2 "http://127.0.0.1:${API_PORT}/ready" >/dev/null 2>&1 && break
     sleep 1
   done
+  if ! curl -sf --max-time 2 "http://127.0.0.1:${API_PORT}/ready" >/dev/null 2>&1; then
+    log "FATAL: api never became ready (see $RUN/api.log)"; return 1
+  fi
 
   # ---- worker ------------------------------------------------------------
   # With REDIS_URL set the API enqueues instead of running the pipeline
@@ -175,9 +187,15 @@ up() {
     log "frontend starting on ${UI_PORT}"
   fi
   for _ in $(seq 90); do
-    curl -sf --max-time 2 "http://127.0.0.1:${UI_PORT}/" >/dev/null 2>&1 && break
+    curl -sf --max-time 2 "http://127.0.0.1:${UI_PORT}/api/v1/healthz" >/dev/null 2>&1 && break
     sleep 1
   done
+  if ! curl -sf --max-time 2 "http://127.0.0.1:${UI_PORT}/api/v1/healthz" >/dev/null 2>&1; then
+    log "FATAL: console or API proxy never became ready (see $RUN/frontend.log)"; return 1
+  fi
+  if ! worker_pid >/dev/null; then
+    log "FATAL: worker exited during startup (see $RUN/worker.log)"; return 1
+  fi
 
   status
 }
@@ -197,8 +215,13 @@ status() {
   printf '  %-12s %-34s %s\n' "worker" "(queue consumer)" \
     "$(worker_pid >/dev/null && echo up || echo DOWN)"
   echo
-  echo "  sign in: ${ADMIN_USER} / ${ADMIN_PASS}   (development only; refused in production)"
-  echo "  the estate boots EMPTY — run a scan to populate it"
+  if [ -n "$ADMIN_PASS" ]; then
+    printf '  admin bootstrap configured for %s (only if the users table was empty at startup)\n' "$ADMIN_USER"
+  else
+    printf '  no admin bootstrap credentials supplied; registration alone cannot authorize scans\n'
+    printf '  on a fresh estate, provision an operator before registration (bootstrap requires an empty users table)\n'
+  fi
+  echo "  no fixture data is loaded; inventory requires authorized real collection"
   echo "  logs: $RUN/api.log  $RUN/worker.log  $RUN/frontend.log"
   echo
 }

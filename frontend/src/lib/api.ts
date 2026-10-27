@@ -208,6 +208,9 @@ export async function apiLogin(username: string, password: string): Promise<{ ok
       credentials: "include",
     });
     if (!resp.ok) {
+      const contentType = resp.headers.get("content-type")?.toLowerCase() || "";
+      if (resp.status >= 500 && !contentType.includes("json"))
+        return { ok: false, error: "CryptoScan API is unavailable. Start the backend and retry." };
       const body = await resp.json().catch(() => ({}));
       return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
     }
@@ -246,6 +249,8 @@ export async function apiRegister(input: {
       body: JSON.stringify(input),
       credentials: "include",
     });
+    if (!resp.ok && resp.status >= 500 && !resp.headers.get("content-type")?.toLowerCase().includes("json"))
+      return { ok: false, error: "CryptoScan API is unavailable. Start the backend and retry." };
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
     return { ok: true, username: body.username, roles: body.roles };

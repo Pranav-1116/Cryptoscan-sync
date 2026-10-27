@@ -237,18 +237,14 @@ class RegisterResponse(BaseModel):
     roles: list[str]
 
 
-#: roles that can never be self-assigned — they are granted by a platform
-#: admin via POST /auth/users (the seeded `admin` account holds superadmin).
-SELF_SERVICE_DENIED_ROLES = frozenset({"superadmin"})
+#: Public registration creates only least-privilege identities. The existing
+#: administrator user-management API grants elevated roles after review.
+SELF_SERVICE_ALLOWED_ROLES = frozenset({"readonly"})
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db_session)) -> RegisterResponse:
-    """Self-service registration — the caller picks ONE of the 8-role catalog.
-
-    superadmin is the platform-owner role and cannot be self-assigned; the
-    seeded bootstrap account `admin` holds it (alias admin → superadmin).
-    """
+    """Create a read-only account; public callers cannot assign privileges."""
     from db.models.user import VALID_ROLES
 
     from api.security.rbac import ROLE_ALIASES
@@ -259,11 +255,10 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Unknown role: {body.role}. Valid: {', '.join(VALID_ROLES)}",
         )
-    if role in SELF_SERVICE_DENIED_ROLES:
+    if role not in SELF_SERVICE_ALLOWED_ROLES:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="superadmin is the platform-owner role and cannot be self-assigned — "
-                   "sign in with the seeded admin account or ask an admin to grant it",
+            detail="Public registration grants read-only access only; ask an administrator to assign elevated roles",
         )
     try:
         validate_password_policy(body.password)

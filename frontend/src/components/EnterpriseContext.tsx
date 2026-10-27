@@ -19,7 +19,7 @@ import React, {
   createContext, useCallback, useContext, useEffect, useState,
 } from "react";
 import {
-  activeTenantId, apiTenantIsolation, getRoles, getUserName, setActiveTenantId,
+  activeTenantId, apiSaasMemberships, apiTenantIsolation, getRoles, getUserName, setActiveTenantId,
 } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
 
@@ -111,6 +111,19 @@ export function EnterpriseProvider({ children }: { children: React.ReactNode }) 
     setUser(auth.user);
     setRoles(auth.roles);
   }, [auth.verified, auth.user, auth.roles]);
+
+  // A sole current membership is the server's estate choice. Align the visible
+  // header with that choice; an absent/multi-tenant/offline result never guesses.
+  useEffect(() => {
+    if (!auth.verified || !auth.user || activeTenantId()) return;
+    let active = true;
+    void apiSaasMemberships().then((result) => {
+      if (!active || result.source !== "live" || !Array.isArray(result.data?.tenants) || activeTenantId()) return;
+      const eligible = result.data.tenants.filter((tenant) => tenant.status === "ACTIVE");
+      if (eligible.length === 1) setActiveTenantId(eligible[0].id);
+    });
+    return () => { active = false; };
+  }, [auth.verified, auth.user]);
 
   // Organization: the active tenant's name from the live backend (honest
   // fallback when offline).

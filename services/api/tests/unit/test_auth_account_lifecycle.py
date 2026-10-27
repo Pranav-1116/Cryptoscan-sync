@@ -58,17 +58,24 @@ def _recent_event_types(client, token):
 
 # ------------------------------------------------------------------- register
 
-def test_register_open_role_and_login(sqlite_app):
+def test_register_readonly_and_login(sqlite_app):
     c = sqlite_app
-    r = _register(c, "alice", role="developer", display_name="Alice A")
+    r = _register(c, "alice", role="readonly", display_name="Alice A")
     assert r.status_code == 201, r.text
-    assert r.json()["roles"] == ["developer"]
+    assert r.json()["roles"] == ["readonly"]
 
-    # the new account can authenticate and sees a canonical role
+    # the new account can authenticate without acquiring an elevated role
     r = _login(c, "alice", "Str0ng!Test-2026")
     assert r.status_code == 200
-    assert r.json()["roles"] == ["developer"]
+    assert r.json()["roles"] == ["readonly"]
     assert r.json()["token"]
+
+
+@pytest.mark.parametrize("role", ["ciso", "security_analyst", "auditor", "developer", "business_owner", "scanner", "supervisor"])
+def test_public_registration_cannot_self_assign_privileged_roles(sqlite_app, role):
+    response = _register(sqlite_app, "unapproved", role=role)
+    assert response.status_code == 403
+    assert "read-only" in response.json()["detail"]
 
 
 def test_register_superadmin_forbidden(sqlite_app):
@@ -89,14 +96,14 @@ def test_register_unknown_role_422(sqlite_app):
 
 def test_register_duplicate_409(sqlite_app):
     assert _register(sqlite_app, "carol", role="readonly").status_code == 201
-    assert _register(sqlite_app, "carol", role="auditor").status_code == 409
+    assert _register(sqlite_app, "carol", role="readonly").status_code == 409
 
 
 def test_register_is_whitelisted_without_token(sqlite_app):
     # No Authorization header sent — proves the middleware lets it through.
     r = sqlite_app.post(
         "/api/v1/auth/register",
-        json={"username": "dave", "password": "Str0ng!Test-2026", "role": "scanner"},
+        json={"username": "dave", "password": "Str0ng!Test-2026", "role": "readonly"},
     )
     assert r.status_code == 201
 
@@ -169,7 +176,10 @@ def test_register_normalizes_email_and_rejects_bad(sqlite_app):
 
 def test_me_returns_canonical_roles_permissions_and_profile(sqlite_app):
     c = sqlite_app
-    _register(c, "erin", role="auditor")
+    _register(c, "erin", role="readonly")
+    admin = _login(c, "admin", "cryptoscan").json()["token"]
+    elevated = c.patch("/api/v1/auth/users/erin", headers=_auth(admin), json={"roles": ["auditor"]})
+    assert elevated.status_code == 200, elevated.text
     token = _login(c, "erin", "Str0ng!Test-2026").json()["token"]
     r = c.get("/api/v1/auth/me", headers=_auth(token))
     assert r.status_code == 200
@@ -222,7 +232,7 @@ def test_change_password_rejects_same_password(sqlite_app):
 
 def test_change_password_rotates_and_revokes_other_sessions(sqlite_app):
     c = sqlite_app
-    _register(c, "jane", password="Str0ng!Test-2026", role="developer")
+    _register(c, "jane", password="Str0ng!Test-2026", role="readonly")
     # two independent sessions (two devices)
     t1 = _login(c, "jane", "Str0ng!Test-2026").json()["token"]
     t2 = _login(c, "jane", "Str0ng!Test-2026").json()["token"]

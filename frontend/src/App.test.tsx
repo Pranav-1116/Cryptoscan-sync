@@ -100,7 +100,8 @@ describe("app shell", () => {
       render(<I18nProvider><MemoryRouter><Register /></MemoryRouter></I18nProvider>);
     });
     expect(screen.queryByText(/FIPS 140-3|SOC 2|ISO 27001/i)).not.toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Minimum 12 characters")).toBeInTheDocument();
+    expect(await screen.findByText("Registration is temporarily unavailable")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Password")).toBeNull();
   });
 
   it("boots App: shows the loading gate, then the router", async () => {

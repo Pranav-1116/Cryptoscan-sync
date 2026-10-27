@@ -152,6 +152,16 @@ describe("apiLogin", () => {
     expect(getToken()).toBeNull();
   });
 
+  it("explains an HTML gateway 500 as an unavailable API, not bad credentials", async () => {
+    mockFetch({ "/api/v1/auth/login": () => new Response("gateway unavailable", {
+      status: 500, headers: { "Content-Type": "text/html" },
+    }) });
+    const result = await apiLogin("admin", "pw");
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/API is unavailable/);
+    expect(getToken()).toBeNull();
+  });
+
   it("does not throw when the backend is unreachable", async () => {
     offlineFetch();
     const result = await apiLogin("admin", "pw");
