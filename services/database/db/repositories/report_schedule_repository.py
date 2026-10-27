@@ -35,7 +35,7 @@ class ReportScheduleRepository:
         return row
 
     def get(self, schedule_id: str) -> Optional[ReportSchedule]:
-        return self.session.get(ReportSchedule, schedule_id)
+        return self.session.execute(select(ReportSchedule).where(ReportSchedule.id == schedule_id)).scalars().first()
 
     def get_by_name(self, name: str) -> Optional[ReportSchedule]:
         return self.session.execute(
@@ -87,7 +87,7 @@ class ReportScheduleRepository:
         return row
 
     def get_snapshot(self, snapshot_id: str) -> Optional[ReportSnapshot]:
-        return self.session.get(ReportSnapshot, snapshot_id)
+        return self.session.execute(select(ReportSnapshot).where(ReportSnapshot.id == snapshot_id)).scalars().first()
 
     def list_snapshots(
         self,

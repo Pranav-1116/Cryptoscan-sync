@@ -19,7 +19,11 @@ class TestPart3Endpoints:
         assert body["issues"] >= 1
 
     @pytest.mark.asyncio
-    async def test_network_scan_path_offline(self, authenticated_client: AsyncClient, tmp_path: Path):
+    async def test_network_scan_path_offline(self, authenticated_client: AsyncClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        # The offline filesystem scanner is fail-closed to allow-listed source
+        # roots; the test explicitly authorizes its tmp dir as a scan root
+        # (mirrors an operator setting CRYPTOSCAN_SOURCE_ROOTS in production).
+        monkeypatch.setenv("CRYPTOSCAN_SOURCE_ROOTS", str(tmp_path))
         (tmp_path / "ingress.yaml").write_text(
             "apiVersion: networking.k8s.io/v1\nkind: Ingress\nmetadata:\n  name: web\n"
             "spec:\n  tls:\n    - hosts: [\"web.example.com\"]\n  rules:\n    - host: web.example.com\n"

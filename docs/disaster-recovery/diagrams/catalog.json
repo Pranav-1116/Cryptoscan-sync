@@ -1,0 +1,58 @@
+[
+  {
+    "name": "01-system-architecture",
+    "title": "01 | Production authority, failure domains and recovery dependencies",
+    "description": "Controlled local-source topology. PostgreSQL is authoritative; backup and isolated recovery facilities are bank-provisioned. Optional stores are not enabled by this plan.",
+    "nodes": 16,
+    "edges": 24
+  },
+  {
+    "name": "02-consistency-groups",
+    "title": "02 | One recovery cohort, multiple distinct authorities",
+    "description": "Every cohort binds SQL, file versions, Redis roles, source identities, release/configuration and separately held recovery keys. A per-store checksum is not cross-store consistency.",
+    "nodes": 10,
+    "edges": 14
+  },
+  {
+    "name": "03-backup-dataflow",
+    "title": "03 | End-to-end backup: capture is not completion",
+    "description": "Backup completion requires remote durable copy, independent integrity/custody evidence and a witnessed isolated restore. Encryption alone does not provide immutability or site recovery.",
+    "nodes": 12,
+    "edges": 15
+  },
+  {
+    "name": "04-recovery-dataflow",
+    "title": "04 | End-to-end disaster recovery and controlled cutover",
+    "description": "Recovery begins with authority and fencing, not restoring a database into an active service. Each gate can stop cutover; keys and platform dependencies must be available before controlled service starts.",
+    "nodes": 14,
+    "edges": 16
+  },
+  {
+    "name": "05-execution-reconciliation",
+    "title": "05 | Restored SQL execution authority and UNKNOWN handling",
+    "description": "Redis redelivery is only a hint. Only eligible QUEUED work can claim. UNKNOWN retains reservations until authorized exact-owner evidence-backed reconciliation; no status reset or invented completion.",
+    "nodes": 12,
+    "edges": 13
+  },
+  {
+    "name": "06-key-and-ransomware-boundaries",
+    "title": "06 | Recovery trust, keys and ransomware isolation",
+    "description": "Target bank-owned control plane. Backup access, delete rights, keys and restore authority must not all belong to the compromised production identity. This is a plan, not provisioned infrastructure.",
+    "nodes": 10,
+    "edges": 13
+  },
+  {
+    "name": "07-failback-dataflow",
+    "title": "07 | Failback without discarding recovery-site writes",
+    "description": "Failback is another controlled migration. The old site must not resume from its stale disk or old backup after new recovery-side writes have been accepted.",
+    "nodes": 9,
+    "edges": 11
+  },
+  {
+    "name": "08-drill-and-acceptance",
+    "title": "08 | Drill evidence, measured objectives and recovery acceptance",
+    "description": "Drills must be pre-authorized, isolated and independently reviewed. Missing or failed mandatory evidence blocks the stated recovery claim; a planning diagram does not establish an SLA.",
+    "nodes": 9,
+    "edges": 12
+  }
+]

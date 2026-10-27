@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
 
-from cloud_scanner.enterprise.compliance_mapping import ComplianceMappingEngine
 from cloud_scanner.enterprise.drift import (
     APPROVED,
     EXPECTED,

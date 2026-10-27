@@ -10,7 +10,6 @@ The canonical event carries every field required by the spec plus a
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -81,6 +80,7 @@ class UniversalVendorEvent(BaseModel):
     product_version: Optional[str] = None
     asset_id: Optional[str] = None
     asset_type: str = "other"
+    tenant_id: Optional[str] = None
     event_type: EventType = EventType.UNKNOWN
     change_type: ChangeType = ChangeType.OBSERVED
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -94,12 +94,18 @@ class UniversalVendorEvent(BaseModel):
 
 
 class EventGateway:
-    """Single ingress for every vendor event. Append-only event log."""
+    """Single ingress for every vendor event. Append-only, tenant-safe log."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, tenant_id: str | None = None) -> None:
+        self.tenant_id = tenant_id
         self._log: list[UniversalVendorEvent] = []
 
     def ingest(self, event: UniversalVendorEvent) -> UniversalVendorEvent:
+        if self.tenant_id is not None:
+            if event.tenant_id not in (None, self.tenant_id):
+                raise PermissionError("vendor event tenant does not match gateway tenant")
+            if event.tenant_id is None:
+                event = event.model_copy(update={"tenant_id": self.tenant_id})
         self._log.append(event)
         return event
 
@@ -185,6 +191,7 @@ class EventNormalizer:
             product_version=raw.get("product_version") or raw.get("version"),
             asset_id=str(raw.get("asset_id") or raw.get("hostname") or raw.get("name") or ""),
             asset_type=str(raw.get("asset_type") or "other"),
+            tenant_id=raw.get("tenant_id"),
             event_type=event_type_enum,
             change_type=change_enum,
             timestamp=str(raw.get("timestamp") or datetime.now(timezone.utc).isoformat()),
@@ -194,7 +201,7 @@ class EventNormalizer:
             vendor_metadata={key: value for key, value in raw.items()
                             if key not in (
                                 "vendor", "product", "product_version", "asset_id",
-                                "asset_type", "event_type", "change_type",
+                                "asset_type", "tenant_id", "event_type", "change_type",
                                 "timestamp", "source", "confidence",
                                 "evidence_reference", "change", "version",
                                 "hostname", "name", "source_vendor",

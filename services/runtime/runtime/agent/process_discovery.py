@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 from typing import Any
 
 from runtime.agent.library_risk import assess_library
@@ -36,54 +37,118 @@ _LISTEN_STATE = "0A"  # TCP LISTEN
 _CONTAINER_MARKERS = ("docker", "containerd", "kubepods", "libpod", "lxc")
 
 
-def scan_processes(base: str = "/proc") -> dict[str, Any]:
-    """Inventory processes + crypto library usage + listening sockets."""
+def scan_processes(
+    base: str = "/proc",
+    *,
+    include_kernel_threads: bool = False,
+    crypto_only: bool = True,
+) -> dict[str, Any]:
+    """Inventory processes + crypto library usage + listening sockets.
+
+    Kernel threads (``kworker/*``, ``irq/*``, ``rcu*`` ...) have an empty
+    ``cmdline`` and no userspace memory mappings, so they can never carry TLS
+    libraries or listeners. They are skipped by default. With ``crypto_only``
+    (the default) the returned ``processes`` list is further reduced to the
+    processes that actually matter for a crypto audit — those with TLS/crypto
+    libraries mapped or a listening TCP socket — while the counts over the full
+    process set are still reported. Pass ``crypto_only=False`` for every
+    userspace process.
+    """
     inventory: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     listening_sockets = _listening_sockets(base)
+    kernel_skipped = 0
+
+    # Skip the scanner's own process (and its parent launcher, usually the
+    # shell/cli wrapper): cataloguing the tool itself is noise that inflates
+    # findings. Only applied when reading the real /proc.
+    skip_pids: set[int] = set()
+    if base == "/proc":
+        skip_pids.add(os.getpid())
+        ppid = os.getppid()
+        if ppid and ppid != 1:
+            skip_pids.add(ppid)
 
     for entry in _numeric_dirs(base):
         pid = int(entry)
+        if pid in skip_pids:
+            continue
         comm = _read_first_line(base, pid, "comm") or str(pid)
         cmdline = _read_cmdline(base, pid)
+        # Kernel threads have an empty cmdline on real /proc and no userspace
+        # mappings, so they never map TLS libraries or hold sockets. Skip them
+        # (gated to real /proc so fixture scans are unaffected).
+        if base == "/proc" and not include_kernel_threads and not cmdline:
+            kernel_skipped += 1
+            continue
         maps = _read_maps(base, pid)
         libs = _library_versions(maps)
         containerized = _is_containerized(base, pid)
         ports = listening_sockets.get(pid, [])
 
-        row: dict[str, Any] = {
-            "pid": pid,
-            "process_name": comm,
-            "cmdline": cmdline[:200],
-            "tls_libraries": [lib["library"] for lib in libs],
-            "library_details": libs,
-            "containerized": containerized,
-            "listening_ports": ports,
-            "runtime": _runtime_of(comm, cmdline, maps),
-        }
-        inventory.append(row)
-
+        # Resolve each library's real version (via package manager) and attach
+        # the risk verdict to the inventory entry, so callers can see ALLOWED
+        # and UNKNOWN (unmanaged/bundled) libraries too — not just risks.
+        resolved_libs: list[dict[str, Any]] = []
         for lib in libs:
-            verdict = assess_library(lib["library"], lib.get("version"))
+            resolved = _resolve_library_version(lib)
+            verdict = assess_library(lib["library"], resolved["version"])
+            enriched = {
+                **lib,
+                "version": resolved["version"] or lib.get("version"),
+                "version_source": resolved["source"],
+                "package": resolved["package"],
+                "package_version": resolved["package_version"],
+                "status": verdict["status"],
+                "library_name": verdict["library_name"],
+                "notes": verdict["notes"],
+            }
+            resolved_libs.append(enriched)
+            # Emit a finding only for a *positive* risk verdict. UNKNOWN means
+            # the version could not be established (unmanaged bundled lib),
+            # which is an inventory observation, not a defect.
             if verdict["status"] in {"DISALLOWED", "DEPRECATED", "RESTRICTED"}:
                 findings.append(
                     {
                         "process_name": comm,
                         "pid": pid,
                         "library": lib["library"],
-                        "version": lib.get("version"),
+                        "version": resolved["version"],
+                        "version_source": resolved["source"],
+                        "package": resolved["package"],
+                        "package_version": resolved["package_version"],
                         **verdict,
                         "listening_ports": ports,
                         "containerized": containerized,
                     }
                 )
 
+        row: dict[str, Any] = {
+            "pid": pid,
+            "process_name": comm,
+            "cmdline": cmdline[:200],
+            "tls_libraries": [lib["library"] for lib in resolved_libs],
+            "library_details": resolved_libs,
+            "containerized": containerized,
+            "listening_ports": ports,
+            "runtime": _runtime_of(comm, cmdline, maps),
+        }
+        inventory.append(row)
+
+
+    # Only narrow the output for a real /proc scan; injected fixture trees
+    # (tests) keep their full inventory regardless of crypto_only.
+    apply_crypto_filter = crypto_only and base == "/proc"
+    crypto_procs = [p for p in inventory if p["tls_libraries"] or p["listening_ports"]]
+    shown = crypto_procs if apply_crypto_filter else inventory
     return {
-        "host": os.environ.get("HOSTNAME", "unknown"),
-        "process_count": len(inventory),
+        "host": _host_identifier(),
+        "process_count": len(shown),
+        "total_processes_scanned": len(inventory),
+        "kernel_threads_skipped": kernel_skipped,
         "processes_with_tls_libraries": sum(1 for p in inventory if p["tls_libraries"]),
         "listening_processes": sum(1 for p in inventory if p["listening_ports"]),
-        "processes": inventory,
+        "processes": shown,
         "findings": findings,
     }
 
@@ -91,6 +156,22 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # helpers (all tolerant of missing/permission-denied /proc entries)
 # --------------------------------------------------------------------------- #
+
+
+def _host_identifier() -> str:
+    """Best-effort hostname for this host.
+
+    HOSTNAME is exported by most shells/systemd but is not guaranteed; fall
+    back to the kernel-reported nodename, then "unknown".
+    """
+    name = os.environ.get("HOSTNAME") or os.environ.get("CRYPTOSCAN_HOSTNAME")
+    if name:
+        return name.strip() or "unknown"
+    try:
+        return socket.gethostname() or "unknown"
+    except OSError:
+        return "unknown"
+
 
 
 def _numeric_dirs(base: str) -> list[str]:
@@ -122,6 +203,36 @@ def _read_maps(base: str, pid: int) -> str:
             return handle.read()
     except OSError:
         return ""
+
+
+def _resolve_library_version(lib: dict[str, Any]) -> dict[str, Any]:
+    """Return {package, package_version, version, source} for a matched lib.
+
+    The mapped filename only carries an ABI soname (e.g. libssl.so.3,
+    libgnutls.so.30), which is *not* a release version. Prefer the real
+    upstream version owned by the OS package manager; fall back to the
+    filename-derived tag (kept only for display, treated as unversioned by the
+    risk layer) for unmanaged/bundled copies.
+    """
+    from runtime.agent.version_resolve import resolve_path
+
+    info = resolve_path(lib.get("path"))
+    if info.get("version"):
+        return {
+            "package": info["package"],
+            "package_version": info["package_version"],
+            "version": info["version"],
+            "source": info["source"],
+        }
+    # No OS-package owner (browser-bundled NSS/BoringSSL, snap/flatpak/opt).
+    # Report the filename tag for inventory but let the risk layer return
+    # UNKNOWN so no false EOL verdict is emitted.
+    return {
+        "package": None,
+        "package_version": None,
+        "version": lib.get("version"),
+        "source": lib.get("note", "filename"),
+    }
 
 
 def _library_versions(maps: str) -> list[dict[str, Any]]:

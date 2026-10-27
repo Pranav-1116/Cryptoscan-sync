@@ -11,10 +11,10 @@ proven against real infrastructure before production:
   smtp      SMTP wiring check against a real relay, or a built-in local sink
   neo4j     connect, apply constraints, populate graph, run a blast-radius query
   cloud     credential presence check + (opt-in) live cloud scan submission
-  container build the bundled demo image and scan it (requires Docker)
+  container scan a caller-provided image reference (requires Docker)
 
 Usage:
-    python scripts/burn_in.py --target github --api http://127.0.0.1:8000
+    python scripts/burn_in.py --target github --api http://127.0.0.1:8010
     python scripts/burn_in.py --target tls --host example.com --port 443
     python scripts/burn_in.py --target smtp --smtp-host 127.0.0.1 --smtp-port 1025
     python scripts/burn_in.py --target all
@@ -23,6 +23,11 @@ Exit code 0 when every selected target PASSES or cleanly SKIPs (with reason);
 1 on any FAIL. Full JSON report written to burn_in_report.json.
 """
 from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 from _bootstrap import bootstrap  # noqa: E402
 
 bootstrap()
@@ -69,14 +74,18 @@ def burn_github(api: str, username: str, password: str, secret: str, timeout: in
         with urllib.request.urlopen(req, timeout=10) as resp:
             token = json.loads(resp.read())["token"]
 
-        # 2. Deliver a properly HMAC-signed push webhook (local demo repo).
+        # 2. Deliver a properly HMAC-signed push webhook for the configured repository.
         delivery = str(uuid.uuid4())
+        repo_url = os.environ.get("BURN_IN_REPO", "").strip()
+        if not repo_url:
+            record("github", "SKIP", "set BURN_IN_REPO to an authorized repository URL")
+            return
         payload = {
             "ref": "refs/heads/main",
             "after": "burnin0000000000000000000000000000000000000",
             "repository": {
-                "full_name": "ZKChainForge/burn-in",
-                "clone_url": "local://demo/vulnerable-app",
+                "full_name": os.environ.get("BURN_IN_REPO_NAME", "configured-repository"),
+                "clone_url": repo_url,
                 "html_url": "https://github.example/burn-in",
             },
             "head_commit": {
@@ -124,7 +133,11 @@ def burn_github(api: str, username: str, password: str, secret: str, timeout: in
                 if status in {"COMPLETED", "FAILED", "ERROR"}:
                     final = job
                     break
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass  # job may not be visible yet
             time.sleep(1)
         if final is None:
@@ -140,9 +153,10 @@ def burn_github(api: str, username: str, password: str, secret: str, timeout: in
 
 # ------------------------------------------------------------------------ tls
 
-def burn_tls(host: str, port: int) -> None:
+def burn_tls(host: str, port: int, ca_file: str | None = None) -> None:
     try:
-        ctx = ssl.create_default_context()
+        # System trust by default; --ca-file adds a private CA (staging / internal PKI).
+        ctx = ssl.create_default_context(cafile=ca_file) if ca_file else ssl.create_default_context()
         with socket.create_connection((host, port), timeout=10) as sock:
             with ctx.wrap_socket(sock, server_hostname=host) as tls:
                 cert = tls.getpeercert()
@@ -184,7 +198,11 @@ class _SmtpSink(threading.Thread):
                 return
             try:
                 self._handle(conn)
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             finally:
                 conn.close()
@@ -222,7 +240,11 @@ class _SmtpSink(threading.Thread):
         self.stop.set()
         try:
             self._srv.close()
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
 
@@ -311,28 +333,22 @@ def burn_cloud() -> None:
 
 # ------------------------------------------------------------------ container
 
-def burn_container() -> None:
+def burn_container(image_ref: str) -> None:
     import shutil
-    import subprocess
 
     if shutil.which("docker") is None:
         record("container", "SKIP", "docker CLI not available on this host")
         return
+    if not image_ref:
+        record("container", "SKIP", "set BURN_IN_CONTAINER_IMAGE to an authorized image reference")
+        return
     try:
-        image = "cryptoscan-burn-in:latest"
-        build = subprocess.run(
-            ["docker", "build", "-t", image, str(ROOT / "demo/polyglot-app")],
-            capture_output=True, text=True, timeout=300,
-        )
-        if build.returncode != 0:
-            record("container", "SKIP", f"demo image build failed: {build.stderr[-200:]}")
-            return
         from container_scanner.core.scanner import ContainerScanner  # type: ignore
 
         scanner = ContainerScanner()
-        result = scanner.scan_image(image)
+        result = scanner.scan_image(image_ref)
         libs = getattr(result, "libraries", None) or result.get("libraries", [])
-        record("container", "PASS", f"scanned {image}: {len(libs)} crypto libraries found")
+        record("container", "PASS", f"scanned {image_ref}: {len(libs)} crypto libraries found")
     except Exception as exc:
         record("container", "FAIL", f"{type(exc).__name__}: {exc}")
 
@@ -344,12 +360,17 @@ def main() -> int:
     parser.add_argument("--target", action="append", default=None,
                         choices=["all", "github", "tls", "smtp", "neo4j", "cloud", "container"],
                         help="repeatable; --target all runs everything")
-    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8000"))
+    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8010"))
     parser.add_argument("--username", default=os.environ.get("ADMIN_USERNAME", "admin"))
-    parser.add_argument("--password", default=os.environ.get("ADMIN_PASSWORD", "cryptoscan"))
-    parser.add_argument("--webhook-secret", default=os.environ.get("GITHUB_WEBHOOK_SECRET", "dev-webhook-secret-change-me-32chars!!"))
+    parser.add_argument(
+        "--password",
+        default=os.environ.get("BURN_IN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "cryptoscan")),
+        help="integration credential; prefer BURN_IN_PASSWORD or a wrapper environment",
+    )
+    parser.add_argument("--webhook-secret", default=os.environ.get("GITHUB_WEBHOOK_SECRET", ""))
     parser.add_argument("--host", default=os.environ.get("BURN_TLS_HOST", "github.com"))
     parser.add_argument("--port", type=int, default=443)
+    parser.add_argument("--ca-file", default=os.environ.get("BURN_IN_CA_FILE"), help="extra CA bundle to trust for --target tls (staging PKI)")
     parser.add_argument("--smtp-host", default="127.0.0.1")
     parser.add_argument("--smtp-port", type=int, default=1025)
     parser.add_argument("--no-smtp-sink", action="store_true", help="target a real relay instead of the built-in sink")
@@ -358,11 +379,11 @@ def main() -> int:
 
     targets = {
         "github": lambda: burn_github(args.api, args.username, args.password, args.webhook_secret, args.github_timeout),
-        "tls": lambda: burn_tls(args.host, args.port),
+        "tls": lambda: burn_tls(args.host, args.port, args.ca_file),
         "smtp": lambda: burn_smtp(args.smtp_host, args.smtp_port, local_sink=not args.no_smtp_sink),
         "neo4j": burn_neo4j,
         "cloud": burn_cloud,
-        "container": burn_container,
+        "container": lambda: burn_container(os.environ.get("BURN_IN_CONTAINER_IMAGE", "").strip()),
     }
     requested = args.target or ["all"]
     selected = list(targets) if "all" in requested else list(dict.fromkeys(requested))

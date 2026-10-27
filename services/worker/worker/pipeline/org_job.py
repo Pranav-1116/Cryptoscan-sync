@@ -13,6 +13,9 @@ from collections import defaultdict
 from typing import Any
 
 from cloud_scanner.estate import ingest_findings, org_provider, parse_cloud_target
+from worker.pipeline.public_failure import (
+    log_job_failure, public_cloud_telemetry, public_count, public_failure, public_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,22 +45,34 @@ def run_org_job(job) -> bool:
         session.commit()
 
         live_scan = result.get("live_scan") or {}
-        status = "COMPLETED" if live_scan.get("status") != "FAILED" else "FAILED"
+        safe_scan = public_cloud_telemetry(live_scan)
+        if live_scan.get("errors") or any(row.get("error") for row in result.get("accounts") or []):
+            logger.warning("org_job_scan_errors", extra={
+                "job_id": job.job_id, "stage": "cloud_org_inventory", "error_type": "ScanTelemetryError",
+                "error_count": safe_scan["error_count"],
+            })
+        status = "COMPLETED" if safe_scan["status"] != "FAILED" else "FAILED"
         progress = {
             "current_stage": "cloud_org_inventory",
             "percent": 100,
             "status": status,
             "cloud": {
                 "org": True,
-                "provider": result.get("provider"),
-                "accounts_discovered": result.get("accounts_discovered"),
-                "accounts_scanned": live_scan.get("accounts_scanned"),
-                "accounts_failed": live_scan.get("accounts_failed"),
-                "resources": result.get("resources") or 0,
+                "provider": result.get("provider") if isinstance(result.get("provider"), str)
+                            and result.get("provider") in {"aws", "azure", "gcp"} else "unknown",
+                "accounts_discovered": public_count(result.get("accounts_discovered")),
+                "accounts_scanned": safe_scan.get("accounts_scanned"),
+                "accounts_failed": safe_scan.get("accounts_failed"),
+                "resources": public_count(result.get("resources")),
                 "systems": ingested_systems,
-                "truncated": result.get("truncated"),
-                "live_scan": live_scan,
-                "accounts": (result.get("accounts") or [])[:50],
+                "truncated": result.get("truncated") is True,
+                "live_scan": safe_scan,
+                "accounts": [
+                    {"account_id": row.get("account_id"), "ok": row.get("ok") is True,
+                     "resources": public_count(row.get("resources")), "status": public_status(row.get("status")),
+                     "error": public_failure("Cloud account", "cloud_org_inventory") if row.get("error") else None}
+                    for row in (result.get("accounts") or [])[:50]
+                ],
             },
         }
         jobs.update_status(
@@ -71,19 +86,25 @@ def run_org_job(job) -> bool:
             "org_job_done",
             extra={
                 "job_id": job.job_id,
-                "accounts": result.get("accounts_discovered"),
-                "resources": result.get("resources"),
-                "status": live_scan.get("status"),
+                "accounts": progress["cloud"]["accounts_discovered"],
+                "resources": progress["cloud"]["resources"],
+                "status": safe_scan["status"],
             },
         )
         return status == "COMPLETED"
     except Exception as exc:  # noqa: BLE001 — job boundary
-        logger.exception("org_job_failed", extra={"job_id": job.job_id})
+        log_job_failure(logger, "org_job_failed", exc, job_id=job.job_id, stage="cloud_org_inventory")
         try:
             session.rollback()
-            jobs.update_status(job.job_id, "FAILED", error_message=str(exc)[:500])
+            jobs.update_status(
+                job.job_id, "FAILED",
+                error_message=public_failure("Cloud organization inventory", "cloud_org_inventory"),
+                progress={"current_stage": "cloud_org_inventory", "status": "FAILED", "percent": 100},
+            )
             session.commit()
-        except Exception:
+        except Exception as status_exc:
+            log_job_failure(logger, "org_job_failure_status_persist_failed", status_exc,
+                            job_id=job.job_id, stage="cloud_org_inventory")
             session.rollback()
         return False
     finally:
@@ -121,10 +142,8 @@ def _group_by_account(findings: list[dict[str, Any]]) -> dict[str, list[dict[str
 
 
 def _failure_summary(result: dict[str, Any]) -> str:
-    live_scan = result.get("live_scan") or {}
-    errors = live_scan.get("errors") or [{}]
-    first = errors[0] if errors else {}
+    safe_scan = public_cloud_telemetry(result.get("live_scan") or {})
     return (
-        f"org scan FAILED: {live_scan.get('accounts_failed', 0)} accounts failed, "
-        f"0 resources ({first.get('provider', '?')}/{first.get('service', '?')}: {str(first.get('error', ''))[:120]})"
+        f"{public_failure('Cloud organization inventory', 'cloud_org_inventory')}: "
+        f"{safe_scan.get('accounts_failed', 0)} accounts failed, 0 resources"
     )

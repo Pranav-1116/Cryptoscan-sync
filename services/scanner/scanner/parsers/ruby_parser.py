@@ -1,4 +1,12 @@
-"""Ruby OpenSSL / Digest / ActiveSupport crypto detector."""
+"""Ruby crypto detector — OpenSSL, Digest, SecureRandom, ActiveSupport /
+Rails, Devise, bcrypt/argon2/scrypt gems, RbNaCl, JWT/JOSE gems, net-ssh,
+net-http TLS options, Fernet/Lockbox/attr_encrypted, and Sorcery/Clearance
+authentication helpers.
+
+Simple obfuscations are folded first: ``Digest.const_get(:SHA1)`` →
+``Digest::SHA1``, ``"sha" + "256"`` → ``"sha256"``, and string constants
+substituted into ``"#{alg}-cbc"`` interpolations.
+"""
 
 from __future__ import annotations
 
@@ -6,37 +14,308 @@ import re
 from pathlib import Path
 
 from scanner.models.raw_finding import RawFinding
-from scanner.parsers.finding_factory import make_finding
+from scanner.parsers.rule_engine import CIPHER_TOKENS, DIGEST_TOKENS, Rule, run_rules
 
-SCANNER_ID = "static-ruby-scanner-v1.0"
+SCANNER_ID = "static-ruby-scanner-v1.1"
 
-_RULES = [
-    (re.compile(r"Digest::MD5"), "MD5", "MESSAGE_DIGEST", "HASHING", "digest"),
-    (re.compile(r"Digest::SHA1"), "SHA-1", "MESSAGE_DIGEST", "HASHING", "digest"),
-    (re.compile(r"Digest::SHA256|Digest::SHA2\.new\(\s*256"), "SHA-256", "MESSAGE_DIGEST", "HASHING", "digest"),
-    (re.compile(r"Digest::SHA384|Digest::SHA2\.new\(\s*384"), "SHA-384", "MESSAGE_DIGEST", "HASHING", "digest"),
-    (re.compile(r"Digest::SHA512|Digest::SHA2\.new\(\s*512"), "SHA-512", "MESSAGE_DIGEST", "HASHING", "digest"),
-    (re.compile(r"OpenSSL::Digest(?:::SHA256|::SHA1|::MD5)?"), "SHA-256", "MESSAGE_DIGEST", "HASHING", "openssl"),
-    (re.compile(r"OpenSSL::HMAC"), "HMAC", "MAC", "MAC_GENERATION", "openssl"),
-    (re.compile(r"OpenSSL::KDF\.pbkdf2_hmac"), "PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "openssl"),
-    (re.compile(r"OpenSSL::KDF\.scrypt"), "SCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "openssl"),
-    (re.compile(r"OpenSSL::KDF\.hkdf"), "HKDF", "KEY_GENERATOR", "KEY_GENERATION", "openssl"),
-    (re.compile(r"OpenSSL::PKey::RSA"), "RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "openssl"),
-    (re.compile(r"OpenSSL::PKey::EC"), "ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "openssl"),
-    (re.compile(r"OpenSSL::PKey::DSA"), "DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "openssl"),
-    (re.compile(r"OpenSSL::PKey::ED25519|OpenSSL::PKey::Ed25519"), "Ed25519", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "openssl"),
-    (re.compile(r"OpenSSL::SSL::SSLContext|OpenSSL::SSL::SSLSocket"), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "openssl"),
-    (re.compile(r"OpenSSL::Random\.(random_bytes|pseudo_bytes)"), "CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "openssl"),
-    (re.compile(r"BCrypt::Password"), "BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "bcrypt"),
-    (re.compile(r"ActiveSupport::MessageEncryptor"), "AES", "CIPHER_INSTANCE", "ENCRYPTION", "activesupport"),
-    (re.compile(r"ActiveSupport::KeyGenerator|ActiveSupport::CachingKeyGenerator"), "PBKDF2", "KEY_GENERATOR", "KEY_GENERATION", "activesupport"),
-    (re.compile(r"Devise::Encryptor|Devise::Encryptable"), "BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "devise"),
-    (re.compile(r"RbNaCl::SecretBox|RbNaCl::SimpleBox"), "XSalsa20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "rbnacl"),
-    (re.compile(r"RbNaCl::Signatures::Ed25519"), "Ed25519", "SIGNATURE", "SIGNING", "rbnacl"),
+_D = {"api_type": "MESSAGE_DIGEST", "purpose": "HASHING"}
+_C = {"api_type": "CIPHER_INSTANCE", "purpose": "ENCRYPTION"}
+_K = {"api_type": "KEY_PAIR_GENERATOR", "purpose": "KEY_GENERATION"}
+_S = {"api_type": "SIGNATURE", "purpose": "SIGNING"}
+_M = {"api_type": "MAC", "purpose": "MAC_GENERATION"}
+_KDF = {"api_type": "KEY_GENERATOR", "purpose": "PASSWORD_HASHING"}
+_KA = {"api_type": "KEY_AGREEMENT", "purpose": "KEY_EXCHANGE"}
+_TLS = {"api_type": "KEY_AGREEMENT", "purpose": "NETWORK_ENCRYPTION"}
+_RNG = {"api_type": "KEY_GENERATOR", "purpose": "KEY_GENERATION"}
+_X = {"api_type": "SIGNATURE", "purpose": "VERIFICATION"}
+
+
+def _r(pattern: str, base: dict, library: str, **extra) -> Rule:
+    return re.compile(pattern, re.M), {**base, "library": library, **extra}
+
+
+_Q = r"""['"]"""
+_DIGEST_CONST = {
+    "md2": "MD2", "md4": "MD4", "md5": "MD5", "sha": "SHA-1", "sha1": "SHA-1", "sha224": "SHA-224", "sha256": "SHA-256", "sha384": "SHA-384",
+    "sha512": "SHA-512", "sha512_256": "SHA-512", "sha3_256": "SHA3-256", "sha3_384": "SHA3-384", "sha3_512": "SHA3-512", "ripemd160": "RIPEMD-160",
+    "rmd160": "RIPEMD-160", "whirlpool": "WHIRLPOOL", "dss1": "SHA-1", "blake2b": "BLAKE2b", "blake2s": "BLAKE2s", "sha2": "SHA-256",
+}
+_JWT_ALGS = {
+    "hs256": "HS256", "hs384": "HS384", "hs512": "HS512", "rs256": "RS256", "rs384": "RS384", "rs512": "RS512", "es256": "ES256", "es256k": "ES256K",
+    "es384": "ES384", "es512": "ES512", "ps256": "PS256", "ps384": "PS384", "ps512": "PS512", "eddsa": "EdDSA", "ed25519": "EdDSA", "none": "none",
+    "hs256k": "HS256",
+}
+_SSL_VERSIONS = {
+    "sslv2": "SSLv2", "sslv3": "SSLv3", "sslv23": "TLS", "tlsv1": "TLS1.0", "tlsv1_1": "TLS1.1", "tlsv1_2": "TLS1.2", "tlsv1_3": "TLS1.3",
+    "tls1": "TLS1.0", "tls1_1": "TLS1.1", "tls1_2": "TLS1.2", "tls1_3": "TLS1.3",
+}
+
+RULES: list[Rule] = [
+    # ------------------------------------------------------------ Digest / OpenSSL::Digest
+    _r(r"\b(?:OpenSSL::)?Digest::(MD2|MD4|MD5|SHA|SHA1|SHA224|SHA256|SHA384|SHA512|SHA3_256|SHA3_384|SHA3_512|RIPEMD160|RMD160|WHIRLPOOL|DSS1|BLAKE2b|BLAKE2s)\b", _D, "digest", algo_from_group=1, algo_map=_DIGEST_CONST),
+    _r(r"\bDigest::SHA2\.new\s*\(\s*(256|384|512)\s*\)|\bDigest::SHA2\.(?:hexdigest|digest|base64digest)\b", _D, "digest", algo_from_group=1, algo_map={"256": "SHA-256", "384": "SHA-384", "512": "SHA-512"}),
+    _r(r"\bDigest::SHA2\b(?!\.new\s*\(\s*(?:384|512))", _D, "digest", algorithm="SHA-256", confidence="MEDIUM", confidence_reason="Digest::SHA2 default bitlen is 256"),
+    _r(rf"\bOpenSSL::Digest(?:\.new|\.digest|\.hexdigest|\.base64digest)?\s*\(?\s*{_Q}(md2|md4|md5|sha|sha1|sha224|sha256|sha384|sha512|sha512-256|sha3-256|sha3-384|sha3-512|ripemd160|rmd160|whirlpool|dss1|blake2b512|blake2s256)(?:WithRSAEncryption)?{_Q}", _D, "openssl", algo_from_group=1, algo_map={**DIGEST_TOKENS, "sha512-256": "SHA-512", "blake2b512": "BLAKE2b", "blake2s256": "BLAKE2s", "dss1": "SHA-1", "sha": "SHA-1"}),
+    _r(r"\bDigest\s*\(\s*:(MD5|SHA1|SHA256|SHA384|SHA512|SHA2|RMD160|SHA3|BLAKE2b)\s*\)|\bDigest\.const_get\s*\(\s*[:\"']?(MD5|SHA1|SHA256|SHA384|SHA512|SHA2|RMD160)\b|\bOpenSSL::Digest\.const_get\s*\(\s*[:\"']?(MD5|SHA1|SHA256|SHA384|SHA512)\b", _D, "digest", algo_from_group=1, algo_map=_DIGEST_CONST),
+    _r(r"\bOpenSSL::Digest\.new\s*\(\s*\$?\w+\s*\)|\bOpenSSL::Digest\.new\s*\(\s*\)|\bDigest::Base\b|\bDigest::Class\b|\bDigest::Instance\b", _D, "digest", algorithm="UNKNOWN", confidence="LOW"),
+    # ------------------------------------------------------------ OpenSSL::Cipher
+    _r(rf"\bOpenSSL::Cipher(?:::Cipher)?\.new\s*\(\s*{_Q}([A-Za-z0-9_-]+){_Q}", _C, "openssl", algo_from_group=1, algo_map=CIPHER_TOKENS, split_cipher=True),
+    _r(r"\bOpenSSL::Cipher(?:::Cipher)?\.new\s*\(\s*(?:\"[^\"]*#\{|[a-z_][\w.]*\s*\))", _C, "openssl", algorithm="UNKNOWN", confidence="LOW", confidence_reason="cipher name not a literal"),
+    _r(r"\bOpenSSL::Cipher::(AES|AES128|AES192|AES256|DES|DES3|BF|RC2|RC4|CAST5|IDEA|Camellia|ChaCha20|SEED|SM4|ARIA)\b(?:\.new\s*\(\s*(?:(\d+)\s*,\s*)?(?::|['\"])?(cbc|ecb|cfb|ofb|ctr|gcm|ccm|xts|ocb)?)?", _C, "openssl", algo_from_group=1,
+       algo_map={"aes": "AES", "aes128": "AES", "aes192": "AES", "aes256": "AES", "des": "DES", "des3": "3DES", "bf": "Blowfish", "rc2": "RC2", "rc4": "RC4", "cast5": "CAST5", "idea": "IDEA", "camellia": "Camellia", "chacha20": "ChaCha20", "seed": "SEED", "sm4": "SM4", "aria": "ARIA"}),
+    _r(r"\bOpenSSL::Cipher::AES(?:128|192|256)?\.new\s*\(\s*(\d{3})", _C, "openssl", algorithm="AES", key_from_group=1),
+    _r(r"\bOpenSSL::Cipher\.ciphers\b|\bOpenSSL::Cipher::CipherError\b|\.auth_tag\b|\.auth_data\s*=|\.iv_len\b|\.key_len\s*=|\.pkcs5_keyivgen\b|\.random_key\b|\.random_iv\b", _C, "openssl", algorithm="UNKNOWN", confidence="LOW"),
+    _r(r"\.pkcs5_keyivgen\s*\(", _KDF, "openssl", algorithm="EVP_BytesToKey", confidence="HIGH", confidence_reason="pkcs5_keyivgen is the legacy MD5-based EVP_BytesToKey KDF (2000 iterations)"),
+    _r(r"\.pkcs5_keyivgen\s*\((?![^)]*Digest)", _D, "openssl", algorithm="MD5", confidence="MEDIUM", confidence_reason="pkcs5_keyivgen default digest is MD5"),
+    _r(r"\bOpenSSL::PKCS5\.pbkdf2_hmac_sha1\b", _D, "openssl", algorithm="SHA-1"),
+    _r(r"\bOpenSSL::PKCS5\.pbkdf2_hmac_sha1\b|\bOpenSSL::PKCS5\.pbkdf2_hmac\b|\bOpenSSL::KDF\.pbkdf2_hmac\b|\bPBKDF2\.new\b|\bPBKDF2::\w+|\bpbkdf2_hmac\b", _KDF, "openssl", algorithm="PBKDF2"),
+    _r(rf"\bpbkdf2_hmac\s*\((?:[^;()\n]*?,){{4}}\s*(?:{_Q}(sha1|sha224|sha256|sha384|sha512|md5){_Q}|(?:OpenSSL::)?Digest::(SHA1|SHA224|SHA256|SHA384|SHA512|MD5)|OpenSSL::Digest\.new\s*\(\s*{_Q}(sha1|sha256|sha512){_Q})", _D, "openssl", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(rf"\bpbkdf2_hmac\s*\([^)]*hash:\s*(?:{_Q}(sha1|sha256|sha384|sha512){_Q}|(?:OpenSSL::)?Digest::(SHA1|SHA256|SHA384|SHA512))", _D, "openssl", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(r"\bOpenSSL::KDF\.scrypt\b|\bSCrypt::Engine\b|\bSCrypt::Password\b|\bScrypt\b\.\w+", _KDF, "openssl", algorithm="SCRYPT"),
+    _r(r"\bOpenSSL::KDF\.hkdf\b", _KDF, "openssl", algorithm="HKDF", purpose="KEY_GENERATION"),
+    _r(rf"\bOpenSSL::KDF\.hkdf\s*\([^)]*hash:\s*{_Q}(sha1|sha256|sha384|sha512){_Q}", _D, "openssl", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    # ------------------------------------------------------------ HMAC
+    _r(rf"\bOpenSSL::HMAC\.(?:hexdigest|digest|base64digest|new)\s*\(\s*{_Q}((?i:md5|sha1|sha224|sha256|sha384|sha512|sha3-256|ripemd160)){_Q}", _M, "openssl", algorithm="HMAC", emit_digest_group=1),
+    _r(r"\bOpenSSL::HMAC\.(?:hexdigest|digest|base64digest|new)\s*\(\s*(?:OpenSSL::)?Digest(?:::(MD5|SHA1|SHA224|SHA256|SHA384|SHA512)|\.new\s*\(\s*['\"](md5|sha1|sha224|sha256|sha384|sha512)['\"])", _M, "openssl", algorithm="HMAC", emit_digest_group=1),
+    _r(r"\bOpenSSL::HMAC\b", _M, "openssl", algorithm="HMAC"),
+    _r(r"\bActiveSupport::MessageVerifier\b|\bRails\.application\.message_verifier\b|\bverifier\.generate\b|\bActiveSupport::SecurityUtils\.secure_compare\b|\bActiveSupport::SecurityUtils\.fixed_length_secure_compare\b|\bRack::Utils\.secure_compare\b", _M, "activesupport", algorithm="HMAC-SHA1", confidence="MEDIUM", confidence_reason="MessageVerifier default digest is SHA1 (Rails < 7 defaults); SHA256 when configured"),
+    _r(rf"\bMessageVerifier\.new\s*\([^)]*digest:\s*{_Q}(SHA1|SHA256|SHA384|SHA512|MD5){_Q}|\bmessage_verifier\s*\([^)]*digest:\s*{_Q}(SHA1|SHA256|SHA512){_Q}|\bconfig\.active_support\.message_verifier_digest\s*=\s*{_Q}?(SHA1|SHA256|SHA512){_Q}?", _D, "activesupport", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(rf"\bActiveSupport::MessageEncryptor\.new\s*\([^)]*cipher:\s*{_Q}([A-Za-z0-9-]+){_Q}|\bconfig\.active_support\.encryptor_cipher\s*=\s*{_Q}([A-Za-z0-9-]+){_Q}", _C, "activesupport", algo_from_group=1, algo_map=CIPHER_TOKENS, split_cipher=True),
+    _r(r"\bActiveSupport::MessageEncryptor\b|\bActiveSupport::EncryptedConfiguration\b|\bActiveSupport::EncryptedFile\b|\bRails\.application\.encrypted\b|\bRails\.application\.credentials\b|\bconfig\.require_master_key\b|\bRAILS_MASTER_KEY\b", _C, "activesupport", algorithm="AES", mode="GCM", confidence="MEDIUM", confidence_reason="MessageEncryptor default cipher is aes-256-gcm (aes-256-cbc before Rails 5.2)"),
+    _r(r"\bActiveSupport::MessageEncryptor\.use_authenticated_message_encryption\s*=\s*false|\bconfig\.active_support\.use_authenticated_message_encryption\s*=\s*false", _C, "activesupport", algorithm="AES", mode="CBC", confidence="HIGH", confidence_reason="authenticated encryption explicitly disabled → aes-256-cbc + HMAC-SHA1"),
+    _r(r"\bActiveSupport::KeyGenerator\b|\bActiveSupport::CachingKeyGenerator\b|\bRails\.application\.key_generator\b|\bsecrets\.secret_key_base\b|\bsecret_key_base\b", _KDF, "activesupport", algorithm="PBKDF2", confidence="MEDIUM", purpose="KEY_GENERATION"),
+    _r(r"\bKeyGenerator\.new\s*\([^)]*hash_digest_class:\s*(?:OpenSSL::)?Digest::(SHA1|SHA256|SHA512)|\bconfig\.active_support\.key_generator_hash_digest_class\s*=\s*(?:OpenSSL::)?Digest::(SHA1|SHA256|SHA512)|\bconfig\.active_support\.hash_digest_class\s*=\s*(?:OpenSSL::)?Digest::(MD5|SHA1|SHA256|SHA512)|\bActiveSupport::Digest\.hash_digest_class\s*=\s*(?:OpenSSL::)?Digest::(MD5|SHA1|SHA256|SHA512)", _D, "activesupport", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(r"\bActiveSupport::Digest\.hexdigest\b|\bActiveSupport::Digest\b", _D, "activesupport", algorithm="MD5", confidence="MEDIUM", confidence_reason="ActiveSupport::Digest default hash_digest_class was MD5 until Rails 7 (SHA256 with load_defaults 7.0)"),
+    _r(r"\bActiveRecord::Encryption\b|\bencrypts\s+:\w+|\bactive_record_encryption\b|\bconfig\.active_record\.encryption\.\w+|\bActiveRecord::Encryption::(?:Cipher|KeyProvider|DerivedSecretKeyProvider|EnvelopeEncryptionKeyProvider|Encryptor|Scheme|MessageSerializer)\b|\bdeterministic:\s*true", _C, "activerecord-encryption", algorithm="AES", mode="GCM", confidence="MEDIUM", confidence_reason="ActiveRecord Encryption uses aes-256-gcm"),
+    _r(r"\bActiveRecord::Encryption::DerivedSecretKeyProvider\b|\bconfig\.active_record\.encryption\.key_derivation_salt\b|\bconfig\.active_record\.encryption\.primary_key\b", _KDF, "activerecord-encryption", algorithm="PBKDF2", purpose="KEY_GENERATION", confidence="MEDIUM"),
+    _r(r"\bhas_secure_password\b|\bauthenticate_by\s*\(|\bBCrypt::Password\b|\bBCrypt::Engine\b|\brequire\s+['\"]bcrypt['\"]|\bBCrypt::Engine\.cost\s*=|\bBCrypt::Engine\.hash_secret\b|\bBCrypt::Engine\.generate_salt\b|\bBCrypt::Password\.create\b|\bconfig\.stretches\b|\bpepper\b", _KDF, "bcrypt", algorithm="BCRYPT"),
+    _r(r"\bhas_secure_token\b|\bgenerate_unique_secure_token\b|\bActiveRecord::SecureToken\b|\bsigned_id\b|\bfind_signed\b|\bgenerate_token_for\b|\bfind_by_token_for\b", _RNG, "activerecord", algorithm="CSPRNG", confidence="LOW"),
+    _r(r"\bDevise::Encryptor\b|\bDevise::Encryptable\b|\bDevise\.bcrypt\b|\bdevise\s+:database_authenticatable\b|\bconfig\.encryptor\s*=|\bDevise\.secure_compare\b|\bDevise\.friendly_token\b|\bDevise\.stretches\b|\bDevise\.pepper\b|\bconfig\.pepper\s*=|\bvalid_password\?\b|\bencrypted_password\b|\bDevise::TokenGenerator\b|\bDevise\.token_generator\b|\bconfig\.secret_key\s*=", _KDF, "devise", algorithm="BCRYPT", confidence="MEDIUM"),
+    _r(r"\bconfig\.encryptor\s*=\s*:(sha1|sha512|clearance_sha1|authlogic_sha512|restful_authentication_sha1|pbkdf2|bcrypt)\b", _KDF, "devise-encryptable", algo_from_group=1, algo_map={"sha1": "SHA-1", "sha512": "SHA-512", "clearance_sha1": "SHA-1", "authlogic_sha512": "SHA-512", "restful_authentication_sha1": "SHA-1", "pbkdf2": "PBKDF2", "bcrypt": "BCRYPT"}),
+    _r(r"\bDevise::TokenGenerator\b|\bDevise\.token_generator\b|\bDevise\.friendly_token\b", _M, "devise", algorithm="HMAC-SHA256", confidence="MEDIUM", confidence_reason="Devise TokenGenerator uses OpenSSL::HMAC sha256 with key_generator"),
+    _r(r"\bArgon2::Password\b|\bArgon2::Engine\b|\brequire\s+['\"]argon2['\"]|\bArgon2::Password\.create\b|\bArgon2::Password\.verify_password\b|\bArgon2id\b", _KDF, "argon2", algorithm="ARGON2"),
+    _r(r"\bSCrypt::Password\b|\bSCrypt::Engine\b|\brequire\s+['\"]scrypt['\"]|\bSCrypt::Password\.create\b", _KDF, "scrypt", algorithm="SCRYPT"),
+    _r(r"\bPBKDF2::\w+|\brequire\s+['\"]pbkdf2['\"]|\bPBKDF2\.new\b|\bPBKDF2\.hex_string\b|\bPBKDF2\.bin_string\b", _KDF, "pbkdf2-ruby", algorithm="PBKDF2"),
+    _r(r"\bUnixCrypt::(SHA512|SHA256|MD5|DES)\b|\brequire\s+['\"]unix-crypt['\"]|\bString#crypt\b|\.crypt\s*\(\s*['\"]\$6\$|\.crypt\s*\(\s*['\"]\$5\$|\.crypt\s*\(\s*['\"]\$1\$|\.crypt\s*\(\s*['\"]\$2[axy]\$|\.crypt\s*\(\s*['\"][A-Za-z0-9./]{2}['\"]\s*\)", _KDF, "unix-crypt", algo_from_group=1, algo_map={"sha512": "SHA-512", "sha256": "SHA-256", "md5": "MD5", "des": "DES"}, confidence="MEDIUM"),
+    _r(r"\.crypt\s*\(\s*['\"]\$6\$", _KDF, "unix-crypt", algorithm="SHA-512", confidence_reason="SHA-512-crypt"),
+    _r(r"\.crypt\s*\(\s*['\"]\$5\$", _KDF, "unix-crypt", algorithm="SHA-256", confidence_reason="SHA-256-crypt"),
+    _r(r"\.crypt\s*\(\s*['\"]\$1\$", _KDF, "unix-crypt", algorithm="MD5", confidence_reason="MD5-crypt"),
+    _r(r"\.crypt\s*\(\s*['\"]\$2[axy]\$", _KDF, "unix-crypt", algorithm="BCRYPT"),
+    _r(r"\.crypt\s*\(\s*['\"][A-Za-z0-9./]{2}['\"]\s*\)", _KDF, "unix-crypt", algorithm="DES", confidence_reason="traditional DES crypt (2-char salt)"),
+    _r(r"\bAuthlogic\b|\bacts_as_authentic\b|\bAuthlogic::CryptoProviders::(Sha1|Sha512|Sha256|Sha512V2|BCrypt|SCrypt|MD5|AES256|Wordpress|Sha1V2|Sha256V2|Sha512V2)\b|\bcrypto_provider\s*=?\s*Authlogic::CryptoProviders::(Sha1|Sha512|Sha256|BCrypt|SCrypt|MD5|AES256|Wordpress)|\btransition_from_crypto_providers\b", _KDF, "authlogic", algo_from_group=1,
+       algo_map={"sha1": "SHA-1", "sha1v2": "SHA-1", "sha512": "SHA-512", "sha512v2": "SHA-512", "sha256": "SHA-256", "sha256v2": "SHA-256", "bcrypt": "BCRYPT", "scrypt": "SCRYPT", "md5": "MD5", "aes256": "AES", "wordpress": "MD5"}, confidence="MEDIUM"),
+    _r(r"\bacts_as_authentic\b(?![\s\S]{0,400}crypto_provider)", _KDF, "authlogic", algorithm="SCRYPT", confidence="LOW", confidence_reason="Authlogic default crypto provider is SCrypt (Sha512 in v3 and earlier)"),
+    _r(r"\bSorcery\b|\bauthenticates_with_sorcery!|\bSorcery::CryptoProviders::(MD5|SHA1|SHA256|SHA512|BCrypt|AES256)\b|\bconfig\.encryption_algorithm\s*=\s*:(md5|sha1|sha256|sha512|bcrypt|aes256|none|custom)\b|\bsorcery_config\b|\bconfig\.encryption_key\b|\bconfig\.stretches\b|\bconfig\.salt_join_token\b|\bconfig\.custom_encryption_provider\b", _KDF, "sorcery", algo_from_group=1, algo_map={"md5": "MD5", "sha1": "SHA-1", "sha256": "SHA-256", "sha512": "SHA-512", "bcrypt": "BCRYPT", "aes256": "AES", "none": "PLAINTEXT", "custom": "UNKNOWN"}, confidence="MEDIUM"),
+    _r(r"\bauthenticates_with_sorcery!(?![\s\S]{0,600}encryption_algorithm)", _KDF, "sorcery", algorithm="BCRYPT", confidence="LOW", confidence_reason="Sorcery default encryption_algorithm is :bcrypt"),
+    _r(r"\bClearance\b|\binclude\s+Clearance::User\b|\bClearance::PasswordStrategies::(BCrypt|BCryptMigrationFromSHA1|SHA1|Blowfish|Argon2)\b|\bconfig\.password_strategy\s*=\s*Clearance::PasswordStrategies::(BCrypt|BCryptMigrationFromSHA1|SHA1|Blowfish|Argon2)|\bClearance\.configure\b", _KDF, "clearance", algo_from_group=1, algo_map={"bcrypt": "BCRYPT", "bcryptmigrationfromsha1": "BCRYPT", "sha1": "SHA-1", "blowfish": "Blowfish", "argon2": "ARGON2"}, confidence="MEDIUM"),
+    _r(r"\bClearance::PasswordStrategies::BCryptMigrationFromSHA1\b", _KDF, "clearance", algorithm="SHA-1", confidence="MEDIUM"),
+    _r(r"\bRodauth\b|\bplugin\s+:rodauth\b|\brodauth\s+do\b|\bpassword_hash_cost\b|\bargon2_secret\b|\buse_argon2\?|\benable\s+:(?:argon2|login|logout|create_account|reset_password|jwt|jwt_refresh|otp|webauthn|sms_codes|recovery_codes|remember|active_sessions|audit_logging|session_expiration|single_session|change_password|password_grace_period|disallow_password_reuse|disallow_common_passwords|password_complexity|password_expiration|password_pepper|email_auth|verify_account|lockout|close_account|http_basic_auth|json|jwt_cors)\b", _KDF, "rodauth", algorithm="BCRYPT", confidence="LOW"),
+    _r(r"\benable\s+:argon2\b|\buse_argon2\?|\bargon2_secret\b|\bargon2_old_secret\b", _KDF, "rodauth", algorithm="ARGON2"),
+    _r(r"\benable\s+:(?:jwt|jwt_refresh|jwt_cors)\b|\bjwt_secret\b|\bjwt_algorithm\b|\bjwt_public_key\b|\bjwt_decode_opts\b", _S, "rodauth", algorithm="JWT", confidence="MEDIUM"),
+    _r(rf"\bjwt_algorithm\s+{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|EdDSA){_Q}", _S, "rodauth", algo_from_group=1, algo_map=_JWT_ALGS),
+    _r(r"\benable\s+:(?:otp|sms_codes|recovery_codes)\b|\botp_digits\b|\botp_interval\b|\botp_keys_table\b|\bROTP::TOTP\b|\bROTP::HOTP\b|\bROTP::Base32\b|\brequire\s+['\"]rotp['\"]|\bTOTP\.new\b|\bHOTP\.new\b|\bprovisioning_uri\b|\bGoogleAuthenticatorRails\b|\bacts_as_google_authenticated\b|\bdevise-two-factor\b|\btwo_factor_authenticatable\b|\bcurrent_otp\b|\botp_secret\b|\bvalidate_and_consume_otp!", _M, "rotp", algorithm="HMAC", confidence="MEDIUM"),
+    _r(rf"\bROTP::(?:TOTP|HOTP)\.new\s*\([^)]*digest:\s*{_Q}(sha1|sha256|sha512){_Q}|\bTOTP\.new\s*\([^)]*digest:\s*{_Q}(sha1|sha256|sha512){_Q}|\botp_digest\s*=?\s*{_Q}(sha1|sha256|sha512){_Q}", _D, "rotp", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(r"\bROTP::(?:TOTP|HOTP)\.new\s*\((?![^)]*digest:)|\bTOTP\.new\s*\((?![^)]*digest:)|\btwo_factor_authenticatable\b|\bacts_as_google_authenticated\b", _D, "rotp", algorithm="SHA-1", confidence="MEDIUM", confidence_reason="TOTP/HOTP default digest is SHA-1"),
+    _r(r"\bWebAuthn::(?:Credential|RelyingParty|Configuration|PublicKeyCredential|Encoder|Error|AuthenticatorAttestationResponse|AuthenticatorAssertionResponse|Credential::\w+)\b|\brequire\s+['\"]webauthn['\"]|\bWebAuthn\.configure\b|\bWebAuthn\.generate_user_id\b|\bWebAuthn\.configuration\b|\benable\s+:webauthn\b|\bwebauthn_(?:rp_id|origin|rp_name|user_ids_table|keys_table)\b|\bU2F::U2F\b|\brequire\s+['\"]u2f['\"]|\bfido_(?:u2f|two_factor)\b", _S, "webauthn", algorithm="ECDSA", confidence="MEDIUM", confidence_reason="WebAuthn credentials default to ES256 (COSE -7)"),
+    _r(rf"\bJWT\.decode\s*\([^\n]*?\balgorithms?:\s*\[?\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES256K|ES384|ES512|PS256|PS384|PS512|EdDSA|none){_Q}", _S, "jwt", algo_from_group=1, algo_map=_JWT_ALGS),
+    _r(r"\balgorithms:\s*\[[^\]]*['\"](?:ES256|ES384|ES512|PS256|PS384|PS512|RS256|RS384|RS512|RS1|EdDSA)['\"]", _S, "webauthn", algorithm="UNKNOWN", confidence="LOW"),
+    _r(r"\balgorithms:\s*\[[^\]]*['\"]RS1['\"]", _D, "webauthn", algorithm="SHA-1", confidence="HIGH", confidence_reason="COSE RS1 = RSASSA-PKCS1-v1_5 with SHA-1"),
+    # ------------------------------------------------------------ asymmetric
+    _r(r"\bOpenSSL::PKey::RSA\.(?:new|generate)\s*\(\s*(\d{3,5})", _K, "openssl", algorithm="RSA", key_from_group=1),
+    _r(r"\bOpenSSL::PKey::RSA\b|\bOpenSSL::PKey\.generate_key\s*\(\s*['\"]RSA['\"]|\bOpenSSL::PKey\.generate_key\s*\(\s*['\"]RSA-PSS['\"]|\bOpenSSL::PKey\.read\b|\bOpenSSL::PKey::PKey\b", _K, "openssl", algorithm="RSA", confidence="MEDIUM"),
+    _r(r"\bOpenSSL::PKey::RSA::(?:PKCS1_PADDING|SSLV23_PADDING|NO_PADDING)\b|\bpublic_encrypt\s*\((?![^)]*OAEP)|\bprivate_decrypt\s*\((?![^)]*OAEP)|\bpublic_encrypt\s*\([^)]*PKCS1_PADDING\b|\bprivate_decrypt\s*\([^)]*PKCS1_PADDING\b", _C, "openssl", algorithm="RSA", padding="PKCS1", confidence_reason="rsa-pkcs1v15-padding (OpenSSL Ruby default)"),
+    _r(r"\bOpenSSL::PKey::RSA::PKCS1_OAEP_PADDING\b|\bpublic_encrypt\s*\([^)]*OAEP|\bprivate_decrypt\s*\([^)]*OAEP|\brsa_padding_mode:\s*['\"]oaep['\"]|\bencrypt\s*\([^)]*rsa_padding_mode", _C, "openssl", algorithm="RSA", padding="OAEP"),
+    _r(rf"\brsa_pss_saltlen\b|\bsign_pss\b|\bverify_pss\b|\brsa_padding_mode:\s*{_Q}pss{_Q}|\bOpenSSL::PKey::RSA::PKCS1_PSS_PADDING\b", _S, "openssl", algorithm="RSA", padding="PSS"),
+    _r(rf"\bsign_pss\s*\(\s*{_Q}(sha1|sha224|sha256|sha384|sha512){_Q}|\bverify_pss\s*\(\s*{_Q}(sha1|sha224|sha256|sha384|sha512){_Q}|\bmgf1_hash:\s*{_Q}(sha1|sha256|sha384|sha512){_Q}", _D, "openssl", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(rf"\.(?:sign|verify|sign_raw|verify_raw|dsa_sign_asn1|dsa_verify_asn1|syssign|sysverify)\s*\(\s*(?:(?:OpenSSL::)?Digest::(MD5|SHA1|SHA224|SHA256|SHA384|SHA512|SHA3_256|RIPEMD160)(?:\.new)?|OpenSSL::Digest\.new\s*\(\s*{_Q}(md5|sha1|sha224|sha256|sha384|sha512){_Q}\s*\)|{_Q}(md5|sha1|sha224|sha256|sha384|sha512){_Q})", _D, "openssl", algo_from_group=1, algo_map=_DIGEST_CONST),
+    _r(r"\.(?:sign|verify|sign_raw|verify_raw)\s*\(\s*nil\s*,", _S, "openssl", algorithm="Ed25519", confidence="MEDIUM", confidence_reason="nil digest => EdDSA / raw signature in OpenSSL::PKey"),
+    _r(rf"\bOpenSSL::PKey::EC\.(?:new|generate)\s*\(\s*{_Q}(prime256v1|secp256r1|secp384r1|secp521r1|secp256k1|brainpoolP256r1|brainpoolP384r1|brainpoolP512r1|sect\w+|prime192v1|secp224r1|secp192k1|secp224k1|X25519|X448|Ed25519|Ed448){_Q}|\bOpenSSL::PKey::EC::Group\.new\s*\(\s*{_Q}(prime256v1|secp256r1|secp384r1|secp521r1|secp256k1|brainpoolP256r1|brainpoolP384r1|brainpoolP512r1|prime192v1|secp224r1){_Q}|\bOpenSSL::PKey\.generate_key\s*\(\s*{_Q}(EC|ED25519|X25519|ED448|X448){_Q}|\bOpenSSL::PKey\.generate_parameters\s*\(\s*{_Q}(EC|DH|DSA){_Q}", _K, "openssl", algo_from_group=1,
+       algo_map={"prime256v1": "ECDSA", "secp256r1": "ECDSA", "secp384r1": "ECDSA", "secp521r1": "ECDSA", "secp256k1": "ECDSA", "brainpoolp256r1": "ECDSA", "brainpoolp384r1": "ECDSA", "brainpoolp512r1": "ECDSA", "prime192v1": "ECDSA", "secp224r1": "ECDSA", "secp192k1": "ECDSA", "secp224k1": "ECDSA", "x25519": "X25519", "x448": "X448", "ed25519": "Ed25519", "ed448": "Ed448", "ec": "ECDSA", "dh": "DH", "dsa": "DSA"}),
+    _r(r"\bOpenSSL::PKey::EC\b|\bOpenSSL::PKey::EC::Point\b|\bOpenSSL::PKey::EC::Group\b|\bec_key\b", _K, "openssl", algorithm="ECDSA", confidence="MEDIUM"),
+    _r(r"\bOpenSSL::PKey::EC\.builtin_curves\b|\.dh_compute_key\s*\(|\.derive\s*\(|\bOpenSSL::PKey::EC.*?\.dh_compute_key\b", _KA, "openssl", algorithm="ECDH", confidence="MEDIUM"),
+    _r(r"\bOpenSSL::PKey::DSA\b|\bOpenSSL::PKey::DSA\.(?:new|generate)\s*\(", _K, "openssl", algorithm="DSA"),
+    _r(r"\bOpenSSL::PKey::DSA\.(?:new|generate)\s*\(\s*(\d{3,5})", _K, "openssl", algorithm="DSA", key_from_group=1),
+    _r(r"\bOpenSSL::PKey::DH\b|\bOpenSSL::PKey::DH\.(?:new|generate)\s*\(|\.compute_key\s*\(|\bOpenSSL::PKey::DH::\w+", _KA, "openssl", algorithm="DH"),
+    _r(r"\bOpenSSL::PKey::DH\.(?:new|generate)\s*\(\s*(\d{3,5})", _KA, "openssl", algorithm="DH", key_from_group=1),
+    _r(r"\bOpenSSL::PKey::(?:ED25519|Ed25519)\b|\bEd25519::SigningKey\b|\bEd25519::VerifyKey\b|\brequire\s+['\"]ed25519['\"]|\bRbNaCl::Signatures::Ed25519\b|\bRbNaCl::SigningKey\b|\bRbNaCl::VerifyKey\b|\bEd25519\.(?:provider|verify_key|signing_key)\b", _S, "ed25519", algorithm="Ed25519"),
+    _r(r"\bX25519::Scalar\b|\bX25519\.(?:diffie_hellman|provider)\b|\brequire\s+['\"]x25519['\"]|\bRbNaCl::PrivateKey\b|\bRbNaCl::PublicKey\b|\bRbNaCl::GroupElement\b|\bRbNaCl::Box\b|\bRbNaCl::Boxes::(?:Curve25519XSalsa20Poly1305|Sealed)\b|\bRbNaCl::SealedBox\b", _KA, "rbnacl", algorithm="X25519"),
+    _r(r"\bRbNaCl::Box\b|\bRbNaCl::SealedBox\b|\bRbNaCl::Boxes::(?:Curve25519XSalsa20Poly1305|Sealed)\b|\bRbNaCl::SecretBox\b|\bRbNaCl::SimpleBox\b|\bRbNaCl::SecretBoxes::XSalsa20Poly1305\b", _C, "rbnacl", algorithm="XSalsa20-Poly1305"),
+    _r(r"\bRbNaCl::AEAD::ChaCha20Poly1305(?:IETF|Legacy)?\b|\bRbNaCl::AEAD::ChaCha20Poly1305IETF\b", _C, "rbnacl", algorithm="ChaCha20-Poly1305"),
+    _r(r"\bRbNaCl::AEAD::XChaCha20Poly1305IETF\b|\bRbNaCl::SecretStream\b", _C, "rbnacl", algorithm="XChaCha20-Poly1305"),
+    _r(r"\bRbNaCl::AEAD::AES256GCM\b", _C, "rbnacl", algorithm="AES", mode="GCM"),
+    _r(r"\bRbNaCl::Hash\.(?:sha256|sha512|blake2b)\b|\bRbNaCl::Hash::(SHA256|SHA512|Blake2b)\b|\bRbNaCl::Hash\.(sha256|sha512|blake2b)\b", _D, "rbnacl", algo_from_group=1, algo_map={"sha256": "SHA-256", "sha512": "SHA-512", "blake2b": "BLAKE2b"}),
+    _r(r"\bRbNaCl::HMAC::(SHA256|SHA512256|SHA512)\b|\bRbNaCl::OneTimeAuths::Poly1305\b|\bRbNaCl::OneTimeAuth\b|\bRbNaCl::Auth\b", _M, "rbnacl", algo_from_group=1, algo_map={"sha256": "HMAC-SHA256", "sha512256": "HMAC-SHA512", "sha512": "HMAC-SHA512"}),
+    _r(r"\bRbNaCl::OneTimeAuths::Poly1305\b|\bRbNaCl::OneTimeAuth\b", _M, "rbnacl", algorithm="Poly1305"),
+    _r(r"\bRbNaCl::PasswordHash\.(?:argon2|argon2i|argon2id|argon2_str|argon2_valid\?)\b|\bRbNaCl::PasswordHash::Argon2\b", _KDF, "rbnacl", algorithm="ARGON2"),
+    _r(r"\bRbNaCl::PasswordHash\.scrypt\b|\bRbNaCl::PasswordHash::SCrypt\b", _KDF, "rbnacl", algorithm="SCRYPT"),
+    _r(r"\bRbNaCl::Random\.random_bytes\b|\bRbNaCl::Util\.\w+", _RNG, "rbnacl", algorithm="CSPRNG", confidence="MEDIUM"),
+    _r(r"\bRbNaCl::\w+", _C, "rbnacl", algorithm="UNKNOWN", confidence="LOW"),
+    _r(r"\bSodium\b\.\w+|\bRubySodium\b|\brequire\s+['\"]sodium['\"]|\bSodium::(?:SecretBox|Box|Sign|Auth|Hash|Random|PwHash|KDF|AEAD)\b", _C, "sodium", algorithm="XSalsa20-Poly1305", confidence="LOW"),
+    # ------------------------------------------------------------ X509 / SSH / PGP
+    _r(r"\bOpenSSL::X509::(?:Certificate|Request|Store|StoreContext|Name|Extension|ExtensionFactory|CRL|Revoked|Attribute|Purpose)\b|\bOpenSSL::PKCS7\b|\bOpenSSL::PKCS12\b|\bOpenSSL::OCSP::\w+|\bOpenSSL::ASN1::\w+|\bOpenSSL::Netscape::SPKI\b|\bOpenSSL::Timestamp::\w+|\bOpenSSL::X509::V_FLAG_\w+|\bOpenSSL::X509::PURPOSE_\w+|\bOpenSSL::X509::DEFAULT_CERT_FILE\b|\bOpenSSL::X509::DEFAULT_CERT_DIR\b|\bset_default_paths\b", _X, "openssl", algorithm="X509", confidence="MEDIUM"),
+    _r(r"\bOpenSSL::OCSP::\w+", _X, "openssl", algorithm="OCSP", confidence="MEDIUM"),
+    _r(r"\bOpenSSL::PKCS12\.(?:create|new)\b", _C, "openssl", algorithm="3DES", confidence="MEDIUM", confidence_reason="PKCS#12 legacy default PBE is RC2/3DES unless key_pbe/cert_pbe set"),
+    _r(rf"\bOpenSSL::PKCS12\.create\s*\([^)]*(?:key_pbe|cert_pbe):\s*{_Q}([A-Za-z0-9-]+){_Q}", _C, "openssl", algo_from_group=1, algo_map={**CIPHER_TOKENS, "pbe-sha1-3des": "3DES", "pbe-sha1-rc2-40": "RC2", "pbe-sha1-rc4-128": "RC4", "aes-256-cbc": "AES", "aes-128-cbc": "AES"}),
+    _r(r"\bOpenSSL::PKCS7\.(?:encrypt|sign|read_smime|write_smime)\b|\bOpenSSL::PKCS7::\w+", _C, "openssl", algorithm="UNKNOWN", confidence="LOW"),
+    _r(r"\bOpenSSL::PKCS7\.encrypt\s*\((?![^)]*Cipher)", _C, "openssl", algorithm="RC2", confidence="MEDIUM", confidence_reason="PKCS7.encrypt default cipher is RC2-40-CBC"),
+    _r(r"\bOpenSSL::PKCS7\.encrypt\s*\([^)]*OpenSSL::Cipher\.new\s*\(\s*['\"]([A-Za-z0-9-]+)['\"]", _C, "openssl", algo_from_group=1, algo_map=CIPHER_TOKENS, split_cipher=True),
+    _r(r"\.sign\s*\(\s*(?:OpenSSL::)?Digest::(MD5|SHA1|SHA256|SHA384|SHA512)(?:\.new)?\s*\)|\bcert\.sign\s*\(|\bcsr\.sign\s*\(|\bcrl\.sign\s*\(|\.signature_algorithm\b", _X, "openssl", algorithm="X509", confidence="MEDIUM"),
+    _r(r"\bOpenSSL::X509::Certificate\.new\b[\s\S]{0,600}?\.sign\s*\([^,]*,\s*(?:OpenSSL::)?Digest::(MD5|SHA1|SHA256|SHA384|SHA512)|\.sign\s*\(\s*\w+\s*,\s*(?:OpenSSL::)?Digest::(MD5|SHA1|SHA256|SHA384|SHA512)(?:\.new)?\s*\)|\.sign\s*\(\s*\w+\s*,\s*['\"](md5|sha1|sha256|sha384|sha512)['\"]\s*\)|\.sign\s*\(\s*\w+\s*,\s*OpenSSL::Digest\.new\s*\(\s*['\"](md5|sha1|sha256|sha384|sha512)['\"]\s*\)\s*\)", _D, "openssl", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(r"\bNet::SSH\.start\b|\bNet::SSH::(?:Transport|Authentication|KeyFactory|Config|Connection|Proxy|Multi|Test|Verifiers|HostKeys|KnownHosts|Buffer|Prompt|Loggable|Version|Service|Gateway)\b|\brequire\s+['\"]net/ssh['\"]|\brequire\s+['\"]net/sftp['\"]|\brequire\s+['\"]net/scp['\"]|\bNet::SFTP\.start\b|\bNet::SCP\.\w+|\bSSHKit\b|\bSSHKey\.generate\b|\bSSHKey\.new\b|\bsshkey\b|\bEd25519::SigningKey\b[\s\S]{0,40}ssh|\bnet-ssh\b|\bcapistrano\b|\bset\s+:ssh_options\b", _TLS, "net-ssh", algorithm="SSH", confidence="MEDIUM"),
+    _r(r"\bverify_host_key:\s*(?::never|false|:accept_new_or_local_tunnel|Net::SSH::Verifiers::Never|Net::SSH::Verifiers::Null|:accept_new)|\bparanoid:\s*false|\bverify_host_key\s*=>\s*(?::never|false)|\bparanoid\s*=>\s*false|\bStrictHostKeyChecking\s*[= ]\s*no\b|\bUserKnownHostsFile\s*[= ]\s*/dev/null", {"api_type": "KEY_AGREEMENT", "purpose": "NETWORK_ENCRYPTION"}, "net-ssh", algorithm="SSH-HOSTKEY-NONE", confidence_reason="SSH host key verification disabled"),
+    _r(rf"\bSSHKey\.generate\s*\([^)]*type:\s*{_Q}(rsa|dsa|ecdsa|ed25519){_Q}|\bSSHKey\.generate\s*\([^)]*bits:\s*(\d+)|\bencryption:\s*{_Q}([A-Za-z0-9-]+){_Q}[\s\S]{{0,40}}SSHKey|\bhost_key:\s*\[?\s*{_Q}(ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|rsa-sha2-256|rsa-sha2-512|ssh-rsa-cert-v01@openssh\.com|ssh-ed25519-cert-v01@openssh\.com){_Q}|\bkex:\s*\[?\s*{_Q}(diffie-hellman-group1-sha1|diffie-hellman-group14-sha1|diffie-hellman-group14-sha256|diffie-hellman-group16-sha512|diffie-hellman-group18-sha512|diffie-hellman-group-exchange-sha1|diffie-hellman-group-exchange-sha256|ecdh-sha2-nistp256|ecdh-sha2-nistp384|ecdh-sha2-nistp521|curve25519-sha256|curve25519-sha256@libssh\.org|sntrup761x25519-sha512@openssh\.com|mlkem768x25519-sha256){_Q}|\bhmac:\s*\[?\s*{_Q}(hmac-md5|hmac-md5-96|hmac-sha1|hmac-sha1-96|hmac-sha2-256|hmac-sha2-512|hmac-sha2-256-etm@openssh\.com|hmac-sha2-512-etm@openssh\.com|hmac-ripemd160|none){_Q}|\bencryption:\s*\[?\s*{_Q}(3des-cbc|blowfish-cbc|aes128-cbc|aes192-cbc|aes256-cbc|aes128-ctr|aes192-ctr|aes256-ctr|aes128-gcm@openssh\.com|aes256-gcm@openssh\.com|chacha20-poly1305@openssh\.com|arcfour|arcfour128|arcfour256|cast128-cbc|idea-cbc|none){_Q}", _TLS, "net-ssh", algo_from_group=1,
+       algo_map={"rsa": "RSA", "dsa": "DSA", "ecdsa": "ECDSA", "ed25519": "Ed25519", "ssh-rsa": "RSA", "ssh-dss": "DSA", "ssh-ed25519": "Ed25519", "ecdsa-sha2-nistp256": "ECDSA", "ecdsa-sha2-nistp384": "ECDSA", "ecdsa-sha2-nistp521": "ECDSA", "rsa-sha2-256": "RSA", "rsa-sha2-512": "RSA", "ssh-rsa-cert-v01@openssh.com": "RSA", "ssh-ed25519-cert-v01@openssh.com": "Ed25519", "diffie-hellman-group1-sha1": "DH", "diffie-hellman-group14-sha1": "DH", "diffie-hellman-group14-sha256": "DH", "diffie-hellman-group16-sha512": "DH", "diffie-hellman-group18-sha512": "DH", "diffie-hellman-group-exchange-sha1": "DH", "diffie-hellman-group-exchange-sha256": "DH", "ecdh-sha2-nistp256": "ECDH", "ecdh-sha2-nistp384": "ECDH", "ecdh-sha2-nistp521": "ECDH", "curve25519-sha256": "X25519", "curve25519-sha256@libssh.org": "X25519", "sntrup761x25519-sha512@openssh.com": "NTRU-Prime", "mlkem768x25519-sha256": "ML-KEM", "hmac-md5": "HMAC-MD5", "hmac-md5-96": "HMAC-MD5", "hmac-sha1": "HMAC-SHA1", "hmac-sha1-96": "HMAC-SHA1", "hmac-sha2-256": "HMAC-SHA256", "hmac-sha2-512": "HMAC-SHA512", "hmac-sha2-256-etm@openssh.com": "HMAC-SHA256", "hmac-sha2-512-etm@openssh.com": "HMAC-SHA512", "hmac-ripemd160": "HMAC-RIPEMD160", "none": "NONE", "3des-cbc": "3DES", "blowfish-cbc": "Blowfish", "aes128-cbc": "AES", "aes192-cbc": "AES", "aes256-cbc": "AES", "aes128-ctr": "AES", "aes192-ctr": "AES", "aes256-ctr": "AES", "aes128-gcm@openssh.com": "AES", "aes256-gcm@openssh.com": "AES", "chacha20-poly1305@openssh.com": "ChaCha20-Poly1305", "arcfour": "RC4", "arcfour128": "RC4", "arcfour256": "RC4", "cast128-cbc": "CAST5", "idea-cbc": "IDEA"}, confidence="MEDIUM"),
+    _r(r"\bGPGME::(?:Ctx|Crypto|Key|Data|SignatureVerification)\b|\brequire\s+['\"]gpgme['\"]|\bGPGME\.(?:encrypt|decrypt|sign|verify|clearsign|detach_sign|list_keys)\b|\bOpenPGP::(?:Message|Crypt::RSA|Crypt::Symmetric|SecretKeyPacket|PublicKeyPacket|LiteralDataPacket)\b|\brequire\s+['\"]openpgp['\"]|\bMail::Gpg\b|\bgpg:\s*\{", _C, "gpgme", algorithm="PGP", confidence="MEDIUM"),
+    _r(r"\bOpenPGP::Crypt::RSA\b", _K, "openpgp", algorithm="RSA"),
+    _r(r"\bOpenPGP::Crypt::Symmetric\b", _C, "openpgp", algorithm="AES", mode="CFB", confidence="MEDIUM"),
+    # ------------------------------------------------------------ TLS
+    _r(r"\bOpenSSL::SSL::VERIFY_NONE\b|\bverify_mode\s*=\s*OpenSSL::SSL::VERIFY_NONE|\bverify_mode:\s*OpenSSL::SSL::VERIFY_NONE|\bssl_verify_mode:\s*OpenSSL::SSL::VERIFY_NONE|\bverify_ssl:\s*(?:false|OpenSSL::SSL::VERIFY_NONE)|\bverify:\s*false\b|\bssl_verify:\s*false\b|\bverify_peer:\s*false\b|\bssl_verify_peer:\s*false\b|\bverify_ssl\s*=\s*false\b|\bVERIFY_NONE\b|\bOpenSSL::SSL::VERIFY_PEER\s*\|\s*OpenSSL::SSL::VERIFY_NONE|\bverify_hostname\s*=\s*false\b|\bverify_hostname:\s*false\b|\bssl_verify_hostname:\s*false\b|\bverify_certificate:\s*false\b|\bverify_certificate_identity\s*=\s*false\b|\bOpenSSL::SSL::SSLContext\.new\b[^\n]*\n[^\n]*verify_mode\s*=\s*OpenSSL::SSL::VERIFY_NONE|\bhttp\.verify_mode\s*=\s*OpenSSL::SSL::VERIFY_NONE|\bI_KNOW_THAT_OPENSSL_VERIFY_PEER_EQUALS_VERIFY_NONE_IS_WRONG\b|\bssl_options:\s*\{\s*verify_mode:\s*OpenSSL::SSL::VERIFY_NONE|\bconnection\.ssl\.verify\s*=\s*false\b|\bssl\.verify\s*=\s*false\b|\bssl:\s*\{\s*verify:\s*false\s*\}|\bverify_none\b|\bskip_verify\b|\binsecure:\s*true\b|\bcheck_hostname\s*=\s*false", _TLS, "openssl", algorithm="TLS-CERT-NONE", confidence_reason="TLS certificate verification disabled"),
+    _r(r"\bOpenSSL::SSL::(?:SSLContext|SSLSocket|SSLServer|SSLError|VERIFY_PEER|VERIFY_FAIL_IF_NO_PEER_CERT|VERIFY_CLIENT_ONCE|Session|SocketForwarder)\b|\buse_ssl\s*=\s*true|\buse_ssl:\s*true|\bNet::HTTP\.start\s*\([^)]*use_ssl|\bNet::HTTPS\b|\bssl_version\s*=|\bssl_version:|\bssl_timeout\b|\bca_file\s*=|\bca_file:|\bca_path\s*=|\bca_path:|\bcert_store\s*=|\bcert_store:|\bssl_ca_cert\b|\bssl_client_cert\b|\bssl_client_key\b|\bssl_ca_file\b|\bssl_ca_path\b|\bverify_callback\s*=|\bverify_callback:|\bssl_options\b|\bssl_config\b|\bssl_context\b|\bstart_tls\b|\bstarttls\b|\benable_starttls(?:_auto)?\b|\benable_ssl\b|\btls:\s*true|\bssl:\s*true|\bconfig\.force_ssl\s*=\s*true|\bRack::SSL\b|\bsslmode\b|\bsslrootcert\b|\bsslcert\b|\bsslkey\b|\bOpenSSL::SSL::OP_NO_\w+|\bOpenSSL::SSL::TLS1_\d?_VERSION\b|\bOpenSSL::SSL::SSL\d_VERSION\b|\bPuma::MiniSSL\b|\bssl_bind\b|\bWEBrick::HTTPS\b|\b:SSLEnable\b|\bSSLCertificate\b|\bSSLPrivateKey\b|\bSSLVerifyClient\b|\bverifypeer:\s*|\bverifyhost:\s*|\bsslversion:\s*|\bsslcert:\s*|\bsslkey:\s*|\bcainfo:\s*|\bcapath:\s*|\bssl_config\.verify_mode\b|\bssl_config\.set_trust_ca\b|\bssl_config\.add_trust_ca\b|\bssl_config\.set_client_cert_file\b|\bhttp\.use_ssl\b|\bencryption:\s*\{\s*method:\s*:(?:simple_tls|start_tls)|\bencryption:\s*:(?:simple_tls|start_tls)|\bmethod:\s*:(?:simple_tls|start_tls)|\btls_options\b|\bNet::FTPTLS\b|\bDoubleBagFTPS\b|\bimplicit_ftps\b|\bsslca\b|\bsslcapath\b|\bsslcipher\b|\bssl_mode:\s*|\bssl_ca_certs_from_system\b|\bGRPC::Core::ChannelCredentials\b|\bGRPC::Core::ServerCredentials\b|\bthis_channel_is_insecure\b", _TLS, "openssl", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"\bthis_channel_is_insecure\b|\bGRPC::Core::ChannelCredentials\.new\s*\(\s*nil\s*\)|\bGRPC::Core::ServerCredentials\.new\s*\(\s*nil\s*\)", _TLS, "grpc", algorithm="TLS-DISABLED", confidence="HIGH", confidence_reason="gRPC channel without TLS"),
+    _r(r"\bssl_version\s*(?:=|:)\s*:?['\"]?(SSLv2|SSLv3|SSLv23|TLSv1|TLSv1_1|TLSv1_2|TLSv1_3)['\"]?|\bmin_version\s*(?:=|:)\s*OpenSSL::SSL::(TLS1_VERSION|TLS1_1_VERSION|TLS1_2_VERSION|TLS1_3_VERSION|SSL3_VERSION|SSL2_VERSION)|\bmax_version\s*(?:=|:)\s*OpenSSL::SSL::(TLS1_VERSION|TLS1_1_VERSION|TLS1_2_VERSION|TLS1_3_VERSION|SSL3_VERSION)|\bOpenSSL::SSL::SSLContext\.new\s*\(\s*:(SSLv2|SSLv3|SSLv23|TLSv1|TLSv1_1|TLSv1_2|TLSv1_3)(?:_client|_server)?\s*\)|\bsslversion:\s*:(sslv2|sslv3|tlsv1|tlsv1_0|tlsv1_1|tlsv1_2|tlsv1_3)\b|\bsslversion:\s*['\"]?(SSLv2|SSLv3|TLSv1|TLSv1_0|TLSv1_1|TLSv1_2|TLSv1_3)\b|\bversion:\s*:(TLSv1|TLSv1_1|TLSv1_2|TLSv1_3|SSLv3)\b", _TLS, "openssl", algo_from_group=1,
+       algo_map={**_SSL_VERSIONS, "tls1_version": "TLS1.0", "tls1_1_version": "TLS1.1", "tls1_2_version": "TLS1.2", "tls1_3_version": "TLS1.3", "ssl3_version": "SSLv3", "ssl2_version": "SSLv2", "tlsv1_0": "TLS1.0", "sslv2": "SSLv2", "sslv3": "SSLv3"}),
+    _r(r"\bOpenSSL::SSL::OP_NO_(SSLv2|SSLv3|TLSv1|TLSv1_1|TLSv1_2|TLSv1_3)\b", _TLS, "openssl", algorithm="TLS", confidence="MEDIUM", confidence_reason="protocol version explicitly disabled"),
+    _r(rf"\bciphers\s*(?:=|:)\s*{_Q}([^'\"]+){_Q}|\bssl_cipher\s*(?:=|:)\s*{_Q}([^'\"]+){_Q}|\bciphersuites\s*(?:=|:)\s*{_Q}([^'\"]+){_Q}|\bcipher_list\s*(?:=|:)\s*{_Q}([^'\"]+){_Q}", _TLS, "openssl", algorithm="TLS-CIPHERS", confidence="MEDIUM"),
+    _r(r"\bOpenSSL::SSL::OP_(?:ALL|NO_COMPRESSION|NO_TICKET|CIPHER_SERVER_PREFERENCE|SINGLE_DH_USE|SINGLE_ECDH_USE|NO_RENEGOTIATION|LEGACY_SERVER_CONNECT|ALLOW_UNSAFE_LEGACY_RENEGOTIATION)\b|\btmp_dh_callback\b|\btmp_dh\s*=|\becdh_curves\s*=|\bset_params\b|\bsecurity_level\s*=|\balpn_protocols\s*=|\bnpn_protocols\s*=|\bservername_cb\b|\bsession_cache_mode\b|\bsession_id_context\b|\brenegotiation_cb\b|\bcert_store\b|\bclient_ca\s*=|\bclient_cert_cb\b|\bextra_chain_cert\b|\bkeylog_cb\b|\bcert_store\.set_default_paths\b", _TLS, "openssl", algorithm="TLS", confidence="LOW"),
+    _r(r"\bOpenSSL::SSL::OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION\b|\bOpenSSL::SSL::OP_LEGACY_SERVER_CONNECT\b|\bsecurity_level\s*=\s*0\b", _TLS, "openssl", algorithm="TLS", confidence="HIGH", confidence_reason="insecure renegotiation / security level 0"),
+    _r(r"\becdh_curves\s*=\s*['\"]([^'\"]+)['\"]|\btmp_dh\s*=|\btmp_dh_callback\b", _KA, "openssl", algorithm="ECDH", confidence="MEDIUM"),
+    _r(r"\btmp_dh\s*=|\btmp_dh_callback\b|\bOpenSSL::PKey::DH\.new\s*\(\s*(?:1024|2048|3072|4096)\s*\)", _KA, "openssl", algorithm="DH"),
+    _r(r"\bOpenSSL::PKey::DH\.new\s*\(\s*(?:512|768|1024)\s*\)|\btmp_dh_callback\b[\s\S]{0,80}?(?:512|768|1024)", _KA, "openssl", algorithm="DH", confidence="HIGH", confidence_reason="weak DH parameters (<2048)"),
+    _r(r"\bOpenSSL::SSL::SSLSocket\.new\b[\s\S]{0,200}?\.post_connection_check\b|\bpost_connection_check\s*\(|\bverify_result\b|\bpeer_cert\b|\bpeer_cert_chain\b|\bverify_certificate_identity\b|\bOpenSSL::SSL\.verify_certificate_identity\b|\bhostname\s*=\s*", _TLS, "openssl", algorithm="TLS", confidence="LOW"),
+    _r(r"\bOpenSSL::SSL::SSLSocket\.new\b(?![\s\S]{0,300}?(?:post_connection_check|hostname\s*=))", _TLS, "openssl", algorithm="TLS-CERT-NONE", confidence="LOW", confidence_reason="raw SSLSocket without hostname verification (post_connection_check/hostname=)"),
+    # ------------------------------------------------------------ randomness
+    _r(r"\bSecureRandom\.(?:hex|random_bytes|base64|urlsafe_base64|uuid|uuid_v4|uuid_v7|random_number|rand|alphanumeric|bytes|gen_random)\b|\bOpenSSL::Random\.(?:random_bytes|pseudo_bytes|seed|load_random_file|write_random_file|random_add|egd|egd_bytes|status\?)\b|\bRandom\.urandom\b|\bRandom\.raw_seed\b|\bRandom\.bytes\b|\bRandom::Formatter\b|\bSysRandom\b|\bsysrandom\b|\bRbNaCl::Random\b|\bOpenSSL::BN\.rand\b|\bOpenSSL::BN\.generate_prime\b|\bOpenSSL::BN\.rand_range\b|\bOpenSSL::BN\.pseudo_rand\b", _RNG, "securerandom", algorithm="CSPRNG", confidence="MEDIUM"),
+    _r(r"\bOpenSSL::Random\.pseudo_bytes\b|\bOpenSSL::BN\.pseudo_rand\b|\bOpenSSL::BN\.pseudo_rand_range\b", _RNG, "openssl", algorithm="PRNG", confidence="MEDIUM", confidence_reason="OpenSSL pseudo_* RNG APIs are deprecated"),
+    _r(r"\b(?:\w*(?:key|iv|salt|nonce|token|secret|password|passwd|otp|session|csrf|api_key|reset_token|confirmation_token|unlock_token|remember_token|auth_token|access_token)\w*)\s*(?:=|\|\|=|:)\s*[^\n]*\b(?:rand|Random\.rand|Random\.new(?:_seed)?|Random::DEFAULT|Kernel\.rand|Kernel#rand|srand|Kernel\.srand|Array#sample|\.sample\b|\.shuffle\b|Faker::\w+|Time\.now\.to_i|Time\.now\.to_f|object_id|Process\.pid|\.hash\b)", _RNG, "kernel-rand", algorithm="PRNG", confidence="HIGH", confidence_reason="non-cryptographic RNG or predictable value used for a secret"),
+    _r(r"\bRandom\.new\s*\(\s*(?:\d+|Time\.now\.to_i|Process\.pid|seed)\s*\)|\bsrand\s*\(\s*(?:\d+|Time\.now\.to_i|Process\.pid)", _RNG, "kernel-rand", algorithm="PRNG", confidence="HIGH", confidence_reason="seeded Mersenne Twister is predictable"),
+    _r(r"\bRandom\.new\b|\bRandom\.rand\b|\bRandom::DEFAULT\b|\bKernel\.rand\b|\brand\s*\(\s*\d|\brand\s*\(\s*\w+\s*\)|\brand\s*\(\s*\)|\brand\b(?![\w_:])", _RNG, "kernel-rand", algorithm="PRNG", confidence="LOW", confidence_reason="Kernel#rand is a Mersenne Twister, not a CSPRNG"),
+    _r(r"\bSecureRandom\.(?:hex|random_bytes|base64|urlsafe_base64|uuid|random_number|rand|alphanumeric|bytes)\b", _RNG, "securerandom", algorithm="CSPRNG", confidence="MEDIUM"),
+    # ------------------------------------------------------------ JWT / JOSE / PASETO / OAuth
+    _r(rf"\bJWT\.(?:encode|decode|sign|verify)\s*\((?:[^;\n()]*?(?:\([^()]*\))?){{2}},\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES256K|ES384|ES512|PS256|PS384|PS512|EdDSA|ED25519|none|HS256K){_Q}|\bJWT\.(?:encode|decode)\s*\([^)\n]*algorithm:\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES256K|ES384|ES512|PS256|PS384|PS512|EdDSA|ED25519|none){_Q}|\balgorithms?:\s*\[?\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES256K|ES384|ES512|PS256|PS384|PS512|EdDSA|ED25519|none){_Q}|\bJWT\.(?:encode|decode)\s*\([^)\n]*,\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|EdDSA|none){_Q}\s*[,)]|\bJWT::Algos::\w+|\bjwt_alg\w*\s*(?:=|:)\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|EdDSA){_Q}", _S, "jwt", algo_from_group=1, algo_map=_JWT_ALGS),
+    _r(r"\bJWT\.(?:encode|decode|sign|verify)\s*\(|\bJWT::(?:DecodeError|ExpiredSignature|VerificationError|InvalidIssuerError|InvalidAudError|ImmatureSignature|IncorrectAlgorithm|EncodedToken|Token|JWK|JWK::Set|JWK::RSA|JWK::EC|JWK::HMAC|JWK::OKP|JWA|Configuration|Claims|Encode|Decode|Verify|Signature|Algos|Base64|JSON|Error)\b|\brequire\s+['\"]jwt['\"]|\bJWT\.configuration\b|\bJWT::JWK\.(?:new|import|create_from)\b|\bJWT::JWK::Set\.new\b|\bJSON::JWT\.(?:decode|new|encode)\b|\bJSON::JWS\b|\bJSON::JWE\b|\bJSON::JWK\b|\bJSON::JWK::Set\b|\brequire\s+['\"]json/jwt['\"]|\bjson-jwt\b|\bJOSE::(?:JWT|JWS|JWE|JWK|JWA)\b|\brequire\s+['\"]jose['\"]|\bruby-jose\b|\bWarden::JWTAuth\b|\bDevise::JWT\b|\bdevise-jwt\b|\bdevise\s+:jwt_authenticatable\b|\bjwt_revocation_strategy\b|\bWarden::JWTAuth::UserEncoder\b|\bWarden::JWTAuth::UserDecoder\b|\bjwt\.secret\s*=|\bjwt\.expiration_time\s*=|\bjwt\.dispatch_requests\s*=|\bJWTSessions\b|\bjwt_sessions\b|\bJWTSessions::Session\b|\bJWTSessions\.(?:encryption_key|algorithm|signing_key|public_key|private_key)\b|\bKnock\b|\bKnock\.(?:token_signature_algorithm|token_secret_signature_key|token_public_key|token_lifetime|token_audience)\b|\binclude\s+Knock::Authenticable\b|\bKnock::AuthToken\b|\bOmniAuth::Strategies::(?:JWT|OpenIDConnect|OAuth2|GoogleOauth2|Auth0|Okta|Cognito|SAML|Azure\w*)\b|\bOpenIDConnect::(?:Client|ResponseObject::IdToken|Discovery|RequestObject)\b|\bopenid_connect\b|\bIdToken\.decode\b|\bRack::JWT\b|\bRack::JWT::Auth\b|\bjwt_auth\b|\bapi_guard\b|\bApiGuard\b|\bdoorkeeper-jwt\b|\bDoorkeeper::JWT\b|\bDoorkeeper::JWT\.configure\b|\bsecret_key_path\b|\bsigning_method\s+:(?:hs256|hs384|hs512|rs256|rs384|rs512|es256|es384|es512|ps256|ps384|ps512|eddsa)\b|\bGoogleIDToken::Validator\b|\bGoogle::Auth::IDTokens\b|\bverify_oidc\b|\bFirebase::Auth\b|\bfirebase-auth\b|\bJWKS\b|\bjwks_uri\b|\bJWT::JWK::KeyFinder\b", _S, "jwt", algorithm="JWT", confidence="MEDIUM"),
+    _r(rf"\bsigning_method\s+:(hs256|hs384|hs512|rs256|rs384|rs512|es256|es384|es512|ps256|ps384|ps512|eddsa)\b|\bKnock\.token_signature_algorithm\s*=\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512){_Q}|\bJWTSessions\.algorithm\s*=\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|EdDSA){_Q}|\bjwt\.algorithm\s*=\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512){_Q}|\bconfig\.jwt\.algorithm\s*=\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512){_Q}|\bJSON::JWT\.new\s*\([^)]*\)\.sign\s*\([^,)]+,\s*:(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512)\b|\.sign\s*\(\s*\w+\s*,\s*:(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512)\s*\)|\bJOSE::JWS\.(?:sign|generate_key)\s*\([^)]*{_Q}alg{_Q}\s*=>\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|Ed25519|Ed448|EdDSA){_Q}", _S, "jwt", algo_from_group=1, algo_map={**_JWT_ALGS, "ed448": "EdDSA"}),
+    _r(rf"\bJSON::JWT\.new\s*\([^)]*\)\.encrypt\s*\([^,)]+,\s*:(RSA1_5|RSA-OAEP|RSA-OAEP-256|A128KW|A256KW|dir|ECDH-ES|A128GCMKW|A256GCMKW|PBES2-HS256\+A128KW|PBES2-HS512\+A256KW)\b|\.encrypt\s*\(\s*\w+\s*,\s*:(RSA1_5|RSA-OAEP|RSA-OAEP-256|A128KW|A256KW|dir|ECDH-ES)\b|\bJOSE::JWE\.\w+\s*\([^)]*{_Q}alg{_Q}\s*=>\s*{_Q}(RSA1_5|RSA-OAEP|RSA-OAEP-256|A128KW|A192KW|A256KW|dir|ECDH-ES|ECDH-ES\+A128KW|ECDH-ES\+A256KW|A128GCMKW|A256GCMKW|PBES2-HS256\+A128KW|PBES2-HS512\+A256KW){_Q}", _C, "jwe", algo_from_group=1,
+       algo_map={"rsa1_5": "RSA", "rsa-oaep": "RSA", "rsa-oaep-256": "RSA", "a128kw": "AES", "a192kw": "AES", "a256kw": "AES", "dir": "UNKNOWN", "ecdh-es": "ECDH", "ecdh-es+a128kw": "ECDH", "ecdh-es+a256kw": "ECDH", "a128gcmkw": "AES", "a256gcmkw": "AES", "pbes2-hs256+a128kw": "PBKDF2", "pbes2-hs512+a256kw": "PBKDF2"}),
+    _r(rf"\benc{_Q}?\s*(?:=>|:)\s*{_Q}(A128CBC-HS256|A192CBC-HS384|A256CBC-HS512|A128GCM|A192GCM|A256GCM|C20P|XC20P){_Q}|\.encrypt\s*\([^)]*,\s*:(A128CBC-HS256|A192CBC-HS384|A256CBC-HS512|A128GCM|A192GCM|A256GCM)\b", _C, "jwe", algo_from_group=1, algo_map={"a128cbc-hs256": "AES", "a192cbc-hs384": "AES", "a256cbc-hs512": "AES", "a128gcm": "AES", "a192gcm": "AES", "a256gcm": "AES", "c20p": "ChaCha20-Poly1305", "xc20p": "XChaCha20-Poly1305"}),
+    _r(r"\bJWT\.decode\s*\([^)\n]*,\s*(?:nil|false)\s*,\s*false\b|\bJWT\.decode\s*\([^)\n]*verify:\s*false|\bJWT\.decode\s*\([^)\n]*,\s*nil\s*,\s*false|\bverify_signature:\s*false|\bverify:\s*false[\s\S]{0,40}algorithm", _S, "jwt", algorithm="none", confidence="HIGH", confidence_reason="JWT signature verification disabled"),
+    _r(r"\bPaseto::V2::(?:Local|Public)\b|\bPaseto::V3::(?:Local|Public)\b|\bPaseto::V4::(?:Local|Public)\b|\bPaseto::(?:Token|Paserk|Key|SymmetricKey|AsymmetricSecretKey|AsymmetricPublicKey|Verifier|Encoder|Decoder)\b|\brequire\s+['\"]paseto['\"]|\bruby-paseto\b|\bPaseto::V\d::\w+\.(?:generate|new|from_paserk|encode|decode)\b", _S, "paseto", algorithm="PASETO", confidence="MEDIUM"),
+    _r(r"\bPaseto::V[24]::Local\b", _C, "paseto", algorithm="XChaCha20-Poly1305"),
+    _r(r"\bPaseto::V3::Local\b", _C, "paseto", algorithm="AES", mode="CTR"),
+    _r(r"\bPaseto::V[24]::Public\b", _S, "paseto", algorithm="Ed25519"),
+    _r(r"\bPaseto::V3::Public\b", _S, "paseto", algorithm="ECDSA"),
+    _r(r"\bBranca\b\.\w+|\brequire\s+['\"]branca['\"]|\bBranca\.new\b|\bBranca\.(?:encode|decode)\b", _C, "branca", algorithm="XChaCha20-Poly1305"),
+    _r(r"\bMacaroon\b|\bMacaroons::\w+|\brequire\s+['\"]macaroons['\"]|\bMacaroon\.new\b|\bMacaroon::Verifier\b", _M, "macaroons", algorithm="HMAC-SHA256", confidence="MEDIUM"),
+    _r(rf"\bsignature_method:\s*{_Q}(HMAC-SHA1|HMAC-SHA256|RSA-SHA1|PLAINTEXT){_Q}|\bOAuth::Signature::(HMAC::SHA1|HMAC::SHA256|RSA::SHA1|PLAINTEXT)\b|\bSimpleOAuth::Header\.new\s*\([^)]*signature_method:\s*{_Q}(HMAC-SHA1|HMAC-SHA256|RSA-SHA1|PLAINTEXT){_Q}", _M, "oauth", algo_from_group=1, algo_map={"hmac-sha1": "HMAC-SHA1", "hmac-sha256": "HMAC-SHA256", "rsa-sha1": "RSA", "plaintext": "PLAINTEXT", "hmac::sha1": "HMAC-SHA1", "hmac::sha256": "HMAC-SHA256", "rsa::sha1": "RSA"}),
+    _r(r"\bOAuth::Consumer\.new\b(?![\s\S]{0,400}signature_method)|\bSimpleOAuth::Header\.new\b(?![\s\S]{0,200}signature_method)|\bOAuth::AccessToken\.new\b", _M, "oauth", algorithm="HMAC-SHA1", confidence="MEDIUM", confidence_reason="OAuth 1.0a default signature method is HMAC-SHA1"),
+    _r(r"\bAws::Sigv4::Signer\b|\bAws::Sigv4\b|\bAws::Signers::V4\b|\bx-amz-signature\b|\bX-Amz-Signature\b|\bAWS4-HMAC-SHA256\b|\bpresigned_url\b|\bpresigned_post\b|\bpresigned_request\b|\bAws::S3::Presigner\b", _M, "aws-sigv4", algorithm="HMAC-SHA256", confidence="MEDIUM"),
+    _r(r"\bAws::Signers::V2\b|\bAws::Sigv2\b|\bSignatureVersion\s*[=:]\s*['\"]?2\b|\bsignature_version:\s*(?::v2|['\"]v2['\"])", _M, "aws-sigv2", algorithm="HMAC-SHA1", confidence="HIGH", confidence_reason="AWS Signature V2 (deprecated, HMAC-SHA1/SHA256)"),
+    _r(r"\bStripe::Webhook::Signature\b|\bStripe::Webhook\.construct_event\b|\bStripe-Signature\b|\bTwilio::Security::RequestValidator\b|\bX-Twilio-Signature\b|\bSlack::Events::Request\b|\bslack_signing_secret\b|\bX-Slack-Signature\b|\bX-Hub-Signature-256\b|\bX-Shopify-Hmac-Sha256\b|\bShopifyApp::WebhookVerification\b|\bShopifyAPI::Webhooks\b|\bShopifyAPI::Utils::HmacValidator\b|\bShopifyAPI::Auth::Oauth\b", _M, "webhook-signature", algorithm="HMAC-SHA256", confidence="MEDIUM"),
+    _r(r"\bX-Hub-Signature\b(?!-256)|\bTwilio::Security::RequestValidator\b|\bX-Twilio-Signature\b", _M, "webhook-signature", algorithm="HMAC-SHA1", confidence="MEDIUM", confidence_reason="GitHub X-Hub-Signature and Twilio request validation use HMAC-SHA1"),
+    _r(r"\bcookies\.signed\b|\bcookies\.permanent\.signed\b|\bsigned_cookie\b|\bconfig\.action_dispatch\.signed_cookie_digest\s*=\s*['\"](SHA1|SHA256|SHA512)['\"]|\bActionDispatch::Cookies::SignedCookieJar\b|\bRack::Session::Cookie\b|\bsession_store\s+:cookie_store\b|\bActionDispatch::Session::CookieStore\b", _M, "rails-cookies", algorithm="HMAC-SHA1", confidence="MEDIUM", confidence_reason="signed cookies use HMAC-SHA1 unless signed_cookie_digest is configured (SHA256 with load_defaults 5.2+)"),
+    _r(rf"\bconfig\.action_dispatch\.signed_cookie_digest\s*=\s*{_Q}(SHA1|SHA256|SHA512){_Q}", _D, "rails-cookies", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(r"\bcookies\.encrypted\b|\bcookies\.permanent\.encrypted\b|\bActionDispatch::Cookies::EncryptedCookieJar\b|\bActionDispatch::Cookies::EncryptedKeyRotatingCookieJar\b|\bRack::Session::EncryptedCookie\b|\bconfig\.action_dispatch\.use_authenticated_cookie_encryption\b|\bconfig\.action_dispatch\.encrypted_cookie_cipher\b|\bauthenticated_encrypted_cookie_salt\b", _C, "rails-cookies", algorithm="AES", mode="GCM", confidence="MEDIUM", confidence_reason="encrypted cookies are aes-256-gcm (aes-256-cbc + HMAC-SHA1 before Rails 5.2 / when use_authenticated_cookie_encryption=false)"),
+    _r(rf"\bconfig\.action_dispatch\.encrypted_cookie_cipher\s*=\s*{_Q}([A-Za-z0-9-]+){_Q}", _C, "rails-cookies", algo_from_group=1, algo_map=CIPHER_TOKENS, split_cipher=True),
+    _r(r"\bconfig\.action_dispatch\.use_authenticated_cookie_encryption\s*=\s*false\b", _C, "rails-cookies", algorithm="AES", mode="CBC", confidence="HIGH", confidence_reason="aes-256-cbc + HMAC-SHA1 legacy cookie encryption explicitly kept"),
+    _r(r"\bRack::Session::Cookie\.new\b|\buse\s+Rack::Session::Cookie\b|\bRack::Session::Cookie\b(?![\s\S]{0,300}secret)", _M, "rack", algorithm="HMAC-SHA1", confidence="MEDIUM", confidence_reason="Rack::Session::Cookie signs with HMAC-SHA1 (Rack < 3), HMAC-SHA256 in Rack 3 (hmac: option)"),
+    _r(r"\bRack::Session::Cookie\.new\s*\([^)]*hmac:\s*(?:OpenSSL::)?Digest::(SHA1|SHA256|SHA384|SHA512)|\buse\s+Rack::Session::Cookie\s*,[^\n]*hmac:\s*(?:OpenSSL::)?Digest::(SHA1|SHA256|SHA384|SHA512)", _D, "rack", algo_from_group=1, algo_map=DIGEST_TOKENS),
+    _r(r"\bRack::Session::Cookie\b[\s\S]{0,300}?(?:secret:\s*['\"][^'\"]{1,31}['\"]|:secret\s*=>\s*['\"][^'\"]{1,31}['\"])|\bsecret:\s*['\"](?:changeme|secret|password|s3cr3t|mysecret|supersecret|change_me|CHANGEME|SECRET|test|dev|development)['\"]", _M, "rack", algorithm="HMAC-SHA1", confidence="HIGH", confidence_reason="weak/hardcoded session secret"),
+    # ------------------------------------------------------------ misc encryption gems
+    _r(r"\bFernet\.(?:generate|verifier|configure|Token)\b|\bFernet::(?:Token|Verifier|Generator|Configuration|Secret)\b|\brequire\s+['\"]fernet['\"]|\bFernet\.generate\b|\bFernet\.verifier\b", _C, "fernet", algorithm="AES", mode="CBC"),
+    _r(r"\bFernet\.(?:generate|verifier)\b|\bFernet::Token\b", _M, "fernet", algorithm="HMAC-SHA256"),
+    _r(r"\bLockbox\b|\brequire\s+['\"]lockbox['\"]|\bLockbox\.(?:master_key|generate_key|new|encrypts|attribute_key|generate_key_pair|encrypt_io|decrypt_io|to_hex|key_table|key_from_hex|configure|default_options|encryption_key)\b|\bhas_encrypted\s+:\w+|\bencrypts\s+:\w+[^\n]*(?:algorithm|key|previous_versions|padding|encode|type|migrating)|\bLockbox::(?:Encryptor|Box|AES_GCM|Padding|Utils|KeyGenerator|Model|Audit|CarrierWaveExtensions|ActiveStorageExtensions|Calculations|LogSubscriber|Migrator|Model::\w+)\b|\blockbox_(?:key|master_key|previous_versions|encrypt|decrypt)\b|\bBlind\s*Index\b|\bblind_index\b|\bBlindIndex\b|\bblind_index\s+:\w+|\bBlindIndex\.(?:generate_key|master_key|generate_bidx|compute_bidx|index_key|configure|default_options)\b|\bBlindIndex::(?:Model|Backfill|KeyGenerator|Extensions|Error|Backfill::\w+)\b|\bbidx\b|\b_bidx\b|\bbidx_key\b|\bbidx_master_key\b|\bcompute_\w+_bidx\b", _C, "lockbox", algorithm="AES", mode="GCM", confidence="MEDIUM"),
+    _r(rf"\bencrypts\s+:\w+[^\n]*algorithm:\s*{_Q}(aes-gcm|xsalsa20|xchacha20|hybrid){_Q}|\bLockbox\.new\s*\([^)]*algorithm:\s*{_Q}(aes-gcm|xsalsa20|xchacha20|hybrid){_Q}|\balgorithm:\s*{_Q}(aes-gcm|xsalsa20|xchacha20|hybrid){_Q}", _C, "lockbox", algo_from_group=1, algo_map={"aes-gcm": "AES", "xsalsa20": "XSalsa20-Poly1305", "xchacha20": "XChaCha20-Poly1305", "hybrid": "X25519"}),
+    _r(r"\bblind_index\s+:\w+|\bBlindIndex\b|\bBlindIndex\.generate_bidx\b|\bcompute_\w+_bidx\b", _KDF, "blind_index", algorithm="ARGON2", confidence="MEDIUM", confidence_reason="blind_index default is argon2id (pbkdf2_sha256 in v1 / slow: false / legacy: true)"),
+    _r(r"\bblind_index\s+:\w+[^\n]*(?:algorithm:\s*:(argon2id|argon2i|pbkdf2_sha256|pbkdf2_hmac|pbkdf2_hmac_sha256|scrypt|pbkdf2)|legacy:\s*true|slow:\s*false|fast:\s*true)|\bBlindIndex\.default_options\s*=\s*\{[^}]*algorithm:\s*:(argon2id|argon2i|pbkdf2_sha256|scrypt)", _KDF, "blind_index", algo_from_group=1, algo_map={"argon2id": "ARGON2", "argon2i": "ARGON2", "pbkdf2_sha256": "PBKDF2", "pbkdf2_hmac": "PBKDF2", "pbkdf2_hmac_sha256": "PBKDF2", "scrypt": "SCRYPT", "pbkdf2": "PBKDF2"}),
+    _r(r"\bblind_index\s+:\w+[^\n]*(?:legacy:\s*true|slow:\s*false|fast:\s*true)", _M, "blind_index", algorithm="HMAC-SHA256", confidence="MEDIUM", confidence_reason="fast/legacy blind index uses a single HMAC-SHA256 (or PBKDF2 with 1 iteration)"),
+    _r(r"\battr_encrypted\s+:\w+|\battr_encrypted\b|\bEncryptor\.(?:encrypt|decrypt|default_options)\b|\bEncryptor::\w+|\brequire\s+['\"]attr_encrypted['\"]|\brequire\s+['\"]encryptor['\"]|\bencrypted_\w+_iv\b|\bencrypted_\w+_salt\b|\bencrypt_key\b|\bdecrypt_key\b|\battr_encryptor\b|\bAttrEncrypted\b|\bAttrEncryptor\b|\bencrypt_\w+\b(?![\s\S]{0,40}BCrypt)", _C, "attr_encrypted", algorithm="AES", mode="GCM", confidence="MEDIUM", confidence_reason="attr_encrypted/encryptor default is aes-256-gcm (aes-256-cbc before v3, insecure_mode/v1_gcm_iv variants)"),
+    _r(rf"\battr_encrypted\s+:\w+[^\n]*algorithm:\s*{_Q}([A-Za-z0-9-]+){_Q}|\bEncryptor\.default_options\s*=\s*\{{[^}}]*algorithm:\s*{_Q}([A-Za-z0-9-]+){_Q}|\bEncryptor\.(?:encrypt|decrypt)\s*\([^)]*algorithm:\s*{_Q}([A-Za-z0-9-]+){_Q}|\bencryption_algorithm\s*(?:=|:)\s*{_Q}([A-Za-z0-9-]+){_Q}", _C, "attr_encrypted", algo_from_group=1, algo_map=CIPHER_TOKENS, split_cipher=True),
+    _r(r"\battr_encrypted\s+:\w+[^\n]*(?:insecure_mode:\s*true|mode:\s*:single_iv_and_salt|mode:\s*:per_attribute_iv_and_salt)|\bEncryptor\.(?:encrypt|decrypt)\s*\([^)]*insecure_mode:\s*true|\bencryptor.*insecure_mode:\s*true", _C, "attr_encrypted", algorithm="AES", mode="CBC", confidence="HIGH", confidence_reason="attr_encrypted insecure_mode / legacy single_iv_and_salt (aes-256-cbc, static IV)"),
+    _r(r"\battr_encrypted\s+:\w+[^\n]*mode:\s*:per_attribute_iv_and_salt|\bencrypted_\w+_salt\b", _KDF, "attr_encrypted", algorithm="PBKDF2", confidence="MEDIUM", confidence_reason="per_attribute_iv_and_salt derives the key with PBKDF2-HMAC-SHA256 (2000 iterations, legacy: SecureRandom + EVP)"),
+    _r(r"\bSymmetricEncryption\b|\bSymmetricEncryption\.(?:encrypt|decrypt|cipher|load!|secondary_ciphers|generate_symmetric_key_files|random_iv|random_key|header|Cipher|Keystore|Reader|Writer|Coerce|Encoder|Config|Header|Key|Utils|KeyEncryptionKey|Railtie|Railties|ActiveRecord|MongoMapper|Mongoid|Generator|RSAKey|Keystore::\w+|CLI)\b|\battr_encrypted\s+:\w+[^\n]*(?:random_iv|compress|type)|\bencrypted_\w+\s+attribute|\bsymmetric-encryption\b|\bsymmetric_encryption\.yml\b|\brequire\s+['\"]symmetric-encryption['\"]", _C, "symmetric-encryption", algorithm="AES", mode="CBC", confidence="MEDIUM", confidence_reason="symmetric-encryption default cipher is aes-256-cbc"),
+    _r(rf"\bcipher_name:\s*{_Q}([A-Za-z0-9-]+){_Q}|\bcipher_name\s*=\s*{_Q}([A-Za-z0-9-]+){_Q}|\bSymmetricEncryption::Cipher\.new\s*\([^)]*cipher_name:\s*{_Q}([A-Za-z0-9-]+){_Q}", _C, "symmetric-encryption", algo_from_group=1, algo_map=CIPHER_TOKENS, split_cipher=True),
+    _r(r"\bSymmetricEncryption::Keystore::(?:File|Environment|Memory|Aws|Gcp|Heroku)\b|\bkey_encrypting_key\b|\bprivate_rsa_key\b|\bSymmetricEncryption::RSAKey\b|\bSymmetricEncryption\.generate_symmetric_key_files\b", _K, "symmetric-encryption", algorithm="RSA", confidence="MEDIUM", confidence_reason="symmetric-encryption keystore wraps DEKs with RSA (private_rsa_key)"),
+    _r(r"\bStrongbox\b|\bencrypt_with_public_key\b|\bstrongbox\b|\brequire\s+['\"]strongbox['\"]|\bencrypt_with_public_key\s+:\w+", _K, "strongbox", algorithm="RSA", confidence="MEDIUM"),
+    _r(r"\bencrypt_with_public_key\s+:\w+(?![\s\S]{0,300}symmetric:\s*:never)|\bStrongbox\b", _C, "strongbox", algorithm="AES", mode="CBC", confidence="MEDIUM", confidence_reason="strongbox default symmetric cipher is aes-256-cbc"),
+    _r(rf"\bencrypt_with_public_key\s+:\w+[^\n]*symmetric_cipher:\s*{_Q}([A-Za-z0-9-]+){_Q}", _C, "strongbox", algo_from_group=1, algo_map=CIPHER_TOKENS, split_cipher=True),
+    _r(r"\bcrypt_keeper\s+:\w+|\bCryptKeeper\b|\bCryptKeeper::Provider::(?:Aes|AesNew|MysqlAes|MysqlAesNew|PostgresPgp|PostgresPgpPublicKey|PostgresBase|ActiveSupport)\b|\bencryptor:\s*:(?:aes|aes_new|mysql_aes|mysql_aes_new|postgres_pgp|postgres_pgp_public_key|active_support)\b|\brequire\s+['\"]crypt_keeper['\"]", _C, "crypt_keeper", algorithm="AES", confidence="MEDIUM"),
+    _r(r"\bencryptor:\s*:aes\b(?!_new)|\bCryptKeeper::Provider::Aes\b(?!New)", _C, "crypt_keeper", algorithm="AES", mode="CBC", confidence="HIGH", confidence_reason="crypt_keeper :aes (legacy) uses aes-256-cbc with a static IV derived from the key"),
+    _r(r"\bencryptor:\s*:aes_new\b|\bCryptKeeper::Provider::AesNew\b", _C, "crypt_keeper", algorithm="AES", mode="GCM"),
+    _r(r"\bencryptor:\s*:mysql_aes(?:_new)?\b|\bCryptKeeper::Provider::MysqlAes(?:New)?\b|\bAES_ENCRYPT\s*\(|\bAES_DECRYPT\s*\(|\baes_encrypt\s*\(|\baes_decrypt\s*\(", _C, "crypt_keeper", algorithm="AES", mode="ECB", confidence="HIGH", confidence_reason="MySQL AES_ENCRYPT defaults to aes-128-ecb (block_encryption_mode)"),
+    _r(r"\bencryptor:\s*:postgres_pgp(?:_public_key)?\b|\bCryptKeeper::Provider::PostgresPgp(?:PublicKey)?\b|\bpgp_sym_encrypt\s*\(|\bpgp_sym_decrypt\s*\(|\bpgp_pub_encrypt\s*\(|\bpgp_pub_decrypt\s*\(|\bpgcrypto\b|\bENABLE_EXTENSION\s+pgcrypto|\benable_extension\s+['\"]pgcrypto['\"]|\bgen_salt\s*\(|\bcrypt\s*\(\s*\w+\s*,\s*gen_salt\s*\(|\bdigest\s*\(\s*\w+\s*,\s*['\"](md5|sha1|sha224|sha256|sha384|sha512)['\"]\s*\)|\bhmac\s*\(\s*\w+\s*,\s*\w+\s*,\s*['\"](md5|sha1|sha224|sha256|sha384|sha512)['\"]\s*\)|\bencrypt\s*\(\s*\w+\s*,\s*\w+\s*,\s*['\"]([a-z0-9-]+)['\"]\s*\)|\bdecrypt\s*\(\s*\w+\s*,\s*\w+\s*,\s*['\"]([a-z0-9-]+)['\"]\s*\)|\bgen_random_bytes\s*\(|\bgen_random_uuid\s*\(", _C, "pgcrypto", algorithm="AES", mode="CFB", confidence="MEDIUM", confidence_reason="pgcrypto pgp_sym_encrypt default cipher is aes128 (cipher-algo option)"),
+    _r(rf"\bpgp_sym_encrypt\s*\([^)]*cipher-algo\s*=\s*(aes128|aes192|aes256|bf|3des|cast5)|\bpgp_pub_encrypt\s*\([^)]*cipher-algo\s*=\s*(aes128|aes192|aes256|bf|3des|cast5)|\bencrypt(?:_iv)?\s*\(\s*\w+\s*,\s*\w+\s*,\s*{_Q}(aes|bf)(?:-(?:cbc|ecb))?(?:/pad:(?:pkcs|none))?{_Q}|\bdecrypt(?:_iv)?\s*\(\s*\w+\s*,\s*\w+\s*,\s*{_Q}(aes|bf)(?:-(?:cbc|ecb))?(?:/pad:(?:pkcs|none))?{_Q}", _C, "pgcrypto", algo_from_group=1, algo_map={"aes128": "AES", "aes192": "AES", "aes256": "AES", "bf": "Blowfish", "3des": "3DES", "cast5": "CAST5", "aes": "AES"}),
+    _r(rf"\bpgp_sym_encrypt\s*\([^)]*s2k-digest-algo\s*=\s*(md5|sha1|sha256|sha512)|\bpgp_sym_encrypt\s*\((?![^)]*s2k-digest-algo)|\bgen_salt\s*\(\s*{_Q}(md5|xdes|des|bf){_Q}|\bdigest\s*\(\s*\w+\s*,\s*{_Q}(md5|sha1|sha224|sha256|sha384|sha512){_Q}\s*\)|\bhmac\s*\(\s*\w+\s*,\s*\w+\s*,\s*{_Q}(md5|sha1|sha224|sha256|sha384|sha512){_Q}\s*\)", _D, "pgcrypto", algo_from_group=1, algo_map={**DIGEST_TOKENS, "xdes": "DES", "des": "DES", "bf": "BCRYPT"}, confidence="MEDIUM"),
+    _r(r"\bpgp_sym_encrypt\s*\((?![^)]*s2k-digest-algo)", _D, "pgcrypto", algorithm="SHA-1", confidence="MEDIUM", confidence_reason="pgcrypto s2k-digest-algo default is sha1"),
+    _r(rf"\bgen_salt\s*\(\s*{_Q}bf{_Q}|\bcrypt\s*\(\s*\w+\s*,\s*gen_salt\s*\(\s*{_Q}bf{_Q}", _KDF, "pgcrypto", algorithm="BCRYPT"),
+    _r(rf"\bgen_salt\s*\(\s*{_Q}md5{_Q}", _KDF, "pgcrypto", algorithm="MD5"),
+    _r(rf"\bgen_salt\s*\(\s*{_Q}(?:xdes|des){_Q}", _KDF, "pgcrypto", algorithm="DES"),
+    _r(rf"\bhmac\s*\(\s*\w+\s*,\s*\w+\s*,\s*{_Q}(?:md5|sha1|sha224|sha256|sha384|sha512){_Q}\s*\)", _M, "pgcrypto", algorithm="HMAC"),
+    _r(r"\bgen_random_bytes\s*\(|\bgen_random_uuid\s*\(", _RNG, "pgcrypto", algorithm="CSPRNG", confidence="MEDIUM"),
+    _r(r"\bMongoid::Encrypted\b|\bmongoid-encrypted-fields\b|\bMongoid::EncryptedFields\b|\bMongoid::EncryptedString\b|\bMongoid::EncryptedHash\b|\bMongoid::EncryptedField\b|\bencrypted_field\b|\bMongo::ClientEncryption\b|\bauto_encryption_options\b|\bkey_vault_namespace\b|\bkms_providers\b|\bschema_map\b|\bencrypted_fields_map\b|\bbypass_auto_encryption\b|\bMongo::Crypt\b|\bclient_encryption\.(?:create_data_key|encrypt|decrypt|rewrap_many_data_key|add_key_alt_name|get_key|get_keys|delete_key|create_encrypted_collection)\b|\bAEAD_AES_256_CBC_HMAC_SHA_512-(?:Deterministic|Random)\b|\bIndexed\b[\s\S]{0,40}?queryable|\bUnindexed\b[\s\S]{0,40}?queryable|\bRangePreview\b|\bqueryable_encryption\b|\bencrypt:\s*\{\s*(?:keyId|algorithm|bsonType)", _C, "mongo-csfle", algorithm="AES", mode="CBC", confidence="MEDIUM", confidence_reason="MongoDB CSFLE AEAD_AES_256_CBC_HMAC_SHA_512"),
+    _r(r"\bAEAD_AES_256_CBC_HMAC_SHA_512-(?:Deterministic|Random)\b|\bMongo::ClientEncryption\b|\bclient_encryption\.encrypt\b", _M, "mongo-csfle", algorithm="HMAC-SHA512", confidence="MEDIUM"),
+    _r(r"\bkms_providers\b[\s\S]{0,200}?\b(?:aws|azure|gcp|kmip|local)\b|\bkms_providers:\s*\{\s*(aws|azure|gcp|kmip|local):|\bmaster_key:\s*\{\s*(?:region|key|key_vault_endpoint|key_name|project_id|location|key_ring|key_id|endpoint)", _C, "mongo-csfle", algorithm="KMS", confidence="MEDIUM"),
+    _r(r"\bkms_providers:\s*\{\s*local:|\bkms_providers\b[\s\S]{0,60}?\blocal:\s*\{\s*key:", _C, "mongo-csfle", algorithm="AES", mode="KW", confidence="MEDIUM", confidence_reason="local KMS provider: 96-byte local master key wraps DEKs"),
+    _r(r"\bAws::KMS::Client\b|\bAws::KMS\b|\bkms\.(?:encrypt|decrypt|generate_data_key|generate_data_key_without_plaintext|generate_data_key_pair|re_encrypt|sign|verify|generate_mac|verify_mac|create_key|describe_key|get_public_key|generate_random|derive_shared_secret)\b|\bAws::S3::Encryption(?:V2)?::Client\b|\bAws::S3::EncryptionV2::Client\b|\bAws::S3::Encryption::Client\b|\bAws::S3::Encryption(?:V2)?::(?:KmsCipherProvider|DefaultCipherProvider|DefaultKeyProvider|Materials|Utils|IOEncrypter|IODecrypter|IOAuthDecrypter|EncryptHandler|DecryptHandler)\b|\bencryption_key:\s*|\bkms_key_id:\s*|\bserver_side_encryption:\s*['\"](AES256|aws:kms|aws:kms:dsse)['\"]|\bsse_customer_algorithm:\s*['\"]AES256['\"]|\bsse_customer_key:\s*|\bssekms_key_id:\s*|\bcopy_source_sse_customer_algorithm\b|\bbucket_key_enabled:\s*true|\bAws::DynamoDB::Encryption\b|\bAws::EncryptionSDK\b|\baws-encryption-sdk\b|\bAws::Crt\b|\bGoogle::Cloud::Kms\b|\bGoogle::Cloud::Kms::V1::KeyManagementService\b|\bkms_client\.(?:encrypt|decrypt|asymmetric_sign|asymmetric_decrypt|mac_sign|mac_verify|get_public_key|create_crypto_key|create_key_ring|generate_random_bytes|raw_encrypt|raw_decrypt)\b|\bcrypto_key_path\b|\bcrypto_key_version_path\b|\bkey_ring_path\b|\bAzure::KeyVault\b|\bAzure::Security::KeyVault\b|\bkey_vault\b|\bkeyvault\b|\bVault::(?:Client|Logical|Transit|Sys|Auth|KV)\b|\bVault\.logical\.(?:read|write|delete|list)\s*\(\s*['\"]transit/|\bVault\.transit\b|\btransit/encrypt/|\btransit/decrypt/|\btransit/sign/|\btransit/verify/|\btransit/hmac/|\btransit/datakey/|\btransit/keys/|\btransit/rewrap/|\btransit/random|\btransit/hash/|\bVault\.address\b|\bVAULT_ADDR\b|\bVAULT_TOKEN\b|\bvault-ruby\b|\brequire\s+['\"]vault['\"]|\bVault\.auth\.(?:token|approle|aws_iam|kubernetes|github|ldap|userpass|tls|gcp|azure|jwt|oidc|cert)\b|\bAppRole\b|\bapprole\b|\bsecret_id\b|\brole_id\b|\bVault\.kv\b|\bVault\.logical\.read\s*\(\s*['\"]secret/|\bVault\.logical\.write\s*\(\s*['\"]secret/|\bsecret/data/|\bkv/data/|\bENV\.fetch\s*\(\s*['\"]VAULT_", _C, "kms", algorithm="KMS", confidence="LOW"),
+    _r(r"\bserver_side_encryption:\s*['\"]AES256['\"]|\bsse_customer_algorithm:\s*['\"]AES256['\"]|\bAws::S3::Encryption(?:V2)?::Client\b|\bAws::S3::Encryption(?:V2)?::DefaultCipherProvider\b|\bAws::S3::Encryption(?:V2)?::KmsCipherProvider\b", _C, "aws-s3", algorithm="AES", mode="GCM", confidence="MEDIUM", confidence_reason="S3 SSE / client-side encryption uses AES-256 (GCM for EncryptionV2, CBC for legacy Encryption::Client)"),
+    _r(r"\bAws::S3::Encryption::Client\b(?!V2)|\bAws::S3::Encryption::(?:DefaultCipherProvider|KmsCipherProvider|DefaultKeyProvider|Materials|IOEncrypter|IODecrypter|EncryptHandler|DecryptHandler)\b(?!V2)|\bAws::S3::Encryption::Client\.new\b|\bsecurity_profile:\s*:v2_and_legacy\b", _C, "aws-s3", algorithm="AES", mode="CBC", confidence="HIGH", confidence_reason="legacy S3 Encryption::Client (V1) uses AES-256-CBC without authentication and wraps keys with AES-ECB / RSA-PKCS1"),
+    _r(r"\bAws::S3::Encryption::Client\b(?!V2)|\bsecurity_profile:\s*:v2_and_legacy\b", _C, "aws-s3", algorithm="AES", mode="ECB", confidence="HIGH", confidence_reason="V1 S3 client-side encryption wraps the CEK with AES-ECB (symmetric key) or RSA PKCS#1 v1.5"),
+    _r(r"\bAws::S3::EncryptionV2::Client\b|\bkey_wrap_schema:\s*:(aes_gcm|rsa_oaep_sha1|kms_context)|\bcontent_encryption_schema:\s*:aes_gcm_no_padding|\bsecurity_profile:\s*:v2\b", _C, "aws-s3", algorithm="AES", mode="GCM"),
+    _r(r"\bkey_wrap_schema:\s*:rsa_oaep_sha1\b", _D, "aws-s3", algorithm="SHA-1", confidence="MEDIUM", confidence_reason="RSA-OAEP with SHA-1 MGF"),
+    _r(r"\bkey_wrap_schema:\s*:rsa_oaep_sha1\b|\bencryption_key:\s*OpenSSL::PKey::RSA\b", _K, "aws-s3", algorithm="RSA", padding="OAEP"),
+    _r(r"\bServerSideEncryption\b|\bSSE-KMS\b|\bSSE-S3\b|\bSSE-C\b|\bDSSE-KMS\b|\bserver_side_encryption:\s*['\"]aws:kms(?::dsse)?['\"]|\bssekms_key_id\b|\bkms_key_id\b|\bbucket_key_enabled\b|\bkms_master_key_id\b|\bKmsMasterKeyID\b|\bSSEAlgorithm\b|\bsse_algorithm\b|\bapply_server_side_encryption_by_default\b|\bBucketKeyEnabled\b", _C, "aws-s3", algorithm="KMS", confidence="LOW"),
+    # ------------------------------------------------------------ obviously weak / homebrew
+    _r(r"\bROT13\b|\.tr\s*\(\s*['\"]A-Za-z['\"]\s*,\s*['\"]N-ZA-Mn-za-m['\"]\s*\)|\.tr\s*\(\s*['\"]a-zA-Z['\"]\s*,\s*['\"]n-za-mN-ZA-M['\"]\s*\)|\brot13\b|\bcaesar\b|\bvigenere\b|\bxor_(?:encrypt|decrypt|cipher|string|bytes)\b|\bxor_with\b|\b\^\s*key\b|\bkey\s*\^\b|\.bytes\.zip\s*\([^)]*\)\.map\s*\{[^}]*\^|\bBase64\.(?:strict_)?encode64\s*\([^)]*\)\s*(?:#|$)[^\n]*(?:encrypt|secret|token|password)|\bencrypt\w*\s*=\s*Base64\.(?:strict_|urlsafe_)?encode64\b|\bdef\s+(?:encrypt|decrypt)\w*\b[\s\S]{0,200}?Base64\.(?:strict_|urlsafe_)?(?:encode|decode)64\b(?![\s\S]{0,300}?(?:OpenSSL|RbNaCl|Lockbox|Fernet|ActiveSupport::MessageEncryptor|Encryptor|SymmetricEncryption|Digest|HMAC|cipher))", _C, "homebrew", algorithm="XOR", confidence="LOW", confidence_reason="obfuscation / homebrew cipher (ROT13, XOR, Base64) — not encryption"),
+    _r(r"\bMarshal\.load\s*\(|\bYAML\.load\s*\((?![^)]*(?:safe|permitted))|\bYAML\.unsafe_load\b|\bYAML\.load_file\s*\((?![^)]*(?:safe|permitted))|\bOj\.load\s*\((?![^)]*mode:\s*:(?:strict|compat|null|json|rails|wab))|\bcookies_serializer\s*=\s*:marshal|\bconfig\.action_dispatch\.cookies_serializer\s*=\s*:marshal|\bcoder:\s*Rack::Session::Cookie::Base64::Marshal\b|\bRack::Session::Cookie::Base64::Marshal\b|\bActiveSupport::Cache.*coder:\s*Marshal|\bserialize\s+:\w+(?!\s*,\s*(?:JSON|Hash|Array|coder:\s*JSON))|\bActiveSupport::Messages::Metadata\b|\bMessagePack\.unpack\s*\((?![^)]*(?:symbolize_keys|allow_unknown_ext))", _C, "deserialization", algorithm="UNSAFE-DESERIALIZATION", confidence="LOW", confidence_reason="Marshal/YAML/Oj deserialization of untrusted (possibly signed-but-not-encrypted) data"),
 ]
-_CIPHER = re.compile(r"OpenSSL::Cipher(?:::AES(?:128|192|256))?(?:\.new)?\(\s*['\"]([^'\"]+)['\"]")
-_CIPHER_CONST = re.compile(r"OpenSSL::Cipher::AES(?:128|192|256)\.(encrypt|decrypt|new)")
-_RSA_BITS = re.compile(r"OpenSSL::PKey::RSA\.new\(\s*(\d+)")
+
+_CONST_GET = re.compile(r"\b(Digest|OpenSSL::Digest|OpenSSL::Cipher|OpenSSL::PKey|OpenSSL|Object|Kernel)\.const_get\s*\(\s*(?::|['\"])(\w+)['\"]?\s*\)")
+_CONCAT = re.compile(r"""(['"])([^'"\n#]*)\1\s*\+\s*(['"])([^'"\n#]*)\3""")
+_STR_CONST = re.compile(r"""^\s*([A-Za-z_]\w*)\s*=\s*(['"])([^'"\n#]{1,80})\2\s*$""", re.M)
+_INTERP = re.compile(r"#\{\s*(\w+)\s*\}")
+_SEND_DIGEST = re.compile(r"\b(Digest|OpenSSL::Digest)\.(?:send|public_send|__send__|const_get)\s*\(\s*(?::|['\"])(\w+)['\"]?\s*\)|\b(Digest|OpenSSL::Digest)::const_get\s*\(\s*(?::|['\"])(\w+)['\"]?\s*\)")
+_OBJECT_CONST = re.compile(r"\b(?:Object|Kernel)\.const_get\s*\(\s*(?::|['\"])((?:OpenSSL::|Digest::|RbNaCl::|JWT|BCrypt|Argon2|SCrypt)\w*(?:::\w+)*)['\"]?\s*\)")
+_SYMBOL_SEND = re.compile(r"\b(OpenSSL::Digest|Digest|OpenSSL::Cipher|OpenSSL::HMAC|OpenSSL::PKey|OpenSSL::KDF|OpenSSL::PKCS5|SecureRandom|JWT|BCrypt::Password|Argon2::Password|SCrypt::Password|Digest::\w+|OpenSSL::PKey::\w+)\.(?:send|public_send|__send__)\s*\(\s*(?::|['\"])(\w+[?!]?)['\"]?\s*(,)?\s*")
+_CONSTANTIZE = re.compile(r"""(['"])((?:OpenSSL::|Digest::|RbNaCl::|JWT|BCrypt|Argon2|SCrypt|ActiveSupport::)\w*(?:::\w+)*)\1\s*\.\s*(?:constantize|safe_constantize)\b""")
+_METHOD_REF = re.compile(r"\b(Digest::\w+|OpenSSL::Digest::\w+|OpenSSL::HMAC|OpenSSL::Cipher|SecureRandom|JWT)\.method\s*\(\s*:(\w+)\s*\)")
+
+
+def desugar_ruby(source: str) -> str:
+    """Fold Ruby metaprogramming idioms that hide crypto names from a token
+    matcher.  Line-preserving.
+
+    * ``Digest.const_get(:SHA1)`` / ``Digest.const_get("SHA1")`` → ``Digest::SHA1``
+    * ``Object.const_get("OpenSSL::Cipher")`` → ``OpenSSL::Cipher``
+    * ``"OpenSSL::Digest::SHA256".constantize`` → ``OpenSSL::Digest::SHA256``
+    * ``OpenSSL::Digest.send(:new, "sha256")`` → ``OpenSSL::Digest.new("sha256")``
+    * ``Digest::SHA1.method(:hexdigest)`` → ``Digest::SHA1.hexdigest``
+    * ``"sha" + "256"`` → ``"sha256"``; ``ALG = "aes-256"`` then ``"#{ALG}-gcm"`` → ``"aes-256-gcm"``
+    """
+    source = _CONST_GET.sub(lambda m: f"{m.group(1)}::{m.group(2)}", source)
+    source = _SEND_DIGEST.sub(lambda m: f"{m.group(1) or m.group(3)}::{m.group(2) or m.group(4)}", source)
+    source = _OBJECT_CONST.sub(lambda m: m.group(1), source)
+    source = _CONSTANTIZE.sub(lambda m: m.group(2), source)
+    source = _SYMBOL_SEND.sub(lambda m: f"{m.group(1)}.{m.group(2)}(" if m.group(3) else f"{m.group(1)}.{m.group(2)}(", source)
+    source = _METHOD_REF.sub(lambda m: f"{m.group(1)}.{m.group(2)}", source)
+    for _ in range(4):
+        new = _CONCAT.sub(lambda m: '"' + m.group(2) + m.group(4) + '"', source)
+        if new == source:
+            break
+        source = new
+    consts = {m.group(1): m.group(3) for m in _STR_CONST.finditer(source)}
+    if not consts:
+        return source
+
+    # ``ALG = "DES-EDE3-CBC"`` … ``OpenSSL::Cipher.new(ALG)`` → the literal (first call argument only)
+    names = "|".join(re.escape(k) for k in consts)
+    source = re.sub(rf"(\(\s*)({names})(\s*[,)])", lambda m: f'{m.group(1)}"{consts[m.group(2)]}"{m.group(3)}', source)
+
+    def _interp(m: re.Match) -> str:
+        body = m.group(0)
+        if "#{" not in body:
+            return body
+        folded = _INTERP.sub(lambda mm: consts.get(mm.group(1), mm.group(0)), body)
+        return folded
+
+    return re.sub(r'"(?:[^"\\\n]|\\.)*"', _interp, source)
 
 
 def parse_ruby_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -46,78 +325,14 @@ def parse_ruby_file(file_path: Path, repo_root: Path | None = None) -> list[RawF
         return []
     from scanner.parsers.c_like import strip_ruby_comments
 
-    text = strip_ruby_comments(raw)
-    findings: list[RawFinding] = []
-    seen: set[tuple[int, str]] = set()
-
-    def add(line: int, **kwargs) -> None:
-        key = (line, str(kwargs.get("algorithm")))
-        if key in seen:
-            return
-        seen.add(key)
-        findings.append(
-            make_finding(
-                file_path=file_path,
-                repo_root=repo_root,
-                line_number=line,
-                language="RUBY",
-                scanner_id=SCANNER_ID,
-                confidence="HIGH",
-                confidence_reason="ruby-openssl",
-                **kwargs,
-            )
-        )
-
-    for match in _CIPHER.finditer(text):
-        raw = match.group(1).upper()
-        algo = (
-            "AES"
-            if "AES" in raw
-            else (
-                "3DES"
-                if "DES-EDE" in raw or "3DES" in raw
-                else ("DES" if "DES" in raw else ("RC4" if "RC4" in raw else ("Blowfish" if "BF" in raw or "BLOWFISH" in raw else raw)))
-            )
-        )
-        mode = next((m for m in ("GCM", "CCM", "CTR", "CBC", "ECB", "CFB", "OFB") if m in raw), None)
-        bits = None
-        found = re.search(r"(\d{3,4})", raw)
-        if found:
-            bits = int(found.group(1))
-        add(
-            text[: match.start()].count("\n") + 1,
-            api_type="CIPHER_INSTANCE",
-            algorithm=algo,
-            mode=mode,
-            key_size=bits,
-            purpose="ENCRYPTION",
-            library="openssl",
-            raw_transformation=match.group(1),
-        )
-    for match in _CIPHER_CONST.finditer(text):
-        add(
-            text[: match.start()].count("\n") + 1,
-            api_type="CIPHER_INSTANCE",
-            algorithm="AES",
-            purpose="ENCRYPTION" if match.group(1) != "decrypt" else "DECRYPTION",
-            library="openssl",
-        )
-    for match in _RSA_BITS.finditer(text):
-        add(
-            text[: match.start()].count("\n") + 1,
-            api_type="KEY_PAIR_GENERATOR",
-            algorithm="RSA",
-            purpose="KEY_GENERATION",
-            library="openssl",
-            key_size=int(match.group(1)),
-        )
-    for pattern, algo, api_type, purpose, library in _RULES:
-        for match in pattern.finditer(text):
-            add(
-                text[: match.start()].count("\n") + 1,
-                api_type=api_type,
-                algorithm=algo,
-                purpose=purpose,
-                library=library,
-            )
-    return findings
+    text = desugar_ruby(strip_ruby_comments(raw))
+    return run_rules(
+        file_path=file_path,
+        repo_root=repo_root,
+        text=text,
+        rules=RULES,
+        language="RUBY",
+        scanner_id=SCANNER_ID,
+        confidence_reason="ruby-openssl",
+        strip_comments=False,
+    )

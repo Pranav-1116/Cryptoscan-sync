@@ -1,0 +1,1908 @@
+
+> zelinx-frontend@1.0.0 test
+> vitest run --reporter=default src/pages/LaunchReadiness.usability.test.tsx
+
+
+ RUN  v5.0.5 /home/user/CryproScan/frontend
+
+ ❯ src/pages/LaunchReadiness.usability.test.tsx (8 tests | 7 failed) 1688ms
+   ❯ Existing launch operator task safety (8)
+     × names the selected estate next to the form and explains why an ID-bound action is unavailable 136ms
+     × preserves the draft and record ID, focuses safe validation feedback, and sends no malformed JSON 192ms
+     × treats HTTP 400 as an ordinary rejected validation, not an ambiguous accepted write, without leaking raw detail 107ms
+     × treats HTTP 422 as an ordinary rejected validation, not an ambiguous accepted write, without leaking raw detail 95ms
+     ✓ keeps a server outage ambiguous and never retries a write automatically 81ms
+     × separates loading, unavailable, empty and partial operating reads instead of displaying a green default 21ms
+     × labels retained history separately from an acknowledged write and a newly read current gate 1029ms
+     × isolates technical IDs and JSON as LTR while the surrounding Arabic task context is RTL 23ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/LaunchReadiness.usability.test.tsx > Existing launch operator task safety > names the selected estate next to the form and explains why an ID-bound action is unavailable
+TestingLibraryElementError: Unable to find a label with the text of: Selected estate
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div>
+      <div
+        class="topbar"
+      >
+        <div>
+          <div
+            class="crumb"
+          >
+            Overview / Launch readiness
+          </div>
+          <h1>
+            <span
+              aria-label="Launch readiness"
+              class="mono-settle"
+              style="display: inline-block; white-space: pre;"
+            >
+              C37634 2AEFF425D
+            </span>
+          </h1>
+          <div
+            class="sub"
+          >
+            Preview · independent security evidence, accountable operations and one bounded customer workflow
+          </div>
+        </div>
+      </div>
+      <section
+        class="panel frame "
+        style="opacity: 0; transform: translateY(8px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          External acceptance stays explicit
+        </h3>
+        <p>
+          No assessor has been hired or test performed by this console. A signature proves origin and integrity, not independence, accreditation or certification. Certified infrastructure does not certify this product.
+        </p>
+        <p>
+          Owner-reviewed exercises are retained assertions, not an SLA. A feature demonstration is not whole-bank coverage or commercial acceptance. Source/build/deployment associations require explicit evidence; they are not reproducible-build or runtime proof.
+        </p>
+        <p>
+          <a
+            data-discover="true"
+            href="/operator-decisions"
+          >
+            Condition-level remediation
+          </a>
+           ·
+          <a
+            data-discover="true"
+            href="/crypto-assurance"
+          >
+            Registered coverage
+          </a>
+           ·
+          <a
+            href="/api/docs"
+            rel="noreferrer"
+            target="_blank"
+          >
+            API schemas
+          </a>
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0; transform: translateY(8px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Nine operating duties — selected estate
+        </h3>
+        <button>
+          Refresh operating records
+        </button>
+        <pre
+          style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto;"
+        >
+          {}
+        </pre>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0; transform: translateY(8px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Read current scoped gates
+        </h3>
+        <label>
+          Exact engagement / pilot / finding / assignment ID
+          <input
+            aria-label="Exact record ID"
+            maxlength="36"
+            style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            value=""
+          />
+        </label>
+        <button
+          disabled=""
+        >
+          Read independent security status
+        </button>
+        <button
+          disabled=""
+        >
+          Read bounded pilot status
+        </button>
+        <p>
+          Browse retained records for exact IDs and expected revisions. Reads recompute blockers; previous acceptance does not suppress stale evidence.
+        </p>
+        <label>
+          Record kind
+          <select
+            aria-label="Record kind"
+          >
+            <option>
+              security_engagement
+            </option>
+            <option>
+              security_report
+            </option>
+            <option>
+              security_finding
+            </option>
+            <option>
+              operating_assignment
+            </option>
+            <option>
+              operating_exercise
+            </option>
+            <option>
+              customer_pilot
+            </option>
+          </select>
+        </label>
+        <label>
+          Record offset
+          <input
+            aria-label="Record offset"
+            max="1000000"
+            min="0"
+            type="number"
+            value="0"
+          />
+        </label>
+        <button>
+          Read 50 retained revisions
+        </button>
+        <button
+          disabled=""
+        >
+          Read record history
+        </button>
+        <p>
+          Lists contain all revisions, not only latest records. Use the returned has_more / next_offset to continue, and current status before acting. Record history returns at most 200 revisions.
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0; transform: translateY(8px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Structured, revision-checked actions
+        </h3>
+        <p>
+          Use the launch runbook templates and API schemas. No private keys belong in this form. Obtain assessor signatures externally; import only the public signed envelope. All writes require current durable human authority and exact-estate references.
+        </p>
+        <form>
+          <label>
+            Action
+            <select
+              aria-label="Launch action"
+            >
+              <option>
+                Propose assessor scope
+              </option>
+              <option>
+                Approve scope and independence assertion
+              </option>
+              <option>
+                Withdraw engagement/key authority
+              </option>
+              <option>
+                Import externally signed report / retest
+              </option>
+              <option>
+                Plan finding remediation
+              </option>
+              <option>
+                Approve finding change
+              </option>
+              <option>
+                Owner reports completion (not resolution)
+              </option>
+              <option>
+                Assign or replace operating duty
+              </option>
+              <option>
+                Acknowledge assigned duty
+              </option>
+              <option>
+                Record operating exercise
+              </option>
+              <option>
+                Review operating exercise
+              </option>
+              <option>
+                Propose bounded payments pilot
+              </option>
+              <option>
+                Replace pilot scope (resets reviews)
+              </option>
+              <option>
+                Technical owner reviews evidence loop
+              </option>
+              <option>
+                Customer accepts bounded pilot
+              </option>
+            </select>
+          </label>
+          <label>
+            Typed JSON body
+            <textarea
+              aria-label="Typed JSON body"
+              placeholder="Paste a reviewed schema-valid object, including expected_revision where required"
+              required=""
+              rows="12"
+              style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            />
+          </label>
+          <button
+            type="submit"
+          >
+            Submit bounded action
+          </button>
+        </form>
+      </section>
+    </div>
+  </div>
+</body>
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ getAllByLabelText node_modules/@testing-library/dom/dist/queries/label-text.js:111:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/pages/LaunchReadiness.usability.test.tsx:16:19
+     14|     setActiveTenantId("bank-a"); mockFetch({ [P + "operations"]: {} })…
+     15|     await screen.findByText("{}");
+     16|     expect(screen.getByLabelText("Selected estate")).toHaveTextContent…
+       |                   ^
+     17|     fireEvent.change(screen.getByLabelText("Launch action"), { target:…
+     18|     expect(screen.getByRole("button", { name: "Submit bounded action" …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/7]⎯
+
+ FAIL  src/pages/LaunchReadiness.usability.test.tsx > Existing launch operator task safety > preserves the draft and record ID, focuses safe validation feedback, and sends no malformed JSON
+Error: expect(element).toHaveFocus()
+
+Expected element with focus:
+  <p
+  role="alert"
+>
+  SyntaxError: Expected double-quoted property name in JSON at position 24 (line 1 column 25)
+</p>
+Received element with focus:
+  <body>
+  <div>
+    <div>
+      <div
+        class="topbar"
+      >
+        <div>
+          <div
+            class="crumb"
+          >
+            Overview / Launch readiness
+          </div>
+          <h1>
+            <span
+              aria-label="Launch readiness"
+              class="mono-settle"
+              style="display: inline-block; white-space: pre;"
+            >
+              40BB7F 78162608A
+            </span>
+          </h1>
+          <div
+            class="sub"
+          >
+            Preview · independent security evidence, accountable operations and one bounded customer workflow
+          </div>
+        </div>
+      </div>
+      <section
+        class="panel frame "
+        style="opacity: 0.9976288996440417; transform: translateY(0.018968802847666666px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          External acceptance stays explicit
+        </h3>
+        <p>
+          No assessor has been hired or test performed by this console. A signature proves origin and integrity, not independence, accreditation or certification. Certified infrastructure does not certify this product.
+        </p>
+        <p>
+          Owner-reviewed exercises are retained assertions, not an SLA. A feature demonstration is not whole-bank coverage or commercial acceptance. Source/build/deployment associations require explicit evidence; they are not reproducible-build or runtime proof.
+        </p>
+        <p>
+          <a
+            data-discover="true"
+            href="/operator-decisions"
+          >
+            Condition-level remediation
+          </a>
+           ··
+          <a
+            data-discover="true"
+            href="/crypto-assurance"
+          >
+            Registered coverage
+          </a>
+           ··
+          <a
+            href="/api/docs"
+            rel="noreferrer"
+            target="_blank"
+          >
+            API schemas
+          </a>
+        </p>
+      </section>
+      <p
+        role="alert"
+      >
+        SyntaxError: Expected double-quoted property name in JSON at position 24 (line 1 column 25)
+      </p>
+      <section
+        class="panel frame "
+        style="opacity: 0.9976288996440417; transform: translateY(0.018968802847666666px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Nine operating duties — selected estate
+        </h3>
+        <button>
+          Refresh operating records
+        </button>
+        <pre
+          style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto;"
+        >
+          {}
+        </pre>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0.9976288996440417; transform: translateY(0.018968802847666666px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Read current scoped gates
+        </h3>
+        <label>
+          Exact engagement / pilot / finding / assignment ID
+          <input
+            aria-label="Exact record ID"
+            maxlength="36"
+            style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            value="kept-id"
+          />
+        </label>
+        <button>
+          Read independent security status
+        </button>
+        <button>
+          Read bounded pilot status
+        </button>
+        <p>
+          Browse retained records for exact IDs and expected revisions. Reads recompute blockers; previous acceptance does not suppress stale evidence.
+        </p>
+        <label>
+          Record kind
+          <select
+            aria-label="Record kind"
+          >
+            <option>
+              security_engagement
+            </option>
+            <option>
+              security_report
+            </option>
+            <option>
+              security_finding
+            </option>
+            <option>
+              operating_assignment
+            </option>
+            <option>
+              operating_exercise
+            </option>
+            <option>
+              customer_pilot
+            </option>
+          </select>
+        </label>
+        <label>
+          Record offset
+          <input
+            aria-label="Record offset"
+            max="1000000"
+            min="0"
+            type="number"
+            value="0"
+          />
+        </label>
+        <button>
+          Read 50 retained revisions
+        </button>
+        <button>
+          Read record history
+        </button>
+        <p>
+          Lists contain all revisions, not only latest records. Use the returned has_more / next_offset to continue, and current status before acting. Record history returns at most 200 revisions.
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0.9976288996440417; transform: translateY(0.018968802847666666px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Structured, revision-checked actions
+        </h3>
+        <p>
+          Use the launch runbook templates and API schemas. No private keys belong in this form. Obtain assessor signatures externally; import only the public signed envelope. All writes require current durable human authority and exact-estate references.
+        </p>
+        <form>
+          <label>
+            Action
+            <select
+              aria-label="Launch action"
+            >
+              <option>
+                Propose assessor scope
+              </option>
+              <option>
+                Approve scope and independence assertion
+              </option>
+              <option>
+                Withdraw engagement/key authority
+              </option>
+              <option>
+                Import externally signed report / retest
+              </option>
+              <option>
+                Plan finding remediation
+              </option>
+              <option>
+                Approve finding change
+              </option>
+              <option>
+                Owner reports completion (not resolution)
+              </option>
+              <option>
+                Assign or replace operating duty
+              </option>
+              <option>
+                Acknowledge assigned duty
+              </option>
+              <option>
+                Record operating exercise
+              </option>
+              <option>
+                Review operating exercise
+              </option>
+              <option>
+                Propose bounded payments pilot
+              </option>
+              <option>
+                Replace pilot scope (resets reviews)
+              </option>
+              <option>
+                Technical owner reviews evidence loop
+              </option>
+              <option>
+                Customer accepts bounded pilot
+              </option>
+            </select>
+          </label>
+          <label>
+            Typed JSON body
+            <textarea
+              aria-label="Typed JSON body"
+              placeholder="Paste a reviewed schema-valid object, including expected_revision where required"
+              required=""
+              rows="12"
+              style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            >
+              {"secret":"do-not-echo",
+            </textarea>
+          </label>
+          <button
+            type="submit"
+          >
+            Submit bounded action
+          </button>
+        </form>
+      </section>
+    </div>
+  </div>
+</body>
+ ❯ src/pages/LaunchReadiness.usability.test.tsx:27:22
+     25|     fireEvent.click(screen.getByRole("button", { name: "Submit bounded…
+     26|     const feedback = await screen.findByRole("alert");
+     27|     expect(feedback).toHaveFocus(); expect(feedback).not.toHaveTextCon…
+       |                      ^
+     28|     expect(screen.getByLabelText("Typed JSON body")).toHaveValue('{"se…
+     29|     expect(screen.getByLabelText("Exact record ID")).toHaveValue("kept…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/7]⎯
+
+ FAIL  src/pages/LaunchReadiness.usability.test.tsx > Existing launch operator task safety > treats HTTP 400 as an ordinary rejected validation, not an ambiguous accepted write, without leaking raw detail
+Error: expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  Validation rejected
+Received:
+  Action outcome not confirmed: Error: HTTP 400: {"detail":"sensitive-server-canary"}. Reconcile current history before retrying; the server may already have retained the write.
+ ❯ src/pages/LaunchReadiness.usability.test.tsx:38:22
+     36|     fireEvent.click(screen.getByRole("button", { name: "Submit bounded…
+     37|     const feedback = await screen.findByRole("alert");
+     38|     expect(feedback).toHaveTextContent("Validation rejected");
+       |                      ^
+     39|     expect(feedback).not.toHaveTextContent(/not confirmed|sensitive-se…
+     40|     expect(screen.getByLabelText("Typed JSON body")).toHaveValue('{"ex…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/7]⎯
+
+ FAIL  src/pages/LaunchReadiness.usability.test.tsx > Existing launch operator task safety > treats HTTP 422 as an ordinary rejected validation, not an ambiguous accepted write, without leaking raw detail
+Error: expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  Validation rejected
+Received:
+  Action outcome not confirmed: Error: HTTP 422: {"detail":"sensitive-server-canary"}. Reconcile current history before retrying; the server may already have retained the write.
+ ❯ src/pages/LaunchReadiness.usability.test.tsx:38:22
+     36|     fireEvent.click(screen.getByRole("button", { name: "Submit bounded…
+     37|     const feedback = await screen.findByRole("alert");
+     38|     expect(feedback).toHaveTextContent("Validation rejected");
+       |                      ^
+     39|     expect(feedback).not.toHaveTextContent(/not confirmed|sensitive-se…
+     40|     expect(screen.getByLabelText("Typed JSON body")).toHaveValue('{"ex…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/7]⎯
+
+ FAIL  src/pages/LaunchReadiness.usability.test.tsx > Existing launch operator task safety > separates loading, unavailable, empty and partial operating reads instead of displaying a green default
+TestingLibraryElementError: Unable to find an element with the text: Loading operating records…. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div>
+      <div
+        class="topbar"
+      >
+        <div>
+          <div
+            class="crumb"
+          >
+            Overview / Launch readiness
+          </div>
+          <h1>
+            <span
+              aria-label="Launch readiness"
+              class="mono-settle"
+              style="display: inline-block; white-space: pre;"
+            >
+              Launch readiness
+            </span>
+          </h1>
+          <div
+            class="sub"
+          >
+            Preview · independent security evidence, accountable operations and one bounded customer workflow
+          </div>
+        </div>
+      </div>
+      <section
+        class="panel frame "
+        style="opacity: 0; transform: translateY(8px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          External acceptance stays explicit
+        </h3>
+        <p>
+          No assessor has been hired or test performed by this console. A signature proves origin and integrity, not independence, accreditation or certification. Certified infrastructure does not certify this product.
+        </p>
+        <p>
+          Owner-reviewed exercises are retained assertions, not an SLA. A feature demonstration is not whole-bank coverage or commercial acceptance. Source/build/deployment associations require explicit evidence; they are not reproducible-build or runtime proof.
+        </p>
+        <p>
+          <a
+            data-discover="true"
+            href="/operator-decisions"
+          >
+            Condition-level remediation
+          </a>
+           ·
+          <a
+            data-discover="true"
+            href="/crypto-assurance"
+          >
+            Registered coverage
+          </a>
+           ·
+          <a
+            href="/api/docs"
+            rel="noreferrer"
+            target="_blank"
+          >
+            API schemas
+          </a>
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0; transform: translateY(8px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Nine operating duties — selected estate
+        </h3>
+        <button>
+          Refresh operating records
+        </button>
+        <p>
+          No current operating read available.
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0; transform: translateY(8px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Read current scoped gates
+        </h3>
+        <label>
+          Exact engagement / pilot / finding / assignment ID
+          <input
+            aria-label="Exact record ID"
+            maxlength="36"
+            style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            value=""
+          />
+        </label>
+        <button
+          disabled=""
+        >
+          Read independent security status
+        </button>
+        <button
+          disabled=""
+        >
+          Read bounded pilot status
+        </button>
+        <p>
+          Browse retained records for exact IDs and expected revisions. Reads recompute blockers; previous acceptance does not suppress stale evidence.
+        </p>
+        <label>
+          Record kind
+          <select
+            aria-label="Record kind"
+          >
+            <option>
+              security_engagement
+            </option>
+            <option>
+              security_report
+            </option>
+            <option>
+              security_finding
+            </option>
+            <option>
+              operating_assignment
+            </option>
+            <option>
+              operating_exercise
+            </option>
+            <option>
+              customer_pilot
+            </option>
+          </select>
+        </label>
+        <label>
+          Record offset
+          <input
+            aria-label="Record offset"
+            max="1000000"
+            min="0"
+            type="number"
+            value="0"
+          />
+        </label>
+        <button>
+          Read 50 retained revisions
+        </button>
+        <button
+          disabled=""
+        >
+          Read record history
+        </button>
+        <p>
+          Lists contain all revisions, not only latest records. Use the returned has_more / next_offset to continue, and current status before acting. Record history returns at most 200 revisions.
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0; transform: translateY(8px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Structured, revision-checked actions
+        </h3>
+        <p>
+          Use the launch runbook templates and API schemas. No private keys belong in this form. Obtain assessor signatures externally; import only the public signed envelope. All writes require current durable human authority and exact-estate references.
+        </p>
+        <form>
+          <label>
+            Action
+            <select
+              aria-label="Launch action"
+            >
+              <option>
+                Propose assessor scope
+              </option>
+              <option>
+                Approve scope and independence assertion
+              </option>
+              <option>
+                Withdraw engagement/key authority
+              </option>
+              <option>
+                Import externally signed report / retest
+              </option>
+              <option>
+                Plan finding remediation
+              </option>
+              <option>
+                Approve finding change
+              </option>
+              <option>
+                Owner reports completion (not resolution)
+              </option>
+              <option>
+                Assign or replace operating duty
+              </option>
+              <option>
+                Acknowledge assigned duty
+              </option>
+              <option>
+                Record operating exercise
+              </option>
+              <option>
+                Review operating exercise
+              </option>
+              <option>
+                Propose bounded payments pilot
+              </option>
+              <option>
+                Replace pilot scope (resets reviews)
+              </option>
+              <option>
+                Technical owner reviews evidence loop
+              </option>
+              <option>
+                Customer accepts bounded pilot
+              </option>
+            </select>
+          </label>
+          <label>
+            Typed JSON body
+            <textarea
+              aria-label="Typed JSON body"
+              placeholder="Paste a reviewed schema-valid object, including expected_revision where required"
+              required=""
+              rows="12"
+              style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            />
+          </label>
+          <button
+            type="submit"
+          >
+            Submit bounded action
+          </button>
+        </form>
+      </section>
+    </div>
+  </div>
+</body>
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/pages/LaunchReadiness.usability.test.tsx:55:19
+     53|     let release!: (body: unknown) => void;
+     54|     mockFetch({ [P + "operations"]: () => new Promise(resolve => { rel…
+     55|     expect(screen.getByText("Loading operating records…")).toBeVisible…
+       |                   ^
+     56|     await waitFor(() => expect(release).toBeTypeOf("function"));
+     57|     await act(async () => release({ duties: [], all_owner_reviewed_rec…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/7]⎯
+
+ FAIL  src/pages/LaunchReadiness.usability.test.tsx > Existing launch operator task safety > labels retained history separately from an acknowledged write and a newly read current gate
+TestingLibraryElementError: Unable to find an element with the text: Retained history — not current proof. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div>
+      <div
+        class="topbar"
+      >
+        <div>
+          <div
+            class="crumb"
+          >
+            Overview / Launch readiness
+          </div>
+          <h1>
+            <span
+              aria-label="Launch readiness"
+              class="mono-settle"
+              style="display: inline-block; white-space: pre;"
+            >
+              Launch rea57C6C0
+            </span>
+          </h1>
+          <div
+            class="sub"
+          >
+            Preview · independent security evidence, accountable operations and one bounded customer workflow
+          </div>
+        </div>
+      </div>
+      <section
+        class="panel frame "
+        style="opacity: 1; transform: none;"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          External acceptance stays explicit
+        </h3>
+        <p>
+          No assessor has been hired or test performed by this console. A signature proves origin and integrity, not independence, accreditation or certification. Certified infrastructure does not certify this product.
+        </p>
+        <p>
+          Owner-reviewed exercises are retained assertions, not an SLA. A feature demonstration is not whole-bank coverage or commercial acceptance. Source/build/deployment associations require explicit evidence; they are not reproducible-build or runtime proof.
+        </p>
+        <p>
+          <a
+            data-discover="true"
+            href="/operator-decisions"
+          >
+            Condition-level remediation
+          </a>
+           ·
+          <a
+            data-discover="true"
+            href="/crypto-assurance"
+          >
+            Registered coverage
+          </a>
+           ·
+          <a
+            href="/api/docs"
+            rel="noreferrer"
+            target="_blank"
+          >
+            API schemas
+          </a>
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 1; transform: none;"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Nine operating duties — selected estate
+        </h3>
+        <button>
+          Refresh operating records
+        </button>
+        <pre
+          style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto;"
+        >
+          {}
+        </pre>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 1; transform: none;"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Read current scoped gates
+        </h3>
+        <label>
+          Exact engagement / pilot / finding / assignment ID
+          <input
+            aria-label="Exact record ID"
+            maxlength="36"
+            style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            value=""
+          />
+        </label>
+        <button
+          disabled=""
+        >
+          Read independent security status
+        </button>
+        <button
+          disabled=""
+        >
+          Read bounded pilot status
+        </button>
+        <p>
+          Browse retained records for exact IDs and expected revisions. Reads recompute blockers; previous acceptance does not suppress stale evidence.
+        </p>
+        <label>
+          Record kind
+          <select
+            aria-label="Record kind"
+          >
+            <option>
+              security_engagement
+            </option>
+            <option>
+              security_report
+            </option>
+            <option>
+              security_finding
+            </option>
+            <option>
+              operating_assignment
+            </option>
+            <option>
+              operating_exercise
+            </option>
+            <option>
+              customer_pilot
+            </option>
+          </select>
+        </label>
+        <label>
+          Record offset
+          <input
+            aria-label="Record offset"
+            max="1000000"
+            min="0"
+            type="number"
+            value="0"
+          />
+        </label>
+        <button>
+          Read 50 retained revisions
+        </button>
+        <button
+          disabled=""
+        >
+          Read record history
+        </button>
+        <p>
+          Lists contain all revisions, not only latest records. Use the returned has_more / next_offset to continue, and current status before acting. Record history returns at most 200 revisions.
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 1; transform: none;"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Structured, revision-checked actions
+        </h3>
+        <p>
+          Use the launch runbook templates and API schemas. No private keys belong in this form. Obtain assessor signatures externally; import only the public signed envelope. All writes require current durable human authority and exact-estate references.
+        </p>
+        <form>
+          <label>
+            Action
+            <select
+              aria-label="Launch action"
+            >
+              <option>
+                Propose assessor scope
+              </option>
+              <option>
+                Approve scope and independence assertion
+              </option>
+              <option>
+                Withdraw engagement/key authority
+              </option>
+              <option>
+                Import externally signed report / retest
+              </option>
+              <option>
+                Plan finding remediation
+              </option>
+              <option>
+                Approve finding change
+              </option>
+              <option>
+                Owner reports completion (not resolution)
+              </option>
+              <option>
+                Assign or replace operating duty
+              </option>
+              <option>
+                Acknowledge assigned duty
+              </option>
+              <option>
+                Record operating exercise
+              </option>
+              <option>
+                Review operating exercise
+              </option>
+              <option>
+                Propose bounded payments pilot
+              </option>
+              <option>
+                Replace pilot scope (resets reviews)
+              </option>
+              <option>
+                Technical owner reviews evidence loop
+              </option>
+              <option>
+                Customer accepts bounded pilot
+              </option>
+            </select>
+          </label>
+          <label>
+            Typed JSON body
+            <textarea
+              aria-label="Typed JSON body"
+              placeholder="Paste a reviewed schema-valid object, including expected_revision where required"
+              required=""
+              rows="12"
+              style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            />
+          </label>
+          <button
+            type="submit"
+          >
+            Submit bounded action
+          </button>
+        </form>
+        <details
+          open=""
+        >
+          <summary>
+            Immutable action receipt / current gate result
+          </summary>
+          <pre
+            style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto;"
+          >
+            {
+  "records": [],
+  "has_more": false
+}
+          </pre>
+        </details>
+      </section>
+    </div>
+  </div>
+</body>
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div>
+      <div
+        class="topbar"
+      >
+        <div>
+          <div
+            class="crumb"
+          >
+            Overview / Launch readiness
+          </div>
+          <h1>
+            <span
+              aria-label="Launch readiness"
+              class="mono-settle"
+              style="display: inline-block; white-space: pre;"
+            >
+              Launch rea57C6C0
+            </span>
+          </h1>
+          <div
+            class="sub"
+          >
+            Preview · independent security evidence, accountable operations and one bounded customer workflow
+          </div>
+        </div>
+      </div>
+      <section
+        class="panel frame "
+        style="opacity: 1; transform: none;"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          External acceptance stays explicit
+        </h3>
+        <p>
+          No assessor has been hired or test performed by this console. A signature proves origin and integrity, not independence, accreditation or certification. Certified infrastructure does not certify this product.
+        </p>
+        <p>
+          Owner-reviewed exercises are retained assertions, not an SLA. A feature demonstration is not whole-bank coverage or commercial acceptance. Source/build/deployment associations require explicit evidence; they are not reproducible-build or runtime proof.
+        </p>
+        <p>
+          <a
+            data-discover="true"
+            href="/operator-decisions"
+          >
+            Condition-level remediation
+          </a>
+           ·
+          <a
+            data-discover="true"
+            href="/crypto-assurance"
+          >
+            Registered coverage
+          </a>
+           ·
+          <a
+            href="/api/docs"
+            rel="noreferrer"
+            target="_blank"
+          >
+            API schemas
+          </a>
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 1; transform: none;"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Nine operating duties — selected estate
+        </h3>
+        <button>
+          Refresh operating records
+        </button>
+        <pre
+          style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto;"
+        >
+          {}
+        </pre>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 1; transform: none;"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Read current scoped gates
+        </h3>
+        <label>
+          Exact engagement / pilot / finding / assignment ID
+          <input
+            aria-label="Exact record ID"
+            maxlength="36"
+            style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            value=""
+          />
+        </label>
+        <button
+          disabled=""
+        >
+          Read independent security status
+        </button>
+        <button
+          disabled=""
+        >
+          Read bounded pilot status
+        </button>
+        <p>
+          Browse retained records for exact IDs and expected revisions. Reads recompute blockers; previous acceptance does not suppress stale evidence.
+        </p>
+        <label>
+          Record kind
+          <select
+            aria-label="Record kind"
+          >
+            <option>
+              security_engagement
+            </option>
+            <option>
+              security_report
+            </option>
+            <option>
+              security_finding
+            </option>
+            <option>
+              operating_assignment
+            </option>
+            <option>
+              operating_exercise
+            </option>
+            <option>
+              customer_pilot
+            </option>
+          </select>
+        </label>
+        <label>
+          Record offset
+          <input
+            aria-label="Record offset"
+            max="1000000"
+            min="0"
+            type="number"
+            value="0"
+          />
+        </label>
+        <button>
+          Read 50 retained revisions
+        </button>
+        <button
+          disabled=""
+        >
+          Read record history
+        </button>
+        <p>
+          Lists contain all revisions, not only latest records. Use the returned has_more / next_offset to continue, and current status before acting. Record history returns at most 200 revisions.
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 1; transform: none;"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Structured, revision-checked actions
+        </h3>
+        <p>
+          Use the launch runbook templates and API schemas. No private keys belong in this form. Obtain assessor signatures externally; import only the public signed envelope. All writes require current durable human authority and exact-estate references.
+        </p>
+        <form>
+          <label>
+            Action
+            <select
+              aria-label="Launch action"
+            >
+              <option>
+                Propose assessor scope
+              </option>
+              <option>
+                Approve scope and independence assertion
+              </option>
+              <option>
+                Withdraw engagement/key authority
+              </option>
+              <option>
+                Import externally signed report / retest
+              </option>
+              <option>
+                Plan finding remediation
+              </option>
+              <option>
+                Approve finding change
+              </option>
+              <option>
+                Owner reports completion (not resolution)
+              </option>
+              <option>
+                Assign or replace operating duty
+              </option>
+              <option>
+                Acknowledge assigned duty
+              </option>
+              <option>
+                Record operating exercise
+              </option>
+              <option>
+                Review operating exercise
+              </option>
+              <option>
+                Propose bounded payments pilot
+              </option>
+              <option>
+                Replace pilot scope (resets reviews)
+              </option>
+              <option>
+                Technical owner reviews evidence loop
+              </option>
+              <option>
+                Customer accepts bounded pilot
+              </option>
+            </select>
+          </label>
+          <label>
+            Typed JSON body
+            <textarea
+              aria-label="Typed JSON body"
+              placeholder="Paste a reviewed schema-valid object, including expected_revision where required"
+              required=""
+              rows="12"
+              style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            />
+          </label>
+          <button
+            type="submit"
+          >
+            Submit bounded action
+          </button>
+        </form>
+        <details
+          open=""
+        >
+          <summary>
+            Immutable action receipt / current gate result
+          </summary>
+          <pre
+            style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto;"
+          >
+            {
+  "records": [],
+  "has_more": false
+}
+          </pre>
+        </details>
+      </section>
+    </div>
+  </div>
+</body>
+ ❯ waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/pages/LaunchReadiness.usability.test.tsx:69:25
+     67|     mockFetch({ [P + "operations"]: {}, "/api/v1/assurance/records": {…
+     68|     draw(); await screen.findByText("{}"); fireEvent.click(screen.getB…
+     69|     expect(await screen.findByText("Retained history — not current pro…
+       |                         ^
+     70|     expect(screen.getByText(/Reported completion is a declaration/)).t…
+     71|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/7]⎯
+
+ FAIL  src/pages/LaunchReadiness.usability.test.tsx > Existing launch operator task safety > isolates technical IDs and JSON as LTR while the surrounding Arabic task context is RTL
+TestingLibraryElementError: Unable to find a label with the text of: Selected estate
+
+Ignored nodes: comments, script, style
+<body>
+  <div>
+    <div>
+      <div
+        class="topbar"
+      >
+        <div>
+          <div
+            class="crumb"
+          >
+            Overview / Launch readiness
+          </div>
+          <h1>
+            <span
+              aria-label="Launch readiness"
+              class="mono-settle"
+              style="display: inline-block; white-space: pre;"
+            >
+              EB5F0B 8A54D566F
+            </span>
+          </h1>
+          <div
+            class="sub"
+          >
+            Preview · independent security evidence, accountable operations and one bounded customer workflow
+          </div>
+        </div>
+      </div>
+      <section
+        class="panel frame "
+        style="opacity: 0.10706274142066832; transform: translateY(7.143498068634654px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          External acceptance stays explicit
+        </h3>
+        <p>
+          No assessor has been hired or test performed by this console. A signature proves origin and integrity, not independence, accreditation or certification. Certified infrastructure does not certify this product.
+        </p>
+        <p>
+          Owner-reviewed exercises are retained assertions, not an SLA. A feature demonstration is not whole-bank coverage or commercial acceptance. Source/build/deployment associations require explicit evidence; they are not reproducible-build or runtime proof.
+        </p>
+        <p>
+          <a
+            data-discover="true"
+            href="/operator-decisions"
+          >
+            Condition-level remediation
+          </a>
+           ·
+          <a
+            data-discover="true"
+            href="/crypto-assurance"
+          >
+            Registered coverage
+          </a>
+           ·
+          <a
+            href="/api/docs"
+            rel="noreferrer"
+            target="_blank"
+          >
+            API schemas
+          </a>
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0.10706274142066832; transform: translateY(7.143498068634654px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Nine operating duties — selected estate
+        </h3>
+        <button>
+          Refresh operating records
+        </button>
+        <pre
+          style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 560px; overflow: auto;"
+        >
+          {}
+        </pre>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0.10706274142066832; transform: translateY(7.143498068634654px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Read current scoped gates
+        </h3>
+        <label>
+          Exact engagement / pilot / finding / assignment ID
+          <input
+            aria-label="Exact record ID"
+            maxlength="36"
+            style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            value=""
+          />
+        </label>
+        <button
+          disabled=""
+        >
+          Read independent security status
+        </button>
+        <button
+          disabled=""
+        >
+          Read bounded pilot status
+        </button>
+        <p>
+          Browse retained records for exact IDs and expected revisions. Reads recompute blockers; previous acceptance does not suppress stale evidence.
+        </p>
+        <label>
+          Record kind
+          <select
+            aria-label="Record kind"
+          >
+            <option>
+              security_engagement
+            </option>
+            <option>
+              security_report
+            </option>
+            <option>
+              security_finding
+            </option>
+            <option>
+              operating_assignment
+            </option>
+            <option>
+              operating_exercise
+            </option>
+            <option>
+              customer_pilot
+            </option>
+          </select>
+        </label>
+        <label>
+          Record offset
+          <input
+            aria-label="Record offset"
+            max="1000000"
+            min="0"
+            type="number"
+            value="0"
+          />
+        </label>
+        <button>
+          Read 50 retained revisions
+        </button>
+        <button
+          disabled=""
+        >
+          Read record history
+        </button>
+        <p>
+          Lists contain all revisions, not only latest records. Use the returned has_more / next_offset to continue, and current status before acting. Record history returns at most 200 revisions.
+        </p>
+      </section>
+      <section
+        class="panel frame "
+        style="opacity: 0.10706274142066832; transform: translateY(7.143498068634654px);"
+      >
+        <span
+          class="corner tl"
+        />
+        <span
+          class="corner tr"
+        />
+        <span
+          class="corner bl"
+        />
+        <span
+          class="corner br"
+        />
+        <h3>
+          Structured, revision-checked actions
+        </h3>
+        <p>
+          Use the launch runbook templates and API schemas. No private keys belong in this form. Obtain assessor signatures externally; import only the public signed envelope. All writes require current durable human authority and exact-estate references.
+        </p>
+        <form>
+          <label>
+            Action
+            <select
+              aria-label="Launch action"
+            >
+              <option>
+                Propose assessor scope
+              </option>
+              <option>
+                Approve scope and independence assertion
+              </option>
+              <option>
+                Withdraw engagement/key authority
+              </option>
+              <option>
+                Import externally signed report / retest
+              </option>
+              <option>
+                Plan finding remediation
+              </option>
+              <option>
+                Approve finding change
+              </option>
+              <option>
+                Owner reports completion (not resolution)
+              </option>
+              <option>
+                Assign or replace operating duty
+              </option>
+              <option>
+                Acknowledge assigned duty
+              </option>
+              <option>
+                Record operating exercise
+              </option>
+              <option>
+                Review operating exercise
+              </option>
+              <option>
+                Propose bounded payments pilot
+              </option>
+              <option>
+                Replace pilot scope (resets reviews)
+              </option>
+              <option>
+                Technical owner reviews evidence loop
+              </option>
+              <option>
+                Customer accepts bounded pilot
+              </option>
+            </select>
+          </label>
+          <label>
+            Typed JSON body
+            <textarea
+              aria-label="Typed JSON body"
+              placeholder="Paste a reviewed schema-valid object, including expected_revision where required"
+              required=""
+              rows="12"
+              style="width: 100%; padding: 8px; color: inherit; background: var(--surface-2, #171f2c); border: 1px solid rgb(82, 96, 116); border-radius: 4px;"
+            />
+          </label>
+          <button
+            type="submit"
+          >
+            Submit bounded action
+          </button>
+        </form>
+      </section>
+    </div>
+  </div>
+</body>
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ getAllByLabelText node_modules/@testing-library/dom/dist/queries/label-text.js:111:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/pages/LaunchReadiness.usability.test.tsx:76:19
+     74|     mockFetch({ [P + "operations"]: {} }); draw(); await screen.findBy…
+     75|     expect(document.documentElement).toHaveAttribute("dir", "rtl");
+     76|     expect(screen.getByLabelText("Selected estate")).toHaveTextContent…
+       |                   ^
+     77|     expect(screen.getByLabelText("Exact record ID")).toHaveAttribute("…
+     78|     expect(screen.getByLabelText("Typed JSON body")).toHaveAttribute("…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/7]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  7 failed | 1 passed (8)
+   Start at  09:39:12
+   Duration  4.20s (tests 41%, import 39%, environment 14%, setup 3%, transform 2%)

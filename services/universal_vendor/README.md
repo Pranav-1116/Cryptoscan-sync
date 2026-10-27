@@ -68,15 +68,30 @@ Continuous, low-load vendor monitoring wired into the scan framework:
 | `engine.py` | — | `LiveVendorEngine` orchestrator: collect → normalize → resolve → state → CBOM → graph → PQC |
 
 ```python
+import os
 from universal_vendor import LiveVendorEngine
-from universal_vendor.live.vendor_monitors import CiscoLiveMonitor
 
+# The endpoint, vendor identity, asset identity, and optional auth_env are
+# operator configuration. No endpoint means UNAVAILABLE; no demo event is made.
+os.environ["CRYPTOSCAN_LIVE_VENDOR_ENDPOINTS"] = (
+    '[{"endpoint":"https://router.example.invalid/restconf/data/crypto",'
+    '"vendor":"Cisco","product":"IOS-XE","asset_id":"r1",'
+    '"source":"restconf","auth_env":"CISCO_READONLY_TOKEN"}]'
+)
 engine = LiveVendorEngine()
-engine.monitor.register(CiscoLiveMonitor(asset_id="r1", events=[
-    {"domain": "ipsec", "action": "modified", "detail": "esp-aes-256"},
-]))
-print(engine.tick())   # incremental 24/7 pass
+print(engine.tick())   # polls the configured source and scans returned evidence
 ```
+
+For production API workers, use the tenant onboarding connector path instead
+of process environment configuration. Store only the endpoint, vendor/product,
+asset id, source method, and a non-secret `auth_ref`/`vault_ref` in connector
+metadata. The API worker resolves a short-lived read-only vault lease for each
+poll. `HttpVendorConnector` supports JSON/text management API and telemetry
+polling; `JsonLinesEventConnector` consumes a deployed JSON-lines syslog or
+telemetry forwarder spool; `UdpJsonEventConnector` accepts structured
+syslog/telemetry datagrams on an explicitly configured local listener.
+Missing source, credentials, permissions, or reachable evidence is reported as
+`UNAVAILABLE`, never as a finding.
 
 ## Scan modes (§24)
 

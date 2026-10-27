@@ -33,10 +33,15 @@ def parse_docker_manifest(path: str | Path) -> dict[str, Any]:
     }
 
 
-def parse_oci_index(path: str | Path) -> dict[str, Any]:
+def parse_oci_index(path: str | Path, *, manifest_digest: str | None = None) -> dict[str, Any]:
     index = json.loads(Path(path).read_text(encoding="utf-8"))
     manifests = index.get("manifests") or []
-    first = manifests[0] if manifests else {}
+    if manifest_digest is not None:
+        from shared_models.oci_image import select_oci_manifest
+
+        first = select_oci_manifest(index, manifest_digest)
+    else:
+        first = manifests[0] if manifests else {}
     annotations = first.get("annotations") or {}
     digest = str((first.get("digest") or "").split(":", 1)[-1])
     tag = annotations.get("org.opencontainers.image.ref.name")

@@ -1,0 +1,271 @@
+"""Fact store read path (advanced/51 P0#1, round 37)."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+import pytest
+from fastapi.testclient import TestClient
+
+from api.config.settings import get_settings
+
+
+@pytest.fixture()
+def sqlite_app(monkeypatch, tmp_path):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-sessions-min-32-chars")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "cryptoscan")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/fsr.db")
+    monkeypatch.setenv("NEO4J_URI", "")
+    get_settings.cache_clear()
+    from db.connection import engine as engine_mod
+
+    engine_mod._ENGINE = None
+    from api.main import create_app
+
+    app = create_app()
+    with TestClient(app) as client:
+        yield client, f"sqlite:///{tmp_path}/fsr.db"
+
+
+def _login(client):
+    r = client.post("/api/v1/auth/login",
+                    json={"username": "admin", "password": "cryptoscan"})
+    return {"Authorization": f"Bearer {r.json()['token']}"}
+
+
+def _seed(db_url, scan="scan-1", when=None):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import db.models  # noqa: F401
+    from db.models.evidence_record import EvidenceRecord
+
+    eng = create_engine(db_url)
+    session = sessionmaker(bind=eng)()
+    stamp = when or datetime(2026, 10, 1, tzinfo=timezone.utc)
+    for index, (algo, path, line, confidence) in enumerate([
+        ("RSA-2048", "src/pay/Keys.java", 11, "HIGH"),
+        ("RSA-2048", "src/pay/Keys.java", 44, "MEDIUM"),
+        ("AES-128", "src/old/Legacy.java", 7, "HIGH"),
+    ]):
+        session.add(EvidenceRecord(
+            scan_id=scan, content_hash=f"{index}" * 64,
+            chain_hash=f"{index}" + "0" * 63, chain_position=index,
+            algorithm=algo, purpose="ENCRYPTION", key_size=None,
+            file_path=path, line_number=line,
+            finding_data={"scanner_id": "ast"}, confidence=confidence,
+            compliance_status="FAIL", created_at=stamp,
+        ))
+    session.commit()
+    session.close()
+    eng.dispose()
+
+
+def _rebuild(client, admin):
+    r = client.post("/api/v1/facts/rebuild", headers=admin)
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_store_read_matches_live_projection_exactly(sqlite_app):
+    """The 51 equivalence pin: store rows == live-projected facts."""
+    client, db_url = sqlite_app
+    _seed(db_url)
+    admin = _login(client)
+    _rebuild(client, admin)
+
+    live = client.get("/api/v1/facts/crypto", headers=admin).json()
+    store = client.get("/api/v1/facts/store", headers=admin).json()
+
+    assert store["model"] == "fact-store/read-v1"
+    assert store["freshness"] == "current"
+    assert store["stale_rows"] == 0
+    assert store["summary"] == live["summary"]
+    assert store["facts_matching"] == live["facts_matching"] == 2
+    # identical fact lists modulo the store's one addition: `fresh`.
+    # Same shape, same order — a client can switch endpoints without
+    # reshaping.
+    stripped = [{k: v for k, v in f.items() if k != "fresh"}
+                for f in store["facts"]]
+    assert stripped == live["facts"]
+    # the store carries the projection's confidences now
+    rsa = next(f for f in store["facts"]
+               if f["fact"]["algorithm"] == "RSA-2048")
+    assert rsa["confidences"] == ["HIGH", "MEDIUM"]
+    assert rsa["fresh"] is True
+
+
+def test_store_reports_stale_when_evidence_is_newer(sqlite_app, monkeypatch):
+    import db.repositories.fact_repository as fr_mod
+
+    client, db_url = sqlite_app
+    _seed(db_url)  # evidence created 2026-10-01
+    admin = _login(client)
+
+    rebuild_clock = datetime(2026, 10, 10, tzinfo=timezone.utc)
+
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):  # noqa: A003 — mirrors datetime.now
+            return rebuild_clock
+
+    monkeypatch.setattr(fr_mod, "datetime", _Clock)
+    _rebuild(client, admin)  # rebuild stamped 2026-10-10
+
+    # evidence arrives AFTER the rebuild — the store must say so
+    _seed(db_url, scan="scan-2",
+          when=datetime(2026, 10, 11, tzinfo=timezone.utc))
+    store = client.get("/api/v1/facts/store", headers=admin).json()
+    assert store["freshness"] == "stale"
+    assert store["stale_rows"] >= 1
+    stale = [f for f in store["facts"] if not f["fresh"]]
+    assert any(f["fact"]["algorithm"] == "RSA-2048" for f in stale)
+
+    # a later rebuild covers the new evidence -> current again
+    rebuild_clock = datetime(2026, 10, 12, tzinfo=timezone.utc)
+    _rebuild(client, admin)
+    store = client.get("/api/v1/facts/store", headers=admin).json()
+    assert store["freshness"] == "current"
+    assert store["stale_rows"] == 0
+    assert store["facts_matching"] == 2  # scan-2 fed the SAME facts
+
+
+def test_store_filters_and_empty_honesty(sqlite_app):
+    client, db_url = sqlite_app
+    admin = _login(client)
+    # nothing seeded, nothing rebuilt: empty, not silently current
+    store = client.get("/api/v1/facts/store", headers=admin).json()
+    assert store["freshness"] == "empty"
+    assert store["facts"] == []
+
+    _seed(db_url)
+    _rebuild(client, admin)
+    store = client.get("/api/v1/facts/store", headers=admin,
+                       params={"file_prefix": "src/pay"}).json()
+    assert [f["fact"]["algorithm"] for f in store["facts"]] == ["RSA-2048"]
+    store = client.get("/api/v1/facts/store", headers=admin,
+                       params={"algorithm": "AES-128",
+                               "min_observations": 2}).json()
+    assert store["facts"] == []  # AES has one observation
+
+
+def test_platform_and_tenant_fact_equivalence_and_scope(sqlite_app):
+    """Same-path facts remain separate, including their exact evidence refs."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.tenant import Tenant
+
+    client, db_url = sqlite_app
+    engine = create_engine(db_url)
+    with sessionmaker(bind=engine)() as session:
+        session.add_all([
+            Tenant(id=tenant, name=tenant, slug=tenant)
+            for tenant in ("tenant-one", "tenant-two")
+        ])
+        for index, (tenant, size, mode, evidence_id) in enumerate((
+            (None, 256, "GCM", "platform-ev"),
+            ("tenant-one", 256, "GCM", "one-ev"),
+            ("tenant-two", 256, "GCM", "two-ev"),
+            ("tenant-one", 128, "CBC", "one-variant-ev"),
+        )):
+            session.add(EvidenceRecord(
+                id=evidence_id, tenant_id=tenant, scan_id="scan-tenants",
+                content_hash=f"{index}" * 64, chain_hash=f"{index}" * 64,
+                chain_position=index, algorithm="AES", purpose="ENCRYPTION",
+                key_size=size, mode=mode, file_path="src/shared/Cipher.java",
+                line_number=index + 1, finding_data={"scanner_id": "ast"},
+                confidence="HIGH", compliance_status="PASS",
+                created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+            ))
+        session.commit()
+    engine.dispose()
+
+    admin = _login(client)
+    assert _rebuild(client, admin)["facts_upserted"] == 4
+    exact_refs = {
+        (None, 256, "GCM"): ["platform-ev"],
+        ("tenant-one", 256, "GCM"): ["one-ev"],
+        ("tenant-two", 256, "GCM"): ["two-ev"],
+        ("tenant-one", 128, "CBC"): ["one-variant-ev"],
+    }
+    for tenant, expected in (
+        (None, {None: {"platform-ev"}, "tenant-one": {"one-ev", "one-variant-ev"},
+                "tenant-two": {"two-ev"}}),
+        ("tenant-one", {None: {"platform-ev"}, "tenant-one": {"one-ev", "one-variant-ev"}}),
+        ("tenant-two", {None: {"platform-ev"}, "tenant-two": {"two-ev"}}),
+    ):
+        headers = {**admin, **({"X-Tenant-ID": tenant} if tenant else {})}
+        live_response = client.get("/api/v1/facts/crypto", headers=headers)
+        store_response = client.get("/api/v1/facts/store", headers=headers)
+        graph_response = client.get("/api/v1/facts/code-graph", headers=headers)
+        assert live_response.status_code == store_response.status_code == graph_response.status_code == 200
+        live, store, graph = live_response.json(), store_response.json(), graph_response.json()
+        assert live["facts_matching"] == store["facts_matching"] == sum(map(len, expected.values()))
+        assert [{k: v for k, v in item.items() if k != "fresh"}
+                for item in store["facts"]] == live["facts"]
+        for item in live["facts"]:
+            fact = item["fact"]
+            identity = (item["tenant_id"], fact["key_size"], fact["mode"])
+            assert item["evidence_ids"] == exact_refs[identity]
+            assert item["evidence_count"] == len(exact_refs[identity])
+        assert {item["tenant_id"] for item in live["facts"]} == set(expected)
+        assert graph["file_count"] == len(expected)
+        assert {node["tenant_id"] for node in graph["nodes"]} == set(expected)
+        assert len({node["id"] for node in graph["nodes"]}) == graph["node_count"]
+
+
+def test_fact_rows_join_to_assets_on_the_identity_spine(sqlite_app):
+    """§5 (round 64): the fact behind a crypto asset is found BY KEY —
+    GET /assets/{id} and the fact read paths carry the same canonical
+    spine string for the same observation tuple. This is the join the
+    asset detail's fact cross-link follows; a tuple that differs in any
+    identity field must NOT join."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import db.models  # noqa: F401
+    from db.models.crypto_asset import CryptoAsset
+    from shared_models.asset_identity import crypto_asset_key
+
+    client, db_url = sqlite_app
+    _seed(db_url)
+    admin = _login(client)
+    _rebuild(client, admin)
+
+    spine = crypto_asset_key("RSA-2048", "ENCRYPTION",
+                             "src/pay/Keys.java", None, None)
+    other = crypto_asset_key("RSA-2048", "ENCRYPTION",
+                             "src/pay/Keys.java", 2048, None)
+    assert spine != other  # key_size is identity: None ≠ 2048
+
+    eng = create_engine(db_url)
+    session = sessionmaker(bind=eng)()
+    session.add(CryptoAsset(algorithm="RSA-2048", purpose="ENCRYPTION",
+                            key_size=None, mode=None,
+                            file_path="src/pay/Keys.java", asset_key=spine))
+    session.commit()
+    asset_id = session.query(CryptoAsset).one().id
+    session.close()
+    eng.dispose()
+
+    detail = client.get(f"/api/v1/assets/{asset_id}", headers=admin).json()
+    assert detail["asset_key"] == spine
+
+    for path in ("/api/v1/facts/store?algorithm=RSA-2048",
+                 "/api/v1/facts/crypto?algorithm=RSA-2048"):
+        body = client.get(path, headers=admin).json()
+        matching = [f for f in body["facts"]
+                    if f["fact"]["file_path"] == "src/pay/Keys.java"]
+        assert len(matching) == 1
+        # the asset's spine key finds exactly its own fact row
+        assert matching[0]["asset_key"] == detail["asset_key"]
+
+
+def test_store_requires_auth(sqlite_app):
+    client, _ = sqlite_app
+    assert client.get("/api/v1/facts/store").status_code == 401

@@ -1,0 +1,8 @@
+{
+  "customer_deployment_touched": false,
+  "isolated_timeout_overflow_kill_reap_tests": "PASS",
+  "native_cli_temporary_directory_removed": true,
+  "owned_backend_directories_remaining": [],
+  "owned_backend_processes_remaining": [],
+  "postgres_runner_reported_cleanup": true
+}

@@ -1,0 +1,14 @@
+"""Owned PostgreSQL parity of portable metadata custody; not actual Windows."""
+
+from test_assurance_workflows import assured as assured
+from test_cbom_controlled_postgres import banks as banks, pytestmark as pytestmark
+
+from test_windows_metadata_candidates import (
+    test_metadata_custody_not_crypto_and_no_recollection as test_metadata_custody_not_crypto_and_no_recollection,
+    test_metadata_gaps_retained_without_absence as test_metadata_gaps_retained_without_absence,
+    test_metadata_tamper_refuses_before_persistence as test_metadata_tamper_refuses_before_persistence,
+    test_candidates_do_not_open_universal_windows_or_container_admission as test_candidates_do_not_open_universal_windows_or_container_admission,
+)
+from test_windows_metadata_candidates import (
+    test_next_phases_stay_unadmitted_without_their_own_contract as test_next_phases_stay_unadmitted_without_their_own_contract,
+)

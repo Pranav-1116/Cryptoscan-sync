@@ -1,0 +1,55 @@
+[
+  {
+    "id": "wc01",
+    "input": {"algorithm": "RSA", "policy": "NIST", "key_size": 2048},
+    "expected": {"weak": []}
+  },
+  {
+    "id": "wc02",
+    "input": {"algorithm": "RSA", "policy": "EU", "key_size": 2048},
+    "expected": {"weak": ["DEPRECATED"]}
+  },
+  {
+    "id": "wc03",
+    "input": {"algorithm": "SHA-1", "policy": "NIST"},
+    "expected": {"weak": ["DEPRECATED"]}
+  },
+  {
+    "id": "wc04",
+    "input": {"algorithm": "MD5", "policy": "FIPS"},
+    "expected": {"weak": ["DEPRECATED"]}
+  },
+  {
+    "id": "wc05",
+    "input": {"algorithm": "RC4", "policy": "NIST"},
+    "expected": {"weak": ["DEPRECATED"]}
+  },
+  {
+    "id": "wc06",
+    "input": {"algorithm": "AES", "policy": "PCI_DSS", "tls_version": "TLS 1.0"},
+    "expected": {"weak": ["DEPRECATED"]}
+  },
+  {
+    "id": "wc07",
+    "input": {"algorithm": "3DES", "policy": "NIST"},
+    "expected": {"weak": ["DEPRECATED"]}
+  },
+  {
+    "id": "wc08",
+    "input": {"algorithm": "RSA", "policy": "EU", "key_size": 4096},
+    "expected": {"weak": []}
+  },
+  {
+    "id": "wc09",
+    "input": {"algorithm": "AES", "policy": "PCI_DSS", "tls_version": "TLS 1.2"},
+    "expected": {"weak": []}
+  },
+  {
+    "id": "wc10",
+    "input": {"algorithm": "RSA", "policy": "CUSTOM", "key_size": 2048,
+              "custom_rules": {"min_rsa": 4096, "min_dh": 4096, "min_ecc": 384,
+                               "banned_algorithms": ["RC4"], "banned_modes": ["ECB"],
+                               "min_tls": "TLS 1.3", "banned_tls_suites": []}},
+    "expected": {"weak": ["DEPRECATED"]}
+  }
+]

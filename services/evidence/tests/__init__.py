@@ -1,3 +1,0 @@
-"""Evidence service test suite.
-
-"""

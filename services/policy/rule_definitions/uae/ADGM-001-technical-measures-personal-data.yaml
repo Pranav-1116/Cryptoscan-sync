@@ -1,0 +1,33 @@
+rule_id: "ADGM-001"
+rule_name: "ADGM DPR 2021 — technical measures for personal data (Abu Dhabi)"
+version: "1.0"
+effective_date: "2026-09-20"
+severity: "HIGH"
+standard_reference: "ADGM Data Protection Regulations 2021 — technical measures (GDPR Art. 32-equivalent: pseudonymisation and encryption of personal data); in force since 2021-08-14"
+description: >
+  Entities in the Abu Dhabi Global Market must implement appropriate
+  technical measures (GDPR-equivalent) to secure personal data; encryption
+  must use an approved modern algorithm. Included so group operations
+  reporting across UAE free zones (DIFC + ADGM + mainland) evaluate under
+  one deterministic pack.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "ADGM"
+      - "ADGM-DPR-2021"
+    if_purpose:
+      - "ENCRYPTION"
+      - "DECRYPTION"
+    require_algorithms:
+      - "AES"
+      - "CHACHA20"
+      - "CHACHA20-POLY1305"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Personal-data encryption with {algorithm} does not meet ADGM DPR 2021 technical measures"
+remediation: >
+  Re-key with AES-256-GCM (or CCM) or ChaCha20-Poly1305 and record the
+  measure in the ADGM technical-measures file for the ADGM Office of Data
+  Protection (72-hour statutory breach notification).
+enabled: true

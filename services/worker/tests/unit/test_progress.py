@@ -12,5 +12,5 @@ def test_build_progress_tracks_stages():
 
 
 def test_system_name_from_repo():
-    assert system_name_from_repo("local://demo/polyglot-app") == "polyglot-app"
+    assert system_name_from_repo("local://test-fixture/polyglot-app") == "polyglot-app"
     assert system_name_from_repo("https://github.com/acme/payments-api.git") == "payments-api"

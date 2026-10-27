@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from cloud_scanner.config.settings import load_settings
@@ -31,8 +32,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Cost intelligence currency (USD/EUR/GBP/INR)")
     parser.add_argument("--zelix-live", action="store_true",
                         help="Run the ZELNX Live Cloud Intelligence Engine "
-                             "(24/7 live monitoring, read-only; demo event "
-                             "stream unless --zelix-live-events is given)")
+                             "(24/7 live monitoring, read-only; requires "
+                             "--zelix-live-events)")
     parser.add_argument("--zelix-live-events", metavar="JSON",
                         help="Path to a JSON list of raw provider event "
                              "payloads for the live engine")
@@ -94,9 +95,10 @@ def _zelix(args) -> int:
 def _zelix_live(args) -> int:
     """Run the ZELNX Live Cloud Intelligence Engine.
 
-    Reads raw provider payloads from ``--zelix-live-events`` (JSON list)
-    or falls back to the built-in demo stream.  Always read-only: only
-    metadata/observations are emitted, never key material or secret
+    Reads raw provider payloads from ``--zelix-live-events`` (JSON list).
+    There is no bundled event source: an absent or invalid source fails
+    closed rather than manufacturing cloud observations. Always read-only:
+    only metadata/observations are emitted, never key material or secret
     values.
     """
     from cloud_scanner.enterprise.live.collector import CollectorConfig, RegionalCollector
@@ -105,13 +107,16 @@ def _zelix_live(args) -> int:
         azure_connector,
         gcp_connector,
     )
-    from cloud_scanner.enterprise.live.demo import demo_raw_events, demo_resolvers
     from cloud_scanner.enterprise.live.engine import LiveCloudEngine
 
-    raw_events = demo_raw_events()
-    if args.zelix_live_events:
-        payload = Path(args.zelix_live_events).read_text(encoding="utf-8")
-        raw_events = json.loads(payload)
+    if not args.zelix_live_events:
+        print("--zelix-live-events is required; no bundled event source is available", file=sys.stderr)
+        return 2
+    payload = Path(args.zelix_live_events).read_text(encoding="utf-8")
+    raw_events = json.loads(payload)
+    if not isinstance(raw_events, list) or not all(isinstance(row, dict) for row in raw_events):
+        print("--zelix-live-events must contain a JSON list of provider objects", file=sys.stderr)
+        return 2
     by_provider: dict[str, list] = {"aws": [], "azure": [], "gcp": []}
     for row in raw_events:
         provider = str(row.get("provider") or "").lower()
@@ -119,22 +124,22 @@ def _zelix_live(args) -> int:
             by_provider[provider].append(row)
     connectors = []
     if by_provider["aws"]:
-        connectors.append(aws_connector(event_source=lambda rows=by_provider["aws"]: rows,
-                                        organization_id="org-zelnx"))
+        connectors.append(aws_connector(
+            event_source=lambda rows=by_provider["aws"]: rows,
+        ))
     if by_provider["azure"]:
-        connectors.append(azure_connector(event_source=lambda rows=by_provider["azure"]: rows,
-                                          organization_id="org-zelnx"))
+        connectors.append(azure_connector(
+            event_source=lambda rows=by_provider["azure"]: rows,
+        ))
     if by_provider["gcp"]:
-        connectors.append(gcp_connector(event_source=lambda rows=by_provider["gcp"]: rows,
-                                        organization_id="org-zelnx"))
-    resolvers = demo_resolvers()
-    engine = LiveCloudEngine(
-        connectors=connectors,
-        resolve_dependencies=resolvers["find_dependencies"],
-        find_cert_consumers=resolvers["find_cert_consumers"],
-        find_cross_cloud_impact=resolvers["find_cross_cloud_impact"],
-        detect_algorithm=resolvers["detect_algorithm"],
-    )
+        connectors.append(gcp_connector(
+            event_source=lambda rows=by_provider["gcp"]: rows,
+        ))
+    def detect_algorithm(event) -> str:
+        metadata = event.provider_metadata
+        return str(metadata.get("algorithm") or metadata.get("certificate_algorithm") or "")
+
+    engine = LiveCloudEngine(connectors=connectors, detect_algorithm=detect_algorithm)
     region = str(args.zelix_live_region).upper()
     if region not in ("UAE", "EU", "USA"):
         region = "UAE"

@@ -9,9 +9,10 @@ from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class GateEvaluation(BaseModel):
+class GateEvaluation(BaseModel, TenantScoped):
     """One CI gate call: what was evaluated, by whom, and the decision.
 
     Written by POST /ci/gate so "blocked deployments" are countable after

@@ -20,12 +20,25 @@ def execute(ctx: PipelineContext, session) -> PipelineContext:
     settings = get_settings()
     rules_dir = settings.POLICY_RULES_DIR or str(Path(__file__).resolve().parents[3] / "policy" / "rule_definitions")
     engine = PolicyEngine(rules_dir)
+    # Tenant runtime overrides (audit 05): the same rows the API surfaces at
+    # PUT /policy/rules/{id}/override, applied through the same helper, so
+    # the listing an operator reads is the rule set that evaluates here.
+    try:
+        from policy.core.overrides import apply_overrides, load_override_rows
+
+        applied = apply_overrides(engine, load_override_rows(session))
+        if applied["applied"]:
+            logger.info(
+                "stage_policy_overrides_applied",
+                extra={"applied": applied["applied"], "unknown_rule": applied["unknown_rule"]},
+            )
+    except Exception:
+        logger.warning("stage_policy_overrides_unavailable", exc_info=True)
     rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == ctx.scan_id)).scalars())
     for row in rows:
         finding_data = dict(row.finding_data or {})
         if ctx.compliance_scopes and not finding_data.get("compliance_scopes"):
             finding_data["compliance_scopes"] = list(ctx.compliance_scopes)
-            row.finding_data = finding_data
         payload = {
             "id": row.id,
             "evidence_id": row.id,

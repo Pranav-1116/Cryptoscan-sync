@@ -184,7 +184,6 @@ def test_engine_event_evidence_recorded():
 
 
 def test_engine_run_cycles_detects_drift_between_snapshots():
-    calls = {"n": 0}
 
     def mutate_rows():
         return {"keys": [{"key_id": "k1", "key_spec": "RSA_2048", "rotation_enabled": True}]}

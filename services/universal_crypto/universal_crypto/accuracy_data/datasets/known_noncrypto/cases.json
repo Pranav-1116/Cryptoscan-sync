@@ -1,0 +1,111 @@
+[
+ {
+  "id": "kn01",
+  "input": {
+   "language": "markdown",
+   "text": "# RSA\nThis document describes the RSA migration project.\nSee FIPS 203 for ML-KEM details."
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "kn02",
+  "input": {
+   "language": "python",
+   "text": "# sha256 of the input is used by the data team\nvalue = df.sha256_column.mean()"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "kn03",
+  "input": {
+   "language": "python",
+   "text": "def custom_hash(data):\n    return data % 97  # not a real hash"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "kn04",
+  "input": {
+   "language": "java",
+   "text": "// MessageDigest is used for checksums in the docs\nString sha256 = config.getProperty(\"sha256\");"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "kn05",
+  "input": {
+   "language": "python",
+   "text": "import random\nchoice = random.choice(items)  # not crypto"
+  },
+  "expected": {
+   "algorithms": []
+  }
+ },
+ {
+  "id": "kn06",
+  "input": {
+   "language": "html",
+   "text": "<p>AES is a block cipher. Contact the security team.</p>"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "kn07",
+  "input": {
+   "language": "go",
+   "text": "package main\n// import \"crypto/sha256\" was removed in v2\nfunc main() { println(\"sha256\") }"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "kn08",
+  "input": {
+   "language": "python",
+   "text": "class AES:\n    def __init__(self):\n        self.name = \"aes\"  # unrelated class"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "kn09",
+  "input": {
+   "language": "javascript",
+   "text": "const crypto = require('not-crypto-lib');\nconst x = crypto.getSomething();"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "kn10",
+  "input": {
+   "language": "python",
+   "text": "result = \"RSA\" in report_text  # string search, not crypto"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ }
+]

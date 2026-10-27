@@ -8,9 +8,8 @@ identification and PQC migration candidates.
 
 from __future__ import annotations
 
-import re
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Iterable
 
 WEAK_SIGNATURES = {"md5", "md5withrsa", "sha1", "sha1withrsa", "sha1withecdsa"}

@@ -14,17 +14,33 @@ class WorkerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow", case_sensitive=False)
 
     ENVIRONMENT: str = "development"
+    CRYPTOSCAN_DEPLOYMENT_PROFILE: str = ""
     LOG_LEVEL: str = "INFO"
     REDIS_URL: str = ""
+    REDIS_CA_CERTS: str = ""
+    REDIS_SENTINELS: str = ""
+    REDIS_SENTINEL_MASTER: str = ""
+    REDIS_SENTINEL_USERNAME: str = ""
+    REDIS_SENTINEL_PASSWORD: str = ""
     QUEUE_NAME: str = "cryptoscan:jobs:queue"
     SCAN_JOB_QUEUE_KEY: str = "cryptoscan:jobs:queue"
     DATABASE_URL: str = "sqlite:///./data/cryptoscan.db"
     WORKSPACE_BASE: str = "./data/workspaces"
     WORKSPACE_BASE_PATH: str = "./data/workspaces"
     SCANNER_TIMEOUT: int = 300
+    # Blank chooses container in production, inline elsewhere. A production
+    # worker may not opt out. Images must be preloaded and digest-pinned.
+    CRYPTOSCAN_STATIC_SCAN_MODE: str = ""
+    CRYPTOSCAN_SCANNER_IMAGE: str = ""
+    CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S: float = 600
     CLONE_TIMEOUT_SECONDS: int = 300
     SCAN_TIMEOUT_SECONDS: int = 600
     MAX_CONCURRENT_JOBS: int = 2
+    # job-path hardening (see worker/core/job_consumer.py, job_reaper.py)
+    JOB_LEASE_TTL_SECONDS: int = 60
+    JOB_MAX_REDELIVERIES: int = 3
+    JOB_RUNNING_TIMEOUT_MINUTES: int = 90
+    JOB_QUEUED_TIMEOUT_MINUTES: int = 10
     CLEANUP_WORKSPACE: bool = True
     ALLOW_SQLITE: bool = False
     POLICY_RULES_DIR: str = ""
@@ -39,10 +55,12 @@ class WorkerSettings(BaseSettings):
     MONITOR_WATCH_PROBE_TIMEOUT_SECONDS: float = 10.0
     MONITOR_CONCURRENCY: int = 2                # parallel scans per tick (1 = serial)
     MONITOR_RUN_REPORTS: bool = True            # execute due compliance report schedules each tick
+    MONITOR_RUN_NETWORK: bool = True            # execute persisted /network/targets schedules each tick
     NEO4J_URI: str = ""
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "cryptoscan"
     NEO4J_DATABASE: str = "neo4j"
+    STREAM_SECRET: str = ""
     ISTIO_PROMETHEUS_URL: str = ""
     GITHUB_TOKEN: str = ""
     DASHBOARD_URL: str = ""
@@ -63,10 +81,32 @@ class WorkerSettings(BaseSettings):
         if not self.is_production:
             return
         errors: list[str] = []
+        import math
+        import re
+
+        if self.CRYPTOSCAN_STATIC_SCAN_MODE.strip().lower() not in {"", "container"}:
+            errors.append("production source parsing requires container isolation")
+        if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}", self.CRYPTOSCAN_SCANNER_IMAGE.strip()):
+            errors.append("CRYPTOSCAN_SCANNER_IMAGE must be an immutable image@sha256:digest")
+        if not math.isfinite(self.CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S) or not 1 <= self.CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S <= 3600:
+            errors.append("static scan timeout must be between 1 and 3600 seconds")
         if self.DATABASE_URL.startswith("sqlite") and not self.ALLOW_SQLITE:
             errors.append("DATABASE_URL must be PostgreSQL in production (or set ALLOW_SQLITE=true)")
         if not (self.REDIS_URL or "").strip():
             errors.append("REDIS_URL is required in production")
+        operator_profile = self.CRYPTOSCAN_DEPLOYMENT_PROFILE == "kubernetes-external-services/local-source-v1"
+        if self.CRYPTOSCAN_DEPLOYMENT_PROFILE and not operator_profile:
+            errors.append("Unknown CRYPTOSCAN_DEPLOYMENT_PROFILE")
+        if operator_profile and (self.NEO4J_URI or "").strip():
+            errors.append("Operator profile must leave NEO4J_URI empty; graph is not enabled")
+        if not operator_profile and not (self.NEO4J_URI or "").strip():
+            errors.append("NEO4J_URI is required in production")
+        stream_secret = (self.STREAM_SECRET or "").strip()
+        if len(stream_secret) < 32 or stream_secret.lower() in {"", "secret", "changeme", "cryptoscan", "dev-stream-secret-0123456789abcdef"}:
+            errors.append("STREAM_SECRET must be a unique value of at least 32 characters")
+        neo4j_password = (self.NEO4J_PASSWORD or "").strip()
+        if not operator_profile and (len(neo4j_password) < 24 or neo4j_password.lower() in {"", "cryptoscan", "password", "changeme", "secret"}):
+            errors.append("NEO4J_PASSWORD must be a unique value of at least 24 characters")
         if errors:
             raise RuntimeError("production worker configuration rejected: " + "; ".join(errors))
 

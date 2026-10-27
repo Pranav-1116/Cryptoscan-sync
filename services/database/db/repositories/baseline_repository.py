@@ -9,22 +9,60 @@ from sqlalchemy.orm import Session
 
 from db.models.baseline import Baseline
 from db.repositories.base_repository import BaseRepository
+from db.tenancy import current_tenant
+
+
+_UNSET = object()
 
 
 class BaselineRepository(BaseRepository[Baseline]):
     def __init__(self, session: Session):
         super().__init__(Baseline, session)
 
-    def get_active(self, system_identifier: str) -> Baseline | None:
+    def get_active(self, system_identifier: str, *, tenant_id: str | None | object = _UNSET) -> Baseline | None:
+        # The ORM tenant guard makes legacy platform rows visible to tenants;
+        # those rows are not their approved trust anchor. Workers have no
+        # ambient tenant scope, so they pass the current scan's owner explicitly.
+        owner = current_tenant() if tenant_id is _UNSET else tenant_id
         stmt = (
             select(Baseline)
             .where(
                 Baseline.system_identifier == system_identifier,
+                Baseline.tenant_id == owner,
                 Baseline.status == "ACTIVE",
             )
             .limit(1)
         )
         return self.session.execute(stmt).scalar_one_or_none()
+
+    def list_proposed(self, system_identifier: str | None = None) -> list[Baseline]:
+        """PROPOSED baselines awaiting auditor approval (report 31 GAP-011)."""
+        stmt = select(Baseline).where(Baseline.status == "PROPOSED")
+        if system_identifier:
+            stmt = stmt.where(Baseline.system_identifier == system_identifier)
+        return list(self.session.execute(stmt.order_by(Baseline.approved_at.desc())).scalars().all())
+
+    def approve_proposed(
+        self, baseline_id: str, approved_by: str, notes: str | None = None
+    ) -> Baseline | None:
+        """Activate a PROPOSED baseline (auditor decision). Supersedes the
+        current ACTIVE baseline for the same system, exactly like a fresh
+        approval would."""
+        row = self.get_by_id(baseline_id)
+        if row is None or row.status != "PROPOSED":
+            return None
+        if current_tenant() is not None and row.tenant_id != current_tenant():
+            return None  # visible legacy platform rows are not tenant-owned approvals
+        existing = self.get_active(row.system_identifier, tenant_id=row.tenant_id)
+        if existing is not None and existing.id != row.id:
+            existing.status = "SUPERSEDED"
+        row.status = "ACTIVE"
+        row.approved_by = approved_by
+        row.approved_at = datetime.now(timezone.utc)
+        if notes:
+            row.notes = notes
+        self.session.flush()
+        return row
 
     def approve(
         self,

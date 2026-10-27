@@ -9,9 +9,10 @@ from sqlalchemy import Boolean, DateTime, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class Certificate(BaseModel):
+class Certificate(BaseModel, TenantScoped):
     __tablename__ = "certificates"
 
     fingerprint_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
@@ -37,4 +38,7 @@ class Certificate(BaseModel):
     renewal_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="NONE")
     renewal_ticket: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     renewal_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # direct ownership (audit 55 P0#4, round 27)
+    owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    technical_contact: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     renewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

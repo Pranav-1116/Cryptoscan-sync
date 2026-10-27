@@ -1,0 +1,238 @@
+{
+  "schema": "cryptoscan.postgres-drill/1",
+  "started_at": "2026-10-04T14:08:18.804411+00:00",
+  "mode": "promotion",
+  "checks": [
+    {
+      "check": "primary reachable",
+      "ok": true,
+      "status": "PASS",
+      "detail": "psycopg2"
+    },
+    {
+      "check": "standby reachable",
+      "ok": true,
+      "status": "PASS",
+      "detail": "psycopg2"
+    },
+    {
+      "check": "primary is writable",
+      "ok": true,
+      "status": "PASS",
+      "detail": "pg_is_in_recovery=False"
+    },
+    {
+      "check": "standby is in recovery",
+      "ok": true,
+      "status": "PASS",
+      "detail": "pg_is_in_recovery=True"
+    },
+    {
+      "check": "wal_level is replica/logical",
+      "ok": true,
+      "status": "PASS",
+      "detail": "replica"
+    },
+    {
+      "check": "primary reports streaming standby",
+      "ok": true,
+      "status": "PASS",
+      "detail": "[{\"application_name\": \"walreceiver\", \"client_addr\": \"127.0.0.1/32\", \"state\": \"streaming\", \"sync_state\": \"async\", \"sent_lsn\": \"0/9000060\", \"write_lsn\": \"0/9000060\", \"flush_lsn\": \"0/9000060\", \"replay_lsn\": \"0/9000060\"}]"
+    },
+    {
+      "check": "drill marker replicated",
+      "ok": true,
+      "status": "PASS",
+      "detail": "marker=cryptoscan-dr-54d8efa0a0594a459a9ab22e032b4cfa; replication_seconds=0.001"
+    },
+    {
+      "check": "audit/evidence tables inspected",
+      "ok": true,
+      "status": "PASS",
+      "detail": "{\"audit_log\": 58, \"evidence_records\": 3, \"scans\": 3, \"scan_jobs\": 4}"
+    },
+    {
+      "check": "primary:audit_log present",
+      "ok": true,
+      "status": "PASS",
+      "detail": "audit_log"
+    },
+    {
+      "check": "primary:audit_log has timestamp",
+      "ok": true,
+      "status": "PASS",
+      "detail": "columns=action,actor,chain_sequence,created_at,detail,entry_hash,id,ip_address,outcome,previous_hash,target_id,target_type,updated_at"
+    },
+    {
+      "check": "primary:audit_log hash fields complete",
+      "ok": true,
+      "status": "PASS",
+      "detail": "{\"chain_sequence\": 0, \"entry_hash\": 0}"
+    },
+    {
+      "check": "primary:audit chain continuity",
+      "ok": true,
+      "status": "PASS",
+      "detail": "rows=58 first_previous_empty=True"
+    },
+    {
+      "check": "primary:evidence_records present",
+      "ok": true,
+      "status": "PASS",
+      "detail": "evidence_records"
+    },
+    {
+      "check": "primary:evidence_records has timestamp",
+      "ok": true,
+      "status": "PASS",
+      "detail": "columns=algorithm,algorithm_family,chain_hash,chain_position,class_name,compliance_status,confidence,content_hash,created_at,file_path,finding_data,highest_severity_failed,id,is_hardcoded_key,key_size,line_number,method_name,mode,nist_designation,normalization_confidence,normalization_status,normalization_version,normalized_algorithm,normalized_crypto,padding,policy_evaluated_at,policy_evaluation,policy_version,previous_hash,provenance"
+    },
+    {
+      "check": "primary:evidence_records hash fields complete",
+      "ok": true,
+      "status": "PASS",
+      "detail": "{\"chain_hash\": 0, \"chain_position\": 0, \"content_hash\": 0}"
+    },
+    {
+      "check": "promotion command succeeded",
+      "ok": true,
+      "status": "PASS",
+      "detail": "waiting for server to promote.... done\nserver promoted"
+    },
+    {
+      "check": "standby promoted to writable",
+      "ok": true,
+      "status": "PASS",
+      "detail": "rto_seconds=0.103"
+    },
+    {
+      "check": "marker survives promotion",
+      "ok": true,
+      "status": "PASS",
+      "detail": "cryptoscan-dr-54d8efa0a0594a459a9ab22e032b4cfa"
+    },
+    {
+      "check": "audit_log count not lost",
+      "ok": true,
+      "status": "PASS",
+      "detail": "before=58 after=58"
+    },
+    {
+      "check": "evidence_records count not lost",
+      "ok": true,
+      "status": "PASS",
+      "detail": "before=3 after=3"
+    },
+    {
+      "check": "scans count not lost",
+      "ok": true,
+      "status": "PASS",
+      "detail": "before=3 after=3"
+    },
+    {
+      "check": "scan_jobs count not lost",
+      "ok": true,
+      "status": "PASS",
+      "detail": "before=4 after=4"
+    },
+    {
+      "check": "API ready after failover",
+      "ok": true,
+      "status": "PASS",
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "worker recovery command",
+      "ok": true,
+      "status": "PASS",
+      "detail": "worker recovery probe: reconnected; scan_jobs=4 scans=3\nredis_unavailable_memory_fallback"
+    },
+    {
+      "check": "clean restore target has no drill marker",
+      "ok": true,
+      "status": "PASS",
+      "detail": "cryptoscan-dr-54d8efa0a0594a459a9ab22e032b4cfa"
+    },
+    {
+      "check": "clean restore command succeeded",
+      "ok": true,
+      "status": "PASS",
+      "detail": "restore output withheld; elapsed=0.871s"
+    },
+    {
+      "check": "clean restore reachable",
+      "ok": true,
+      "status": "PASS",
+      "detail": "psycopg2"
+    },
+    {
+      "check": "clean restore contains drill marker",
+      "ok": true,
+      "status": "PASS",
+      "detail": "cryptoscan-dr-54d8efa0a0594a459a9ab22e032b4cfa"
+    },
+    {
+      "check": "clean_restore:audit_log present",
+      "ok": true,
+      "status": "PASS",
+      "detail": "audit_log"
+    },
+    {
+      "check": "clean_restore:audit_log has timestamp",
+      "ok": true,
+      "status": "PASS",
+      "detail": "columns=action,actor,chain_sequence,created_at,detail,entry_hash,id,ip_address,outcome,previous_hash,target_id,target_type,updated_at"
+    },
+    {
+      "check": "clean_restore:audit_log hash fields complete",
+      "ok": true,
+      "status": "PASS",
+      "detail": "{\"chain_sequence\": 0, \"entry_hash\": 0}"
+    },
+    {
+      "check": "clean_restore:audit chain continuity",
+      "ok": true,
+      "status": "PASS",
+      "detail": "rows=58 first_previous_empty=True"
+    },
+    {
+      "check": "clean_restore:evidence_records present",
+      "ok": true,
+      "status": "PASS",
+      "detail": "evidence_records"
+    },
+    {
+      "check": "clean_restore:evidence_records has timestamp",
+      "ok": true,
+      "status": "PASS",
+      "detail": "columns=algorithm,algorithm_family,chain_hash,chain_position,class_name,compliance_status,confidence,content_hash,created_at,file_path,finding_data,highest_severity_failed,id,is_hardcoded_key,key_size,line_number,method_name,mode,nist_designation,normalization_confidence,normalization_status,normalization_version,normalized_algorithm,normalized_crypto,padding,policy_evaluated_at,policy_evaluation,policy_version,previous_hash,provenance"
+    },
+    {
+      "check": "clean_restore:evidence_records hash fields complete",
+      "ok": true,
+      "status": "PASS",
+      "detail": "{\"chain_hash\": 0, \"chain_position\": 0, \"content_hash\": 0}"
+    }
+  ],
+  "commands": {
+    "promotion": "/tmp/pgvenv/lib/python3.11/site-packages/pgserver/pginstall/bin/pg_ctl -D /tmp/pgdata/standby promote",
+    "restore": "bash -c '/tmp/pgvenv/lib/python3.11/site-packages/pgserver/pginstall/bin/pg_dump -h 127.0.0.1 -p 55433 -U postgres cryptoscan | /tmp/pgvenv/lib/python3.11/site-packages/pgserver/pginstall/bin/psql -h 127.0.0.1 -p 55435 -U postgres -d cryptoscan -q'",
+    "worker_health": "/home/user/CryproScan/.venv/bin/python /home/user/CryproScan/scripts/drill_worker_recovery.py --run-seconds 6"
+  },
+  "rpo_seconds": 0.0,
+  "rto_seconds": 0.103,
+  "before_counts": {
+    "audit_log": 58,
+    "evidence_records": 3,
+    "scans": 3,
+    "scan_jobs": 4
+  },
+  "after_counts": {
+    "audit_log": 58,
+    "evidence_records": 3,
+    "scans": 3,
+    "scan_jobs": 4
+  },
+  "verdict": "PASS",
+  "finished_at": "2026-10-04T14:08:27.461342+00:00"
+}

@@ -1,0 +1,31 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "family": {
+      "enum": [
+        "host",
+        "oci"
+      ],
+      "title": "Family",
+      "type": "string"
+    },
+    "job_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Job Id",
+      "type": "string"
+    },
+    "expected_source_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Expected Source Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "family",
+    "job_id",
+    "expected_source_sha256"
+  ],
+  "title": "SnapshotRequest",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import socket
 import ssl
 import subprocess
@@ -210,7 +215,7 @@ def test_probe_all_runs_concurrently_and_keeps_order(monkeypatch):
     import network_scanner.core.scanner as scanner_mod
 
     def slow_probe(endpoint, *, timeout=5.0, sni=None, starttls=None, check_http=True, **kwargs):
-        time.sleep(0.5)
+        time.sleep(0.25)
         return {"endpoint": endpoint, "status": "OK", "policy_issues": [], "metadata": {}}
 
     monkeypatch.setattr(scanner_mod, "probe_endpoint", slow_probe)
@@ -220,9 +225,11 @@ def test_probe_all_runs_concurrently_and_keeps_order(monkeypatch):
     results = scanner._probe_all(endpoints)
     elapsed = time.monotonic() - started
     assert [row["endpoint"] for row in results] == endpoints  # order preserved
-    # serial would be 8 * 0.5s = 4.0s; pooled ~0.6-1.0s. Bound 2.5s keeps a
-    # wide margin from serial even under loaded CI (was 2.0s and flaked at 2.26s)
-    assert elapsed < 2.5
+    # serial would be 8 * 0.25s = 2.0s; pooled (4 workers) ~0.5s. Bound 1.6s
+    # is >3x the pooled time yet well under serial, so the assertion still
+    # proves concurrency while tolerating a fully loaded CI runner (the
+    # previous 0.5s/2.5s variant flaked twice under the full test lane).
+    assert elapsed < 1.6
 
 
 def test_scan_hosts_telemetry_verdicts(monkeypatch):
@@ -324,7 +331,11 @@ def test_probe_endpoint_starttls_end_to_end(tmp_path):
             ctx.load_cert_chain(cert, key)
             with ctx.wrap_socket(conn, server_side=True) as tls:
                 tls.recv(1024)                   # tolerate client bytes
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         finally:
             try:

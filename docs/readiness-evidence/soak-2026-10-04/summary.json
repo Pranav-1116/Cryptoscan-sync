@@ -1,0 +1,88 @@
+{
+  "meta": {
+    "api": "http://127.0.0.1:8010",
+    "target": "local:///tmp/soak-targets/repo-a",
+    "interval_s": 60.0,
+    "hours_requested": null,
+    "cycles_requested": 3,
+    "git": "bf76918",
+    "host": "e2b.local",
+    "python": "3.11.2"
+  },
+  "started_at": "2026-10-04T13:54:57+00:00",
+  "updated_at": "2026-10-04T13:57:05+00:00",
+  "elapsed_hours": 0.04,
+  "cycles": 3,
+  "cycles_ok": 3,
+  "cycles_failed": 0,
+  "failure_counts": {},
+  "scans": {
+    "completed": 3,
+    "failed": 0,
+    "timed_out": 0,
+    "wall_s_p50": 0.002,
+    "wall_s_p95": 0.003,
+    "wall_s_max": 0.003
+  },
+  "evidence_chain": {
+    "verified": 3,
+    "broken": 0,
+    "records_total": 12
+  },
+  "api_reads": {
+    "count": 30,
+    "ms_p50": 12.2,
+    "ms_p95": 29.2,
+    "ms_p99": 34.0,
+    "ms_max": 34.0,
+    "errors_5xx": 0
+  },
+  "sse": {
+    "probes": 3,
+    "with_frames": 3,
+    "errors": 0
+  },
+  "rss_mb": {
+    "api": {
+      "first": 164.2,
+      "last": 164.9,
+      "max": 164.9,
+      "growth_pct": 0.4
+    },
+    "worker": {
+      "first": 154.6,
+      "last": 154.6,
+      "max": 154.6,
+      "growth_pct": 0.0
+    },
+    "monitor": {
+      "first": 90.0,
+      "last": 90.0,
+      "max": 90.0,
+      "growth_pct": 0.0
+    }
+  },
+  "fds": {
+    "api": {
+      "first": 20,
+      "last": 20,
+      "max": 20
+    },
+    "worker": {
+      "first": 10,
+      "last": 10,
+      "max": 10
+    },
+    "monitor": {
+      "first": 8,
+      "last": 8,
+      "max": 8
+    }
+  },
+  "postgres_connections": null,
+  "queue_depth": null,
+  "postgres_last": {},
+  "redis_last": {},
+  "ended_at": "2026-10-04T13:57:05+00:00",
+  "stopped_by": "limit"
+}

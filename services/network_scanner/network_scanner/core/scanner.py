@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+import ipaddress
+
+logger = logging.getLogger(__name__)
+
+
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -26,6 +32,29 @@ def live_tls_enabled(flag: bool | None = None) -> bool:
     if flag is not None:
         return bool(flag)
     return os.environ.get("CRYPTOSCAN_TLS_LIVE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def normalize_endpoint(endpoint: str, *, default_port: int = 443) -> str:
+    """Normalize host casing, trailing dots, ports, and IPv6 brackets."""
+    raw = str(endpoint or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("["):
+        host, _, rest = raw[1:].partition("]")
+        if rest and (not rest.startswith(":") or not rest[1:].isdigit()):
+            return raw.lower()
+        port = int(rest[1:]) if rest else default_port
+    elif raw.count(":") == 1:
+        host, port_text = raw.rsplit(":", 1)
+        if not port_text.isdigit():
+            return raw.lower()
+        port = int(port_text)
+    else:
+        host, port = raw, default_port
+    host = host.strip().lower().rstrip(".")
+    if ":" in host:
+        return f"[{host}]:{port}"
+    return f"{host}:{port}"
 
 
 class NetworkTlsScanner:
@@ -55,13 +84,19 @@ class NetworkTlsScanner:
             probe_list: list[str] = []
             for target in targets:
                 endpoint = target.get("endpoint")
-                if not endpoint or endpoint in seen:
+                normalized = normalize_endpoint(str(endpoint or ""))
+                if not normalized or normalized in seen:
                     continue
-                seen.add(endpoint)
+                seen.add(normalized)
                 # Skip obviously non-routable k8s service names unless they have a dot
-                if ":" in endpoint and "." not in endpoint.split(":")[0] and not endpoint[0].isdigit():
+                host = normalized.rsplit(":", 1)[0].strip("[]")
+                try:
+                    is_ip_literal = bool(ipaddress.ip_address(host))
+                except ValueError:
+                    is_ip_literal = False
+                if ":" in normalized and "." not in host and not is_ip_literal:
                     continue
-                probe_list.append(endpoint)
+                probe_list.append(normalized)
             live_results = self._probe_all(probe_list)
             findings.extend(live_results)
         for cert in pem_certs:
@@ -95,7 +130,13 @@ class NetworkTlsScanner:
         check_chain_sent: bool = False,
         live_revocation: bool = False,
     ) -> dict[str, Any]:
-        endpoint_list = [str(item) for item in endpoints if str(item).strip()]
+        endpoint_list: list[str] = []
+        seen_endpoints: set[str] = set()
+        for item in endpoints:
+            normalized = normalize_endpoint(str(item))
+            if normalized and normalized not in seen_endpoints:
+                seen_endpoints.add(normalized)
+                endpoint_list.append(normalized)
         results = self._probe_all(
             endpoint_list,
             sni=sni,
@@ -493,7 +534,19 @@ class NetworkTlsScanner:
         for cert in inventory:
             ocsp = check_ocsp(cert, live=self.live)
             crl = check_crl(cert, live=self.live)
-            chosen = ocsp if ocsp.get("urls") else crl
+            # A reachable/parsed CRL is conclusive even when an OCSP URL is
+            # present but its response is unavailable. Conversely, any
+            # explicit REVOKED result must win over an UNKNOWN result from a
+            # second source; choosing solely by URL presence hid revocations.
+            conclusive = [item for item in (ocsp, crl) if item.get("status") in {"REVOKED", "GOOD"}]
+            if any(item.get("status") == "REVOKED" for item in conclusive):
+                chosen = next(item for item in conclusive if item.get("status") == "REVOKED")
+            elif conclusive:
+                chosen = conclusive[0]
+            elif ocsp.get("urls"):
+                chosen = ocsp
+            else:
+                chosen = crl
             cert["revocation_status"] = chosen.get("status")
             cert["revocation_method"] = chosen.get("method")
             cert["revocation"] = {"ocsp": ocsp, "crl": crl}
@@ -600,7 +653,11 @@ def certificate_verdict(cert: dict[str, Any]) -> dict[str, Any]:
         if sig.startswith("sha1") or sig.startswith("md5"):
             issues.append("WEAK_SIGNATURE_ALGORITHM")
             status = "DISALLOWED" if status != "DISALLOWED" else status
-    except Exception:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+    except Exception as _handler_exc:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return {
         "status": status,

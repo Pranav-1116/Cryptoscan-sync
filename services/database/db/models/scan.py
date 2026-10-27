@@ -9,9 +9,10 @@ from sqlalchemy import DateTime, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class Scan(BaseModel):
+class Scan(BaseModel, TenantScoped):
     __tablename__ = "scans"
 
     scan_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

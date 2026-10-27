@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -17,7 +16,6 @@ from api.main import create_app
 from db.connection.session import Base
 from db.models.crypto_asset import CryptoAsset
 from db.models.evidence_record import EvidenceRecord
-from db.models.repo_configuration import RepoConfiguration
 from db.models.system import System
 
 

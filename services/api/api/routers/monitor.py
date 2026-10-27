@@ -8,15 +8,24 @@ NETWORK targets, so expect probe latency, not instant results.
 
 from __future__ import annotations
 
+import re
+
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, require_auditor
+from api.dependencies import (
+    TenantContext,
+    get_db_session,
+    get_tenant_context,
+    require_tenant_roles,
+)
 
 router = APIRouter(tags=["monitor"])
 
-VALID_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT", "OT", "VENDOR")
+from db.models.monitor import TARGET_TYPES as VALID_TYPES  # noqa: E402 — single source of truth
 # Change-watch (realtime rescan-on-change) is only meaningful where a cheap
 # fingerprint probe exists: git HEAD for REPO, local image id for CONTAINER,
 # OT capture-directory fingerprint for OT.
@@ -24,10 +33,50 @@ WATCHABLE_TYPES = ("REPO", "CONTAINER", "OT")
 
 
 def _validate_config(config: dict, target_type: str) -> dict:
-    """Validate + sanitize a target config before it reaches the daemon."""
+    """Validate + sanitize a target config before it reaches the daemon.
+
+    NETWORK probe targets pass the platform's SSRF choke point
+    (api.security.target_validation): loopback, cloud metadata, link-local,
+    URL schemes, credentials and shell metacharacters are refused here so a
+    monitor target can never be turned into an internal probe primitive."""
     clean = dict(config or {})
     # watch_state is engine-managed (fingerprints / probe errors) — never client-supplied
     clean.pop("watch_state", None)
+    if target_type == "NETWORK":
+        from api.security.target_validation import (
+            TargetValidationError,
+            validate_network_target,
+            validate_probe_target,
+        )
+
+        def _check(raw: str) -> str:
+            try:
+                return validate_probe_target(str(raw), label="monitor.config.endpoints")
+            except TargetValidationError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        endpoints = [str(e) for e in (clean.get("endpoints") or [])]
+        if clean.get("endpoint") and not endpoints:
+            endpoints = [str(clean["endpoint"])]
+        for raw in endpoints:
+            _check(raw)
+        for key in ("ipsec", "dnssec"):
+            for raw in (clean.get(key) or []):
+                _check(str(raw))
+        # scope entries: IP/CIDR shapes go through the discovery guard
+        # (metadata/loopback blocked); wildcard/hostname discovery specs are
+        # a supported feature and are validated by the discovery engine.
+        cidr_shape = re.compile(r"^[0-9a-fA-F:.]+(/\d{1,3})?$")
+        scope_items = clean.get("scope") or []
+        if isinstance(scope_items, str):
+            scope_items = [scope_items]
+        for raw in scope_items:
+            raw = str(raw).strip()
+            if cidr_shape.match(raw):
+                try:
+                    validate_network_target(raw)
+                except TargetValidationError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
     if clean.get("watch"):
         if target_type not in WATCHABLE_TYPES:
             raise HTTPException(
@@ -154,22 +203,25 @@ def _serialize(target) -> dict:
         "last_summary": target.last_summary,
         "consecutive_failures": target.consecutive_failures,
         "last_error": target.last_error,
+        "tenant_id": target.tenant_id,
     }
 
 
 @router.get("/monitor/targets")
 def list_targets(
     enabled: bool | None = None,
-    user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db_session),
 ):
-    return {"targets": [_serialize(row) for row in _repo(db).list_targets(enabled=enabled)]}
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    rows = _repo(db).list_targets(enabled=enabled, tenant_id=ctx.tenant_id, platform=platform)
+    return {"targets": [_serialize(row) for row in rows]}
 
 
 @router.post("/monitor/targets", status_code=201)
 def create_target(
     body: TargetCreate,
-    user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin", "member")),
     db: Session = Depends(get_db_session),
 ):
     from worker.monitor.engine import DEFAULT_INTERVALS, default_interval
@@ -212,15 +264,34 @@ def create_target(
         raise HTTPException(status_code=422, detail="interval_seconds must be between 60 and 2592000")
     config = _validate_config(body.config, body.target_type)
     repo = _repo(db)
-    if repo.get_by_name(body.name) is not None:
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    if repo.get_by_name_scoped(body.name, tenant_id=ctx.tenant_id, platform=platform) is not None:
         raise HTTPException(status_code=409, detail=f"target '{body.name}' already exists")
+    # plan quota (multi-tenant SaaS): unlimited plans pass, finite plans deny
+    # with 402 once the tenant's target budget is spent.
+    if ctx.tenant_id:
+        from api.security.tenancy import quota_check
+        from db.repositories.tenant_repository import TenantRepository
+
+        t_repo = TenantRepository(db)
+        tenant = t_repo.get(ctx.tenant_id)
+        allowed, reason = quota_check(
+            tenant.plan if tenant else "FREE", "target_create",
+            t_repo.live_target_count(ctx.tenant_id))
+        if not allowed:
+            raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
     row = repo.create(
         name=body.name,
         target_type=body.target_type,
         config=config,
         interval_seconds=body.interval_seconds or DEFAULT_INTERVALS.get(body.target_type, default_interval(body.target_type)),
-        created_by=user,
+        created_by=ctx.username,
+        tenant_id=ctx.tenant_id,
     )
+    if ctx.tenant_id:
+        from db.repositories.tenant_repository import TenantRepository
+
+        TenantRepository(db).record_usage(ctx.tenant_id, "target_create", 1, detail=body.name)
     db.commit()
     return _serialize(row)
 
@@ -229,17 +300,24 @@ def create_target(
 def update_target(
     target_id: str,
     body: TargetUpdate,
-    user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin", "member")),
     db: Session = Depends(get_db_session),
 ):
     repo = _repo(db)
     row = repo.get(target_id)
-    if row is None:
+    if row is None or not _in_scope(row, ctx):
         raise HTTPException(status_code=404, detail="Target not found")
     if body.interval_seconds is not None:
         if not (60 <= body.interval_seconds <= 2_592_000):
             raise HTTPException(status_code=422, detail="interval_seconds must be between 60 and 2592000")
         row.interval_seconds = body.interval_seconds
+        # A shortened interval must take effect immediately: never make the
+        # operator wait out the OLD window. Pull next_scan_at in (never push
+        # it out — lengthening stays respectful of the current schedule).
+        if row.last_scan_at is not None and row.next_scan_at is not None:
+            due = row.last_scan_at + timedelta(seconds=row.interval_seconds)
+            if due < row.next_scan_at:
+                row.next_scan_at = due
     if body.config is not None:
         row.config = _validate_config(body.config, row.target_type)
     if body.enabled is not None:
@@ -255,9 +333,12 @@ def update_target(
 @router.delete("/monitor/targets/{target_id}")
 def delete_target(
     target_id: str,
-    user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin", "member")),
     db: Session = Depends(get_db_session),
 ):
+    row = _repo(db).get(target_id)
+    if row is None or not _in_scope(row, ctx):
+        raise HTTPException(status_code=404, detail="Target not found")
     if not _repo(db).delete(target_id):
         raise HTTPException(status_code=404, detail="Target not found")
     db.commit()
@@ -267,7 +348,7 @@ def delete_target(
 @router.post("/monitor/targets/{target_id}/scan-now")
 def scan_now(
     target_id: str,
-    user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin", "member")),
     db: Session = Depends(get_db_session),
 ):
     """Run one target immediately, synchronously (live probe for NETWORK)."""
@@ -275,26 +356,63 @@ def scan_now(
 
     repo = _repo(db)
     target = repo.get(target_id)
-    if target is None:
+    if target is None or not _in_scope(target, ctx):
         raise HTTPException(status_code=404, detail="Target not found")
+    if ctx.tenant_id and target.target_type != "NETWORK":
+        from api.security.tenancy import quota_check
+        from db.repositories.tenant_repository import TenantRepository
+
+        t_repo = TenantRepository(db)
+        tenant = t_repo.get(ctx.tenant_id)
+        allowed, reason = quota_check(
+            tenant.plan if tenant else "FREE", "scan_run",
+            t_repo.month_usage(ctx.tenant_id, "scan_run"))
+        if not allowed:
+            raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
+        # metering happens in MonitorEngine.run_target (one funnel, no double count)
     if not target.enabled:
         raise HTTPException(status_code=409, detail="target is paused — enable it first")
-    outcome = MonitorEngine(db).run_target(target)
+    outcome = MonitorEngine(db, actor=ctx.username).run_target(target)
+    if outcome.get("refusal_status"):
+        raise HTTPException(status_code=outcome["refusal_status"], detail={
+            "reason": outcome["refusal_reason"], "job_id": outcome.get("job_id"),
+        })
+    if outcome.get("execution_failed"):
+        raise HTTPException(status_code=500, detail={
+            "reason": "Monitor network execution failed; inspect the job and monitor events",
+            "job_id": outcome.get("job_id"),
+        })
     db.commit()
     return outcome
 
 
+def _in_scope(row, ctx: TenantContext) -> bool:
+    """Cross-tenant access is a 404 (no existence oracle); platform context
+    sees only the platform estate, a superadmin wearing a tenant header sees
+    that tenant's rows."""
+    if ctx.is_platform_admin and ctx.tenant_id is None:
+        return row.tenant_id is None
+    return row.tenant_id == ctx.tenant_id
+
+
 @router.get("/monitor/status")
-def monitor_status(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+def monitor_status(ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db_session)):
     """The live picture: what is watched, its health, what happened lately."""
     from datetime import datetime, timezone
 
     repo = _repo(db)
-    targets = repo.list_targets()
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    targets = repo.list_targets(tenant_id=ctx.tenant_id, platform=platform)
+    by_status: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    for row in targets:
+        by_status[row.status] = by_status.get(row.status, 0) + 1
+        by_type[row.target_type] = by_type.get(row.target_type, 0) + 1
     overview = {
         "targets_total": len(targets),
-        "by_status": repo.status_counts(),
-        "by_type": repo.type_counts(),
+        "by_status": by_status,
+        "by_type": by_type,
+        "tenant_id": ctx.tenant_id,
         "enabled": sum(1 for row in targets if row.enabled),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "daemon": "scripts/run_monitor.py (this API does not run the loop)",
@@ -313,7 +431,7 @@ def monitor_status(user: str = Depends(get_current_user), db: Session = Depends(
             "detail": event.detail,
             "created_at": event.created_at.isoformat() if event.created_at else None,
         }
-        for event in repo.list_events(limit=20)
+        for event in repo.list_events(limit=20, tenant_id=ctx.tenant_id, platform=platform)
     ]
     return {"overview": overview, "needs_attention": attention, "recent_events": events}
 
@@ -322,10 +440,12 @@ def monitor_status(user: str = Depends(get_current_user), db: Session = Depends(
 def monitor_events(
     target_id: str | None = None,
     limit: int = 50,
-    user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db_session),
 ):
-    rows = _repo(db).list_events(target_id=target_id, limit=limit)
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    rows = _repo(db).list_events(target_id=target_id, limit=limit,
+                                 tenant_id=ctx.tenant_id, platform=platform)
     return {
         "events": [
             {
@@ -335,6 +455,11 @@ def monitor_events(
                 "event_type": event.event_type,
                 "detail": event.detail,
                 "payload": event.payload,
+                # TenantScoped: a NULL tenant is the platform estate, not an
+                # unknown owner. Stated outright so an operator can tell a
+                # platform journal row (no watch-list target behind it) from a
+                # target's event without inferring it from a null field.
+                "scope": "platform" if event.tenant_id is None else "tenant",
                 "created_at": event.created_at.isoformat() if event.created_at else None,
             }
             for event in rows

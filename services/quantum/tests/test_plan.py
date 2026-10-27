@@ -101,7 +101,8 @@ def test_plan_inventory_counts():
     inv = plan["inventory"]
     assert inv["total_sites"] == 5
     assert inv["vulnerable_sites"] == 3  # RSA + ECDSA + AES-128
-    assert inv["pqc_ready_sites"] == 1
+    assert inv["pqc_ready_sites"] == 0
+    assert inv["pqc_candidate_sites"] == 1
     assert inv["by_family"] == {"AES": 2, "ECC": 1, "PQC": 1, "RSA": 1}
     assert inv["by_threat_type"]["SHOR_VULNERABLE"] == 2
     assert inv["by_threat_type"]["GROVER_WEAKENED"] == 1
@@ -128,10 +129,12 @@ def test_plan_workstreams_grouped_by_replacement_target():
 def test_plan_waves_hndl_first():
     plan = build_migration_plan(_findings(), systems=_systems(), today=date(2026, 8, 28))
     waves = plan["waves"]
-    # pay retains data 10y -> RSA/ECDSA are HNDL HIGH -> wave 1; AES-128 is Grover-marginal -> wave 3
-    assert waves["1"]["site_count"] == 2
-    assert {site["algorithm"] for site in waves["1"]["sites"]} == {"RSA-2048", "ECDSA-P256"}
-    assert waves["2"]["site_count"] == 0
+    # RSA key exchange is harvestable -> wave1; ECDSA signature still requires
+    # authenticity migration -> wave2; AES-128 sizing remains wave3.
+    assert waves["1"]["site_count"] == 1
+    assert {site["algorithm"] for site in waves["1"]["sites"]} == {"RSA-2048"}
+    assert waves["2"]["site_count"] == 1
+    assert waves["2"]["sites"][0]["algorithm"] == "ECDSA-P256"
     assert waves["3"]["site_count"] == 1
     assert waves["3"]["sites"][0]["algorithm"] == "AES-128"
     assert "harvest" in waves["1"]["focus"]
@@ -154,7 +157,7 @@ def test_plan_mosca_honest_without_retention_data():
 
 def test_plan_summary_and_version():
     plan = build_migration_plan(_findings(), systems=_systems(), today=date(2026, 8, 28))
-    assert "3 of 5 sites quantum-vulnerable" in plan["summary"]
+    assert "3 of 5 sites are migration-review candidates" in plan["summary"]
     assert plan["calculation_version"].endswith("+plan")
     # risk report stays intact underneath
     report = analyze_quantum_risk(_findings(), systems=_systems(), today=date(2026, 8, 28))
@@ -176,7 +179,7 @@ def test_cli_plan_with_mosca(tmp_path, capsys):
     )
     result = json.loads((tmp_path / "out.json").read_text())
     assert result["inventory"]["vulnerable_sites"] == 3
-    assert result["waves"]["1"]["site_count"] == 2
+    assert result["waves"]["1"]["site_count"] == 1
     captured = capsys.readouterr()
     assert "vulnerable=3/5" in captured.err
     assert "mosca: ALREADY_LATE" in captured.err
@@ -188,3 +191,17 @@ def test_cli_risk_report_by_default(tmp_path, capsys):
     assert cli_main([str(path)]) == 0
     result = json.loads(capsys.readouterr().out)
     assert "overall_hndl_risk" in result and "assets" in result
+
+
+def test_summary_does_not_label_classically_weak_migration_sites_as_all_shor():
+    result = build_migration_plan([{"id": "legacy", "algorithm": "3DES"}])
+    assert result["inventory"]["by_threat_type"] == {"CLASSICALLY_BROKEN": 1}
+    assert "migration-review" in result["summary"]
+
+
+def test_mosca_human_explanation_is_also_an_assumption_not_a_forecast():
+    from datetime import date
+    from quantum.plan import mosca
+    result = mosca(retention_years=12, migration_years=None, today=date(2026, 10, 24), threat_year=2030)
+    assert "assumption" in result["explanation"].lower()
+    assert "estimated CRQC arrival" not in result["explanation"]

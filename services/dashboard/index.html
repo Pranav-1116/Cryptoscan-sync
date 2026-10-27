@@ -146,7 +146,6 @@ let ENV = 'development';
 let state = { route: 'home', scanId: null, findingId: null, jobId: null, assetId: null, systemId: null };
 
 function isDevEnv() { return ENV === 'development' || ENV === 'dev'; }
-function sampleTarget(devDefault) { return isDevEnv() ? devDefault : ''; }
 
 async function api(path, opts={}) {
   const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
@@ -393,11 +392,11 @@ function renderNew(el) {
   el.innerHTML = `<div class="top"><h2>Start a scan</h2></div>
     <div class="card" style="max-width:640px">
       <label class="muted">Repository URL or local path</label>
-      <input id="repo" placeholder="https://github.com/org/repo.git" value="${sampleTarget('local://demo/polyglot-app')}" />
+      <input id="repo" placeholder="https://github.com/org/repo.git" value="" />
       <div style="height:10px"></div>
       <label class="muted">Branch</label>
       <input id="branch" value="main" />
-      <p class="muted">A scan is mandatory to discover algorithms. The pipeline registers a system and writes its CycloneDX CBOM. Development only: <span class="mono">local://demo/vulnerable-app</span>.</p>
+      <p class="muted">A scan is mandatory to discover algorithms. The pipeline registers a system and writes its CycloneDX CBOM. Enter an authorized repository or source path to begin.</p>
       <button class="btn" onclick="startScan()">Start scan</button>
       <div id="scan-msg" class="muted"></div>
     </div>`;
@@ -958,7 +957,7 @@ async function renderCompliance(el) {
 async function createSystem() {
   const name = prompt('System name', 'payments-api');
   if (!name) return;
-  const scan_target = prompt('Scan target (git URL or local:// path). Leave blank if unknown.', sampleTarget('local://demo/polyglot-app'));
+  const scan_target = prompt('Scan target (git URL or local:// path). Leave blank if unknown.', '');
   await api('/systems', { method: 'POST', body: JSON.stringify({
     name, owner: 'security', environment: 'prod', compliance_scopes: ['PCI-DSS'],
     scan_target: (scan_target || '').trim() || null
@@ -967,7 +966,7 @@ async function createSystem() {
 }
 
 async function setSystemTarget(systemId) {
-  const scan_target = prompt('Scan target (git URL or local:// path)', sampleTarget('local://demo/polyglot-app'));
+  const scan_target = prompt('Scan target (git URL or local:// path)', '');
   if (!scan_target) return;
   await api('/systems/' + systemId, { method: 'PATCH', body: JSON.stringify({ scan_target: scan_target.trim() })});
   if (state.route === 'system') renderSystem(document.getElementById('main'));
@@ -1014,7 +1013,7 @@ async function renderContainer(el) {
 }
 
 async function scanContainer() {
-  const target = prompt('Image ref, docker-save .tar, or filesystem path', sampleTarget('local://demo/polyglot-app'));
+  const target = prompt('Image ref, docker-save .tar, or filesystem path', '');
   if (!target) return;
   let body;
   if (target.endsWith('.tar') || target.endsWith('.tar.gz') || target.endsWith('.tgz')) {
@@ -1075,7 +1074,7 @@ async function renderTls(el) {
 }
 
 async function scanTlsPath() {
-  const path = prompt('Repository or filesystem path', sampleTarget('local://demo/polyglot-app'));
+  const path = prompt('Repository or filesystem path', '');
   if (!path) return;
   await api('/network/scan-path', { method: 'POST', body: JSON.stringify({ path, live: false })});
   renderTls(document.getElementById('main'));
@@ -1115,7 +1114,7 @@ async function renderCloud(el) {
 }
 
 async function scanCloudPath() {
-  const path = prompt('Path to Terraform / k8s / CloudFormation', sampleTarget('local://demo/polyglot-app'));
+  const path = prompt('Path to Terraform / k8s / CloudFormation', '');
   if (!path) return;
   const data = await api('/cloud/inventory', { method: 'POST', body: JSON.stringify({ path, live: false, persist: true })});
   const ingested = data.ingested || {};
@@ -1716,7 +1715,7 @@ async function renderOt(el) {
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <div class="card"><div class="label">Devices</div>
         <table><thead><tr><th>IP</th><th>Vendor</th><th>Type</th></tr></thead>
-        <tbody>${(devices.devices||[]).map(d => `<tr><td class="mono">${d.ip_address||'—'}</td><td>${d.vendor||'—'}</td><td>${d.device_type||'—'}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">None stored. Scan demo/ot-lab.</td></tr>'}
+        <tbody>${(devices.devices||[]).map(d => `<tr><td class="mono">${d.ip_address||'—'}</td><td>${d.vendor||'—'}</td><td>${d.device_type||'—'}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">No devices stored. Run an authorized passive scan.</td></tr>'}
         </tbody></table></div>
       <div class="card"><div class="label">Findings</div>
         <table><thead><tr><th>Protocol</th><th>Level</th><th>Issue</th></tr></thead>
@@ -1726,7 +1725,7 @@ async function renderOt(el) {
 }
 
 async function scanOt() {
-  const path = prompt('Path to OT logs / JSON captures', sampleTarget('local://demo/ot-lab'));
+  const path = prompt('Path to OT logs / JSON captures', '');
   if (!path) return;
   await api('/ot/scan', { method: 'POST', body: JSON.stringify({ path })});
   renderOt(document.getElementById('main'));

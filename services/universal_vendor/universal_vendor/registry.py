@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional
 
-from universal_vendor.models import PluginStatus, VendorCapabilities, VendorCategory
+from universal_vendor.models import VendorCapabilities, VendorCategory
 from universal_vendor.plugin import UniversalVendorPlugin
 
 

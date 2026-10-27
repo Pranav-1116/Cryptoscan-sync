@@ -1,0 +1,31 @@
+rule_id: "SAMA-003"
+rule_name: "SAMA — asymmetric key-size floor (RSA/DSA/DH ≥ 2048, ECDSA/ECDH ≥ P-256)"
+version: "1.0"
+effective_date: "2026-09-26"
+severity: "HIGH"
+standard_reference: "SAMA Cyber Security Framework v3.1 — Domain 4.3; SAMA Key Management Guidance; SWIFT CSC v2024; NIST SP 800-131A"
+description: >
+  Signing and key-transport keys must meet contemporary strength: RSA/DSA/DH
+  ≥ 2048 bits (3072 recommended); ECDSA/ECDH must use P-256 or larger
+  (P-384 / X25519). Smaller moduli (RSA-1024, DH-1024, P-192) are forbidden.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "SAMA"
+    min_key_size: 2048
+    # ECC is allowed at 256+ (P-256 / secp256r1 / X25519). The min_key_size gate
+    # is 2048 but is only triggered when key_size is reported; RSA 2048 and ECC 256
+    # both pass. RSA-1024/DH-1024 fail.
+    if_algorithms:
+      - "RSA"
+      - "DSA"
+      - "DH"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Asymmetric key size {key_size} bits for {algorithm} is below the SAMA floor of 2048 bits"
+remediation: >
+  Reissue RSA/DSA/DH keys at 2048+ bits (prefer 3072) or migrate to ECDSA
+  P-256/P-384 or EdDSA/X25519; coordinate reissue with CA/HSM and update
+  key-ceremony records.
+enabled: true

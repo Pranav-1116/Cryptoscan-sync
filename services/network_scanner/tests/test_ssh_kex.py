@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import os
 import socket
 import struct
@@ -277,7 +282,11 @@ def test_probe_tls_port_is_not_ssh(tmp_path):
             ctx.load_cert_chain(str(tmp_path / "c"), str(tmp_path / "k"))
             with ctx.wrap_socket(conn, server_side=True) as tls:
                 tls.recv(256)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     import threading

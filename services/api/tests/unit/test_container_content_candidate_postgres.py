@@ -1,0 +1,10 @@
+"""Owned disposable PostgreSQL parity; not real runtime or production qualification."""
+
+from test_assurance_workflows import assured as assured
+from test_cbom_controlled_postgres import banks as banks, pytestmark as pytestmark
+from test_container_content_candidate import (
+    test_verified_package_export_and_readiness_are_stored_only as test_verified_package_export_and_readiness_are_stored_only,
+    test_failed_layers_cannot_export_runtime_only_as_package_inventory as test_failed_layers_cannot_export_runtime_only_as_package_inventory,
+    test_official_validator_failure_no_export_or_audit as test_official_validator_failure_no_export_or_audit,
+    test_registry_does_not_accept_candidate_as_production_admission as test_registry_does_not_accept_candidate_as_production_admission,
+)

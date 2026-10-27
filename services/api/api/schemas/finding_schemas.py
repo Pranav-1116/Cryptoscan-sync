@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -25,6 +26,19 @@ class FindingResponse(BaseModel):
     normalized_crypto: Optional[dict] = None
     policy_evaluation: Optional[dict] = None
     finding_data: Optional[dict] = None
+    redacted_projection: bool = False
+    # Evidence-chain timestamps (BaseModel.created_at / updated_at). Exposed so
+    # the findings console can show first-seen / last-seen. Optional: rows from
+    # old stores or test fixtures may not carry them, so the mapper never fails.
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    # Soft-delete tombstone (migration 0075): present only on retracted
+    # findings. Consumption surfaces exclude tombstones by default; the raw
+    # projection (GET /findings/{id}) shows them so an auditor can inspect
+    # what was retracted, when, by whom, and why.
+    deleted_at: Optional[datetime] = None
+    deleted_by: Optional[str] = None
+    delete_reason: Optional[str] = None
 
 
 class FindingListResponse(BaseModel):

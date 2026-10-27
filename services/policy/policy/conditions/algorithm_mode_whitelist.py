@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from policy.conditions.base_condition import BaseCondition, EvaluationOutcome
+from policy.conditions.base_condition import BaseCondition, EvaluationOutcome, algorithm_matches
 from policy.models.policy_rule import AlgorithmModeWhitelistParameters
 
 
@@ -17,7 +17,7 @@ class AlgorithmModeWhitelistCondition(BaseCondition):
         normalized = evidence_data.get("normalized_crypto") or {}
         if isinstance(normalized, dict) and normalized.get("algorithm"):
             algorithm = normalized["algorithm"]
-        if algorithm.upper() != typed.algorithm.upper():
+        if algorithm_matches(evidence_data, typed.algorithm) is None:
             return EvaluationOutcome("NOT_APPLICABLE", f"Rule applies only to {typed.algorithm}")
 
         mode = evidence_data.get("mode")

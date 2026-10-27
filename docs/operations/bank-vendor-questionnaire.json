@@ -1,0 +1,700 @@
+{
+  "schema": "cryptoscan.bank-vendor-questionnaire/1",
+  "as_of": "2026-10-24",
+  "claim": "Source navigation and explicit gaps, not qualified support or customer acceptance",
+  "questions": [
+    {
+      "id": "S1",
+      "question": "Which certificates, keys, libraries, protocols, code, HSMs, databases, APIs and cloud services are discovered?",
+      "status": "PARTIAL",
+      "existing_surface": "Separate source/network/cloud/hardware/vendor inventories and receipt-based assurance.",
+      "boundary": "Presence of an adapter is not qualified support for every protocol/version or deployment. Metadata is not key extraction.",
+      "acceptance_needed": "Approved asset/protocol/version/access matrix with positive and negative fixtures and independent expected denominator.",
+      "source_refs": [
+        "shared/shared_models/shared_models/platform_scope.py",
+        "services/api/api/assurance/coverage.py"
+      ]
+    },
+    {
+      "id": "S2",
+      "question": "What on-prem, multi-cloud, SaaS, mainframe and legacy environments are covered?",
+      "status": "PARTIAL",
+      "existing_surface": "Cloud collectors, COBOL parser and operator-produced RACF/ICSF extracts.",
+      "boundary": "No universal z/OS access, arbitrary SaaS visibility, legacy executable coverage or live multi-cloud qualification.",
+      "acceptance_needed": "Run permitted representative platforms and denied/segmented/offline cases; record exclusions and versions.",
+      "source_refs": [
+        "services/scanner/scanner/parsers/cobol_parser.py",
+        "services/cbom/cbom/banking.py",
+        "services/cloud_scanner/cloud_scanner/enterprise/live/collector.py"
+      ]
+    },
+    {
+      "id": "S3",
+      "question": "What third-party embedded crypto in core banking, payment switches, SWIFT and card systems is covered?",
+      "status": "PARTIAL",
+      "existing_surface": "Payment metadata, vendor profiles, supplier evidence and reviewed dependency relationships.",
+      "boundary": "A vendor declaration, product label or signed document is not observed embedded implementation.",
+      "acceptance_needed": "Product/version-specific vendor evidence and authorized exports; bank-reviewed unknowns for inaccessible components.",
+      "source_refs": [
+        "services/api/api/routers/payment_crypto.py",
+        "services/api/api/assurance/relationships.py",
+        "docs/operations/vendor-due-diligence.md"
+      ]
+    },
+    {
+      "id": "S4",
+      "question": "How are OT/IoT, ATMs, POS and network appliances handled?",
+      "status": "PARTIAL",
+      "existing_surface": "OT scanners, hardware inventory and network metadata surfaces exist.",
+      "boundary": "No unrestricted probing or safe-scan certification for fragile payment/OT devices.",
+      "acceptance_needed": "Device-owner-approved passive/export method, lab baseline, rate/stop limits and witnessed no-disruption test.",
+      "source_refs": [
+        "services/api/api/routers/ot.py",
+        "services/api/api/routers/hbom.py",
+        "services/api/api/routers/network.py"
+      ]
+    },
+    {
+      "id": "S5",
+      "question": "Can you find hardcoded keys, custom crypto and compiled-binary crypto?",
+      "status": "PARTIAL",
+      "existing_surface": "Source detectors and binary fingerprint/control-flow analysis paths exist.",
+      "boundary": "Obfuscation, stripped/static binaries, wrappers and proprietary primitives create false negatives; signatures are indicators.",
+      "acceptance_needed": "Representative sanctioned source/binary corpus, ground truth, unsupported packers/architectures and secret-redaction review.",
+      "source_refs": [
+        "services/devsecops/devsecops/binary_scan.py",
+        "services/universal_crypto/universal_crypto/binary_engine.py",
+        "shared/shared_models/shared_models/safe_finding.py"
+      ]
+    },
+    {
+      "id": "M1",
+      "question": "Which discovery methods are used and what access is needed?",
+      "status": "PARTIAL",
+      "existing_surface": "Static parsers, active metadata probes, imported extracts and binary analysis.",
+      "boundary": "Method and production-profile admission differ; no single agentless method sees everything.",
+      "acceptance_needed": "Per-source architecture/data-flow/access plan, least-privilege grant and actual deployment qualification.",
+      "source_refs": [
+        "shared/shared_models/shared_models/platform_scope.py",
+        "services/api/api/routers/assurance_boundary.py"
+      ]
+    },
+    {
+      "id": "M2",
+      "question": "How are transit, at-rest and in-code crypto distinguished?",
+      "status": "PARTIAL",
+      "existing_surface": "Source findings, network observations, cloud/key metadata and reviewed relationships.",
+      "boundary": "An algorithm string does not prove encryption at rest, negotiated transport or key use.",
+      "acceptance_needed": "Purpose-bound evidence including actual transport negotiation, storage setting and source site; disclose inferred links.",
+      "source_refs": [
+        "services/api/api/assurance/adapters.py",
+        "services/api/api/assurance/relationships.py"
+      ]
+    },
+    {
+      "id": "M3",
+      "question": "What happens when traffic is encrypted, segmented or inaccessible?",
+      "status": "PARTIAL",
+      "existing_surface": "Expected-estate coverage supports unresolved targets, exclusions and unavailable evidence.",
+      "boundary": "No decryption bypass; inaccessible scope cannot be silently counted observed.",
+      "acceptance_needed": "Approved vantage points or offline metadata exports; explicit inaccessible targets and review/expiry of exceptions.",
+      "source_refs": [
+        "services/api/api/assurance/coverage.py",
+        "shared/shared_models/shared_models/assurance.py"
+      ]
+    },
+    {
+      "id": "M4",
+      "question": "What are false-positive/false-negative rates and how are they validated?",
+      "status": "PARTIAL",
+      "existing_surface": "Existing approved/frozen sample workflow plus corrected legacy triage denominators, explicit unmeasured metrics, validated workbooks and consistent CLI scoring.",
+      "boundary": "Reviewed file/algorithm units are not all-bank recall. No true-negative denominator is supplied by legacy workbooks, so no false-positive rate is claimed. Existing separate corpus evaluator conventions are not globally requalified.",
+      "acceptance_needed": "Bank-agreed corpus/version/method, confusion matrix, missed classes, confidence intervals and independent retest.",
+      "source_refs": [
+        "services/api/api/assurance/accuracy.py",
+        "scripts/accuracy_benchmark.py",
+        "shared/shared_models/tests/test_field_accuracy_denominators.py",
+        "services/api/tests/integration/test_field_accuracy_api.py"
+      ]
+    },
+    {
+      "id": "M5",
+      "question": "Can algorithm, key size, mode and quantum vulnerability be distinguished?",
+      "status": "PARTIAL",
+      "existing_surface": "Shared classifier plus explicit PQC public-key byte units, native FIPS parameter-set identifiers and all twelve full SLH-DSA parameter names.",
+      "boundary": "Algorithm recognition and catalog sizes are not observed key usage, implementation correctness, module validation or global current-policy approval. Legacy input key_size units remain unverified for PQC.",
+      "acceptance_needed": "Known/unknown/alias/suite/key-size fixtures and independently checked observations for the bank workload.",
+      "source_refs": [
+        "shared/shared_models/shared_models/algorithm_registry.py",
+        "shared/shared_models/shared_models/quantum_classify.py",
+        "services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py",
+        "shared/shared_models/tests/test_bank_pqc_parameters.py"
+      ]
+    },
+    {
+      "id": "M6",
+      "question": "Can existing hybrid/PQC implementations such as ML-KEM in TLS be detected?",
+      "status": "PARTIAL",
+      "existing_surface": "Registry recognizes hybrid names; inventory/planning now separates candidates from verified readiness.",
+      "boundary": "A library, group name, supported-groups advertisement or vendor roadmap is not negotiated hybrid traffic.",
+      "acceptance_needed": "Capture permitted actual handshake/group and authentication evidence; test fallback/downgrade and unsupported peers.",
+      "source_refs": [
+        "services/api/api/routers/inventory.py",
+        "services/quantum/quantum/risk.py",
+        "services/network_scanner/network_scanner/enterprise/pqc_readiness.py"
+      ]
+    },
+    {
+      "id": "O1",
+      "question": "Which CBOM formats and schema versions are available?",
+      "status": "PARTIAL",
+      "existing_surface": "Legacy compatibility exporters plus native CycloneDX1.6 JSON with pinned full upstream schema, offline validation and local reference integrity.",
+      "boundary": "Native1.6 is an allowlisted metadata profile, JSON only; not lossless arbitrary-document conversion. Legacy1.5 JSON/XML are not newly standard-qualified. Schema validity is not bank or third-party tooling acceptance.",
+      "acceptance_needed": "Validate requested schema/version and all six semantics; customer import round trip, provenance, unsupported fields and signing trust.",
+      "source_refs": [
+        "services/cbom/cbom/generator.py",
+        "services/cbom/cbom/export_service.py",
+        "services/api/tests/unit/test_six_bom_current_evidence.py",
+        "services/cbom/cbom/cyclonedx16.py",
+        "services/cbom/tests/test_cyclonedx16.py"
+      ]
+    },
+    {
+      "id": "O2",
+      "question": "How are sensitivity, shelf life, HNDL, exposure and criticality prioritized?",
+      "status": "PARTIAL",
+      "existing_surface": "Deterministic risk and business context; unknown retention remains unknown and signing-only use is not ciphertext HNDL.",
+      "boundary": "Model defaults and inferred data classes are not bank-approved classifications; public-key signature migration remains important.",
+      "acceptance_needed": "Bank owner supplies confidentiality retention, purpose, exposure/criticality and validates resulting ordering.",
+      "source_refs": [
+        "services/quantum/quantum/risk.py",
+        "services/cbom/cbom/banking.py"
+      ]
+    },
+    {
+      "id": "O3",
+      "question": "Can findings be mapped to Mosca inequality?",
+      "status": "PARTIAL",
+      "existing_surface": "Validated finite nonnegative scenario inputs, explicit assumption labels and zero-margin handling.",
+      "boundary": "Threat year is an assumption, not a prediction, regulatory date or SLA; year resolution is coarse.",
+      "acceptance_needed": "Bank-approved retention/migration/threat scenarios and sensitivity analysis, with missing-input outcomes retained.",
+      "source_refs": [
+        "services/quantum/quantum/plan.py",
+        "services/api/api/routers/quantum.py"
+      ]
+    },
+    {
+      "id": "O4",
+      "question": "Can findings map to applications, owners and classifications?",
+      "status": "PARTIAL",
+      "existing_surface": "Existing business-system links plus native export of supplied application, owner, classification and retention context; shared assets retain multiple contexts without duplicate references.",
+      "boundary": "Business context is supplied metadata, not independently verified ownership/classification; import does not automatically create CMDB mappings.",
+      "acceptance_needed": "CMDB reconciliation, active owners, classification approval and unmatched/ambiguous mapping review.",
+      "source_refs": [
+        "services/api/api/routers/systems.py",
+        "services/api/api/routers/business.py",
+        "services/api/api/assurance/operator.py",
+        "services/api/tests/unit/test_bank_native_cbom.py"
+      ]
+    },
+    {
+      "id": "O5",
+      "question": "Do dependencies show what breaks if an algorithm is replaced?",
+      "status": "PARTIAL",
+      "existing_surface": "Evidence-bound relationship paths and graph/impact surfaces.",
+      "boundary": "A dependency path or simulation is not causal proof or a change-safety guarantee.",
+      "acceptance_needed": "Trace exact source/build/deployment and perform isolated interoperability/failure/rollback tests.",
+      "source_refs": [
+        "services/api/api/assurance/relationships.py",
+        "services/graph_engine/tests/test_bank_dependency_qualification.py"
+      ]
+    },
+    {
+      "id": "R1",
+      "question": "How are FIPS203/204/205 and evolving FN-DSA/HQC standards handled?",
+      "status": "PARTIAL",
+      "existing_surface": "Registry screens ML-KEM/ML-DSA/SLH-DSA families and full FIPS205 variants; FN-DSA/Falcon/HQC/McEliece do not receive automatic policy approval from draft/selected labels.",
+      "boundary": "No live NIST publication refresh or regulator interpretation was performed. Conservative registry status is not a claim about the latest legal publication state or implementation certification.",
+      "acceptance_needed": "Record exact standard/revision/final status, implementation parameters and independent compatibility/validation evidence.",
+      "source_refs": [
+        "shared/shared_models/shared_models/algorithm_registry.py",
+        "services/cbom/cbom/banking.py",
+        "shared/shared_models/tests/test_bank_pqc_parameters.py"
+      ]
+    },
+    {
+      "id": "R2",
+      "question": "How are SP800-131A and2030/2035 transition statements handled?",
+      "status": "PARTIAL",
+      "existing_surface": "Legacy roadmap explicitly labeled historical draft planning; general framework dates no longer become PQC mandates.",
+      "boundary": "Do not conflate SP800-131A, draft IR8547 targets, threat scenarios and institution-specific obligations.",
+      "acceptance_needed": "Compliance owner approves current publication/version, jurisdiction, primitive/use and applicability before deadlines bind.",
+      "source_refs": [
+        "services/cbom/cbom/banking.py",
+        "services/quantum/quantum/risk.py"
+      ]
+    },
+    {
+      "id": "R3",
+      "question": "Does output support central bank, PCI DSS, DORA, EBA, MAS, FFIEC and BIS expectations?",
+      "status": "PARTIAL",
+      "existing_surface": "Evidence exports, control/register and banking action-plan surfaces.",
+      "boundary": "Mapping and reports are not regulator acceptance, certification or a universal legal interpretation.",
+      "acceptance_needed": "Bank compliance/legal review of each applicable obligation and evidence sufficiency, including unresolved exceptions.",
+      "source_refs": [
+        "services/api/api/routers/banking.py",
+        "docs/readiness-evidence/control-register.json"
+      ]
+    },
+    {
+      "id": "R4",
+      "question": "How are evolving standards/guidance kept current?",
+      "status": "PARTIAL",
+      "existing_surface": "Version-controlled registry/policy definitions and reviewed release procedures.",
+      "boundary": "A static catalog cannot promise live legal updates or silent safe changes.",
+      "acceptance_needed": "Named policy steward, authoritative-source/version/change log, review schedule and regression/customer notification process.",
+      "source_refs": [
+        "shared/shared_models/shared_models/algorithm_registry.py",
+        "docs/runbooks/operator-install-upgrade-recover.md"
+      ]
+    },
+    {
+      "id": "D1",
+      "question": "Where is data stored and can sensitive material leave the environment?",
+      "status": "PARTIAL",
+      "existing_surface": "Evidence storage boundaries, safe-finding shaping and deployment residency controls.",
+      "boundary": "Metadata-only intent is not proof: source/log extracts can contain secrets; end-to-end collection/export must be reviewed.",
+      "acceptance_needed": "Bank-approved data-flow/residency map, minimization/redaction samples, retention, egress controls and incident obligations.",
+      "source_refs": [
+        "shared/shared_models/shared_models/safe_finding.py",
+        "services/api/api/routers/assurance_boundary.py",
+        "docs/security/threat-model.md"
+      ]
+    },
+    {
+      "id": "D2",
+      "question": "What privileges are required and how are they controlled/audited?",
+      "status": "PARTIAL",
+      "existing_surface": "RBAC, durable human sessions, audit and explicit controlled execution policy.",
+      "boundary": "Dedicated dispatcher/daemon access is privileged; a read-only collector label does not remove host risks.",
+      "acceptance_needed": "Least-privilege identity per source, scoped secrets, approval/revocation audit and hostile/denied-access exercise.",
+      "source_refs": [
+        "services/api/api/security/rbac.py",
+        "services/api/api/routers/execution_controls.py",
+        "docs/dev/scanner-isolation.md"
+      ]
+    },
+    {
+      "id": "D3",
+      "question": "Can deployment be fully on-prem or air-gapped?",
+      "status": "PARTIAL",
+      "existing_surface": "On-prem reference profile, offline package verification and air-gap guidance.",
+      "boundary": "Reference procedures are not a qualified customer installation or a complete offline update/supply chain.",
+      "acceptance_needed": "Witness install/upgrade/restore with approved offline images/wheels/trust keys and no unauthorized egress.",
+      "source_refs": [
+        "docs/admin-guide/air-gap-install.md",
+        "scripts/operator_release.py"
+      ]
+    },
+    {
+      "id": "D4",
+      "question": "Which ISO27001/SOC2 certifications and pentest reports can be supplied?",
+      "status": "EXTERNAL",
+      "existing_surface": "Existing independent security report intake and declared evidence review.",
+      "boundary": "No corporate certification, assessor independence or actual pentest is invented.",
+      "acceptance_needed": "Actual current scoped certificate/report, authorized disclosure, findings and independent retests.",
+      "source_refs": [
+        "services/api/api/assurance/launch.py",
+        "docs/security/pen-test-scope.md"
+      ]
+    },
+    {
+      "id": "D5",
+      "question": "What production scan impact is demonstrated, particularly payments/trading?",
+      "status": "PARTIAL",
+      "existing_surface": "Bounded execution budgets, explicit limits and selected benchmark tooling.",
+      "boundary": "No bank-shaped latency/throughput/SLO qualification from tiny local tests; active OT/payment probes may be unsafe.",
+      "acceptance_needed": "Agree targets and noninterference limits before measurement; representative peak/failure workload, abort and cleanup proof.",
+      "source_refs": [
+        "services/api/api/routers/execution_controls.py",
+        "scripts/benchmark_scan.py",
+        "docs/readiness-evidence/quality-trace-performance-2026-10-23.md"
+      ]
+    },
+    {
+      "id": "I1",
+      "question": "Which CMDB/SIEM/GRC/PKI/secrets/ticketing integrations work?",
+      "status": "PARTIAL",
+      "existing_surface": "Integration/event/export and business-context surfaces.",
+      "boundary": "A connector name/API scaffold is not a bank-tested bidirectional workflow or reliable delivery.",
+      "acceptance_needed": "Version/auth/data mapping, least privilege, idempotency, timeout/delivery receipt, retry/dead-letter and revocation tests.",
+      "source_refs": [
+        "services/control_plane/control_plane/integrations.py",
+        "services/api/api/events/bus.py"
+      ]
+    },
+    {
+      "id": "I2",
+      "question": "Is discovery continuous or point-in-time?",
+      "status": "PARTIAL",
+      "existing_surface": "Monitor scheduling/drift and retained point-in-time records.",
+      "boundary": "Scheduled execution is not uninterrupted monitoring, coverage completeness or staffed incident response.",
+      "acceptance_needed": "Define observation freshness, missed windows, drift recheck, downtime/recovery and operational response ownership.",
+      "source_refs": [
+        "services/api/api/routers/monitor.py",
+        "docs/operations/accountable-operations-handoff-2026-10-23.md"
+      ]
+    },
+    {
+      "id": "I3",
+      "question": "Which HSM/key-management interfaces are supported?",
+      "status": "PARTIAL",
+      "existing_surface": "PKCS11 metadata and HSM/cloud KMS inventory surfaces.",
+      "boundary": "A model/family or declared mechanism does not prove installed firmware, FIPS scope, permission or live throughput.",
+      "acceptance_needed": "Exact vendor/model/firmware/provider/mechanism matrix; authorized no-key-export test and separate runtime qualification.",
+      "source_refs": [
+        "services/cbom/cbom/hsm_pkcs11.py",
+        "services/api/api/routers/hsm_scans.py",
+        "services/api/api/routers/inventory_cloud.py"
+      ]
+    },
+    {
+      "id": "I4",
+      "question": "What APIs and reporting capabilities are offered?",
+      "status": "PARTIAL",
+      "existing_surface": "Authenticated API schemas, assurance history and export/report surfaces.",
+      "boundary": "No blanket API compatibility, pagination completeness or delivery assurance without contract tests.",
+      "acceptance_needed": "Customer API contract, scopes, limits, pagination/error semantics, export verification and version lifecycle.",
+      "source_refs": [
+        "services/api/api/main.py",
+        "services/api/api/routers/export.py",
+        "docs/api-reference/rest-api.md"
+      ]
+    },
+    {
+      "id": "P1",
+      "question": "Is there a migration roadmap, agility assessment and remediation guidance?",
+      "status": "PARTIAL",
+      "existing_surface": "Deterministic workstreams/waves, agility and evidence-bound remediation.",
+      "boundary": "A recommendation or reported completion is not a verified fix; migration needs deployment and interoperability evidence.",
+      "acceptance_needed": "Named owner, exact before/after predicate, representative rescan, independent verification and rollback boundary.",
+      "source_refs": [
+        "services/quantum/quantum/plan.py",
+        "services/api/api/assurance/remediation.py",
+        "services/api/api/routers/agility.py"
+      ]
+    },
+    {
+      "id": "P2",
+      "question": "Can PQC latency, packets/certificates and HSM throughput be benchmarked?",
+      "status": "PARTIAL",
+      "existing_surface": "PQC impact and performance tools exist.",
+      "boundary": "Estimates/simulation are not measured negotiated payload size, real HSM throughput or production SLO.",
+      "acceptance_needed": "Pre-agreed matched classical/hybrid/PQC workloads on exact versions/hardware; percentile/distribution, failure and size observations.",
+      "source_refs": [
+        "services/universal_vendor/universal_vendor/hardware/live/pqc_impact.py",
+        "scripts/perf_benchmark.py"
+      ]
+    },
+    {
+      "id": "P3",
+      "question": "Can PKI/CLM transitions, hybrid certificates and pilots be supported?",
+      "status": "PARTIAL",
+      "existing_surface": "Certificate lifecycle, composite-name handling and bounded pilot records.",
+      "boundary": "Parsing a hybrid name is not valid certificate-chain/client interoperability or production key ceremony qualification.",
+      "acceptance_needed": "Approved test CA and clients, chain/path/downgrade/revocation/expiry cases, rollback and separate pilot acceptance.",
+      "source_refs": [
+        "services/api/api/routers/certificates.py",
+        "shared/shared_models/shared_models/composite_certificates.py",
+        "services/api/api/assurance/launch.py"
+      ]
+    },
+    {
+      "id": "P4",
+      "question": "Which HSM, PKI or network vendor partnerships are established?",
+      "status": "EXTERNAL",
+      "existing_surface": "Vendor due-diligence evidence can be retained.",
+      "boundary": "No partnership, joint support or certification is inferred from compatibility code or a vendor name.",
+      "acceptance_needed": "Actual agreements, named contacts, supported versions and authorized joint-test/support evidence.",
+      "source_refs": [
+        "docs/operations/vendor-due-diligence.md"
+      ]
+    },
+    {
+      "id": "P5",
+      "question": "Can crypto-governance policy and an agility framework be developed?",
+      "status": "PARTIAL",
+      "existing_surface": "Policy definitions, owners, evidence registers and review workflow.",
+      "boundary": "Software cannot appoint authority or determine legal policy for the bank.",
+      "acceptance_needed": "Bank-approved decision rights, cryptographic use policy, exceptions/expiry, changes, training and governance minutes.",
+      "source_refs": [
+        "services/api/api/routers/policy.py",
+        "services/api/api/assurance/launch.py"
+      ]
+    },
+    {
+      "id": "C1",
+      "question": "What delivery timeline and bank effort are realistic?",
+      "status": "EXTERNAL",
+      "existing_surface": "Scope/qualification/runbook structure for a bounded pilot.",
+      "boundary": "No typical bank duration or effort claimed without size, access, integration and approval inputs.",
+      "acceptance_needed": "Joint scope and resource estimate with prerequisites, milestones, acceptance, dependencies and change control.",
+      "source_refs": [
+        "docs/runbooks/launch-assurance-handoff.md"
+      ]
+    },
+    {
+      "id": "C2",
+      "question": "Which comparable regulated references can be contacted?",
+      "status": "EXTERNAL",
+      "existing_surface": "Evidence/profile records can hold authorized references.",
+      "boundary": "No bank customer, testimonial or reference is invented.",
+      "acceptance_needed": "Consent-based actual comparable references and independently confirmed delivery scope/results.",
+      "source_refs": [
+        "docs/operations/vendor-due-diligence.md"
+      ]
+    },
+    {
+      "id": "C3",
+      "question": "How is pricing structured and what drives cost growth?",
+      "status": "EXTERNAL",
+      "existing_surface": "Operational limits and workload concepts are available.",
+      "boundary": "No fabricated price, subscription entitlement or commercial commitment.",
+      "acceptance_needed": "Signed pricing basis, asset dedup/revision counting, scans/API/storage/egress/connector limits and overage/exit costs.",
+      "source_refs": [
+        "docs/operations/vendor-due-diligence.md"
+      ]
+    },
+    {
+      "id": "C4",
+      "question": "What SLA, support and data-residency commitments are agreed?",
+      "status": "EXTERNAL",
+      "existing_surface": "Accountable-duty and residency review boundaries.",
+      "boundary": "Intended24/7 and weekly review are not staffed support or a contractual SLA.",
+      "acceptance_needed": "Actual primary/backup roster, support hours/timezone, escalation/response commitments, residency and legal agreement.",
+      "source_refs": [
+        "docs/operations/accountable-operations-handoff-2026-10-23.md"
+      ]
+    },
+    {
+      "id": "C5",
+      "question": "What happens to bank data/CBOM at exit?",
+      "status": "EXTERNAL",
+      "existing_surface": "Exports, offboarding/retention duties and backup procedures.",
+      "boundary": "Export success does not prove completeness, deletion from backups/subprocessors or revocation of every consumer.",
+      "acceptance_needed": "Witness portable verified export, trust/signature handling, restore/readability, revocation and retention/deletion evidence.",
+      "source_refs": [
+        "services/cbom/cbom/export_service.py",
+        "docs/operations/accountable-operations-handoff-2026-10-23.md"
+      ]
+    },
+    {
+      "id": "C6",
+      "question": "What financial stability and product PQC transition roadmap are demonstrated?",
+      "status": "EXTERNAL",
+      "existing_surface": "Supplier profile can retain finance/succession evidence; product crypto is separately inventoried.",
+      "boundary": "No audited accounts, escrow/succession guarantee or own-product PQC compliance is created by a registry entry.",
+      "acceptance_needed": "Actual finance/continuity evidence and source/image/protocol/key/signing inventory with tested product transition plan.",
+      "source_refs": [
+        "docs/operations/vendor-due-diligence.md",
+        "docs/security/threat-model.md"
+      ]
+    },
+    {
+      "id": "C7",
+      "question": "What third-party/open-source scanning supply-chain risks exist?",
+      "status": "PARTIAL",
+      "existing_surface": "Dependency locks, source/image binding and parser isolation.",
+      "boundary": "Pinned inputs are not signed build provenance, license clearance, zero CVEs or safe upstream code.",
+      "acceptance_needed": "Reviewed SBOM/licenses/advisories, patched immutable images, provenance, independent review and offline update path.",
+      "source_refs": [
+        "requirements.lock.txt",
+        "frontend/package-lock.json",
+        "scripts/operator_release.py"
+      ]
+    },
+    {
+      "id": "G1",
+      "question": "What are known limitations and blind spots?",
+      "status": "PARTIAL",
+      "existing_surface": "Scope declarations, coverage blockers and accuracy blind spots.",
+      "boundary": "No claim of universal scanning, proprietary primitive identification or full-bank completeness.",
+      "acceptance_needed": "Sign the allowed methods/platform matrix and retain unobserved/unsupported/stale/inconclusive classes.",
+      "source_refs": [
+        "shared/shared_models/shared_models/platform_scope.py",
+        "services/api/api/assurance/coverage.py"
+      ]
+    },
+    {
+      "id": "G2",
+      "question": "Can a comparable sample CBOM/report be shown?",
+      "status": "PARTIAL",
+      "existing_surface": "A committed synthetic banking-like eight-record native1.6 CBOM and actual planning-engine report are reproducible locally.",
+      "boundary": "Synthetic supplied inputs are not a comparable customer engagement or scanner execution; no bank reference or independent discovery accuracy follows.",
+      "acceptance_needed": "Consent-based comparable evidence or labeled synthetic six-BOM sample validated by the bank consumer.",
+      "source_refs": [
+        "services/cbom/cbom/export_service.py",
+        "services/cbom/tests/unit/test_export_service.py",
+        "docs/examples/bank-pqc-discovery/inputs.json",
+        "docs/examples/bank-pqc-discovery/cbom.cyclonedx16.json",
+        "docs/examples/bank-pqc-discovery/report.json"
+      ]
+    },
+    {
+      "id": "G3",
+      "question": "How is inaccessible third-party SaaS handled?",
+      "status": "PARTIAL",
+      "existing_surface": "Supplier evidence and expected-estate registers retain unknown/excluded scope.",
+      "boundary": "No visibility is fabricated through proprietary SaaS or a vendor signature.",
+      "acceptance_needed": "Authorized provider exports/assessor evidence, service/version scope, contractual cooperation and explicit residual risk.",
+      "source_refs": [
+        "services/api/api/assurance/relationships.py",
+        "services/api/api/assurance/coverage.py"
+      ]
+    },
+    {
+      "id": "G4",
+      "question": "How is discovery completeness proved to auditors/regulators?",
+      "status": "PARTIAL",
+      "existing_surface": "Independent expected-estate denominator and scoped receipts with current evidence checks.",
+      "boundary": "Zero findings, signed CBOM,100% of returned records or a successful scan cannot prove an unknown universe complete.",
+      "acceptance_needed": "Reconcile independently maintained CMDB/cloud/network/application/vendor sets, permitted methods, freshness and omissions; separately review.",
+      "source_refs": [
+        "services/api/api/assurance/coverage.py",
+        "services/api/tests/unit/test_six_bom_current_evidence.py"
+      ]
+    },
+    {
+      "id": "A1",
+      "question": "Authorization and rules of engagement",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Explicit per-target permission, access windows, identity and stop authority; no unauthorized scan.",
+      "source_refs": [
+        "services/api/api/routers/execution_controls.py"
+      ]
+    },
+    {
+      "id": "A2",
+      "question": "Completeness denominator and inaccessible scope",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Bank-owned expected inventory; unresolved, stale, excluded and unsupported targets stay visible.",
+      "source_refs": [
+        "services/api/api/assurance/coverage.py"
+      ]
+    },
+    {
+      "id": "A3",
+      "question": "Evidence freshness and provenance",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Capture time, exact artifact/source/method, integrity and expiry; historic verification is not current proof.",
+      "source_refs": [
+        "services/api/api/assurance/store.py"
+      ]
+    },
+    {
+      "id": "A4",
+      "question": "Non-disruption, abort and uncertain outcomes",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Agreed scan budgets and emergency stop; no retry of UNKNOWN external outcome without reconciliation.",
+      "source_refs": [
+        "services/api/api/routers/execution_controls.py"
+      ]
+    },
+    {
+      "id": "A5",
+      "question": "Tenant isolation and privileged insider threats",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Cross-bank read/write/export/cache/session tests and dedicated privileged worker boundary.",
+      "source_refs": [
+        "docs/security/adversarial-tenant-isolation.md"
+      ]
+    },
+    {
+      "id": "A6",
+      "question": "Incident disclosure, breach notification and vulnerability handling",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Actual reporting route, bank notification obligations, accountable responders and reviewed retests.",
+      "source_refs": [
+        "docs/operations/accountable-operations-handoff-2026-10-23.md"
+      ]
+    },
+    {
+      "id": "A7",
+      "question": "CBOM schema, portability and licensing",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Exact format/version, stable IDs, provenance, six-BOM semantics, license terms and consumer round trip.",
+      "source_refs": [
+        "services/cbom/cbom/export_service.py"
+      ]
+    },
+    {
+      "id": "A8",
+      "question": "Exit verification including backups and subprocessors",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Export validation, key/access revocation, legal retention/deletion limits and processor attestations.",
+      "source_refs": [
+        "docs/operations/vendor-due-diligence.md"
+      ]
+    },
+    {
+      "id": "A9",
+      "question": "Policy source status and applicability",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Current authoritative publication/revision, draft versus final, jurisdiction and bank-approved effective dates.",
+      "source_refs": [
+        "services/quantum/quantum/risk.py"
+      ]
+    },
+    {
+      "id": "A10",
+      "question": "Observed versus inferred dependencies",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Evidence class for each edge; no causal impact or safe migration guarantee from graph reachability.",
+      "source_refs": [
+        "services/api/api/assurance/relationships.py"
+      ]
+    },
+    {
+      "id": "A11",
+      "question": "Hybrid/PQC interoperability and downgrade resistance",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Actual negotiation and authentication, fallback, chain/packet size, middlebox and legacy-client cases.",
+      "source_refs": [
+        "services/keyassure/keyassure/pqc_downgrade.py"
+      ]
+    },
+    {
+      "id": "A12",
+      "question": "Product self-transition and recovery of trust",
+      "status": "PARTIAL",
+      "existing_surface": "Existing control/evidence surfaces; no new service or screen.",
+      "boundary": "This control requires explicit bank acceptance, not a product-name assertion.",
+      "acceptance_needed": "Own TLS/SSO/artifact/report signatures and long-lived evidence keys; rotation, offline verification and backup restore.",
+      "source_refs": [
+        "scripts/operator_release.py"
+      ]
+    }
+  ]
+}

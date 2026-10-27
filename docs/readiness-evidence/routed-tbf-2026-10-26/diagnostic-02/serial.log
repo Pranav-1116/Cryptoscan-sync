@@ -1,0 +1,3 @@
+CRYPTOSCAN_TBF_SANDBOX=LANDLOCK_SECCOMP_ACTIVE
+CRYPTOSCAN_ROUTED_FAILURE=ValueError:invalid JSON source: ['/sbin/ip', 'netns', 'exec', 'gw', '/sbin/tc', '-j', '-d', 'class', 'show', 'dev', 'ge'] b'class htb 8a:1 root prio 0 quantum 200000 rate 20Mbit ceil 20Mbit linklayer ethernet burst 1600b/1 m'
+reboot: Restarting system

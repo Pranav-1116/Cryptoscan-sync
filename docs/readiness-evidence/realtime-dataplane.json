@@ -1,0 +1,127 @@
+{
+  "schema": "cryptoscan.realtime-dataplane-drill/1",
+  "ran_at": "2026-10-05T01:42:50.515720+00:00",
+  "api": "http://127.0.0.1:8010",
+  "target": "/home/array/Desktop/CryptoScan/_tmp/snbchk/src",
+  "checks": [
+    {
+      "check": "auth: operator session established",
+      "ok": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "persistence: scan completes",
+      "ok": true,
+      "detail": "b5679e49-2f22-4bac-9463-ee6f1bc98f64"
+    },
+    {
+      "check": "persistence: scan row written to PostgreSQL",
+      "ok": true,
+      "detail": "0 -> 1"
+    },
+    {
+      "check": "persistence: evidence rows written",
+      "ok": true,
+      "detail": "0 -> 96"
+    },
+    {
+      "check": "persistence: evidence is attached to its scan",
+      "ok": true,
+      "detail": "96 rows carry scan_id"
+    },
+    {
+      "check": "persistence: a later scan preserves earlier history",
+      "ok": true,
+      "detail": "scans 1 -> 2, evidence 96 -> 192"
+    },
+    {
+      "check": "persistence: the first scan's evidence survives the second",
+      "ok": true,
+      "detail": "96 -> 96"
+    },
+    {
+      "check": "replay: event history is readable",
+      "ok": true,
+      "detail": "5 events"
+    },
+    {
+      "check": "replay: Last-Event-ID header resumes after that id",
+      "ok": true,
+      "detail": "resumed at 4 after 3"
+    },
+    {
+      "check": "replay: a fresh connection streams without a full history dump",
+      "ok": true,
+      "detail": "35 lines"
+    },
+    {
+      "check": "dedup: event ids are unique in history",
+      "ok": true,
+      "detail": "8 events, 8 distinct ids"
+    },
+    {
+      "check": "dedup: no duplicate (timestamp, type, payload) tuples",
+      "ok": true,
+      "detail": "0 duplicates"
+    },
+    {
+      "check": "tenancy: an unknown tenant header does not return the estate",
+      "ok": true,
+      "detail": "HTTP 404"
+    },
+    {
+      "check": "tenancy: a malformed tenant header is refused or empty",
+      "ok": true,
+      "detail": "HTTP 404"
+    },
+    {
+      "check": "dependency: API still answers with redis down",
+      "ok": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "dependency: the report actually covers redis",
+      "ok": true,
+      "detail": "names=['database', 'redis', 'neo4j']"
+    },
+    {
+      "check": "dependency: redis reported down, rollup degraded",
+      "ok": true,
+      "detail": "{\"status\": \"degraded\", \"down\": [\"redis\"], \"checks\": [{\"name\": \"database\", \"status\": \"ok\", \"detail\": \"postgresql\", \"latency_ms\": 1.5}, {\"name\": \"redis\", \"status\": \"down\", \"detail\": \"Timeout reading fro"
+    },
+    {
+      "check": "dependency: scan trigger does not fake success with redis down",
+      "ok": true,
+      "detail": "HTTP 202"
+    },
+    {
+      "check": "dependency: rollup returns to ok after redis comes back",
+      "ok": true,
+      "detail": "{\"status\": \"ok\", \"down\": [], \"checks\": [{\"name\": \"database\", \"status\": \"ok\", \"detail\": \"postgresql\", \"latency_ms\": 2.4}, {\"name\": \"redis\", \"status\": \"ok\", \"deta"
+    },
+    {
+      "check": "recovery: redis restarted",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "recovery: durable evidence survives a redis restart",
+      "ok": true,
+      "detail": "288 -> 288 (rows at or below the pre-restart mark)"
+    },
+    {
+      "check": "recovery: event history still served after restart",
+      "ok": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "recovery: CBOM projection still rebuilds for an earlier scan",
+      "ok": true,
+      "detail": "HTTP 200"
+    }
+  ],
+  "passed": 23,
+  "failed": 0,
+  "verdict": "PASS",
+  "scope": "One host, one API process, one worker. Proves the mechanisms work; proves nothing about capacity, multi-replica fan-out, or behaviour under load. The redis outage is a container pause, not a network partition. Cross-tenant checks exercise header handling against a single-tenant estate, which is weaker than two provisioned tenants with data."
+}

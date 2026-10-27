@@ -12,6 +12,7 @@ from policy.conditions.algorithm_mode_whitelist import AlgorithmModeWhitelistCon
 from policy.conditions.base_condition import BaseCondition
 from policy.conditions.boolean_flag import BooleanFlagCondition
 from policy.conditions.complex_condition import ComplexCondition
+from policy.conditions.key_inventory_attribute import KeyInventoryAttributeCondition
 from policy.conditions.key_size_minimum import KeySizeMinimumCondition
 from policy.conditions.purpose_condition import PurposeCondition
 from policy.conditions.timeline_condition import TimelineCondition
@@ -27,6 +28,7 @@ _CONDITION_REGISTRY: dict[str, type[BaseCondition]] = {
     "COMPLEX": ComplexCondition,
     "TIMELINE": TimelineCondition,
     "PURPOSE_IN_LIST": PurposeCondition,
+    "KEY_INVENTORY_ATTRIBUTE": KeyInventoryAttributeCondition,
 }
 
 

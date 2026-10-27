@@ -12,10 +12,14 @@ scan records.
 
 from __future__ import annotations
 
+import logging
+import os
 import xml.etree.ElementTree as ET
-from typing import Any, Callable
+from typing import Any
 
 from network_scanner.enterprise.credentials import CredentialRef, scrub_secrets
+
+logger = logging.getLogger(__name__)
 
 CRYPTO_FILTERS = ("crypto", "ipsec", "ike", "ssh", "tls", "certificates", "routing-security")
 
@@ -134,15 +138,40 @@ class RestconfScanner:
 
 
 class _HttpxRestconfClient:
-    def __init__(self, base_url: str) -> None:
+    """RESTCONF over HTTPS.
+
+    TLS is verified by default. RESTCONF carries device credentials and returns
+    key material, so an unverified session is trivially interceptable. Estates
+    whose devices still present self-signed certificates can opt out with
+    ``CRYPTOSCAN_RESTCONF_INSECURE=true``, or -- preferably -- point
+    ``CRYPTOSCAN_RESTCONF_CA_BUNDLE`` at the internal CA.
+    """
+
+    def __init__(self, base_url: str, *, verify: bool | str | None = None) -> None:
         self.base_url = base_url
+        if verify is None:
+            ca_bundle = os.environ.get("CRYPTOSCAN_RESTCONF_CA_BUNDLE", "").strip()
+            insecure = os.environ.get("CRYPTOSCAN_RESTCONF_INSECURE", "").strip().lower() in (
+                "1", "true", "yes",
+            )
+            if ca_bundle:
+                verify = ca_bundle
+            elif insecure:
+                logger.warning(
+                    "RESTCONF TLS verification disabled by CRYPTOSCAN_RESTCONF_INSECURE; "
+                    "device credentials are exposed to interception"
+                )
+                verify = False
+            else:
+                verify = True
+        self.verify = verify
 
     def get(self, url: str) -> dict[str, Any]:
         try:
             import httpx  # type: ignore
         except ImportError as exc:
             raise ConfigProtocolError("httpx not installed") from exc
-        response = httpx.get(url, verify=False, timeout=5.0)
+        response = httpx.get(url, verify=self.verify, timeout=5.0)
         try:
             payload = response.json()
         except Exception:

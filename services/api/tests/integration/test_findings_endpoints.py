@@ -54,10 +54,12 @@ class TestFindingEndpoints:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_get_finding_includes_raw(
+    async def test_get_finding_projects_legacy_source_without_raw_text(
         self, authenticated_client: AsyncClient, mock_evidence_repo: MagicMock
     ):
         mock_evidence_repo.get_by_id = MagicMock(return_value=_finding())
         response = await authenticated_client.get("/api/v1/findings/ev-1")
         assert response.status_code == 200
-        assert response.json()["finding_data"]["source"]["code_snippet"]
+        assert response.json()["finding_data"]["source"] == {}
+        assert response.json()["redacted_projection"] is True
+        assert response.json()["content_hash"] == "ab" * 32

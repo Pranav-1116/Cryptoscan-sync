@@ -1,0 +1,120 @@
+[
+ {
+  "id": "ob01",
+  "input": {
+   "language": "python",
+   "text": "import hashlib\nh = hashlib . sha256 ( data )"
+  },
+  "expected": {
+   "algorithms": [
+    "SHA-256"
+   ],
+   "libraries": [
+    "hashlib"
+   ]
+  }
+ },
+ {
+  "id": "ob02",
+  "input": {
+   "language": "python",
+   "text": "import base64\nh = base64.b64encode(hashlib.sha256(data).digest())"
+  },
+  "expected": {
+   "algorithms": [
+    "SHA-256"
+   ],
+   "libraries": [
+    "hashlib"
+   ]
+  }
+ },
+ {
+  "id": "ob03",
+  "input": {
+   "language": "java",
+   "text": "MessageDigest.getInstance(\"SHA-256\") // comment with AES\nCipher.getInstance(\"AES/GCM/NoPadding\")"
+  },
+  "expected": {
+   "algorithms": [
+    "SHA-256",
+    "AES-GCM"
+   ],
+   "libraries": [
+    "JCA-JCE"
+   ]
+  }
+ },
+ {
+  "id": "ob04",
+  "input": {
+   "language": "python",
+   "text": "def sha256(x):\n    return custom_impl(x)  # custom function named sha256 - NOT auto-classified"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "ob05",
+  "input": {
+   "language": "go",
+   "text": "import (\n    \"crypto/sha256\"\n)\nh := sha256.Sum256([]byte(\"x\"))"
+  },
+  "expected": {
+   "algorithms": [
+    "SHA-256"
+   ],
+   "libraries": [
+    "Go crypto/*"
+   ]
+  }
+ },
+ {
+  "id": "ob06",
+  "input": {
+   "language": "javascript",
+   "text": "crypto.createCipheriv('aes-256-gcm', key, iv);\ncrypto.createHash('sha256').update(d);"
+  },
+  "expected": {
+   "algorithms": [
+    "AES-GCM",
+    "SHA-256"
+   ],
+   "libraries": [
+    "Node crypto"
+   ]
+  }
+ },
+ {
+  "id": "ob07",
+  "input": {
+   "language": "typescript",
+   "text": "crypto . createHash ( 'sha256' )"
+  },
+  "expected": {
+   "algorithms": [
+    "SHA-256"
+   ],
+   "libraries": [
+    "Node crypto"
+   ]
+  }
+ },
+ {
+  "id": "ob08",
+  "input": {
+   "language": "kotlin",
+   "text": "MessageDigest . getInstance ( \"SHA-256\" )"
+  },
+  "expected": {
+   "algorithms": [
+    "SHA-256"
+   ],
+   "libraries": [
+    "JCA-JCE"
+   ]
+  }
+ }
+]

@@ -10,7 +10,7 @@ contract; the registry tracks them by hardware category.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from universal_vendor.hardware.models import (
     HardwareConfidence,
@@ -155,13 +155,21 @@ class UniversalHardwarePlugin(ABC):
         """patterns: (regex, manufacturer, model). Highest-weight match wins."""
         import re
 
+        import json
+
         haystacks: list[str] = []
         for field in ("banner", "ssh_banner", "server_header", "config",
-                      "snmp_sysdescr", "dmi", "api_metadata"):
+                      "snmp_sysdescr", "dmi", "api_metadata", "manufacturer",
+                      "model", "device_type"):
             value = context.get(field)
             if isinstance(value, str) and value.strip():
                 haystacks.append(value)
-        joined = "\n".join(haystacks)
+            elif isinstance(value, (dict, list, tuple)) and value:
+                # Structured DMI/API evidence is as authoritative for vendor
+                # matching as a banner. Serialize only for matching; the raw
+                # context is never copied into a plugin detection result.
+                haystacks.append(json.dumps(value, sort_keys=True, default=str))
+        joined = " ".join(haystacks)
         for regex, manufacturer, model in patterns:
             if re.search(regex, joined, re.IGNORECASE):
                 return {"detected": True, "manufacturer": manufacturer,

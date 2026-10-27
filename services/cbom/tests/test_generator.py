@@ -40,7 +40,7 @@ def test_cbom_json_and_xml_and_signature():
     assert base64.urlsafe_b64decode(pad(s64)) == expected_sig
     # Legacy hex signatures still verify
     unsigned = {k: v for k, v in signed.items() if k != "metadata"}
-    legacy = _json.dumps(unsigned, sort_keys=True, separators=(",", ":"))
+    _legacy = _json.dumps(unsigned, sort_keys=True, separators=(",", ":"))
     # tampering breaks verification
     tampered = _json.loads(_json.dumps(signed))
     tampered["components"][0]["name"] = "evil"
@@ -48,3 +48,47 @@ def test_cbom_json_and_xml_and_signature():
     evidence = bom["components"][0]["evidence"]
     assert evidence["identity"][0]["field"] == "bom-ref"
     assert evidence["occurrences"][0]["location"] == "a.py"
+
+
+# --------------------------------------------------------------------------- #
+# Report 08 P1#6 — evidence confidence propagates to the CBOM component
+# --------------------------------------------------------------------------- #
+
+def _record(confidence):
+    return {
+        "id": "e1",
+        "algorithm": "RSA",
+        "key_size": 2048,
+        "file_path": "a.py",
+        "line_number": 3,
+        "confidence": confidence,
+        "normalized_crypto": {"standard_name": "RSA-2048", "algorithm_family": "pke"},
+    }
+
+
+def test_recorded_confidence_propagates_to_evidence_method():
+    generator = CbomGenerator()
+    bom = generator.from_records(
+        [_record("LOW"), _record("MEDIUM"), _record("HIGH")], name="conf", version="1"
+    )
+    confidences = sorted(
+        c["evidence"]["identity"][0]["methods"][0]["confidence"]
+        for c in bom["components"]
+    )
+    assert confidences == [0.3, 0.6, 0.9]
+
+
+def test_unrecorded_confidence_keeps_default_not_fabricated():
+    generator = CbomGenerator()
+    bom = generator.from_records([_record(None)], name="conf", version="1")
+    method = bom["components"][0]["evidence"]["identity"][0]["methods"][0]
+    assert method["confidence"] == 0.9
+    props = {p["name"]: p["value"] for p in bom["components"][0].get("properties") or []}
+    assert "cryptoscan:confidence" not in props  # nothing was recorded
+
+
+def test_confidence_surface_as_component_property():
+    generator = CbomGenerator()
+    bom = generator.from_records([_record("LOW")], name="conf", version="1")
+    props = {p["name"]: p["value"] for p in bom["components"][0]["properties"]}
+    assert props["cryptoscan:confidence"] == "LOW"

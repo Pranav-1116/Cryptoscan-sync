@@ -22,6 +22,8 @@ IDENTITY_PROPERTY = {
     "Certificate": "cert_id",
     "CloudResource": "resource_id",
     "Vendor": "vendor_id",
+    "NetworkResource": "network_id",
+    "ContainerImage": "container_id",
 }
 
 KIND_PREFIX = {
@@ -33,4 +35,6 @@ KIND_PREFIX = {
     "Certificate": "cert",
     "CloudResource": "cloud",
     "Vendor": "vendor",
+    "NetworkResource": "network",
+    "ContainerImage": "container",
 }

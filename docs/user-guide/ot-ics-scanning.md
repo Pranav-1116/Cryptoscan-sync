@@ -15,5 +15,5 @@ Supported observations:
 and `POST /api/v1/ot/scan` both report `packets_sent: 0`.
 
 ```bash
-python scripts/run_ot_scan.py demo/ot-lab
+python scripts/run_ot_scan.py /path/to/authorized-ot-capture
 ```

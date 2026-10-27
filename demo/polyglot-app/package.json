@@ -1,9 +1,0 @@
-{
-  "name": "polyglot-app",
-  "version": "0.1.0",
-  "dependencies": {
-    "jsonwebtoken": "9.0.2",
-    "bcrypt": "5.1.1",
-    "crypto-js": "4.1.1"
-  }
-}

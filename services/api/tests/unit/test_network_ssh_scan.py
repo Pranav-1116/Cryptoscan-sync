@@ -9,6 +9,26 @@ from api.dependencies import get_current_user
 from api.main import create_app
 
 
+@pytest.fixture(autouse=True)
+def receipt_database():
+    # Wire the now-durable findings endpoint to real isolated SQL. Auth/estate
+    # resolution remains separately pinned by this wire-shape test module.
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+    from db.connection.session import Base, SessionLocal, configure_session
+    import db.models  # noqa: F401 — register receipt models
+
+    previous = SessionLocal.kw.get("bind")
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    configure_session(engine)
+    try:
+        yield
+    finally:
+        SessionLocal.configure(bind=previous)
+        engine.dispose()
+
+
 def _fake_finding(endpoint, status="OK", issues=None, observed=None):
     return {
         "endpoint": endpoint,
@@ -22,9 +42,16 @@ def _fake_finding(endpoint, status="OK", issues=None, observed=None):
 
 @pytest.mark.asyncio
 async def test_ssh_scan_endpoint(monkeypatch):
+    import api.security.scan_admission as admission
     import network_scanner.probing.ssh_keyscan as ssh_module
 
     calls = []
+
+    # this test exercises the SSH findings contract, not admission: pin the
+    # decision (no emergency stop, no OT estate, active probing allowed)
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
     def fake_scan(host, port, *, timeout=8.0, baseline=None):
         endpoint = f"{host}:{port}"
@@ -42,6 +69,11 @@ async def test_ssh_scan_endpoint(monkeypatch):
     # module attribute is sufficient
 
     app = create_app()
+    # These tests exercise wire finding projection with admission DB seams
+    # pinned above. Actual selected-estate authority is covered separately.
+    from api.security.network_collection import network_context
+
+    app.dependency_overrides[network_context] = lambda: None
     app.dependency_overrides[get_current_user] = lambda: "testuser"
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -71,6 +103,11 @@ async def test_ssh_scan_endpoint(monkeypatch):
 @pytest.mark.asyncio
 async def test_ssh_scan_requires_hosts():
     app = create_app()
+    # These tests exercise wire finding projection with admission DB seams
+    # pinned above. Actual selected-estate authority is covered separately.
+    from api.security.network_collection import network_context
+
+    app.dependency_overrides[network_context] = lambda: None
     app.dependency_overrides[get_current_user] = lambda: "testuser"
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -80,8 +117,13 @@ async def test_ssh_scan_requires_hosts():
 
 @pytest.mark.asyncio
 async def test_ssh_scan_includes_kex_offer(monkeypatch):
+    import api.security.scan_admission as admission
     import network_scanner.probing.ssh_kex as kex_module
     import network_scanner.probing.ssh_keyscan as ssh_module
+
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
     def fake_keyscan(host, port, *, timeout=8.0, baseline=None):
         return _fake_finding(f"{host}:{port}")
@@ -103,6 +145,11 @@ async def test_ssh_scan_includes_kex_offer(monkeypatch):
     monkeypatch.setattr(kex_module, "probe_ssh_kex_offer", fake_kex)
 
     app = create_app()
+    # These tests exercise wire finding projection with admission DB seams
+    # pinned above. Actual selected-estate authority is covered separately.
+    from api.security.network_collection import network_context
+
+    app.dependency_overrides[network_context] = lambda: None
     app.dependency_overrides[get_current_user] = lambda: "testuser"
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

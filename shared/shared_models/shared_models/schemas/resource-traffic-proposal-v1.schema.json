@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "capture_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Capture Id",
+      "type": "string"
+    },
+    "interface": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,14}$",
+      "title": "Interface",
+      "type": "string"
+    },
+    "egress_limit_mbps": {
+      "maximum": 100000,
+      "minimum": 1,
+      "title": "Egress Limit Mbps",
+      "type": "integer"
+    },
+    "reason": {
+      "maxLength": 500,
+      "minLength": 20,
+      "title": "Reason",
+      "type": "string"
+    },
+    "direction": {
+      "const": "EGRESS",
+      "default": "EGRESS",
+      "title": "Direction",
+      "type": "string"
+    }
+  },
+  "required": [
+    "capture_id",
+    "interface",
+    "egress_limit_mbps",
+    "reason"
+  ],
+  "title": "TrafficProposal",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

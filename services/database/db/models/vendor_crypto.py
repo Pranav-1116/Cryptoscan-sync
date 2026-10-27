@@ -9,9 +9,10 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class VendorCryptoInventory(BaseModel):
+class VendorCryptoInventory(BaseModel, TenantScoped):
     __tablename__ = "vendor_crypto_inventory"
 
     vendor_id: Mapped[str] = mapped_column(

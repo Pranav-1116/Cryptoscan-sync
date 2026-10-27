@@ -1,0 +1,43 @@
+{
+  "schema_version": "cryptoscan.engineering-integrity-manifest/v1",
+  "date": "2026-10-25",
+  "baseline_commit": "d929d4cb76bf3476efd137ca1b63e9a2706c3b40",
+  "sources": {
+    "docs/api-reference/collection-surface-coverage.md": "a85773e54c57c4efa2a3abd05a04fe7eb48914de5f15c80cb59f1af0cc5fc789",
+    "docs/bank-environment/62-universal-collection-foundation.md": "faf1ed8667baac5e31831c0e98290d8de00dc321670bdd7eed93815272cc36a5",
+    "docs/bank-environment/69-phasewise-universal-collection-build.md": "d9b48b18e342a6af308de9777fb1ae734907d8b44614c9ad61651d0affda22d3",
+    "docs/bank-environment/README.md": "bce97a22907a755c716f636fa3af01fafcb40e8953a935219cc8f844da79a876",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25.md": "504ac328482fef21ad41bab8b1381ac52a13e1e20ee4db699cad24af7cda166d",
+    "frontend/src/components/CollectionCoveragePanel.test.tsx": "63a169f46b8497de9e52982a48a1e513028b985787f5ade7564962cd5aa0515c",
+    "frontend/src/components/CollectionCoveragePanel.tsx": "e7ba54036febdfec0bc5665617b855da79dab3b113b7e8d667ca2ac65a42c2b3",
+    "frontend/src/components/HostEvidencePanel.tsx": "5c6a99dd597ea135cc5357f5bbaf6927a37b21e4f82e45555464ec48bd26ff00",
+    "scripts/validate_host_evidence.py": "6aa2d2db6e55cc90857e4287eac9cb1c809f58c7414056a93087588c8c225b03",
+    "services/api/api/assurance/collection.py": "bbb7147e19a41979e02844aa5bcb9164fd2b97c6312fdd55fffbdbe675866703",
+    "services/api/api/routers/collection.py": "d614110ccf9a1cdf3042cab03e5cb8941d6e65f6a171bd0aa98cb0916dc2ea71",
+    "services/api/tests/unit/test_collection_surface_coverage.py": "b7efd8adeefe10092c2446aa6ab2ecc989c92082e81452958097e59a40d03ed0",
+    "services/api/tests/unit/test_collection_surface_coverage_postgres.py": "62db70c84e7d395c711a8db870ebf1fae56070b1464b5f52b15bd1d92a9b7bab",
+    "shared/shared_models/shared_models/collection_coverage.py": "fb2184e10158c061a5ae3ab81619aee87549da3a649f86b503db7399e35169c1",
+    "shared/shared_models/tests/test_surface_coverage_contract.py": "54fb3e64c0a5e0239da5b5459a5f046d53df5e51ea96c0a214d15e9e03c93a1f"
+  },
+  "artifacts": {
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/build.txt": "a65383f5b793d8a7db277566f74a6ea2653b442c5c511aedb44de3f72c7f2c98",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/final-contracts.txt": "020f38152f4be5cc5027fd8151efd8de4d3f95517f02f53edfd581b386a10aa8",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/final-contracts.xml": "1405f14ed12ce65be7f9dfa59f3f4ec5b8f2286a2a1d70512cb2d12dbdd2e7da",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/final-postgres.txt": "e9e2b2ebd33cdc1d6e149ebb8870cbf259b465603018f0092d500e7250df4110",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/final-postgres.xml": "e40b9c8e19a8930c77113c1438ddf195d8b98a759b4c526c8ad3758ca1e07307",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/foundation.txt": "a24cc13de8e558d68b6b4fb9c99b27b2ce253238ddaf2bca2e9bcbd22827bce0",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/foundation.xml": "b8bef3dbbf71d0210ff66a738f791e5fe43560b4ca5069807d94074f94432e83",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/frontend.txt": "91c306432ad5cc48bb07b9e585e234c5eda54133e08ca2a8361b571322dc4ffc",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/frontend.xml": "aaa03dcbeb67cf66d048ac51c1ac3b2d10b7f097004946370689a48f148ce418",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/full-frontend.txt": "023ebe190b57a61ac11d2da466f38cb47e2a1a0ec2f352fb953c2d5d1550d9c9",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/full-frontend.xml": "cb5c0066163c854be07943d4f413e3ff6437977f829680406c7d6880ccb41b67",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/pip-check.txt": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/postgres.txt": "c79c5028a9a9f7cf52aab4c7817cd01cea3abddb761d843a2122fe0fa940bfc3",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/postgres.xml": "aa178e078fd0fda9f70d894cf8c182fc2c4b4ea89dcd15af942f4a2ec96d8adc",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/ruff.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/schemas.txt": "983c119aa4f4f95f557e2130f4a9fcc1a64249b530774a963c522536e7f7b028",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/typecheck.txt": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f",
+    "docs/readiness-evidence/phasewise-foundation-2026-10-25/validation.json": "1cfb42ef02f604dbbde74d975598167495e5000f2548e8e527608002eb60a2f9"
+  },
+  "limitations": "Integrity/provenance only. Not source authenticity, measured execution, host/hardware origin, bank acceptance or completion of all phases. Validation runs overlap."
+}

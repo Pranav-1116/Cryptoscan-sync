@@ -1,0 +1,51 @@
+........................................................................ [  4%]
+.......................................s................................ [  8%]
+........................................................................ [ 12%]
+........s.........................................................s..... [ 17%]
+.........s.s............................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 29%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 42%]
+........................................................................ [ 46%]
+........................................................................ [ 51%]
+........................................................................ [ 55%]
+........................................................................ [ 59%]
+........................................................................ [ 63%]
+........................................................................ [ 68%]
+........................................................................ [ 72%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 85%]
+........................................................................ [ 89%]
+........................................................................ [ 93%]
+........................................................................ [ 97%]
+..................................                                       [100%]
+=============================== warnings summary ===============================
+services/api/api/routers/auth.py:87
+  /home/user/CryproScan/services/api/api/routers/auth.py:87: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class UserResponse(BaseModel):
+
+services/api/api/routers/network.py:326
+  /home/user/CryproScan/services/api/api/routers/network.py:326: UserWarning: Field name "register" in "SubnetDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class SubnetDiscoverRequest(BaseModel):
+
+services/api/api/routers/cloud.py:40
+  /home/user/CryproScan/services/api/api/routers/cloud.py:40: UserWarning: Field name "register" in "CloudOrgDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class CloudOrgDiscoverRequest(BaseModel):
+
+services/evidence/evidence/models/evidence_record.py:9
+  /home/user/CryproScan/services/evidence/evidence/models/evidence_record.py:9: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class EvidenceRecord(BaseModel):
+
+services/evidence/evidence/models/scan_manifest.py:9
+  /home/user/CryproScan/services/evidence/evidence/models/scan_manifest.py:9: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class ScanManifest(BaseModel):
+
+../qualify-venv/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /home/user/qualify-venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1685 passed, 5 skipped, 6 warnings in 318.97s (0:05:18)

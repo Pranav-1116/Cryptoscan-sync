@@ -16,9 +16,28 @@ import json
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def _looks_encrypted(path: Path) -> bool:
+    """Sniff the CSBC1 magic header (a .enc file may have been renamed)."""
+    try:
+        with path.open("rb") as fh:
+            return fh.read(5) == b"CSBC1"
+    except OSError:
+        return False
+
+
+def _cleanup_decrypted(path: Path | None) -> None:
+    """Remove the decrypted plaintext so it never outlives the restore."""
+    if path is not None:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def sha256_file(path: Path) -> str:
@@ -37,19 +56,52 @@ def main() -> int:
     parser.add_argument("--db", default=None, help="target DATABASE_URL (default: current env or sqlite default)")
     parser.add_argument("--force", action="store_true", help="skip manifest check when manifest is missing")
     args = parser.parse_args()
+    # Never decrypt beside the backup: a renamed encrypted object can alias
+    # an existing file. Private staging is removed on every exit/exception.
+    with tempfile.TemporaryDirectory(prefix="cryptoscan-restore-") as directory:
+        return _restore(args, Path(directory))
 
+
+def _restore(args, private_staging):
     backup = Path(args.backup)
     if not backup.exists():
         raise SystemExit(f"backup not found: {backup}")
 
-    manifest_path = backup.with_suffix(backup.suffix + ".manifest.json")
+    manifest_source = backup  # manifest lives beside the ORIGINAL file name
+    decrypted_cleanup: Path | None = None
+    # Encrypted backups (AES-256-GCM, see scripts/backup_crypto.py) are
+    # decrypted BEFORE the manifest sha256 check: the manifest carries the
+    # PLAINTEXT digest, and the GCM tag already guarantees the ciphertext
+    # was not tampered with.
+    if backup.suffix == ".enc" or _looks_encrypted(backup):
+        import sys
+
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import backup_crypto
+
+        key = backup_crypto.load_key()
+        decrypted = private_staging / "decrypted-backup"
+        try:
+            backup_crypto.decrypt_file(backup, decrypted, key)
+        except Exception as exc:
+            raise SystemExit(
+                f"DECRYPTION FAILED: {type(exc).__name__} — wrong key or corrupted backup; "
+                "nothing was restored"
+            ) from exc
+        print(f"decrypted: {backup.name} -> {decrypted.name} (AES-256-GCM ok)")
+        decrypted_cleanup = decrypted  # plaintext must not outlive the restore
+        backup = decrypted
+
+    manifest_path = manifest_source.with_suffix(manifest_source.suffix + ".manifest.json")
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text())
         actual = sha256_file(backup)
         if actual != manifest.get("sha256"):
+            _cleanup_decrypted(decrypted_cleanup)
             raise SystemExit(f"INTEGRITY FAILURE: sha256 mismatch — backup corrupted\n  expected {manifest.get('sha256')}\n  actual   {actual}")
         print(f"manifest ok (sha256 {actual[:16]}…)")
     elif not args.force:
+        _cleanup_decrypted(decrypted_cleanup)
         raise SystemExit("manifest missing — rerun with --force to restore anyway")
 
     database_url = args.db
@@ -69,6 +121,7 @@ def main() -> int:
         try:
             tables = conn.execute("SELECT count(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
             if tables < 5:
+                _cleanup_decrypted(decrypted_cleanup)
                 raise SystemExit(f"restore aborted: backup has only {tables} tables — wrong file?")
         finally:
             conn.close()
@@ -77,15 +130,18 @@ def main() -> int:
             shutil.copy2(target, rotated)
             print(f"existing db rotated to {rotated}")
         staging.replace(target)
+        _cleanup_decrypted(decrypted_cleanup)
         print(f"restored SQLite database -> {target}")
         print("restart the API and worker, then run scripts/verify_evidence.py on critical scans")
         return 0
 
     # Postgres path
-    cmd = ["psql", "--single-transaction", "--file", str(backup), database_url]
+    cmd = ["psql", "--no-psqlrc", "--set=ON_ERROR_STOP=1", "--single-transaction", "--file", str(backup), database_url]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
+        _cleanup_decrypted(decrypted_cleanup)
         raise SystemExit(f"psql restore failed: {proc.stderr[:500]}")
+    _cleanup_decrypted(decrypted_cleanup)
     print("restored Postgres database (verify with a migration check: alembic current)")
     return 0
 

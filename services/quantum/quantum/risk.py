@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timezone
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 PKE = {"RSA", "DSA", "DH", "ECDH", "ECDSA", "ED25519", "X25519", "TLS", "TLS1.0", "TLS1.1", "TLS1.2", "TLS1.3"}
 BROKEN = {"DES", "3DES", "RC4", "MD5", "SHA-1", "SHA1", "SSLV3", "TLS1.0", "TLS1.1"}
@@ -21,14 +27,33 @@ PQC_REPLACEMENTS = {
 }
 
 QUANTUM_THREAT_YEAR = 2030
-CALC_VERSION = "quantum-risk-v2.0"
+CALC_VERSION = "quantum-risk-v2.1"
 
 
 def _algo(algorithm: str | None) -> str:
     return (algorithm or "UNKNOWN").upper().replace("_", "-")
 
 
+def _unknown_quantum() -> dict[str, Any]:
+    return {
+        "vulnerable": None,
+        "category": "unknown",
+        "estimated_break_year": None,
+        "harvest_now_decrypt_later_risk": "UNKNOWN",
+        "notes": "Insufficient algorithm identity for a quantum call.",
+        "threat_type": "UNKNOWN",
+        "base_vulnerability": 75,
+        "recommended_replacement": None,
+        "hybrid_mode_recommended": False,
+    }
+
+
 def classify(algorithm: str | None, *, key_size: int | None = None, purpose: str | None = None) -> dict[str, Any]:
+    from shared_models.quantum_classify import quantum_verdict
+
+    parsed = quantum_verdict(algorithm)
+    if not parsed["recognized"] or (parsed["family"].endswith("-pqc") and parsed["status"] != "ALLOWED"):
+        return _unknown_quantum()
     algo = _algo(algorithm)
     if algo in {"AES-128", "AES128"} or (algo == "AES" and key_size and int(key_size) <= 128):
         return {
@@ -66,13 +91,14 @@ def classify(algorithm: str | None, *, key_size: int | None = None, purpose: str
             "recommended_replacement": "AES-256-GCM" if "AES" not in algo else "AES-256",
             "hybrid_mode_recommended": False,
         }
-    if algo in PQC or any(algo.startswith(token) for token in ("ML-KEM", "ML-DSA", "SLH-DSA")):
+    if parsed["family"].endswith("-pqc") and parsed["status"] == "ALLOWED":
         return {
             "vulnerable": False,
             "category": "pqc",
             "estimated_break_year": None,
             "harvest_now_decrypt_later_risk": "LOW",
-            "notes": "NIST PQC primitive.",
+            "notes": "Registry-recognized PQC algorithm candidate; implementation and negotiation unverified.",
+            "deployment_ready": False,
             "threat_type": "PQC_RESISTANT",
             "base_vulnerability": 0,
             "recommended_replacement": None,
@@ -104,17 +130,7 @@ def classify(algorithm: str | None, *, key_size: int | None = None, purpose: str
             "recommended_replacement": "SHA-384",
             "hybrid_mode_recommended": False,
         }
-    return {
-        "vulnerable": False,
-        "category": "unknown",
-        "estimated_break_year": None,
-        "harvest_now_decrypt_later_risk": "UNKNOWN",
-        "notes": "Insufficient algorithm identity for a quantum call.",
-        "threat_type": "UNKNOWN",
-        "base_vulnerability": 75,
-        "recommended_replacement": None,
-        "hybrid_mode_recommended": False,
-    }
+    return _unknown_quantum()
 
 
 def recommended_replacement(algorithm: str | None, *, purpose: str | None = None) -> dict[str, Any]:
@@ -145,6 +161,12 @@ def hndl_risk(
     classifications: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     info = classify(algorithm, purpose=purpose)
+    if str(purpose or "").strip().upper() in {"SIGNATURE", "SIGNING", "VERIFY", "VERIFICATION"}:
+        return {"hndl_risk": "NONE", "score_multiplier": 1.0,
+            "reason": "Signature-only use concerns authenticity, not harvested ciphertext; assess signing migration separately."}
+    if info["threat_type"] == "UNKNOWN" or (info["threat_type"] in {"SHOR_VULNERABLE", "CLASSICALLY_BROKEN"} and retention_years is None):
+        return {"hndl_risk": "UNKNOWN", "score_multiplier": 1.0,
+            "reason": "Algorithm or confidentiality retention is unknown; no absence-of-risk conclusion."}
     if info["threat_type"] not in {"SHOR_VULNERABLE", "CLASSICALLY_BROKEN"}:
         return {"hndl_risk": "NONE", "score_multiplier": 1.0, "reason": "Not asymmetric harvestable ciphertext."}
     years = int(retention_years or 0)
@@ -174,16 +196,10 @@ def migration_deadline(
 ) -> dict[str, Any]:
     today = today or datetime.now(timezone.utc).date()
     deadlines: list[tuple[str, date]] = [("quantum_threat", date(QUANTUM_THREAT_YEAR, 1, 1))]
-    for scope in scopes or []:
-        token = str(scope).upper()
-        if "DORA" in token:
-            deadlines.append(("regulatory:DORA", date(2025, 1, 17)))
-        if "CNSA" in token or "NSA" in token:
-            deadlines.append(("regulatory:NSA-CNSA-2.0", date(2033, 1, 1)))
-        if "PCI" in token:
-            deadlines.append(("regulatory:PCI-DSS", date(2025, 4, 1)))
+    # Framework effective dates are not algorithm-specific PQC retirement
+    # mandates. Applicability needs a current, independently reviewed policy.
     if (retention_years or 0) >= 10:
-        deadlines.append(("hndl", date(today.year + 2, today.month, today.day)))
+        deadlines.append(("hndl", date(today.year + 2, today.month, min(today.day, 28))))
     else:
         deadlines.append(("hndl", date(today.year + 5, today.month, min(today.day, 28))))
     label, when = min(deadlines, key=lambda item: item[1])
@@ -198,6 +214,9 @@ def migration_deadline(
         urgency = "3-5 YEARS"
     return {
         "deadline_date": when.isoformat(),
+        "deadline_basis": "ENGINEERING_PLANNING_ASSUMPTION",
+        "regulatory_deadline_established": False,
+        "scopes_requiring_applicability_review": list(scopes or []),
         "days_remaining": days,
         "urgency": urgency,
         "reason": label,
@@ -210,6 +229,7 @@ def score_asset(
     *,
     system: Mapping[str, Any] | None = None,
     today: date | None = None,
+    sector_criticality_weight: float | None = None,
 ) -> dict[str, Any]:
     system = system or {}
     extra = system.get("extra") or {}
@@ -227,7 +247,7 @@ def score_asset(
     hndl = hndl_risk(
         algorithm=algo,
         purpose=purpose,
-        retention_years=int(retention or 0),
+        retention_years=int(retention) if retention is not None else None,
         public_network=public,
         regulated=regulated,
         classifications=classes,
@@ -248,7 +268,11 @@ def score_asset(
     else:
         timeline = 1.0
     tier = str(system.get("criticality") or extra.get("criticality_tier") or extra.get("criticality") or "").upper()
-    crit = 1.5 if "1" in tier or tier in {"CRITICAL", "TIER-1"} else 1.2 if "2" in tier or tier == "HIGH" else 1.0
+    crit = 1.5 if "1" in tier or tier in {"CRITICAL", "MISSION_CRITICAL", "TIER-1", "VERY_HIGH"} else 1.2 if "2" in tier or tier in {"HIGH"} else 1.0
+    # Sector layer can supply a finer, deterministic weight (0.7..1.5) derived
+    # from the sector profile + asset signals; it overrides the coarse tier.
+    if sector_criticality_weight is not None:
+        crit = max(0.5, min(1.5, float(sector_criticality_weight)))
     score = min(
         100,
         int(
@@ -281,6 +305,8 @@ def score_asset(
         "hndl_risk": hndl.get("hndl_risk"),
         "data_sensitivity": "HIGH" if sensitivity >= 1.5 else "MEDIUM" if sensitivity > 1 else "LOW",
         "migration_deadline": deadline["deadline_date"],
+        "migration_deadline_basis": deadline["deadline_basis"],
+        "regulatory_deadline_established": False,
         "days_until_deadline": deadline["days_remaining"],
         "urgency": deadline["urgency"] if info.get("vulnerable") else urgency,
         "recommended_replacement": rec.get("algorithm") or info.get("recommended_replacement"),
@@ -291,11 +317,48 @@ def score_asset(
     return payload
 
 
+def _sector_weight(sector: str | None, finding: Mapping[str, Any], system: Mapping[str, Any] | None) -> float | None:
+    """Derive a deterministic criticality weight from the sector profile.
+
+    Soft-imports sector_profiles (a sibling service); returns None if the
+    package is unavailable so quantum scoring still works standalone.
+    """
+    if not sector:
+        return None
+    try:
+        from sector_profiles import get_profile, risk_weight, score_criticality
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
+        return None
+    system = system or {}
+    extra = system.get("extra") or {}
+    asset_type = (
+        finding.get("asset_type")
+        or system.get("asset_type")
+        or system.get("name")
+        or "system"
+    )
+    signals = {
+        "environment": system.get("environment") or extra.get("environment") or "production",
+        "payment_path": bool(extra.get("payment_path")),
+        "safety_critical": bool(extra.get("safety_critical")),
+        "handles_pii": bool(extra.get("handles_pii")),
+        "internet_exposed": bool(extra.get("network_type") in {"PUBLIC_INTERNET", "INTERNET", "PUBLIC"}),
+        "downstream_count": int(extra.get("downstream_count", 0) or 0),
+    }
+    tier = score_criticality(get_profile(sector), str(asset_type), **signals)
+    return risk_weight(tier)
+
+
 def analyze_quantum_risk(
     findings: Iterable[dict[str, Any]],
     *,
     systems: Iterable[Mapping[str, Any]] | None = None,
     today: date | None = None,
+    sector: str | None = None,
 ) -> dict[str, Any]:
     system_by_id = {str(row.get("id") or ""): row for row in (systems or [])}
     rows = []
@@ -303,8 +366,9 @@ def analyze_quantum_risk(
     pqc = 0
     for finding in findings:
         system = system_by_id.get(str(finding.get("system_id") or "")) or finding.get("system")
-        info = score_asset(finding, system=system, today=today)
-        hndl_level = info.get("harvest_now_decrypt_later_risk") or info.get("hndl_risk") or "UNKNOWN"
+        weight = _sector_weight(sector, finding, system)
+        info = score_asset(finding, system=system, today=today, sector_criticality_weight=weight)
+        hndl_level = info.get("hndl_risk") or "UNKNOWN"
         counts[hndl_level] = counts.get(hndl_level, 0) + 1
         if info.get("threat_type") == "PQC_RESISTANT":
             pqc += 1
@@ -324,15 +388,25 @@ def analyze_quantum_risk(
         if counts.get("HIGH")
         else "MEDIUM"
         if counts.get("MEDIUM")
+        else "UNKNOWN"
+        if counts.get("UNKNOWN") or not rows
+        else "NONE"
+        if counts.get("NONE") == len(rows)
         else "LOW"
     )
     vulnerable = sum(1 for row in rows if row.get("vulnerable"))
     return {
         "overall_hndl_risk": hndl,
         "vulnerable_count": vulnerable,
-        "pqc_ready_count": pqc,
+        "pqc_ready_count": 0,
+        "pqc_candidate_count": pqc,
+        "deployment_readiness": "NOT_ESTABLISHED",
+        "model_assumptions": {"quantum_threat_year": QUANTUM_THREAT_YEAR,
+            "estimated_break_year_basis": "LEGACY_MODEL_ASSUMPTION_NOT_A_FORECAST"},
         "counts": counts,
         "assets": rows,
+        "sector": sector,
+        "sector_weighted": bool(sector),
         "summary": f"{vulnerable} of {len(rows)} sites are quantum-vulnerable. HNDL risk is {hndl}.",
         "calculation_version": CALC_VERSION,
     }

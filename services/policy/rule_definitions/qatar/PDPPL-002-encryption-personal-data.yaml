@@ -1,0 +1,29 @@
+rule_id: "PDPPL-002"
+rule_name: "Qatar PDPPL — approved encryption for personal data"
+version: "1.0"
+effective_date: "2026-09-26"
+severity: "HIGH"
+standard_reference: "Qatar Law No. 13 of 2016, Art. 13 — technical and organisational precautions"
+description: >
+  Encryption applied to personal data in a PDPPL-scoped system must use an
+  approved modern algorithm (AES or ChaCha20 family).
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "PDPPL"
+      - "QA-PDPPL-13-2016"
+    if_purpose:
+      - "ENCRYPTION"
+      - "DECRYPTION"
+    require_algorithms:
+      - "AES"
+      - "CHACHA20"
+      - "CHACHA20-POLY1305"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Personal-data encryption with {algorithm} does not meet PDPPL Art. 13 precautions"
+remediation: >
+  Re-key with AES-256-GCM or ChaCha20-Poly1305 and record the measure in the
+  controller's technical-precautions file.
+enabled: true

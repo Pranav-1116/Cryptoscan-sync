@@ -297,3 +297,21 @@ def test_scanner_evidence_chain_tamper_detection():
                                   scan_id="scan-t")
     assert check["valid"] is False
     assert check["errors"]
+
+
+def test_scanner_carries_plugin_firmware_and_hsm_capability_evidence():
+    from universal_vendor.hardware.plugins import build_registry
+    from universal_vendor.hardware.scanner import UniversalHardwareScanner
+
+    result = UniversalHardwareScanner(plugins=build_registry()).scan({
+        "asset_id": "hsm-1", "manufacturer": "Thales", "model": "Luna",
+        "firmware": "7.10", "supported_algorithms": ["RSA", "AES"],
+        "crypto_capabilities": ["FIPS 140-3"],
+        "partition_metadata": {"partitions": 2},
+    })
+    observation = result["observations"][0]
+    assert observation["device_type"] == "hsm"
+    assert observation["firmware_components"] == {"HSM": "7.10"}
+    assert observation["hsm"]["supported_algorithms"] == ["AES", "RSA"]
+    assert observation["hsm"]["crypto_capabilities"] == ["FIPS 140-3"]
+    assert result["capabilities"][0]["supported_but_unused"] == ["AES", "RSA"]

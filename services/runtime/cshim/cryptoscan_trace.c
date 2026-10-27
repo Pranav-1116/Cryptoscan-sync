@@ -48,7 +48,6 @@ typedef struct ssl_ctx_st SSL_CTX;
 typedef struct ossl_param_st OSSL_PARAM;
 
 /* ---- libcrypto functions we call through dlsym ---- */
-typedef const char *(*fn_get0_name)(const void *);
 typedef int (*fn_ctx_keylen)(const EVP_CIPHER_CTX *);
 typedef int (*fn_ctx_gettype)(const void *);
 
@@ -76,8 +75,14 @@ static void trace_init(void) {
         if (nl) *nl = '\0';
         close(fd);
     }
-    sym_EVP_CIPHER_get0_name = (fn_get0_name)dlsym(RTLD_NEXT, "EVP_CIPHER_get0_name");
-    sym_EVP_MD_get0_name = (fn_get0_name)dlsym(RTLD_NEXT, "EVP_MD_get0_name");
+    /* Cast to each pointer's own declared signature, not to a generic
+       const void* one: GCC 14 promoted -Wincompatible-pointer-types to an
+       error, so a generic-signature cast failed the build outright and
+       ensure_shim() reported it as "no C compiler". */
+    sym_EVP_CIPHER_get0_name =
+        (const char *(*)(const EVP_CIPHER *))dlsym(RTLD_NEXT, "EVP_CIPHER_get0_name");
+    sym_EVP_MD_get0_name =
+        (const char *(*)(const EVP_MD *))dlsym(RTLD_NEXT, "EVP_MD_get0_name");
     sym_EVP_CIPHER_CTX_get_key_length = (fn_ctx_keylen)dlsym(RTLD_NEXT, "EVP_CIPHER_CTX_get_key_length");
 }
 
@@ -113,6 +118,8 @@ int EVP_CipherInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl,
                        const unsigned char *, const unsigned char *, int) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "EVP_CipherInit_ex");
     int rc = real(ctx, type, impl, key, iv, enc);
+    /* Resolve metadata symbols before the first intercepted operation is logged. */
+    if (trace_fd == -1) trace_init();
     const char *name = NULL;
     if (type && sym_EVP_CIPHER_get0_name) name = sym_EVP_CIPHER_get0_name(type);
     long keylen = 0;
@@ -127,6 +134,7 @@ int EVP_CipherInit_ex2(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, const unsign
                        const unsigned char *, int, const OSSL_PARAM *) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "EVP_CipherInit_ex2");
     int rc = real(ctx, type, key, iv, enc, params);
+    if (trace_fd == -1) trace_init();
     const char *name = NULL;
     if (type && sym_EVP_CIPHER_get0_name) name = sym_EVP_CIPHER_get0_name(type);
     long keylen = 0;
@@ -141,6 +149,7 @@ int EVP_DigestInit_ex(EVP_MD_CTX *ctx, const EVP_MD *type, ENGINE *impl) {
     static int (*real)(EVP_MD_CTX *, const EVP_MD *, ENGINE *) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "EVP_DigestInit_ex");
     int rc = real(ctx, type, impl);
+    if (trace_fd == -1) trace_init();
     const char *name = NULL;
     if (type && sym_EVP_MD_get0_name) name = sym_EVP_MD_get0_name(type);
     trace_line("EVP_DigestInit_ex", name, NULL, 0, NULL);
@@ -151,6 +160,7 @@ int EVP_DigestInit_ex2(EVP_MD_CTX *ctx, const EVP_MD *type, const OSSL_PARAM *pa
     static int (*real)(EVP_MD_CTX *, const EVP_MD *, const OSSL_PARAM *) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "EVP_DigestInit_ex2");
     int rc = real(ctx, type, params);
+    if (trace_fd == -1) trace_init();
     const char *name = NULL;
     if (type && sym_EVP_MD_get0_name) name = sym_EVP_MD_get0_name(type);
     trace_line("EVP_DigestInit_ex2", name, NULL, 0, NULL);
@@ -161,7 +171,8 @@ int EVP_DigestInit_ex2(EVP_MD_CTX *ctx, const EVP_MD *type, const OSSL_PARAM *pa
 
 static const char *pkey_name(EVP_PKEY *pkey) {
     static const char *(*sym_name)(const EVP_PKEY *) = NULL;
-    if (!sym_name) sym_name = (fn_get0_name)dlsym(RTLD_NEXT, "EVP_PKEY_get0_type_name");
+    if (!sym_name)
+        sym_name = (const char *(*)(const EVP_PKEY *))dlsym(RTLD_NEXT, "EVP_PKEY_get0_type_name");
     if (!sym_name || !pkey) return NULL;
     return sym_name(pkey);
 }

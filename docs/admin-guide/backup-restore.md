@@ -1,70 +1,94 @@
-# Backup & Restore Runbook (Evidence Database)
+# Backup & Restore Runbook (Evidence Database Helpers)
 
-The evidence database is a **compliance record** — treat it like an audit
-ledger. This runbook covers scheduled backups, integrity manifests, restores,
-and post-restore verification.
+> **2026-10-23 scope correction:** use the
+> [complete backup/disaster-recovery pack](../disaster-recovery/README.md) for the
+> controlled PostgreSQL/TLS-Redis bank profile, architecture, every dataflow,
+> consistent cohorts, isolated restore, UNKNOWN handling, cutover and failback.
+> This page is a limited helper reference, not an implemented full-site plan.
 
-## What to back up
+The evidence database is an audit/compliance record. Preserve original ownership,
+hashes, lifecycle history and tombstones. A successful dump or healthy restored
+API is not proof of complete or currently eligible evidence.
 
-| Asset | Location | Method |
+## What these helpers capture
+
+| Asset | Source-present method | Boundary |
 |---|---|---|
-| Evidence DB (SQLite, dev) | `data/cryptoscan.db` | `scripts/backup_evidence.py` (online, WAL-safe) |
-| Evidence DB (PostgreSQL, prod) | `DATABASE_URL` | `scripts/backup_evidence.py` (pg_dump) |
-| Evidence packs (if exported) | `data/packs/` | copy with the DB backup |
-| Neo4j graph (optional) | compose volume `neo4j_data` | `neo4j-admin database dump` — **rebuildable** from `scripts/populate_graph.py`, so a logical export is enough |
-| `.env` / secrets | deployment host | your secret manager (never in the DB backup) |
+| SQLite database, development | `scripts/backup_evidence.py`, SQLite online backup API | Database image only; no global SQL/file/queue consistency. |
+| PostgreSQL logical data | Same Python helper, plain SQL `pg_dump --no-owner --no-privileges` | Not physical backup/WAL/PITR, cluster-global roles/configuration or external file backup. |
+| Encrypted helper backup | `--encrypt`, CSBC1 AES-GCM/scrypt, companion JSON manifest | Separate key custody required; helper removes plaintext on successful encryption, not guaranteed secure erasure. |
+| Compose PostgreSQL backup | `scripts/db_backup.sh`, custom `.dump`/age and `.sha256` | Different format/restore path; not an external-services Kubernetes adapter. |
+| Raw packs, artifacts/source and file-backed stores | Site-required exact-version capture with SQL cohort | Not automatically included by dumping the database. |
+| Redis roles/journals/queues | Site-approved persistence and role-specific recovery | SQL backup is not Redis backup; retain independent pre-fault ACK IDs. |
+| Optional graph | Separately accepted topology and graph backup or demonstrated complete rebuild | Disabled in the controlled profile; `populate_graph.py` alone does not prove complete historical reconstruction. |
+| Keys/configuration/PKI | Bank's restricted secret/trust custody and approved nonsecret release inventory | Never copy `.env`/private keys into public artifacts or general evidence manifests. |
 
-## Backup
-
-```bash
-# Development (SQLite) — safe while the API is running
-python scripts/backup_evidence.py --verify
-# -> backups/cryptoscan-<timestamp>.db + .manifest.json
-
-# Production (PostgreSQL)
-DATABASE_URL=postgresql://... python scripts/backup_evidence.py --out /secure/backups
-```
-
-Each backup gets a `manifest.json` containing size, timestamp, and **SHA-256**
-of the backup file. With `--verify` (SQLite), the evidence hash chain is
-re-verified *on the backup copy* before the manifest is written.
-
-### Schedule (cron)
-
-```cron
-# 02:30 UTC daily, keep 35 days
-30 2 * * * cd /opt/cryptoscan && python scripts/backup_evidence.py --verify >> backups/backup.log 2>&1 && find backups -name 'cryptoscan-*.db*' -mtime +35 -delete
-```
-
-Restore-drill quarterly: pick a random backup, restore to staging, run
-`scripts/verify_evidence.py <scan_id>` for the three most recent scans.
-
-## Restore
+## Safe discovery before an authorized exercise
 
 ```bash
-# SQLite (restores via staging file; rotates current DB to *.pre-restore.bak)
-python scripts/restore_evidence.py backups/cryptoscan-<ts>.db
-
-# PostgreSQL
-python scripts/restore_evidence.py backups/cryptoscan-<ts>.sql --db postgresql://...
+python scripts/backup_evidence.py --help
+python scripts/restore_evidence.py --help
+python scripts/verify_evidence.py --help
+python scripts/verify_evidence_chain.py --help
 ```
 
-The restore **refuses to proceed if the SHA-256 manifest does not match**.
-Use `--force` only for forensics on partially damaged files.
+Use the configured repository environment. Help is not a backup/restore test.
+For actual execution, use [backup policy and compatibility](../disaster-recovery/03-backup-policy-and-end-to-end-dataflow.md)
+and the [authorized isolated recovery procedure](../disaster-recovery/04-disaster-recovery-runbook.md).
+PostgreSQL helpers pass connection URLs to subprocess arguments: environment
+injection does not hide an embedded password. Use approved password-free/libpq
+credential handling or DBA-native tooling and inspect redaction boundaries.
 
-## Post-restore checklist
+## Correct interpretation of verification and restore
 
-1. Restart API and worker (`make api`, `make worker` or `docker compose up -d api worker`).
-2. `curl -s localhost:8000/health` → `{"status":"healthy"}`.
-3. Verify chain on recent scans: `python scripts/verify_evidence.py <scan_id>` (exit 0 = PASS).
-4. Confirm drift baselines survived: `GET /api/v1/baselines` (as admin).
-5. If Neo4j was restored/rebuilt: `python scripts/populate_graph.py`.
-6. Record the restore in the audit log (it appears automatically as future
-   admin actions are audited) and in your incident system.
+- `backup_evidence.py --verify` is a creation-time SQLite flag, not a positional
+  existing-file verifier. It inspects a capped live-row listing and hash shape/
+  recomputability; **it does not compare every stored content hash or verify the
+  full chain**. Warnings/skips can coexist with process exit 0.
+- The JSON companion manifest contains the plaintext backup digest; with `.enc`,
+  decrypt before digest comparison. Compose `.sha256` instead covers the age
+  ciphertext. These formats/helpers are not interchangeable.
+- `restore_evidence.py --force` only bypasses a **missing manifest**. It does not
+  accept a mismatched digest or make a partially corrupted backup safe. Normal
+  recovery requires the intact authenticated cohort, not forced acceptance.
+- SQLite restoration needs quiesced writers and reviewed WAL/SHM handling before
+  a staging-file swap. A `.pre-restore.bak` is not an independent immutable backup.
+- PostgreSQL Python restoration uses `psql --single-transaction` without
+  `ON_ERROR_STOP`; inspect SQL errors and use the bank's reviewed stop-on-error
+  restore procedure. Command success alone does not establish restored data.
+- `verify_evidence.py` can return 0 for **PASS or EMPTY**. Check the verdict,
+  expected target/record coverage and manifests, not just exit status. Use
+  `verify_evidence_chain.py --scan-id ID --json` for the stored-chain verdict too;
+  valid chain alone is not whole-site completeness or current proof eligibility.
 
-## RPO / RTO guidance
+## Schedules, retention and objectives
 
-- **RPO:** whatever your cron interval is (daily = up to 24h of scan loss;
-  evidence is immutable per scan, so older evidence is never lost retroactively).
-- **RTO:** minutes for SQLite (file swap + restart); ~15 min for Postgres
-  (restore + migration check `alembic -c migrations/alembic.ini current`).
+The earlier daily-02:30/35-day cron example is not a bank policy. No destructive
+`find ... -delete` lifecycle command is recommended here: legal hold, independent
+copy, key lifetime and last-known-good recoverability must be checked first.
+The supplied Compose systemd timer is a different, optional host-local schedule.
+Record the actual scheduler, timezone/DST, alerts and missed-run handling.
+
+RPO is measured consistent recoverability/ACK loss, not simply cron frequency.
+RTO includes dependencies, keys, reconciliation, validation and accepted cutover,
+not an unmeasured fixed “minutes” promise. See
+[drill measurements and acceptance](../disaster-recovery/07-drills-validation-and-acceptance.md).
+
+## Before restarting workers or exposing the restored API
+
+Follow the full runbook, not a liveness-only checklist. In particular:
+
+1. Fence old SQL writers, daemon hosts and external effects; isolate restoration.
+2. Verify exact schema/release/data/owner/file cohort and current identity.
+3. Reconcile SQL jobs/attempts/budgets/outbox and all deployed Redis roles.
+4. Preserve UNKNOWN reservations until exact-estate evidence-backed settlement;
+   never reset RUNNING to QUEUED or blindly requeue historical work.
+5. Reconcile post-backup revocations, expiry, tombstones and source withdrawal;
+   current proofs cannot rely on historical labels alone.
+6. Handle replay epoch resets/gaps through explicit fresh current-state reads.
+7. Validate negative paths and measured loss/time, obtain different review and
+   explicit cutover approval. Preserve every new write during later failback.
+
+Detailed procedure: [execution/evidence reconciliation](../disaster-recovery/05-queue-execution-and-evidence-reconciliation.md).
+Historical local evidence remains in [the dated SQLite drill](../backup-drill.md),
+not a new bank-site qualification.

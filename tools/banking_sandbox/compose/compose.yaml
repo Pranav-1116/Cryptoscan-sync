@@ -1,0 +1,23 @@
+# OPTIONAL read-only dashboard packaging. Not used for live bank protocols.
+# Prebuild the image offline; never pull on startup. No oracle/control bind mount.
+services:
+  dashboard:
+    image: zelnx-synthetic-dashboard:lab
+    pull_policy: never
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 32
+    mem_limit: 128m
+    cpus: 0.5
+    ports: ["127.0.0.1:8081:8080"]
+    volumes:
+      - ${SYNTHETIC_PUBLIC:?set exact generated public directory}:/public:ro
+    networks: [lab]
+    labels:
+      synthetic: "true"
+      purpose: "dashboard-only-not-a-bank-service"
+networks:
+  lab:
+    internal: true

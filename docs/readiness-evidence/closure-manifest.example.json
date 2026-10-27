@@ -1,0 +1,31 @@
+{
+  "schema": "cryptoscan.readiness-closure-manifest/1",
+  "release_commit": "<40-character-release-commit-sha>",
+  "environment": "<customer-approved-environment-name>",
+  "operator": "<operator-identity>",
+  "artifacts": [
+    {
+      "evidence_id": "<globally-unique-evidence-id>",
+      "gap_id": "P0-1",
+      "kind": "independent_security_assessment",
+      "status": "PASS",
+      "evidence_tier": "operational_record",
+      "artifact_source": "external_controlled",
+      "artifact_path": "/controlled/evidence/penetration-test-report.json",
+      "artifact_sha256": "<64-lowercase-hex-digest>",
+      "captured_at": "2026-09-29T00:00:00Z",
+      "release_commit": "<40-character-release-commit-sha>",
+      "environment": "<customer-approved-environment-name>",
+      "scope": "<approved-assessment-scope>",
+      "limitations": [
+        "<explicit limitation or residual risk>"
+      ],
+      "owner": "<accountable-owner>",
+      "issuer": "<independent-assessor-or-customer-issuer>",
+      "reviewed_by": "<different-reviewer-identity>",
+      "reviewed_at": "2026-09-29T00:00:00Z",
+      "operator": "<different-from-reviewer-identity>",
+      "independent_review": true
+    }
+  ]
+}

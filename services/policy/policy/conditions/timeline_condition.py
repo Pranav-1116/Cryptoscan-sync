@@ -26,10 +26,10 @@ class TimelineCondition(BaseCondition):
     CONDITION_TYPE = "TIMELINE"
 
     def evaluate(self, evidence_data: dict[str, Any], params: dict[str, Any]) -> EvaluationOutcome:
-        if not scopes_apply(evidence_data, params.get("required_scopes")):
+        if not scopes_apply(evidence_data, params.get("required_scopes"), params.get("required_scope_groups")):
             return EvaluationOutcome(
                 result="NOT_APPLICABLE",
-                message=missing_scopes_message(params.get("required_scopes")),
+                message=missing_scopes_message(params.get("required_scopes"), params.get("required_scope_groups")),
             )
 
         algorithm = str(evidence_data.get("algorithm") or "").upper()
@@ -43,13 +43,17 @@ class TimelineCondition(BaseCondition):
 
         retired = {item.upper() for item in _as_list(params.get("retired_algorithms"))}
         approved = {item.upper() for item in _as_list(params.get("approved_algorithms"))}
+        # approved check FIRST: the retirement gate below used to shadow it,
+        # making the "remains approved" PASS branch dead code for any
+        # approved algorithm that is not itself retired (found behaviorally,
+        # round 55 — CNSA-001/004 could never return PASS).
+        if approved and algorithm in approved:
+            return EvaluationOutcome(result="PASS", message=f"{algorithm} remains approved on this timeline")
         if retired and algorithm not in retired:
             return EvaluationOutcome(
                 result="NOT_APPLICABLE",
                 message=f"{algorithm or 'UNKNOWN'} is not on the retirement list",
             )
-        if approved and algorithm in approved:
-            return EvaluationOutcome(result="PASS", message=f"{algorithm} remains approved on this timeline")
 
         today = _parse_day(evidence_data.get("evaluation_date")) or date.today()
         after = _parse_day(params.get("after") or params.get("retire_after"))

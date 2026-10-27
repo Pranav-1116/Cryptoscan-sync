@@ -20,7 +20,7 @@ def main() -> None:
     parser.add_argument("--branch", default="main")
     parser.add_argument("--commit")
     parser.add_argument("--triggered-by", default="manual-cli")
-    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8000"))
+    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8010"))
     parser.add_argument("--inline", action="store_true", help="Run the pipeline in-process")
     args = parser.parse_args()
 

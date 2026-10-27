@@ -1,0 +1,47 @@
+{
+  "assets_lock_sha256": "924006ceac3c5877b68eac8e3a0101363aeb643ceaeddeff93885444f48b06e3",
+  "build_exit_code": 0,
+  "builder_sha256": "b8a74a3cee8f83aee704f70d0817f134e5e084002dc2e769c221d92d2b3942ac",
+  "bundle_sha256": "ff9e3756f80fbdf541c07ccbae313000301cdda75d725604c53de791253978c0",
+  "commands": {
+    "build": ".venv/bin/python scripts/qualify_tbf.py build --cache /home/user/.cache/disposable-tbf-assets --work /home/user/.cache/disposable-tbf-clean-build-02 --output /home/user/.cache/disposable-tbf-delivery-bundle",
+    "observed_bundle_sha256": "ff9e3756f80fbdf541c07ccbae313000301cdda75d725604c53de791253978c0"
+  },
+  "logs": [
+    {
+      "bytes": 81368,
+      "name": "m4",
+      "sha256": "3c57aacaf0d2c0adbfb97da1c9d3527b7848d7011a6d4f6cd3ae0a3e4360014a"
+    },
+    {
+      "bytes": 60470,
+      "name": "bison",
+      "sha256": "8b6dcd438c85aafea630e07161c69ffeabc6f597bbab7c551a82987256bc49ab"
+    },
+    {
+      "bytes": 89045,
+      "name": "flex",
+      "sha256": "ebf17a00b6c54bc5c8a52851aca56297dcfc0bd8a5312bef61902702219ff047"
+    },
+    {
+      "bytes": 48890,
+      "name": "kernel",
+      "sha256": "928e81b098331c04894ecbadd2dad39ebf0ca0c054099505b6b577679b154c8e"
+    },
+    {
+      "bytes": 1531073,
+      "name": "musl",
+      "sha256": "c05b54b5eaa40e3062e6468dc64c697960e41078fd201f7bbc67aa142c8268bb"
+    }
+  ],
+  "method": "scripts/qualify_tbf.py build: fresh owned work tree, locked cached archives, kernel/private runtime compiled; QEMU supplied by pinned npm binary package",
+  "production_qualification": false,
+  "schema_version": "cryptoscan.disposable-tbf-build-record/v1",
+  "upstream_signatures_verified": false,
+  "versions": {
+    "bison": "bison (GNU Bison) 2.7.1",
+    "flex": "flex 2.5.37",
+    "gcc": "gcc (Debian 12.2.0-14+deb12u1) 12.2.0",
+    "m4": "m4 (GNU M4) 1.4.16"
+  }
+}

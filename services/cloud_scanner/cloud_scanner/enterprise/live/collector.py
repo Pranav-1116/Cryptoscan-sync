@@ -18,7 +18,7 @@ dead-letter queues, checkpointing and backpressure control.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from cloud_scanner.enterprise.live.event_schema import CloudEvent

@@ -36,6 +36,7 @@ from typing import Any, Callable
 
 from db.models.monitor import TARGET_TYPES, MonitorTarget
 from db.repositories.monitor_repository import MonitorRepository
+from db.tenancy import current_tenant, tenant_scope
 
 from worker.monitor.watch import WATCH_PROBES, ChangeDetector, ProbeResult
 
@@ -49,6 +50,7 @@ DEFAULT_INTERVALS: dict[str, int] = {
     "PAYMENT": 3_600,     # hourly — HSM audit trails move fast
     "OT": 900,        # 15 min — passive capture re-scan (watch mode rescans on new captures)
     "VENDOR": 604_800,  # weekly — vendor posture changes slowly
+    "TELECOM": 900,    # 15 min — 5GC/roaming NF posture changes fast
 }
 MAX_BACKOFF_SECONDS = 86_400
 
@@ -70,8 +72,14 @@ class MonitorEngine:
                  watch_enabled: bool = True, probes: dict[str, Callable[..., ProbeResult]] | None = None,
                  probe_timeout: float = 10.0,
                  session_factory: Callable[[], Any] | None = None, concurrency: int = 1,
-                 run_reports: bool = True):
+                 run_reports: bool = True, run_backups: bool = True,
+                 run_network: bool = True,
+                 run_reintroduction: bool = True, run_sla: bool = True,
+                 run_evidence_chain: bool = True,
+                 backup_backend_for: Callable[[str], Any] | None = None,
+                 backup_storage: Any = None, actor: str = "monitor-daemon"):
         self.session = session
+        self.actor = actor
         self.repo = MonitorRepository(session)
         self.runners = runners if runners is not None else _default_runners()
         self._now = clock or (lambda: datetime.now(timezone.utc))
@@ -84,6 +92,15 @@ class MonitorEngine:
         self.session_factory = session_factory
         self.concurrency = max(1, int(concurrency))
         self.run_reports = bool(run_reports)
+        self.run_backups = bool(run_backups)
+        self.run_network = bool(run_network)
+        # round 24 (audits 69 + 31 §5.2): monitor-time reintroduction
+        # detection and drift-SLA escalation run on the same tick
+        self.run_reintroduction = bool(run_reintroduction)
+        self.run_sla = bool(run_sla)
+        self.run_evidence_chain = bool(run_evidence_chain)
+        self._backup_backend_for = backup_backend_for
+        self._backup_storage = backup_storage
 
     # ---------------------------------------------------------------- tick
 
@@ -95,6 +112,9 @@ class MonitorEngine:
         (``watch_triggered`` vs ``due``) and ``report_ran`` so operators can
         see why the daemon did work.
         """
+        from db.repositories.execution_control import required, ExecutionDenied
+        if required():
+            raise ExecutionDenied("Monitor watch/acquisition/projection adapters are not qualified for controlled execution")
         now = self._now()
         triggered: list[MonitorTarget] = []
         if self.watch_enabled:
@@ -102,26 +122,155 @@ class MonitorEngine:
                 if self._check_watch(target) == "CHANGED":
                     triggered.append(target)
         if self.concurrency > 1 and self.session_factory is not None:
-            self.session.flush()  # persist watch_state so per-session workers see it
+            self.session.flush()  # validate watch writes; _execute_many commits before handing off
 
         triggered_ids = {t.id for t in triggered}
         due = [t for t in self.repo.due(now=now) if t.id not in triggered_ids]
         ordered = triggered + due
         results = self._execute_many(ordered)
 
+        network_summary: dict[str, Any] = {}
+        if self.run_network:
+            # API-created network_scan_targets are a separate persisted
+            # schedule from monitor_target rows. Run them in this same leader
+            # tick so their results become the durable NBOM input.
+            try:
+                from worker.monitor.network_sweep import run_due_network_targets
+
+                # The network collector owns durable commit/rollback boundaries.
+                # Save preceding monitor/watch work first, so a network fault
+                # cannot roll it back or stamp it under a different owner.
+                self.session.commit()
+                network_summary = run_due_network_targets(self.session, now=now)
+            except Exception as exc:  # noqa: BLE001 — network sweep must not stop other monitor work
+                self.session.rollback()
+                logger.exception("network_sweep_failed")
+                network_summary = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+
         report_outcomes: list[dict[str, Any]] = []
         if self.run_reports:
             from worker.monitor.report_sweep import run_due_report_schedules
 
             report_outcomes = run_due_report_schedules(self.session, on_event=self._report_event)
+
+        reintroduction_summary: dict[str, Any] = {}
+        if self.run_reintroduction:
+            # audit 69's open follow-up: the retired-asset registry checked
+            # continuously, not only on demand
+            try:
+                from worker.monitor.reintroduction_sweep import run_reintroduction_sweep
+
+                reintroduction_summary = run_reintroduction_sweep(
+                    self.session, now=now,
+                    on_alert=(lambda name, issue, payload: self._on_alert(name, issue, payload))
+                    if self._on_alert is not None else None,
+                )
+            except Exception as exc:  # noqa: BLE001 — must not stop other monitor work
+                logger.exception("reintroduction_sweep_failed")
+                reintroduction_summary = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+
+        sla_summary_tick: dict[str, Any] = {}
+        if self.run_sla:
+            # audit 31 §5.2: escalate drift events that crossed an SLA window
+            try:
+                from worker.monitor.sla_sweep import run_sla_sweep
+
+                sla_summary_tick = run_sla_sweep(
+                    self.session, now=now,
+                    on_alert=self._on_alert if self._on_alert is not None else None,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("sla_sweep_failed")
+                sla_summary_tick = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+
+        evidence_chain_summary: dict[str, Any] = {}
+        if self.run_evidence_chain:
+            # deep/25 P0#3: chain verification was manual/API-triggered only;
+            # this sweep re-verifies the newest scans' evidence every tick
+            try:
+                from worker.monitor.evidence_chain_sweep import run_evidence_chain_sweep
+
+                evidence_chain_summary = run_evidence_chain_sweep(
+                    self.session, now=now,
+                    on_alert=self._on_alert if self._on_alert is not None else None,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("evidence_chain_sweep_failed")
+                evidence_chain_summary = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+
+        backup_summary: dict[str, Any] = {}
+        if self.run_backups:
+            # real subprocess backends + persistent disk store are used by
+            # default; tests may inject fakes. Missing tools fail honestly.
+            backup_summary = self._run_backup_sweep(now)
+
         return {
             "ran": len(results),
             "results": results,
             "watch_triggered": len(triggered),
             "due": len(due),
+            "network": network_summary,
             "report_ran": len(report_outcomes),
             "reports": report_outcomes,
+            "reintroduction": reintroduction_summary,
+            "drift_sla": sla_summary_tick,
+            "evidence_chain": evidence_chain_summary,
+            "backups": backup_summary,
         }
+
+    def _run_backup_sweep(self, now) -> dict[str, Any]:
+        """Run due encrypted backups (Postgres/Neo4j) + retention on the tick.
+
+        Isolated: a backup failure never raises out of the monitor loop. The
+        runner backend + storage are injected; production supplies subprocess
+        pg_dump/neo4j-admin runners and a persistent storage sink."""
+        try:
+            from db.repositories.settings_repository import SettingsRepository
+            from governance import backup_schedule as bsched, backup_jobs as bj, keys as gkeys
+            import os as _os
+
+            repo = SettingsRepository(self.session)
+
+            # Default to REAL subprocess backends (pg_dump / neo4j-admin) and a
+            # persistent on-disk store unless tests explicitly injected them.
+            backend_for = self._backup_backend_for
+            if backend_for is None:
+                def backend_for(engine_name: str):
+                    runner = bj.subprocess_runner()
+                    if engine_name == "neo4j":
+                        return bj.Neo4jBackend(
+                            runner=runner,
+                            host=_os.environ.get("NEO4J_HOST", "localhost"),
+                            port=int(_os.environ.get("NEO4J_BACKUP_PORT", "6362")),
+                            neo4j_bin=_os.environ.get("NEO4J_BIN", ""),
+                            backup_dir=_os.environ.get("NEO4J_BACKUP_STAGING", "/tmp/cryptoscan-neo4j-backup"))
+                    return bj.PgDumpBackend(
+                        runner=runner,
+                        host=_os.environ.get("PGHOST", _os.environ.get("POSTGRES_HOST", "localhost")),
+                        port=int(_os.environ.get("PGPORT", _os.environ.get("POSTGRES_PORT", "5432"))),
+                        user=_os.environ.get("PGUSER", _os.environ.get("POSTGRES_USER", "postgres")),
+                        pg_bin=_os.environ.get("PG_BIN", ""))
+            storage = self._backup_storage
+            if storage is None:
+                root = _os.environ.get("BACKUP_STORAGE_DIR", "/var/lib/cryptoscan/backups")
+                try:
+                    storage = bj.DiskBackupStorage(root)
+                except Exception:
+                    import tempfile
+                    storage = bj.DiskBackupStorage(__import__("os").path.join(tempfile.gettempdir(), "cryptoscan-backups"))
+
+            summary = bsched.run_due_backups_sweep(
+                settings_repo=repo, backend_for=backend_for,
+                storage=storage,
+                encryption_key=gkeys.backup_fernet_key(settings_repo=repo),
+                signing_secret=gkeys.signing_secret(settings_repo=repo), now=now)
+            if summary.get("backed_up"):
+                self._report_event("backup_sweep", f"backed_up={summary['backed_up']}", summary)
+            return summary
+        except Exception as exc:  # noqa: BLE001 — backups must never kill monitoring
+            import logging
+            logging.getLogger(__name__).warning("backup_sweep_failed: %s", exc)
+            return {"error": f"{type(exc).__name__}: {exc}"}
 
     # ----------------------------------------------------------- report run
 
@@ -195,7 +344,167 @@ class MonitorEngine:
 
     # ------------------------------------------------------------- run one
 
+    def _meter_scan(self, target: MonitorTarget) -> None:
+        """SaaS metering: one scan_run unit per executed pass, tenant-owned
+        targets only. NETWORK metering failures invalidate acceptance; other
+        adapters retain their legacy best-effort accounting."""
+        if not getattr(target, "tenant_id", None):
+            return
+        try:
+            from db.repositories.tenant_repository import TenantRepository
+
+            TenantRepository(self.session).record_usage(
+                target.tenant_id, "scan_run", 1, detail=target.name)
+        except Exception:
+            if target.target_type == "NETWORK":
+                raise
+            logger.debug("tenant_usage_record_failed", extra={"target": target.name}, exc_info=True)
+
+    def _publish_pass(self, target: MonitorTarget, status: str) -> None:
+        """Every finished pass becomes a signed raw event on the stream
+        (24/7 collection). Best-effort — publishing must never break the
+        monitor loop. The event lands in the TARGET's partition (2026-10):
+        a tenant-owned monitor's passes are that tenant's observations, not
+        platform-stream material — unowned targets keep the platform bus."""
+        try:
+            from eventstream.bus import get_bus_for_tenant
+
+            get_bus_for_tenant(getattr(target, "tenant_id", None)).publish_raw(
+                {
+                    "kind": "monitor_pass",
+                    "target_name": target.name,
+                    "target_type": target.target_type,
+                    "status": status,
+                    "summary": target.last_summary or {},
+                    "tenant_id": getattr(target, "tenant_id", None),
+                    "observed_at": target.last_scan_at.isoformat() if target.last_scan_at else None,
+                },
+                key=target.name,
+                source="monitor-daemon",
+            )
+        except Exception:
+            logger.debug("monitor_pass_publish_failed", extra={"target": target.name}, exc_info=True)
+
     def run_target(self, target: MonitorTarget) -> dict[str, Any]:
+        from db.repositories.execution_control import required, ExecutionDenied
+        if required():
+            raise ExecutionDenied("Monitor execution requires a qualified controlled adapter")
+        if target.target_type == "NETWORK":
+            return self._run_network_target(target)
+        return self._run_target(target)
+
+    def _run_network_target(self, target: MonitorTarget) -> dict[str, Any]:
+        """Own one NETWORK transaction under freshly loaded persisted ownership.
+
+        Commit preceding work before changing scope. Runner/projection/status
+        writes are accepted together; failure diagnostics use a clean transaction.
+        Supported phases share bounded admission and linked durable jobs.
+        """
+        from sqlalchemy import select
+        from db.models.tenant import Tenant
+        from fastapi import HTTPException
+        from api.security.network_collection import meter_network, network_run, network_coverage
+        from worker.monitor.network_collection import prepare, Execution, executing
+
+        collection = None
+        caller, target_id = current_tenant(), target.id
+        if caller is not None and target.tenant_id != caller:
+            return {"target_id": target_id, "status": "GONE"}
+        try:
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise  # no executor when the transaction boundary cannot be established
+        target = (
+            self.session.execute(
+                select(MonitorTarget).where(MonitorTarget.id == target_id).execution_options(populate_existing=True)
+            )
+            .scalars()
+            .first()
+        )
+        if target is None or target.target_type != "NETWORK" or caller is not None and target.tenant_id != caller:
+            return {"target_id": target_id, "status": "GONE"}
+        with tenant_scope(target.tenant_id):
+            now = self._now()
+            interval = int(target.interval_seconds or default_interval("NETWORK"))
+            try:
+                tenant = (
+                    self.session.get(Tenant, target.tenant_id, populate_existing=True)
+                    if target.tenant_id is not None
+                    else None
+                )
+                if not target.enabled or target.tenant_id is not None and (tenant is None or tenant.status != "ACTIVE"):
+                    self._finish(
+                        target,
+                        now=now,
+                        interval=interval,
+                        status="BLOCKED",
+                        error="network monitor is paused or its owner is missing/inactive",
+                        event_type="BLOCKED",
+                    )
+                    outcome = self._outcome(target, "BLOCKED")
+                    self.session.commit()
+                else:
+                    plan = prepare(dict(target.config or {}))
+                    admission = plan.admit()
+                    meter_network(self.session, plan.units, detail="admitted monitor network collection attempt")
+                    with network_run(self.session, user=self.actor, target=f"monitor:{target_id}",
+                                     admission=admission, kind="monitor",
+                                     profile={**plan.config, "monitor_target_id": target_id}) as run:
+                        collection = Execution(self.session, plan, run, target_id)
+                        with executing(collection):
+                            outcome = self._run_target(target, collection=collection)
+                            run.succeed(coverage=network_coverage(collection.result))
+                    outcome.update(job_id=run.job_id, run_id=collection.result["run_id"])
+            except HTTPException as exc:
+                self.session.rollback()
+                self._finish(target, now=now, interval=interval, status="BLOCKED",
+                             error=str(exc.detail)[:500], event_type="BLOCKED")
+                outcome = self._outcome(target, "BLOCKED")
+                outcome.update(refusal_status=exc.status_code, refusal_reason=str(exc.detail))
+                if collection is not None:
+                    outcome["job_id"] = collection.run.job_id
+                self.session.commit()
+            except Exception as exc:
+                outcome = self._failed_target(target, exc, now=now, interval=interval, rollback=True)
+                outcome["execution_failed"] = True
+                if collection is not None:
+                    outcome["job_id"] = collection.run.job_id
+                try:
+                    self.session.commit()
+                except Exception:
+                    self.session.rollback()
+                    raise  # a persistent DB outage cannot fabricate a durable diagnostic
+            # External notifications see accepted state, never rolled-back alerts.
+            self._publish_pass(target, outcome["status"])
+            for issue in outcome.get("new_issues") or []:
+                if self._on_alert is not None:
+                    try:
+                        self._on_alert(target.name, issue, {"target_id": target.id, "issue": issue})
+                    except Exception:
+                        logger.exception("alert_dispatch_failed")
+            return outcome
+
+    def _failed_target(self, target, exc, *, now, interval, rollback=False):
+        if rollback:
+            self.session.rollback()
+        logger.warning("monitor_target_failed", extra={"target": target.name})
+        failures = int(target.consecutive_failures or 0) + 1
+        backoff = min(interval * (2**failures), MAX_BACKOFF_SECONDS)
+        target.consecutive_failures = failures
+        target.status = "FAILING" if failures >= 2 else "DEGRADED"
+        target.last_error = f"{type(exc).__name__}: {exc}"[:500]
+        target.next_scan_at = now + timedelta(seconds=backoff)
+        self.repo.add_event(
+            target=target,
+            event_type="SCAN_FAILED",
+            detail=target.last_error,
+            payload={"consecutive_failures": failures, "retry_in_seconds": backoff},
+        )
+        return self._outcome(target, target.status)
+
+    def _run_target(self, target: MonitorTarget, *, collection=None) -> dict[str, Any]:
+        network = target.target_type == "NETWORK"
         now = self._now()
         interval = int(target.interval_seconds or default_interval(target.target_type))
         runner = self.runners.get(target.target_type)
@@ -208,21 +517,33 @@ class MonitorEngine:
             return self._outcome(target, "BLOCKED")
 
         try:
-            result = runner(dict(target.config or {}), self.session)
-        except Exception as exc:  # 24/7 rule: the target fails, the loop does not
-            logger.warning("monitor_target_failed", extra={"target": target.name})
-            failures = int(target.consecutive_failures or 0) + 1
-            backoff = min(interval * (2 ** failures), MAX_BACKOFF_SECONDS)
-            target.consecutive_failures = failures
-            target.status = "FAILING" if failures >= 2 else "DEGRADED"
-            target.last_error = f"{type(exc).__name__}: {exc}"[:500]
-            target.next_scan_at = now + timedelta(seconds=backoff)
-            self.repo.add_event(
-                target=target, event_type="SCAN_FAILED",
-                detail=target.last_error,
-                payload={"consecutive_failures": failures, "retry_in_seconds": backoff},
-            )
-            return self._outcome(target, target.status)
+            config = collection.plan.config if collection is not None else target.config or {}
+            result = runner(dict(config), self.session)
+            if collection is not None and result.get("blocked_reason"):
+                from fastapi import HTTPException
+                raise HTTPException(409, detail=str(result["blocked_reason"]))
+            if network and result.get("blocked_reason"):
+                self._finish(
+                    target, now=now, interval=interval, status="BLOCKED",
+                    error=str(result["blocked_reason"])[:500], event_type="BLOCKED",
+                )
+                return self._outcome(target, "BLOCKED")
+            # Domain adapters still own their operational persistence, but all
+            # explicit crypto observations/findings enter the same durable
+            # tenant-scoped CBOM/event journal before the target summary is
+            # committed. Projection failures are real degradation, not a
+            # silently successful scan.
+            from worker.monitor.realtime_projection import persist_monitor_projection
+
+            if collection is not None:
+                collection.persist(result)
+            persist_monitor_projection(target, result, self.session)
+            if collection is None:
+                self._meter_scan(target)
+        except Exception as exc:  # durable context must see failures before diagnostic writes
+            if collection is not None:
+                raise
+            return self._failed_target(target, exc, now=now, interval=interval, rollback=network)
 
         if result.get("blocked_reason"):
             self._finish(
@@ -233,11 +554,17 @@ class MonitorEngine:
 
         summary = dict(result.get("summary") or {})
         issues = sorted(set(result.get("issues") or summary.get("issues") or []))
+        complete = result.get("observation_complete") is True if network else True
+        if target.target_type == "NETWORK":
+            summary["observation_complete"] = complete
+            if not complete:
+                issues = sorted(set(issues + ["OBSERVATION_INCOMPLETE"]))
         summary["issues"] = issues
         new_issues = self._new_issues(target, issues)
         target.consecutive_failures = 0
         target.last_error = None
-        target.last_scan_at = now
+        if target.target_type != "NETWORK" or complete:
+            target.last_scan_at = now
         target.next_scan_at = now + self._next_scan_delta(interval)
         target.last_summary = summary
         degraded = bool(result.get("degraded")) or bool(issues)
@@ -253,7 +580,7 @@ class MonitorEngine:
                 target=target, event_type="ALERT",
                 detail=f"NEW: {issue}", payload={"issue": issue},
             )
-            if self._on_alert is not None:
+            if self._on_alert is not None and target.target_type != "NETWORK":
                 try:
                     self._on_alert(target.name, issue, {"target_id": target.id, "issue": issue})
                 except Exception:  # noqa: BLE001 — sink failures never kill the tick
@@ -269,6 +596,10 @@ class MonitorEngine:
             return [self.run_target(target) for target in targets]
         from concurrent.futures import ThreadPoolExecutor
 
+        # A flush does not make watch/config changes visible to fresh sessions.
+        self.session.commit()
+        caller = current_tenant()
+
         def _work(target_id: str) -> dict[str, Any]:
             session = self.session_factory()
             try:
@@ -276,14 +607,19 @@ class MonitorEngine:
                     session, runners=self.runners, clock=self._now,
                     on_alert=self._on_alert, jitter_fraction=self.jitter_fraction,
                     rng=self._rng, watch_enabled=False, probes=self.probes,
-                    probe_timeout=self.probe_timeout, concurrency=1,
+                    probe_timeout=self.probe_timeout, concurrency=1, actor=self.actor,
                 )
-                row = engine.repo.get(target_id)
-                if row is None:
-                    return {"target_id": target_id, "status": "GONE"}
-                return engine.run_target(row)
+                with tenant_scope(caller):
+                    row = engine.repo.get(target_id)
+                    if row is None:
+                        return {"target_id": target_id, "status": "GONE"}
+                    outcome = engine.run_target(row)
+                    session.commit()
+                    return outcome
+            except Exception:
+                session.rollback()
+                raise
             finally:
-                session.commit()
                 session.close()
 
         with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
@@ -303,9 +639,12 @@ class MonitorEngine:
         return [issue for issue in issues if issue not in previous]
 
     def _finish(self, target, *, now, interval, status, error, event_type) -> None:
+        if target.target_type != "NETWORK":
+            self._publish_pass(target, status)
         target.status = status
         target.last_error = error
-        target.last_scan_at = now
+        if target.target_type != "NETWORK":
+            target.last_scan_at = now
         target.next_scan_at = now + self._next_scan_delta(interval)
         self.repo.add_event(target=target, event_type=event_type, detail=error)
 
@@ -328,6 +667,7 @@ def _default_runners() -> dict[str, Runner]:
         ot_runner,
         payment_runner,
         repo_runner,
+        telecom_runner,
         vendor_runner,
     )
 
@@ -339,4 +679,5 @@ def _default_runners() -> dict[str, Runner]:
         "PAYMENT": payment_runner,
         "OT": ot_runner,
         "VENDOR": vendor_runner,
+        "TELECOM": telecom_runner,
     }

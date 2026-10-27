@@ -48,7 +48,7 @@ def test_full_login_logout_revocation_flow(sqlite_app):
     login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "cryptoscan"})
     assert login.status_code == 200
     token = login.json()["token"]
-    assert login.json()["roles"] == ["admin"]
+    assert login.json()["roles"] == ["superadmin"]
 
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200 and me.json()["username"] == "admin"
@@ -118,7 +118,7 @@ def test_viewer_cannot_manage_users_or_trigger_scans(sqlite_app):
 
     trigger = client.post(
         "/api/v1/scans/trigger",
-        json={"repo_url": "local://demo/vulnerable-app"},
+        json={"repo_url": "local://test-fixture/vulnerable-app"},
         headers=headers,
     )
     assert trigger.status_code == 403

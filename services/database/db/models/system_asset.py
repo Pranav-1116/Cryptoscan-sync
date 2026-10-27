@@ -6,9 +6,10 @@ from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class SystemAsset(BaseModel):
+class SystemAsset(BaseModel, TenantScoped):
     __tablename__ = "system_assets"
     __table_args__ = (UniqueConstraint("system_id", "asset_id", name="uq_system_asset"),)
 

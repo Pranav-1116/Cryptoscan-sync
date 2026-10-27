@@ -1,0 +1,26 @@
+rule_id: "CBB-003"
+rule_name: "CBB — 2048-bit RSA/DSA floor"
+version: "1.0"
+effective_date: "2026-09-26"
+severity: "HIGH"
+standard_reference: "CBB Rulebook Module OM-5 — cryptographic key management (NIST SP 800-57 aligned)"
+description: >
+  Asymmetric keys below the 2048-bit floor (RSA, DSA) do not meet the
+  regulator's expectation of NIST SP 800-57 / ISO 27001-aligned key strength.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "CBB"
+      - "BH-CBB"
+    if_algorithms:
+      - "RSA"
+      - "DSA"
+    min_key_size: 2048
+evaluation:
+  result_template: "FAIL"
+  message_template: "{algorithm} key {key_size} bits is below the 2048-bit floor"
+remediation: >
+  Re-issue with a compliant key size, rotate dependent certificates and record
+  the change in the key lifecycle register.
+enabled: true

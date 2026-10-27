@@ -136,7 +136,7 @@ def test_pqc_classical_algorithm_scores_migration():
     inv = _inventories()
     pqc = CloudPqcReadinessEngine(keys=inv["keys"], certificates=inv["certificates"],
                                   tls=inv["tls"]).assess()
-    results = {r.resource_id: r for r in pqc.results}
+    {r.resource_id: r for r in pqc.results}
     rsa_key = next(r for r in pqc.results if r.public_key_algorithms == ["RSA"])
     assert rsa_key.score < 6.0
     assert rsa_key.verdict in (MIGRATION_REQUIRED, PQC_UNKNOWN)

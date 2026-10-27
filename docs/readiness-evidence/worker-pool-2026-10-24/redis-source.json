@@ -1,0 +1,9 @@
+{
+  "source_url": "https://codeload.github.com/redis/redis/tar.gz/refs/tags/8.2.4",
+  "version": "8.2.4",
+  "archive_sha256": "b9d7252b26af9738aa686681151b0e798ef8b4afc092a838b3de0a12a36b1542",
+  "binary_sha256": "34dfe31bf8a6106ec1a50d9e007d78148201bab0a99433a47ffdb3949f3c0ba1",
+  "build_command": "make -j2 BUILD_TLS=no MALLOC=libc OPT=-O2 redis-server",
+  "scope": "OWNED_LOCAL_SYNTHETIC_ONLY",
+  "production_tls_acl_ha_qualification": false
+}

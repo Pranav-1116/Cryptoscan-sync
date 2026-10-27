@@ -1,0 +1,26 @@
+rule_id: "SAMA-006"
+rule_name: "SAMA — weak random number generators near cryptography (review)"
+version: "1.0"
+effective_date: "2026-09-26"
+severity: "MEDIUM"
+standard_reference: "SAMA Cyber Security Framework v3.1 — Domain 4.3; NIST SP 800-131A"
+description: >
+  Key, IV/nonce and token generation must use a CSPRNG. Evidence tagged
+  RNG-WEAK (e.g. java.util.Random used in a crypto file, or the SHA1PRNG
+  provider) is flagged for review.
+condition:
+  type: "ALGORITHM_IN_LIST"
+  parameters:
+    required_scopes:
+      - "SAMA"
+    algorithm_list:
+      - "RNG-WEAK"
+      - "SHA1PRNG"
+evaluation:
+  result_template: "WARN"
+  message_template: "Weak PRNG usage {algorithm} detected near cryptographic material — verify it is not used for key/nonce/OTP generation"
+remediation: >
+  Replace insecure PRNGs with the platform CSPRNG (SecureRandom with strong
+  instance, os.urandom/getrandom, BCryptGenRandom, SecRandomCopyBytes); reseed
+  keys through KMS/HSM where applicable.
+enabled: true

@@ -45,7 +45,12 @@ def _cmd_processes(args: argparse.Namespace) -> int:
     from runtime.config.settings import load_settings
 
     base = args.base or load_settings().proc_base
-    result = scan_processes(base)
+    all_procs = getattr(args, "all_processes", False)
+    result = scan_processes(
+        base,
+        include_kernel_threads=all_procs,
+        crypto_only=not all_procs,
+    )
     result["processes"] = result["processes"][: args.top] if args.top else result["processes"]
     print(json.dumps(result, indent=2))
     return 0
@@ -92,7 +97,12 @@ def _cmd_once(args: argparse.Namespace) -> int:
     from runtime.core.submitter import RuntimeSubmitter
 
     settings = load_settings()
-    process_scan = scan_processes(args.base or settings.proc_base)
+    all_procs = getattr(args, "all_processes", False)
+    process_scan = scan_processes(
+        args.base or settings.proc_base,
+        include_kernel_threads=all_procs,
+        crypto_only=not all_procs,
+    )
     payload = collect(process_scan=process_scan)
     if args.submit:
         result = RuntimeSubmitter(api_url=settings.api_url, token=settings.api_token).submit(payload)
@@ -116,6 +126,11 @@ def build_parser() -> argparse.ArgumentParser:
     processes = sub.add_parser("processes", help="process-level crypto library scan")
     processes.add_argument("--base", default=None, help="/proc base (default: /proc)")
     processes.add_argument("--top", type=int, default=None, help="limit process rows")
+    processes.add_argument(
+        "--all-processes",
+        action="store_true",
+        help="include kernel threads (kworker/irq/rcu — skipped by default; they never map TLS libs)",
+    )
     processes.set_defaults(func=_cmd_processes)
 
     imp = sub.add_parser("import", help="import existing captures")
@@ -127,6 +142,11 @@ def build_parser() -> argparse.ArgumentParser:
     once = sub.add_parser("once", help="process scan + submit")
     once.add_argument("--base", default=None)
     once.add_argument("--submit", action="store_true")
+    once.add_argument(
+        "--all-processes",
+        action="store_true",
+        help="include kernel threads (skipped by default; they never map TLS libs)",
+    )
     once.set_defaults(func=_cmd_once)
 
     trace = sub.add_parser(

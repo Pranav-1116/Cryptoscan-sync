@@ -231,6 +231,48 @@ def test_azure_managed_hsm_controls():
     assert "NO_PURGE_PROTECTION" in issue and "NO_SOFT_DELETE" in issue
 
 
+def test_azure_dedicated_hsm_devices_visible():
+    """Dedicated HSM appliances (report 13 §3.2) surface custody state."""
+    from cloud_scanner.azure.scanners import scan_dedicated_hsm
+
+    devices = [
+        {"name": "hsm-pay-1", "properties": {"provisioningState": "Succeeded", "stampCode": "STAMP1",
+         "networkProfile": {"NetworkInterfaces": [{"id": "/subscriptions/s/nics/1"}]}}},
+        SimpleNamespace(name="hsm-legacy", provisioning_state="Failed"),
+    ]
+    rows = scan_dedicated_hsm(devices, subscription="sub-1")
+    by_name = {row["crypto"]["raw_transformation"]: row for row in rows}
+    assert by_name["hsm-pay-1"]["algorithm"] == "HSM"
+    assert by_name["hsm-pay-1"]["compliance_issue"] is None
+    assert by_name["hsm-pay-1"]["metadata"]["stamp_code"] == "STAMP1"
+    assert by_name["hsm-pay-1"]["metadata"]["network_interfaces"] == 1
+    assert by_name["hsm-pay-1"]["metadata"]["hsm_backed"] is not None  # custody marker present
+    assert by_name["hsm-legacy"]["compliance_issue"] == "STATE_FAILED"
+    # source type distinguishes appliances from Managed HSM pools
+    assert by_name["hsm-pay-1"]["source"]["type"] == "AZURE_DEDICATED_HSM"
+
+
+def test_gcp_kms_keys_flag_hsm_backed():
+    """Cloud HSM keys (protection_level HSM) are explicitly marked (report 13 §3.2)."""
+    from cloud_scanner.gcp.scanners import scan_cloud_kms
+
+    keys = [
+        {"name": "projects/p/locations/eu/keyRings/r1/cryptoKeys/hsm-key",
+         "versionTemplate": {"protectionLevel": "HSM", "algorithm": "EC_SIGN_P384_SHA384"},
+         "purpose": "ASYMMETRIC_SIGN"},
+        {"name": "projects/p/locations/eu/keyRings/r1/cryptoKeys/software-key",
+         "versionTemplate": {"protectionLevel": "SOFTWARE", "algorithm": "EC_SIGN_P256_SHA256"},
+         "purpose": "ASYMMETRIC_SIGN"},
+    ]
+    rows = scan_cloud_kms(keys, project="p")
+    by_resource = {row["crypto"]["raw_transformation"]: row for row in rows}
+    hsm = by_resource["projects/p/locations/eu/keyRings/r1/cryptoKeys/hsm-key"]
+    software = by_resource["projects/p/locations/eu/keyRings/r1/cryptoKeys/software-key"]
+    assert hsm["metadata"]["hsm_backed"] is True
+    assert hsm["metadata"]["protection_level"] == "HSM"
+    assert software["metadata"]["hsm_backed"] is False
+
+
 # ------------------------------------------------------------------ GCP
 
 

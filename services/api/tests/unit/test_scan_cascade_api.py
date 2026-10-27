@@ -1,0 +1,230 @@
+"""GET /scans/{id}/cascade — the dependency & cascade report persisted in Scan.statistics."""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+import db.models  # noqa: F401
+from api.dependencies import get_current_user, get_db_session
+from api.main import create_app
+from db.connection.session import Base
+from db.models.scan import Scan
+
+CASCADE = {
+    "files_in_graph": 4, "edges": 3,
+    "summary": {"providers": 2, "systems": 2, "weak_parameters": 1},
+    "providers": [
+        {"file": "core/CryptoUtil.java", "algorithms": ["AES"], "findings": 1, "direct_dependents": 2, "transitive_dependents": 3, "wave": 1, "rank": 1},
+        {"file": "cards/CardSigner.java", "algorithms": ["RSA"], "findings": 1, "direct_dependents": 0, "transitive_dependents": 0, "wave": 2, "rank": 2, "depends_on_providers": ["core/CryptoUtil.java"]},
+    ],
+    "libraries": [{"library": "BouncyCastle", "versions": ["1.78"], "files_using": 0, "declared_but_unused": True}],
+    "shared_keys": [], "weak_parameters": [{"file": "cards/CardSigner.java", "line": 5, "algorithm": "RSA", "key_size": 1024, "minimum": 2048}],
+    "migration_waves": [{"wave": 1, "why": "shared", "providers": ["core/CryptoUtil.java"], "dependents_affected": 3}],
+    "systems": [{"system": "CORE", "paths": ["core/"], "providers": 1, "dependent_systems": ["CARDS"], "earliest_wave": 1}, {"system": "CARDS", "paths": ["cards/**"], "providers": 1, "depends_on_systems": ["CORE"], "earliest_wave": 2}],
+}
+
+
+def _app():
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, expire_on_commit=False)()
+    session.add(Scan(id="scan-1", scan_start=datetime(2026, 9, 25, tzinfo=timezone.utc), target_location="https://git/core.git", target_type="GIT_REPOSITORY", status="COMPLETED", statistics={"total_findings": 2, "cascade": CASCADE}))
+    session.add(Scan(id="scan-old", scan_start=datetime(2026, 9, 25, tzinfo=timezone.utc), target_location="https://git/old.git", target_type="GIT_REPOSITORY", status="COMPLETED", statistics={"total_findings": 2}))
+    session.commit()
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: "testuser"
+    app.dependency_overrides[get_db_session] = lambda: (yield session)
+    return app
+
+
+@pytest.mark.asyncio
+async def test_cascade_endpoint_sections_and_system_filter():
+    app = _app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/scans/scan-1/cascade")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["summary"]["providers"] == 2 and len(body["providers"]) == 2 and body["migration_waves"][0]["wave"] == 1
+        r = await c.get("/api/v1/scans/scan-1/cascade", params={"section": "weak_parameters"})
+        assert r.json()["total"] == 1 and r.json()["weak_parameters"][0]["key_size"] == 1024
+        r = await c.get("/api/v1/scans/scan-1/cascade", params={"system": "CARDS"})
+        assert [p["file"] for p in r.json()["providers"]] == ["cards/CardSigner.java"] and r.json()["systems"][0]["system"] == "CARDS"
+        assert (await c.get("/api/v1/scans/scan-1/cascade", params={"system": "NOPE"})).status_code == 404
+        assert (await c.get("/api/v1/scans/scan-1/cascade", params={"section": "bogus"})).status_code == 400
+        assert (await c.get("/api/v1/scans/scan-old/cascade")).status_code == 404
+        assert (await c.get("/api/v1/scans/missing/cascade")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_scan_detail_carries_only_the_cascade_summary():
+    app = _app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/scans/scan-1")
+        stats = r.json()["statistics"]
+        assert "cascade" not in stats and stats["cascade_summary"]["providers"] == 2 and stats["total_findings"] == 2
+
+
+@pytest.mark.asyncio
+async def test_code_cascade_rollup_joins_the_system_graph(monkeypatch):
+    """CMDB system CORE gets code_cascade; code-only system CARDS is added; IMPORTS edge feeds blast radius."""
+    from db.models.system import System
+    from api import graph_builder
+    from graph_engine.core import facade
+
+    monkeypatch.setattr(graph_builder, "resolve_graph", lambda payload, **kw: facade.memory_graph(**payload))
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    session.add(System(id="sys-core", name="CORE", owner="platform@bank", environment="prod", compliance_scopes=["PCI-DSS"]))
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/graph")
+        assert r.status_code == 200, r.text
+        nodes = {n["id"]: n for n in r.json()["nodes"]}
+        assert nodes["system:sys-core"]["code_cascade"]["providers"] == 1 and nodes["system:sys-core"]["code_cascade"]["scan_id"] == "scan-1"
+        assert nodes["system:CARDS"]["source"] == "cryptoscan-systems.yml" and nodes["system:CARDS"]["environment"] == "code"
+        imports = [(e["from"], e["to"]) for e in r.json()["edges"] if e["label"] == "IMPORTS"]
+        assert imports == [("system:CARDS", "system:sys-core")]
+        r = await c.get("/api/v1/graph/dependents", params={"system_id": "sys-core", "hops": 2})
+        assert r.status_code == 200 and any(s["id"] == "CARDS" for s in r.json()["systems"]), r.text
+        r = await c.get("/api/v1/graph/blast-radius", params={"system_id": "CARDS", "hops": 2})
+        assert [s["id"] for s in r.json()["systems"]] == ["sys-core"]
+        # migration waves: CORE is unscored (wave 3); CARDS is code-only (cascade wave 2) but imports CORE's crypto → not before wave 3
+        r = await c.get("/api/v1/graph/migration-waves")
+        assert r.status_code == 200, r.text
+        plan = r.json()
+        rows = {row["system_id"]: row for w in plan["waves"].values() for row in w}
+        assert plan["code_only_systems"] == 1 and plan["import_edges"] == 1 and plan["systems_delayed_by_imports"] == ["CARDS"]
+        assert rows["CARDS"]["wave"] == 3 and rows["CARDS"]["constrained_by"] == ["sys-core"] and "imports crypto from sys-core" in rows["CARDS"]["rationale"]
+        assert rows["sys-core"]["code_cascade"]["providers"] == 1 and "cascade wave 1" in rows["sys-core"]["rationale"]
+
+
+def _inv_finding(label, library, algorithm="AES", key_size=256, **inv):
+    return {"source": {"type": "KEY_INVENTORY", "file_path": "exports/ckds.lst", "line_number": 1},
+            "crypto": {"algorithm": algorithm, "key_size": key_size}, "metadata": {"library": library},
+            "inventory": {"key_label": label, **inv}}
+
+
+@pytest.mark.asyncio
+async def test_key_reconciliation_endpoint():
+    from db.models.evidence_record import EvidenceRecord
+
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    session.add(Scan(id="inv-1", scan_start=datetime(2026, 9, 25, tzinfo=timezone.utc), target_location="file:///drops/keys", target_type="LOCAL_DIRECTORY", status="COMPLETED", statistics={"total_findings": 3}))
+    for i, fd in enumerate([
+        _inv_finding("payments", "keytool", "RSA", 2048, key_store="payments.jks"),
+        _inv_finding("PAY.ZPK.ACQ001", "ICSF", "3DES", 112, key_store="CKDS"),
+        _inv_finding("legacy-partner-ca", "keytool", "RSA", 1024),
+    ]):
+        session.add(EvidenceRecord(id=f"ev-{i}", scan_id="inv-1", content_hash=f"h{i}", chain_hash=f"c{i}", chain_position=i, algorithm=fd["crypto"]["algorithm"],
+                                   confidence="HIGH", file_path="exports/ckds.lst", line_number=1, finding_data=fd))
+    # a source repo scan whose cascade lists key identifiers (newest per target wins; the older one must be ignored)
+    src_stats = lambda refs: {"cascade": {"summary": {}, "key_references": refs}}  # noqa: E731
+    session.add(Scan(id="src-old", scan_start=datetime(2026, 9, 1, tzinfo=timezone.utc), target_location="https://git/core.git", target_type="GIT_REPOSITORY", status="COMPLETED",
+                     statistics=src_stats([{"kind": "key_alias", "identifier": "gone-alias", "files": 1, "sample_files": ["x.java"]}])))
+    session.add(Scan(id="src-new", scan_start=datetime(2026, 9, 24, tzinfo=timezone.utc), target_location="https://git/core.git", target_type="GIT_REPOSITORY", status="COMPLETED",
+                     statistics=src_stats([{"kind": "key_file", "identifier": "payments.jks", "files": 2, "sample_files": ["a.java", "b.java"]},
+                                           {"kind": "key_alias", "identifier": "ebank-tls", "files": 1, "sample_files": ["tls.py"]},
+                                           {"kind": "env_var", "identifier": "PAYMENT_KEY", "files": 1, "sample_files": ["cfg.py"]}])))
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/scans/inv-1/key-reconciliation")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert [s["scan_id"] for s in body["source_scans"]] == ["src-new"]
+        assert body["summary"] == {"inventory_keys": 3, "consumers": 1, "orphans": 2, "not_in_inventory": 1, "source_key_references": 3}
+        assert body["consumers"][0]["label"] == "payments" and body["consumers"][0]["references"][0]["identifier"] == "payments.jks"
+        assert {o["label"] for o in body["orphans"]} == {"PAY.ZPK.ACQ001", "legacy-partner-ca"}
+        assert body["not_in_inventory"] == [{"kind": "key_alias", "identifier": "ebank-tls", "files": 1, "sample_files": ["tls.py"], "scan_id": "src-new"}]  # env vars are not inventory items
+        r = await c.get("/api/v1/scans/inv-1/key-reconciliation", params={"source_scan": ["src-old"]})
+        assert r.json()["summary"]["consumers"] == 0 and r.json()["not_in_inventory"][0]["identifier"] == "gone-alias"
+        assert (await c.get("/api/v1/scans/scan-1/key-reconciliation")).status_code == 404  # no inventory findings
+        assert (await c.get("/api/v1/scans/inv-1/key-reconciliation", params={"source_scan": ["nope"]})).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_inventory_certificates_reach_the_renewal_queue():
+    """A certificate found in a keytool/RACDCERT export (worker upsert) shows in the renewal queue with its provenance."""
+    from datetime import timedelta
+
+    from db.repositories.certificate_repository import CertificateRepository
+
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    soon = (datetime.now(timezone.utc) + timedelta(days=10)).date().isoformat()
+    CertificateRepository(session).upsert({
+        "fingerprint_sha256": "ab" * 32, "subject": "CN=ebank.bank.example, O=Bank", "issuer": "CN=Bank Issuing CA 2", "not_after": soon,
+        "public_key_algorithm": "RSA", "public_key_size": 2048, "expiry_status": "EXPIRING_SOON", "days_until_expiry": 10,
+        "usages": ["exports/keytool.txt"], "extra": {"source": "KEY_INVENTORY", "fingerprint_derived": True, "key_label": "ebank-tls", "key_store": "JKS", "library": "keytool"},
+    })
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/certificates/lifecycle/renewal-queue", params={"lead_days": 30})
+        assert r.status_code == 200, r.text
+        due = r.json()["due"]
+        assert len(due) == 1 and due[0]["source"] == "KEY_INVENTORY" and due[0]["key_label"] == "ebank-tls" and due[0]["usages"] == ["exports/keytool.txt"]
+
+
+@pytest.mark.asyncio
+async def test_evidence_pack_carries_signed_analysis():
+    """Cascade / systems / reconciliation ride in the evidence pack under `extra.analysis` and are covered by the signature."""
+    from evidence.pack.evidence_pack import verify_evidence_pack
+
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    scan = session.get(Scan, "scan-1")
+    scan.statistics = {**scan.statistics, "evidence_sources": {"SOURCE_CODE": 2}, "key_reconciliation": {"summary": {"orphans": 1}, "orphans": [{"label": "X"}]}}
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/scans/scan-1/evidence-pack")
+        assert r.status_code == 200, r.text
+        pack = r.json()
+        analysis = pack["extra"]["analysis"]
+        assert analysis["cascade"]["summary"]["providers"] == 2 and [s["system"] for s in analysis["cascade"]["systems"]] == ["CORE", "CARDS"]
+        assert analysis["key_reconciliation"]["summary"] == {"orphans": 1} and analysis["evidence_sources"] == {"SOURCE_CODE": 2}
+        assert "providers" not in analysis["cascade"]  # per-file provider list stays in /cascade, not in the pack
+        from api.config.settings import get_settings
+        ok = verify_evidence_pack(pack, secret=get_settings().SECRET_KEY)
+        assert ok["result"] == "PASS" and ok["signature_ok"] is True, ok
+        pack["extra"]["analysis"]["cascade"]["summary"]["providers"] = 99  # tamper → signature breaks
+        assert verify_evidence_pack(pack, secret=get_settings().SECRET_KEY)["result"] == "FAIL"
+        # a scan without analysis has no extra block at all
+        r = await c.get("/api/v1/scans/scan-old/evidence-pack")
+        assert r.status_code == 200 and "extra" not in r.json()
+
+
+@pytest.mark.asyncio
+async def test_cbom_carries_real_dependencies_from_the_cascade():
+    from db.models.evidence_record import EvidenceRecord
+
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    for i, (path, alg, inv) in enumerate([("core/CryptoUtil.java", "AES", None), ("cards/CardSigner.java", "RSA", None),
+                                          ("exports/ckds.lst", "3DES", {"key_label": "PAY.ZPK.ACQ001", "key_store": "CKDS", "state": "ACTIVE"})]):
+        fd = {"source": {"type": "KEY_INVENTORY" if inv else "SOURCE_CODE", "file_path": path, "line_number": 1}, "crypto": {"algorithm": alg}, "metadata": {}}
+        if inv:
+            fd["inventory"] = inv
+        session.add(EvidenceRecord(id=f"ev{i}", scan_id="scan-1", content_hash=f"h{i}", chain_hash=f"c{i}", chain_position=i, algorithm=alg,
+                                   confidence="HIGH", file_path=path, line_number=1, finding_data=fd))
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/scans/scan-1/cbom")
+        assert r.status_code == 200, r.text
+        bom = r.json()
+        refs = {c["bom-ref"] for c in bom["components"]} | {bom["metadata"]["component"]["bom-ref"]}
+        deps = {d["ref"]: d["dependsOn"] for d in bom["dependencies"]}
+        assert all(ref in refs and all(x in refs for x in on) for ref, on in deps.items())  # every ref resolves
+        assert deps["root:scan-1"] == ["system:CORE", "system:CARDS"]
+        assert deps["system:CARDS"] == ["file:cards/CardSigner.java", "system:CORE"]
+        assert deps["file:cards/CardSigner.java"] == ["ev1", "file:core/CryptoUtil.java"] and deps["file:core/CryptoUtil.java"] == ["ev0"]
+        key = next(c for c in bom["components"] if c["bom-ref"] == "ev2")
+        assert key["cryptoProperties"]["assetType"] == "related-crypto-material"
+        assert {"name": "cryptoscan:key:key_label", "value": "PAY.ZPK.ACQ001"} in key["properties"]
+        # scan without cascade: plain BOM, no dependencies block
+        assert "dependencies" not in (await c.get("/api/v1/scans/scan-old/cbom")).json()

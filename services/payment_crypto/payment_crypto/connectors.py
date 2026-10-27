@@ -124,7 +124,7 @@ class PayshieldSimulator:
 
     def day(self, day: datetime, *, transactions: int = 10_000_000, devices: tuple[str, ...] = ("hsm-sim-1",)) -> str:
         rng = _Seeded(self.seed + day.toordinal())
-        ops = int(transactions * 1.08)  # ~1.08 HSM ops per transaction (verify + some translates)
+        int(transactions * 1.08)  # ~1.08 HSM ops per transaction (verify + some translates)
         lines = []
         device = devices[rng.below(len(devices))]
         for _ in range(3):  # sampled usage events (a full day would be millions)

@@ -1,0 +1,10 @@
+"""Owned PostgreSQL synthetic OCI metadata custody parity."""
+
+from test_assurance_workflows import assured as assured
+from test_cbom_controlled_postgres import banks as banks, pytestmark as pytestmark
+from test_oci_metadata_candidate import (
+    test_image_sbom_and_custody_reads_never_reinspect_files as test_image_sbom_and_custody_reads_never_reinspect_files,
+    test_official_schema_failure_refuses_export_and_audit as test_official_schema_failure_refuses_export_and_audit,
+    test_failed_metadata_not_exported_as_empty_success as test_failed_metadata_not_exported_as_empty_success,
+    test_universal_container_and_linux_bypass_stay_blocked as test_universal_container_and_linux_bypass_stay_blocked,
+)

@@ -1,0 +1,26 @@
+{
+  "frontend_build": "PASS",
+  "frontend_tests_rerun": false,
+  "frontend_typecheck": "PASS",
+  "host_attested": false,
+  "independent_acceptance": false,
+  "pip_check": "PASS",
+  "postgres": {
+    "errors": 0,
+    "failures": 0,
+    "passed": 116,
+    "seconds": 199.375,
+    "skipped": 0,
+    "tests": 116
+  },
+  "production_execution_qualified": false,
+  "python": {
+    "errors": 0,
+    "failures": 0,
+    "passed": 1696,
+    "seconds": 262.503,
+    "skipped": 3,
+    "tests": 1699
+  },
+  "ruff": "PASS"
+}

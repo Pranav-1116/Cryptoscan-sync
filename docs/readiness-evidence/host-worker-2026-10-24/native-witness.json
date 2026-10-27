@@ -1,0 +1,68 @@
+{
+  "host_attested": false,
+  "isolation": {
+    "exec_clone": "DENIED",
+    "filesystem": "EXPLICIT_READ_LEAVES",
+    "landlock_abi": 2,
+    "network": "DENIED",
+    "production_execution_qualified": false,
+    "profile": "linux-landlock-seccomp/v1"
+  },
+  "native_receipts": [
+    {
+      "byte_count_positive": true,
+      "facts": 1,
+      "input_id": "process",
+      "reason": "METADATA_ONLY",
+      "status": "PARSED"
+    },
+    {
+      "byte_count_positive": true,
+      "facts": 30,
+      "input_id": "maps",
+      "reason": "METADATA_ONLY",
+      "status": "PARSED"
+    },
+    {
+      "byte_count_positive": true,
+      "facts": 1,
+      "input_id": "cpu",
+      "reason": "METADATA_ONLY",
+      "status": "PARSED"
+    },
+    {
+      "byte_count_positive": true,
+      "facts": 2,
+      "input_id": "tcp",
+      "reason": "METADATA_ONLY",
+      "status": "PARSED"
+    }
+  ],
+  "owned_tcp_seen": true,
+  "production_execution_qualified": false,
+  "recorded_crash_cwd_removed_after_reap": true,
+  "standalone_native_diagnostic_not_worker_fallback": [
+    {
+      "facts": 0,
+      "input_id": "systemd",
+      "reason": "INTERFACE_UNAVAILABLE",
+      "status": "UNAVAILABLE"
+    },
+    {
+      "facts": 0,
+      "input_id": "dmi",
+      "reason": "NOT_FOUND",
+      "status": "UNAVAILABLE"
+    },
+    {
+      "facts": 0,
+      "input_id": "tpm0",
+      "reason": "NOT_FOUND",
+      "status": "UNAVAILABLE"
+    }
+  ],
+  "supervisor_death_child_sigkill_and_reaped": true,
+  "systemd_dmi_tpm_positive_qualified": false,
+  "temporary_native_fixture_removed_on_exit": true,
+  "windows_executed": false
+}

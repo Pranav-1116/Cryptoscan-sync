@@ -1,0 +1,359 @@
+{
+  "actual_container_qualified": false,
+  "authenticity_verified": false,
+  "baseline": "7b06710118fa5efd14bad223e543176544df15bd",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "native_windows_qualified": false,
+  "physical_hsm_qualified": false,
+  "production_admitted": false,
+  "records": [
+    {
+      "bytes": 28510,
+      "path": "docs/README.md",
+      "sha256": "241811bbfe1c47e2400906a4d43854980ac1aefcb77f563229ab0839640ac6f9"
+    },
+    {
+      "bytes": 8282,
+      "path": "docs/api-reference/hybrid-operation-software-evidence.md",
+      "sha256": "a4831f6559b1278601e892ac3ecd97bc7fae2f9531ebb7b3157e5b0e0d58d834"
+    },
+    {
+      "bytes": 10608,
+      "path": "docs/bank-environment/80-tls13-selected-group-evidence.md",
+      "sha256": "5c1993a505cd70da7758d6abae2c0a81bae35483195116a999eddec84a7b46f9"
+    },
+    {
+      "bytes": 11832,
+      "path": "docs/bank-environment/81-actual-hybrid-operation-and-software-truth.md",
+      "sha256": "472d824b2e84b2d98eb37cc6f3a46815cb171c00abde877b8d27f54df1d59c01"
+    },
+    {
+      "bytes": 31554,
+      "path": "docs/bank-environment/README.md",
+      "sha256": "d2e1889491163ae777d7342bed3b513b0a10da9eb30fcdeb3a0d9835ffb68bec"
+    },
+    {
+      "bytes": 17323,
+      "path": "docs/operations/bank-original45-engineering-gaps.md",
+      "sha256": "42c8f18c4fc6afba6ca93b4384978025a3e4cf2cbf612b2661ed34ba69f308fa"
+    },
+    {
+      "bytes": 7378,
+      "path": "docs/readiness-evidence/README.md",
+      "sha256": "da4846e485d66e8db4407d871bcebc4adc285cda46bc15ac2bbfc36fa3d11197"
+    },
+    {
+      "bytes": 10332,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25.md",
+      "sha256": "5ac34816f571a5a175907b694c7cf87cb4fecc328b2984cd1c8c586f03ac2750"
+    },
+    {
+      "bytes": 7052,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/build.txt",
+      "sha256": "b752d6ce98e986cf1ed73ae0df9597fa7f6456495a398c003e3d0bdae6aa4e99"
+    },
+    {
+      "bytes": 106,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/cleanup.txt",
+      "sha256": "6da15d5866aa1d05f1ae0165124a9ab423e34d6dd012ecac2888e25c183e8023"
+    },
+    {
+      "bytes": 13755,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/collector-source-lock.json",
+      "sha256": "4f29045d3aa9fef2318a0047f92e1caa9dda68c71a0b2ba02b4a6875b821f014"
+    },
+    {
+      "bytes": 116,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/doclinks.txt",
+      "sha256": "c54788249a093e5d0bd76d7d130fce10d1d70e9f10a29f8664d3cb9a99305f69"
+    },
+    {
+      "bytes": 2437,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/final.txt",
+      "sha256": "18d68daeb791fe2791b1b57b0995e42ea13ea044c9a858f8ee4433a0503143e5"
+    },
+    {
+      "bytes": 33799,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/final.xml",
+      "sha256": "6d8037d15209f6179a9c2fdca705557fdcc63fd34bc62f235623d11e99d9bc79"
+    },
+    {
+      "bytes": 27285,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/frontend.txt",
+      "sha256": "64bc14209a38f030d6fc8ae4b2f68be3eb23c74a687f9c1ccd59905528a1f38a"
+    },
+    {
+      "bytes": 4828,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/functional-witness.json",
+      "sha256": "3a68cf08a89a3f9b20bab2b95e212f617121595bbfe2dd9edc0119c8cc23bd05"
+    },
+    {
+      "bytes": 5574,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/functional-witness.py",
+      "sha256": "6418fb14d2b69fb900e0e66dcc74a48ea55e5fb44a5374b128555d2a5fee4538"
+    },
+    {
+      "bytes": 300,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/functional-witness.txt",
+      "sha256": "559c8594fcce1ab48105724005cb89f24b71cf9c8e88d368ad561745b34671d7"
+    },
+    {
+      "bytes": 30,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/pip.txt",
+      "sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+    },
+    {
+      "bytes": 6672,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/postgres.txt",
+      "sha256": "6bf699a4555ac46386609cb25653da186e8af8cbcb36b2801a53118daf42d1a0"
+    },
+    {
+      "bytes": 5681,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/postgres.xml",
+      "sha256": "7dee0238e862e7394312d92dd9c672fc5e14d5f45fae2c57be7b95ee6cb1ef98"
+    },
+    {
+      "bytes": 6082,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/python.txt",
+      "sha256": "e273d1f2516b566d0bf645234ff936762bc6fc849471c1cd5348473abd9a71d6"
+    },
+    {
+      "bytes": 477370,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/python.xml",
+      "sha256": "e9cd1ce5a3f5f83d08cad7ef708f0009a82c8fae5d34977f3a92084fa6b42ba5"
+    },
+    {
+      "bytes": 2812,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/schema-check.py",
+      "sha256": "0e6773e3acde56fced5047f0767fc33d6b0ea54ac60b3f538e91d8cb9d3b4483"
+    },
+    {
+      "bytes": 1194,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/schema.txt",
+      "sha256": "ea129d7c169fae6bfbbc1e83800384d42c44ba3fe676c98ac51b5a51ea37b6b8"
+    },
+    {
+      "bytes": 46,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/static.txt",
+      "sha256": "c0a8976836e2854946243a3870cd752228f5ac6bfb04c84d7b88b0b99862060f"
+    },
+    {
+      "bytes": 50,
+      "path": "docs/readiness-evidence/hybrid-operation-software-2026-10-25/typecheck.txt",
+      "sha256": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f"
+    },
+    {
+      "bytes": 8111,
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25.md",
+      "sha256": "2272ffe05e4365be0d8f9bb6e2bd1f053860a10de24fabcc6013c93e653bd96b"
+    },
+    {
+      "bytes": 9896,
+      "path": "docs/runbooks/hybrid-operation-software-evidence.md",
+      "sha256": "097bdcb30232679cc32ec3dbf3b3ca76a328a4e02452605619f23caa2506be37"
+    },
+    {
+      "bytes": 2307,
+      "path": "frontend/src/components/HostEvidencePanel.hybrid.test.tsx",
+      "sha256": "72a1604a6f086d7503938ef1329858911bab9758c996d5e1d65ca6b71126f0d7"
+    },
+    {
+      "bytes": 39338,
+      "path": "frontend/src/components/HostEvidencePanel.tsx",
+      "sha256": "e63671fe39a1042d8fb17cbe61965e0b169bac529c399d8f32f79dc3e2d07004"
+    },
+    {
+      "bytes": 248735,
+      "path": "frontend/src/lib/api.ts",
+      "sha256": "03fb7af07adbfb85168074cabd1f5b08fab51fdae47fb0e2c822478a50d0e691"
+    },
+    {
+      "bytes": 1444,
+      "path": "frontend/src/pages/CryptoAssurance.hsm-boundary.test.tsx",
+      "sha256": "a21f483d1b7761aad6f0072cdb35a92a765f7c8f7976f2b498d003aa54ea5360"
+    },
+    {
+      "bytes": 19042,
+      "path": "frontend/src/pages/CryptoAssurance.tsx",
+      "sha256": "ac561953decdd42ab0f17810e152a2032a36bd3bfd88be92a435c90a9b45727c"
+    },
+    {
+      "bytes": 4866,
+      "path": "frontend/src/test/fixtures/tlsHybridFact.json",
+      "sha256": "55dc3a6e6f6921fe2ed32d3a8ef42f92cd731935f9a0adfac630346eb35c5d4c"
+    },
+    {
+      "bytes": 243,
+      "path": "requirements-hybrid-tls.txt",
+      "sha256": "5bceba1d3b15a3e5ae0b90a45cc395cfb0f8a49f7d657cefe765dc6374f87f1c"
+    },
+    {
+      "bytes": 2262,
+      "path": "scripts/collect_tls_session.py",
+      "sha256": "a22872e16c63b3a1880bec2b7680b29f333eb4ca013a8652ba0bf902b25966cf"
+    },
+    {
+      "bytes": 1493,
+      "path": "scripts/reconcile_software_truth.py",
+      "sha256": "9aa80f047c42051c19012f5f19339361dcee14a6868108757051499652b33fe6"
+    },
+    {
+      "bytes": 7719,
+      "path": "scripts/validate_host_evidence.py",
+      "sha256": "640fbc21aa26e9325b6d1fe35d1c7fefd08e8a058c49c32735578aec16d640f7"
+    },
+    {
+      "bytes": 2018,
+      "path": "scripts/verify_operation_evidence.py",
+      "sha256": "43583c8492ca4baf1240dc12fa25b8b6873154fe30c7e5cf1ce0d03e163cc825"
+    },
+    {
+      "bytes": 7785,
+      "path": "services/api/api/assurance/tls_export.py",
+      "sha256": "54d48f7bca04bf1a4aff8c42e84dbf50bc18554ba20149736330618c1f84744e"
+    },
+    {
+      "bytes": 4714,
+      "path": "services/api/tests/unit/test_tls_hybrid_candidate.py",
+      "sha256": "b83a9bfd5cd09be063d68289cc094ef0f6b26d24dbe521117f0b79ccc3dcf93b"
+    },
+    {
+      "bytes": 702,
+      "path": "services/api/tests/unit/test_tls_hybrid_candidate_postgres.py",
+      "sha256": "e0b0f0011aaaad4eb12a091556c273982a3a6ea3206150d5663641ca79e666bc"
+    },
+    {
+      "bytes": 8114,
+      "path": "services/inventory/inventory/collection.py",
+      "sha256": "a48a6d8a1459c4a016f50bdb8c6c20cc85fad3ddf8213ddc9e12fa72095f046c"
+    },
+    {
+      "bytes": 26420,
+      "path": "services/inventory/inventory/host.py",
+      "sha256": "eeb6664ecd864bbc3aa72eca0296d6e62c9dd29e1aef5e55a6266f7ed1d332d8"
+    },
+    {
+      "bytes": 3695,
+      "path": "services/inventory/inventory/tls_hybrid.py",
+      "sha256": "39ed4894a8ee52bc9581b8e06338d851e04b4781e67d0b92699c489561465a34"
+    },
+    {
+      "bytes": 6967,
+      "path": "services/inventory/inventory/tls_session.py",
+      "sha256": "58aad33b00a3961b3ade7b5f5895d569790e3ca432da8603c38d4f185225d37b"
+    },
+    {
+      "bytes": 5990,
+      "path": "services/inventory/tests/test_evidence_reconciliation_cli.py",
+      "sha256": "080d7c88533c6a94f01478f710427dda561773e3a613c80f98f4837f90c8141d"
+    },
+    {
+      "bytes": 6878,
+      "path": "services/inventory/tests/test_tls_hybrid.py",
+      "sha256": "ce3c573bb8ecc1673cedd408983b532c32adaddebb6ee7f53abeaf23cb1f8a01"
+    },
+    {
+      "bytes": 3703,
+      "path": "services/inventory/tests/test_tls_hybrid_controls.py",
+      "sha256": "baf265bd4c3940521cc9668a70c6924c17086f6093fb21c073a561a6820512d2"
+    },
+    {
+      "bytes": 11991,
+      "path": "services/keyassure/keyassure/hsm_connectivity.py",
+      "sha256": "26568df2f04fd1555a8952cac97db59dd7a4b2939161b5290c48f0332e1ac25f"
+    },
+    {
+      "bytes": 2319,
+      "path": "services/keyassure/tests/test_hsm_operation_boundary.py",
+      "sha256": "83e8135acb2dc9cf1fc9f289f51808df545e61373967b8e723f515407f7c2674"
+    },
+    {
+      "bytes": 7397,
+      "path": "shared/shared_models/shared_models/collection.py",
+      "sha256": "5936c431694cb90da399a94907d092326c270d5d5231f8d7612b7afd8d339fcc"
+    },
+    {
+      "bytes": 10614,
+      "path": "shared/shared_models/shared_models/collection_coverage.py",
+      "sha256": "0cbfaab9d498fd69952083fb4b3f53902087cd53f8c127f618450107af3660f2"
+    },
+    {
+      "bytes": 22088,
+      "path": "shared/shared_models/shared_models/host_collection.py",
+      "sha256": "abf624578e1521db26eb5fcdbaf7124b13a6ccf33527896abb4bfdc1dfa09de5"
+    },
+    {
+      "bytes": 8396,
+      "path": "shared/shared_models/shared_models/host_runtime.py",
+      "sha256": "e9f72994265184be90825c4436ac49bd2d0149eadee616926254af9bd51dde91"
+    },
+    {
+      "bytes": 6429,
+      "path": "shared/shared_models/shared_models/host_runtime_scope.py",
+      "sha256": "6ef93128e6fcf4178b0d7dad01d2df7d7181fc7b899b7788aa2c132b4a0e0b74"
+    },
+    {
+      "bytes": 6048,
+      "path": "shared/shared_models/shared_models/operation_evidence.py",
+      "sha256": "b131e3939f101405771926fe0f0c14e7c6948e43b22d499f657a5928f977514a"
+    },
+    {
+      "bytes": 91790,
+      "path": "shared/shared_models/shared_models/schemas/collection-evidence-v1.schema.json",
+      "sha256": "96ca55af1fbc0900f2decac3cc6a3f2031208a8cb6048cc6db49416e78f3d4fe"
+    },
+    {
+      "bytes": 6063,
+      "path": "shared/shared_models/shared_models/schemas/collection-target-v1.schema.json",
+      "sha256": "27bb79d10c492c8d1d6f540ffa8e94116f8137ba7c4d336f0b1d8c12eb4f6535"
+    },
+    {
+      "bytes": 3227,
+      "path": "shared/shared_models/shared_models/schemas/host-manifest-v1.schema.json",
+      "sha256": "8835334b91f46a2f9289fc5c9dbe910fd3afeb31d8ec01525b166cb4c686974c"
+    },
+    {
+      "bytes": 89317,
+      "path": "shared/shared_models/shared_models/schemas/host-snapshot-v1.schema.json",
+      "sha256": "b015be6eebc2211bf7454b7e10f73c97de517e3725bcdc20a1c38e1594925142"
+    },
+    {
+      "bytes": 95625,
+      "path": "shared/shared_models/shared_models/schemas/native-evidence-v1.schema.json",
+      "sha256": "9d9ddc24f2109bef23d0a2c42746e8e939456c2ef9a2e8e102ad65d1d617a77f"
+    },
+    {
+      "bytes": 2269,
+      "path": "shared/shared_models/shared_models/schemas/operation-approval-v1.schema.json",
+      "sha256": "8905289ea2d8f0331262b74becd9c7dcacbf8bfb84a4c54de4fb1530ce4f7d55"
+    },
+    {
+      "bytes": 3131,
+      "path": "shared/shared_models/shared_models/schemas/operation-evidence-v1.schema.json",
+      "sha256": "541608664896a2384d8b14946afb3f7ec13f616ef0e74366923c70290fc439ac"
+    },
+    {
+      "bytes": 2826,
+      "path": "shared/shared_models/shared_models/schemas/software-truth-plan-v1.schema.json",
+      "sha256": "1da342c9b46dd259182920ea08645f47896446224b93985e9742054b0b2bf011"
+    },
+    {
+      "bytes": 4507,
+      "path": "shared/shared_models/shared_models/software_truth.py",
+      "sha256": "553b462d6010cd8e0e0e8033282fee95e4af67f3217df512671a3d40ad95218e"
+    },
+    {
+      "bytes": 2605,
+      "path": "shared/shared_models/shared_models/tls_hybrid.py",
+      "sha256": "cb3e690aefdde3a046845ae5b72b494300f556318af2e92cf87bec56682c80ec"
+    },
+    {
+      "bytes": 5180,
+      "path": "shared/shared_models/tests/test_operation_evidence.py",
+      "sha256": "fe796edaa86dd9da05dcd05c9e5af94e0b81a107aa149108c41f7b796d32acaa"
+    }
+  ],
+  "schema_version": "cryptoscan.local-engineering-artifact-manifest/v1",
+  "source_basis": "LOCAL_ENGINEERING_NOT_INDEPENDENT_QUALIFICATION",
+  "whole_estate_software_complete": false
+}

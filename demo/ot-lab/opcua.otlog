@@ -1,3 +1,0 @@
-# Passive OPC-UA tap (never sent from CryptoScan)
-ts=2024-01-15T10:00:00 src=10.0.2.15 dst=10.0.2.1 mac=00:1B:1B:aa:bb:cc port=4840 security_mode=None product=Siemens SIMATIC S7-1500 version=2.8.2
-ts=2024-01-15T10:00:01 src=10.0.2.16 dst=10.0.2.1 mac=00:1B:1B:aa:bb:dd port=4840 security_mode=SignAndEncrypt policy=Basic256Sha256 product=urn:Siemens:S7-1500 version=2.9.1

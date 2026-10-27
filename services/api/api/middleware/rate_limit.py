@@ -7,30 +7,46 @@ a shared limiter (ingress/WAF) and keep these limits as the inner defense.
 Windows are keyed by identity (API key or session user when known, else client
 IP) and by endpoint class, so a busy scanner cannot lock out the whole org and
 login brute-force is throttled per source.
+
+Pure ASGI implementation (see asgi_utils.py for why): the decision needs only
+path + headers + identity, never the body.
 """
 
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from collections import defaultdict, deque
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.requests import Request
+
+from api.middleware.asgi_utils import make_send_with_headers, send_json
+
+logger = logging.getLogger(__name__)
 
 # endpoint class -> (limit, window_seconds)
 DEFAULT_RULES: dict[str, tuple[int, int]] = {
-    "login": (5, 60),        # /api/v1/auth/login — 5 req/min per IP
+    "login": (5, 60),          # /api/v1/auth/login — 5 req/min per IP
+    "register": (10, 3600),    # /api/v1/auth/register — 10 accounts/hour per IP (open endpoint)
     "scan_submit": (100, 60),  # POST /api/v1/scans — 100 req/min per user
-    "api": (600, 60),        # everything else under /api — 600 req/min per identity
+    "host_write": (10, 60),   # bounded offline approval/intake, not remote execution
+    "host_read": (60, 60),    # integrity-checked metadata/export
+    "api": (600, 60),          # everything else under /api — 600 req/min per identity
 }
 
 
 def _endpoint_class(method: str, path: str) -> str:
     if path.rstrip("/") == "/api/v1/auth/login":
         return "login"
+    if method == "POST" and path.rstrip("/") == "/api/v1/auth/register":
+        return "register"
     if method == "POST" and (path == "/api/v1/scans" or path.startswith("/api/v1/scans")):
         return "scan_submit"
+    if path.startswith("/api/v1/collection/"):
+        return "host_read" if method in {"GET", "HEAD"} else "host_write"
+    if path.startswith("/api/v1/host-evidence/"):
+        return "host_write" if method == "POST" else "host_read"
     return "api"
 
 
@@ -49,22 +65,34 @@ def _identity(request) -> str:
             username = SessionManager().validate_api_token(token)
             if username:
                 return f"user:{username}"
-        except Exception:
-            pass  # unauthenticated token falls through to IP bucket
-    ip = request.client.host if request.client else "unknown"
+        except Exception as exc:
+            logger.warning("rate_limit_session_identity_unavailable", extra={"error_type": type(exc).__name__})
+            # An invalid/unavailable session identity falls through to IP bucket.
+    # per-IP bucket under the same proxy-trust boundary as the API-key
+    # allowlist: honoring X-Forwarded-For without the boundary would let a
+    # client mint unlimited buckets; ignoring it behind a real proxy would
+    # lump every user into one. The boundary resolves both honestly.
+    from api.security.client_ip import client_ip
+
+    ip = client_ip(request) or "unknown"
     return f"ip:{ip}"
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
+class RateLimitMiddleware:
     def __init__(self, app, rules: dict[str, tuple[int, int]] | None = None, clock=time.monotonic,
-                 redis_client=None):
-        super().__init__(app)
+                 redis_client=None, fail_closed: bool = False):
+        self.app = app
         self.rules = rules or DEFAULT_RULES
         self.clock = clock
-        self.redis = redis_client  # None -> in-process windows
+        self.redis = redis_client  # None -> in-process windows in development
+        self.fail_closed = fail_closed
         self._hits: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
     def _take(self, key: tuple[str, str], limit: int, window: float) -> tuple[bool, int, float]:
+        if self.redis is None and self.fail_closed:
+            # A production deployment configured for a shared limiter must not
+            # silently downgrade to per-process quotas during Redis outage.
+            return False, 0, 1.0
         if self.redis is not None:
             shared = self._take_shared(key, limit, window)
             if shared is not None:
@@ -90,15 +118,24 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 self.redis.expire(bucket_key, int(window) + 1)
             retry_after = window - (self.clock() % window)
             return count <= limit, max(0, limit - count), retry_after
-        except Exception:
-            return None  # degrade to in-process limits, never error the request
+        except Exception as exc:
+            logger.exception("rate_limit_redis_unavailable", extra={"error_type": type(exc).__name__})
+            if self.fail_closed:
+                return False, 0, 1.0
+            return None  # development-only degrade to in-process limits
 
-    async def dispatch(self, request, call_next):
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope, receive)
         path = request.url.path
         if not path.startswith("/api/"):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
         if path.startswith(("/api/v1/healthz", "/api/v1/meta", "/health", "/ready", "/metrics")):
-            return await call_next(request)  # liveness probes are never throttled
+            await self.app(scope, receive, send)  # liveness probes are never throttled
+            return
 
         endpoint_class = _endpoint_class(request.method, path)
         limit, window = self.rules.get(endpoint_class, self.rules["api"])
@@ -110,17 +147,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         }
         if not allowed:
             headers["Retry-After"] = str(max(1, int(retry_after) + 1))
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "detail": "rate limit exceeded",
-                    "limit": limit,
-                    "window_seconds": window,
-                    "scope": endpoint_class,
-                },
-                headers=headers,
-            )
-        response = await call_next(request)
-        for name, value in headers.items():
-            response.headers[name] = value
-        return response
+            await send_json(send, 429, {
+                "detail": "rate limit exceeded",
+                "limit": limit,
+                "window_seconds": window,
+                "scope": endpoint_class,
+            }, extra_headers=headers)
+            return
+        await self.app(scope, receive, make_send_with_headers(send, headers))

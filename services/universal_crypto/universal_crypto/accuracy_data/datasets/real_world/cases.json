@@ -1,0 +1,142 @@
+[
+ {
+  "id": "rw01",
+  "input": {
+   "language": "python",
+   "text": "import hashlib, os\nfrom cryptography.hazmat.primitives.ciphers.aead import AESGCM\nkey = os.urandom(32)\nciphertext = AESGCM(key).encrypt(nonce, data, None)\ndigest = hashlib.sha256(ciphertext).hexdigest()"
+  },
+  "expected": {
+   "algorithms": [
+    "AES-GCM",
+    "CSPRNG",
+    "SHA-256"
+   ],
+   "libraries": [
+    "cryptography",
+    "hashlib"
+   ]
+  }
+ },
+ {
+  "id": "rw02",
+  "input": {
+   "language": "java",
+   "text": "MessageDigest.getInstance(\"SHA-256\");\nSignature.getInstance(\"SHA256withRSA\");\nKeyPairGenerator.getInstance(\"RSA\").initialize(3072);"
+  },
+  "expected": {
+   "algorithms": [
+    "SHA-256",
+    "RSA-PSS",
+    "RSA"
+   ],
+   "libraries": [
+    "JCA-JCE"
+   ]
+  }
+ },
+ {
+  "id": "rw03",
+  "input": {
+   "language": "go",
+   "text": "import (\"crypto/rsa\"; \"crypto/rand\"; \"crypto/sha256\")\npriv, _ := rsa.GenerateKey(rand.Reader, 3072)\ndigest := sha256.Sum256(data)"
+  },
+  "expected": {
+   "algorithms": [
+    "RSA",
+    "SHA-256",
+    "CSPRNG"
+   ],
+   "libraries": [
+    "Go crypto/*"
+   ]
+  }
+ },
+ {
+  "id": "rw04",
+  "input": {
+   "language": "python",
+   "text": "import hmac, hashlib\nsig = hmac.new(key, data, hashlib.sha256).hexdigest()"
+  },
+  "expected": {
+   "algorithms": [
+    "HMAC",
+    "SHA-256"
+   ],
+   "libraries": [
+    "hmac",
+    "hashlib"
+   ]
+  }
+ },
+ {
+  "id": "rw05",
+  "input": {
+   "language": "tls",
+   "text": "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+  },
+  "expected": {
+   "protocols": [
+    "TLS"
+   ],
+   "algorithms": [
+    "AES-GCM"
+   ]
+  }
+ },
+ {
+  "id": "rw06",
+  "input": {
+   "language": "python",
+   "text": "import random\npassword = \"\".join(random.choice(chars) for _ in range(16))  # weak RNG for secrets"
+  },
+  "expected": {
+   "algorithms": [],
+   "libraries": []
+  }
+ },
+ {
+  "id": "rw07",
+  "input": {
+   "language": "c",
+   "text": "#include <openssl/ssl.h>\nSSL_CTX *ctx = SSL_CTX_new(TLS_method());\nRAND_bytes(buf, 32);"
+  },
+  "expected": {
+   "algorithms": [
+    "CSPRNG"
+   ],
+   "protocols": [
+    "TLS"
+   ],
+   "libraries": [
+    "OpenSSL"
+   ]
+  }
+ },
+ {
+  "id": "rw08",
+  "input": {
+   "language": "solidity",
+   "text": "function recover(bytes32 h, uint8 v, bytes32 r, bytes32 s) public pure returns (address) { return ecrecover(h, v, r, s); }"
+  },
+  "expected": {
+   "algorithms": [
+    "ECDSA"
+   ]
+  }
+ },
+ {
+  "id": "rw09",
+  "input": {
+   "language": "typescript",
+   "text": "import { createHash } from 'node:crypto';\nexport function checksum(data: Buffer): string {\n  return createHash('sha256').update(data).digest('hex');\n}"
+  },
+  "expected": {
+   "algorithms": [
+    "SHA-256"
+   ],
+   "libraries": [
+    "Node crypto"
+   ]
+  }
+ }
+]

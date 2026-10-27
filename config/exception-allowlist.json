@@ -1,0 +1,41 @@
+{
+  "schema": "cryptoscan.exception-allowlist/1",
+  "policy": "An entry is permitted only for an intentionally defensive boundary where the exception is logged or the caller receives an explicit degraded/unknown result. Do not use this file to make a readiness gate green without owner review.",
+  "entries": [
+    {
+      "location": "scripts/postgres_drill.py:87",
+      "owner": "database-reliability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-09-29",
+      "reason": "Rollback is best effort during a connection-loss poll. The caller records the original transient error, retries the probe, and the connection is discarded if it cannot roll back; no success is returned from this handler."
+    },
+    {
+      "location": "services/api/api/routers/auth.py:1047",
+      "owner": "iam",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-16",
+      "reason": "Custom-role validation degrades to built-in role names when the custom_roles table is absent (pre-migration deployments). The caller then rejects unknown role names with 422, so the degraded result is explicit rather than silent; no custom role is fabricated. (2026-10-16: location re-keyed after a line shift from the round-70 client-IP wiring import; the handler itself is unchanged.)"
+    },
+    {
+      "location": "services/database/db/repositories/user_repository.py:298",
+      "owner": "iam",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-11",
+      "reason": "Role-name cleaning degrades to the built-in VALID_ROLES set when the custom_roles table cannot be read (pre-migration or schema drift). Assignment of an unresolvable name then falls back to the viewer default rather than storing an unvalidated role string; the API layer still 422s unknown names first."
+    },
+    {
+      "location": "services/database/db/migration_audit.py:53",
+      "owner": "database-reliability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-11",
+      "reason": "Revision-walk probe: an unknown revision id (stamped or pruned history) stops the linear walk instead of raising. The caller then records the version move as a single linear_walk=false audit row rather than dropping it, so the degraded result is an explicit audit entry, never a silent success."
+    },
+    {
+      "location": "services/database/migrations/env.py:134",
+      "owner": "database-reliability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-11",
+      "reason": "Pre-migration version probe: an unreadable/absent alembic_version state degrades to None so the post-migration audit hook records from_version=null honestly. The migration run itself is unaffected; no success is fabricated from the failed probe."
+    }
+  ]
+}

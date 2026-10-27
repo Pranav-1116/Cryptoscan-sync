@@ -10,6 +10,7 @@ from cloud_scanner.azure.scanners import (
     scan_app_gateway,
     scan_app_service,
     scan_cosmosdb,
+    scan_dedicated_hsm,
     scan_dns,
     scan_front_door,
     scan_key_vault,
@@ -66,6 +67,7 @@ def scan_azure(*, subscription_id: str | None = None, telemetry=None) -> list[di
         ("acr", lambda: _acr(cred, sub)),
         ("vpngateway", lambda: _vpn_gateways(cred, sub)),
         ("managedhsm", lambda: _managed_hsms(cred, sub)),
+        ("dedicatedhsm", lambda: _dedicated_hsms(cred, sub)),
     ):
         if telemetry is not None:
             ok, value, error = _with_client(call)
@@ -202,3 +204,15 @@ def _managed_hsms(cred, sub: str) -> list[dict[str, Any]]:
     except Exception:
         return []
     return scan_managed_hsm(KeyVaultManagementClient(cred, sub), subscription=sub)
+
+
+def _dedicated_hsms(cred, sub: str) -> list[dict[str, Any]]:
+    """Azure Dedicated HSM appliances (report 13 §3.2). Optional SDK: the
+    dedicated-HSM control plane is a separate package
+    (azure-mgmt-hardwaresecuritymodules); without it this service is
+    skipped, not fabricated."""
+    try:
+        from azure.mgmt.hardwaresecuritymodules import DedicatedHSMClient  # type: ignore
+    except Exception:
+        return []
+    return scan_dedicated_hsm(DedicatedHSMClient(cred, sub), subscription=sub)

@@ -1,3 +1,0 @@
-"""Drift service test suite.
-
-"""

@@ -1,0 +1,380 @@
+{
+  "schema": "cryptoscan.bank-vendor-questionnaire-review/1",
+  "register_integrity": "PASS",
+  "original_questions": 45,
+  "additional_questions": 12,
+  "questions_mapped": 57,
+  "status": "BLOCKED_FOR_BANK_ACCEPTANCE",
+  "bank_approved": false,
+  "discovery_completeness_proven": false,
+  "source_reference_sha256": {
+    "shared/shared_models/shared_models/platform_scope.py": "ee0609bf4f758a0d8b5ea5b9058d1eee231ece03b5e8923219b8cc90e142a8b9",
+    "services/api/api/assurance/coverage.py": "d0329c184006d94c6c1ffd3f38c29517b31457ae705790a048969f4c08a04283",
+    "services/scanner/scanner/parsers/cobol_parser.py": "98b5abe3f6fe8a496519c77e0143a932d8d9dd4eb222a7253871029e4a292cb0",
+    "services/cbom/cbom/banking.py": "6640211f407674e542a31676b0609aaba2c77acfb98c2eb68c70a2e60af1b40e",
+    "services/cloud_scanner/cloud_scanner/enterprise/live/collector.py": "1ff302e8c8c0a9c83fd2368a15208eb07158dfb136f639040c6a1db7dc16671b",
+    "services/api/api/routers/payment_crypto.py": "d6226e5abb828b2b831c2ec6ab79c30b54975f7bf8bdebcd258398098c4667ac",
+    "services/api/api/assurance/relationships.py": "35fda791f558158de894e966a53b31d8868ba2ccb8c83f547b5a05090a854d50",
+    "docs/operations/vendor-due-diligence.md": "ccde5df3a2092ed37ead91aef7ebeab6b03eb6e865bcd795f8c7710b940310b3",
+    "services/api/api/routers/ot.py": "382acca7203c2ae7988f0c4057e8b513c943e82393775d8372367f26fadd1823",
+    "services/api/api/routers/hbom.py": "0721f6fccc054101488d2c6e39e343253fc38f04cd8545dfcf0612782f0ed114",
+    "services/api/api/routers/network.py": "14217af18a780766519ca65d4c9c98ec47d665b9043f5df141566703cefd16e4",
+    "services/devsecops/devsecops/binary_scan.py": "52bd3019e86a57eddf234008d615e8e5fdb7367b5a77ae443277315a035bd86c",
+    "services/universal_crypto/universal_crypto/binary_engine.py": "92fcbfa182bf6529d670808da2e88f98ed9c8f1320d7957ef1f0d75615208e12",
+    "shared/shared_models/shared_models/safe_finding.py": "685fdd455ca1d2b57ff73bf84227a428e1433154b594c00dfc6613bf9cc62318",
+    "services/api/api/routers/assurance_boundary.py": "3e04122e945882ca6d48cf085ae38ef4f8c14e73674dafe937c918701e8f60eb",
+    "services/api/api/assurance/adapters.py": "5705d5cb672d515d543806ac549af1801b0c135772c51f2e61254ac7817721df",
+    "shared/shared_models/shared_models/assurance.py": "5d22ce291d339d9456ebc31e4f0e18f183ad28aa485bf13ad1b4709c1092448e",
+    "services/api/api/assurance/accuracy.py": "cdedc3eb1d272c2ee5f3a52589aa3f9d09603b8cec82999dd16f64921c314639",
+    "scripts/accuracy_benchmark.py": "808bae9ba938d0a587df9896a57e6c15be54726d1fa52c7e1d33e37f2c460e92",
+    "shared/shared_models/tests/test_field_accuracy_denominators.py": "5cf403982874348f019439259cac7aa4d8e639f8288082c625b6b77aa82f191c",
+    "services/api/tests/integration/test_field_accuracy_api.py": "84813436b5de1393d142e2fa826b0a40370d8462885893a7ed50926351ae53b0",
+    "shared/shared_models/shared_models/algorithm_registry.py": "cf8aa8ce479df91a5ae67418ef4cdbf6ddec2cd76f060cae8a7cc4dae7ba61ec",
+    "shared/shared_models/shared_models/quantum_classify.py": "a7c5036d44d0a9b535b9c1d49ec0caa74ec5fc42bce14eefee6462a7a1937046",
+    "services/api/tests/unit/test_bank_vendor_questionnaire_boundaries.py": "b8bd3b83d2f92403d1d8007dca6630b0eb0d0db37418dbf5c24e56f9ebc332ce",
+    "shared/shared_models/tests/test_bank_pqc_parameters.py": "c1bf1a845b012710a5f3bda8d7a799667292f7bb5e00b71128974c8024358f9c",
+    "services/api/api/routers/inventory.py": "f49b3e62a1a750f4ddfaf55bf8f0bcd37e81fce8789f69a8e421a25139f198b8",
+    "services/quantum/quantum/risk.py": "cad943d4d19c6bea3085806867a7d25498b1dfd566ed639eabc121afacff758e",
+    "services/network_scanner/network_scanner/enterprise/pqc_readiness.py": "011dcfd43655889895bb19413e6270cfb01ca3d5b08ab6693b6fd3f58fef2512",
+    "services/cbom/cbom/generator.py": "c14e242e38f71f0548e61f3d87190e250802573c7f8f7c7dc79326bdfe110f9e",
+    "services/cbom/cbom/export_service.py": "722516f59e960d090289d20e1ce8e3f07620886bf2979bc9be351c487c331d80",
+    "services/api/tests/unit/test_six_bom_current_evidence.py": "4062a741a501096617b3d64fca08d48c177bf549741f4f301cb12cbea6ef8135",
+    "services/cbom/cbom/cyclonedx16.py": "a12b5031221ccb97e34b01eb90981acca213da1544ec5126c60a56d1f83be2c2",
+    "services/cbom/tests/test_cyclonedx16.py": "94a00281d9a02f22a2e973bf363a237f70ffd8b77ae930725e6a29026c82726a",
+    "services/quantum/quantum/plan.py": "cac08e179a56b7c0ac204a6803ae35d196549cdc57f7c0e57317ff16c66068e5",
+    "services/api/api/routers/quantum.py": "cb7ee304bb39988c5609d53e5e6851a8450c1a57cc989cb8f4f1dfd7091172c4",
+    "services/api/api/routers/systems.py": "446b0a49174b68bac004b498a4138d6e0ad0a08f019db37f5338ca8232bde4f8",
+    "services/api/api/routers/business.py": "ddea4ea939114df67da55fe0a45d2f9be8c3d7b47a80b7c3787dc744fc0eabb0",
+    "services/api/api/assurance/operator.py": "dd5f52646260d68a7904958eb702efc1eb19519956490653bc90bcf1796be6ed",
+    "services/api/tests/unit/test_bank_native_cbom.py": "b59dcfecbea00d492d3e0ef68705f6c3cb4cb443b1e95fc5387ec436ee8ef4d2",
+    "services/graph_engine/tests/test_bank_dependency_qualification.py": "ce73fab0a72d9287a629da9af23fd2e2f1e88c5259559c85391c090956c308ad",
+    "services/api/api/routers/banking.py": "e5d08d626435598ee191cfeee22073e855d77c90b1fd948fae2059e7a6f32e88",
+    "docs/readiness-evidence/control-register.json": "5b0dee3f183cdb74dff67d2e0628811aa01c8d0f1b86eaf64c644bcaf3f7783f",
+    "docs/runbooks/operator-install-upgrade-recover.md": "66345864bd56597584c4d204982059c9906b94a8beaae83db50112e4ca179e94",
+    "docs/security/threat-model.md": "017a1e5915964a4f585b0791a4c2d90730586b20d082ed0e86f227edda510dab",
+    "services/api/api/security/rbac.py": "ad349e095c2f8c6b7648a2ad9e4770b4f80caddbdbe16d1902d234907414e54b",
+    "services/api/api/routers/execution_controls.py": "92cad6f1b0e2e4ef02b3f62313ff97eb4f8aad14934a008d83b1fde576cc2b13",
+    "docs/dev/scanner-isolation.md": "2fc26091c91dd4b86f1b5602981a9009b1ed80218a0876f24636a570bca7a104",
+    "docs/admin-guide/air-gap-install.md": "8d968fbc1b3bac161c382805a25dd0499d692496cef57f4db5ed220f67567e94",
+    "scripts/operator_release.py": "d080ded2c050591d105b4dcc15a92f4493c5738af03ae49a8057b5677bdaf6eb",
+    "services/api/api/assurance/launch.py": "21ee54d56b4aa01ab61929f8a3f9adaa38732b0065031cac3028aec043304c9e",
+    "docs/security/pen-test-scope.md": "75f501d3b7912e733a878eb75e0b3ccf883249b1bb07fedfcf73ae1eaddaa797",
+    "scripts/benchmark_scan.py": "1ae609cad28d4e65039ec873b16180a1846d2266569beaf295b6c4d43838b4ed",
+    "docs/readiness-evidence/quality-trace-performance-2026-10-23.md": "bdcca92351dda9735e50928d6d366c2c4a78cbf235e68a1c570e4974d38803c6",
+    "services/control_plane/control_plane/integrations.py": "64dc2f84d987ad592d928ae5df665bc35c95104b181b4d3869720d42bb3d8a2e",
+    "services/api/api/events/bus.py": "a243c3eebc5dac0d81d5a3904723a6b93cb2a8dac814513eedc126684d09e09f",
+    "services/api/api/routers/monitor.py": "b1152bec154fc2f3dfa77adc602a98647c0a7b6dec525de79e68d76e101a6da3",
+    "docs/operations/accountable-operations-handoff-2026-10-23.md": "d146cac7e60c3697d4dea5e5e1e61327c254513c1e25d3a69161f75d4e677cd5",
+    "services/cbom/cbom/hsm_pkcs11.py": "43cc4208ac4af5b3f22e80ac1af96bb36a2a3eeddc8325a7b2889b1db2e38290",
+    "services/api/api/routers/hsm_scans.py": "9ff11b1eabedd6527e70b0bfbb439828711e80e435040499222356bd1f83fbba",
+    "services/api/api/routers/inventory_cloud.py": "e869477728bf5d82291ec0dab8eb65363d75dc4bd5be003d2c9e1761656792ae",
+    "services/api/api/main.py": "84be640c1b2b9c1006bd583f5847679eb7f541d8a6274e61891172e3b2c54967",
+    "services/api/api/routers/export.py": "7dfd8deeb4670e2a349b814aca4e212115a572daf65c8748ff94487d9a409316",
+    "docs/api-reference/rest-api.md": "3f07ba9b0e84313d13e6cf92f96d89b0f36e6d9e732562ed95f7a04253d19c6d",
+    "services/api/api/assurance/remediation.py": "5ec20eff4f12fce77063c6ead94ff59ac141e99fd56294916716601b9771c96a",
+    "services/api/api/routers/agility.py": "57e5a863c696840b30207c2663d197e2161bd2e2830b78c769193e4e93006ce5",
+    "services/universal_vendor/universal_vendor/hardware/live/pqc_impact.py": "662a941a597ec1472fe915fa27e276271e80ab6e6a555e30e85889fa5d8ab1bc",
+    "scripts/perf_benchmark.py": "79d034d404f80f9374dac50395a372ed49374ae4bf1c2030d31f744730efedfb",
+    "services/api/api/routers/certificates.py": "0a3663a837434fca91306f0cf62c2be4d134136dcdf1bbd731a56557c4fa694c",
+    "shared/shared_models/shared_models/composite_certificates.py": "b7feb63bcbe0f8301fb087a05179657dee6da3ea8e73fa95667d9a711841fbe1",
+    "services/api/api/routers/policy.py": "138458cd9b36e0b6bfaa53d958475b7e1486482ac8fd919652d1fd9d87b90c01",
+    "docs/runbooks/launch-assurance-handoff.md": "f4f28536494be44f8567b369a1f5473f8d03258c4a2a2780dbd1adab3276ad32",
+    "requirements.lock.txt": "29eed35f3ba9b37330bc555e789c98adde18e2f62c1627866fbbc7e854c9723e",
+    "frontend/package-lock.json": "94e58e21705e304238037cd7569bd6332fc9f73ae8d17a3b37ab205880fa839b",
+    "services/cbom/tests/unit/test_export_service.py": "6f6713f0cdbdc97f0691345080bd765ca3d685cce779c07ffd2d2d0ee82ca67f",
+    "docs/examples/bank-pqc-discovery/inputs.json": "0c76c967807497b135465ba4344e8050309d1c185745fdf5d4304c354aa71d50",
+    "docs/examples/bank-pqc-discovery/cbom.cyclonedx16.json": "31eb1325c04c2257b83260073d4373f8d72f8341d1d6765297eaa830f35ab2dc",
+    "docs/examples/bank-pqc-discovery/report.json": "f2db7109ff6f70c720594439c41b592599a6cc57196f6dbcb18feb9d87c52f4d",
+    "services/api/api/assurance/store.py": "f52099078db198750e76ed5a4d78d4e5f8ff5ec03d32138df664c900b74d423f",
+    "docs/security/adversarial-tenant-isolation.md": "836728fc86a7072b01ee02d3f987097cb1256ce62e0650b95e5aea004e6a85e3",
+    "services/keyassure/keyassure/pqc_downgrade.py": "73118c1f9a070f85e33036a75ea8973f1365c56213311e4a45eaadb1f395fa57"
+  },
+  "open_acceptance": [
+    {
+      "id": "S1",
+      "status": "PARTIAL",
+      "needed": "Approved asset/protocol/version/access matrix with positive and negative fixtures and independent expected denominator."
+    },
+    {
+      "id": "S2",
+      "status": "PARTIAL",
+      "needed": "Run permitted representative platforms and denied/segmented/offline cases; record exclusions and versions."
+    },
+    {
+      "id": "S3",
+      "status": "PARTIAL",
+      "needed": "Product/version-specific vendor evidence and authorized exports; bank-reviewed unknowns for inaccessible components."
+    },
+    {
+      "id": "S4",
+      "status": "PARTIAL",
+      "needed": "Device-owner-approved passive/export method, lab baseline, rate/stop limits and witnessed no-disruption test."
+    },
+    {
+      "id": "S5",
+      "status": "PARTIAL",
+      "needed": "Representative sanctioned source/binary corpus, ground truth, unsupported packers/architectures and secret-redaction review."
+    },
+    {
+      "id": "M1",
+      "status": "PARTIAL",
+      "needed": "Per-source architecture/data-flow/access plan, least-privilege grant and actual deployment qualification."
+    },
+    {
+      "id": "M2",
+      "status": "PARTIAL",
+      "needed": "Purpose-bound evidence including actual transport negotiation, storage setting and source site; disclose inferred links."
+    },
+    {
+      "id": "M3",
+      "status": "PARTIAL",
+      "needed": "Approved vantage points or offline metadata exports; explicit inaccessible targets and review/expiry of exceptions."
+    },
+    {
+      "id": "M4",
+      "status": "PARTIAL",
+      "needed": "Bank-agreed corpus/version/method, confusion matrix, missed classes, confidence intervals and independent retest."
+    },
+    {
+      "id": "M5",
+      "status": "PARTIAL",
+      "needed": "Known/unknown/alias/suite/key-size fixtures and independently checked observations for the bank workload."
+    },
+    {
+      "id": "M6",
+      "status": "PARTIAL",
+      "needed": "Capture permitted actual handshake/group and authentication evidence; test fallback/downgrade and unsupported peers."
+    },
+    {
+      "id": "O1",
+      "status": "PARTIAL",
+      "needed": "Validate requested schema/version and all six semantics; customer import round trip, provenance, unsupported fields and signing trust."
+    },
+    {
+      "id": "O2",
+      "status": "PARTIAL",
+      "needed": "Bank owner supplies confidentiality retention, purpose, exposure/criticality and validates resulting ordering."
+    },
+    {
+      "id": "O3",
+      "status": "PARTIAL",
+      "needed": "Bank-approved retention/migration/threat scenarios and sensitivity analysis, with missing-input outcomes retained."
+    },
+    {
+      "id": "O4",
+      "status": "PARTIAL",
+      "needed": "CMDB reconciliation, active owners, classification approval and unmatched/ambiguous mapping review."
+    },
+    {
+      "id": "O5",
+      "status": "PARTIAL",
+      "needed": "Trace exact source/build/deployment and perform isolated interoperability/failure/rollback tests."
+    },
+    {
+      "id": "R1",
+      "status": "PARTIAL",
+      "needed": "Record exact standard/revision/final status, implementation parameters and independent compatibility/validation evidence."
+    },
+    {
+      "id": "R2",
+      "status": "PARTIAL",
+      "needed": "Compliance owner approves current publication/version, jurisdiction, primitive/use and applicability before deadlines bind."
+    },
+    {
+      "id": "R3",
+      "status": "PARTIAL",
+      "needed": "Bank compliance/legal review of each applicable obligation and evidence sufficiency, including unresolved exceptions."
+    },
+    {
+      "id": "R4",
+      "status": "PARTIAL",
+      "needed": "Named policy steward, authoritative-source/version/change log, review schedule and regression/customer notification process."
+    },
+    {
+      "id": "D1",
+      "status": "PARTIAL",
+      "needed": "Bank-approved data-flow/residency map, minimization/redaction samples, retention, egress controls and incident obligations."
+    },
+    {
+      "id": "D2",
+      "status": "PARTIAL",
+      "needed": "Least-privilege identity per source, scoped secrets, approval/revocation audit and hostile/denied-access exercise."
+    },
+    {
+      "id": "D3",
+      "status": "PARTIAL",
+      "needed": "Witness install/upgrade/restore with approved offline images/wheels/trust keys and no unauthorized egress."
+    },
+    {
+      "id": "D4",
+      "status": "EXTERNAL",
+      "needed": "Actual current scoped certificate/report, authorized disclosure, findings and independent retests."
+    },
+    {
+      "id": "D5",
+      "status": "PARTIAL",
+      "needed": "Agree targets and noninterference limits before measurement; representative peak/failure workload, abort and cleanup proof."
+    },
+    {
+      "id": "I1",
+      "status": "PARTIAL",
+      "needed": "Version/auth/data mapping, least privilege, idempotency, timeout/delivery receipt, retry/dead-letter and revocation tests."
+    },
+    {
+      "id": "I2",
+      "status": "PARTIAL",
+      "needed": "Define observation freshness, missed windows, drift recheck, downtime/recovery and operational response ownership."
+    },
+    {
+      "id": "I3",
+      "status": "PARTIAL",
+      "needed": "Exact vendor/model/firmware/provider/mechanism matrix; authorized no-key-export test and separate runtime qualification."
+    },
+    {
+      "id": "I4",
+      "status": "PARTIAL",
+      "needed": "Customer API contract, scopes, limits, pagination/error semantics, export verification and version lifecycle."
+    },
+    {
+      "id": "P1",
+      "status": "PARTIAL",
+      "needed": "Named owner, exact before/after predicate, representative rescan, independent verification and rollback boundary."
+    },
+    {
+      "id": "P2",
+      "status": "PARTIAL",
+      "needed": "Pre-agreed matched classical/hybrid/PQC workloads on exact versions/hardware; percentile/distribution, failure and size observations."
+    },
+    {
+      "id": "P3",
+      "status": "PARTIAL",
+      "needed": "Approved test CA and clients, chain/path/downgrade/revocation/expiry cases, rollback and separate pilot acceptance."
+    },
+    {
+      "id": "P4",
+      "status": "EXTERNAL",
+      "needed": "Actual agreements, named contacts, supported versions and authorized joint-test/support evidence."
+    },
+    {
+      "id": "P5",
+      "status": "PARTIAL",
+      "needed": "Bank-approved decision rights, cryptographic use policy, exceptions/expiry, changes, training and governance minutes."
+    },
+    {
+      "id": "C1",
+      "status": "EXTERNAL",
+      "needed": "Joint scope and resource estimate with prerequisites, milestones, acceptance, dependencies and change control."
+    },
+    {
+      "id": "C2",
+      "status": "EXTERNAL",
+      "needed": "Consent-based actual comparable references and independently confirmed delivery scope/results."
+    },
+    {
+      "id": "C3",
+      "status": "EXTERNAL",
+      "needed": "Signed pricing basis, asset dedup/revision counting, scans/API/storage/egress/connector limits and overage/exit costs."
+    },
+    {
+      "id": "C4",
+      "status": "EXTERNAL",
+      "needed": "Actual primary/backup roster, support hours/timezone, escalation/response commitments, residency and legal agreement."
+    },
+    {
+      "id": "C5",
+      "status": "EXTERNAL",
+      "needed": "Witness portable verified export, trust/signature handling, restore/readability, revocation and retention/deletion evidence."
+    },
+    {
+      "id": "C6",
+      "status": "EXTERNAL",
+      "needed": "Actual finance/continuity evidence and source/image/protocol/key/signing inventory with tested product transition plan."
+    },
+    {
+      "id": "C7",
+      "status": "PARTIAL",
+      "needed": "Reviewed SBOM/licenses/advisories, patched immutable images, provenance, independent review and offline update path."
+    },
+    {
+      "id": "G1",
+      "status": "PARTIAL",
+      "needed": "Sign the allowed methods/platform matrix and retain unobserved/unsupported/stale/inconclusive classes."
+    },
+    {
+      "id": "G2",
+      "status": "PARTIAL",
+      "needed": "Consent-based comparable evidence or labeled synthetic six-BOM sample validated by the bank consumer."
+    },
+    {
+      "id": "G3",
+      "status": "PARTIAL",
+      "needed": "Authorized provider exports/assessor evidence, service/version scope, contractual cooperation and explicit residual risk."
+    },
+    {
+      "id": "G4",
+      "status": "PARTIAL",
+      "needed": "Reconcile independently maintained CMDB/cloud/network/application/vendor sets, permitted methods, freshness and omissions; separately review."
+    },
+    {
+      "id": "A1",
+      "status": "PARTIAL",
+      "needed": "Explicit per-target permission, access windows, identity and stop authority; no unauthorized scan."
+    },
+    {
+      "id": "A2",
+      "status": "PARTIAL",
+      "needed": "Bank-owned expected inventory; unresolved, stale, excluded and unsupported targets stay visible."
+    },
+    {
+      "id": "A3",
+      "status": "PARTIAL",
+      "needed": "Capture time, exact artifact/source/method, integrity and expiry; historic verification is not current proof."
+    },
+    {
+      "id": "A4",
+      "status": "PARTIAL",
+      "needed": "Agreed scan budgets and emergency stop; no retry of UNKNOWN external outcome without reconciliation."
+    },
+    {
+      "id": "A5",
+      "status": "PARTIAL",
+      "needed": "Cross-bank read/write/export/cache/session tests and dedicated privileged worker boundary."
+    },
+    {
+      "id": "A6",
+      "status": "PARTIAL",
+      "needed": "Actual reporting route, bank notification obligations, accountable responders and reviewed retests."
+    },
+    {
+      "id": "A7",
+      "status": "PARTIAL",
+      "needed": "Exact format/version, stable IDs, provenance, six-BOM semantics, license terms and consumer round trip."
+    },
+    {
+      "id": "A8",
+      "status": "PARTIAL",
+      "needed": "Export validation, key/access revocation, legal retention/deletion limits and processor attestations."
+    },
+    {
+      "id": "A9",
+      "status": "PARTIAL",
+      "needed": "Current authoritative publication/revision, draft versus final, jurisdiction and bank-approved effective dates."
+    },
+    {
+      "id": "A10",
+      "status": "PARTIAL",
+      "needed": "Evidence class for each edge; no causal impact or safe migration guarantee from graph reachability."
+    },
+    {
+      "id": "A11",
+      "status": "PARTIAL",
+      "needed": "Actual negotiation and authentication, fallback, chain/packet size, middlebox and legacy-client cases."
+    },
+    {
+      "id": "A12",
+      "status": "PARTIAL",
+      "needed": "Own TLS/SSO/artifact/report signatures and long-lived evidence keys; rotation, offline verification and backup restore."
+    }
+  ],
+  "limit": "Source references are navigation/integrity only, not test execution, deployment evidence, independent review, certification or an SLA."
+}

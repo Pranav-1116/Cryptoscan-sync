@@ -1,4 +1,4 @@
-"""CycloneDX 1.5 Cryptographic Bill of Materials generator."""
+"""Legacy1.5 CryptoScan exports and explicit native CycloneDX1.6 JSON profile."""
 
 from __future__ import annotations
 
@@ -8,8 +8,20 @@ from datetime import datetime, timezone
 from typing import Any
 from xml.etree.ElementTree import Element, SubElement, tostring
 
-from cbom.mappers.oid_lookup import lookup_oid
-from cbom.mappers.primitive_mapper import map_primitive
+# round 38: oid/primitive mapping moved with construction into the
+# component registry
+
+#: recorded observation confidence -> CycloneDX evidence-method confidence.
+#: Unrecorded confidence keeps the historical source-analysis default (0.9);
+#: nothing is ever rounded up (report 08 P1#6 - confidence propagation).
+_CONFIDENCE_SCORES = {
+    "HIGH": 0.9,
+    "CONFIRMED": 0.9,
+    "MEDIUM": 0.6,
+    "LIKELY": 0.6,
+    "LOW": 0.3,
+    "TENTATIVE": 0.3,
+}
 from shared_models.canonical import (
     b64url_decode,
     b64url_encode,
@@ -31,8 +43,16 @@ class CbomGenerator:
         vulnerabilities: list[dict[str, Any]] | None = None,
         dependencies: list[dict[str, Any]] | None = None,
         metadata_properties: list[dict[str, Any]] | None = None,
+        scan_id: str | None = None,
+        spec_version: str = "1.5",
     ) -> dict[str, Any]:
-        components = [self._component(record) for record in records]
+        if spec_version not in {"1.5", "1.6"}:
+            raise ValueError("Only legacy1.5 and native1.6 JSON exports are supported")
+        def is_receipt(record):
+            data = record.to_dict() if hasattr(record, "to_dict") else record if isinstance(record, dict) else {"finding_data": getattr(record, "finding_data", {})}
+            finding = data.get("finding_data") or data.get("finding") or data if isinstance(data, dict) else {}
+            return finding.get("finding_type") == "HOST_COLLECTION_RECEIPT" and bool(finding.get("host_evidence"))
+        components = [self._component(record) for record in records if not is_receipt(record)]
         metadata: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "component": {"type": "application", "name": name, "version": version},
@@ -61,6 +81,29 @@ class CbomGenerator:
                 }
                 for item in vulnerabilities
             ]
+        # Report 08 P2#7: compositions + externalReferences.
+        #
+        # ``compositions`` is the honest completeness claim: a discovery-based
+        # CBOM lists what the scanners found, never a guarantee of coverage,
+        # so the assemblies aggregate is INCOMPLETE (CycloneDX semantics:
+        # "the component list may not be exhaustive"). Claiming COMPLETE
+        # would be fabricated assurance.
+        if components:
+            bom["compositions"] = [
+                {
+                    "aggregate": "INCOMPLETE",
+                    "assemblies": [
+                        str(item["bom-ref"]) for item in components if item.get("bom-ref")
+                    ],
+                }
+            ]
+        # ``externalReferences``: provenance back to the scan that produced
+        # this BOM (urn form — a resolvable pointer within the deployment).
+        refs: list[dict[str, str]] = []
+        if scan_id:
+            refs.append({"type": "provenance", "url": f"urn:cryptoscan:scan:{scan_id}"})
+        if refs:
+            bom["externalReferences"] = refs
         root_ref = None
         if dependencies:
             bom["dependencies"] = dependencies
@@ -77,9 +120,15 @@ class CbomGenerator:
                     "dependsOn": [str(item.get("bom-ref")) for item in components if item.get("bom-ref")],
                 }
             ]
+        if spec_version == "1.6":
+            from cbom.cyclonedx16 import to_cyclonedx16
+            return to_cyclonedx16(bom, omit_inventory_dependencies=dependencies is None)
         return bom
 
     def validate(self, bom: dict[str, Any]) -> dict[str, Any]:
+        if bom.get("specVersion") == "1.6":
+            from cbom.cyclonedx16 import validate_cyclonedx16
+            return validate_cyclonedx16(bom)
         errors: list[str] = []
         if bom.get("bomFormat") != "CycloneDX":
             errors.append("bomFormat must be CycloneDX")
@@ -102,6 +151,8 @@ class CbomGenerator:
         cryptoProperties (assetType/oid/nistDesignation/quantumVulnerable/
         primitive), evidence, metadata properties (incl. cryptoscan:jws),
         dependencies and vulnerabilities."""
+        if bom.get("specVersion") == "1.6":
+            raise ValueError("Native CycloneDX1.6 export supports JSON only; legacy XML cannot serialize it")
         root = Element("bom")
         root.set("xmlns", "http://cyclonedx.org/schema/bom/1.5")
         root.set("version", str(bom.get("version") or 1))
@@ -162,6 +213,13 @@ class CbomGenerator:
                 occ = SubElement(ev, "occurrence")
                 loc = SubElement(occ, "location")
                 loc.text = str(evidence.get("file"))
+            for ref in item.get("externalReferences") or []:
+                if isinstance(ref, dict) and ref.get("url"):
+                    refs_el = SubElement(el, "externalReferences")
+                    ref_el = SubElement(refs_el, "reference")
+                    ref_el.set("type", str(ref.get("type") or "other"))
+                    url_el = SubElement(ref_el, "url")
+                    url_el.text = str(ref["url"])
                 if evidence.get("line") is not None:
                     line = SubElement(occ, "line")
                     line.text = str(evidence.get("line"))
@@ -194,6 +252,26 @@ class CbomGenerator:
                     rating_el = SubElement(vuln_el, "ratings")
                     score_el = SubElement(rating_el, "severity")
                     score_el.text = str((ratings[0] or {}).get("severity") or "unknown")
+
+        for ref in bom.get("externalReferences") or []:
+            if isinstance(ref, dict) and ref.get("url"):
+                refs_el = SubElement(root, "externalReferences")
+                ref_el = SubElement(refs_el, "reference")
+                ref_el.set("type", str(ref.get("type") or "other"))
+                url_el = SubElement(ref_el, "url")
+                url_el.text = str(ref["url"])
+        for comp in bom.get("compositions") or []:
+            if not isinstance(comp, dict):
+                continue
+            comps_el = SubElement(root, "compositions")
+            comp_el = SubElement(comps_el, "composition")
+            comp_el.set("aggregate", str(comp.get("aggregate") or "UNKNOWN"))
+            assemblies = comp.get("assemblies") or []
+            if assemblies:
+                asm_el = SubElement(comp_el, "assemblies")
+                for ref in assemblies:
+                    a = SubElement(asm_el, "assembly")
+                    a.set("ref", str(ref))
 
         return tostring(root, encoding="unicode")
 
@@ -228,6 +306,33 @@ class CbomGenerator:
         metadata["properties"] = properties
         signed["metadata"] = metadata
         return signed
+
+    def sign_standard(
+        self,
+        bom: dict[str, Any],
+        key: Any,
+        alg: str = "ES256",
+        *,
+        key_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Sign with the CycloneDX-spec standard enveloped signature (JSF).
+
+        Emits the top-level ``signature`` field CycloneDX >= 1.4 defines
+        (report 08 P2#6): ``{algorithm, publicKey (JWK) | keyId, value}``
+        where the signed bytes are the document with ``signature.value``
+        removed — verifiable by any JSF implementation, no
+        CryptoScan-specific property required.
+        """
+        from cbom.signing.jsf_signer import sign_jsf
+
+        return sign_jsf(bom, key, alg=alg, key_id=key_id)
+
+    def verify_standard(self, bom: dict[str, Any], key: Any = None) -> tuple[bool, str | None]:
+        """Verify the standard ``signature`` field. ``key`` None uses the
+        embedded JWK (integrity); pass a trusted key for authenticity."""
+        from cbom.signing.jsf_signer import verify_jsf
+
+        return verify_jsf(bom, key)
 
     def sign_jws(
         self,
@@ -276,6 +381,37 @@ class CbomGenerator:
                 "checks": checks,
                 "error": error,
             }
+
+        # report 08 P2#6: the CycloneDX-spec standard ``signature`` field
+        # takes precedence; the property-based JWS remains the fallback.
+        if isinstance(bom.get("signature"), dict) and bom["signature"].get("value"):
+            from cbom.signing.jsf_signer import verify_jsf
+
+            alg_name = str(bom["signature"].get("algorithm") or "").upper()
+            if alg_name == "HS256":
+                if isinstance(secret, dict):
+                    # keyring: kid first (rotation), primary as fallback
+                    kid = bom["signature"].get("keyId")
+                    key = (secret.get(kid) if kid else None) or secret.get("primary")
+                else:
+                    key = secret
+            else:
+                # asymmetric: the shared-secret argument cannot carry an
+                # EC/RSA public key — verify against the embedded JWK
+                # (integrity). Authenticity with a trusted PEM goes through
+                # verify_standard / a configured public key.
+                key = None
+            ok, error = verify_jsf(bom, key if key else None)
+            return report(
+                ok,
+                str(bom["signature"].get("algorithm") or "JSF"),
+                [
+                    {"name": "standard_signature_field", "passed": ok},
+                    {"name": "value_decodes_and_matches", "passed": ok},
+                ],
+                error,
+                key_id=bom["signature"].get("keyId"),
+            )
 
         if jws:
             checks: list[dict[str, Any]] = []
@@ -359,6 +495,10 @@ class CbomGenerator:
         return cleaned
 
     def _component(self, record: Any) -> dict[str, Any]:
+        # round 38: construction lives in the component registry (the
+        # 46 single-generator merge) — the generator is an assembler
+        from cbom.component_registry import cbom_crypto_component
+
         if hasattr(record, "to_dict"):
             data = record.to_dict()
         elif isinstance(record, dict):
@@ -376,60 +516,22 @@ class CbomGenerator:
                 "chain_hash": getattr(record, "chain_hash", None),
                 "compliance_status": getattr(record, "compliance_status", None),
                 "normalized_crypto": getattr(record, "normalized_crypto", None),
+                "confidence": getattr(record, "confidence", None),
+                "system_name": getattr(record, "system_name", None),
+                "system_id": getattr(record, "system_id", None),
             }
-        normalized = data.get("normalized_crypto") or {}
-        algorithm = str(data.get("algorithm") or normalized.get("standard_name") or "UNKNOWN")
-        primitive = normalized.get("algorithm_family") or map_primitive(algorithm, data.get("purpose"))
-        oid = lookup_oid(algorithm)
-        component: dict[str, Any] = {
-            "type": normalized.get("cbom_component_type") or "cryptographic-asset",
-            "name": normalized.get("standard_name") or data.get("algorithm") or "UNKNOWN",
-            "bom-ref": data.get("id") or data.get("evidence_id") or data.get("finding_id"),
-            "cryptoProperties": {
-                "assetType": "algorithm",
-                "oid": oid,
-                "algorithmProperties": {
-                    "primitive": primitive,
-                    "algorithm": data.get("algorithm"),
-                    "mode": data.get("mode"),
-                    "padding": data.get("padding"),
-                    "parameterSetIdentifier": str(data.get("key_size")) if data.get("key_size") else None,
-                },
-                "nistDesignation": normalized.get("nist_designation"),
-                "quantumVulnerable": normalized.get("quantum_vulnerable"),
-            },
-            "evidence": {
-                "identity": [
-                    {
-                        "field": "bom-ref",
-                        "confidence": 1,
-                        "methods": [
-                            {
-                                "technique": "source-code-analysis",
-                                "confidence": 0.9,
-                                "value": f"{data.get('file_path')}:{data.get('line_number')}",
-                            }
-                        ],
-                    }
-                ],
-                "occurrences": [
-                    {
-                        "location": data.get("file_path"),
-                        "line": data.get("line_number"),
-                    }
-                ],
-                "file": data.get("file_path"),
-                "line": data.get("line_number"),
-                "content_hash": data.get("content_hash"),
-                "chain_hash": data.get("chain_hash"),
-                "compliance_status": data.get("compliance_status"),
-            },
-        }
-        properties: list[dict[str, Any]] = []
-        if data.get("system_name"):
-            properties.append({"name": "cryptoscan:system", "value": str(data["system_name"])})
-        if data.get("system_id"):
-            properties.append({"name": "cryptoscan:system_id", "value": str(data["system_id"])})
-        if properties:
-            component["properties"] = properties
-        return component
+        finding = data.get("finding_data") or data.get("finding") or data
+        reference = finding.get("host_evidence")
+        if reference:
+            from shared_models.host_collection import HostEvidenceRef
+            ref = HostEvidenceRef.model_validate(reference).model_dump(mode="json")
+            # Offline host facts have no trusted normalization/policy rollup.
+            # Build from the hash-covered source, never mutable enrichment or
+            # caller-supplied bank-context columns alongside that source.
+            data = {"id": data.get("id") or data.get("evidence_id") or data.get("finding_id"),
+                    **finding.get("crypto", {}), "source_basis": "IMPORTED", "confidence": "LOW",
+                    "system_id": ref["system_id"], "host_evidence": ref, "library": "UNKNOWN",
+                    "content_hash": data.get("content_hash"), "chain_hash": data.get("chain_hash"),
+                    "normalized_crypto": {}, "compliance_status": None,
+                    "file_path": finding.get("source", {}).get("file_path"), "line_number": 0}
+        return cbom_crypto_component(data)

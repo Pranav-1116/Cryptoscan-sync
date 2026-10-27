@@ -21,7 +21,6 @@ import os
 import shutil
 import subprocess
 import sys
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -51,12 +50,27 @@ _TLS_FUNCTIONS = {
 }
 
 
+# Why the last ensure_shim() returned None. A compile failure used to be
+# indistinguishable from "this host has no compiler", which hid a real build
+# break (the shim stopped compiling under GCC 14) behind a benign-looking
+# message for as long as nobody ran the compiler by hand.
+LAST_SHIM_ERROR: str | None = None
+
+
 def ensure_shim() -> Path | None:
-    """Compile the C shim if a compiler is available; return its path."""
+    """Compile the C shim if a compiler is available; return its path.
+
+    On failure returns None and records the reason in ``LAST_SHIM_ERROR``.
+    """
+    global LAST_SHIM_ERROR
     if SHIM_SO.exists():
         return SHIM_SO
     cc = shutil.which("gcc") or shutil.which("cc")
-    if cc is None or not SHIM_C.exists():
+    if cc is None:
+        LAST_SHIM_ERROR = "no C compiler on PATH (looked for gcc, cc)"
+        return None
+    if not SHIM_C.exists():
+        LAST_SHIM_ERROR = f"shim source missing at {SHIM_C}"
         return None
     result = subprocess.run(
         [cc, "-O2", "-fPIC", "-shared", "-o", str(SHIM_SO), str(SHIM_C), "-ldl"],
@@ -64,7 +78,12 @@ def ensure_shim() -> Path | None:
         text=True,
     )
     if result.returncode != 0:
+        LAST_SHIM_ERROR = (
+            f"{cc} exited {result.returncode} compiling {SHIM_C.name}: "
+            f"{(result.stderr or result.stdout or '').strip()[:800]}"
+        )
         return None
+    LAST_SHIM_ERROR = None
     return SHIM_SO
 
 
@@ -124,18 +143,27 @@ def trace_command(
     *,
     log_path: str | Path | None = None,
     env: dict[str, str] | None = None,
+    cwd: str | Path | None = None,
+    timeout: float | None = None,
+    capture_limit: int = 4000,
+    stdin: str | None = None,
 ) -> dict[str, Any]:
     """Run ``argv`` under the shim and return {findings, returncode, log}.
 
-    ``log_path`` defaults to a temp file; the findings are parsed from it
-    after the command exits.
+    ``log_path`` defaults to a temp file; the findings are parsed from it after
+    the command exits. ``timeout`` (seconds) exists for the case this runner is
+    pointed at something it did not write: the child is started in its own
+    process group and the group is killed on expiry, because killing only the
+    direct child leaves anything it forked running. A timed-out run is reported
+    as ``timed_out: True`` with the observations it managed to write before the
+    kill — the partial evidence is still evidence.
     """
     shim = ensure_shim()
     if shim is None:
-        raise RuntimeError(
-            "cryptoscan_trace shim unavailable: no C compiler or missing cshim source"
-        )
+        raise RuntimeError(f"cryptoscan_trace shim unavailable: {LAST_SHIM_ERROR}")
+    import signal
     import tempfile
+    import time
 
     own_log = log_path is None
     path = Path(log_path) if log_path else Path(tempfile.mkstemp(suffix=".jsonl")[1])
@@ -144,7 +172,26 @@ def trace_command(
     run_env["CRYPTOSCAN_TRACE_LOG"] = str(path)
     if env:
         run_env.update(env)
-    result = subprocess.run(argv, env=run_env, capture_output=True, text=True)
+    started = time.monotonic()
+    timed_out = False
+    # a new session gives the child (and anything it forks) a process group of
+    # its own, so the timeout can take the whole tree down
+    process = subprocess.Popen(
+        argv, env=run_env, cwd=str(cwd) if cwd else None,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        stdin=subprocess.PIPE if stdin is not None else None,
+        start_new_session=True,
+    )
+    try:
+        out, err = process.communicate(input=stdin, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):  # already gone / not ours
+            process.kill()
+        out, err = process.communicate()
+    duration_ms = int((time.monotonic() - started) * 1000)
     findings = parse_trace_log(path)
     if own_log:
         try:
@@ -153,9 +200,11 @@ def trace_command(
             pass
     return {
         "findings": findings,
-        "returncode": result.returncode,
-        "stdout": result.stdout[:4000],
-        "stderr": result.stderr[:4000],
+        "returncode": process.returncode,
+        "timed_out": timed_out,
+        "duration_ms": duration_ms,
+        "stdout": (out or "")[:capture_limit],
+        "stderr": (err or "")[:capture_limit],
     }
 
 

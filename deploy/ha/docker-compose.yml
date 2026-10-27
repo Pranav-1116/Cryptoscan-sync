@@ -50,14 +50,18 @@ services:
 
   api:
     build: { context: ../.., dockerfile: deploy/ha/Dockerfile }
-    command: ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    # --no-access-log: the structured http_request logger (LoggingMiddleware)
+    # already records method/path/status/duration/request_id/trace_id/span_id
+    # per request; uvicorn's access log is a redundant second line (~12% of
+    # sequential latency, measured).
+    command: ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8010", "--workers", "2", "--no-access-log"]
     environment: *appenv
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/api/v1/readyz',timeout=3)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8010/api/v1/readyz',timeout=3)\""]
       interval: 15s
       timeout: 5s
       retries: 5

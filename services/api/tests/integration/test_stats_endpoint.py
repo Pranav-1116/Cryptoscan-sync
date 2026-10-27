@@ -9,11 +9,21 @@ from httpx import AsyncClient
 
 
 class _Scalar:
-    def __init__(self, value):
+    """The two shapes the stats endpoint reads from a result.
+
+    ``scalar_one`` is used for the scan count; the evidence counts come back as
+    one row of three aggregates, so ``one`` has to answer too.
+    """
+
+    def __init__(self, value, row=(0, 0, 0)):
         self._value = value
+        self._row = row
 
     def scalar_one(self):
         return self._value
+
+    def one(self):
+        return self._row
 
 
 class TestStatsEndpoint:

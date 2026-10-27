@@ -1,3 +1,5 @@
+import json
+
 from worker.pipeline.pipeline_runner import PipelineContext
 from worker.pipeline.stage_language_detect import execute as detect
 from worker.pipeline.stage_alert import execute as alert
@@ -10,7 +12,7 @@ from worker.pipeline.stage_network_scan import execute as tls
 def _ctx(tmp_path) -> PipelineContext:
     return PipelineContext(
         job_id="j1",
-        target_repo="local://demo",
+        target_repo="local://test-fixture",
         target_branch="main",
         triggered_by="t",
         workspace_dir=str(tmp_path),
@@ -45,6 +47,58 @@ def test_cbom_stage_writes_file(tmp_path):
     assert ctx.scan_meta.get("cbom_path")
 
 
+def test_cbom_stage_pins_a_durable_snapshot(tmp_path, monkeypatch):
+    """Round 45 (§4.4): the pipeline's BOM must outlive its ephemeral
+    workspace — the stage pins a content-addressed CbomSnapshot row with
+    generator='pipeline', and the pinned document's clock anchors to the
+    scan (identical re-runs collapse to one row, never re-pinned)."""
+    import db.models  # noqa: F401 — register tables
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from db.connection.session import Base
+    import db.connection.session as connection
+    from db.models.cbom_snapshot import CbomSnapshot
+    from db.models.scan import Scan
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    monkeypatch.setattr(connection, "SessionLocal", factory)
+    session = factory()
+    from datetime import datetime, timezone
+
+    session.add(Scan(id="s1", status="COMPLETED", target_type="LOCAL_DIRECTORY",
+                     target_location="local://test-fixture",
+                     scan_start=datetime(2026, 10, 13, tzinfo=timezone.utc),
+                     scan_end=datetime(2026, 10, 13, tzinfo=timezone.utc)))
+    session.commit()
+
+    ctx = _ctx(tmp_path)
+    ctx.findings = [
+        {"id": "e1", "algorithm": "AES", "mode": "GCM",
+         "file_path": "a.py", "line_number": 1},
+    ]
+    cbom(ctx)
+    assert ctx.scan_meta.get("cbom_snapshot_id"), "stage must pin the snapshot id"
+    rows = session.query(CbomSnapshot).all()
+    assert len(rows) == 1
+    assert rows[0].generator == "pipeline"
+    assert rows[0].scan_id == "s1"
+    assert rows[0].component_count == 1
+    assert rows[0].created_by == "pipeline:j1"
+
+    # re-running the same stage over the same evidence must NOT add a row
+    ctx2 = _ctx(tmp_path)
+    ctx2.findings = [dict(ctx.findings[0])]
+    cbom(ctx2)
+    assert session.query(CbomSnapshot).count() == 1, "content-addressed: identical pin collapses"
+    session.close()
+    engine.dispose()
+
+
 def test_cloud_and_tls_stages(tmp_path):
     (tmp_path / "main.tf").write_text('resource "aws_s3_bucket" "x" { bucket = "x" }\n')
     (tmp_path / "ingress.yaml").write_text(
@@ -56,6 +110,148 @@ def test_cloud_and_tls_stages(tmp_path):
     assert ctx.scan_meta.get("tls", {}).get("targets", 0) >= 1
 
 
+def test_cloud_stage_exception_excludes_provider_error_from_metadata_and_logs(tmp_path, monkeypatch, caplog):
+    from cloud_scanner.core.scanner import CloudScanner
+
+    sentinel = "[SQL: SELECT synthetic_marker FROM synthetic_table] [parameters: ('synthetic_value',)]"
+    monkeypatch.setattr(CloudScanner, "scan_live", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError(sentinel)))
+    ctx = _ctx(tmp_path)
+    ctx.target_repo = "cloud://aws/example-account"
+    ctx.job_type = "CLOUD"
+
+    cloud(ctx)
+
+    metadata = ctx.scan_meta["cloud"]
+    assert metadata["providers"] == []  # No resources were observed.
+    assert metadata["provider"] == "AWS"  # Requested provider, not a fabricated finding.
+    assert metadata["live_scan"]["status"] == "FAILED"
+    assert metadata["live_scan"]["error_count"] == 1
+    assert metadata["live_scan"]["resources_scanned"] == 0
+    assert sentinel not in json.dumps(ctx.scan_meta)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
+    assert any(record.__dict__.get("error_type") == "RuntimeError" for record in caplog.records)
+
+
+def test_cloud_stage_partial_telemetry_keeps_findings_without_error_details(tmp_path, monkeypatch, caplog):
+    from cloud_scanner.core.scanner import CloudScanner
+
+    sentinel = "[SQL: SELECT synthetic_marker FROM synthetic_table] [parameters: ('synthetic_value',)]"
+    finding = {"crypto": {"algorithm": "AES"}, "source": {"type": "CLOUD_RESOURCE"}}
+    monkeypatch.setattr(CloudScanner, "scan_live", lambda *_a, **_k: {
+        "findings": [finding], "resources": 1, "issues": 0, "providers": ["AWS", sentinel],
+        "live_scan": {
+            "enabled": True, "status": "PARTIAL", "resources_scanned": 2,
+            "errors": [{"provider": "AWS", "service": "kms", "code": sentinel, "error": sentinel}],
+            "error_count": 1, "truncations": [{"reason": sentinel}], "truncation_count": 1,
+        },
+    })
+    ctx = _ctx(tmp_path)
+    ctx.target_repo = "cloud://aws/example-account"
+    ctx.job_type = "CLOUD"
+
+    cloud(ctx)
+
+    assert ctx.findings == [finding]
+    metadata = ctx.scan_meta["cloud"]
+    assert metadata["providers"] == ["AWS"]
+    assert metadata["resources"] == 1
+    assert metadata["live_scan"]["status"] == "PARTIAL"
+    assert metadata["live_scan"]["resources_scanned"] == 2
+    assert metadata["live_scan"]["error_count"] == 1
+    assert metadata["live_scan"]["truncation_count"] == 1
+    assert sentinel not in json.dumps(ctx.scan_meta)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
+
+
+def test_cloud_filesystem_live_telemetry_excludes_error_details(tmp_path, monkeypatch, caplog):
+    from cloud_scanner.core.scanner import CloudScanner
+
+    sentinel = "[SQL: SELECT synthetic_marker FROM synthetic_table] [parameters: ('synthetic_value',)]"
+    monkeypatch.setenv("CRYPTOSCAN_CLOUD_LIVE", "1")
+    monkeypatch.setattr(CloudScanner, "scan_filesystem", lambda *_a, **_k: {
+        "findings": [], "resources": 0, "issues": 0, "providers": [], "live": True,
+        "live_scan": {
+            "enabled": True, "status": "FAILED", "resources_scanned": 0,
+            "errors": [{"provider": "AWS", "error": sentinel}], "error_count": 1,
+            "truncations": [], "truncation_count": 0,
+        },
+    })
+    with caplog.at_level("INFO"):
+        ctx = cloud(_ctx(tmp_path))
+
+    assert ctx.scan_meta["cloud"]["live_scan"]["status"] == "FAILED"
+    assert any(record.msg == "stage_cloud_scan_done" for record in caplog.records)
+    assert ctx.scan_meta["cloud"]["live_scan"]["error_count"] == 1
+    assert sentinel not in json.dumps(ctx.scan_meta)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
+
+
 def test_graph_sync_stage_fail_open(tmp_path):
     ctx = graph_sync(_ctx(tmp_path), session=None)
     assert ctx.job_id == "j1"
+
+
+def test_scan_stage_carries_cascade_and_inventory_fields(tmp_path):
+    from worker.pipeline.stage_scan import execute as scan
+
+    (tmp_path / "util").mkdir()
+    (tmp_path / "util" / "crypto.py").write_text("import hashlib\ndef h(b):\n    return hashlib.sha256(b).hexdigest()\n")
+    (tmp_path / "app.py").write_text("from util.crypto import h\n")
+    (tmp_path / "requirements.txt").write_text("cryptography==42.0.5\n")
+    ctx = scan(_ctx(tmp_path))
+    stats = ctx.scan_meta["statistics"]
+    cascade = stats["cascade"]
+    assert stats["cascade_providers"] == 1 and cascade["providers"][0]["file"] == "util/crypto.py" and cascade["providers"][0]["direct_dependents"] == 1
+    assert [l["library"] for l in cascade["libraries"] if l["manifests"]] == ["python-cryptography"]
+    assert cascade["truncated"]["providers"] == 0
+    assert stats["evidence_sources"] == {"SOURCE_CODE": len(ctx.findings)}
+    assert all(isinstance(f, dict) and f["metadata"].get("code_origin") for f in ctx.findings)  # findings travel as JSON dicts
+
+
+def test_key_inventory_findings_become_certificate_rows(tmp_path, monkeypatch):
+    """KEY_INVENTORY certificate records (keytool / RACDCERT) land in the certificates table with derived fingerprints."""
+    import shutil
+    from pathlib import Path
+    from datetime import datetime, timezone
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    import db.models  # noqa: F401
+    from db.connection.session import Base
+    from db.repositories.certificate_repository import CertificateRepository
+    from worker.pipeline.pipeline_runner import inventory_certificates
+    from worker.pipeline.stage_scan import execute as scan
+
+    fixtures = Path(__file__).resolve().parents[4] / "services" / "scanner" / "tests" / "fixtures" / "key_inventory"
+    for name in ("keytool.txt", "racdcert.txt", "certs.csv"):
+        shutil.copy(fixtures / name, tmp_path / name)
+    monkeypatch.setenv("CRYPTOSCAN_KEY_INVENTORY", "1")
+    ctx = scan(_ctx(tmp_path))
+    inv = [f for f in ctx.findings if f["source"]["type"] == "KEY_INVENTORY"]
+    assert inv, "key-inventory findings expected"
+    assert ctx.scan_meta["statistics"]["evidence_sources"]["KEY_INVENTORY"] == len(inv)
+    certs = inventory_certificates(ctx.findings, now=datetime(2026, 9, 25, tzinfo=timezone.utc))
+    assert certs and all(len(c["fingerprint_sha256"]) == 64 and c["extra"]["fingerprint_derived"] for c in certs)
+    ebank = next(c for c in certs if "ebank" in (c["subject"] or ""))
+    assert ebank["expiry_status"] == "EXPIRED" and ebank["public_key_algorithm"] == "RSA" and ebank["public_key_size"] == 2048
+    assert ebank["extra"]["library"] == "keytool" and ebank["usages"] == [next(f["source"]["file_path"] for f in inv if "ebank" in (f.get("inventory") or {}).get("subject", ""))]
+    assert not any(c["subject"] is None for c in certs)
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    repo = CertificateRepository(session)
+    for c in certs:
+        repo.upsert(c)
+    for c in certs:  # second scan of the same export is idempotent
+        repo.upsert(c)
+    session.commit()
+    rows = repo.list_all()
+    assert len(rows) == len(certs) >= 6
+    assert {r.extra.get("library") for r in rows} >= {"keytool", "RACF", "certificate-inventory"}
+    assert {r.expiry_status for r in rows} >= {"EXPIRED", "VALID"}

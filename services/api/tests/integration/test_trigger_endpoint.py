@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from httpx import AsyncClient
 
+from api.security import rbac
+
 
 class TestTriggerEndpoint:
     """Tests for POST /api/scans/trigger."""
@@ -39,6 +41,78 @@ class TestTriggerEndpoint:
         assert body["job_id"] == "test-job-uuid-123"
         assert body["status"] == "QUEUED"
         assert "Poll" in body["message"]
+
+    @pytest.mark.asyncio
+    async def test_trigger_scan_commit_failure_fails_closed(
+        self,
+        authenticated_client: AsyncClient,
+        mock_db_session: MagicMock,
+        mock_job_repo: MagicMock,
+    ):
+        """A database failure must not return an accepted scan job."""
+        mock_job = MagicMock(job_id="not-accepted", status="QUEUED", created_at=None)
+        mock_job_repo.create = AsyncMock(return_value=mock_job)
+        mock_job_repo.session = mock_db_session
+        mock_db_session.commit = MagicMock(side_effect=RuntimeError("database unavailable"))
+        mock_db_session.rollback = MagicMock()
+
+        response = await authenticated_client.post(
+            "/api/v1/scans/trigger",
+            json={
+                "repo_url": "https://github.com/org/payment-api",
+                "branch": "main",
+            },
+        )
+
+        assert response.status_code == 503
+        assert "no job was accepted" in response.json()["detail"]
+        mock_db_session.rollback.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "role",
+        ["superadmin", "ciso", "security_analyst", "developer", "scanner"],
+    )
+    @pytest.mark.asyncio
+    async def test_every_scan_trigger_role_can_queue_a_scan(
+        self,
+        role: str,
+        role_client: AsyncClient,
+        mock_job_repo: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """The endpoint follows every role in the canonical scan.trigger matrix."""
+        mock_job = MagicMock()
+        mock_job.job_id = f"job-{role}"
+        mock_job.status = "QUEUED"
+        mock_job.created_at = __import__("datetime").datetime.utcnow()
+        mock_job_repo.create = AsyncMock(return_value=mock_job)
+        monkeypatch.setattr(rbac, "_caller_roles", lambda _request: (role, [role]))
+
+        response = await role_client.post(
+            "/api/v1/scans/trigger",
+            json={"repo_url": "https://github.com/org/payment-api", "branch": "main"},
+        )
+
+        assert response.status_code == 202
+        assert response.json()["job_id"] == f"job-{role}"
+
+    @pytest.mark.parametrize("role", ["auditor", "business_owner", "readonly", "supervisor"])
+    @pytest.mark.asyncio
+    async def test_non_scan_trigger_roles_are_denied(
+        self,
+        role: str,
+        role_client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Read/report roles cannot use the scan submission endpoint."""
+        monkeypatch.setattr(rbac, "_caller_roles", lambda _request: (role, [role]))
+
+        response = await role_client.post(
+            "/api/v1/scans/trigger",
+            json={"repo_url": "https://github.com/org/payment-api", "branch": "main"},
+        )
+
+        assert response.status_code == 403
 
     @pytest.mark.asyncio
     async def test_trigger_scan_invalid_url_returns_422(

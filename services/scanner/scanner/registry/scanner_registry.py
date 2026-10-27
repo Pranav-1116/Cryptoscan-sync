@@ -7,6 +7,7 @@ from pathlib import Path
 
 from scanner.detectors.java.jar_string_scanner import scan_jar
 from scanner.models.raw_finding import RawFinding
+from scanner.parsers.c_parser import parse_c_file
 from scanner.parsers.config_crypto_parser import parse_config_file
 from scanner.parsers.csharp_parser import parse_csharp_file
 from scanner.parsers.go_parser import parse_go_file
@@ -33,6 +34,9 @@ LANGUAGE_PARSERS: dict[str, Parser] = {
     "PHP": parse_php_file,
     "RUBY": parse_ruby_file,
     "RUST": parse_rust_file,
+    "C": parse_c_file,
+    "CPP": parse_c_file,
+    "OBJECTIVE_C": parse_c_file,
     "JAR": scan_jar,
 }
 
@@ -43,6 +47,8 @@ EXTENSION_LANGUAGE: dict[str, str] = {
     ".scala": "SCALA",
     ".conf": "CONFIG",
     ".cnf": "CONFIG",
+    ".inf": "CONFIG",
+    ".reg": "CONFIG",
     ".yml": "CONFIG",
     ".yaml": "CONFIG",
     ".properties": "CONFIG",
@@ -63,6 +69,16 @@ EXTENSION_LANGUAGE: dict[str, str] = {
     ".php": "PHP",
     ".rb": "RUBY",
     ".rs": "RUST",
+    ".c": "C",
+    ".h": "C",
+    ".cpp": "CPP",
+    ".cc": "CPP",
+    ".cxx": "CPP",
+    ".hpp": "CPP",
+    ".hh": "CPP",
+    ".hxx": "CPP",
+    ".m": "OBJECTIVE_C",
+    ".mm": "OBJECTIVE_C",
     ".jar": "JAR",
 }
 

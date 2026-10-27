@@ -9,6 +9,8 @@ class SystemCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
     owner: Optional[str] = None
+    technical_owner: Optional[str] = None
+    security_owner: Optional[str] = None
     environment: Optional[str] = None
     compliance_scopes: list[str] = Field(default_factory=list)
     scan_target: Optional[str] = None
@@ -22,6 +24,8 @@ class SystemResponse(BaseModel):
     name: str
     description: Optional[str] = None
     owner: Optional[str] = None
+    technical_owner: Optional[str] = None
+    security_owner: Optional[str] = None
     environment: Optional[str] = None
     compliance_scopes: Optional[list[str]] = None
 

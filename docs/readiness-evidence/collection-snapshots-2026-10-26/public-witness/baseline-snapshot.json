@@ -1,0 +1,253 @@
+{
+  "created_at": "2026-10-26T04:48:26.694707+00:00",
+  "created_by": "c9da1712-f6f6-4488-90a1-68b9b9322fd7",
+  "id": "9947f047-28ab-46d6-a4fc-2bf0853d2485",
+  "kind": "collection_snapshot",
+  "payload": {
+    "coverage": {
+      "approved_inputs": 4,
+      "basis": "APPROVED_INPUTS_ONLY",
+      "parsed_inputs": 3,
+      "whole_asset_percent": null
+    },
+    "domains": {
+      "CBOM": {
+        "complete": false,
+        "observation_ids": [
+          "cf38cd29-6e57-55ab-a2d5-6c2288111af7",
+          "f45af353-155e-5315-9746-f3b4f46e1bea"
+        ],
+        "state": "SCOPED_METADATA"
+      },
+      "HBOM": {
+        "complete": false,
+        "observation_ids": [],
+        "state": "UNKNOWN"
+      },
+      "NBOM": {
+        "complete": false,
+        "observation_ids": [],
+        "state": "UNKNOWN"
+      },
+      "SBOM": {
+        "complete": false,
+        "observation_ids": [
+          "c3312bc1-12ff-59c9-8b16-7ec029aad00f"
+        ],
+        "state": "SCOPED_METADATA"
+      },
+      "TechBOM": {
+        "complete": false,
+        "observation_ids": [
+          "cf38cd29-6e57-55ab-a2d5-6c2288111af7",
+          "f45af353-155e-5315-9746-f3b4f46e1bea",
+          "c3312bc1-12ff-59c9-8b16-7ec029aad00f"
+        ],
+        "state": "SCOPED_METADATA"
+      },
+      "VBOM": {
+        "complete": false,
+        "observation_ids": [],
+        "state": "UNKNOWN"
+      }
+    },
+    "materialized_without_collection": true,
+    "metadata_graph": {
+      "edges": [
+        {
+          "edge_id": "f4df911ff133d249e4402bf1895eb8ff93839705b3aa46b0eb74de1841d6f1d7",
+          "evidence_ids": [
+            "3a7f7a4c-8343-4043-80ef-d62b290b645c"
+          ],
+          "observation_ids": [
+            "c3312bc1-12ff-59c9-8b16-7ec029aad00f"
+          ],
+          "operational_use": "UNKNOWN",
+          "provenance": "IMPORTED",
+          "relationship": "HAS_METADATA_REFERENCE",
+          "source": "system-scope:016f5bd551225c8c7210de372bd6af40b38aba266c681e94555bb483d8d3fac4",
+          "target": "metadata-slot:14865e40-45d2-5412-ace6-92ef01807e4f"
+        },
+        {
+          "edge_id": "42eda50e74434c573af060142c15acb0895c4e8165957ed580d7b75310c4afa2",
+          "evidence_ids": [
+            "bf86cf74-0696-4fdb-89b3-ef10e6f35c8d"
+          ],
+          "observation_ids": [
+            "f45af353-155e-5315-9746-f3b4f46e1bea"
+          ],
+          "operational_use": "UNKNOWN",
+          "provenance": "IMPORTED",
+          "relationship": "HAS_METADATA_REFERENCE",
+          "source": "system-scope:016f5bd551225c8c7210de372bd6af40b38aba266c681e94555bb483d8d3fac4",
+          "target": "metadata-slot:a789d5bc-7887-5a0a-9b39-98f4906452e3"
+        },
+        {
+          "edge_id": "ab2215b8234b0f7bef465b9f41476059da36460383ab8502a4abe217865fb872",
+          "evidence_ids": [
+            "f9b09660-18d0-4f6e-9323-4899def1429e"
+          ],
+          "observation_ids": [
+            "cf38cd29-6e57-55ab-a2d5-6c2288111af7"
+          ],
+          "operational_use": "UNKNOWN",
+          "provenance": "IMPORTED",
+          "relationship": "HAS_METADATA_REFERENCE",
+          "source": "system-scope:016f5bd551225c8c7210de372bd6af40b38aba266c681e94555bb483d8d3fac4",
+          "target": "metadata-slot:d0a120dc-8296-5a75-bd83-0c1699f6aa9a"
+        }
+      ],
+      "nodes": [
+        {
+          "environment": "prod",
+          "kind": "SYSTEM_SCOPE",
+          "node_id": "system-scope:016f5bd551225c8c7210de372bd6af40b38aba266c681e94555bb483d8d3fac4",
+          "physical_asset_attested": false,
+          "system_id": "system-a"
+        },
+        {
+          "identity_basis": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+          "identity_slot": "14865e40-45d2-5412-ace6-92ef01807e4f",
+          "kind": "METADATA_SLOT",
+          "multiple_records_in_slot": false,
+          "node_id": "metadata-slot:14865e40-45d2-5412-ace6-92ef01807e4f",
+          "observation_ids": [
+            "c3312bc1-12ff-59c9-8b16-7ec029aad00f"
+          ],
+          "record_count": 1
+        },
+        {
+          "identity_basis": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+          "identity_slot": "a789d5bc-7887-5a0a-9b39-98f4906452e3",
+          "kind": "METADATA_SLOT",
+          "multiple_records_in_slot": false,
+          "node_id": "metadata-slot:a789d5bc-7887-5a0a-9b39-98f4906452e3",
+          "observation_ids": [
+            "f45af353-155e-5315-9746-f3b4f46e1bea"
+          ],
+          "record_count": 1
+        },
+        {
+          "identity_basis": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+          "identity_slot": "d0a120dc-8296-5a75-bd83-0c1699f6aa9a",
+          "kind": "METADATA_SLOT",
+          "multiple_records_in_slot": false,
+          "node_id": "metadata-slot:d0a120dc-8296-5a75-bd83-0c1699f6aa9a",
+          "observation_ids": [
+            "cf38cd29-6e57-55ab-a2d5-6c2288111af7"
+          ],
+          "record_count": 1
+        }
+      ],
+      "operational_relationships_inferred": false
+    },
+    "snapshot": {
+      "environment": "prod",
+      "family": "host",
+      "finished_at": "2026-10-26T04:48:26.530775Z",
+      "inputs": [
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "cert",
+          "kind": "PUBLIC_CERTIFICATE",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/certificate.pem",
+          "reason": "METADATA_ONLY",
+          "status": "PARSED"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "tls",
+          "kind": "NGINX_TLS_CONFIG",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/tls.conf",
+          "reason": "METADATA_ONLY",
+          "status": "PARSED"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "lib",
+          "kind": "BINARY_METADATA",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/libcrypto.so",
+          "reason": "METADATA_ONLY",
+          "status": "PARSED"
+        },
+        {
+          "asset_absence_proven": false,
+          "input_basis": "APPROVED_INPUT",
+          "input_id": "denied",
+          "kind": "PUBLIC_CERTIFICATE",
+          "path": "/tmp/pytest-of-user/pytest-11/test_host_later_failed_certifi0/unavailable.pem",
+          "reason": "NOT_FOUND",
+          "status": "UNAVAILABLE"
+        }
+      ],
+      "job_id": "3b5f0125-c8a5-558f-8d47-1dffb849f083",
+      "observations": [
+        {
+          "domains": [
+            "CBOM",
+            "TechBOM"
+          ],
+          "evidence_id": "f9b09660-18d0-4f6e-9323-4899def1429e",
+          "fact_kind": "CERTIFICATE",
+          "fact_sha256": "377f6d6d7b5b91373c661871e248882b4f19d2fef50e82e3fb156bca87e08a80",
+          "identity_basis": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+          "identity_slot": "d0a120dc-8296-5a75-bd83-0c1699f6aa9a",
+          "input_id": "cert",
+          "local_basis": "OBSERVED",
+          "observation_id": "cf38cd29-6e57-55ab-a2d5-6c2288111af7",
+          "provenance": "IMPORTED"
+        },
+        {
+          "domains": [
+            "CBOM",
+            "TechBOM"
+          ],
+          "evidence_id": "bf86cf74-0696-4fdb-89b3-ef10e6f35c8d",
+          "fact_kind": "TLS_CONFIGURATION",
+          "fact_sha256": "b1841ac13a3f8b743395f343db819c0499a8d2143b8806df6f59650bdcfd638d",
+          "identity_basis": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+          "identity_slot": "a789d5bc-7887-5a0a-9b39-98f4906452e3",
+          "input_id": "tls",
+          "local_basis": "DECLARED",
+          "observation_id": "f45af353-155e-5315-9746-f3b4f46e1bea",
+          "provenance": "IMPORTED"
+        },
+        {
+          "domains": [
+            "SBOM",
+            "TechBOM"
+          ],
+          "evidence_id": "3a7f7a4c-8343-4043-80ef-d62b290b645c",
+          "fact_kind": "BINARY",
+          "fact_sha256": "50093dddf92f6c2347613c99bbc912eed07978fa70ead122253992b273061ec1",
+          "identity_basis": "SCOPED_METADATA_SLOT_NOT_ATTESTED_ASSET",
+          "identity_slot": "14865e40-45d2-5412-ace6-92ef01807e4f",
+          "input_id": "lib",
+          "local_basis": "OBSERVED",
+          "observation_id": "c3312bc1-12ff-59c9-8b16-7ec029aad00f",
+          "provenance": "IMPORTED"
+        }
+      ],
+      "production_execution_qualified": false,
+      "runtime_use": "UNKNOWN",
+      "schema_version": "cryptoscan.collection-snapshot/v1",
+      "source_authenticity_verified": false,
+      "source_sha256": "89ff6a8d0458caaa007cda3faca9da4fcfb84a98e027972b37b05a03593dd678",
+      "started_at": "2026-10-26T04:48:26.529616Z",
+      "system_id": "system-a",
+      "target_id": "38e731db-a401-5f5a-8cb0-b03a0833a495",
+      "whole_asset_coverage_verified": false
+    },
+    "snapshot_sha256": "4362dde86cd8349c21f1c8902087d0ad30792dfa0fdb55dc3af49ddac2e16908",
+    "standard_document": false
+  },
+  "payload_sha256": "af05575e609d9bf38c26a00f87cdf400baa4362e13552ea5f661d4ab43ae54f9",
+  "previous_sha256": null,
+  "revision": 1,
+  "subject_id": "b81495ab-100c-581f-95ab-4e6c3dc53775",
+  "tenant_id": "a",
+  "updated_at": "2026-10-26T04:48:26.694711+00:00"
+}

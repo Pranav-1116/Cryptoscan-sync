@@ -4,7 +4,6 @@
 
 ## How to verify
 
-- [ ] `python scripts/seed_demo.py`
 - [ ] Dashboard login `admin` / `cryptoscan`
 - [ ] Findings show policy results
 

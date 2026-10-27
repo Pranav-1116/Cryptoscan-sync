@@ -2,60 +2,51 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
-from db.repositories.certificate_repository import CertificateRepository
+from api.dependencies import (
+    TenantContext,
+    get_current_user,
+    get_db_session,
+)
+from api.security.network_collection import (NetworkHostRequest, admit_network, checked_hosts, meter_network, network_run, persist_network, network_coverage, network_context)
 from db.repositories.intelligence_repository import IntelligenceRepository
-from db.repositories.maturity_repository import MaturityRepository
 from network_scanner.core.scanner import NetworkTlsScanner
 
 router = APIRouter(prefix="/network-scans", tags=["network-scans"])
 
 
-class HostScanRequest(BaseModel):
-    hosts: list[str] = Field(default_factory=list)
-    live: bool = True
-    timeout: float = 5.0
-    sni: str | None = None
-    starttls: str | None = None
-    workers: int | None = None
-    scan_versions: bool = False
-    scan_ciphers: bool = False
-    check_renegotiation: bool = False
-    check_chain_sent: bool = False
-    live_revocation: bool = False
-
+class HostScanRequest(NetworkHostRequest):
+    pass
 
 @router.post("")
 @router.post("/")
 def trigger_network_scan(
     body: HostScanRequest,
-    user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(network_context),
     db: Session = Depends(get_db_session),
 ):
-    if not body.hosts:
-        raise HTTPException(status_code=400, detail="hosts required")
-    result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
-        body.hosts,
-        sni=body.sni,
-        starttls=body.starttls,
-        scan_versions=body.scan_versions,
-        scan_ciphers=body.scan_ciphers,
-        check_renegotiation=body.check_renegotiation,
-        check_chain_sent=body.check_chain_sent,
-        live_revocation=body.live_revocation,
-    )
-    repo = CertificateRepository(db)
-    usages = MaturityRepository(db)
-    for cert in result.get("certificates") or []:
-        if cert.get("fingerprint_sha256"):
-            repo.upsert(cert)
-    for usage in result.get("usages") or []:
-        if usage.get("fingerprint_sha256") and usage.get("location"):
-            usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
+    """Live TLS scan of operator-supplied hosts.
+
+    The host list passes the platform's SSRF choke point (loopback, cloud
+    metadata, URL schemes refused — found by round-28 review, same class as
+    the round-26 monitor finding). Tenant contexts also spend one
+    scan_run unit against the plan's monthly quota (402 when exhausted);
+    metering happens here so manual scans count exactly like daemon passes.
+    """
+    hosts = checked_hosts(body.hosts)
+    admission = admit_network(hosts)
+    meter_network(db, hosts)
+    with network_run(db, user=ctx.username, target=",".join(hosts)[:2000], admission=admission, profile={**body.model_dump(exclude={"hosts"}), "workers": body.workers or 8}) as run:
+        result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers or 8).scan_hosts(
+            hosts, sni=body.sni, starttls=body.starttls,
+            scan_versions=body.scan_versions, scan_ciphers=body.scan_ciphers,
+            check_renegotiation=body.check_renegotiation, check_chain_sent=body.check_chain_sent,
+            live_revocation=body.live_revocation,
+        )
+        result = persist_network(db, result, run)
+        run.succeed(coverage=network_coverage(result))
     return result
 
 

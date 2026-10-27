@@ -6,9 +6,11 @@ import logging
 import os
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Generator
 from urllib.parse import urlparse
 
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -26,12 +28,27 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=
 
 def configure_session(engine=None) -> None:
     SessionLocal.configure(bind=engine or get_engine())
+    # Tenant isolation is an ORM-level filter rather than a per-repository
+    # argument, so that a query added later cannot forget it. Inert until a
+    # request enters db.tenancy.tenant_scope().
+    from db.tenancy import install_tenant_guard
+
+    install_tenant_guard()
 
 
 def init_db(engine=None) -> None:
-    """Create all tables. Safe to call on every startup."""
+    """Prepare sessions and verify the runtime database contract.
+
+    Only an unstamped SQLite development/test database may be built from
+    metadata. Stamped databases are migration-owned; a behind or unreadable
+    migration state fails before any schema reconciliation.
+    """
     from db.models import (  # noqa: F401 — register models
         api_key,
+        app_setting,
+        onboarding,
+        control_plane,
+        enterprise,
         baseline,
         business_owner,
         business_process,
@@ -45,6 +62,7 @@ def init_db(engine=None) -> None:
         evidence_record,
         migration_project,
         network_scan_target,
+        network_inventory,
         ot_device,
         policy_exception,
         repo_configuration,
@@ -58,6 +76,7 @@ def init_db(engine=None) -> None:
         user,
         vendor,
         vendor_crypto,
+        vendor_profile,
         verification_log,
         vulnerability,
     )
@@ -65,23 +84,88 @@ def init_db(engine=None) -> None:
     engine = engine or get_engine()
     configure_session(engine)
     _wait_for_database(engine)
-    try:
+    if _is_production():
+        _assert_migrations_current(engine)
+        managed_by = "alembic"
+    else:
         from db.connection.schema_ensure import ensure_schema_extensions
 
-        ensure_schema_extensions(engine)
-    except Exception:
-        logger.debug("schema_extensions_skipped", exc_info=True)
-    logger.info("database_schema_ready")
+        managed_by = "metadata" if ensure_schema_extensions(engine) else "alembic"
+    logger.info("database_schema_ready", extra={"managed_by": managed_by})
+
+
+def _is_production() -> bool:
+    return os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
+
+
+def migration_status(engine=None) -> dict[str, object]:
+    """Return the live Alembic status without changing the database.
+
+    This is intentionally read-only so readiness probes can detect a database
+    that falls behind after a rolling deployment without attempting a repair
+    from an API or worker process.
+    """
+    engine = engine or get_engine()
+    try:
+        inspector = inspect(engine)
+        if not inspector.has_table("alembic_version"):
+            return {"status": "missing", "applied": [], "heads": []}
+        with engine.connect() as connection:
+            applied = sorted({
+                str(row[0])
+                for row in connection.execute(text("SELECT version_num FROM alembic_version"))
+            })
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        ini = Path(__file__).resolve().parents[2] / "migrations" / "alembic.ini"
+        heads = sorted(ScriptDirectory.from_config(Config(str(ini))).get_heads())
+        status = "current" if applied == heads and bool(heads) else "behind"
+        return {"status": status, "applied": applied, "heads": heads}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("migration_status_probe_failed", extra={"error_type": type(exc).__name__})
+        return {"status": "error", "applied": [], "heads": [], "error": type(exc).__name__}
+
+
+def _assert_migrations_current(engine) -> None:
+    """Fail closed when the durable database is absent or behind this build."""
+    status = migration_status(engine)
+    if status.get("status") != "current":
+        raise RuntimeError(
+            "Production database migrations are not at the repository head; "
+            "run alembic upgrade head before starting API or worker processes"
+        )
+
+
+def _allow_metadata_bootstrap(engine) -> bool:
+    """Only an unstamped SQLite development/test database may use model DDL."""
+    if _is_production():
+        raise RuntimeError("Production schema changes require alembic upgrade head")
+    status = migration_status(engine)
+    if status["status"] == "current":
+        return False  # Alembic owns this schema; do not create future indexes.
+    if status["status"] == "missing" and engine.dialect.name == "sqlite":
+        return True
+    raise RuntimeError(
+        f"Database migration status is {status['status']} "
+        f"(applied: {status['applied']}, repository heads: {status['heads']}). "
+        "Set DATABASE_URL for this database and run "
+        "alembic -c services/database/migrations/alembic.ini upgrade head "
+        "from the repository root before starting API or workers. "
+        "Metadata bootstrap is only allowed for unstamped SQLite development/test databases."
+    )
 
 
 def _wait_for_database(engine) -> None:
-    """Retry until Postgres is reachable. Compose `depends_on` is not enough on reboot."""
+    """Retry until the configured database is reachable without changing schema."""
     deadline = time.monotonic() + int(os.environ.get("DB_WAIT_SECONDS", "90"))
     delay = 1.0
     last_error: Exception | None = None
     while True:
         try:
-            Base.metadata.create_all(bind=engine)
+            # Reachability probing must not create or mutate schema.
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
             return
         except OperationalError as exc:
             last_error = exc

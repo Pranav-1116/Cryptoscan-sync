@@ -6,6 +6,7 @@ and online (direct DB connection) migration modes.
 """
 from __future__ import annotations
 
+import logging
 import os
 from logging.config import fileConfig
 from urllib.parse import quote_plus
@@ -26,9 +27,16 @@ from db.models.repo_configuration import RepoConfiguration  # noqa: F401
 # Alembic Config object
 config = context.config
 
-# Configure Python logging from the alembic.ini file
+# Configure Python logging from the alembic.ini file.
+#
+# disable_existing_loggers=False is load-bearing: with the default (True),
+# fileConfig sets ``disabled = True`` on every logger that already exists and
+# is not named in alembic.ini's [loggers] section. When alembic runs inside a
+# live process (tests, a worker that migrates at boot, ops tooling), that
+# permanently silences every other module's stdlib logging for the rest of
+# the process — records are dropped before any handler runs.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Use our ORM models' metadata for autogenerate
 target_metadata = Base.metadata
@@ -48,8 +56,13 @@ def get_database_url() -> str:
     Raises:
         ValueError: If required config is missing.
     """
-    # Check for direct URL first
-    url = os.environ.get("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    # Precedence: an explicit -c ini URL wins (that is what "alembic -c
+    # <file>" means), then the ambient DATABASE_URL (the deployment path —
+    # alembic.ini ships an empty sqlalchemy.url), then DB_* components.
+    # Env-first previously let a leaked DATABASE_URL silently redirect an
+    # explicitly-targeted migration to another database.
+    url = (config.get_main_option("sqlalchemy.url") or "").strip()
+    url = url or os.environ.get("DATABASE_URL")
 
     if url:
         # Normalize scheme for psycopg2
@@ -109,7 +122,24 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,  # Use NullPool for migrations
     )
 
+    def _current_version(connection) -> str | None:
+        """Current alembic version, or None before the version table exists."""
+        from sqlalchemy import inspect
+
+        try:
+            if not inspect(connection).has_table("alembic_version"):
+                return None
+            row = connection.exec_driver_sql("SELECT version_num FROM alembic_version").first()
+            return str(row[0]) if row else None
+        except Exception:
+            return None
+
+    def _mode() -> str:
+        cmd_opts = getattr(config, "cmd_opts", None)
+        return getattr(cmd_opts, "prog", "upgrade") or "upgrade"
+
     with connectable.connect() as connection:
+        version_before = _current_version(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
@@ -127,6 +157,30 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+
+        # Schema-migration auditing (audit 78): one hash-chained audit row
+        # per applied revision. Best-effort — bootstrap revisions that ran
+        # before audit_log existed are not back-filled, and an audit-write
+        # failure never fails an already-committed migration.
+        version_after = _current_version(connection)
+        if version_after != version_before:
+            try:
+                from alembic.script import ScriptDirectory
+
+                from db.migration_audit import audit_applied_migrations
+
+                audit_applied_migrations(
+                    connection,
+                    before=version_before,
+                    after=version_after,
+                    script_dir=ScriptDirectory.from_config(config),
+                    mode=_mode(),
+                )
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "migration_audit_hook_failed: %s -> %s",
+                    version_before, version_after, exc_info=True,
+                )
 
 
 if context.is_offline_mode():

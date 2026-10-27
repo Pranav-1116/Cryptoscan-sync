@@ -1,0 +1,23 @@
+rule_id: "KEYINV-005"
+rule_name: "Key not used for more than 365 days"
+version: "1.0"
+effective_date: "2026-01-01"
+severity: "MEDIUM"
+standard_reference: "PCI DSS 4.0 3.7.5 (retirement of keys no longer needed), NIST SP 800-57 Part 1 §8.3.5"
+description: >
+  Advisory: the export records a last-used date more than a year old. Unused keys widen the attack surface
+  and the PQC migration inventory; confirm with the reconciliation report and retire if no consumer exists.
+condition:
+  type: "KEY_INVENTORY_ATTRIBUTE"
+  parameters:
+    attribute: "last_used"
+    operator: "older_than_days"
+    days: 365
+    require_attributes: ["last_used"]
+    result: "WARN"
+evaluation:
+  result_template: "WARN"
+  message_template: "{key_label} last used {last_used}"
+remediation: >
+  Verify with GET /api/v1/scans/{inventory_scan}/key-reconciliation; archive or delete keys with no consumer.
+enabled: true

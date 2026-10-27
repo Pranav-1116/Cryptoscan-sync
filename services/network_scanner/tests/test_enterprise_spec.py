@@ -7,7 +7,6 @@ authorization gating, and vault-reference-only credentials.
 
 from __future__ import annotations
 
-import os
 
 import pytest
 
@@ -34,7 +33,6 @@ from network_scanner.enterprise.scan_modes import (
 from network_scanner.enterprise.target_spec import (
     SCOPES,
     SUPPORTED_TARGET_TYPES,
-    TargetSpec,
     classify_target,
     parse_many,
     parse_scope_spec,

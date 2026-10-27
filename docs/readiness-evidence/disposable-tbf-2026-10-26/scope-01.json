@@ -1,0 +1,11 @@
+{
+  "authorizes_real_host_change": false,
+  "bundle_sha256": "ff9e3756f80fbdf541c07ccbae313000301cdda75d725604c53de791253978c0",
+  "expires_at": "2026-10-26T07:06:50.469340Z",
+  "independent_change_approval_verified": false,
+  "issued_at": "2026-10-26T06:56:50.469340Z",
+  "nonce": "70a195a73c78013d8125ecf9fe410e23d7157b36d9810b808e853cb24f0c1da2",
+  "profile": "DISKLESS_TCG_NO_NIC_V1",
+  "schema_version": "cryptoscan.disposable-tbf-scope/v1",
+  "target_label": "qualified-disposable-01"
+}

@@ -1,0 +1,7 @@
+host-manifest-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline f18380f02b65c6a2b47da4b13f7febc3254ca87e; all old fact shapes/defaults unchanged
+host-snapshot-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline f18380f02b65c6a2b47da4b13f7febc3254ca87e; all old fact shapes/defaults unchanged
+collection-target-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline f18380f02b65c6a2b47da4b13f7febc3254ca87e; all old fact shapes/defaults unchanged
+collection-evidence-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline f18380f02b65c6a2b47da4b13f7febc3254ca87e; all old fact shapes/defaults unchanged
+native-evidence-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline f18380f02b65c6a2b47da4b13f7febc3254ca87e; all old fact shapes/defaults unchanged
+Source-lock inclusion PASS: 94 files; no signature, admission or measured-execution approval generated.
+Production execution is still not admitted: empty server-owned container profile set and existing universal production boundary; new explicit guards reject OCI-through-Linux bypass.

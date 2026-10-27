@@ -1,0 +1,1 @@
+[{"kind":"pfifo_fast","handle":"0:","root":true,"refcnt":2,"options":{"bands":3,"priomap":[1,2,2,2,1,2,0,0,1,1,1,1,1,1,1,1],"multiqueue":false}}]

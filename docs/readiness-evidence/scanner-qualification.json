@@ -1,0 +1,246 @@
+{
+  "schema": "cryptoscan.scanner-qualification/1",
+  "ran_at": "2026-10-02T03:54:32.448052+00:00",
+  "records": [
+    {
+      "family": "universal-source",
+      "demonstrates": "real source tree produces crypto observations",
+      "run_at": "2026-10-02T03:54:31.755109+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": "universal-source",
+      "status": "PASS",
+      "violations": [],
+      "findings_count": 1,
+      "evidence_references": 0,
+      "result_excerpt": "{\"scanner\": \"universal-source\", \"scan_status\": \"PASS\", \"findings\": [{\"algorithm\": \"MD5\", \"file\": \"crypto_use.py\", \"line\": 3, \"has_crypto_field\": true}]}"
+    },
+    {
+      "family": "devsecops-source",
+      "demonstrates": "source/SBOM mode over a real tree",
+      "run_at": "2026-10-02T03:54:32.295895+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": "devsecops",
+      "status": "PASS",
+      "violations": [],
+      "findings_count": 0,
+      "evidence_references": 0,
+      "result_excerpt": "{\"scanner\": \"devsecops\", \"scan_status\": \"PASS\", \"modes\": {\"binary\": \"SKIP\", \"source\": \"PASS\", \"container\": \"SKIP\", \"sbom\": \"SKIP\"}, \"observations\": {\"source\": {\"target\": \"/tmp/cryptoscan-qual-gmrt38yi/src\", \"target_kind\": \"source\", \"packages\": [{\"name\": \"cryptography\", \"version\": \"42.0.0\", \"manager\": \"pip\", \"manifest\": \"requirements.txt\", \"scope\": \"declared\", \"raw_spec\": \"cryptography==42.0.0\", \"d"
+    },
+    {
+      "family": "devsecops-missing-target",
+      "demonstrates": "a missing target is FAIL, not empty success",
+      "run_at": "2026-10-02T03:54:32.310054+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": "devsecops",
+      "status": "FAIL",
+      "violations": [],
+      "findings_count": 0,
+      "evidence_references": 0,
+      "result_excerpt": "{\"scanner\": \"devsecops\", \"scan_status\": \"FAIL\", \"modes\": {\"binary\": \"FAIL\", \"source\": \"SKIP\", \"container\": \"SKIP\", \"sbom\": \"SKIP\"}, \"observations\": {}, \"findings\": [], \"errors\": [{\"mode\": \"binary\", \"error\": \"binary target does not exist: /tmp/cryptoscan-qual-gmrt38yi/definitely/not/here.bin\"}]}"
+    },
+    {
+      "family": "keyassure",
+      "demonstrates": "per-mode statuses with nothing configured",
+      "run_at": "2026-10-02T03:54:32.310135+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": "keyassure",
+      "status": "SKIP",
+      "violations": [],
+      "findings_count": 0,
+      "evidence_references": 0,
+      "result_excerpt": "{\"scanner\": \"keyassure\", \"scan_status\": \"SKIP\", \"modes\": {\"tls\": \"SKIP\", \"ct\": \"SKIP\", \"code\": \"SKIP\"}, \"observations\": [], \"findings\": [], \"errors\": []}"
+    },
+    {
+      "family": "network-tls",
+      "demonstrates": "unconfigured network scan does not report PASS",
+      "run_at": "2026-10-02T03:54:32.310519+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": "network-tls",
+      "status": "PREFLIGHT",
+      "violations": [],
+      "findings_count": 0,
+      "evidence_references": 0,
+      "result_excerpt": "{\"stderr\": \"usage: realtime_cli.py [-h] [--ipsec] [--dnssec] [--full] target\\nrealtime_cli.py: error: the following arguments are required: target\\n\"}"
+    },
+    {
+      "family": "payment-hsm",
+      "demonstrates": "TR-31 metadata parsed, no key material returned",
+      "run_at": "2026-10-02T03:54:32.443929+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": "payment",
+      "status": "PASS",
+      "violations": [],
+      "findings_count": 0,
+      "evidence_references": 0,
+      "result_excerpt": "{\"scanner\": \"payment\", \"scan_status\": \"PASS\", \"header\": {\"valid\": true, \"version_id\": \"B0\", \"key_usage_code\": \"09\", \"key_usage\": \"UNKNOWN(09)\", \"algorithm_code\": \"6P\", \"algorithm\": \"UNKNOWN(6P)\", \"mode_of_use_code\": \"0\", \"mode_of_use\": \"UNKNOWN(0)\", \"key_version\": \"E0\", \"exportability_code\": \"0\", \"exportability\": \"UNKNOWN(0)\", \"optional_block_ids\": [], \"errors\": []}}"
+    },
+    {
+      "family": "runtime",
+      "demonstrates": "process/library observation incl. unavailable agent",
+      "run_at": "2026-10-02T03:54:32.447927+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "hardware-hsm-tpm",
+      "demonstrates": "real metadata, no private key material",
+      "run_at": "2026-10-02T03:54:32.447939+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "ipsec-ike",
+      "demonstrates": "explicit authorization, probe, timeout, unavailable",
+      "run_at": "2026-10-02T03:54:32.447941+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "dnssec",
+      "demonstrates": "signed, unsigned, malformed, resolver-unavailable",
+      "run_at": "2026-10-02T03:54:32.447943+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "cloud",
+      "demonstrates": "read-only IAM, KMS scans, denied-permission behaviour",
+      "run_at": "2026-10-02T03:54:32.447945+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "container-image",
+      "demonstrates": "filesystem, image/tar, missing runtime",
+      "run_at": "2026-10-02T03:54:32.447947+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "ot-ics",
+      "demonstrates": "passive-only input, malformed logs, stale feed",
+      "run_at": "2026-10-02T03:54:32.447949+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "telecom-5g",
+      "demonstrates": "SBA/TLS results, N3/N9 unknown states",
+      "run_at": "2026-10-02T03:54:32.447950+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "binary",
+      "demonstrates": "real firmware, bounded and truncated states",
+      "run_at": "2026-10-02T03:54:32.447952+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    },
+    {
+      "family": "universal-vendor",
+      "demonstrates": "connector discovery, polling failure",
+      "run_at": "2026-10-02T03:54:32.447954+00:00",
+      "scanner_version": "1.0.0",
+      "authorization_reference": "",
+      "operator_signoff": "",
+      "target_identity": null,
+      "status": "UNCONFIGURED",
+      "violations": [
+        "no uniform entrypoint: cannot be qualified by fixture yet"
+      ],
+      "findings_count": 0,
+      "evidence_references": 0
+    }
+  ],
+  "families_total": 16,
+  "fixture_qualified": 3,
+  "with_violations": 0,
+  "no_entrypoint": 10,
+  "verdict": "PASS",
+  "scope": "Fixture qualification only. Every record has an empty authorization_reference and operator_signoff, so none of these is a qualification in section 3's sense -- they establish that the family runs, reports a legal status, and does not leak key material. A family marked UNCONFIGURED has no uniform entrypoint and is listed so it cannot be quietly forgotten."
+}

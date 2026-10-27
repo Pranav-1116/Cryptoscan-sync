@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from db.models.certificate import Certificate
 from db.repositories.base_repository import BaseRepository
+from shared_models.composite_certificates import composite_block
 
 
 def _as_dt(value):
@@ -55,6 +56,18 @@ class CertificateRepository(BaseRepository[Certificate]):
         self.session.flush()
         return row
 
+    def _composite_extra(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Composite/hybrid detection (audit 59) — pure registry lookup.
+
+        Detection re-runs on every ingest; the result is stored in
+        ``extra["composite"]`` so listing surfaces stay single-query.
+        """
+        extra = dict(payload.get("extra") or {})
+        composite = composite_block(payload)
+        if composite is not None:
+            extra["composite"] = composite
+        return extra
+
     def upsert(self, payload: dict[str, Any]) -> Certificate:
         fp = payload.get("fingerprint_sha256")
         row = None
@@ -80,7 +93,7 @@ class CertificateRepository(BaseRepository[Certificate]):
                 revocation_method=payload.get("revocation_method"),
                 ocsp_url=payload.get("ocsp_url"),
                 crl_url=payload.get("crl_url"),
-                extra=payload.get("extra"),
+                extra=self._composite_extra(payload) or None,
             )
             return self.create(row)
         merged = list(row.usages or [])
@@ -112,6 +125,9 @@ class CertificateRepository(BaseRepository[Certificate]):
         extra = dict(row.extra or {})
         if payload.get("extra"):
             extra.update(payload["extra"])
+        composite = composite_block(payload)
+        if composite is not None:
+            extra["composite"] = composite
         if payload.get("revocation"):
             extra["revocation"] = payload["revocation"]
         if payload.get("chain_validation"):
@@ -133,3 +149,11 @@ class CertificateRepository(BaseRepository[Certificate]):
         if expiring_days is None:
             return rows
         return [row for row in rows if row.days_until_expiry is not None and 0 <= row.days_until_expiry <= expiring_days]
+
+    def list_composite(self) -> list[Certificate]:
+        """Certificates whose algorithm was detected as composite/hybrid.
+
+        Detection is stored on ingest (``extra["composite"]``); this is a
+        straight filter over the inventory — no heuristic runs here.
+        """
+        return [row for row in self.list_all() if (row.extra or {}).get("composite")]

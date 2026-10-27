@@ -13,20 +13,17 @@ from __future__ import annotations
 
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from network_scanner.enterprise.assets import AssetRegistry, NetworkAsset
 from network_scanner.enterprise.blast_radius import blast_radius
 from network_scanner.enterprise.cert_intel import certificate_intelligence_report
-from network_scanner.enterprise.credentials import CredentialRef, CredentialVault, scrub_all
+from network_scanner.enterprise.credentials import CredentialVault, scrub_all
 from network_scanner.enterprise.geo import GeoLocation, GeographyModel
 from network_scanner.enterprise.passive_engine import PassiveDiscoveryEngine, PassiveSource
-from network_scanner.enterprise.pqc_readiness import assess_asset_readiness, network_pqc_readiness
+from network_scanner.enterprise.pqc_readiness import network_pqc_readiness
 from network_scanner.enterprise.protocols.engine import ProtocolDetectionEngine
 from network_scanner.enterprise.scan_modes import ScanMetadata, ScanMode
-from network_scanner.enterprise.sdwan import SdwanTopology, discover_sdwan
 from network_scanner.enterprise.simulation import MigrationSimulator, default_steps_from_crypto
 from network_scanner.enterprise.target_spec import TargetSpec, parse_scope_spec
 from network_scanner.enterprise.tls_intel import build_tls_intelligence, profile_all
@@ -75,6 +72,7 @@ class GlobalNetworkDiscoveryEngine:
         self.plugins: list[NetworkVendorPlugin] = []
         self._findings: list[dict[str, Any]] = []
         self._plugin_topology: list[dict[str, Any]] = []
+        self._inventory_observations: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------- defaults
 
@@ -228,7 +226,7 @@ class GlobalNetworkDiscoveryEngine:
         if not host:
             return
         self.metadata.targets_probed += 1
-        asset = self.assets.get(host) or self.assets.upsert(NetworkAsset.from_host(host, source="probe"))
+        _asset = self.assets.get(host) or self.assets.upsert(NetworkAsset.from_host(host, source="probe"))
         try:
             finding = self.tls_probe(host)
             self._findings.append(finding)
@@ -261,6 +259,12 @@ class GlobalNetworkDiscoveryEngine:
         for device in devices:
             if not device.get("ip") and not device.get("asset_identity"):
                 continue
+            # Keep only scrubbed, non-secret observations for the structured
+            # inventory adapter. Runtime credential material never enters this
+            # report path.
+            safe_observation = scrub_all([dict(device)])[0]
+            safe_observation["plugin"] = plugin.vendor
+            self._inventory_observations.append(safe_observation)
             try:
                 normalized = plugin.normalize(device)
             except Exception:  # noqa: BLE001
@@ -413,9 +417,19 @@ class GlobalNetworkDiscoveryEngine:
                 tls_intel: list[dict[str, Any]], cert_report: dict[str, Any],
                 pqc: dict[str, Any], simulation: dict[str, Any],
                 radius: dict[str, Any], geo: dict[str, Any]) -> dict[str, Any]:
+        from network_scanner.inventory_adapter import discovery_inventory_summary, inventory_from_discovery
+
+        observed_report = {
+            "assets": self.assets.to_dicts(),
+            "inventory_observations": scrub_all(self._inventory_observations),
+            "scan_metadata": self.metadata.to_dict(),
+        }
+        structured_inventory = inventory_from_discovery(observed_report)
         return {
             "scan_metadata": self.metadata.to_dict(),
             "scope": [spec.to_dict() for spec in specs],
+            "network_inventory": structured_inventory.model_dump(mode="json", by_alias=True),
+            "network_inventory_summary": discovery_inventory_summary(observed_report),
             "assets": self.assets.to_dicts(),
             "asset_summary": self.assets.summary(),
             "protocol_observations": self.protocols.to_dicts(),

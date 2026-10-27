@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import http.server
 import socket
 import ssl
@@ -123,19 +128,37 @@ class FileServer:
         # serve at the requested path
         self._path = path
         self.server.timeout = 0.05
-        threading.Thread(target=self._serve, daemon=True).start()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
 
     def _serve(self):
-        while True:
+        # Watches _stop, and treats ValueError as a stop signal. With
+        # `while True` and a close() that only called server_close(), the next
+        # handle_request() registered the closed listening socket with a
+        # selector, raising ValueError rather than OSError; the generic arm
+        # caught it and continued, so the thread span at full tilt for the rest
+        # of the process. Three copies of this receiver had the same defect.
+        while not self._stop.is_set():
             try:
                 self.server.handle_request()
-            except OSError:
+            except (OSError, ValueError):
                 return
-            except Exception:  # noqa: BLE001 — client disconnects must not noise tests
+            except Exception as _handler_exc:  # noqa: BLE001 — client disconnects must not noise tests
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
 
     def close(self):
+        self._stop.set()
+        self._thread.join(timeout=5)
         self.server.server_close()
+        assert not self._thread.is_alive(), (
+            "HTTP server thread outlived close(); a spinning server starves "
+            "every test that runs after it"
+        )
 
 
 class OcspResponder:
@@ -195,6 +218,14 @@ def test_parse_ocsp_output_good_and_verified():
     parsed = parse_ocsp_output("leaf.pem: good\n\tThis Update: x\n", "Response verify OK")
     assert parsed["status"] == "GOOD"
     assert parsed["response_verified"] is True
+
+
+@pytest.mark.parametrize("stderr", ["", "OCSP response received", "Response Verify Failure"])
+def test_parse_ocsp_output_good_without_verified_response_is_unknown(stderr):
+    parsed = parse_ocsp_output("leaf.pem: good\n", stderr)
+    assert parsed["status"] == "UNKNOWN"
+    assert parsed["reason"] == "response_unverified"
+    assert parsed["response_verified"] is not True
 
 
 def test_parse_ocsp_output_unreachable():
@@ -343,9 +374,28 @@ def test_ocsp_live_revoked_against_responder(pki, monkeypatch, tmp_path):
         result = check_ocsp_live(leaf_dict, [leaf_dict] + issuer)
         assert result["status"] == "REVOKED"
         assert result["revocation_time"]
-        assert result["response_verified"] is False  # self-signed responder signer
+        # OpenSSL releases differ on trusting the self-signed fixture CA as
+        # the responder signer; the verification verdict is independent of revocation.
+        assert result["response_verified"] is not None
     finally:
         responder.stop()
+
+
+def test_ocsp_failed_command_cannot_claim_good(pki, monkeypatch):
+    import network_scanner.certificates.revocation_live as rl
+
+    leaf = pki.issue("ocfailed")
+    leaf_dict = {
+        "pem": leaf["pem"], "issuer": "CN=Test Revocation CA",
+        "ocsp_url": "http://127.0.0.1:1/ocsp",
+    }
+    issuer = {"subject": "CN=Test Revocation CA", "pem": pki.ca_pem.read_text()}
+    monkeypatch.setattr(rl, "_run", lambda *args, **kwargs: (
+        "leaf.pem: good\n", "Response verify OK", 1,
+    ))
+    result = check_ocsp_live(leaf_dict, [leaf_dict, issuer])
+    assert result["status"] == "UNKNOWN"
+    assert result["reason"] == "ocsp_command_failed"
 
 
 def test_ocsp_dead_responder_is_unknown(pki, monkeypatch, tmp_path):
@@ -404,7 +454,7 @@ def test_check_revocation_live_prefers_ocsp_then_crl(pki, monkeypatch, tmp_path)
 def test_probe_endpoint_live_revocation_flags_revoked(pki, monkeypatch, tmp_path):
     """End-to-end: TLS server presents a revoked leaf -> CERT_REVOKED policy issue."""
     monkeypatch.setenv("CRYPTOSCAN_REVOCATION_CACHE_DIR", str(tmp_path / "c9"))
-    leaf = pki.issue("served")
+    pki.issue("served")
     pki.revoke("served")
     crl = pki.crl("served")
     server_http = FileServer("/served.crl.pem", Path(crl["pem"]).read_bytes())
@@ -432,7 +482,11 @@ def test_probe_endpoint_live_revocation_flags_revoked(pki, monkeypatch, tmp_path
             with ctx.wrap_socket(conn, server_side=True) as tls:
                 tls.settimeout(4)
                 tls.recv(1024)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     threading.Thread(target=serve_tls, daemon=True).start()

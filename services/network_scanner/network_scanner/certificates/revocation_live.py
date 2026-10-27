@@ -6,9 +6,10 @@ is absent).  This module does the real work using the ``openssl`` CLI, which
 is the same dependency the rest of the deep probes rely on, and stays honest:
 
 * OCSP: ``openssl ocsp -issuer .. -cert .. -url .. -nonce`` — the stdout
-  status line (``good`` / ``revoked`` / ``unknown``) is the verdict.  When the
-  response signer fails verification (e.g. a self-signed responder) the status
-  is kept but ``response_verified`` is ``False`` — a fact, not a failure.
+  status line (``good`` / ``revoked`` / ``unknown``) is the verdict. GOOD
+  requires explicit successful response verification; otherwise it remains
+  UNKNOWN. An unverified REVOKED response is reported conservatively with
+  ``response_verified`` false or unknown.
 * CRL: fetched over HTTP(S) through the bounded disk cache, PEM *or* DER,
   parsed with ``openssl crl -text``; a past ``Next Update`` means the CRL is
   stale, so the verdict stays UNKNOWN (fail-closed) with ``reason`` naming it.
@@ -63,9 +64,10 @@ def parse_ocsp_output(stdout: str, stderr: str) -> dict[str, Any]:
     }
     if stderr:
         lowered = stderr.lower()
-        result["response_verified"] = not (
-            "verify error" in lowered or "response verify failure" in lowered
-        )
+        if "verify error" in lowered or "response verify failure" in lowered:
+            result["response_verified"] = False
+        elif "response verify ok" in lowered:
+            result["response_verified"] = True
         if "error querying" in lowered or "connect timeout" in lowered or "connection refused" in lowered:
             result["reason"] = "responder_unreachable"
         elif "http" in lowered and "error" in lowered:
@@ -75,6 +77,9 @@ def parse_ocsp_output(stdout: str, stderr: str) -> dict[str, Any]:
         status = match.group(1).lower()
         result["status"] = {"good": "GOOD", "revoked": "REVOKED", "unknown": "UNKNOWN"}[status]
         result["reason"] = "responder_answered"
+        if status == "good" and result["response_verified"] is not True:
+            result["status"] = "UNKNOWN"
+            result["reason"] = "response_unverified"
         if status == "revoked":
             when = _OCSP_REVOKED_AT.search(stdout or "")
             result["revocation_time"] = when.group(1).strip() if when else None
@@ -164,7 +169,7 @@ def check_ocsp_live(
         issuer_path = Path(tmp) / "issuer.pem"
         cert_path.write_text(str(leaf_pem))
         issuer_path.write_text(issuer_pem)
-        stdout, stderr, _rc = _run(
+        stdout, stderr, rc = _run(
             [
                 binary, "ocsp",
                 "-issuer", str(issuer_path),
@@ -176,6 +181,9 @@ def check_ocsp_live(
             timeout=timeout,
         )
     result.update(parse_ocsp_output(stdout, stderr))
+    if rc != 0 and result["status"] == "GOOD":
+        result["status"] = "UNKNOWN"
+        result["reason"] = "ocsp_command_failed"
     return result
 
 

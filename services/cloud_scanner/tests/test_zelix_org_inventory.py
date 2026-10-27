@@ -7,17 +7,9 @@ from cloud_scanner.enterprise.asset_inventory import (
     normalize_workload,
 )
 from cloud_scanner.enterprise.org_hierarchy import OrgHierarchyBuilder, default_region_rows
-from cloud_scanner.enterprise.providers import fake_provider
 
 from zelix_fixtures import (
-    AWS_ACCOUNTS,
-    AWS_ROWS,
-    AZURE_ACCOUNTS,
-    AZURE_ROWS,
-    GCP_ACCOUNTS,
-    GCP_ROWS,
     all_providers,
-    _aws_regions,
 )
 
 

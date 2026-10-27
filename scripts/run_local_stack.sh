@@ -1,0 +1,267 @@
+#!/usr/bin/env bash
+# Bring up the whole product locally: PostgreSQL, the API, and the console.
+#
+# run_stack.sh starts only the API and leaves the database and frontend to
+# you. This starts the local product against real PostgreSQL (not SQLite).
+# Development-mode availability is not production qualification.
+#
+#   bash scripts/run_local_stack.sh up      # start everything, print URLs
+#   bash scripts/run_local_stack.sh status  # what is listening
+#   bash scripts/run_local_stack.sh logs    # tail api + frontend
+#   bash scripts/run_local_stack.sh down    # stop everything, KEEP the data
+#   bash scripts/run_local_stack.sh purge   # stop, then DELETE the estate
+#
+# The estate boots EMPTY. There is no demo data and no seeding: inventory
+# appears only when a real scan runs against a target you configure. Pages
+# with nothing to show render honest empty states rather than samples.
+# Privately configure LOCAL_ADMIN_PASS before the FIRST user registers if this
+# estate needs an operator: bootstrap only works while the users table is empty.
+# Store local database/signing secrets in an operator-controlled secret store for
+# restarts; this launcher neither records nor prints them.
+#
+# Scan targets are confined to CRYPTOSCAN_SOURCE_ROOTS, which defaults to this
+# repository. To scan code checked out elsewhere, widen it deliberately:
+#
+#   LOCAL_SOURCE_ROOTS="$PWD:/srv/checkouts" bash scripts/run_local_stack.sh up
+#
+# That containment is a real control -- the API refuses a path outside the
+# roots -- so it is set explicitly here rather than left to a default that
+# happens to be permissive.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+DB_NAME="${LOCAL_DB_NAME:-cryptoscan-local-db}"
+DB_PORT="${LOCAL_DB_PORT:-55440}"
+REDIS_NAME="${LOCAL_REDIS_NAME:-cryptoscan-local-redis}"
+REDIS_PORT="${LOCAL_REDIS_PORT:-55441}"
+DB_USER="${LOCAL_DB_USER:-cryptoscan}"
+DB_PASS="${LOCAL_DB_PASS:-cryptoscan}"
+# Named volumes, so the estate outlives the containers. Without these the
+# data lived only in the container filesystem and `down` -- which does a
+# `docker rm -f` -- destroyed every scan with no warning and no recovery.
+DB_VOLUME="${LOCAL_DB_VOLUME:-cryptoscan-local-pgdata}"
+REDIS_VOLUME="${LOCAL_REDIS_VOLUME:-cryptoscan-local-redisdata}"
+API_PORT="${LOCAL_API_PORT:-8010}"
+UI_PORT="${LOCAL_UI_PORT:-3003}"   # must match frontend/vite.config.js
+PY="${PY:-$ROOT/.venv/bin/python}"
+RUN="${LOCAL_RUN_DIR:-$ROOT/.local-stack}"
+
+ADMIN_USER="${LOCAL_ADMIN_USER:-admin}"
+# Bootstrap only with an operator-supplied private password. A known default
+# would create a privileged account on every fresh local database.
+ADMIN_PASS="${LOCAL_ADMIN_PASS-}"
+
+export DATABASE_URL="postgresql+psycopg2://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_USER}"
+export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}/0"
+
+log() { printf '[stack] %s\n' "$*" >&2; }
+pid_on() { ss -lptn "sport = :$1" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1; }
+
+# Worker liveness by PID file, not by pgrep.
+#
+# `pgrep -f worker.main` matches any shell whose command line happens to
+# contain that string -- including the very commands an operator or a drill
+# runs to check on it. That false positive made this script report "worker
+# already running" and skip starting a real one, leaving jobs queued in
+# Redis with nothing consuming them, and made the reliability drill's
+# restart check pass against a phantom.
+worker_pid() {
+  local f="$RUN/worker.pid"
+  [ -f "$f" ] || return 1
+  local p; p="$(cat "$f" 2>/dev/null)"
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null && echo "$p"
+}
+
+# Absolute, deliberately: the migration step runs alembic from
+# services/database/migrations, and relative entries stop resolving the
+# moment the working directory changes.
+pypath() { find "$ROOT/services" "$ROOT/shared" -mindepth 1 -maxdepth 1 -type d | tr '\n' ':'; }
+
+wait_db() {
+  for _ in $(seq 90); do
+    docker exec -u postgres "$DB_NAME" psql -U "$DB_USER" -tAq -c 'SELECT 1' >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  log "FATAL: database never became ready"; docker logs --tail 30 "$DB_NAME" >&2; return 1
+}
+
+up() {
+  mkdir -p "$RUN"
+
+  # ---- database ----------------------------------------------------------
+  if ! docker ps --format '{{.Names}}' | grep -qx "$DB_NAME"; then
+    docker rm -f "$DB_NAME" >/dev/null 2>&1 || true
+    docker run -d --name "$DB_NAME" \
+      -e POSTGRES_USER="$DB_USER" -e POSTGRES_PASSWORD="$DB_PASS" -e POSTGRES_DB="$DB_USER" \
+      -v "${DB_VOLUME}:/var/lib/postgresql/data" \
+      -p "127.0.0.1:${DB_PORT}:5432" postgres:16-alpine >/dev/null
+    log "postgres starting on 127.0.0.1:${DB_PORT}"
+  else
+    log "postgres already running"
+  fi
+  wait_db
+  log "postgres ready"
+
+  # ---- redis -------------------------------------------------------------
+  # Not optional scaffolding: without it the API falls back to an in-process
+  # bus and the worker runs inline, so the queue, cross-replica fan-out and
+  # Last-Event-ID replay are never exercised. Those are the parts update.md
+  # section 2 asks to prove.
+  if ! docker ps --format '{{.Names}}' | grep -qx "$REDIS_NAME"; then
+    docker rm -f "$REDIS_NAME" >/dev/null 2>&1 || true
+    docker run -d --name "$REDIS_NAME" \
+      -v "${REDIS_VOLUME}:/data" \
+      -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine redis-server --appendonly yes >/dev/null
+    log "redis starting on 127.0.0.1:${REDIS_PORT}"
+  else
+    log "redis already running"
+  fi
+  for _ in $(seq 60); do
+    docker exec "$REDIS_NAME" redis-cli ping 2>/dev/null | grep -q PONG && break
+    sleep 1
+  done
+  if ! docker exec "$REDIS_NAME" redis-cli ping 2>/dev/null | grep -q PONG; then
+    log "FATAL: redis never became ready"; return 1
+  fi
+  log "redis ready"
+
+  # ---- schema ------------------------------------------------------------
+  ( cd services/database/migrations \
+    && PYTHONPATH="$(pypath)" ENVIRONMENT=development \
+       "$PY" -m alembic upgrade head >/dev/null )
+  log "migrations applied ($(docker exec -u postgres "$DB_NAME" psql -U "$DB_USER" -tAq \
+      -c "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'") tables)"
+
+  # ---- api ---------------------------------------------------------------
+  if [ -n "$(pid_on "$API_PORT")" ]; then
+    log "api already listening on ${API_PORT}"
+  else
+    PYTHONPATH="$(pypath)" \
+    ENVIRONMENT=development \
+    SECRET_KEY="${LOCAL_SECRET_KEY:-local-stack-secret-key-min-32-characters}" \
+    GITHUB_WEBHOOK_SECRET="${LOCAL_WEBHOOK_SECRET:-local-stack-webhook-secret-abc123}" \
+    ADMIN_USERNAME="$ADMIN_USER" ADMIN_PASSWORD="$ADMIN_PASS" \
+    DATABASE_URL="$DATABASE_URL" \
+    REDIS_URL="$REDIS_URL" \
+    CRYPTOSCAN_SNAPSHOT_DIR="$RUN/data" \
+    CRYPTOSCAN_SOURCE_ROOTS="${LOCAL_SOURCE_ROOTS:-$ROOT}" \
+    nohup "$PY" -m uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" \
+      --log-level info > "$RUN/api.log" 2>&1 &
+    log "api starting on ${API_PORT}"
+  fi
+  for _ in $(seq 90); do
+    curl -sf --max-time 2 "http://127.0.0.1:${API_PORT}/ready" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  if ! curl -sf --max-time 2 "http://127.0.0.1:${API_PORT}/ready" >/dev/null 2>&1; then
+    log "FATAL: api never became ready (see $RUN/api.log)"; return 1
+  fi
+
+  # ---- worker ------------------------------------------------------------
+  # With REDIS_URL set the API enqueues instead of running the pipeline
+  # inline, so without this process a triggered scan sits in the queue
+  # forever and the job stays QUEUED.
+  if worker_pid >/dev/null; then
+    log "worker already running"
+  else
+    PYTHONPATH="$(pypath)" \
+    ENVIRONMENT=development \
+    SECRET_KEY="${LOCAL_SECRET_KEY:-local-stack-secret-key-min-32-characters}" \
+    DATABASE_URL="$DATABASE_URL" \
+    REDIS_URL="$REDIS_URL" \
+    CRYPTOSCAN_SNAPSHOT_DIR="$RUN/data" \
+    CRYPTOSCAN_SOURCE_ROOTS="${LOCAL_SOURCE_ROOTS:-$ROOT}" \
+    nohup "$PY" -m worker.main > "$RUN/worker.log" 2>&1 &
+    echo $! > "$RUN/worker.pid"
+    log "worker starting (pid $(cat "$RUN/worker.pid"))"
+  fi
+
+  # ---- frontend ----------------------------------------------------------
+  if [ -n "$(pid_on "$UI_PORT")" ]; then
+    log "frontend already listening on ${UI_PORT}"
+  else
+    [ -d frontend/node_modules ] || ( cd frontend && npm ci --no-audit --no-fund >/dev/null 2>&1 )
+    ( cd frontend && nohup npx vite --host 127.0.0.1 > "$RUN/frontend.log" 2>&1 & )
+    log "frontend starting on ${UI_PORT}"
+  fi
+  for _ in $(seq 90); do
+    curl -sf --max-time 2 "http://127.0.0.1:${UI_PORT}/api/v1/healthz" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  if ! curl -sf --max-time 2 "http://127.0.0.1:${UI_PORT}/api/v1/healthz" >/dev/null 2>&1; then
+    log "FATAL: console or API proxy never became ready (see $RUN/frontend.log)"; return 1
+  fi
+  if ! worker_pid >/dev/null; then
+    log "FATAL: worker exited during startup (see $RUN/worker.log)"; return 1
+  fi
+
+  status
+}
+
+status() {
+  echo
+  printf '  %-12s %-34s %s\n' COMPONENT URL STATE
+  printf '  %-12s %-34s %s\n' "console" "http://127.0.0.1:${UI_PORT}" \
+    "$(curl -sf --max-time 2 "http://127.0.0.1:${UI_PORT}/" >/dev/null 2>&1 && echo up || echo DOWN)"
+  printf '  %-12s %-34s %s\n' "api" "http://127.0.0.1:${API_PORT}/health" \
+    "$(curl -sf --max-time 2 "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1 && echo up || echo DOWN)"
+  printf '  %-12s %-34s %s\n' "api docs" "http://127.0.0.1:${API_PORT}/api/docs" ""
+  printf '  %-12s %-34s %s\n' "postgres" "127.0.0.1:${DB_PORT}" \
+    "$(docker exec -u postgres "$DB_NAME" psql -U "$DB_USER" -tAq -c 'SELECT 1' >/dev/null 2>&1 && echo up || echo DOWN)"
+  printf '  %-12s %-34s %s\n' "redis" "127.0.0.1:${REDIS_PORT}" \
+    "$(docker exec "$REDIS_NAME" redis-cli ping 2>/dev/null | grep -q PONG && echo up || echo DOWN)"
+  printf '  %-12s %-34s %s\n' "worker" "(queue consumer)" \
+    "$(worker_pid >/dev/null && echo up || echo DOWN)"
+  echo
+  if [ -n "$ADMIN_PASS" ]; then
+    printf '  admin bootstrap configured for %s (only if the users table was empty at startup)\n' "$ADMIN_USER"
+  else
+    printf '  no admin bootstrap credentials supplied; registration alone cannot authorize scans\n'
+    printf '  on a fresh estate, provision an operator before registration (bootstrap requires an empty users table)\n'
+  fi
+  echo "  no fixture data is loaded; inventory requires authorized real collection"
+  echo "  logs: $RUN/api.log  $RUN/worker.log  $RUN/frontend.log"
+  echo
+}
+
+logs() { tail -n 40 -F "$RUN/api.log" "$RUN/worker.log" "$RUN/frontend.log"; }
+
+# Stop everything. The estate SURVIVES: the containers are removed but the
+# named volumes are not, so `up` brings the same scans back. Use `purge` to
+# delete the data on purpose.
+down() {
+  for port in "$API_PORT" "$UI_PORT"; do
+    p="$(pid_on "$port")"; [ -n "$p" ] && kill "$p" 2>/dev/null && log "stopped :$port"
+  done
+  p="$(worker_pid)" && kill "$p" 2>/dev/null && log "worker stopped"
+  rm -f "$RUN/worker.pid"
+  docker rm -f "$DB_NAME" "$REDIS_NAME" >/dev/null 2>&1 && log "containers removed" || true
+  log "data kept in volumes ${DB_VOLUME} / ${REDIS_VOLUME} — 'up' restores the estate"
+  log "to delete it: $0 purge"
+}
+
+# Destroy the estate. Separate from `down`, named for what it does, and it
+# asks first -- `down` used to do this silently because the containers had
+# no volumes, and a restart that was only meant to reload the frontend took
+# every scan with it.
+purge() {
+  down
+  if [ "${2:-}" != "--yes" ] && [ "${FORCE_PURGE:-}" != "1" ]; then
+    printf '[stack] delete volumes %s and %s? every scan in them is lost. [y/N] ' \
+      "$DB_VOLUME" "$REDIS_VOLUME" >&2
+    read -r reply
+    case "$reply" in [yY]|[yY][eE][sS]) ;; *) log "purge cancelled"; return 0 ;; esac
+  fi
+  docker volume rm "$DB_VOLUME" "$REDIS_VOLUME" >/dev/null 2>&1 && log "volumes deleted" || true
+}
+
+case "${1:-up}" in
+  up) up ;;
+  status) status ;;
+  logs) logs ;;
+  down) down ;;
+  purge) purge "$@" ;;
+  *) echo "usage: $0 {up|status|logs|down|purge}" >&2; exit 2 ;;
+esac

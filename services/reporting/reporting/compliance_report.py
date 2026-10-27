@@ -19,6 +19,7 @@ def render_json(
     selected_requirements: list[str] | None = None,
     policy_pack_hash: str | None = None,
     payment: dict[str, Any] | None = None,
+    generated_at_iso: str | None = None,
 ) -> dict[str, Any]:
     rows = list(findings)
     by_status = Counter(str(row.get("compliance_status") or "UNKNOWN").upper() for row in rows)
@@ -31,7 +32,11 @@ def render_json(
             elif str(rule.get("evaluation_result") or "").upper() == "PASS":
                 by_standard[str(key)]["pass"] += 1
     report = {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        # generated_at_iso anchors the wall clock to the scan (pin path):
+        # two renderings of identical evidence must hash identically or
+        # content addressing is meaningless — the same rule
+        # normalize_for_snapshot applies to CBOM metadata timestamps.
+        "generated_at": generated_at_iso or datetime.now(timezone.utc).isoformat(),
         "scan": scan,
         "totals": {
             "findings": len(rows),

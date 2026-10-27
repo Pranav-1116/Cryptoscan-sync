@@ -1,16 +1,103 @@
 # CryptoScan
 
-Production cryptographic inventory and compliance platform.
+> **Current source review (2026-10-23, tenth increment from `8c1b2bcf`):**
+> [implementation / CI / migration / six-BOM boundaries](docs/CURRENT-IMPLEMENTATION-STATUS.md),
+> [CI and product-build plan](docs/CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md),
+> [operator installation and recovery](docs/runbooks/operator-install-upgrade-recover.md).
+> [workflow / real PostgreSQL / built-browser qualification](docs/readiness-evidence/quality-workflow-qualification-2026-10-23.md), migration **0106**.
+> [shared private-read hardening](docs/readiness-evidence/quality-shared-private-reads-2026-10-23.md): 516 frontend checks and 11 built-browser checks; synthetic HTTP, not site acceptance.
+> Older dated tables/diagrams are historical; configured CI does not mean a signed
+> release or site approval. The user reports one remaining workflow failure.
+
+CryptoScan discovers cryptographic assets across approved and supported collection surfaces within the bank's defined scope.
+
+Every finding retains provenance and evidence status, with unsupported or unobserved facts represented explicitly as unknown rather than inferred as secure.
+
+**New host-first increment (2026-10-24):** [approved offline non-Git collection](docs/bank-environment/59-approved-offline-host-collection.md) and [ten-point acceptance ledger](docs/bank-environment/60-host-first-product-acceptance.md). Linux synthetic collection and authenticated evidence/CBOM intake are implemented. [Reviewed host-to-six-BOM metadata associations](docs/bank-environment/61-host-to-six-bom-associations.md) now add per-edge provenance, independent human review, stale/retraction handling and graph export; they do not establish runtime dependencies. Windows execution, production host isolation, whole-bank coverage and the joined six-BOM host estate are **not qualified**.
+
+**Phase-wise foundation:** [Universal collection Phase 1](docs/bank-environment/62-universal-collection-foundation.md) now adds stable scoped targets, authorization, offline jobs and one evidence envelope feeding multiple BOM reference views. [Phase 2 Linux](docs/bank-environment/63-linux-collection-phase-two.md) now adds explicit PID/shared-object mappings, namespace TCP listeners, named systemd service probes, CPU/DMI/TPM metadata interfaces and Alpine packages. [Phase 3 Windows](docs/bank-environment/64-windows-collection-phase-three.md) begins with an explicit offline candidate and named SCM status query. Native systemd/DMI/TPM/Windows qualification, signed identity and production execution remain open; metadata is not cryptographic use.
+
+**Collector hardening:** [Guide 65](docs/bank-environment/65-signed-collector-isolation-and-native-gates.md) adds approval-pinned Ed25519 handoffs, real Linux Landlock/seccomp file-stage isolation, bounded RPM exports, an executable native-fixture gate and the next Windows OS declaration candidate. Signing-key identity is not host attestation; production admission remains blocked.
+
+**Current Stats (2026-10-16, measured):** 51 services (~389k lines of Python), 103 API router modules, **834 API paths / 920 operations** (regenerated reference: `docs/api-reference/rest-api.md`), 95 alembic migrations with schema-parity tests, 75 frontend page components with lazy-loaded routes, 783 backend test files (full local suite: 7,629 passed / 34 skipped) plus a 334-test Vitest frontend suite with clean `tsc --noEmit`. Deterministic policy — no AI in the decision path. Per-round build ledger: `audit_reports/00_ROUND_STATUS.md` (complete through round 80).
+
+**Real-Time System:** Read-only binary-job WebSocket progress (`/api/v1/ws/binary/jobs/{id}`), event WebSocket (`/api/v1/ws/events`), SSE (`/api/v1/events/stream`) and paginated polling (`/api/v1/events/recent`). Unified event replay is owner-partitioned, retained and epoch/cursor-bound: local memory in development or Redis Streams when configured. Fresh stream authority and explicit gaps/reset/backend errors do not imply indefinite history, exactly-once delivery or production HA qualification. See [the estate replay contract](docs/bank-environment/42-estate-streams-graphql-and-exports.md).
+
+**Cryptographic Digital Twin (CDT):** A read-only replica of the cryptographic estate built from live scanner state (`crypto_live_states`, versioned CBOMs), an append-only event journal (`crypto_live_events`) for per-asset time-travel, stored network scan probes (the same wire derivation the NBOM uses, so the two can never disagree), dependency edges from the relational table or the latest graph snapshot, and the hardware fleet from the live hardware engine (HSM inventory with declared PQC capability). The `/digital-twin` surface reports what the twin holds and where each section came from, measures fidelity (staleness, coverage, journal depth, network observation) with honest unknowns where the estate is unscanned, diffs the twin's algorithm inventory against its own evidence store (`/digital-twin/reconciliation`), and runs ten deterministic scenario types (algorithm migration, certificate expiry, key rotation, HSM outage, vendor compromise, protocol deprecation, compliance change, attack path, PQC migration, agility drift) over the replica. Scenarios are heuristic projections, not vendor simulations, and never touch production — the same engine powers the what-if preview. Beta capability (see [docs/CAPABILITY-MATURITY.md](docs/CAPABILITY-MATURITY.md)).
+
 
 Deterministic scanners, hashed evidence, YAML policy, drift, and a dashboard.
 Policy is never decided by AI.
 
-**Local:** `bash scripts/run_stack.sh` (seeds SQLite on first boot).  
-**Development login:** `admin` / `cryptoscan` (refused in production). **Docs:** [RUN.md](RUN.md).  
+**Local:** `bash scripts/run_stack.sh` (boots empty — no demo data; inventory appears when real scans run).  
+**Development login:** `admin` / `cryptoscan` (refused in production). **Docs:** [docs/README.md](docs/README.md) (all guides) · [RUN.md](RUN.md) · [REST API reference](docs/api-reference/rest-api.md).  
 **Docker (dev):** `docker compose up --build`.  
 **Docker (prod):** set secrets, then `docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build`.
 
 The working loop is: scan source → evidence chain → SQLite/Postgres → normalize → policy → drift → API → dashboard.
+
+## How it operates inside a bank
+
+[Bank environment and six-BOM walkthrough](docs/bank-environment/README.md)
+explains approved deployment/access, actual scanning paths, SBOM/NBOM/CBOM/TechBOM/
+HBOM/VBOM generation, practical payments examples, console/API exports and
+acceptance criteria. It distinguishes code-backed behavior from prerequisites,
+known route differences and unqualified bank/provider runtime claims.
+
+The [dependency and cascade guides](docs/bank-environment/12-dependency-discovery-and-evidence.md)
+explain discovery, directional blast radius, bank examples, APIs, current limits
+and recommended acceptance checks. They distinguish modeled exposure from
+confirmed operational failure.
+
+[Coverage and truncation qualifications](docs/bank-environment/25-coverage-truncation-and-missing-link-qualifications.md)
+are shown before cascade impact: source read omissions, bounded horizons,
+missing links and explanation limits stay separate. Incomplete runs cannot
+silently become watch removals or comparable impact deltas. Unknown completeness
+is not zero exposure or proof of safety.
+
+[Bank-negative and backend qualification tests](docs/bank-environment/26-bank-negative-tests-and-backend-qualification.md)
+cover exact-estate derived history/replay, writer-only watches and backend
+semantic/isolation negatives. All ten local implementation steps are delivered;
+real-bank and live backend certification remain separate obligations.
+
+[International, multi-vendor bank assessment program](docs/bank-environment/27-international-bank-scan-program.md)
+adds eight detailed planning guides (27–34): vendor evidence/access, safe
+system-by-system collection, six-BOM identity/coverage, regional deployment,
+30 failure scenarios, prioritized improvements and a worked multinational example.
+These are proposed requirements and rollout designs, not newly shipped controls. The subsequent
+[A01 API-network implementation](docs/bank-environment/35-network-admission-and-durable-collection.md)
+adds shared admission and mandatory linked job/probe records for four API paths;
+the [scheduled TLS worker delivery](docs/bank-environment/36-worker-scheduled-tls-admission.md)
+extends that contract to the leader-worker target rotation. The subsequent
+[NETWORK monitor lifecycle isolation](docs/bank-environment/37-network-monitor-lifecycle-isolation.md)
+adds owner/rollback/freshness guards. The
+[bounded monitor phase delivery](docs/bank-environment/38-monitor-network-phase-admission.md)
+adds admission and linked jobs for TLS/IPsec/explicit-resolver DNSSEC. The
+[bounded TCP discovery increment](docs/bank-environment/39-bounded-tcp-monitor-discovery.md)
+adds explicit IPv4 CIDR/port monitor sweeps without automatic TLS/plugin follow-up.
+Unqualified scope/plugins remain refused. The
+[exact-estate HTTP history increment](docs/bank-environment/40-exact-estate-http-history.md)
+restricts job/run details, logs, retries, metrics and drift to the selected estate.
+[WebSocket history checkpoints](docs/bank-environment/41-exact-estate-websocket-history.md)
+add the boundary to binary progress and event sockets, including fresh authority
+and pre-queue filtering. The subsequent
+[estate streams/GraphQL/export delivery](docs/bank-environment/42-estate-streams-graphql-and-exports.md)
+adds retained per-estate pagination and closes the reviewed cross-surface history
+reads. [Broader qualification](docs/bank-environment/43-a01-a02-qualification-and-open-blockers.md)
+records the historical standalone Redis evidence and original queued-authority
+blockers. [Persisted queue authority and durable SSH](docs/bank-environment/44-queued-authority-and-durable-ssh.md)
+now close those two controls locally and add stored SSH results/status.
+[Verified Redis TLS/ACL/Sentinel qualification](docs/bank-environment/45-redis-tls-sentinel-qualification.md)
+adds command readiness, subscriber recovery, primary-bound replay resets and a
+destructive disposable lab, not production deployment certification.
+**A01 and A02 remain partial; production safety is not certified.**
+For current compatibility and recovery steps, use the
+[execution/replay upgrade runbook](docs/runbooks/execution-and-replay-upgrade.md).
+The regenerated [API reference](docs/api-reference/rest-api.md) has a dedicated
+[contract companion](docs/api-reference/execution-and-replay.md); the
+[documentation status map](docs/DOCUMENTATION-STATUS.md) distinguishes current
+instructions from historical measurements.
+
 
 ## Scope & honest boundaries
 
@@ -23,13 +110,23 @@ not a universal "scan everything" tool.
   HSM/PCI, vendor/supply-chain, plus shared evidence-chain / CBOM / graph /
   PQC / remediation / compliance layers.
 - ❌ **It does not:** application source-code hacking (general SAST), malware
-  analysis, SIEM behavior analytics, mainframe core banking (AS/400, COBOL),
-  or employee endpoint scanning.
+  analysis, SIEM behavior analytics, core-banking transaction validation,
+  or universal employee endpoint scanning.
 - 🌐 **Cloud:** only the accounts/tenants your credentials can see — external
   surface only via public internet scanning of configured targets.
 - 🔒 **Always:** read-only collection, evidence-chained observations, and
   **key *metadata* only — never key material or secret values** (enforced by
   tests; evidence packs use strict field whitelists).
+
+Mainframe/legacy **crypto-oriented static parsers and metadata ingestion** do
+exist, including COBOL/PL/I/RPG and selected configuration/key-inventory inputs.
+That is not complete live mainframe discovery, a general core-banking audit or
+production qualification; see [the bounded collection playbook](docs/bank-environment/29-system-by-system-collection-playbooks.md).
+
+Not every surface is equally proven: **33 GA · 32 beta · 10 preview** console
+surfaces (75 in total — the same 75 the page-component count above reports), labelled on every page and listed in
+[docs/CAPABILITY-MATURITY.md](docs/CAPABILITY-MATURITY.md)
+(`GET /api/v1/platform/capabilities`, source `shared_models/capability_maturity.py`).
 
 The boundaries are a single source of truth
 (`shared_models/platform_scope.py`), served at `GET /api/v1/platform/scope`,
@@ -44,7 +141,7 @@ Nozomi, SAST), see
 
 | Capability | Where |
 |---|---|
-| **CI** — lint + 23 test suites + E2E seed smoke + polyglot detection matrix + Postgres migration up/down + Docker builds | `.github/workflows/` |
+| **CI** — discovered backend/shared + offline scanner matrices; PostgreSQL 15/16 migration/parity; frontend typecheck, Vitest, coverage smoke, build/toolchain; six-image **build-only** lane; fail-closed `ci-required`. Manual unsigned release preflight is separate. Actual run status and release/site approval are not implied. | [Current CI contract](docs/dev/release-automation.md), [product-build plan](docs/CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md) |
 | **Multi-user auth** — `users` / `user_sessions` / `audit_log` tables, roles (`admin`/`auditor`/`viewer`), persistent lockout, server-side token revocation, admin user management (`GET/POST/PATCH /api/v1/auth/users`), audit trail (`GET /api/v1/auth/audit`) | `services/api/api/security/`, `services/database/db/models/user.py`, migration `0019` |
 | **RBAC** — scan trigger + baseline approve + drift ack/resolve require auditor/admin; reads need any role | `api/dependencies.py` (`require_roles`) |
 | **Concurrent worker** — `MAX_CONCURRENT_JOBS` thread pool with backpressure and graceful drain | `services/worker/worker/core/pool.py` |

@@ -21,6 +21,10 @@ from db.repositories.user_repository import UserRepository
 
 @pytest.fixture()
 def session():
+    # Configure an isolated in-memory engine for this test, then restore the
+    # prior binding afterwards so later tests do not inherit a torn-down
+    # in-memory database (cross-file state leakage produced 401s elsewhere).
+    prior_bind = SessionLocal.kw.get("bind")
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -29,8 +33,17 @@ def session():
     Base.metadata.create_all(engine)
     configure_session(engine)
     s = SessionLocal()
-    yield s
-    s.close()
+    try:
+        yield s
+    finally:
+        s.close()
+        engine.dispose()
+        # Rebind to whatever the session factory used before (None in a fresh
+        # process => deps lazily create/handle the settings-driven engine).
+        if prior_bind is not None:
+            configure_session(prior_bind)
+        else:
+            SessionLocal.configure(bind=None)
 
 
 def _mint_session(db, username: str, roles: list[str]) -> str:
@@ -82,6 +95,21 @@ def test_repository_revocation_and_expiry(session):
     session.commit()
     assert expired.is_active_key is False
     assert repo.get_by_raw(raw2) is None
+
+
+def test_future_expiry_key_is_usable_after_db_round_trip(session):
+    """Regression: SQLite returns naive datetimes; comparing with aware utcnow()
+    raised TypeError and every key created *with* an expiry was rejected (401)
+    on first use — found by the load test minting 1-hour keys per virtual user."""
+    repo = ApiKeyRepository(session)
+    row, raw = repo.create(
+        name="future", created_by="admin",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    session.commit()
+    session.expire_all()  # force a reload so the column comes back as the DB stores it
+    fetched = repo.get_by_raw(raw)
+    assert fetched is not None and fetched.is_active_key is True
 
 
 def test_repository_rejects_bad_input(session):
@@ -142,14 +170,27 @@ def test_api_key_authenticates_regular_endpoints(admin_client, session):
     # valid key -> authenticated everywhere (get_current_user path)
     ok = plain.get("/api/v1/scans", headers={"X-API-Key": raw})
     assert ok.status_code == 200
-    # key roles are honored: viewer cannot trigger scans (auditor-only)
-    forbidden = plain.post(
-        "/api/v1/scans/trigger",
+    # default key is read-only (GET): POST denied by method policy
+    method_denied = plain.post(
+        "/api/v1/live-scan/start",
         headers={"X-API-Key": raw},
-        json={"repo_url": "https://github.com/example/x.git"},
+        json={"targets": {}},
     )
-    assert forbidden.status_code == 403
-    assert "roles" in forbidden.json()["detail"]
+    assert method_denied.status_code == 403
+    # a write-capable key still has viewer roles, so an operator-only POST
+    # is rejected by RBAC role enforcement (not by the method allowlist).
+    write_raw = admin_client.post(
+        "/api/v1/api-keys",
+        json={"name": "ci-bot-write", "roles": ["viewer"],
+              "allowed_methods": ["GET", "POST"]},
+    ).json()["raw_key"]
+    role_denied = plain.post(
+        "/api/v1/live-scan/start",
+        headers={"X-API-Key": write_raw},
+        json={"targets": {}},
+    )
+    assert role_denied.status_code == 403
+    assert "roles" in role_denied.json()["detail"]
     # garbage key -> 401
     assert plain.get("/api/v1/scans", headers={"X-API-Key": "csk_nope"}).status_code == 401
 
@@ -196,12 +237,15 @@ def test_rate_limit_identity_uses_key_bucket():
     assert _identity(_FakeRequest({})).startswith("ip:")
 
 
-def test_auth_middleware_passes_api_keys_through_to_dependencies():
-    """The session gate must not swallow X-API-Key requests before the
-    route-level key validation runs (live regression: 401 MISSING_AUTH_HEADER)."""
+def test_auth_middleware_validates_api_keys_before_routing(monkeypatch):
+    """A machine key is validated by the global gate, including on a route
+    that has no route-local dependency. This prevents future routes from
+    becoming X-API-Key bypasses by omission."""
     from fastapi import FastAPI
     from api.middleware.auth_middleware import AuthMiddleware
+    import api.dependencies
 
+    monkeypatch.setattr(api.dependencies, "_resolve_api_key", lambda request: ("apikey:test", ["viewer"], "key-id"))
     app = FastAPI()
     app.add_middleware(AuthMiddleware)
 
@@ -212,7 +256,7 @@ def test_auth_middleware_passes_api_keys_through_to_dependencies():
     client = TestClient(app)
     assert client.get("/api/v1/probe").status_code == 401  # nothing presented
     resp = client.get("/api/v1/probe", headers={"X-API-Key": "csk_something"})
-    assert resp.status_code == 200  # reaches the route; key checked downstream
+    assert resp.status_code == 200  # global gate authorized it
     assert client.get(
         "/api/v1/probe", headers={"Authorization": "Bearer garbage"}
     ).status_code == 401

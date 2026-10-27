@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "Reviewer": {
+      "additionalProperties": false,
+      "properties": {
+        "public_key": {
+          "maxLength": 44,
+          "minLength": 44,
+          "title": "Public Key",
+          "type": "string"
+        },
+        "reviewer_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Reviewer Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "independent_assessor",
+            "bank_acceptor"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reviewer_id",
+        "role",
+        "public_key"
+      ],
+      "title": "Reviewer",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "campaign_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Campaign Id",
+      "type": "string"
+    },
+    "native_plan_sha256": {
+      "additionalProperties": {
+        "pattern": "^[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Native Plan Sha256",
+      "type": "object"
+    },
+    "native_source_lock_sha256": {
+      "additionalProperties": {
+        "pattern": "^[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Native Source Lock Sha256",
+      "type": "object"
+    },
+    "release_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release Sha256",
+      "type": "string"
+    },
+    "reviewers": {
+      "items": {
+        "$ref": "#/$defs/Reviewer"
+      },
+      "maxItems": 20,
+      "minItems": 2,
+      "title": "Reviewers",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "cryptoscan.qualification-policy/v1",
+      "default": "cryptoscan.qualification-policy/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope_reference": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+      "title": "Scope Reference",
+      "type": "string"
+    },
+    "tenant_id": {
+      "anyOf": [
+        {
+          "maxLength": 36,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Tenant Id"
+    }
+  },
+  "required": [
+    "campaign_id",
+    "tenant_id",
+    "scope_reference",
+    "release_sha256",
+    "native_plan_sha256",
+    "native_source_lock_sha256",
+    "reviewers"
+  ],
+  "title": "AcceptancePolicy",
+  "type": "object"
+}

@@ -1,0 +1,95 @@
+{
+  "artifact_id": "<BASELINE_ARTIFACT_ID>",
+  "environment_ref": "REPLACE: named approved isolated environment",
+  "provider_organization": "REPLACE: contracted external provider",
+  "lead_tester_ref": "REPLACE: independently verified tester identity",
+  "public_key_base64": "<REPLACE_WITH_VERIFIED_BASE64_ED25519_PUBLIC_KEY>",
+  "independence_declaration_blob_id": "<INDEPENDENCE_BLOB_ID>",
+  "scope_blob_id": "<AGREED_SCOPE_BLOB_ID>",
+  "deployment_manifest_blob_id": "<BASELINE_DEPLOYMENT_BLOB_ID>",
+  "report_max_age_seconds": 2592000,
+  "expires_at": "2026-11-22T00:00:00Z",
+  "cases": [
+    {
+      "case_id": "tenant.cross_read",
+      "area": "TENANT_ISOLATION",
+      "procedure": "REPLACE: agreed estate-specific negative steps for tenant.cross_read",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "tenant.cross_write",
+      "area": "TENANT_ISOLATION",
+      "procedure": "REPLACE: agreed estate-specific negative steps for tenant.cross_write",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "tenant.null_scope",
+      "area": "TENANT_ISOLATION",
+      "procedure": "REPLACE: agreed estate-specific negative steps for tenant.null_scope",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "auth.revoked_session",
+      "area": "AUTHORIZATION",
+      "procedure": "REPLACE: agreed estate-specific negative steps for auth.revoked_session",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "auth.denied_role",
+      "area": "AUTHORIZATION",
+      "procedure": "REPLACE: agreed estate-specific negative steps for auth.denied_role",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "upload.traversal",
+      "area": "UPLOAD_PARSER",
+      "procedure": "REPLACE: agreed estate-specific negative steps for upload.traversal",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "upload.resource_limits",
+      "area": "UPLOAD_PARSER",
+      "procedure": "REPLACE: agreed estate-specific negative steps for upload.resource_limits",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "parser.no_privileged_fallback",
+      "area": "UPLOAD_PARSER",
+      "procedure": "REPLACE: agreed estate-specific negative steps for parser.no_privileged_fallback",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "evidence.cross_estate_download",
+      "area": "SECRETS_EVIDENCE",
+      "procedure": "REPLACE: agreed estate-specific negative steps for evidence.cross_estate_download",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "secrets.redaction",
+      "area": "SECRETS_EVIDENCE",
+      "procedure": "REPLACE: agreed estate-specific negative steps for secrets.redaction",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "supply.digest_tamper",
+      "area": "SUPPLY_DEPLOYMENT",
+      "procedure": "REPLACE: agreed estate-specific negative steps for supply.digest_tamper",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "supply.untrusted_signature",
+      "area": "SUPPLY_DEPLOYMENT",
+      "procedure": "REPLACE: agreed estate-specific negative steps for supply.untrusted_signature",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    },
+    {
+      "case_id": "deploy.secret_ca_mounts",
+      "area": "SUPPLY_DEPLOYMENT",
+      "procedure": "REPLACE: agreed estate-specific negative steps for deploy.secret_ca_mounts",
+      "expected_result": "REPLACE: explicit fail-closed behavior and retained evidence"
+    }
+  ],
+  "exclusions": [
+    "REPLACE: explicit systems, workflows and test methods outside agreed scope"
+  ]
+}

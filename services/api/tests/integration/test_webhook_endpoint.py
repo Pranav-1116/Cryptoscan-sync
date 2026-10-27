@@ -13,6 +13,34 @@ import pytest
 from httpx import AsyncClient
 
 WEBHOOK_SECRET = "test-webhook-secret-abc123"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_pipeline(monkeypatch):
+    """Keep the webhook route's background work out of the network.
+
+    With no REDIS_URL the route does not enqueue -- it schedules
+    PipelineRunner.run as a FastAPI BackgroundTask, which the test transport
+    executes in-process. That runner shells out to ``git clone`` against the
+    payload's clone_url (https://github.com/org/payment-api.git, a repo that
+    does not exist), so these tests made a real network call and then failed on
+    the clone. A subprocess also slips straight past pytest-socket, so nothing
+    else in the suite would have caught it.
+
+    These tests cover the webhook contract -- signature, parsing, queueing --
+    so record the dispatch instead of performing it. Pipeline behaviour itself
+    is covered by the worker suite.
+    """
+    calls: list[dict] = []
+
+    def _record(self, **kwargs):
+        calls.append(kwargs)
+        return {"job_id": kwargs.get("job_id"), "status": "COMPLETED"}
+
+    monkeypatch.setattr(
+        "worker.pipeline.pipeline_runner.PipelineRunner.run", _record, raising=True
+    )
+    return calls
 GITHUB_PUSH_PAYLOAD = {
     "ref": "refs/heads/main",
     "deleted": False,
@@ -234,3 +262,76 @@ class TestWebhookEndpoint:
         body = response.json()
         assert body["queued"] is True
         assert body["job_id"] == "pr-job"
+
+class TestWebhookTenantOwnership:
+    """The webhook path is skipped by the tenant middleware, so the job it
+    creates used to land in the platform estate (tenant_id NULL — readable by
+    every tenant). The matched RepoConfiguration knows whose repo it is: the
+    job row and the queue payload must inherit that tenant."""
+
+    @pytest.mark.asyncio
+    async def test_job_and_payload_inherit_config_tenant(
+        self,
+        client: AsyncClient,
+        raw_payload: bytes,
+        valid_signature: str,
+        mock_repo_config_repo: MagicMock,
+        mock_job_repo: MagicMock,
+    ):
+        mock_repo_config = MagicMock()
+        mock_repo_config.enabled = True
+        mock_repo_config.scan_on_push = True
+        mock_repo_config.tenant_id = "tenant-a"
+        mock_repo_config_repo.get_by_url = AsyncMock(return_value=mock_repo_config)
+        # force the create_job fallback so the tenant argument is observable
+        mock_job_repo.create_from_webhook = AsyncMock(return_value=None)
+        mock_job_repo.create_job = AsyncMock(return_value=MagicMock(job_id="wh-job-1"))
+
+        response = await client.post(
+            "/api/v1/webhooks/github",
+            content=raw_payload,
+            headers={
+                "X-GitHub-Event": "push",
+                "X-Hub-Signature-256": valid_signature,
+                "X-GitHub-Delivery": "tenant-ownership-delivery",
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["queued"] is True
+        # the job row is created inside the owning tenant
+        assert mock_job_repo.create_job.call_args.kwargs["tenant_id"] == "tenant-a"
+
+    @pytest.mark.asyncio
+    async def test_legacy_hook_result_is_stamped_with_config_tenant(
+        self,
+        client: AsyncClient,
+        raw_payload: bytes,
+        valid_signature: str,
+        mock_repo_config_repo: MagicMock,
+        mock_job_repo: MagicMock,
+    ):
+        mock_repo_config = MagicMock()
+        mock_repo_config.enabled = True
+        mock_repo_config.scan_on_push = True
+        mock_repo_config.tenant_id = "tenant-b"
+        mock_repo_config_repo.get_by_url = AsyncMock(return_value=mock_repo_config)
+        legacy_row = MagicMock(job_id="wh-job-2")
+        legacy_row.tenant_id = None
+        mock_job_repo.create_from_webhook = AsyncMock(return_value=legacy_row)
+
+        response = await client.post(
+            "/api/v1/webhooks/github",
+            content=raw_payload,
+            headers={
+                "X-GitHub-Event": "push",
+                "X-Hub-Signature-256": valid_signature,
+                "X-GitHub-Delivery": "legacy-stamp-delivery",
+                "Content-Type": "application/json",
+            },
+        )
+
+        assert response.status_code == 200
+        # legacy hook rows get stamped so ownership is on the row itself
+        assert legacy_row.tenant_id == "tenant-b"

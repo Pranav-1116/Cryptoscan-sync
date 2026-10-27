@@ -1,0 +1,38 @@
+{
+  "base_builder_commit": "ae507792",
+  "bundle_manifest_sha256": "ba247fa6fa7cfa25c8939dc1815c93a77104cf987fe34e0312058e13d2c8b22e",
+  "command": "python scripts/qualify_routed_tbf.py build --cache ASSETS --work FRESH_WORK --output BUNDLE",
+  "cpu_profile": "1 TCG CPU, 256 MiB guest RAM; externally NIC-less; namespaces/veth only inside guest",
+  "exit_code": 0,
+  "independent_review_complete": false,
+  "logs": [
+    {
+      "bytes": 80576,
+      "sha256": "c59fc719989f71139f06e77bfe1d3a50845fcdd58edbd7cff847a2eeff438e20",
+      "step": "m4"
+    },
+    {
+      "bytes": 59454,
+      "sha256": "ed1df4e03bb168e48bae881c4172ea879d0c9e8f6db16b31857a1e4ecf3e88ba",
+      "step": "bison"
+    },
+    {
+      "bytes": 85725,
+      "sha256": "05cd8689c713b5f6797a600c76d04c01e9e15c7f0dd42b68ef20e0d6fd689391",
+      "step": "flex"
+    },
+    {
+      "bytes": 49283,
+      "sha256": "b85e7a5168f282294a0617f9b368b4347d52d4ebf46fb5f2f4d4c1a8f3244ecd",
+      "step": "kernel"
+    },
+    {
+      "bytes": 1529145,
+      "sha256": "8b70352c1ce1a528f7289233aa6369afa7f305014958e3e4cae09971d537722b",
+      "step": "musl"
+    }
+  ],
+  "production_execution_qualified": false,
+  "second_environment_complete": false,
+  "version": "ROUTED_LOCKED_BUILD_RECORD_V1"
+}

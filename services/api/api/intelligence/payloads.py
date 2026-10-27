@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from api.security.evidence_projection import project_finding
+
 
 def evidence_to_dict(row: Any) -> dict[str, Any]:
-    finding_data = getattr(row, "finding_data", None) or {}
+    finding_data, redacted = project_finding(getattr(row, "finding_data", None))
     scanner_id = None
     if isinstance(finding_data, dict):
         scanner_id = finding_data.get("scanner_id") or (finding_data.get("metadata") or {}).get(
@@ -34,6 +36,7 @@ def evidence_to_dict(row: Any) -> dict[str, Any]:
         "normalized_crypto": getattr(row, "normalized_crypto", None),
         "policy_evaluation": getattr(row, "policy_evaluation", None),
         "finding_data": finding_data,
+        "redacted_projection": redacted,
         "scanner_id": scanner_id,
     }
 

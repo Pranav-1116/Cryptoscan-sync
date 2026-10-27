@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from api.security.rbac import (
     ALL_PERMISSIONS,
@@ -15,7 +14,8 @@ from api.security.rbac import (
 )
 
 
-def test_catalog_has_exactly_the_8_spec_roles():
+def test_catalog_has_the_spec_roles_plus_supervisor():
+    """The spec's 8 roles + the supervisor extension (regulatory portal)."""
     assert set(ROLE_CATALOG) == {
         "superadmin",
         "ciso",
@@ -25,6 +25,7 @@ def test_catalog_has_exactly_the_8_spec_roles():
         "business_owner",
         "scanner",
         "readonly",
+        "supervisor",
     }
 
 
@@ -83,3 +84,35 @@ def test_permissions_for_roles():
 def test_every_spec_role_has_at_least_one_permission():
     for role in ROLE_CATALOG:
         assert permissions_for_roles([role]), f"{role} has no permissions"
+
+
+# --- supervisor role (regulatory read-only portal) ---------------------------
+
+def test_supervisor_role_is_catalogued_and_normalized():
+    assert "supervisor" in ROLE_CATALOG
+    assert normalize_roles(["Supervisor"]) == ["supervisor"]
+    # no legacy alias accidentally maps to it
+    assert normalize_roles(["admin", "viewer"]) == ["superadmin", "readonly"]
+
+
+def test_supervisor_permissions_are_read_only():
+    assert has_permission(["supervisor"], "supervision.read")
+    assert has_permission(["supervisor"], "reports.read")
+    # every-role read surfaces flow to it automatically
+    assert has_permission(["supervisor"], "findings.read")
+    assert has_permission(["supervisor"], "systems.view")
+    # but nothing administrative or mutating
+    for denied in ("users.manage", "platform.configure", "scan.trigger",
+                   "scan.manage", "exceptions.approve", "policy.configure",
+                   "crypto.ingest", "runtime.ingest", "remediation.apply",
+                   "api_keys.manage", "drift.acknowledge", "certificates.manage"):
+        assert not has_permission(["supervisor"], denied), denied
+
+
+def test_supervision_read_grants_are_explicit():
+    assert roles_for_action("supervision.read") == frozenset(
+        {"superadmin", "ciso", "auditor", "supervisor"}
+    )
+    # readonly is NOT automatically a supervisor: the portal is provisioned
+    # per institution, not bundled with the generic dashboard view
+    assert not has_permission(["readonly"], "supervision.read")

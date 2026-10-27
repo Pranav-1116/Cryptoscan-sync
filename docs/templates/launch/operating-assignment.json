@@ -1,0 +1,11 @@
+{
+  "expected_revision": 0,
+  "duty": "BACKUP_RESTORE",
+  "owner_user_id": "<ACTIVE_PRIMARY_USER_ID>",
+  "backup_user_id": "<ACTIVE_BACKUP_USER_ID>",
+  "procedure_blob_id": "<REVIEWED_PROCEDURE_BLOB_ID>",
+  "escalation_ref": "REPLACE: current roster and escalation authority",
+  "service_window": "REPLACE: honest staffed hours/timezone; no assumed SLA",
+  "review_due_at": "2026-11-22T00:00:00Z",
+  "exercise_max_age_seconds": 2592000
+}

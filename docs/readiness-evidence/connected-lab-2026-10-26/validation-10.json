@@ -1,0 +1,993 @@
+{
+  "generated_at": "2026-10-26T09:48:12.742650+00:00",
+  "product1_estate": "/tmp/demo-estate-10",
+  "product2_output": "/tmp/demo-output-10",
+  "connector_version": "cryptoscan-connector 1.0 \u2014 sandbox+scanner boundary demo",
+  "static_accuracy": {
+    "scope": "ACTUAL_CRYPTOSCAN_STATIC_FAMILY_PER_FILE",
+    "tp": 311,
+    "fp": 0,
+    "fn": 81,
+    "tn_negative_files": 0,
+    "precision": 1.0,
+    "recall": 0.7933673469387755,
+    "false_positive_rate_negative_files": null,
+    "false_negative_rate": 0.2066326530612245,
+    "failed_or_missing_files": 0,
+    "files": 382,
+    "failure_rate": 0.0,
+    "per_language": {
+      "Python": {
+        "tp": 39,
+        "fp": 0,
+        "fn": 0,
+        "files": 29,
+        "failed": 0
+      },
+      "Java": {
+        "tp": 28,
+        "fp": 0,
+        "fn": 0,
+        "files": 28,
+        "failed": 0
+      },
+      "Kotlin": {
+        "tp": 29,
+        "fp": 0,
+        "fn": 0,
+        "files": 29,
+        "failed": 0
+      },
+      "C": {
+        "tp": 26,
+        "fp": 0,
+        "fn": 0,
+        "files": 26,
+        "failed": 0
+      },
+      "C++": {
+        "tp": 26,
+        "fp": 0,
+        "fn": 0,
+        "files": 26,
+        "failed": 0
+      },
+      "C#": {
+        "tp": 27,
+        "fp": 0,
+        "fn": 0,
+        "files": 27,
+        "failed": 0
+      },
+      "Go": {
+        "tp": 27,
+        "fp": 0,
+        "fn": 0,
+        "files": 27,
+        "failed": 0
+      },
+      "Rust": {
+        "tp": 28,
+        "fp": 0,
+        "fn": 0,
+        "files": 28,
+        "failed": 0
+      },
+      "JavaScript": {
+        "tp": 27,
+        "fp": 0,
+        "fn": 0,
+        "files": 27,
+        "failed": 0
+      },
+      "TypeScript": {
+        "tp": 27,
+        "fp": 0,
+        "fn": 0,
+        "files": 27,
+        "failed": 0
+      },
+      "COBOL-like": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 26,
+        "files": 26,
+        "failed": 0
+      },
+      ".NET-config": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 28,
+        "files": 28,
+        "failed": 0
+      },
+      "PHP": {
+        "tp": 27,
+        "fp": 0,
+        "fn": 0,
+        "files": 27,
+        "failed": 0
+      },
+      "Ruby": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 27,
+        "files": 27,
+        "failed": 0
+      }
+    },
+    "misses": [
+      {
+        "source_file": "source/bank-0001/bank-0001-system-0006-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0001/bank-0001-system-0006-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0005-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0005-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0006-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0012-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0012-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0013-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0019-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0019-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0020-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0026-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0026-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0002/bank-0002-system-0027-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0004-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0005-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0005-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0011-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0012-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0012-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0018-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0019-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0003/bank-0003-system-0019-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0004/bank-0004-system-0004-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0004/bank-0004-system-0004-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0004/bank-0004-system-0005-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0004/bank-0004-system-0011-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0004/bank-0004-system-0011-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0004/bank-0004-system-0012-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0003-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0004-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0004-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0010-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0011-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0011-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0017-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0018-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0018-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0005/bank-0005-system-0024-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0003-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0003-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0004-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0010-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0010-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0011-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0017-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0017-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0018-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0024-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0024-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0006/bank-0006-system-0025-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0007/bank-0007-system-0002-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0007/bank-0007-system-0003-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0007/bank-0007-system-0003-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0007/bank-0007-system-0009-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0007/bank-0007-system-0010-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0007/bank-0007-system-0010-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0002-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0002-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0003-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0009-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0009-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0010-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0017-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0023-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0023-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0008/bank-0008-system-0024-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0001-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0002-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0002-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0009-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0009-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0015-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0022-app-1.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0023-app-0.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0009/bank-0009-system-0023-app-1.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0010/bank-0010-system-0001-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0010/bank-0010-system-0001-app-1.cbl",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0010/bank-0010-system-0002-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0010/bank-0010-system-0008-app-0.rb",
+        "expected": [
+          "SHA-256"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      },
+      {
+        "source_file": "source/bank-0010/bank-0010-system-0009-app-0.config",
+        "expected": [
+          "AES"
+        ],
+        "reported": [],
+        "status": "COMPLETE",
+        "false_positive": 0,
+        "false_negative": 1
+      }
+    ],
+    "unmatched_results": [],
+    "no_accuracy_floor_predeclared": true,
+    "key_size_correctness": null,
+    "system_attribution_correctness": null,
+    "owner_mapping_correctness": null,
+    "dependency_correlation_correctness": null,
+    "network_attribution_correctness": null,
+    "runtime_attribution_correctness": null,
+    "cbom_correctness": null,
+    "drift_detection_correctness": null,
+    "unknown_metrics_reason": "NOT_EXERCISED_BY_STATIC_FAMILY_BENCHMARK_NOT_ZERO_OR_SAFE",
+    "synthetic": true
+  },
+  "lb_accuracy": {
+    "status": "NOT_EXERCISED_OFFLINE_CONFIG_SCAN_ONLY",
+    "note": "lb-config scan enumerates config files (nginx.conf etc), not live TLS hop negotiation. Live hop validation requires lb-live or separate normalized observations via load_balancers/validator.compare.",
+    "lb_files_scanned": 2586
+  },
+  "scan_boundary": {
+    "files": 382,
+    "errors": 0,
+    "wall_seconds": 0.5866293899998709,
+    "cpu_seconds": 1.11786,
+    "peak_rss_kib": 45720,
+    "guard": {
+      "landlock_abi": 2,
+      "seccomp": "ACTIVE_NETWORK_DENIED",
+      "oracle_mount": "NONE",
+      "memory_limit_bytes": 2147483648,
+      "socket_creation_denied": true,
+      "oracle_read_denied": true
+    }
+  },
+  "schema_checks": {
+    "cbom": {
+      "ok": false,
+      "error": "Additional properties are not allowed ('chain_hash', 'compliance_status', 'content_hash', 'file', 'line' were unexpected)\n\nFailed validating 'additionalProperties' in schema['properties']['components']['items']['properties']['evidence']:\n    {'type': 'object',\n     'title': 'Evidence',\n     'description': 'Provides the ability to document evidence collected '\n                    'through various forms of extraction or analysis.',\n     'additionalProperties': False,\n     'properties': {'identity'"
+    },
+    "sbom": {
+      "ok": false,
+      "error": "Additional properties are not allowed ('asset', 'criticality', 'environment' were unexpected)\n\nFailed validating 'additionalProperties' in schema['properties']['components']['items']:\n    {'type': 'object',\n     'title': 'Component',\n     'required': ['type', 'name'],\n     'additionalProperties': False,\n     'properties': {'type': {'type': 'string',\n                             'enum': ['application',\n                                      'framework',\n                                      'libra"
+    },
+    "techbom": {
+      "ok": true,
+      "note": "native format, not CycloneDX schema"
+    },
+    "nbom": {
+      "ok": true,
+      "note": "native format, not CycloneDX schema"
+    }
+  },
+  "honest_limits": {
+    "UNKNOWN_means": "MISSING_VISIBILITY_NOT_SAFE",
+    "missing_files_means": "NOT_NO_CRYPTO",
+    "supported_not_negotiated": "CONFIGURED_SUITE_NOT_OBSERVED_NEGOTIATION",
+    "installed_not_used": "SBOM_LISTS_PACKAGES_NOT_RUNTIME_PROOF",
+    "hbom_dependencies": "empty_by_declaration_no_collector_records_edges_yet",
+    "nbom_unobserved": "unprobed_listeners_excluded_from_verdicts",
+    "lb_ownership": "hop_owner_from_controlled_LB_topology_not_auto_detected",
+    "pqc": "VENDOR_DECLARED_NOT_VERIFIED"
+  },
+  "unknown_metrics_reason": "NOT_EXERCISED_BY_STATIC_FAMILY_BENCHMARK_NOT_ZERO_OR_SAFE"
+}

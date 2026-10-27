@@ -9,9 +9,10 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class PolicyException(BaseModel):
+class PolicyException(BaseModel, TenantScoped):
     __tablename__ = "policy_exceptions"
 
     asset_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
@@ -40,7 +41,7 @@ class PolicyException(BaseModel):
     )
 
 
-class ExceptionReview(BaseModel):
+class ExceptionReview(BaseModel, TenantScoped):
     __tablename__ = "exception_reviews"
 
     exception_id: Mapped[str] = mapped_column(

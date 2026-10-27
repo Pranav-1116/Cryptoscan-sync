@@ -1,0 +1,84 @@
+{
+  "schema": "cryptoscan.local-browser-exercise/1",
+  "browser": "153.0.8010.0",
+  "status": "PASS",
+  "scope": "Built console + stubbed HTTP, synthetic identities; not site acceptance",
+  "results": [
+    {
+      "name": "/operator-decisions: real cross-window storage clears old estate",
+      "status": "PASS",
+      "milliseconds": 767
+    },
+    {
+      "name": "/launch-readiness: real cross-window storage clears old estate",
+      "status": "PASS",
+      "milliseconds": 2075
+    },
+    {
+      "name": "/evidence: real cross-window storage clears old estate",
+      "status": "PASS",
+      "milliseconds": 1572
+    },
+    {
+      "name": "operator: same-turn native form submission is single-flight",
+      "status": "PASS",
+      "milliseconds": 1664
+    },
+    {
+      "name": "launch: same-turn native form submission is single-flight",
+      "status": "PASS",
+      "milliseconds": 1640
+    },
+    {
+      "name": "operator: late old-estate write never restores old receipt/draft",
+      "status": "PASS",
+      "milliseconds": 1566
+    },
+    {
+      "name": "launch: dependency failure warns of uncertain write, no auto retry",
+      "status": "PASS",
+      "milliseconds": 1626
+    },
+    {
+      "name": "session refusal removes private console content",
+      "status": "PASS",
+      "milliseconds": 1410
+    },
+    {
+      "name": "audit export: estate change cancels pending bytes before browser download",
+      "status": "PASS",
+      "milliseconds": 1473
+    },
+    {
+      "name": "/organization: shared GET hook revalidates after real cross-window estate change",
+      "status": "PASS",
+      "milliseconds": 1613
+    },
+    {
+      "name": "/reports: shared GET hook revalidates after real cross-window estate change",
+      "status": "PASS",
+      "milliseconds": 1446
+    },
+    {
+      "name": "launch: keyboard submission focuses safe validation and retains useful input",
+      "status": "PASS",
+      "milliseconds": 1659
+    },
+    {
+      "name": "launch: native disabled action has visible ID reason; rejected validation never auto-retries",
+      "status": "PASS",
+      "milliseconds": 1435
+    },
+    {
+      "name": "launch: Arabic RTL with 2x device scale and 640-CSS-pixel reflow",
+      "status": "PASS",
+      "milliseconds": 1587
+    },
+    {
+      "name": "launch: Arabic RTL with 4x device scale and 320-CSS-pixel reflow",
+      "status": "PASS",
+      "milliseconds": 2183
+    }
+  ],
+  "page_errors": []
+}

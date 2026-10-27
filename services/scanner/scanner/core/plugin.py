@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from pathlib import Path
 from typing import Any, Callable, Protocol, runtime_checkable
 
@@ -100,7 +105,11 @@ class FilesystemLanguagePlugin:
                 continue
             try:
                 findings.extend(parser(path, root))
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
         return findings
 
@@ -216,6 +225,19 @@ class RustSourcePlugin(FilesystemLanguagePlugin):
         from scanner.parsers.rust_parser import parse_rust_file
 
         return parse_rust_file
+
+
+@register_plugin
+class CSourcePlugin(FilesystemLanguagePlugin):
+    plugin_id = "static-c-scanner"
+    language = "c"
+    extensions = (".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm")
+
+    @property
+    def parser(self):
+        from scanner.parsers.c_parser import parse_c_file
+
+        return parse_c_file
 
 
 @register_plugin

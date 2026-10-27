@@ -28,20 +28,14 @@ from cloud_scanner.enterprise.live.connectors import (
     azure_connector,
     gcp_connector,
 )
-from cloud_scanner.enterprise.live.engine import LiveCloudEngine
 from cloud_scanner.enterprise.live.event_schema import (
-    CHANGE_TYPES,
     EVENT_TYPES,
     CloudEvent,
     is_valid_change_type,
     is_valid_event_type,
 )
 from zelix_live_fixtures import (
-    AWS_CERT,
     AWS_KEY,
-    AZURE_CERT,
-    GCP_KEY,
-    all_live_connectors,
     aws_audit,
     aws_events,
     aws_reconcile,

@@ -11,7 +11,7 @@ keys, PINs or secret material (spec §8).
 
 from __future__ import annotations
 
-import re
+import os
 from typing import Any, Iterable
 
 from universal_vendor.live.events import (
@@ -36,6 +36,16 @@ _CRYPTO_EVENT_MAP: dict[str, EventType] = {
     "interface": EventType.INTERFACE_CHANGED,
     "routing": EventType.ROUTING_CHANGED,
 }
+
+
+def _test_fixture_events(events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep legacy iterable fixtures out of production connector paths."""
+    values = list(events)
+    if values and not os.environ.get("PYTEST_CURRENT_TEST"):
+        raise RuntimeError(
+            "injected vendor events are test-only; configure a real API or event stream"
+        )
+    return values
 
 
 def _classify_change(raw: dict[str, Any], domain: str) -> EventType:
@@ -64,7 +74,7 @@ class CiscoLiveMonitor(LiveConnector):
                  mechanism: str = "telemetry", **options: Any) -> None:
         super().__init__(asset_id=asset_id, **options)
         self.mechanism = mechanism
-        self._raw_events = list(events)
+        self._raw_events = _test_fixture_events(events)
 
     def collect(self) -> list[UniversalVendorEvent]:
         out = []
@@ -120,7 +130,7 @@ class FirewallLiveMonitor(LiveConnector):
         super().__init__(asset_id=asset_id, **options)
         self.vendor = vendor
         self.product = product
-        self._raw_events = list(events)
+        self._raw_events = _test_fixture_events(events)
 
     def collect(self) -> list[UniversalVendorEvent]:
         out = []
@@ -165,7 +175,7 @@ class LoadBalancerLiveMonitor(LiveConnector):
         super().__init__(asset_id=asset_id, **options)
         self.vendor = vendor
         self.product = product
-        self._raw_events = list(events)
+        self._raw_events = _test_fixture_events(events)
 
     def collect(self) -> list[UniversalVendorEvent]:
         out = []
@@ -214,7 +224,7 @@ class PkiLiveMonitor(LiveConnector):
     def __init__(self, asset_id: str = "", *, events: Iterable[dict[str, Any]] = (),
                  **options: Any) -> None:
         super().__init__(asset_id=asset_id, **options)
-        self._raw_events = list(events)
+        self._raw_events = _test_fixture_events(events)
 
     def collect(self) -> list[UniversalVendorEvent]:
         out = []
@@ -277,7 +287,7 @@ class HsmLiveMonitor(LiveConnector):
         super().__init__(asset_id=asset_id, **options)
         self.vendor = vendor
         self.product = product
-        self._raw_events = list(events)
+        self._raw_events = _test_fixture_events(events)
 
     def collect(self) -> list[UniversalVendorEvent]:
         out = []

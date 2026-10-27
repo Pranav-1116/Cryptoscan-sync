@@ -1,0 +1,5 @@
+All checks passed!
+All checks passed!
+No broken requirements found.
+
+git diff --cached --check: PASS

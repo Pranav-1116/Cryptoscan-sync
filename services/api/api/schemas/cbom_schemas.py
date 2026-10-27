@@ -14,9 +14,9 @@ class CustomCbomRequest(BaseModel):
 
 class IngestCbomRequest(BaseModel):
     bom: dict[str, Any]
-    system_name: str | None = None
-    owner: str | None = None
-    environment: str | None = None
+    system_name: str | None = Field(default=None, max_length=200)
+    owner: str | None = Field(default=None, max_length=200)
+    environment: str | None = Field(default=None, max_length=50)
 
 
 class CbomRef(BaseModel):

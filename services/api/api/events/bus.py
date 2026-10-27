@@ -9,13 +9,20 @@ Design constraints (honest scope):
   `dropped` counter on their subscription, so one stalled browser can never
   block the pipeline. Clients resync from the ring-buffer history via
   Last-Event-ID.
-- The buffer is in-memory: history survives disconnects but not a restart,
-  and events do NOT cross process boundaries. Events originating in other
-  processes (the monitor daemon) are federated by the DB tailer in
-  api.routers.events, which republishes them here.
+- The bounded ring is only a local delivery cache. Production installs a
+  Redis Streams journal and Pub/Sub fan-out adapter; the local ring remains a
+  useful fast path for tests and single-node development.
+- Subscribers may provide a tenant predicate. Filtering happens before an event
+  enters a subscriber queue so one tenant cannot receive another tenant's
+  realtime payload from a shared Redis channel.
 """
 
 from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import asyncio
 import itertools
@@ -31,8 +38,9 @@ SUBSCRIBER_QUEUE = 256
 class Subscription:
     """One live subscriber: a bounded queue on its own event loop."""
 
-    def __init__(self) -> None:
+    def __init__(self, event_filter: Any = None) -> None:
         self.queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=SUBSCRIBER_QUEUE)
+        self.event_filter = event_filter
         self.dropped: int = 0
         self.closed: bool = False
         try:
@@ -43,6 +51,13 @@ class Subscription:
     def deliver(self, event: dict[str, Any]) -> None:
         if self.closed or self.loop is None:
             return
+        if self.event_filter is not None:
+            try:
+                if not self.event_filter(event):
+                    return
+            except Exception as exc:  # noqa: BLE001 — deny on filter failure
+                logger.warning("event_filter_failed", extra={"error_type": type(exc).__name__})
+                return
 
         def _put() -> None:
             if self.closed:
@@ -67,6 +82,77 @@ class EventBus:
         self._history: deque[dict[str, Any]] = deque(maxlen=history_size)
         self._subs: list[Subscription] = []
         self._counter = itertools.count(1)
+        self._published_total = 0
+        self._remote_publish_failures = 0
+        self._remote_publisher: Any = None
+        # A production node must not report a successful control-plane
+        # operation when its durable cross-replica publication failed. Local
+        # development and unit tests deliberately retain best-effort behavior.
+        self._remote_publish_required = False
+        # Production nodes install a Redis Streams-backed id/history provider.
+        # Tests and explicitly local development can continue using the bounded
+        # process-local ring, but the bus API itself never needs to know which
+        # transport is active.
+        self._id_factory: Any = None
+        self._durable_recent: Any = None
+        self._durable_latest: Any = None
+        self._durable_health: Any = None
+        self._durable_oldest: Any = None
+        from api.events.estate_replay import MemoryEstateJournal
+
+        self._estate_journal = MemoryEstateJournal(history_size)
+        self._estate_provider = None
+
+    def set_estate_history(self, provider):
+        self._estate_provider = provider
+
+    def estate_page(self, owner, cursor=None, limit=100):
+        from api.events.estate_replay import replay_page
+
+        if self._remote_publish_required and self._estate_provider is None:
+            raise RuntimeError("Required estate journal unavailable")
+        return replay_page(
+            self._estate_provider or self._estate_journal.page,
+            owner,
+            cursor,
+            limit,
+            durable=self._estate_provider is not None,
+        )
+
+    def set_remote_publish_required(self, required: bool = True) -> None:
+        """Make remote publication failures visible to the caller.
+
+        Redis federation is optional for local development, but it is a
+        production durability boundary. Keeping this flag on the bus makes the
+        contract explicit without changing the default used by isolated bus
+        tests.
+        """
+        self._remote_publish_required = bool(required)
+
+    def set_remote_publisher(self, fn: Any) -> None:
+        """Cross-process append/fanout invoked before local delivery.
+
+        A required or configured estate journal is fail-closed. A standalone
+        best-effort callback without an estate provider retains local semantics.
+        """
+        self._remote_publisher = fn
+
+    def set_durable_health(self, provider: Any) -> None:
+        """Install a health callback for the shared realtime backend."""
+        self._durable_health = provider
+
+    def set_durable_history(self, *, next_id: Any, recent: Any, latest: Any, oldest: Any = None) -> None:
+        """Install the production event journal adapter.
+
+        ``next_id`` allocates one process-independent sequence, while ``recent``
+        and ``latest`` read the durable journal after a restart.  Keeping these
+        callbacks small makes the in-memory bus testable without allowing a
+        production deployment to silently fall back to process-local history.
+        """
+        self._id_factory = next_id
+        self._durable_recent = recent
+        self._durable_latest = latest
+        self._durable_oldest = oldest
 
     # ------------------------------------------------------------- publishing
 
@@ -76,16 +162,59 @@ class EventBus:
         payload: dict[str, Any] | None = None,
         *,
         source: str = "api",
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
+        if self._remote_publisher is None and (self._remote_publish_required or self._estate_provider is not None):
+            raise RuntimeError("Configured estate journal publisher unavailable")
         event = {
-            "id": next(self._counter),
+            "id": (self._id_factory() if self._id_factory is not None else next(self._counter)),
             "ts": datetime.now(timezone.utc).isoformat(),
             "type": str(event_type),
             "source": str(source),
             "payload": payload or {},
+            "tenant_id": tenant_id,
         }
+        # Persist before live fanout. Required-journal failure must never deliver
+        # an event that the caller has been told was refused.
+        if self._remote_publisher is not None:
+            try:
+                self._remote_publisher(event)
+            except Exception as exc:  # noqa: BLE001
+                self._remote_publish_failures += 1
+                logger.error("event_federation_publish_failed", extra={"error_type": type(exc).__name__})
+                if self._remote_publish_required or self._estate_provider is not None:
+                    raise RuntimeError("durable realtime event publication failed") from exc
         with self._lock:
+            if self._estate_provider is None:
+                self._estate_journal.append(event)
             self._history.append(event)
+            self._published_total += 1
+            subs = list(self._subs)
+        for sub in subs:
+            sub.deliver(event)
+        return event
+
+    def inject_remote(self, frame: dict[str, Any]) -> dict[str, Any]:
+        """Re-publish an event that arrived from another node (Redis sync).
+
+        The durable sequence is preserved when the frame contains one. Older
+        pub/sub frames without it receive a local id for compatibility. The
+        event is delivered locally WITHOUT re-publishing to Redis.
+        """
+        event = {
+            "id": frame.get("id") if isinstance(frame.get("id"), int) else next(self._counter),
+            "ts": frame.get("ts") or datetime.now(timezone.utc).isoformat(),
+            "type": str(frame.get("type") or "remote.event"),
+            "source": str(frame.get("source") or "remote"),
+            "payload": frame.get("payload") or {},
+            "tenant_id": frame.get("tenant_id"),
+        }
+        event.update({k: frame[k] for k in ("estate_sequence", "estate_epoch") if k in frame})
+        with self._lock:
+            if self._estate_provider is None:
+                self._estate_journal.append(event)
+            self._history.append(event)
+            self._published_total += 1
             subs = list(self._subs)
         for sub in subs:
             sub.deliver(event)
@@ -93,8 +222,14 @@ class EventBus:
 
     # ---------------------------------------------------------- subscribing
 
-    def subscribe(self) -> Subscription:
-        sub = Subscription()
+    def subscribe(self, event_filter: Any = None) -> Subscription:
+        """Subscribe, optionally filtering events before queueing.
+
+        Tenant filters belong at this boundary because Redis fan-out is shared
+        by all replicas; filtering only in the HTTP generator would leave
+        cross-tenant data in a subscriber's queue.
+        """
+        sub = Subscription(event_filter=event_filter)
         with self._lock:
             self._subs.append(sub)
         return sub
@@ -114,20 +249,62 @@ class EventBus:
     def recent(self, since_id: int = 0, limit: int = 100) -> list[dict[str, Any]]:
         with self._lock:
             snapshot = list(self._history)
-        rows = [e for e in snapshot if e["id"] > since_id]
-        return rows[-max(1, limit):]
+        if self._durable_recent is not None:
+            try:
+                snapshot.extend(self._durable_recent(since_id, max(1, limit)))
+            except Exception as _handler_exc:  # noqa: BLE001 — local history remains available
+                logger.warning("durable_event_history_unavailable", extra={"error_type": type(_handler_exc).__name__})
+        rows = {int(e["id"]): e for e in snapshot if isinstance(e.get("id"), int) and e["id"] > since_id}
+        return [rows[key] for key in sorted(rows)[-max(1, limit) :]]
 
     def latest_id(self) -> int:
         with self._lock:
-            return self._history[-1]["id"] if self._history else 0
+            local = self._history[-1]["id"] if self._history else 0
+        if self._durable_latest is not None:
+            try:
+                return max(local, int(self._durable_latest()))
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning("durable_event_latest_unavailable", extra={"error_type": type(_handler_exc).__name__})
+        return local
+
+    def oldest_id(self) -> int | None:
+        """Oldest replayable durable id, if the adapter exposes retention bounds."""
+        if self._durable_oldest is not None:
+            try:
+                value = self._durable_oldest()
+                return int(value) if value is not None else None
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("durable_event_bounds_unavailable", extra={"error_type": type(exc).__name__})
+        with self._lock:
+            return int(self._history[0]["id"]) if self._history else None
 
     def stats(self) -> dict[str, Any]:
         with self._lock:
-            return {
+            latest = self._history[-1]["id"] if self._history else 0
+            stats = {
                 "events_buffered": len(self._history),
                 "subscribers": len(self._subs),
-                "latest_id": self._history[-1]["id"] if self._history else 0,
+                "latest_id": latest,
+                "published_total": self._published_total,
+                "remote_publish_failures": self._remote_publish_failures,
+                "durable_history": self._durable_recent is not None,
             }
+        stats["oldest_replayable_id"] = self.oldest_id()
+        if self._durable_latest is not None:
+            try:
+                stats["latest_id"] = max(int(stats["latest_id"]), int(self._durable_latest()))
+            except Exception:
+                stats["replay_available"] = False
+        if self._durable_health is not None:
+            try:
+                stats["durable_backend"] = self._durable_health()
+            except Exception as exc:  # noqa: BLE001
+                stats["durable_backend"] = {"ready": False, "error": type(exc).__name__}
+        return stats
+
+    def published_total(self) -> int:
+        with self._lock:
+            return self._published_total
 
 
 _BUS: EventBus | None = None

@@ -1,0 +1,559 @@
+{
+  "base_commit": "55a7bca3923d0b58a0ffad85077d58e86835a183",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "date": "2026-10-26",
+  "independent_bank_acceptance": false,
+  "note": "Unsigned SHA256 integrity only. Earlier standalone manifest describes its historical working-tree baseline, not current dependencies.",
+  "owned_files": [
+    "docs/api-reference/oci-job-intake.md",
+    "docs/api-reference/offline-oci-image-evidence.md",
+    "docs/bank-environment/68-offline-oci-image-collection.md",
+    "docs/bank-environment/83-tenant-scoped-oci-job-intake.md",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26.md",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-completion.json",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-handoff.json",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-projections.json",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-retained-return.json",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-target-history.json",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/bound-return.json",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/evidence-manifest.json",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/postgres-cleanup.txt",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/postgres-tests.txt",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/postgres-tests.xml",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/publication-tests.txt",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/publication-tests.xml",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/run-owned-postgres.py",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/static-checks.txt",
+    "docs/readiness-evidence/oci-job-intake-2026-10-26/test-environment.txt",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25.md",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/affected-tests.txt",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/affected-tests.xml",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/evidence-manifest.json",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/evidence.json",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/shared-model-tests.txt",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/shared-model-tests.xml",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/static-checks.txt",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/target.json",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/test-environment.txt",
+    "docs/readiness-evidence/offline-oci-image-2026-10-25/views.json",
+    "docs/runbooks/oci-job-intake.md",
+    "docs/runbooks/offline-oci-image-evidence.md",
+    "scripts/capture_oci_job_evidence.py",
+    "scripts/collect_oci_evidence.py",
+    "services/api/api/assurance/oci_collection.py",
+    "services/api/api/main.py",
+    "services/api/api/routers/oci_collection.py",
+    "services/api/tests/unit/test_oci_collection_api.py",
+    "services/api/tests/unit/test_oci_collection_postgres.py",
+    "services/inventory/inventory/oci_evidence.py",
+    "services/inventory/inventory/oci_job_capture.py",
+    "services/inventory/tests/test_oci_evidence.py",
+    "services/inventory/tests/test_oci_job_capture.py",
+    "shared/shared_models/shared_models/oci_collection.py",
+    "shared/shared_models/shared_models/oci_intake.py",
+    "shared/shared_models/shared_models/oci_projection.py",
+    "shared/shared_models/shared_models/schemas/oci-capture-binding-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/oci-evidence-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/oci-intake-request-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/oci-job-return-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/oci-six-bom-projection-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/oci-target-v1.schema.json",
+    "shared/shared_models/tests/test_oci_collection_contract.py",
+    "shared/shared_models/tests/test_oci_intake_contract.py"
+  ],
+  "producer_authenticity_verified": false,
+  "production_execution_qualified": false,
+  "records": [
+    {
+      "byte_count": 5623,
+      "path": "docs/api-reference/oci-job-intake.md",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "d4a307b8182f3562833b59225e25d1f35c32b7654aaac553b878dc084fa1b687"
+    },
+    {
+      "byte_count": 5170,
+      "path": "docs/api-reference/offline-oci-image-evidence.md",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "0be469e699c180e06a7f495ae24c5cb37529b13820236e8c3669b4db080e30df"
+    },
+    {
+      "byte_count": 12079,
+      "path": "docs/bank-environment/68-offline-oci-image-collection.md",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "6ef0996d6f7c6b523266d60b88237bd37a6f2d4634d0a62043ec566febdfbf5a"
+    },
+    {
+      "byte_count": 9051,
+      "path": "docs/bank-environment/83-tenant-scoped-oci-job-intake.md",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "70e488b46a279b2213e30c7c021758359097966057fa907ade3ba9130c16cdff"
+    },
+    {
+      "byte_count": 10155,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26.md",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "1f9e9db0cb8881de2557458007b4b7889c3e8679ef56518fcff36b5a86657e31"
+    },
+    {
+      "byte_count": 1947,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-completion.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "bcabad4a7b195d16af86e0b7f56cbcb0441c8561f7f50e6fc82d7a784e433cef"
+    },
+    {
+      "byte_count": 1676,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-handoff.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "cf30e844a55e60adbf9bcef538c08a68f62ffc16c2533ea138fa9b296bc56c04"
+    },
+    {
+      "byte_count": 7500,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-projections.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "e16397f05a65609c9fe9be48d42d9b1625ebe90b9066fff65b0ef0b76313355b"
+    },
+    {
+      "byte_count": 6951,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-retained-return.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "0f6f752e886151a099616efc9cfb0524d783bedef098ba5b3414f5e8f8b87df1"
+    },
+    {
+      "byte_count": 4071,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/api-target-history.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "0af33b7dd47c5a527d2c73ba20e1a1c103134109036b50f294f623c676c89ab6"
+    },
+    {
+      "byte_count": 6951,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/api-witness/bound-return.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "0f6f752e886151a099616efc9cfb0524d783bedef098ba5b3414f5e8f8b87df1"
+    },
+    {
+      "byte_count": 59,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/postgres-cleanup.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "0554aedb3f70be59bc052b837e80a4fb0cdea01bdced3c7cae8394c5657d3df0"
+    },
+    {
+      "byte_count": 2361,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/postgres-tests.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "5622385915b48678cd517c1bc23bb0620baa16571b0ffa29fcbc42e51e993430"
+    },
+    {
+      "byte_count": 2766,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/postgres-tests.xml",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "a63234c360bd284b38dcb72c228f2b481488894bc93559ac12c6ae609f4ad464"
+    },
+    {
+      "byte_count": 5461,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/publication-tests.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "1b548be46369b9be9f67dc8ccedb84470b28fab1779b86bde2f70c5b1f68af01"
+    },
+    {
+      "byte_count": 471375,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/publication-tests.xml",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "19fc37f80d297908ed146165f0f134ab44376066765e4044966c8d82eecf3602"
+    },
+    {
+      "byte_count": 2145,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/run-owned-postgres.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "f96601f1958ce8c5855456518fd64dec46b061a041dc77beadaa98ad31898c0f"
+    },
+    {
+      "byte_count": 95,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/static-checks.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "9bf273b309bbc0103f934e11ab756cafc265ec8b0187ac7829a062f4d3ff21ae"
+    },
+    {
+      "byte_count": 1907,
+      "path": "docs/readiness-evidence/oci-job-intake-2026-10-26/test-environment.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "25c6d35386e7e844deb4cb937be67b34dee566038d4f7f83081078b00df27f1c"
+    },
+    {
+      "byte_count": 8182,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25.md",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "41eba3ddf1c5065ddf4aa4de068302fbdbf5d51d575de1b61e57074ad3872fff"
+    },
+    {
+      "byte_count": 351,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/affected-tests.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "ffa208ef7d589286016a2f1981d2022315f1212470b191695bde812b3ba14e77"
+    },
+    {
+      "byte_count": 216939,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/affected-tests.xml",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "c4e4bf7b15cec7a49f3000f39d000e64ada762a0f86d13b99cce20f0b14f1c5c"
+    },
+    {
+      "byte_count": 10448,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/evidence-manifest.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "4bd1e5bf09d9895e513e0df2b56e34ade34beacc0b879410cfdb30f59f93f092"
+    },
+    {
+      "byte_count": 5867,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/evidence.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "79bd4de1e115b3558e7a4e43f8bbdc65e086804e29c45d028c21623890c15950"
+    },
+    {
+      "byte_count": 900,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/shared-model-tests.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "7a1d5cef10ee8aa8641ed51421f31734e71a961195f9adc2326f392c1a4d472e"
+    },
+    {
+      "byte_count": 128353,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/shared-model-tests.xml",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "477828490d79abaf63c739c5b27a0cca8db14f168eb01489f49a1c16916b202c"
+    },
+    {
+      "byte_count": 258,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/static-checks.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "ce9fc877ac2042f6d52b057859c5b26671b7f66b0db3487e061b29725d6886f4"
+    },
+    {
+      "byte_count": 677,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/target.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "5bb74632653088c729d2047aac64451f67742b98cf09efd23875d445724c0c83"
+    },
+    {
+      "byte_count": 466,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/test-environment.txt",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "dcebf644f72dc8ee2da068c33fc64709bb9f5fbf2627589234bc26494433d05e"
+    },
+    {
+      "byte_count": 7504,
+      "path": "docs/readiness-evidence/offline-oci-image-2026-10-25/views.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "16caf667f55cfe3ffc10c122aa5481a295d8ae939fa0560dbc1a7e7641ca95fb"
+    },
+    {
+      "byte_count": 6388,
+      "path": "docs/runbooks/oci-job-intake.md",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "a4704a1a9a9686874d00dc1582869797b0e07c0522b1fd572d9a630ca5cda44d"
+    },
+    {
+      "byte_count": 6462,
+      "path": "docs/runbooks/offline-oci-image-evidence.md",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "bc8ed8d14082cd9e7c2488fab229bb136a5dd2961e3e58c54e20a1fcf980ab7b"
+    },
+    {
+      "byte_count": 1676,
+      "path": "scripts/capture_oci_job_evidence.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "5020abeca85401bc34050e765572d0ee6b583c8dc0007a9bfd28a7d44e60eddc"
+    },
+    {
+      "byte_count": 3017,
+      "path": "scripts/collect_oci_evidence.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "164a184e87ec594a383db1bad3d29a9c73ff68da91f15fb5a6b00585c4071f5c"
+    },
+    {
+      "byte_count": 13281,
+      "path": "services/api/api/assurance/oci_collection.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "1e8ba004404821b29a0962d56f869a472aa800dd7272c631ee925f0a6dca1366"
+    },
+    {
+      "byte_count": 25560,
+      "path": "services/api/api/main.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "b628556759ff1a56216a450c4ee8f7712442cdce8437364cb8f64accad27dff6"
+    },
+    {
+      "byte_count": 4991,
+      "path": "services/api/api/routers/oci_collection.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "c9952c657068d1ca918ee78ebe47b5bec93e6a2317061dbc67a5040ac0a1caa2"
+    },
+    {
+      "byte_count": 17117,
+      "path": "services/api/tests/unit/test_oci_collection_api.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "69ddfa5f87bdf0b81d608b4279f2921b1e1957419e34ef481b88050088a196b9"
+    },
+    {
+      "byte_count": 4845,
+      "path": "services/api/tests/unit/test_oci_collection_postgres.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "7485f66784a0cc6cb5ac17de5ad686b46d185ba38b0ac4730c72db3db5d8b05d"
+    },
+    {
+      "byte_count": 15479,
+      "path": "services/inventory/inventory/oci_evidence.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "266f4c59be52df27b37d16695056dde5f8a065225d04e9527b731885f2d37bab"
+    },
+    {
+      "byte_count": 945,
+      "path": "services/inventory/inventory/oci_job_capture.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "1a3db66219b5cd6cb82c126407053852e04f97a2a54f7840bde19f69cf7a3280"
+    },
+    {
+      "byte_count": 24437,
+      "path": "services/inventory/tests/test_oci_evidence.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "ad433ad1cd278cd7bf11bd4915adf33af50f4ef28dc6b9fa85806a3cd7433a36"
+    },
+    {
+      "byte_count": 4610,
+      "path": "services/inventory/tests/test_oci_job_capture.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "4a6edfd7784df520907c28f327583d9bd4a41140a7c957873badaca6cc65e9fe"
+    },
+    {
+      "byte_count": 9270,
+      "path": "shared/shared_models/shared_models/oci_collection.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "1cdc7e564895cd312319aed9accf76d1b09ed98f27c8707958850369aae35cb7"
+    },
+    {
+      "byte_count": 2610,
+      "path": "shared/shared_models/shared_models/oci_intake.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "392a508c94b745c55f6f54292926474fe59844cd300abe13e9ce3d54c85e916d"
+    },
+    {
+      "byte_count": 3185,
+      "path": "shared/shared_models/shared_models/oci_projection.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "8f83196c89fb4310b7850644b6deb4ea193a9a576e7b5d8523be190050f2207d"
+    },
+    {
+      "byte_count": 1492,
+      "path": "shared/shared_models/shared_models/schemas/oci-capture-binding-v1.schema.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "5a5727eefb665919e4a9bee5f18b508f6921f05ba5695ec162c5d7466197b5fe"
+    },
+    {
+      "byte_count": 16894,
+      "path": "shared/shared_models/shared_models/schemas/oci-evidence-v1.schema.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "84777167a5ab268c270af626764f2bb52eb0c9a96d3f4c65909de6977a500b08"
+    },
+    {
+      "byte_count": 20702,
+      "path": "shared/shared_models/shared_models/schemas/oci-intake-request-v1.schema.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "0c332d43dd6ed347728c3e6a2ed4586c0810a1147b7fe40d49c07237483a786a"
+    },
+    {
+      "byte_count": 20007,
+      "path": "shared/shared_models/shared_models/schemas/oci-job-return-v1.schema.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "05cfb93e70c99c1212e2d775cce2d2fea075c703061e1ee07a98f5673b8721de"
+    },
+    {
+      "byte_count": 9552,
+      "path": "shared/shared_models/shared_models/schemas/oci-six-bom-projection-v1.schema.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "fb4329a1eeb4a30764f636dd54ff8249c64aa8767559144ab7bd34ec025f7634"
+    },
+    {
+      "byte_count": 2764,
+      "path": "shared/shared_models/shared_models/schemas/oci-target-v1.schema.json",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "fe9b66a8bff9eed88274f10886a54a529772603518fd3a95fdd306c00648c257"
+    },
+    {
+      "byte_count": 2727,
+      "path": "shared/shared_models/tests/test_oci_collection_contract.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "20939f344d467cad2512e3c00dc7f54ebc74ce14e0efab89d6b37b6104686118"
+    },
+    {
+      "byte_count": 1362,
+      "path": "shared/shared_models/tests/test_oci_intake_contract.py",
+      "role": "owned_addition_or_router_inclusion",
+      "sha256": "3ce327f31908a17d5fc37727aca6d4c5186f6d1797ce6da4ceee44b4f09cf623"
+    },
+    {
+      "byte_count": 5666,
+      "path": "services/api/api/assurance/store.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "f52099078db198750e76ed5a4d78d4e5f8ff5ec03d32138df664c900b74d423f"
+    },
+    {
+      "byte_count": 20560,
+      "path": "services/api/api/assurance/collection.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "86b6e596431ede9148194e4d80b73966269f449a7395b9838321522a2cb40ea4"
+    },
+    {
+      "byte_count": 12130,
+      "path": "services/api/api/assurance/relationships.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "0d2905f267c5c0710980abdb40ae5d1af0c5e565f70051017694a0123352b592"
+    },
+    {
+      "byte_count": 725,
+      "path": "services/api/api/routers/assurance_boundary.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "3e04122e945882ca6d48cf085ae38ef4f8c14e73674dafe937c918701e8f60eb"
+    },
+    {
+      "byte_count": 2624,
+      "path": "services/api/api/middleware/assurance_body_limit.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "8fe4f7e3d70d7fcb759163a910ec39a551e26d0001d0dba35646dfa74bf91f8b"
+    },
+    {
+      "byte_count": 8082,
+      "path": "services/api/api/middleware/tenant_scope.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "5ad7dbae26eaebf12baca9ec3b3e0155f788a436371b5f521a11578eb45fef26"
+    },
+    {
+      "byte_count": 9728,
+      "path": "services/api/api/middleware/auth_middleware.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "88fa04114a946448758ee9d099ae2389d72c45d58178bea9633f8e2b9edc6bdd"
+    },
+    {
+      "byte_count": 1782,
+      "path": "services/api/api/security/estate_history.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "530a0f9c1192306e7910123d7eefbf5c6f5e737d41d232913f31bbe72bdabc9a"
+    },
+    {
+      "byte_count": 14605,
+      "path": "services/api/api/security/rbac.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "ad349e095c2f8c6b7648a2ad9e4770b4f80caddbdbe16d1902d234907414e54b"
+    },
+    {
+      "byte_count": 29339,
+      "path": "services/api/api/dependencies.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "ad1b2edc921dd0d4ebd1d3f1642aa1711bb27f34029adaae4a208644d1f56214"
+    },
+    {
+      "byte_count": 3535,
+      "path": "services/database/db/models/assurance.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "360bd3ab97c37a26f38956bd21077451583b7ecccea828a100c1207e47bc98b0"
+    },
+    {
+      "byte_count": 3170,
+      "path": "services/database/db/models/system.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "5eab2c5572e71eb0f9b2bc7ff47351649afd5b0279122ea476c8108800f013c3"
+    },
+    {
+      "byte_count": 23968,
+      "path": "services/database/db/repositories/user_repository.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "48f460240adc653bcea9e38443cd992edd7bda52770adf4f07c67e26bf29349a"
+    },
+    {
+      "byte_count": 26746,
+      "path": "services/database/db/repositories/execution_control.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "5e5e51465e72f3c39139b860a385a752a3989c02498fb1212a3da77d80b5cddd"
+    },
+    {
+      "byte_count": 26420,
+      "path": "services/inventory/inventory/host.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "eeb6664ecd864bbc3aa72eca0296d6e62c9dd29e1aef5e55a6266f7ed1d332d8"
+    },
+    {
+      "byte_count": 4474,
+      "path": "services/inventory/inventory/linux_packages.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "b19f0ccd7f761cf61946bba16cd60998fb5961679d8ed274500201a4384ef922"
+    },
+    {
+      "byte_count": 4484,
+      "path": "services/inventory/inventory/rpm_metadata.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "74db335b3f6bd7d0d353ad50245357d88a8f9946c23e123e2b9e0bcbae834f42"
+    },
+    {
+      "byte_count": 22088,
+      "path": "shared/shared_models/shared_models/host_collection.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "abf624578e1521db26eb5fcdbaf7124b13a6ccf33527896abb4bfdc1dfa09de5"
+    },
+    {
+      "byte_count": 203,
+      "path": "shared/shared_models/shared_models/host_common.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "5e20e90774c2ec1ef60ddb9af2f1f37becf0224b9eefc6a6fe229161b70eab5e"
+    },
+    {
+      "byte_count": 8396,
+      "path": "shared/shared_models/shared_models/host_runtime.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "e9f72994265184be90825c4436ac49bd2d0149eadee616926254af9bd51dde91"
+    },
+    {
+      "byte_count": 6429,
+      "path": "shared/shared_models/shared_models/host_runtime_scope.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "6ef93128e6fcf4178b0d7dad01d2df7d7181fc7b899b7788aa2c132b4a0e0b74"
+    },
+    {
+      "byte_count": 1290,
+      "path": "scripts/_bootstrap.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "89c93e11878919cd81111ecb7292321c2182ac82e88b641a8eaf8c6bb73821ee"
+    },
+    {
+      "byte_count": 3110,
+      "path": "conftest.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "420f57a3daafa17becedc5796e0f6763d83598a4a5fb85269b90dc31d6d73bea"
+    },
+    {
+      "byte_count": 1338,
+      "path": "pytest.ini",
+      "role": "unchanged_published_dependency",
+      "sha256": "0c981271817a2c41ee682fd0ac9fd8a1392c923e3744c2c7bdd30f728b989d66"
+    },
+    {
+      "byte_count": 1485,
+      "path": "requirements.txt",
+      "role": "unchanged_published_dependency",
+      "sha256": "ee4ec3b3bb1cc1e5a7db857e1fd65c33bd35bfaa1281d0313c7f16958f91ac70"
+    }
+  ],
+  "schema_version": "cryptoscan.oci-publication-integrity/v1",
+  "source_scope": "Published base plus only owned_files; tested separately from unrelated pending local work",
+  "validation": {
+    "owned_postgres": {
+      "passed": 17,
+      "seconds": 27.2,
+      "skipped": 0,
+      "warnings": 6
+    },
+    "preserved_preexisting_paths_outside_patch": 4342,
+    "publication_python": {
+      "passed": 1745,
+      "seconds": 89.61,
+      "skipped": 22,
+      "warnings": 7
+    }
+  }
+}

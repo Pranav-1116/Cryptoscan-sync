@@ -1,0 +1,36 @@
+........................................................................ [  4%]
+........................................................................ [  8%]
+........................................................................ [ 12%]
+........................................................................ [ 16%]
+........................................................................ [ 20%]
+........................................................................ [ 24%]
+........................................................................ [ 28%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 41%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 53%]
+........................................................................ [ 57%]
+..........................s............................................. [ 61%]
+........................................................................ [ 65%]
+........................................................................ [ 69%]
+.......................................................................s [ 73%]
+...........................ss...sssssssss............................... [ 77%]
+........................................................................ [ 82%]
+..................s..................................................... [ 86%]
+..................s..................................................... [ 90%]
+.........s.............................................................. [ 94%]
+..............sss..........................................s.s.......... [ 98%]
+........................s.                                               [100%]
+=============================== warnings summary ===============================
+services/inventory/tests/test_oci_content.py::test_content_package_provenance_cannot_be_resealed_to_another_layer
+  /home/user/CryproScan/.venv/lib/python3.11/site-packages/pydantic/main.py:520: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `OciImageFact` - serialized value may not be as expected [field_name='image', input_value={'kind': 'OCI_IMAGE_METAD...entity_verified': False}, input_type=dict])
+    PydanticSerializationUnexpectedValue(Expected `PackageRecord` - serialized value may not be as expected [field_name='packages', input_value={'manager': 'dpkg', 'name..._NOT_EXECUTABLE_OR_USE'}, input_type=dict])
+    PydanticSerializationUnexpectedValue(Expected `PackageDatabase` - serialized value may not be as expected [field_name='databases', input_value={'manager': 'dpkg', 'path...5327', 'layer_index': 0}, input_type=dict])
+    PydanticSerializationUnexpectedValue(Expected `PackageDatabase` - serialized value may not be as expected [field_name='databases', input_value={'manager': 'apk', 'path'...ne, 'layer_index': None}, input_type=dict])
+    return self.__pydantic_serializer__.to_python(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1732 passed, 22 skipped, 1 warning in 41.21s

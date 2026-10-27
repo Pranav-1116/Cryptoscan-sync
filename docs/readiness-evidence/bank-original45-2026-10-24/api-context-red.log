@@ -1,0 +1,89 @@
+...........FF                                                            [100%]
+=================================== FAILURES ===================================
+_ test_bank_owner_classification_and_shared_asset_are_exported_without_duplicate_refs[portfolio] _
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7f7e6dcbca90>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7f7e6d7dca10>, <db.models.scan_job.ScanJob object at 0x7f7e6d7dfb50>)})
+path = 'portfolio'
+
+    @pytest.mark.parametrize("path", ["portfolio", "system/system-a"])
+    def test_bank_owner_classification_and_shared_asset_are_exported_without_duplicate_refs(estate, path):
+        from db.models.system import System
+        from db.models.system_asset import SystemAsset
+        from db.models.system_dependency import SystemDependency
+        from db.models.crypto_asset import CryptoAsset
+        clients, db, _ = estate
+        system = db.get(System, "system-a")
+        system.owner = "payments-team"
+        system.extra = {"data_classification": "PAN", "data_retention_years": 10}
+        db.add(System(id="ledger-a", tenant_id="a", name="Ledger a", owner="ledger-team"))
+        db.add(CryptoAsset(id="shared-a", tenant_id="a", algorithm="RSA", key_size=2048, file_path="payments/crypto.py"))
+        db.flush()
+        db.add_all([SystemAsset(tenant_id="a", system_id="system-a", asset_id="shared-a"),
+                    SystemAsset(tenant_id="a", system_id="ledger-a", asset_id="shared-a"),
+                    SystemDependency(tenant_id="a", parent_id="system-a", child_id="ledger-a", relation="CALLS")])
+        db.commit()
+        response = clients["bank_a"].get(f"/api/v1/cbom/{path}?fmt=cyclonedx16")
+        assert response.status_code == 200, response.text
+        bom = response.json()
+        assert validate_cyclonedx16(bom)["ok"]
+        asset = [c for c in bom["components"] if c["bom-ref"] == "shared-a"]
+        assert len(asset) == 1
+        props = {p["name"]: p["value"] for p in asset[0]["properties"]}
+        # Portfolio has multiple declared contexts, never one invented resolved owner.
+        assert "payments-team" in str(asset[0]["properties"])
+>       assert "10" in str(asset[0]["properties"])
+E       assert '10' in '[{\'name\': \'cryptoscan:asset_key\', \'value\': \'fact:v1:894acbfbf48cc6068b53b5bc7304b75afd86fe6fdc057eba457f0c6fdf...7eba457f0c6fdf8c1e01", "confidence": "LOW", "owner": "ledger-team", "system": "Ledger a", "system_id": "ledger-a"}\'}]'
+E        +  where '[{\'name\': \'cryptoscan:asset_key\', \'value\': \'fact:v1:894acbfbf48cc6068b53b5bc7304b75afd86fe6fdc057eba457f0c6fdf...7eba457f0c6fdf8c1e01", "confidence": "LOW", "owner": "ledger-team", "system": "Ledger a", "system_id": "ledger-a"}\'}]' = str([{'name': 'cryptoscan:asset_key', 'value': 'fact:v1:894acbfbf48cc6068b53b5bc7304b75afd86fe6fdc057eba457f0c6fdf8c1e01'}...'}, {'name': 'cryptoscan:application', 'value': 'Core a'}, {'name': 'cryptoscan:owner', 'value': 'payments-team'}, ...])
+
+services/api/tests/unit/test_bank_native_cbom.py:103: AssertionError
+_ test_bank_owner_classification_and_shared_asset_are_exported_without_duplicate_refs[system/system-a] _
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7f7e6d3a1710>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7f7e6d2a4f50>, <db.models.scan_job.ScanJob object at 0x7f7e6d2a59d0>)})
+path = 'system/system-a'
+
+    @pytest.mark.parametrize("path", ["portfolio", "system/system-a"])
+    def test_bank_owner_classification_and_shared_asset_are_exported_without_duplicate_refs(estate, path):
+        from db.models.system import System
+        from db.models.system_asset import SystemAsset
+        from db.models.system_dependency import SystemDependency
+        from db.models.crypto_asset import CryptoAsset
+        clients, db, _ = estate
+        system = db.get(System, "system-a")
+        system.owner = "payments-team"
+        system.extra = {"data_classification": "PAN", "data_retention_years": 10}
+        db.add(System(id="ledger-a", tenant_id="a", name="Ledger a", owner="ledger-team"))
+        db.add(CryptoAsset(id="shared-a", tenant_id="a", algorithm="RSA", key_size=2048, file_path="payments/crypto.py"))
+        db.flush()
+        db.add_all([SystemAsset(tenant_id="a", system_id="system-a", asset_id="shared-a"),
+                    SystemAsset(tenant_id="a", system_id="ledger-a", asset_id="shared-a"),
+                    SystemDependency(tenant_id="a", parent_id="system-a", child_id="ledger-a", relation="CALLS")])
+        db.commit()
+        response = clients["bank_a"].get(f"/api/v1/cbom/{path}?fmt=cyclonedx16")
+>       assert response.status_code == 200, response.text
+E       AssertionError: {"detail":"Native CBOM export failed schema/reference validation"}
+E       assert 422 == 200
+E        +  where 422 = <Response [422 Unprocessable Entity]>.status_code
+
+services/api/tests/unit/test_bank_native_cbom.py:95: AssertionError
+=============================== warnings summary ===============================
+services/api/api/routers/auth.py:87
+  /home/user/CryproScan/services/api/api/routers/auth.py:87: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(BaseModel):
+
+services/api/api/routers/network.py:326
+  /home/user/CryproScan/services/api/api/routers/network.py:326: UserWarning: Field name "register" in "SubnetDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class SubnetDiscoverRequest(BaseModel):
+
+services/api/api/routers/cloud.py:40
+  /home/user/CryproScan/services/api/api/routers/cloud.py:40: UserWarning: Field name "register" in "CloudOrgDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class CloudOrgDiscoverRequest(BaseModel):
+
+../bank45-venv/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /home/user/bank45-venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_bank_owner_classification_and_shared_asset_are_exported_without_duplicate_refs[portfolio]
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_bank_owner_classification_and_shared_asset_are_exported_without_duplicate_refs[system/system-a]
+2 failed, 11 passed, 4 warnings in 4.65s

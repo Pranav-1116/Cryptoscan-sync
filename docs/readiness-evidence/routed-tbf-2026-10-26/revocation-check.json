@@ -1,0 +1,9 @@
+{
+  "guest_rollback_verified": false,
+  "passed": true,
+  "production_execution_qualified": false,
+  "recovery": "VM_TERMINATED_AND_REAPED_NOT_GUEST_READBACK",
+  "response_seconds": 0.2277997660003166,
+  "revoke_after_seconds": 10,
+  "version": "NATIVE_VM_REVOCATION_CHECK_V1"
+}

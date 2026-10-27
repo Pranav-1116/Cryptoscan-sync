@@ -24,6 +24,13 @@ def app_due():
 
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
+    # Bind the global SessionLocal to this test's engine: the scan-admission
+    # seam (round 9) opens the global factory, and run-due passes through the
+    # gate — without this the answer depended on whichever test file
+    # configured the factory earlier in the process (unbound → 503).
+    from db.connection.session import configure_session
+
+    configure_session(engine)
     Session = sessionmaker(bind=engine, expire_on_commit=False)
     session = Session()
 
@@ -37,7 +44,19 @@ def app_due():
         created.append(kwargs)
         return SimpleNamespace(job_id=f"job-{len(created)}")
 
+    # Bound under another name: a class body that assigns `session = session`
+    # shadows the name before reading it, so the enclosing local is invisible
+    # and the lookup raises NameError.
+    _request_session = session
+
     class FakeRepo:
+        # enqueue_scan_job commits through the repository's own session and
+        # turns any failure into 503 ("no job was accepted"), so a double
+        # without one reports the queue as down rather than exercising the
+        # route. The real repository shares the request session, so this does
+        # too.
+        session = _request_session
+
         def create(self, **kwargs):
             return _create(**kwargs)
 

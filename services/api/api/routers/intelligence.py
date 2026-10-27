@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 from pathlib import Path
 
 from typing import Literal
@@ -77,7 +79,12 @@ def _require_scan(scan_id: str, scans: ScanRepository):
 
 
 def _findings(scan_id: str, evidence: EvidenceRepository) -> list[dict]:
-    return [evidence_to_dict(row) for row in evidence.get_all_for_scan(scan_id)]
+    # intelligence/agility/work-order/risk consumers see live findings only;
+    # retracted evidence (soft-deleted) must not drive migration planning
+    return [
+        evidence_to_dict(row)
+        for row in evidence.get_all_for_scan(scan_id, include_deleted=False)
+    ]
 
 
 def _drift_events(scan_id: str, drift: DriftRepository) -> list[dict]:
@@ -85,14 +92,38 @@ def _drift_events(scan_id: str, drift: DriftRepository) -> list[dict]:
     return [drift_to_dict(event) for event in events]
 
 
+def _pack_analysis(scan) -> dict | None:
+    """Scan-level analysis that auditors need next to the records — bounded and covered by the pack signature."""
+    stats = getattr(scan, "statistics", None) or {}
+    out: dict = {}
+    if stats.get("evidence_sources"):
+        out["evidence_sources"] = stats["evidence_sources"]
+    cascade = stats.get("cascade") or {}
+    if cascade:
+        out["cascade"] = {
+            "summary": cascade.get("summary"),
+            "systems": (cascade.get("systems") or [])[:200],
+            "migration_waves": cascade.get("migration_waves") or [],
+            "weak_parameters": (cascade.get("weak_parameters") or [])[:300],
+            "libraries": (cascade.get("libraries") or [])[:200],
+            "truncated": cascade.get("truncated"),
+        }
+    rec = stats.get("key_reconciliation") or {}
+    if rec:
+        out["key_reconciliation"] = {k: rec.get(k) for k in ("summary", "source_scans", "previous_inventory_scan", "new_orphans", "new_unaccounted", "removed", "orphans", "not_in_inventory")}
+    return out or None
+
+
 def _build_pack(scan, findings: list[dict]) -> dict:
     settings = get_settings()
     engine = _policy_engine()
+    analysis = _pack_analysis(scan)
     return build_evidence_pack(
         scan=scan_to_dict(scan),
         records=findings,
         policy=engine.pack_descriptor(),
         secret=settings.SECRET_KEY,
+        extra={"analysis": analysis} if analysis else None,
     )
 
 
@@ -230,8 +261,11 @@ def ci_gate(
         logger.debug("gate_evaluation_not_recorded", exc_info=True)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as rollback_exc:
+            logger.warning(
+                "gate_evaluation_rollback_failed",
+                extra={"error_type": type(rollback_exc).__name__},
+            )
     return gate
 
 
@@ -338,20 +372,33 @@ def export_scan_transfer(
     """Export this scan + evidence as a digest-verified transfer payload."""
     from shared_models.chrono import iso_utc
 
-    from evidence.pack.scan_transfer import export_transfer
+    from evidence.pack.scan_transfer import export_transfer, verify_transfer
 
     scan = _require_scan(scan_id, scans)
     rows = evidence.get_all_for_scan(scan_id)
     records = []
     for row in rows:
         item = evidence_to_dict(row)
+        if item["redacted_projection"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Historical evidence contains raw fields; full-fidelity transfer is unavailable until reissued",
+            )
+        item.pop("redacted_projection")
         item["previous_hash"] = getattr(row, "previous_hash", None)
         item["provenance"] = getattr(row, "provenance", None)
         records.append(item)
     scan_payload = scan_to_dict(scan)
     scan_payload["scan_start"] = iso_utc(scan.scan_start) if getattr(scan, "scan_start", None) else None
     scan_payload["scan_end"] = iso_utc(scan.scan_end) if getattr(scan, "scan_end", None) else None
-    return export_transfer(scan=scan_payload, records=records)
+    payload = export_transfer(scan=scan_payload, records=records)
+    verdict = verify_transfer(payload)
+    if not verdict["valid"]:
+        raise HTTPException(status_code=409, detail={
+            "message": "Scan evidence cannot be transferred with a valid content commitment",
+            "errors": verdict["errors"],
+        })
+    return payload
 
 
 @router.post("/scans/import")
@@ -376,7 +423,7 @@ def import_scan_transfer(
             detail={"message": "transfer verification failed", "errors": verdict["errors"]},
         )
     scan_id = str(verdict["scan_id"])
-    if db.get(Scan, scan_id) is not None:
+    if filtered_get(db, Scan, scan_id) is not None:
         return {"imported": False, "reason": "scan_already_present", "scan_id": scan_id, "records": 0}
     scan_payload = body.get("scan") or {}
     column_values = {}
@@ -418,7 +465,8 @@ def get_remediation(
     return suggest_remediations(_findings(scan_id, evidence))
 
 
-def _rendered_report(scan_id, scans, evidence, drift, template: str | None, requirements: str | None):
+def _rendered_report(scan_id, scans, evidence, drift, template: str | None,
+                    requirements: str | None, generated_at_iso: str | None = None):
     scan = _require_scan(scan_id, scans)
     findings = _findings(scan_id, evidence)
     pack_hash = None
@@ -429,6 +477,7 @@ def _rendered_report(scan_id, scans, evidence, drift, template: str | None, requ
     report = render_json(
         scan=scan_to_dict(scan),
         findings=findings,
+        generated_at_iso=generated_at_iso,
         agility=compute_agility(findings),
         quantum=analyze_quantum_risk(findings),
         gate=evaluate_gate(findings, _drift_events(scan_id, drift)),

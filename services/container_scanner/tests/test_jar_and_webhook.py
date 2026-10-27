@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import struct
 import zipfile
 from pathlib import Path
 
-import pytest
 
 from container_scanner.analyzers.embedded.jar_scanner import _jar_string_hits, scan_jars
 from container_scanner.registry.registry_webhook_handler import parse_registry_event
@@ -15,6 +15,37 @@ def _make_jar(path: Path, *, entries: dict[str, bytes]) -> None:
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         for name, blob in entries.items():
             archive.writestr(name, blob)
+
+
+def _class_file(*, class_refs: tuple[str, ...] = (), strings: tuple[str, ...] = ()) -> bytes:
+    """A minimal but *structurally valid* .class file with the given constant pool.
+
+    The jar scanner parses the JVM constant pool (JVM spec 4.4) rather than
+    grepping for ASCII, so a blob that is only the 0xCAFEBABE magic followed by
+    Java-looking text carries no constants and correctly yields no findings.
+    Tests must therefore emit real CONSTANT_Class / CONSTANT_String entries.
+    """
+    pool = b""
+    index = 1
+
+    def utf8(value: str) -> int:
+        nonlocal pool, index
+        raw = value.encode("utf-8")
+        pool += struct.pack(">BH", 1, len(raw)) + raw
+        index += 1
+        return index - 1
+
+    for name in class_refs:
+        ref = utf8(name)
+        pool += struct.pack(">BH", 7, ref)  # CONSTANT_Class
+        index += 1
+    for value in strings:
+        ref = utf8(value)
+        pool += struct.pack(">BH", 8, ref)  # CONSTANT_String
+        index += 1
+
+    # magic, minor, major, constant_pool_count (= entries + 1), then the pool.
+    return b"\xca\xfe\xba\xbe" + struct.pack(">HHH", 0, 52, index) + pool
 
 
 class TestScanJars:
@@ -42,8 +73,11 @@ class TestScanJars:
     def test_string_hits_included(self, tmp_path: Path):
         jar = tmp_path / "app.jar"
         _make_jar(jar, entries={
-            "com/example/Pay.class": (
-                b"\xca\xfe\xba\xbe MessageDigest.getInstance(\"MD5\")"
+            # MessageDigest.getInstance("MD5") as the compiler emits it: a
+            # CONSTANT_Class for the API and a CONSTANT_String for the algorithm.
+            "com/example/Pay.class": _class_file(
+                class_refs=("java/security/MessageDigest",),
+                strings=("MD5",),
             ),
         })
         entry = scan_jars(tmp_path)[0]

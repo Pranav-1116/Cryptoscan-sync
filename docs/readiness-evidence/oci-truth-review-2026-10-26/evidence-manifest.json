@@ -1,0 +1,341 @@
+{
+  "actual_windows_customer_container_or_hsm_proof": false,
+  "authoritative_estate_completeness_verified": false,
+  "bank_production_accepted": false,
+  "base_commit": "209ddeb0cb513344b9caa711581d656b84966e5d",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "customer_independent_truth_verified": false,
+  "date": "2026-10-26",
+  "note": "Unsigned integrity; scoped synthetic engineering validation only.",
+  "owned_files": [
+    "docs/api-reference/oci-truth-review.md",
+    "docs/bank-environment/84-precommitted-customer-image-truth.md",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26.md",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/evidence-manifest.json",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/focused-tests.txt",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/focused-tests.xml",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/postgres-cleanup.txt",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/postgres-tests.txt",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/postgres-tests.xml",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/public-witness/comparison.json",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/public-witness/expected-truth.json",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/public-witness/original-return.json",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/public-witness/review.json",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/publication-tests.txt",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/publication-tests.xml",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/run-owned-postgres.py",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/static-checks.txt",
+    "docs/readiness-evidence/oci-truth-review-2026-10-26/test-environment.txt",
+    "docs/runbooks/oci-truth-review.md",
+    "services/api/api/assurance/oci_collection.py",
+    "services/api/api/assurance/oci_truth.py",
+    "services/api/api/routers/oci_collection.py",
+    "services/api/tests/unit/test_oci_truth_api.py",
+    "services/api/tests/unit/test_oci_truth_postgres.py",
+    "shared/shared_models/shared_models/oci_truth.py",
+    "shared/shared_models/shared_models/schemas/oci-truth-decision-v1.schema.json",
+    "shared/shared_models/shared_models/schemas/oci-truth-proposal-v1.schema.json",
+    "shared/shared_models/tests/test_oci_truth.py"
+  ],
+  "preserved_unrelated_paths": 4806,
+  "production_execution_qualified": false,
+  "records": [
+    {
+      "byte_count": 5049,
+      "path": "docs/api-reference/oci-truth-review.md",
+      "role": "owned_increment",
+      "sha256": "5492d1eace8f0d5d0c2f8e921bdbb6a6edf2d691af84cff5e572e0fa776fe08b"
+    },
+    {
+      "byte_count": 8684,
+      "path": "docs/bank-environment/84-precommitted-customer-image-truth.md",
+      "role": "owned_increment",
+      "sha256": "448db4c4895be1c08fb9982fafe3899327464a86ce02dc7c7470d05884d2154d"
+    },
+    {
+      "byte_count": 8764,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26.md",
+      "role": "owned_increment",
+      "sha256": "a6ae0ec7a691c6eee88804c326eaaa33fd120d7230ade52f1b40adcf4c8b8e66"
+    },
+    {
+      "byte_count": 2259,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/focused-tests.txt",
+      "role": "owned_increment",
+      "sha256": "26961757f9ec65492e1f96908b50f7dba77d6f890bf23b88dfa32a069a05fe83"
+    },
+    {
+      "byte_count": 3354,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/focused-tests.xml",
+      "role": "owned_increment",
+      "sha256": "1a9044da48fd9832caed2c9d46c6315c711fc9a78e2b69acca557eb70904907f"
+    },
+    {
+      "byte_count": 59,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/postgres-cleanup.txt",
+      "role": "owned_increment",
+      "sha256": "0554aedb3f70be59bc052b837e80a4fb0cdea01bdced3c7cae8394c5657d3df0"
+    },
+    {
+      "byte_count": 2346,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/postgres-tests.txt",
+      "role": "owned_increment",
+      "sha256": "f90906d5cbfc68419871271536ae1b374a5e4347bd11b865e91e0cf7cdd22f7f"
+    },
+    {
+      "byte_count": 4439,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/postgres-tests.xml",
+      "role": "owned_increment",
+      "sha256": "31e6f957628888fc4abc0b4501a137a9d1cd6d28da1eccbc318806bf450cd2a2"
+    },
+    {
+      "byte_count": 1973,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/public-witness/comparison.json",
+      "role": "owned_increment",
+      "sha256": "b6aa4b5c174b183c81b00a4c9e5f3ba7ad9001999e2d2495cb1b970367f0e2d4"
+    },
+    {
+      "byte_count": 3243,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/public-witness/expected-truth.json",
+      "role": "owned_increment",
+      "sha256": "61f45e3ca24e69b789ae8df89d33b28e1a0360f560c87542b90365171776a465"
+    },
+    {
+      "byte_count": 6951,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/public-witness/original-return.json",
+      "role": "owned_increment",
+      "sha256": "4bf05e74f25f38ef7e38a36012fa98de418a4ace722661b28bf86ded3eea2ea4"
+    },
+    {
+      "byte_count": 4799,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/public-witness/review.json",
+      "role": "owned_increment",
+      "sha256": "21b252c12f5b7bf240b4096ea1c94cd25eb448c59b7729bf00602f512f0dea38"
+    },
+    {
+      "byte_count": 5527,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/publication-tests.txt",
+      "role": "owned_increment",
+      "sha256": "af03dbdf9a077fbecad52686a97a4cae5359a588b4f711f000900a56f4c5769c"
+    },
+    {
+      "byte_count": 476361,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/publication-tests.xml",
+      "role": "owned_increment",
+      "sha256": "013b6c57b7427b3ab93e11c2edc0035e99ebf9d8339b22c28229c73d9e64f1d2"
+    },
+    {
+      "byte_count": 2223,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/run-owned-postgres.py",
+      "role": "owned_increment",
+      "sha256": "433a045eca504159c9ac59820cbd99a1c15f842749423ad5f069aa45382baf14"
+    },
+    {
+      "byte_count": 75,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/static-checks.txt",
+      "role": "owned_increment",
+      "sha256": "d802ec031964d70cad120bd007ffc0b722f4fddd92e33339d8f9743d20f3a7af"
+    },
+    {
+      "byte_count": 1907,
+      "path": "docs/readiness-evidence/oci-truth-review-2026-10-26/test-environment.txt",
+      "role": "owned_increment",
+      "sha256": "25c6d35386e7e844deb4cb937be67b34dee566038d4f7f83081078b00df27f1c"
+    },
+    {
+      "byte_count": 5840,
+      "path": "docs/runbooks/oci-truth-review.md",
+      "role": "owned_increment",
+      "sha256": "4a001c70dbbc7d8306dd32cc5dfb170b28070a4fb5c0dfe96faa9d57aaa746a0"
+    },
+    {
+      "byte_count": 13744,
+      "path": "services/api/api/assurance/oci_collection.py",
+      "role": "owned_increment",
+      "sha256": "6dfc8f814c23fbac657283fbc3cfa7a6fddab9ebe8136215915acc0e4d144187"
+    },
+    {
+      "byte_count": 7036,
+      "path": "services/api/api/assurance/oci_truth.py",
+      "role": "owned_increment",
+      "sha256": "341e65ff854765fd42ac58f28f6dc0ab87ba9e1871e3bec7da61ab75c7472bba"
+    },
+    {
+      "byte_count": 6394,
+      "path": "services/api/api/routers/oci_collection.py",
+      "role": "owned_increment",
+      "sha256": "53eee557a2f075cbf2c2c900a2d4aa5120ebb6c3e1c5654e4ec842e872359c40"
+    },
+    {
+      "byte_count": 12742,
+      "path": "services/api/tests/unit/test_oci_truth_api.py",
+      "role": "owned_increment",
+      "sha256": "e0515854009627cb39a749ba4f50e798cbd831a3dd8e440c92eb9a77b964de76"
+    },
+    {
+      "byte_count": 2961,
+      "path": "services/api/tests/unit/test_oci_truth_postgres.py",
+      "role": "owned_increment",
+      "sha256": "acb84788753892a5e94bf8964e8c9ca97e0a26c93b5d9c9ab9ed88d173894f93"
+    },
+    {
+      "byte_count": 4201,
+      "path": "shared/shared_models/shared_models/oci_truth.py",
+      "role": "owned_increment",
+      "sha256": "3a1d2adcf4b5962735078cf028ca62c83e2ea2f9791288cdc0cddfc7d3f4eb2b"
+    },
+    {
+      "byte_count": 630,
+      "path": "shared/shared_models/shared_models/schemas/oci-truth-decision-v1.schema.json",
+      "role": "owned_increment",
+      "sha256": "ceced2348629037f21beb52a55e322bdfb23e1398d0c07caec6f647f4cdfccb5"
+    },
+    {
+      "byte_count": 8023,
+      "path": "shared/shared_models/shared_models/schemas/oci-truth-proposal-v1.schema.json",
+      "role": "owned_increment",
+      "sha256": "65bb3ca9fb5f75a00b4f9c4ea393046195fc837213bdd5bbb598be6af1194efd"
+    },
+    {
+      "byte_count": 2076,
+      "path": "shared/shared_models/tests/test_oci_truth.py",
+      "role": "owned_increment",
+      "sha256": "8ccdf5bdec725aa8caf298996313b34e3988d516c378ba8307723efd92d677bc"
+    },
+    {
+      "byte_count": 5666,
+      "path": "services/api/api/assurance/store.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "f52099078db198750e76ed5a4d78d4e5f8ff5ec03d32138df664c900b74d423f"
+    },
+    {
+      "byte_count": 20560,
+      "path": "services/api/api/assurance/collection.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "86b6e596431ede9148194e4d80b73966269f449a7395b9838321522a2cb40ea4"
+    },
+    {
+      "byte_count": 725,
+      "path": "services/api/api/routers/assurance_boundary.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "3e04122e945882ca6d48cf085ae38ef4f8c14e73674dafe937c918701e8f60eb"
+    },
+    {
+      "byte_count": 2624,
+      "path": "services/api/api/middleware/assurance_body_limit.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "8fe4f7e3d70d7fcb759163a910ec39a551e26d0001d0dba35646dfa74bf91f8b"
+    },
+    {
+      "byte_count": 29339,
+      "path": "services/api/api/dependencies.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "ad1b2edc921dd0d4ebd1d3f1642aa1711bb27f34029adaae4a208644d1f56214"
+    },
+    {
+      "byte_count": 14605,
+      "path": "services/api/api/security/rbac.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "ad349e095c2f8c6b7648a2ad9e4770b4f80caddbdbe16d1902d234907414e54b"
+    },
+    {
+      "byte_count": 3535,
+      "path": "services/database/db/models/assurance.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "360bd3ab97c37a26f38956bd21077451583b7ecccea828a100c1207e47bc98b0"
+    },
+    {
+      "byte_count": 5665,
+      "path": "services/database/db/models/user.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "03dcf60fec0c3494e37f4a32c09c35e36ec661e88884a6097e94e6f422936b51"
+    },
+    {
+      "byte_count": 5296,
+      "path": "services/database/db/models/tenant.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "8d6f3b8db7e1ef3f0663febbbc28683e1e461f9a42d4ea88dc90c89ae042e014"
+    },
+    {
+      "byte_count": 23968,
+      "path": "services/database/db/repositories/user_repository.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "48f460240adc653bcea9e38443cd992edd7bda52770adf4f07c67e26bf29349a"
+    },
+    {
+      "byte_count": 26746,
+      "path": "services/database/db/repositories/execution_control.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "5e5e51465e72f3c39139b860a385a752a3989c02498fb1212a3da77d80b5cddd"
+    },
+    {
+      "byte_count": 203,
+      "path": "shared/shared_models/shared_models/host_common.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "5e20e90774c2ec1ef60ddb9af2f1f37becf0224b9eefc6a6fe229161b70eab5e"
+    },
+    {
+      "byte_count": 22088,
+      "path": "shared/shared_models/shared_models/host_collection.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "abf624578e1521db26eb5fcdbaf7124b13a6ccf33527896abb4bfdc1dfa09de5"
+    },
+    {
+      "byte_count": 9270,
+      "path": "shared/shared_models/shared_models/oci_collection.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "1cdc7e564895cd312319aed9accf76d1b09ed98f27c8707958850369aae35cb7"
+    },
+    {
+      "byte_count": 2610,
+      "path": "shared/shared_models/shared_models/oci_intake.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "392a508c94b745c55f6f54292926474fe59844cd300abe13e9ce3d54c85e916d"
+    },
+    {
+      "byte_count": 15479,
+      "path": "services/inventory/inventory/oci_evidence.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "266f4c59be52df27b37d16695056dde5f8a065225d04e9527b731885f2d37bab"
+    },
+    {
+      "byte_count": 945,
+      "path": "services/inventory/inventory/oci_job_capture.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "1a3db66219b5cd6cb82c126407053852e04f97a2a54f7840bde19f69cf7a3280"
+    },
+    {
+      "byte_count": 17117,
+      "path": "services/api/tests/unit/test_oci_collection_api.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "69ddfa5f87bdf0b81d608b4279f2921b1e1957419e34ef481b88050088a196b9"
+    },
+    {
+      "byte_count": 3110,
+      "path": "conftest.py",
+      "role": "unchanged_published_dependency",
+      "sha256": "420f57a3daafa17becedc5796e0f6763d83598a4a5fb85269b90dc31d6d73bea"
+    },
+    {
+      "byte_count": 1338,
+      "path": "pytest.ini",
+      "role": "unchanged_published_dependency",
+      "sha256": "0c981271817a2c41ee682fd0ac9fd8a1392c923e3744c2c7bdd30f728b989d66"
+    }
+  ],
+  "schema_version": "cryptoscan.oci-truth-integrity/v1",
+  "validation": {
+    "owned_postgres": {
+      "passed": 27,
+      "seconds": 41.33,
+      "skipped": 0,
+      "warnings": 6
+    },
+    "publication": {
+      "passed": 1779,
+      "seconds": 102.92,
+      "skipped": 22,
+      "warnings": 7
+    }
+  }
+}

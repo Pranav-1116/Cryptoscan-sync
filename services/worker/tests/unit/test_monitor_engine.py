@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine
@@ -14,6 +16,15 @@ from db.repositories.monitor_repository import MonitorRepository
 from worker.monitor.engine import MonitorEngine
 
 T0 = datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def monitor_admission_policy(monkeypatch):
+    # Real admission engine with controlled authoritative policy lookups.
+    import api.security.scan_admission as admission
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], {}))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
 
 def _session():
@@ -53,12 +64,12 @@ def test_due_selection_and_ok_cycle():
 
     def ok_runner(config, sess):
         calls.append(config)
-        return {"summary": {"endpoints": 1, "probed_ok": 1, "unreachable": 0}, "issues": []}
+        return {"observation_complete": True, "summary": {"endpoints": 1, "probed_ok": 1, "unreachable": 0}, "issues": []}
 
     engine, clock = _clock_engine(session, {"NETWORK": ok_runner})
     outcome = engine.tick()
     assert outcome["ran"] == 1  # only the due, enabled target
-    assert [c for c in calls] == [{"endpoints": ["h:443"]}]
+    assert calls == [{"endpoints": ["h:443"], "timeout": 5.0, "workers": 8, "expiry_alert_days": 30}]
     assert due.status == "OK" and due.last_scan_at == T0
     assert due.next_scan_at == T0 + timedelta(seconds=600)
     assert future.status == "PENDING" and disabled.status == "PENDING"
@@ -69,8 +80,8 @@ def test_due_selection_and_ok_cycle():
 def test_alert_fires_only_on_new_issues():
     session = _session()
     target = _target(session, name="weak")
-    issue = {"summary": {"endpoints": 1}, "issues": ["WEAK_TLS_VERSION:h:443"], "degraded": True}
-    clean = {"summary": {"endpoints": 1}, "issues": []}
+    issue = {"observation_complete": True, "summary": {"endpoints": 1}, "issues": ["WEAK_TLS_VERSION:h:443"], "degraded": True}
+    clean = {"observation_complete": True, "summary": {"endpoints": 1}, "issues": []}
 
     state = {"minutes": 0, "flip": True}
 
@@ -122,7 +133,7 @@ def test_failure_backoff_and_failing_status():
 
     # a success clears the failure state completely
     state["minutes"] = 120
-    engine_ok = MonitorEngine(session, runners={"NETWORK": lambda c, s: {"summary": {}, "issues": []}},
+    engine_ok = MonitorEngine(session, runners={"NETWORK": lambda c, s: {"observation_complete": True, "summary": {}, "issues": []}},
                               clock=lambda: T0 + timedelta(minutes=state["minutes"]))
     engine_ok.run_target(target)
     assert target.status == "OK" and target.consecutive_failures == 0 and target.last_error is None
@@ -157,7 +168,7 @@ def test_daemon_loop_survives_exceptions_and_stops():
             ticks["n"] += 1
 
     sleeps: list[float] = []
-    loop = MonitorLoop(
+    _loop = MonitorLoop(
         lambda s: (_ for _ in ()).throw(RuntimeError("engine died")),
         session_factory=lambda: session,
         tick_seconds=5,
@@ -168,7 +179,7 @@ def test_daemon_loop_survives_exceptions_and_stops():
 
     loop2 = MonitorLoop(loop_factory, session_factory=lambda: session, tick_seconds=5, sleep=sleeps.append)
     # stop after two sleeps
-    original_sleep = loop2._sleep
+    _original_sleep = loop2._sleep
 
     def sleep_then_stop(seconds):
         sleeps.append(seconds)

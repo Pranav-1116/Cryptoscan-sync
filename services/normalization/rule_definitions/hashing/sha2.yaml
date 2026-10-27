@@ -35,6 +35,35 @@ normalized_output:
   cbom_algorithm_ref: "urn:ietf:crypto:sha2:256"
 
 ---
+rule_id: "NORM-SHA224"
+version: "1.0"
+description: "SHA-224 — approved hash function (round 25: rule omission; the three SHA-2 siblings existed but 224 fell through to the pattern path, which extracted the digest size as a bogus key_size=224)"
+raw_patterns:
+  - "SHA-224"
+  - "SHA224"
+  - "SHA2-224"
+  - "SHA_224"
+  - "2.16.840.1.101.3.4.2.4"
+normalized_output:
+  algorithm: "SHA2"
+  algorithm_family: "hash"
+  standard_name: "SHA-224"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: 224
+  purpose: "hashing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 180-4"
+  fips_status: "FIPS-180-4"
+  quantum_vulnerable: false
+  iana_id: "sha-224"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:sha2:224"
+
+---
 rule_id: "NORM-SHA512"
 version: "1.0"
 description: "SHA-512 — approved hash function"
@@ -89,3 +118,28 @@ normalized_output:
   iana_id: "sha-384"
   cbom_component_type: "cryptographic-asset"
   cbom_algorithm_ref: "urn:ietf:crypto:sha2:384"
+---
+rule_id: "NORM-SHA2-FAMILY"
+version: "1.0"
+description: "SHA-2 family name without a digest size (also what this service emits as `algorithm` for SHA-256/384/512, so re-normalising its own output is idempotent)"
+raw_patterns:
+  - "SHA2"
+  - "SHA-2"
+normalized_output:
+  algorithm: "SHA2"
+  algorithm_family: "hash"
+  standard_name: "SHA-2"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: null
+  purpose: "hashing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 180-4"
+  fips_status: "FIPS-180-4"
+  quantum_vulnerable: false
+  iana_id: null
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:sha2"

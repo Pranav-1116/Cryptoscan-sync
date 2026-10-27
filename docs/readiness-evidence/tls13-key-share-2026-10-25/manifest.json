@@ -1,0 +1,211 @@
+{
+  "baseline": "a6fcc06322a6a1192fe560a416ca977272afd81d",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "records": [
+    {
+      "path": "docs/README.md",
+      "sha256": "3740878ee9c0aed73bf5f5ada2af46f9b918e8f2ec79d45634f8b3a2386a59cd"
+    },
+    {
+      "path": "docs/api-reference/tls13-selected-group-evidence.md",
+      "sha256": "b8a556795f373c58f48bb71129021c0c275336b896a7d5f0d003b103857ecbb2"
+    },
+    {
+      "path": "docs/bank-environment/69-phasewise-universal-collection-build.md",
+      "sha256": "992816e45f5ddb1ac185dce4fc533f6eb21fa919a90791e39f11b9f89890358c"
+    },
+    {
+      "path": "docs/bank-environment/79-approved-single-tls-session-candidate.md",
+      "sha256": "ce02e69e27a934636e168214bc6edc5a5fdcc518a74404bcd3c0d1083c618d3a"
+    },
+    {
+      "path": "docs/bank-environment/80-tls13-selected-group-evidence.md",
+      "sha256": "cce4a84da8845d9419e15c1b4869eef464fc145f4b4d21a74d8ef07c4d0e592b"
+    },
+    {
+      "path": "docs/bank-environment/README.md",
+      "sha256": "70ee6429983e1ebfaa2fd43cc518b51f7225cbd2b80e6bf0e3828f66c0143004"
+    },
+    {
+      "path": "docs/readiness-evidence/README.md",
+      "sha256": "acf44690e9f4f2601e7c50a434a01b9097856b55db4cac52d9829f7d59e9f55b"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25.md",
+      "sha256": "693fb766d76e714f8d2751db749f1f222bd498a31b867980bf8d9621f8d1d4f7"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/build.txt",
+      "sha256": "fc5c9dbe612b9e5bef7bd3aff3f8461f47219bff2cf91bc4d7f440f64654a517"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/final.txt",
+      "sha256": "f09d09fbbd6ecaa397334ab9b28d08b4ea8f77f2f0eea1b564fa560eb857b3eb"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/final.xml",
+      "sha256": "82e989a53e41610dc84a12e6543885f8126a4f6051d55bac7939bda69949a546"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/frontend.txt",
+      "sha256": "3d57d611b5799258f5639a7f4b640ca296dbed04140c68a64f48ca492b206bb8"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/pip.txt",
+      "sha256": "9261363b733079a641c2e4cc9bc46ffa1d8336945a87f807b6cf68847dbc9b09"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/postgres.txt",
+      "sha256": "792cd25076c4419ea9e5be3a64902acbfd44d76031e68505d4156b26fc4568f5"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/postgres.xml",
+      "sha256": "e0bd50cf1ca69385dfd0d4f87e2ed9728ef5307b7fae7c2d974e20d360db1493"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/python.txt",
+      "sha256": "ebb34eb17d21cd257c760f4f448b7f4ff11e0452871cb9b104275fe8d1be8e95"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/python.xml",
+      "sha256": "3b55577661d575c951d77a687be7f64d36eef48cbeb949a4748232eb32a35c05"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/schema-check.py",
+      "sha256": "531ecf7ae9da827dfbdbbbb6fd6c9788dc57840978447c5c374a4202c964bc8e"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/schema.txt",
+      "sha256": "b74a36437e6f71089d2011ac76bf741b3fe2639ec232f1c0122d95199538a7b3"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/static.txt",
+      "sha256": "088e6913c680505cc18f959ad37e2ef9c3610747e0d6c7336b933e2e8c1ca259"
+    },
+    {
+      "path": "docs/readiness-evidence/tls13-key-share-2026-10-25/typecheck.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/runbooks/tls13-selected-group-evidence.md",
+      "sha256": "d64352b4d7cc01bdce58cfba106d1412dcb5092e2ca386b0ac1d42a593c7b4ab"
+    },
+    {
+      "path": "frontend/src/components/HostEvidencePanel.key-share.test.tsx",
+      "sha256": "cedfbb9e6e746483305786bf9872bca3f538c21df63a7ecf64e62ce95ceeb1e0"
+    },
+    {
+      "path": "frontend/src/components/HostEvidencePanel.tsx",
+      "sha256": "d1581407b278f10d4452efdc0a1596c58f77b8b8bdb00b300b4e29ee38bb70d9"
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "sha256": "bd81cda666a5d62c4ab06e892d69679c2b20b6d9673923e9b12714acc3b8bb3e"
+    },
+    {
+      "path": "frontend/src/test/fixtures/tlsKeyShareFact.json",
+      "sha256": "9d7cb7e9540fa9e0bca3d595ba586134f03818d393bc08f2989eb09954412482"
+    },
+    {
+      "path": "scripts/collect_tls_session.py",
+      "sha256": "3668ff3fa55ca56dc1a8f5c9069018fc66b1a707a8e02fdbdee03edc8b77347b"
+    },
+    {
+      "path": "scripts/validate_host_evidence.py",
+      "sha256": "78c99b51ab0f01ef01dfc417e3a4de0b8fe15c4b0bc918a32a65d6d277f6a6f9"
+    },
+    {
+      "path": "services/api/api/assurance/collection.py",
+      "sha256": "86b6e596431ede9148194e4d80b73966269f449a7395b9838321522a2cb40ea4"
+    },
+    {
+      "path": "services/api/api/assurance/tls_export.py",
+      "sha256": "76855908055b8af55497a6bf34ad1cf39c173ee37af5c05cbd7bfa8102c4eaaf"
+    },
+    {
+      "path": "services/api/api/routers/collection.py",
+      "sha256": "bf8379eff780b78553373bc77ce9d0aed378966cf27dcbd235f1b6e13330b4a6"
+    },
+    {
+      "path": "services/api/tests/unit/test_tls_key_share_candidate.py",
+      "sha256": "8c291be1f541a56ae147335092ad234e116d25125bb87e5cd56ed551bf5c689e"
+    },
+    {
+      "path": "services/api/tests/unit/test_tls_key_share_candidate_postgres.py",
+      "sha256": "3ab24c8a21db0c2e1fb06be1ee46aede0b069962926cf53f65aa8c7e2fec0610"
+    },
+    {
+      "path": "services/inventory/inventory/collection.py",
+      "sha256": "a9b99b76f59b69096b23efd807c604f82dcfa3bd96c710457252657e97f840e1"
+    },
+    {
+      "path": "services/inventory/inventory/host.py",
+      "sha256": "f88171317106f5a1e119f6364699547e92aca159004291a090fbbfa94de7bdfd"
+    },
+    {
+      "path": "services/inventory/inventory/tls_session.py",
+      "sha256": "e9020046b26a7d94614c265f667e7a12e8a99916b6ab36e9499efd32152731cf"
+    },
+    {
+      "path": "services/inventory/tests/test_tls_key_share.py",
+      "sha256": "739def44a39a7ce1cf8da469d9b7d38f8b3827d713f46d0849de525c2dbefda1"
+    },
+    {
+      "path": "shared/shared_models/shared_models/collection.py",
+      "sha256": "a4dd61e51c33c1c5fb1158cbd8f45676ab91669135ad9eddcc1153afbc11603c"
+    },
+    {
+      "path": "shared/shared_models/shared_models/collection_coverage.py",
+      "sha256": "2ee036e0b55d661cda92a219844b8e35026fa98403f000e35d41b1d72cd98a68"
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_collection.py",
+      "sha256": "331f63a162b5fe6c372e4d9c9f06f0b5b21a097c8b69fb9c01fa40dac0dfb894"
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_runtime.py",
+      "sha256": "ce24f249777ec1b0ccee81114fbf38fb59237208d999ddc1887f79786891f0b7"
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_runtime_scope.py",
+      "sha256": "e2cacc80f8811aafbb5b68dedca3dfdc28bc62b9f37a44c9c5a86979d7b36669"
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/collection-evidence-v1.schema.json",
+      "sha256": "472159f77991975d0101d4b739714d86990ba47dfcd54eba1663654a69870de2"
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/collection-target-v1.schema.json",
+      "sha256": "336e280d7ac49241377186c42415b9f16abeb426543e84c9917cd544724703e3"
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/host-manifest-v1.schema.json",
+      "sha256": "c4a5b45c94d5e4562712929ca8ee77b6887fa3bed8ab46b73f195b6b277b278d"
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/host-snapshot-v1.schema.json",
+      "sha256": "c666d010b727cba8401533506a3097a016a8084a45c7c683aac6c72d26c25be8"
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/native-evidence-v1.schema.json",
+      "sha256": "22e34f6f0136a113c06a96d9dfdd4996bfe18a02f1fb2f2baad0e464afac8f9d"
+    },
+    {
+      "path": "shared/shared_models/shared_models/tls_key_share.py",
+      "sha256": "fa27c0c6dc75ae91908604181f0908f8b46cae0ddae02b75b904d9e3bf20fd29"
+    },
+    {
+      "path": "shared/shared_models/shared_models/tls_session.py",
+      "sha256": "5e700834a07b243167cb9af3f9746ad2edd33aab382343ba5b5b93359c4d4833"
+    }
+  ],
+  "results": {
+    "focused_passed": 102,
+    "frontend_files": 65,
+    "frontend_passed": 818,
+    "native_windows_skipped": 10,
+    "postgres_passed": 31,
+    "python_passed": 2283
+  },
+  "scope": "Owned classical TLS and synthetic hybrid framing only; not actual PQC, app/HSM, complete software, native/bank qualification or production admission"
+}

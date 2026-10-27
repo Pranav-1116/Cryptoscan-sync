@@ -1,4 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    CRYPTOSCAN_ROOT=/app
 
 WORKDIR /app
 
@@ -12,25 +17,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 --shell /usr/sbin/nologin cryptoscan
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+# ── python dependencies (cached layer) ───────────────────────────────
+COPY requirements.txt requirements.lock.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements.txt -c /app/requirements.lock.txt
 
-COPY shared /app/shared
+# ── application source ───────────────────────────────────────────────
+COPY shared   /app/shared
 COPY services /app/services
-COPY demo /app/demo
-COPY scripts /app/scripts
+COPY scripts  /app/scripts
+COPY config   /app/config
 COPY .env.example /app/.env.example
 
-RUN chown -R cryptoscan:cryptoscan /app
+# Register EVERY service + shared package on sys.path via a .pth file.
+# This replaces a long, error-prone hardcoded PYTHONPATH: any new
+# services/<name>/ package directory is picked up automatically.
+RUN set -eux; \
+    SITE_DIR="$(python -c 'import site,sys; print([p for p in site.getsitepackages() if p.startswith(sys.prefix)][0])')"; \
+    { for d in /app/shared/*/ /app/services/*/; do echo "$d"; done; } \
+        | sort -u > "$SITE_DIR/cryptoscan.pth"; \
+    cat "$SITE_DIR/cryptoscan.pth"
 
-ENV PYTHONPATH=/app/shared/shared_config:/app/shared/shared_logging:/app/shared/shared_models:/app/services/api:/app/services/database:/app/services/scanner:/app/services/evidence:/app/services/normalization:/app/services/policy:/app/services/drift:/app/services/worker:/app/services/deduplication:/app/services/cbom:/app/services/container_scanner:/app/services/network_scanner:/app/services/cloud_scanner:/app/services/graph_engine:/app/services/business_context:/app/services/quantum:/app/services/remediation:/app/services/reporting:/app/services/ot_scanner:/app/services/vendor_intel:/app/services/agility
-ENV PYTHONUNBUFFERED=1
-ENV CRYPTOSCAN_ROOT=/app
+# Scanner workspace: the live/universal scanners clone/extract scan targets
+# here. It must exist and be writable by the unprivileged user, and it is an
+# allow-listed source root for the target-validation (SSRF/traversal) guard.
+RUN mkdir -p /tmp/cryptoscan-workspaces \
+    && chown -R cryptoscan:cryptoscan /app /tmp/cryptoscan-workspaces
 
 USER cryptoscan
-EXPOSE 8000
+EXPOSE 8010
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=8 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3).status==200 else 1)"
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8010", "--proxy-headers", "--forwarded-allow-ips", "*"]

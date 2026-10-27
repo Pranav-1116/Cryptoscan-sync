@@ -1,0 +1,6229 @@
+{
+  "adapter_public_key": "XMtpmv+GCmVmCtx9f6O1HLO1BOFI6Fwu6G5GQaFyANk=",
+  "adapter_signature": "kbZRiTDODKQM7+iyoIT/9s+F3l/VTXfj5o5o8wOOnn2CjbpsUmJPZg05kCKxASRsVsKoZqYxFrwww6MOiea9BQ==",
+  "payload": {
+    "acceptance": {
+      "application_latency_sla": null,
+      "baseline_min_mbps": 30,
+      "decision": "User selected engineering gates before measurements",
+      "drain_seconds": 0.5,
+      "lossless_delivery_required": false,
+      "management_delivery_min": 0.99,
+      "management_p95_max_ms": 100,
+      "management_p99_max_ms": 250,
+      "measurement_seconds": 10,
+      "production_execution_qualified": false,
+      "recovery_baseline_fraction": 0.8,
+      "recovery_deadline_seconds": 5,
+      "recovery_min_mbps": 30,
+      "schema_version": "cryptoscan.routed-tbf-acceptance/v1",
+      "tcp_fraction": [
+        0.7,
+        1.1
+      ],
+      "udp_fraction": [
+        0.8,
+        1.1
+      ],
+      "vm_deadline_seconds": 300,
+      "warmup_seconds": 1
+    },
+    "adapter_proof": {
+      "challenge": "be588460e5b0c1652dc4d0c1b30ed069d7ac2027261f2b765a05635c5afd56b4",
+      "grant_sha256": "710fb15340652bdee4147ece288ee13a738ea1796a5428603595d00c8ddf4870",
+      "signature": "UOpRIMQKRjhznc2fLxsJHaVkpWBlixN6VWqjmGNhVepept1S6vUxlpzyV9NFkihS3pdvhP0b7WZ4r7l5XB1HBQ=="
+    },
+    "failure": null,
+    "grant": {
+      "approval": {
+        "independent_human_approval": false,
+        "lease_sha256": "9e19ca1be0696c2d6d06817a483a67e9a09a3abb6ef3d9b5855b55fb3642e632",
+        "reviewer_role": "SEPARATE_LAB_REVIEWER_KEY",
+        "signature": "2atxAh9jcCEF48eVeyr0iXEN+nFWjU/B2e4YG7UjfBr2UJ+bQp5uG28bgU8by9iOegQPhc4u/4mklMnamtezCg=="
+      },
+      "lease": {
+        "issuer_signature": "HkEIOoOA8LCXlul03/GWLB0Z+mL3S0c2KxR+pVDD8A8NT5VoBea9xa2ODj+0fOVE8JtML3DG395FtFSdmE4ADg==",
+        "payload": {
+          "acceptance_sha256": "ae5a2791b9c9b55cbc766653f4a85bea8c05f3521fd3606093fe8b4940e242ee",
+          "bundle_sha256": "ba247fa6fa7cfa25c8939dc1815c93a77104cf987fe34e0312058e13d2c8b22e",
+          "device": "diskless-routed-v1",
+          "expires_at": 1793002099.9585483,
+          "id": "cf2f966be7e3038b072ba76e4226ba6468dcefae6f59fc141ecb19d025d0ef0b",
+          "issued_at": 1793001499.9585483,
+          "nonce": "be588460e5b0c1652dc4d0c1b30ed069d7ac2027261f2b765a05635c5afd56b4",
+          "operation": "DISPOSABLE_ROUTED_VM_ONLY",
+          "production_authorized": false,
+          "tenant": "lab",
+          "version": "LAB_EXECUTION_LEASE_V1"
+        }
+      }
+    },
+    "guest": {
+      "faults": [
+        {
+          "case": "controller_crash",
+          "foreign_after": null,
+          "foreign_before": null,
+          "harness_cleanup_separate": true,
+          "injected": 152.215127864,
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.310573,
+            "p99_ms": 6.722613,
+            "planned": 60,
+            "received": 60,
+            "sent": 60
+          },
+          "recovery_probe": {
+            "after": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "applied": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "burst_packets": 5,
+            "data_latency": {
+              "errors": 0,
+              "missed_schedule": 0,
+              "p95_ms": 1.738764,
+              "p99_ms": 2.821702,
+              "planned": 240,
+              "received": 240,
+              "sent": 240
+            },
+            "finished_ns": 168062789349,
+            "flows": 1,
+            "ifindex": 5,
+            "label": "fault_controller_crash_recovery",
+            "management": {
+              "errors": 0,
+              "missed_schedule": 0,
+              "p95_ms": 1.805811,
+              "p99_ms": 3.004809,
+              "planned": 240,
+              "received": 240,
+              "sent": 240
+            },
+            "payload": 1200,
+            "preflight": {
+              "allowed": true,
+              "blockers": [],
+              "class": [],
+              "destinations": [
+                "10.78.1.2"
+              ],
+              "egress_filters": [],
+              "filter": [],
+              "ifindex": 5,
+              "ingress_filters": [],
+              "management_routes": [
+                [
+                  {
+                    "cache": [],
+                    "dev": "gm",
+                    "dst": "10.78.1.2",
+                    "flags": [],
+                    "prefsrc": "10.78.1.1",
+                    "uid": 0
+                  }
+                ]
+              ],
+              "qdisc": [
+                {
+                  "handle": "0:",
+                  "kind": "noqueue",
+                  "options": {},
+                  "refcnt": 2,
+                  "root": true
+                }
+              ],
+              "routes": [
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.0/24",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.0/24",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.0/24",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.1",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.255",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.1",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.255",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.1",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.255",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.0.0.0/8",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.0.0.1",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.255.255.255",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                }
+              ],
+              "rules": [
+                {
+                  "priority": 0,
+                  "src": "all",
+                  "table": "local"
+                },
+                {
+                  "priority": 32766,
+                  "src": "all",
+                  "table": "main"
+                },
+                {
+                  "priority": 32767,
+                  "src": "all",
+                  "table": "default"
+                }
+              ],
+              "target": "ge"
+            },
+            "protocol": "udp",
+            "rate_mbps": null,
+            "receiver": {
+              "bytes": 50284800,
+              "duplicates": 0,
+              "elapsed_ns": 10000000000,
+              "errors": 0,
+              "invalid": 0,
+              "packets": 41904,
+              "total_received": 46122
+            },
+            "restored": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "sender": {
+              "attempts": 46122,
+              "backpressure": 0,
+              "errors": 0,
+              "flow_bytes": [
+                55346400
+              ],
+              "sent_bytes_window": 50284800,
+              "successful_sends": 46122,
+              "tcp_total_retransmissions": 0
+            },
+            "started_ns": 156080880812
+          },
+          "response_seconds": 0.898295859000001,
+          "state": {
+            "expires": 172.188505079,
+            "fingerprint": "ff81987e3aa3216d8944bc0fa921498beae5d85ae49f0b15e4632df5e7bf1fdc",
+            "ifindex": 5,
+            "installed": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "7e02:",
+                "kind": "tbf",
+                "options": {
+                  "burst": "64Kb/1",
+                  "lat": 50000,
+                  "linklayer": "ethernet",
+                  "mpu": 0,
+                  "rate": 1250000
+                },
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "rate": 10
+          },
+          "watchdog": {
+            "finished": 153.113423723,
+            "ifindex": 5,
+            "policy": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "status": "RECOVERED"
+          }
+        },
+        {
+          "case": "lost_connection",
+          "foreign_after": null,
+          "foreign_before": null,
+          "harness_cleanup_separate": true,
+          "injected": 168.700887476,
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 0.942915,
+            "p99_ms": 5.521429,
+            "planned": 60,
+            "received": 60,
+            "sent": 60
+          },
+          "recovery_probe": {
+            "after": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "applied": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "burst_packets": 5,
+            "data_latency": {
+              "errors": 0,
+              "missed_schedule": 0,
+              "p95_ms": 1.526305,
+              "p99_ms": 2.402251,
+              "planned": 240,
+              "received": 240,
+              "sent": 240
+            },
+            "finished_ns": 184530675739,
+            "flows": 1,
+            "ifindex": 5,
+            "label": "fault_lost_connection_recovery",
+            "management": {
+              "errors": 0,
+              "missed_schedule": 0,
+              "p95_ms": 1.588251,
+              "p99_ms": 2.281633,
+              "planned": 240,
+              "received": 240,
+              "sent": 240
+            },
+            "payload": 1200,
+            "preflight": {
+              "allowed": true,
+              "blockers": [],
+              "class": [],
+              "destinations": [
+                "10.78.1.2"
+              ],
+              "egress_filters": [],
+              "filter": [],
+              "ifindex": 5,
+              "ingress_filters": [],
+              "management_routes": [
+                [
+                  {
+                    "cache": [],
+                    "dev": "gm",
+                    "dst": "10.78.1.2",
+                    "flags": [],
+                    "prefsrc": "10.78.1.1",
+                    "uid": 0
+                  }
+                ]
+              ],
+              "qdisc": [
+                {
+                  "handle": "0:",
+                  "kind": "noqueue",
+                  "options": {},
+                  "refcnt": 2,
+                  "root": true
+                }
+              ],
+              "routes": [
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.0/24",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.0/24",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.0/24",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.1",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.255",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.1",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.255",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.1",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.255",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.0.0.0/8",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.0.0.1",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.255.255.255",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                }
+              ],
+              "rules": [
+                {
+                  "priority": 0,
+                  "src": "all",
+                  "table": "local"
+                },
+                {
+                  "priority": 32766,
+                  "src": "all",
+                  "table": "main"
+                },
+                {
+                  "priority": 32767,
+                  "src": "all",
+                  "table": "default"
+                }
+              ],
+              "target": "ge"
+            },
+            "protocol": "udp",
+            "rate_mbps": null,
+            "receiver": {
+              "bytes": 50509200,
+              "duplicates": 0,
+              "elapsed_ns": 10000000000,
+              "errors": 0,
+              "invalid": 0,
+              "packets": 42091,
+              "total_received": 45977
+            },
+            "restored": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "sender": {
+              "attempts": 45977,
+              "backpressure": 0,
+              "errors": 0,
+              "flow_bytes": [
+                55172400
+              ],
+              "sent_bytes_window": 50510400,
+              "successful_sends": 45977,
+              "tcp_total_retransmissions": 0
+            },
+            "started_ns": 172547896823
+          },
+          "response_seconds": 0.9730105529999946,
+          "state": {
+            "expires": 188.657601168,
+            "fingerprint": "ff81987e3aa3216d8944bc0fa921498beae5d85ae49f0b15e4632df5e7bf1fdc",
+            "ifindex": 5,
+            "installed": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "7e02:",
+                "kind": "tbf",
+                "options": {
+                  "burst": "64Kb/1",
+                  "lat": 50000,
+                  "linklayer": "ethernet",
+                  "mpu": 0,
+                  "rate": 1250000
+                },
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "rate": 10
+          },
+          "watchdog": {
+            "finished": 169.673898029,
+            "ifindex": 5,
+            "policy": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "status": "RECOVERED"
+          }
+        },
+        {
+          "case": "expired_authorization",
+          "foreign_after": null,
+          "foreign_before": null,
+          "harness_cleanup_separate": true,
+          "injected": 185.140549527,
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.874941,
+            "p99_ms": 19.525815,
+            "planned": 60,
+            "received": 60,
+            "sent": 60
+          },
+          "recovery_probe": {
+            "after": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "applied": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "burst_packets": 5,
+            "data_latency": {
+              "errors": 0,
+              "missed_schedule": 0,
+              "p95_ms": 1.502968,
+              "p99_ms": 1.866312,
+              "planned": 240,
+              "received": 240,
+              "sent": 240
+            },
+            "finished_ns": 200987788698,
+            "flows": 1,
+            "ifindex": 5,
+            "label": "fault_expired_authorization_recovery",
+            "management": {
+              "errors": 0,
+              "missed_schedule": 0,
+              "p95_ms": 1.522709,
+              "p99_ms": 3.03759,
+              "planned": 240,
+              "received": 240,
+              "sent": 240
+            },
+            "payload": 1200,
+            "preflight": {
+              "allowed": true,
+              "blockers": [],
+              "class": [],
+              "destinations": [
+                "10.78.1.2"
+              ],
+              "egress_filters": [],
+              "filter": [],
+              "ifindex": 5,
+              "ingress_filters": [],
+              "management_routes": [
+                [
+                  {
+                    "cache": [],
+                    "dev": "gm",
+                    "dst": "10.78.1.2",
+                    "flags": [],
+                    "prefsrc": "10.78.1.1",
+                    "uid": 0
+                  }
+                ]
+              ],
+              "qdisc": [
+                {
+                  "handle": "0:",
+                  "kind": "noqueue",
+                  "options": {},
+                  "refcnt": 2,
+                  "root": true
+                }
+              ],
+              "routes": [
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.0/24",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.0/24",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.0/24",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "link"
+                },
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.1",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "gi",
+                  "dst": "10.77.1.255",
+                  "flags": [],
+                  "prefsrc": "10.77.1.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.1",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "ge",
+                  "dst": "10.77.2.255",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.1",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "gm",
+                  "dst": "10.78.1.255",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.0.0.0/8",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.0.0.1",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "host",
+                  "table": "local",
+                  "type": "local"
+                },
+                {
+                  "dev": "lo",
+                  "dst": "127.255.255.255",
+                  "flags": [],
+                  "prefsrc": "127.0.0.1",
+                  "protocol": "kernel",
+                  "scope": "link",
+                  "table": "local",
+                  "type": "broadcast"
+                }
+              ],
+              "rules": [
+                {
+                  "priority": 0,
+                  "src": "all",
+                  "table": "local"
+                },
+                {
+                  "priority": 32766,
+                  "src": "all",
+                  "table": "main"
+                },
+                {
+                  "priority": 32767,
+                  "src": "all",
+                  "table": "default"
+                }
+              ],
+              "target": "ge"
+            },
+            "protocol": "udp",
+            "rate_mbps": null,
+            "receiver": {
+              "bytes": 50544000,
+              "duplicates": 0,
+              "elapsed_ns": 10000000000,
+              "errors": 0,
+              "invalid": 0,
+              "packets": 42120,
+              "total_received": 46365
+            },
+            "restored": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "sender": {
+              "attempts": 46365,
+              "backpressure": 0,
+              "errors": 0,
+              "flow_bytes": [
+                55638000
+              ],
+              "sent_bytes_window": 50540400,
+              "successful_sends": 46365,
+              "tcp_total_retransmissions": 0
+            },
+            "started_ns": 189006704058
+          },
+          "response_seconds": 0.8575087760000031,
+          "state": {
+            "expires": 185.90477385,
+            "fingerprint": "ff81987e3aa3216d8944bc0fa921498beae5d85ae49f0b15e4632df5e7bf1fdc",
+            "ifindex": 5,
+            "installed": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "7e02:",
+                "kind": "tbf",
+                "options": {
+                  "burst": "64Kb/1",
+                  "lat": 50000,
+                  "linklayer": "ethernet",
+                  "mpu": 0,
+                  "rate": 1250000
+                },
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "rate": 10
+          },
+          "watchdog": {
+            "finished": 185.998058303,
+            "ifindex": 5,
+            "policy": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "status": "RECOVERED"
+          }
+        },
+        {
+          "case": "interface_recreation",
+          "foreign_after": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "8a:",
+              "kind": "pfifo",
+              "options": {
+                "limit": 321
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "foreign_before": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "8a:",
+              "kind": "pfifo",
+              "options": {
+                "limit": 321
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "harness_cleanup_separate": true,
+          "injected": 201.559786894,
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 0.73663,
+            "p99_ms": 7.26812,
+            "planned": 60,
+            "received": 60,
+            "sent": 60
+          },
+          "recovery_probe": null,
+          "response_seconds": 1.166180966999974,
+          "state": {
+            "expires": 221.532758302,
+            "fingerprint": "ff81987e3aa3216d8944bc0fa921498beae5d85ae49f0b15e4632df5e7bf1fdc",
+            "ifindex": 5,
+            "installed": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "7e02:",
+                "kind": "tbf",
+                "options": {
+                  "burst": "64Kb/1",
+                  "lat": 50000,
+                  "linklayer": "ethernet",
+                  "mpu": 0,
+                  "rate": 1250000
+                },
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "rate": 10
+          },
+          "watchdog": {
+            "finished": 202.725967861,
+            "ifindex": 9,
+            "policy": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "8a:",
+                "kind": "pfifo",
+                "options": {
+                  "limit": 321
+                },
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "status": "REFUSED_IDENTITY_CHANGED"
+          }
+        },
+        {
+          "case": "policy_conflict",
+          "foreign_after": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "8a:",
+              "kind": "pfifo",
+              "options": {
+                "limit": 321
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "foreign_before": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "8a:",
+              "kind": "pfifo",
+              "options": {
+                "limit": 321
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "harness_cleanup_separate": true,
+          "injected": 205.27094285,
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.090832,
+            "p99_ms": 7.127081,
+            "planned": 60,
+            "received": 60,
+            "sent": 60
+          },
+          "recovery_probe": null,
+          "response_seconds": 0.9440427749999856,
+          "state": {
+            "expires": 225.244337321,
+            "fingerprint": "ff81987e3aa3216d8944bc0fa921498beae5d85ae49f0b15e4632df5e7bf1fdc",
+            "ifindex": 9,
+            "installed": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "7e02:",
+                "kind": "tbf",
+                "options": {
+                  "burst": "64Kb/1",
+                  "lat": 50000,
+                  "linklayer": "ethernet",
+                  "mpu": 0,
+                  "rate": 1250000
+                },
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "rate": 10
+          },
+          "watchdog": {
+            "finished": 206.214985625,
+            "ifindex": 9,
+            "policy": [
+              {
+                "backlog": 0,
+                "bytes": 0,
+                "drops": 0,
+                "handle": "8a:",
+                "kind": "pfifo",
+                "options": {
+                  "limit": 321
+                },
+                "overlimits": 0,
+                "packets": 0,
+                "qlen": 0,
+                "refcnt": 2,
+                "requeues": 0,
+                "root": true
+              }
+            ],
+            "status": "REFUSED_POLICY_CONFLICT"
+          }
+        }
+      ],
+      "final_policy": [
+        {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "handle": "0:",
+          "kind": "noqueue",
+          "options": {},
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        }
+      ],
+      "finished_ns": 208427913337,
+      "kernel": "6.12.58-cryptoscan-routed-tbf",
+      "management_policy_after": [
+        {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "handle": "0:",
+          "kind": "noqueue",
+          "options": {},
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        }
+      ],
+      "management_policy_before": [
+        {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "handle": "0:",
+          "kind": "noqueue",
+          "options": {},
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        }
+      ],
+      "negative_cases": [
+        {
+          "case": "existing_class_filter_tree",
+          "policy_preserved": true,
+          "preflight": {
+            "allowed": false,
+            "blockers": [
+              "EXISTING_POLICY_OR_FILTER"
+            ],
+            "class": [
+              {
+                "unsupported_class_encoding": "class htb 8a:1 root prio 0 quantum 200000 rate 20Mbit ceil 20Mbit linklayer ethernet burst 1600b/1 mpu 0b cburst 1600b/1 mpu 0b level 0 \n"
+              }
+            ],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [
+              {
+                "chain": 0,
+                "kind": "u32",
+                "parent": "8a:",
+                "pref": 1,
+                "protocol": "ip"
+              },
+              {
+                "chain": 0,
+                "kind": "u32",
+                "options": {
+                  "fh": "800:",
+                  "ht_divisor": 1
+                },
+                "parent": "8a:",
+                "pref": 1,
+                "protocol": "ip"
+              },
+              {
+                "chain": 0,
+                "kind": "u32",
+                "options": {
+                  "bkt": "0",
+                  "fh": "800::800",
+                  "flowid": "8a:1",
+                  "key_ht": "800",
+                  "match": {
+                    "mask": "ffffffff",
+                    "off": 16,
+                    "offmask": "",
+                    "value": "a4d0202"
+                  },
+                  "not_in_hw": true,
+                  "order": 2048
+                },
+                "parent": "8a:",
+                "pref": 1,
+                "protocol": "ip"
+              }
+            ],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "8a:",
+                "kind": "htb",
+                "options": {
+                  "default": "0x1",
+                  "direct_packets_stat": 0,
+                  "direct_qlen": 1000,
+                  "r2q": 10,
+                  "ver": "3.17"
+                },
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          }
+        },
+        {
+          "case": "existing_clsact_filter",
+          "policy_preserved": true,
+          "preflight": {
+            "allowed": false,
+            "blockers": [
+              "EXISTING_POLICY_OR_FILTER"
+            ],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [
+              {
+                "chain": 0,
+                "kind": "matchall",
+                "pref": 1,
+                "protocol": "ip"
+              },
+              {
+                "chain": 0,
+                "kind": "matchall",
+                "options": {
+                  "actions": [
+                    {
+                      "bind": 1,
+                      "control_action": {
+                        "type": "pass"
+                      },
+                      "index": 1,
+                      "kind": "gact",
+                      "order": 1,
+                      "prob": {
+                        "control_action": {
+                          "type": "pass"
+                        },
+                        "random_type": "none",
+                        "val": 0
+                      },
+                      "ref": 1
+                    }
+                  ],
+                  "handle": 1,
+                  "not_in_hw": true
+                },
+                "pref": 1,
+                "protocol": "ip"
+              }
+            ],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              },
+              {
+                "handle": "ffff:",
+                "kind": "clsact",
+                "options": {},
+                "parent": "ffff:fff1"
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          }
+        },
+        {
+          "case": "management_interface_target",
+          "policy_preserved": true,
+          "preflight": {
+            "allowed": false,
+            "blockers": [
+              "UNAPPROVED_TARGET_OR_MANAGEMENT_SET"
+            ],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 6,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "gm"
+          }
+        },
+        {
+          "case": "unapproved_management_set",
+          "policy_preserved": true,
+          "preflight": {
+            "allowed": false,
+            "blockers": [
+              "UNAPPROVED_TARGET_OR_MANAGEMENT_SET",
+              "MANAGEMENT_PATH_NOT_EXCLUDED"
+            ],
+            "class": [],
+            "destinations": [
+              "10.77.2.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "ge",
+                  "dst": "10.77.2.2",
+                  "flags": [],
+                  "prefsrc": "10.77.2.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          }
+        },
+        {
+          "case": "policy_routing_ambiguity",
+          "policy_preserved": true,
+          "preflight": {
+            "allowed": false,
+            "blockers": [
+              "UNSUPPORTED_POLICY_ROUTING"
+            ],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 100,
+                "src": "10.77.1.2",
+                "table": "100"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          }
+        },
+        {
+          "case": "multipath_management_route",
+          "policy_preserved": true,
+          "preflight": {
+            "allowed": false,
+            "blockers": [
+              "AMBIGUOUS_OR_UNSUPPORTED_ROUTE",
+              "MANAGEMENT_PATH_NOT_EXCLUDED"
+            ],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "ge",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "gateway": "10.77.2.2",
+                  "prefsrc": "10.77.2.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dst": "10.78.1.2",
+                "flags": [],
+                "nexthops": [
+                  {
+                    "dev": "gi",
+                    "flags": [],
+                    "gateway": "10.77.1.2",
+                    "weight": 1
+                  },
+                  {
+                    "dev": "ge",
+                    "flags": [],
+                    "gateway": "10.77.2.2",
+                    "weight": 1
+                  }
+                ]
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          }
+        }
+      ],
+      "nonce": "be588460e5b0c1652dc4d0c1b30ed069d7ac2027261f2b765a05635c5afd56b4",
+      "phases": [
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 5,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.621214,
+            "p99_ms": 2.386223,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "finished_ns": 22152930927,
+          "flows": 1,
+          "ifindex": 5,
+          "label": "udp_baseline",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.386849,
+            "p99_ms": 1.908037,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "udp",
+          "rate_mbps": null,
+          "receiver": {
+            "bytes": 50706000,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 42255,
+            "total_received": 46270
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 46270,
+            "backpressure": 0,
+            "errors": 0,
+            "flow_bytes": [
+              55524000
+            ],
+            "sent_bytes_window": 50706000,
+            "successful_sends": 46270,
+            "tcp_total_retransmissions": 0
+          },
+          "started_ns": 10167632172
+        },
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 5,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.601925,
+            "p99_ms": 3.748423,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "finished_ns": 35007804855,
+          "flows": 4,
+          "ifindex": 5,
+          "label": "tcp_baseline",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.621919,
+            "p99_ms": 3.587779,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "tcp",
+          "rate_mbps": null,
+          "receiver": {
+            "bytes": 57378000,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 0,
+            "total_received": 62952000
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 52460,
+            "backpressure": 0,
+            "errors": 0,
+            "flow_bytes": [
+              15738000,
+              15738000,
+              15738000,
+              15738000
+            ],
+            "sent_bytes_window": 57378000,
+            "successful_sends": 52460,
+            "tcp_total_retransmissions": 0
+          },
+          "started_ns": 23027940354
+        },
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 13941562,
+              "drops": 31766,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 53064,
+              "packets": 11337,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 1,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 112,
+            "p95_ms": 102.758528,
+            "p99_ms": 103.188967,
+            "planned": 240,
+            "received": 128,
+            "sent": 128
+          },
+          "finished_ns": 47966264369,
+          "flows": 1,
+          "ifindex": 5,
+          "label": "udp_10",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.300043,
+            "p99_ms": 1.926058,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "udp",
+          "rate_mbps": 10,
+          "receiver": {
+            "bytes": 12069600,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 10058,
+            "total_received": 11218
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 42984,
+            "backpressure": 0,
+            "errors": 0,
+            "flow_bytes": [
+              51580800
+            ],
+            "sent_bytes_window": 47311200,
+            "successful_sends": 42984,
+            "tcp_total_retransmissions": 0
+          },
+          "started_ns": 35881739281
+        },
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 7035872,
+              "drops": 40499,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 625000
+              },
+              "overlimits": 51158,
+              "packets": 5744,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 625000
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 1,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 149,
+            "p95_ms": 153.264899,
+            "p99_ms": 153.779119,
+            "planned": 240,
+            "received": 91,
+            "sent": 91
+          },
+          "finished_ns": 60985429977,
+          "flows": 1,
+          "ifindex": 5,
+          "label": "udp_5",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.159246,
+            "p99_ms": 1.909037,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "udp",
+          "rate_mbps": 5,
+          "receiver": {
+            "bytes": 6033600,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 5028,
+            "total_received": 5660
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 46159,
+            "backpressure": 0,
+            "errors": 0,
+            "flow_bytes": [
+              55390800
+            ],
+            "sent_bytes_window": 50438400,
+            "successful_sends": 46159,
+            "tcp_total_retransmissions": 0
+          },
+          "started_ns": 48912264712
+        },
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 13932482,
+              "drops": 23982,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 105312,
+              "packets": 46845,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 16,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 109,
+            "p95_ms": 103.324738,
+            "p99_ms": 104.454372,
+            "planned": 240,
+            "received": 131,
+            "sent": 131
+          },
+          "finished_ns": 73960629618,
+          "flows": 1,
+          "ifindex": 5,
+          "label": "udp_small_burst",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.902471,
+            "p99_ms": 6.48021,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 256,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "udp",
+          "rate_mbps": 10,
+          "receiver": {
+            "bytes": 10732800,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 41925,
+            "total_received": 46723
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 70705,
+            "backpressure": 0,
+            "errors": 0,
+            "flow_bytes": [
+              18100480
+            ],
+            "sent_bytes_window": 16377344,
+            "successful_sends": 70705,
+            "tcp_total_retransmissions": 0
+          },
+          "started_ns": 61893477515
+        },
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 13940084,
+              "drops": 37411,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 55651,
+              "packets": 9782,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 16,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 111,
+            "p95_ms": 101.48685,
+            "p99_ms": 101.5877,
+            "planned": 240,
+            "received": 129,
+            "sent": 129
+          },
+          "finished_ns": 86909036367,
+          "flows": 1,
+          "ifindex": 5,
+          "label": "udp_large_burst",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.419297,
+            "p99_ms": 2.839405,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1400,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "udp",
+          "rate_mbps": 10,
+          "receiver": {
+            "bytes": 12128200,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 8663,
+            "total_received": 9661
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 47072,
+            "backpressure": 0,
+            "errors": 0,
+            "flow_bytes": [
+              65900800
+            ],
+            "sent_bytes_window": 59920000,
+            "successful_sends": 47072,
+            "tcp_total_retransmissions": 0
+          },
+          "started_ns": 74841611120
+        },
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 14268014,
+              "drops": 23,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 3802,
+              "packets": 9575,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 1,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 96,
+            "p95_ms": 100.788046,
+            "p99_ms": 101.883197,
+            "planned": 240,
+            "received": 144,
+            "sent": 144
+          },
+          "finished_ns": 99836498744,
+          "flows": 1,
+          "ifindex": 5,
+          "label": "tcp_one_10",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.38871,
+            "p99_ms": 3.080182,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "tcp",
+          "rate_mbps": 10,
+          "receiver": {
+            "bytes": 11946000,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 0,
+            "total_received": 13634976
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 49499,
+            "backpressure": 37999,
+            "errors": 0,
+            "flow_bytes": [
+              13634976
+            ],
+            "sent_bytes_window": 11989440,
+            "successful_sends": 11500,
+            "tcp_total_retransmissions": 199
+          },
+          "started_ns": 87771147656
+        },
+        {
+          "after": [
+            {
+              "backlog": 53254,
+              "bytes": 14502512,
+              "drops": 53,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 4153,
+              "packets": 9724,
+              "qlen": 10,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 1250000
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 1,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 110,
+            "p95_ms": 101.737867,
+            "p99_ms": 102.004625,
+            "planned": 240,
+            "received": 130,
+            "sent": 130
+          },
+          "finished_ns": 112822840473,
+          "flows": 4,
+          "ifindex": 5,
+          "label": "tcp_four_10",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.410828,
+            "p99_ms": 2.832107,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "tcp",
+          "rate_mbps": 10,
+          "receiver": {
+            "bytes": 11968232,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 0,
+            "total_received": 13798912
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 49696,
+            "backpressure": 37160,
+            "errors": 0,
+            "flow_bytes": [
+              3532464,
+              4217032,
+              3308960,
+              3883288
+            ],
+            "sent_bytes_window": 11953864,
+            "successful_sends": 12536,
+            "tcp_total_retransmissions": 325
+          },
+          "started_ns": 100739177259
+        },
+        {
+          "after": [
+            {
+              "backlog": 69982,
+              "bytes": 7265698,
+              "drops": 49,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 625000
+              },
+              "overlimits": 2755,
+              "packets": 4897,
+              "qlen": 16,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "7e02:",
+              "kind": "tbf",
+              "options": {
+                "burst": "64Kb/1",
+                "lat": 50000,
+                "linklayer": "ethernet",
+                "mpu": 0,
+                "rate": 625000
+              },
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 1,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 150,
+            "p95_ms": 152.659742,
+            "p99_ms": 153.084219,
+            "planned": 240,
+            "received": 90,
+            "sent": 90
+          },
+          "finished_ns": 125807459467,
+          "flows": 4,
+          "ifindex": 5,
+          "label": "tcp_four_5",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.532065,
+            "p99_ms": 2.568894,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "tcp",
+          "rate_mbps": 5,
+          "receiver": {
+            "bytes": 5973000,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 0,
+            "total_received": 6920096
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 50084,
+            "backpressure": 43069,
+            "errors": 0,
+            "flow_bytes": [
+              2166264,
+              1918488,
+              1895632,
+              2371112
+            ],
+            "sent_bytes_window": 5946072,
+            "successful_sends": 7015,
+            "tcp_total_retransmissions": 224
+          },
+          "started_ns": 113717262302
+        },
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 5,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.904764,
+            "p99_ms": 2.310328,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "finished_ns": 138675114905,
+          "flows": 1,
+          "ifindex": 5,
+          "label": "udp_recovered",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.813993,
+            "p99_ms": 2.760347,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "udp",
+          "rate_mbps": null,
+          "receiver": {
+            "bytes": 48212400,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 40177,
+            "total_received": 44406
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 44406,
+            "backpressure": 0,
+            "errors": 0,
+            "flow_bytes": [
+              53287200
+            ],
+            "sent_bytes_window": 48212400,
+            "successful_sends": 44406,
+            "tcp_total_retransmissions": 0
+          },
+          "started_ns": 126685980931
+        },
+        {
+          "after": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "applied": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "burst_packets": 5,
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.716537,
+            "p99_ms": 3.809865,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "finished_ns": 151566885567,
+          "flows": 4,
+          "ifindex": 5,
+          "label": "tcp_recovered",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.519232,
+            "p99_ms": 3.8863,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "payload": 1200,
+          "preflight": {
+            "allowed": true,
+            "blockers": [],
+            "class": [],
+            "destinations": [
+              "10.78.1.2"
+            ],
+            "egress_filters": [],
+            "filter": [],
+            "ifindex": 5,
+            "ingress_filters": [],
+            "management_routes": [
+              [
+                {
+                  "cache": [],
+                  "dev": "gm",
+                  "dst": "10.78.1.2",
+                  "flags": [],
+                  "prefsrc": "10.78.1.1",
+                  "uid": 0
+                }
+              ]
+            ],
+            "qdisc": [
+              {
+                "handle": "0:",
+                "kind": "noqueue",
+                "options": {},
+                "refcnt": 2,
+                "root": true
+              }
+            ],
+            "routes": [
+              {
+                "dev": "gi",
+                "dst": "10.77.1.0/24",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.0/24",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.0/24",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.1",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gi",
+                "dst": "10.77.1.255",
+                "flags": [],
+                "prefsrc": "10.77.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.1",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "ge",
+                "dst": "10.77.2.255",
+                "flags": [],
+                "prefsrc": "10.77.2.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.1",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "gm",
+                "dst": "10.78.1.255",
+                "flags": [],
+                "prefsrc": "10.78.1.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.0/8",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.0.0.1",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "host",
+                "table": "local",
+                "type": "local"
+              },
+              {
+                "dev": "lo",
+                "dst": "127.255.255.255",
+                "flags": [],
+                "prefsrc": "127.0.0.1",
+                "protocol": "kernel",
+                "scope": "link",
+                "table": "local",
+                "type": "broadcast"
+              }
+            ],
+            "rules": [
+              {
+                "priority": 0,
+                "src": "all",
+                "table": "local"
+              },
+              {
+                "priority": 32766,
+                "src": "all",
+                "table": "main"
+              },
+              {
+                "priority": 32767,
+                "src": "all",
+                "table": "default"
+              }
+            ],
+            "target": "ge"
+          },
+          "protocol": "tcp",
+          "rate_mbps": null,
+          "receiver": {
+            "bytes": 55362000,
+            "duplicates": 0,
+            "elapsed_ns": 10000000000,
+            "errors": 0,
+            "invalid": 0,
+            "packets": 0,
+            "total_received": 61074000
+          },
+          "restored": [
+            {
+              "backlog": 0,
+              "bytes": 0,
+              "drops": 0,
+              "handle": "0:",
+              "kind": "noqueue",
+              "options": {},
+              "overlimits": 0,
+              "packets": 0,
+              "qlen": 0,
+              "refcnt": 2,
+              "requeues": 0,
+              "root": true
+            }
+          ],
+          "sender": {
+            "attempts": 50895,
+            "backpressure": 0,
+            "errors": 0,
+            "flow_bytes": [
+              15268800,
+              15268800,
+              15268800,
+              15267600
+            ],
+            "sent_bytes_window": 55368000,
+            "successful_sends": 50895,
+            "tcp_total_retransmissions": 0
+          },
+          "started_ns": 139560871412
+        }
+      ],
+      "schema_version": "cryptoscan.routed-tbf-guest/v1",
+      "topology": {
+        "gw": [
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "lo",
+                "local": "127.0.0.1",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 8,
+                "scope": "host",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "00:00:00:00:00:00",
+            "broadcast": "00:00:00:00:00:00",
+            "flags": [
+              "LOOPBACK",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 1,
+            "ifname": "lo",
+            "link_type": "loopback",
+            "mtu": 65536,
+            "operstate": "UNKNOWN",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          },
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "gi",
+                "local": "10.77.1.1",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 24,
+                "scope": "global",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "76:33:12:cc:7e:3d",
+            "broadcast": "ff:ff:ff:ff:ff:ff",
+            "flags": [
+              "BROADCAST",
+              "MULTICAST",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 2,
+            "ifname": "gi",
+            "link_index": 3,
+            "link_netnsid": 0,
+            "link_type": "ether",
+            "mtu": 1500,
+            "operstate": "UP",
+            "qdisc": "pfifo",
+            "txqlen": 1000
+          },
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "ge",
+                "local": "10.77.2.1",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 24,
+                "scope": "global",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "da:78:89:57:38:47",
+            "broadcast": "ff:ff:ff:ff:ff:ff",
+            "flags": [
+              "BROADCAST",
+              "MULTICAST",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 5,
+            "ifname": "ge",
+            "link_index": 4,
+            "link_netnsid": 2,
+            "link_type": "ether",
+            "mtu": 1500,
+            "operstate": "UP",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          },
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "gm",
+                "local": "10.78.1.1",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 24,
+                "scope": "global",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "c2:cf:2d:3e:02:7d",
+            "broadcast": "ff:ff:ff:ff:ff:ff",
+            "flags": [
+              "BROADCAST",
+              "MULTICAST",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 6,
+            "ifname": "gm",
+            "link_index": 7,
+            "link_netnsid": 3,
+            "link_type": "ether",
+            "mtu": 1500,
+            "operstate": "UP",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          }
+        ],
+        "mgmt": [
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "lo",
+                "local": "127.0.0.1",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 8,
+                "scope": "host",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "00:00:00:00:00:00",
+            "broadcast": "00:00:00:00:00:00",
+            "flags": [
+              "LOOPBACK",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 1,
+            "ifname": "lo",
+            "link_type": "loopback",
+            "mtu": 65536,
+            "operstate": "UNKNOWN",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          },
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "m0",
+                "local": "10.78.1.2",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 24,
+                "scope": "global",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "96:78:6d:0e:8f:9b",
+            "broadcast": "ff:ff:ff:ff:ff:ff",
+            "flags": [
+              "BROADCAST",
+              "MULTICAST",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 7,
+            "ifname": "m0",
+            "link_index": 6,
+            "link_netnsid": 1,
+            "link_type": "ether",
+            "mtu": 1500,
+            "operstate": "UP",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          }
+        ],
+        "rx": [
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "lo",
+                "local": "127.0.0.1",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 8,
+                "scope": "host",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "00:00:00:00:00:00",
+            "broadcast": "00:00:00:00:00:00",
+            "flags": [
+              "LOOPBACK",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 1,
+            "ifname": "lo",
+            "link_type": "loopback",
+            "mtu": 65536,
+            "operstate": "UNKNOWN",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          },
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "r0",
+                "local": "10.77.2.2",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 24,
+                "scope": "global",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "ee:d7:0f:10:84:ae",
+            "broadcast": "ff:ff:ff:ff:ff:ff",
+            "flags": [
+              "BROADCAST",
+              "MULTICAST",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 4,
+            "ifname": "r0",
+            "link_index": 5,
+            "link_netnsid": 0,
+            "link_type": "ether",
+            "mtu": 1500,
+            "operstate": "UP",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          }
+        ],
+        "tx": [
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "lo",
+                "local": "127.0.0.1",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 8,
+                "scope": "host",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "00:00:00:00:00:00",
+            "broadcast": "00:00:00:00:00:00",
+            "flags": [
+              "LOOPBACK",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 1,
+            "ifname": "lo",
+            "link_type": "loopback",
+            "mtu": 65536,
+            "operstate": "UNKNOWN",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          },
+          {
+            "addr_info": [
+              {
+                "family": "inet",
+                "label": "s0",
+                "local": "10.77.1.2",
+                "preferred_life_time": 4294967295,
+                "prefixlen": 24,
+                "scope": "global",
+                "valid_life_time": 4294967295
+              }
+            ],
+            "address": "f6:ac:67:d9:2c:6e",
+            "broadcast": "ff:ff:ff:ff:ff:ff",
+            "flags": [
+              "BROADCAST",
+              "MULTICAST",
+              "UP",
+              "LOWER_UP"
+            ],
+            "group": "default",
+            "ifindex": 3,
+            "ifname": "s0",
+            "link_index": 2,
+            "link_netnsid": 1,
+            "link_type": "ether",
+            "mtu": 1500,
+            "operstate": "UP",
+            "qdisc": "noqueue",
+            "txqlen": 1000
+          }
+        ]
+      },
+      "unrelated_after": [
+        {
+          "backlog": 0,
+          "bytes": 4811244,
+          "drops": 0,
+          "handle": "9b:",
+          "kind": "pfifo",
+          "options": {
+            "limit": 1000
+          },
+          "overlimits": 0,
+          "packets": 72506,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        }
+      ],
+      "unrelated_before": [
+        {
+          "backlog": 0,
+          "bytes": 0,
+          "drops": 0,
+          "handle": "9b:",
+          "kind": "pfifo",
+          "options": {
+            "limit": 1000
+          },
+          "overlimits": 0,
+          "packets": 0,
+          "qlen": 0,
+          "refcnt": 2,
+          "requeues": 0,
+          "root": true
+        }
+      ]
+    },
+    "independent_review_complete": false,
+    "parent_after": {
+      "boot_id": "7b0855bc-f0a8-4d24-b70a-1151226e8045",
+      "mount_namespace_inode": 4026531841,
+      "network_namespace_inode": 4026531840
+    },
+    "parent_before": {
+      "boot_id": "7b0855bc-f0a8-4d24-b70a-1151226e8045",
+      "mount_namespace_inode": 4026531841,
+      "network_namespace_inode": 4026531840
+    },
+    "parent_policy_after": [
+      {
+        "dev": "lo",
+        "handle": "0:",
+        "kind": "noqueue",
+        "options": {},
+        "refcnt": 2,
+        "root": true
+      },
+      {
+        "dev": "eth0",
+        "handle": "0:",
+        "kind": "pfifo_fast",
+        "options": {
+          "bands": 3,
+          "multiqueue": false,
+          "priomap": [
+            1,
+            2,
+            2,
+            2,
+            1,
+            2,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "refcnt": 2,
+        "root": true
+      }
+    ],
+    "parent_policy_before": [
+      {
+        "dev": "lo",
+        "handle": "0:",
+        "kind": "noqueue",
+        "options": {},
+        "refcnt": 2,
+        "root": true
+      },
+      {
+        "dev": "eth0",
+        "handle": "0:",
+        "kind": "pfifo_fast",
+        "options": {
+          "bands": 3,
+          "multiqueue": false,
+          "priomap": [
+            1,
+            2,
+            2,
+            2,
+            1,
+            2,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "refcnt": 2,
+        "root": true
+      }
+    ],
+    "physical_device_identity_verified": false,
+    "production_execution_qualified": false,
+    "report": {
+      "all_failure_modes_recovered": false,
+      "blockers": [],
+      "independent_review_complete": false,
+      "phases": [
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.621214,
+            "p99_ms": 2.386223,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "kernel_drops": 0,
+          "label": "udp_baseline",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.386849,
+            "p99_ms": 1.908037,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 40.5648,
+          "tcp_total_retransmissions": 0,
+          "udp_loss_fraction_including_warmup_and_drain": 0.0
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.601925,
+            "p99_ms": 3.748423,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "kernel_drops": 0,
+          "label": "tcp_baseline",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.621919,
+            "p99_ms": 3.587779,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 45.9024,
+          "tcp_total_retransmissions": 0,
+          "udp_loss_fraction_including_warmup_and_drain": null
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 112,
+            "p95_ms": 102.758528,
+            "p99_ms": 103.188967,
+            "planned": 240,
+            "received": 128,
+            "sent": 128
+          },
+          "kernel_drops": 31766,
+          "label": "udp_10",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.300043,
+            "p99_ms": 1.926058,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 9.65568,
+          "tcp_total_retransmissions": 0,
+          "udp_loss_fraction_including_warmup_and_drain": 0.7390191699236925
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 149,
+            "p95_ms": 153.264899,
+            "p99_ms": 153.779119,
+            "planned": 240,
+            "received": 91,
+            "sent": 91
+          },
+          "kernel_drops": 40499,
+          "label": "udp_5",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.159246,
+            "p99_ms": 1.909037,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 4.82688,
+          "tcp_total_retransmissions": 0,
+          "udp_loss_fraction_including_warmup_and_drain": 0.8773803591932234
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 109,
+            "p95_ms": 103.324738,
+            "p99_ms": 104.454372,
+            "planned": 240,
+            "received": 131,
+            "sent": 131
+          },
+          "kernel_drops": 23982,
+          "label": "udp_small_burst",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.902471,
+            "p99_ms": 6.48021,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 8.58624,
+          "tcp_total_retransmissions": 0,
+          "udp_loss_fraction_including_warmup_and_drain": 0.3391839332437593
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 111,
+            "p95_ms": 101.48685,
+            "p99_ms": 101.5877,
+            "planned": 240,
+            "received": 129,
+            "sent": 129
+          },
+          "kernel_drops": 37411,
+          "label": "udp_large_burst",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.419297,
+            "p99_ms": 2.839405,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 9.70256,
+          "tcp_total_retransmissions": 0,
+          "udp_loss_fraction_including_warmup_and_drain": 0.7947612168592794
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 96,
+            "p95_ms": 100.788046,
+            "p99_ms": 101.883197,
+            "planned": 240,
+            "received": 144,
+            "sent": 144
+          },
+          "kernel_drops": 23,
+          "label": "tcp_one_10",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.38871,
+            "p99_ms": 3.080182,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 9.5568,
+          "tcp_total_retransmissions": 199,
+          "udp_loss_fraction_including_warmup_and_drain": null
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 110,
+            "p95_ms": 101.737867,
+            "p99_ms": 102.004625,
+            "planned": 240,
+            "received": 130,
+            "sent": 130
+          },
+          "kernel_drops": 53,
+          "label": "tcp_four_10",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.410828,
+            "p99_ms": 2.832107,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 9.5745856,
+          "tcp_total_retransmissions": 325,
+          "udp_loss_fraction_including_warmup_and_drain": null
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 150,
+            "p95_ms": 152.659742,
+            "p99_ms": 153.084219,
+            "planned": 240,
+            "received": 90,
+            "sent": 90
+          },
+          "kernel_drops": 49,
+          "label": "tcp_four_5",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.532065,
+            "p99_ms": 2.568894,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 4.7784,
+          "tcp_total_retransmissions": 224,
+          "udp_loss_fraction_including_warmup_and_drain": null
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.904764,
+            "p99_ms": 2.310328,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "kernel_drops": 0,
+          "label": "udp_recovered",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 1.813993,
+            "p99_ms": 2.760347,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 38.56992,
+          "tcp_total_retransmissions": 0,
+          "udp_loss_fraction_including_warmup_and_drain": 0.0
+        },
+        {
+          "data_latency": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.716537,
+            "p99_ms": 3.809865,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "kernel_drops": 0,
+          "label": "tcp_recovered",
+          "management": {
+            "errors": 0,
+            "missed_schedule": 0,
+            "p95_ms": 2.519232,
+            "p99_ms": 3.8863,
+            "planned": 240,
+            "received": 240,
+            "sent": 240
+          },
+          "received_payload_mbps": 44.2896,
+          "tcp_total_retransmissions": 0,
+          "udp_loss_fraction_including_warmup_and_drain": null
+        }
+      ],
+      "physical_device_identity_verified": false,
+      "production_execution_qualified": false,
+      "refused_recovery_cases": [
+        {
+          "case": "interface_recreation",
+          "policy_preserved": true,
+          "recovery": "REFUSED_NOT_RECOVERED"
+        },
+        {
+          "case": "policy_conflict",
+          "policy_preserved": true,
+          "recovery": "REFUSED_NOT_RECOVERED"
+        }
+      ],
+      "verdict": "LAB_GATES_PASSED_WITH_REFUSED_RECOVERY_CASES"
+    },
+    "serial_sha256": "39c7a8a9287de521f948cc2ce6b96cb0b073d4b085da259876171f01b860d315",
+    "sources": {
+      "scripts/qualify_routed_tbf.py": "da90a1e41deba9a3240f35373c347777ffcbdb9fb20ac8625e41ba54d6f53393",
+      "tools/disposable_tbf/build.py": "b8a74a3cee8f83aee704f70d0817f134e5e084002dc2e769c221d92d2b3942ac",
+      "tools/disposable_tbf/contracts.py": "bfffb39b59bfea087566f9c5330cb71e1909346c228f8c07f6302c4472460789",
+      "tools/disposable_tbf/runner.py": "26216b65d93e1c94d472a4d00f9443c5353c8e3de0679d0b20c7330df71b109f",
+      "tools/routed_tbf/acceptance.json": "ae5a2791b9c9b55cbc766653f4a85bea8c05f3521fd3606093fe8b4940e242ee",
+      "tools/routed_tbf/assets.lock.json": "924006ceac3c5877b68eac8e3a0101363aeb643ceaeddeff93885444f48b06e3",
+      "tools/routed_tbf/authority.py": "2ffe2ddf627a7cdbeb5385403c2850030b40f68a59af67490ad8351e15222fbf",
+      "tools/routed_tbf/build.py": "ba21abc12288254cdee2e9c292dfa03e3898144826d8975dea3b64e9ff397484",
+      "tools/routed_tbf/guest.py": "82c7f962fc1e6928f6ec31cb9bbf7c8fc599a0e75f4e444f0b26668b28adc30e",
+      "tools/routed_tbf/kernel.config": "2645ce04a4794d5acda032d9f65aa30a68c936e705168811eebc23da4a1a5ecf",
+      "tools/routed_tbf/probe.c": "5361e75faae28d20c17f2bc410617ffc4fc30db323a30adf470ddb9efab9a3ce",
+      "tools/routed_tbf/report.py": "9b7ec6a11ed82a1057f80b81eb2ee4a61ce77a97a7b63db409e908c1a66d0714",
+      "tools/routed_tbf/runner.py": "50b9222d3b1cd6e996d8f5933075a728d7ec3361b4bc77194ecc1362d6492d15",
+      "tools/routed_tbf/sandbox.c": "080219d3803199cfeacec5af9eac75a6d4adaa2e3daf581e38390fb2c04405c6",
+      "tools/routed_tbf/trust.py": "c2d4412e0accf3ea9f97a56107102090bac0620f40b9a2649d288a5b191da7bf"
+    },
+    "started_at": "2026-10-26T07:58:20.561373+00:00",
+    "verdict": "LAB_GATES_PASSED_WITH_REFUSED_RECOVERY_CASES",
+    "version": "ROUTED_LAB_RECEIPT_V1",
+    "wall_seconds": 209.0056365979999
+  },
+  "trust": "LOCAL_LAB_ENROLLED_ADAPTER_NOT_PHYSICAL_DEVICE_ATTESTATION"
+}

@@ -1,0 +1,57 @@
+{
+  "agreed_metadata_matched": true,
+  "bank_production_accepted": false,
+  "customer_independent_truth_verified": false,
+  "evidence_sha256": "5b0ea74416d49a5e898f443524f02ccc126995b6ee78cded9331e378c4d7f9f5",
+  "expected_truth_source_reference": "independent-build-register/fixture-17",
+  "identity_separation_verified": true,
+  "inputs": [
+    {
+      "asset_absence_proven": false,
+      "comparison_performed": true,
+      "exact_record_multiset_matched": true,
+      "expected_records": 1,
+      "input_id": "packages",
+      "missing_records": 0,
+      "observed_records": 1,
+      "receipt_status": "PARSED",
+      "source_commitment_matched": true,
+      "unexpected_records": 0
+    },
+    {
+      "asset_absence_proven": false,
+      "comparison_performed": true,
+      "exact_record_multiset_matched": true,
+      "expected_records": 1,
+      "input_id": "os",
+      "missing_records": 0,
+      "observed_records": 1,
+      "receipt_status": "PARSED",
+      "source_commitment_matched": true,
+      "unexpected_records": 0
+    },
+    {
+      "asset_absence_proven": false,
+      "comparison_performed": true,
+      "exact_record_multiset_matched": true,
+      "expected_records": 1,
+      "input_id": "library",
+      "missing_records": 0,
+      "observed_records": 1,
+      "receipt_status": "PARSED",
+      "source_commitment_matched": true,
+      "unexpected_records": 0
+    }
+  ],
+  "job_id": "73fcd812-f10b-5f63-8f3e-9ae519f3a87e",
+  "organizational_independence_verified": false,
+  "plan_sha256": "12d1e144ea02e73464c49418e44a28e9fe2ed2aced116d98da9463feaf5b1b26",
+  "production_execution_qualified": false,
+  "runtime_use": "UNKNOWN",
+  "schema_version": "cryptoscan.oci-reviewed-truth/v1",
+  "source_authenticity_verified": false,
+  "truth_record_sha256": "99d80679e4c527a38b8ccc528844019bac7af0a57175c6b2db2ffe60cecd2c51",
+  "verdict": "MATCHED_SEPARATELY_REVIEWED_METADATA",
+  "whole_estate_complete": false,
+  "whole_image_software_complete": false
+}

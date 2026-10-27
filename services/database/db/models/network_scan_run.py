@@ -8,9 +8,10 @@ from sqlalchemy import JSON, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class NetworkScanRun(BaseModel):
+class NetworkScanRun(BaseModel, TenantScoped):
     __tablename__ = "network_scan_runs"
 
     scan_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

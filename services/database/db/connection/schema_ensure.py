@@ -1,19 +1,21 @@
-"""Keep existing databases in sync with the models — automatically.
+"""Bootstrap unstamped SQLite development/test schemas from model metadata.
 
-``create_all`` only creates *missing tables*; it never adds columns to
-tables that already exist. Deployments that predate a model change used
-to depend on a hand-maintained column list here, which drifted. Now the
-schema is reconciled straight from ``Base.metadata``:
+Stamped databases are owned by Alembic: current revisions skip this module's
+DDL, while behind/unknown revisions fail before any DDL. For an unstamped
+SQLite schema, ``create_all`` only creates *missing tables*; it never adds
+columns to existing tables. Older local schemas are reconciled from
+``Base.metadata``:
 
 - every model column missing from an existing table is added with
   dialect-correct DDL (ALTER TABLE ... ADD COLUMN), always nullable —
   adding NOT NULL to populated tables is not portable
 - every model-declared index is ensured with CREATE INDEX IF NOT EXISTS
-- JSON columns are upgraded to JSONB on PostgreSQL (override map)
+- legacy dialect overrides remain available for type compilation, but
+  PostgreSQL schema changes are migration-only
 
-The hand list survives only as ``WANTED_OVERRIDES`` for type upgrades
-the compiled model type can't express. A unit test asserts the override
-map stays a subset of real model columns, so it cannot drift either.
+The hand list survives only as ``WANTED_OVERRIDES`` for types the compiled
+model type can't express. A unit test asserts the override map stays a
+subset of real model columns, so it cannot drift either.
 """
 
 from __future__ import annotations
@@ -58,8 +60,12 @@ def _dialect_types(dialect_name: str) -> dict[str, str]:
     return {"dt": dt, "json_t": json_t}
 
 
-def ensure_schema_extensions(engine) -> None:
-    from db.connection.session import Base
+def ensure_schema_extensions(engine) -> bool:
+    """Reconcile only an unstamped SQLite schema; return whether metadata owns it."""
+    from db.connection.session import Base, _allow_metadata_bootstrap
+
+    if not _allow_metadata_bootstrap(engine):
+        return False
     from db import models  # noqa: F401 — register every model
 
     dialect_name = engine.dialect.name
@@ -73,7 +79,7 @@ def ensure_schema_extensions(engine) -> None:
         tables = set(inspector.get_table_names())
     except Exception:
         logger.debug("schema_inspect_failed", exc_info=True)
-        return
+        return True
 
     added_columns = 0
     added_indexes = 0
@@ -83,7 +89,11 @@ def ensure_schema_extensions(engine) -> None:
                 continue  # create_all already handled missing tables
             try:
                 existing_cols = {c["name"] for c in inspect(engine).get_columns(table_name)}
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             for column in table.columns:
                 if column.name in existing_cols:
@@ -123,7 +133,11 @@ def ensure_schema_extensions(engine) -> None:
                 continue
             try:
                 existing_cols = {c["name"] for c in inspect(engine).get_columns(table_name)}
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             for name, ddl in cols:
                 if name in existing_cols:
@@ -140,6 +154,7 @@ def ensure_schema_extensions(engine) -> None:
         logger.info(
             "schema_reconciled", extra={"columns_added": added_columns, "indexes_ensured": added_indexes}
         )
+    return True
 
 
 def _ensure_extra_indexes(conn) -> int:

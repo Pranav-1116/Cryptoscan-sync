@@ -11,6 +11,9 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any, Mapping
 
+from shared_models.dependency_semantics import propagates
+from shared_models.relationship_lifecycle import current, clock, utc
+
 AT_RISK_PREFIXES = ("EXPIRING",)
 AT_RISK_STATUSES = ("EXPIRED",)
 
@@ -23,6 +26,7 @@ def _edges(vis: Mapping[str, Any]) -> list[tuple[str, str, str]]:
     return [
         (str(edge.get("from")), str(edge.get("to")), str(edge.get("label") or "RELATED"))
         for edge in vis.get("edges") or []
+        if current(edge, now=utc(vis["lifecycle_as_of"]) if vis.get("lifecycle_as_of") else clock())
     ]
 
 
@@ -46,7 +50,7 @@ def find_cycles(vis: Mapping[str, Any]) -> dict[str, Any]:
     adjacency: dict[str, list[str]] = defaultdict(list)
     self_loops: set[str] = set()
     for src, dst, rel in _edges(vis):
-        if rel != "CALLS" or src not in system_ids or dst not in system_ids:
+        if not propagates(rel) or src not in system_ids or dst not in system_ids:
             continue
         if src == dst:
             self_loops.add(src)
@@ -247,7 +251,7 @@ def graph_stats(vis: Mapping[str, Any]) -> dict[str, Any]:
         in_degree[dst] += 1
         if rel == "USES":
             uses_out.add(src)
-        elif rel == "CALLS":
+        elif propagates(rel) and src in nodes and dst in nodes and _kind(nodes[src]) == _kind(nodes[dst]) == "System":
             calls.add((src, dst))
 
     orphan_systems = []

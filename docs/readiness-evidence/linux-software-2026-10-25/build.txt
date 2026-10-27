@@ -1,0 +1,101 @@
+
+> zelinx-frontend@1.0.0 build
+> vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 5095 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                  1.47 kB │ gzip:  0.75 kB
+dist/assets/index-MQOhKVDo.css                  51.86 kB │ gzip: 10.04 kB
+dist/assets/rolldown-runtime-WkwZ5CU-.js         0.59 kB │ gzip:  0.36 kB
+dist/assets/PrivateScope-VCM7Fn58.js             0.75 kB │ gzip:  0.46 kB
+dist/assets/AuthenticatedDownload-DLHM4Bsv.js    0.90 kB │ gzip:  0.54 kB
+dist/assets/InviteAccept-DdUOCFGj.js             1.56 kB │ gzip:  0.83 kB
+dist/assets/Libraries-CUPad_g-.js                1.62 kB │ gzip:  0.85 kB
+dist/assets/Timeline-BNEfn6xX.js                 2.18 kB │ gzip:  1.12 kB
+dist/assets/motion-YfRIqc8Y.js                   2.46 kB │ gzip:  1.15 kB
+dist/assets/CryptoChanges-DAKoL--T.js            2.86 kB │ gzip:  1.38 kB
+dist/assets/Agility-zDwbkzgb.js                  3.00 kB │ gzip:  1.33 kB
+dist/assets/useLive-DeuCOpGY.js                  3.03 kB │ gzip:  1.36 kB
+dist/assets/Protocols-CB1ANGe0.js                3.07 kB │ gzip:  1.49 kB
+dist/assets/Admin-BTguFh1w.js                    3.32 kB │ gzip:  1.51 kB
+dist/assets/Login-D4SAErhg.js                    3.46 kB │ gzip:  1.36 kB
+dist/assets/PqcMap-BuLxHc5Z.js                   3.68 kB │ gzip:  1.55 kB
+dist/assets/Governance-BUzaje7p.js               3.76 kB │ gzip:  1.36 kB
+dist/assets/Accuracy-Cd9vwjHH.js                 3.95 kB │ gzip:  1.76 kB
+dist/assets/Organization-hfq9t0J7.js             4.06 kB │ gzip:  1.65 kB
+dist/assets/ResetPassword-DmcxOT_n.js            4.23 kB │ gzip:  1.57 kB
+dist/assets/Nbom-Ikr9nSOK.js                     4.23 kB │ gzip:  1.66 kB
+dist/assets/SearchResults-CDXL__BU.js            4.31 kB │ gzip:  1.93 kB
+dist/assets/LiveStream-DjXlRWiu.js               4.41 kB │ gzip:  2.02 kB
+dist/assets/CryptoAssets-iY8FK_dA.js             4.43 kB │ gzip:  1.80 kB
+dist/assets/Crypto-DwayL9ZQ.js                   4.71 kB │ gzip:  1.69 kB
+dist/assets/Vendor-CX4qR3jG.js                   5.05 kB │ gzip:  1.88 kB
+dist/assets/RoleDashboard-DDbLqt94.js            5.19 kB │ gzip:  1.82 kB
+dist/assets/SystemHealth-DdG4SFdu.js             5.37 kB │ gzip:  1.72 kB
+dist/assets/Settings-CamnFNht.js                 5.43 kB │ gzip:  2.21 kB
+dist/assets/Register-Cd_QHECU.js                 5.59 kB │ gzip:  1.96 kB
+dist/assets/Priorities-0bDoxrxW.js               5.64 kB │ gzip:  2.19 kB
+dist/assets/Security-DNdO-6sn.js                 5.71 kB │ gzip:  2.22 kB
+dist/assets/Sectors-Cwe0vEQv.js                  5.78 kB │ gzip:  1.99 kB
+dist/assets/Migration-nwiKDLOj.js                6.10 kB │ gzip:  2.33 kB
+dist/assets/Executive-C1Vj_Nb1.js                6.11 kB │ gzip:  2.50 kB
+dist/assets/Supervision-Bp-EGhms.js              6.21 kB │ gzip:  1.91 kB
+dist/assets/Catalog-DutBVSXq.js                  6.50 kB │ gzip:  1.97 kB
+dist/assets/Network-B6DRHLoR.js                  6.76 kB │ gzip:  2.84 kB
+dist/assets/Graph-BE6xYt30.js                    7.16 kB │ gzip:  2.90 kB
+dist/assets/ui-DbasRa3f.js                       7.34 kB │ gzip:  2.82 kB
+dist/assets/WhatIf-Bt6VvnHX.js                   7.67 kB │ gzip:  2.87 kB
+dist/assets/Scope-DxqVUQ7y.js                    7.93 kB │ gzip:  2.81 kB
+dist/assets/Tenancy-Cfui6vh7.js                  8.70 kB │ gzip:  2.93 kB
+dist/assets/Pqc-6o8y6JoJ.js                      8.76 kB │ gzip:  2.57 kB
+dist/assets/LiveScanners-CEArzz2Y.js             8.85 kB │ gzip:  3.34 kB
+dist/assets/Risk-CReTxsNf.js                     8.94 kB │ gzip:  3.29 kB
+dist/assets/LiveEnvironment-DobtnaOL.js          9.34 kB │ gzip:  3.34 kB
+dist/assets/Runtime-DMnqWRa6.js                  9.46 kB │ gzip:  3.50 kB
+dist/assets/Integrations-BnK_rHm-.js             9.57 kB │ gzip:  3.46 kB
+dist/assets/Cloud-DqntLQ-_.js                    9.58 kB │ gzip:  3.21 kB
+dist/assets/LaunchReadiness-BLvOQ9gn.js          9.94 kB │ gzip:  3.86 kB
+dist/assets/SecurityPolicy-CPY6cXka.js          10.15 kB │ gzip:  3.18 kB
+dist/assets/Identity-CxaK5aSC.js                10.40 kB │ gzip:  3.09 kB
+dist/assets/Reports-DxvlugTl.js                 10.51 kB │ gzip:  3.65 kB
+dist/assets/Remediation-yzD_YNM6.js             10.63 kB │ gzip:  3.44 kB
+dist/assets/SecurityIntelligence-Dr3AcqMZ.js    10.73 kB │ gzip:  3.41 kB
+dist/assets/Automation-B8BWY9J0.js              10.99 kB │ gzip:  3.88 kB
+dist/assets/VendorDueDiligence-_1lX_N-c.js      11.36 kB │ gzip:  3.73 kB
+dist/assets/DigitalTwin-DNYb6NER.js             11.93 kB │ gzip:  4.03 kB
+dist/assets/Hardware-COvuM4wT.js                12.22 kB │ gzip:  4.09 kB
+dist/assets/BankingRegulatory-BSqRoBUS.js       12.38 kB │ gzip:  3.80 kB
+dist/assets/Notifications-BkMZbenE.js           12.45 kB │ gzip:  4.49 kB
+dist/assets/Trust-BVhzJIdu.js                   12.62 kB │ gzip:  3.98 kB
+dist/assets/Hbom-BiBagxJc.js                    13.01 kB │ gzip:  3.97 kB
+dist/assets/SecurityCenter-CRma6Gx3.js          13.15 kB │ gzip:  4.75 kB
+dist/assets/Alerts-ClJBKc58.js                  13.43 kB │ gzip:  4.83 kB
+dist/assets/OperatorDecisions-Drho3ihW.js       13.56 kB │ gzip:  4.97 kB
+dist/assets/Cmdb-DwV0L9p3.js                    14.07 kB │ gzip:  4.27 kB
+dist/assets/Compliance-Dy17vxhd.js              14.19 kB │ gzip:  4.29 kB
+dist/assets/CommandCenter-nEvCcuIx.js           14.76 kB │ gzip:  4.92 kB
+dist/assets/Telecom-BJwGdeGY.js                 15.01 kB │ gzip:  3.79 kB
+dist/assets/Findings-CoofJo0N.js                15.63 kB │ gzip:  5.00 kB
+dist/assets/Drift-Bs97qhVa.js                   17.07 kB │ gzip:  5.35 kB
+dist/assets/Resilience-DeynSeva.js              18.23 kB │ gzip:  5.12 kB
+dist/assets/Certificates-roV16TQ2.js            19.22 kB │ gzip:  5.78 kB
+dist/assets/Scanners-B6bs76Ox.js                20.87 kB │ gzip:  6.09 kB
+dist/assets/Evidence-BSoio4HA.js                21.31 kB │ gzip:  6.24 kB
+dist/assets/Assets-Dh28-d1N.js                  22.33 kB │ gzip:  6.49 kB
+dist/assets/PlatformP2-D1l1R1dY.js              23.29 kB │ gzip:  6.83 kB
+dist/assets/CryptoAssurance-BE5c40bm.js         26.67 kB │ gzip:  8.02 kB
+dist/assets/Onboarding-DfLgeN8G.js              28.03 kB │ gzip:  7.50 kB
+dist/assets/LiveAssetIntelligence-jSixgniW.js   43.03 kB │ gzip: 12.12 kB
+dist/assets/api-DAAKho2x.js                     60.17 kB │ gzip: 13.56 kB
+dist/assets/DependencyGraph-zF0szWgZ.js         65.77 kB │ gzip: 16.62 kB
+dist/assets/DevSecOps-BUFFCVPz.js               70.71 kB │ gzip: 18.49 kB
+dist/assets/Cbom-8tisiRIA.js                    75.56 kB │ gzip: 20.27 kB
+dist/assets/index-YzoZTKLq.js                   93.26 kB │ gzip: 28.11 kB
+dist/assets/vendor-motion-qGfJwEv7.js          137.33 kB │ gzip: 44.97 kB
+dist/assets/vendor-icons-9wf5lCnO.js           155.83 kB │ gzip: 37.06 kB
+dist/assets/vendor-react-MwcAOGhS.js           180.66 kB │ gzip: 59.65 kB
+
+✓ built in 2.48s

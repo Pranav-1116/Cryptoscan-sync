@@ -312,7 +312,7 @@ alerts, a configurable priority engine, multi-region regional collectors
 with resilience (durable queues, retries, DLQs, checkpointing) and
 collector health states.
 
-CLI: `python -m cloud_scanner.main --zelix-live` (demo event stream) or
+CLI: `python -m cloud_scanner.main --zelix-live --zelix-live-events /path/to/provider-events.json` or
 with `--zelix-live-events events.json`.  See
 [LIVE-SCANNING.md §12](LIVE-SCANNING.md) for the full 24-area spec
 mapping and tests (`tests/test_zelix_live_*.py`).

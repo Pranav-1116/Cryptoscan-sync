@@ -1,0 +1,33 @@
+{
+  "network_connections_forbidden": true,
+  "results": {
+    "valid_spdx_license": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "validation_basis": "CYCLONEDX_1_6_OFFICIAL_SCHEMA_AND_REFERENCES",
+      "bank_approved": false,
+      "discovery_completeness_proven": false
+    },
+    "invalid_spdx_license": {
+      "ok": false,
+      "errors": [
+        "components/0/licenses: violates oneOf"
+      ],
+      "warnings": [],
+      "validation_basis": "CYCLONEDX_1_6_OFFICIAL_SCHEMA_AND_REFERENCES",
+      "bank_approved": false,
+      "discovery_completeness_proven": false
+    },
+    "invalid_jsf_value": {
+      "ok": false,
+      "errors": [
+        "signature: violates oneOf"
+      ],
+      "warnings": [],
+      "validation_basis": "CYCLONEDX_1_6_OFFICIAL_SCHEMA_AND_REFERENCES",
+      "bank_approved": false,
+      "discovery_completeness_proven": false
+    }
+  }
+}

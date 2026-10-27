@@ -1,0 +1,164 @@
+FFFFFFFF.                                                                [100%]
+=================================== FAILURES ===================================
+_ test_portfolio_native16_is_a_real_validated_cbom_for_current_estate[bank_a] __
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7fe1b3104210>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7fe1b31526d0>, <db.models.scan_job.ScanJob object at 0x7fe1b3169690>)})
+who = 'bank_a'
+
+    @pytest.mark.parametrize("who", ["bank_a", "bank_b", "platform_admin"])
+    def test_portfolio_native16_is_a_real_validated_cbom_for_current_estate(estate, who):
+        clients, _, _ = estate
+        response = clients[who].get("/api/v1/cbom/portfolio?fmt=cyclonedx16")
+        assert response.status_code == 200, response.text
+>       assert response.json()["specVersion"] == "1.6"
+E       AssertionError: assert '1.5' == '1.6'
+E
+E         - 1.6
+E         + 1.5
+
+services/api/tests/unit/test_bank_native_cbom.py:14: AssertionError
+_ test_portfolio_native16_is_a_real_validated_cbom_for_current_estate[bank_b] __
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7fe1b1dc89d0>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7fe1b1c60110>, <db.models.scan_job.ScanJob object at 0x7fe1b1c60490>)})
+who = 'bank_b'
+
+    @pytest.mark.parametrize("who", ["bank_a", "bank_b", "platform_admin"])
+    def test_portfolio_native16_is_a_real_validated_cbom_for_current_estate(estate, who):
+        clients, _, _ = estate
+        response = clients[who].get("/api/v1/cbom/portfolio?fmt=cyclonedx16")
+        assert response.status_code == 200, response.text
+>       assert response.json()["specVersion"] == "1.6"
+E       AssertionError: assert '1.5' == '1.6'
+E
+E         - 1.6
+E         + 1.5
+
+services/api/tests/unit/test_bank_native_cbom.py:14: AssertionError
+_ test_portfolio_native16_is_a_real_validated_cbom_for_current_estate[platform_admin] _
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7fe1b180fed0>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7fe1b1853c10>, <db.models.scan_job.ScanJob object at 0x7fe1b185f710>)})
+who = 'platform_admin'
+
+    @pytest.mark.parametrize("who", ["bank_a", "bank_b", "platform_admin"])
+    def test_portfolio_native16_is_a_real_validated_cbom_for_current_estate(estate, who):
+        clients, _, _ = estate
+        response = clients[who].get("/api/v1/cbom/portfolio?fmt=cyclonedx16")
+        assert response.status_code == 200, response.text
+>       assert response.json()["specVersion"] == "1.6"
+E       AssertionError: assert '1.5' == '1.6'
+E
+E         - 1.6
+E         + 1.5
+
+services/api/tests/unit/test_bank_native_cbom.py:14: AssertionError
+_ test_scan_export_native16_preserves_tenant_filter_and_real_evidence[bank_a] __
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7fe1b196d5d0>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7fe1b1aacad0>, <db.models.scan_job.ScanJob object at 0x7fe1b1aae190>)})
+who = 'bank_a'
+
+    @pytest.mark.parametrize("who", ["bank_a", "bank_b", "platform_admin"])
+    def test_scan_export_native16_preserves_tenant_filter_and_real_evidence(estate, who):
+        clients, _, rows = estate
+        own = rows[who][0]
+        response = clients[who].get(f"/api/v1/scans/{own.id}/cbom?spec_version=1.6")
+        assert response.status_code == 200, response.text
+>       assert response.json()["specVersion"] == "1.6"
+E       AssertionError: assert '1.5' == '1.6'
+E
+E         - 1.6
+E         + 1.5
+
+services/api/tests/unit/test_bank_native_cbom.py:26: AssertionError
+_ test_scan_export_native16_preserves_tenant_filter_and_real_evidence[bank_b] __
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7fe1b1f07c50>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7fe1b20d7810>, <db.models.scan_job.ScanJob object at 0x7fe1b20d4d50>)})
+who = 'bank_b'
+
+    @pytest.mark.parametrize("who", ["bank_a", "bank_b", "platform_admin"])
+    def test_scan_export_native16_preserves_tenant_filter_and_real_evidence(estate, who):
+        clients, _, rows = estate
+        own = rows[who][0]
+        response = clients[who].get(f"/api/v1/scans/{own.id}/cbom?spec_version=1.6")
+        assert response.status_code == 200, response.text
+>       assert response.json()["specVersion"] == "1.6"
+E       AssertionError: assert '1.5' == '1.6'
+E
+E         - 1.6
+E         + 1.5
+
+services/api/tests/unit/test_bank_native_cbom.py:26: AssertionError
+_ test_scan_export_native16_preserves_tenant_filter_and_real_evidence[platform_admin] _
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7fe1b1ebda90>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7fe1b15622d0>, <db.models.scan_job.ScanJob object at 0x7fe1b1566a10>)})
+who = 'platform_admin'
+
+    @pytest.mark.parametrize("who", ["bank_a", "bank_b", "platform_admin"])
+    def test_scan_export_native16_preserves_tenant_filter_and_real_evidence(estate, who):
+        clients, _, rows = estate
+        own = rows[who][0]
+        response = clients[who].get(f"/api/v1/scans/{own.id}/cbom?spec_version=1.6")
+        assert response.status_code == 200, response.text
+>       assert response.json()["specVersion"] == "1.6"
+E       AssertionError: assert '1.5' == '1.6'
+E
+E         - 1.6
+E         + 1.5
+
+services/api/tests/unit/test_bank_native_cbom.py:26: AssertionError
+_________ test_standard_signing_happens_after_conversion_and_is_valid __________
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7fe1b154c810>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7fe1b1270490>, <db.models.scan_job.ScanJob object at 0x7fe1b1273390>)})
+
+    def test_standard_signing_happens_after_conversion_and_is_valid(estate):
+        clients, _, _ = estate
+        response = clients["bank_a"].get("/api/v1/cbom/portfolio?fmt=cyclonedx16&signed=true")
+        assert response.status_code == 200, response.text
+        bom = response.json()
+>       assert bom["specVersion"] == "1.6"
+E       AssertionError: assert '1.5' == '1.6'
+E
+E         - 1.6
+E         + 1.5
+
+services/api/tests/unit/test_bank_native_cbom.py:40: AssertionError
+___________ test_unknown_format_is_rejected_not_silently_mislabeled ____________
+
+estate = ({'bank_a': <starlette.testclient.TestClient object at 0x7fe1b1a0cf50>, 'bank_b': <starlette.testclient.TestClient obj...tform_admin': (<db.models.scan.Scan object at 0x7fe1b1b18c90>, <db.models.scan_job.ScanJob object at 0x7fe1b1f361d0>)})
+
+    def test_unknown_format_is_rejected_not_silently_mislabeled(estate):
+        clients, _, rows = estate
+>       assert clients["bank_a"].get("/api/v1/cbom/portfolio?fmt=made-up").status_code == 422
+E       AssertionError: assert 200 == 422
+E        +  where 200 = <Response [200 OK]>.status_code
+E        +    where <Response [200 OK]> = get('/api/v1/cbom/portfolio?fmt=made-up')
+E        +      where get = <starlette.testclient.TestClient object at 0x7fe1b1a0cf50>.get
+
+services/api/tests/unit/test_bank_native_cbom.py:48: AssertionError
+=============================== warnings summary ===============================
+services/api/api/routers/auth.py:87
+  /home/user/CryproScan/services/api/api/routers/auth.py:87: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class UserResponse(BaseModel):
+
+services/api/api/routers/network.py:326
+  /home/user/CryproScan/services/api/api/routers/network.py:326: UserWarning: Field name "register" in "SubnetDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class SubnetDiscoverRequest(BaseModel):
+
+services/api/api/routers/cloud.py:40
+  /home/user/CryproScan/services/api/api/routers/cloud.py:40: UserWarning: Field name "register" in "CloudOrgDiscoverRequest" shadows an attribute in parent "BaseModel"
+    class CloudOrgDiscoverRequest(BaseModel):
+
+../bank45-venv/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /home/user/bank45-venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_portfolio_native16_is_a_real_validated_cbom_for_current_estate[bank_a]
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_portfolio_native16_is_a_real_validated_cbom_for_current_estate[bank_b]
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_portfolio_native16_is_a_real_validated_cbom_for_current_estate[platform_admin]
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_scan_export_native16_preserves_tenant_filter_and_real_evidence[bank_a]
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_scan_export_native16_preserves_tenant_filter_and_real_evidence[bank_b]
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_scan_export_native16_preserves_tenant_filter_and_real_evidence[platform_admin]
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_standard_signing_happens_after_conversion_and_is_valid
+FAILED services/api/tests/unit/test_bank_native_cbom.py::test_unknown_format_is_rejected_not_silently_mislabeled
+8 failed, 1 passed, 4 warnings in 3.18s

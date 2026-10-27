@@ -1,0 +1,12 @@
+make  install-recursive
+make[3]: Entering directory '/home/user/.cache/disposable-tbf-clean-build-02/m4/m4-f1a9aff625f45be1a596048f9e2b4d8211e4c855/tests'
+Making install in .
+make[4]: Entering directory '/home/user/.cache/disposable-tbf-clean-build-02/m4/m4-f1a9aff625f45be1a596048f9e2b4d8211e4c855/tests'
+make[5]: Entering directory '/home/user/.cache/disposable-tbf-clean-build-02/m4/m4-f1a9aff625f45be1a596048f9e2b4d8211e4c855/tests'
+make[5]: Nothing to be done for 'install-exec-am'.
+make[5]: Nothing to be done for 'install-data-am'.
+make[5]: Leaving directory '/home/user/.cache/disposable-tbf-clean-build-02/m4/m4-f1a9aff625f45be1a596048f9e2b4d8211e4c855/tests'
+make[4]: Leaving directory '/home/user/.cache/disposable-tbf-clean-build-02/m4/m4-f1a9aff625f45be1a596048f9e2b4d8211e4c855/tests'
+make[3]: Leaving directory '/home/user/.cache/disposable-tbf-clean-build-02/m4/m4-f1a9aff625f45be1a596048f9e2b4d8211e4c855/tests'
+make[2]: Leaving directory '/home/user/.cache/disposable-tbf-clean-build-02/m4/m4-f1a9aff625f45be1a596048f9e2b4d8211e4c855/tests'
+make[1]: Leaving directory '/home/user/.cache/disposable-tbf-clean-build-02/m4/m4-f1a9aff625f45be1a596048f9e2b4d8211e4c855'

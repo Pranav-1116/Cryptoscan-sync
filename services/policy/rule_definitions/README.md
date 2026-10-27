@@ -1,13 +1,70 @@
 # Policy rules
 
-YAML files in `baseline/` are loaded at engine start. They are the source of
-truth for compliance — not the AI layer.
+YAML rule packs under this directory are loaded at engine start
+(`policy/rules/rule_loader.py` globs `**/*.yaml` and skips anything whose
+path starts with `_`). They are the source of truth for compliance — not
+the AI layer.
 
-| Rule | Meaning |
-|------|---------|
-| BASELINE-001 | Forbidden algorithms (DES, 3DES, RC4, MD5, SHA-1) |
-| BASELINE-002 | RSA key size ≥ 2048 |
-| BASELINE-003 | AES modes: GCM/CCM/CTR only |
-| BASELINE-004 | No hardcoded keys |
+The engine is deterministic: every rule evaluates the cryptographic
+evidence record (algorithm / mode / key size / purpose / scope tags). It
+never guesses from free text, and `NOT_EVALUATED`/`NOT_APPLICABLE` are never
+reported as `PASS`.
 
-Add a new file, open a PR, and the next worker restart picks it up.
+## Packs
+
+| Pack | Rules | Scope |
+|------|-------|-------|
+| `baseline/` | BASELINE-001…004 | Applies to all evidence (estate-wide floor) |
+| `cnsa/` | CNSA-001…004 | `CNSA` scope tag |
+| `fips/` | FIPS-001…003 | `FIPS` scope tag |
+| `key_inventory/` | KEYINV-001…009 | `KEY_INVENTORY` findings only (HSM/KMS/keystore/cert exports); NOT_APPLICABLE to code |
+| `hipaa/` | HIPAA-001…002 | `HIPAA` / `PHI` scope tags |
+| `nist/` | NIST-001…006 | `NIST` scope tag |
+| `pci_dss/` | PCIDSS-001…006 | `PCI-DSS` / `PAN` scope tags |
+| `uae/` | CBUAE-001…005, DIFC-001…002, PDPL-001…002, ADGM-001 | `CBUAE`, `PAYMENT`/`CARD`/`SWIFT`, `DIFC`, `PDPL`, `ADGM` scope tags |
+| `qatar/` | QCB-001…003, PDPPL-001…002 | `QCB`, `CUSTOMER-FACING`/`REMOTE-ACCESS`, `PDPPL` scope tags |
+| `bahrain/` | CBB-001…003, BHPDPL-001…002 | `CBB`, `CUSTOMER-FACING`/`REMOTE-ACCESS`/`OPEN-BANKING`, `BH-PDPL` scope tags |
+
+**Scope semantics.** `required_scopes` is OR-activated: any listed tag on the finding brings the rule into scope. Data-class
+tags (`PERSONAL_DATA`, `PAYMENT`, `CARD`, `CUSTOMER-FACING`, `REMOTE-ACCESS`, `OPEN-BANKING`) are jurisdiction-neutral and
+appear only in rules that *also* list the regulator's tag on the same finding path — a Qatari KYC system tagged
+`[PDPPL, PERSONAL_DATA]` is evaluated under PDPPL-00x, never under UAE PDPL/DIFC/ADGM (found and fixed by the GCC estate
+run, `docs/accuracy/GCC-VALIDATION.md`). Declare the regulator tag; `PERSONAL_DATA` alone selects no law.
+
+## UAE pack — grounding
+
+Grounded in the published UAE regulatory instruments (see the
+`standard_reference` field of each rule for the exact citation):
+
+- **CBUAE** Cybersecurity Framework (9 domains) + Information Security
+  Standards (ISO/IEC 27001-aligned) — all licensed financial institutions.
+- **DIFC** Data Protection Law No. 5 of 2020 (in force 2020-07-01),
+  Art. 23 technical measures (pseudonymisation, encryption); 72h breach
+  notification statutory; private right of action since 2025-07.
+- **ADGM** Data Protection Regulations 2021 (in force 2021-08-14),
+  GDPR Art. 32-equivalent technical measures.
+- **UAE Federal PDPL** Decree-Law No. 45 of 2021 (in force 2022-01-02),
+  Art. 20 — encryption and pseudonymisation are named in the statute.
+
+Scope lists are OR-activated by design (an evidence record matching any one
+required tag is in scope), mirroring how `PAN` activates the PCI-DSS pack.
+`CBUAE-001` has no scope: it is the estate-wide forbidden-algorithm floor.
+The pack asserts **no** post-quantum mandate — none has been published by
+UAE regulators to date; NIST IR 8547 timelines are the de-facto reference.
+
+## Conventions
+
+- `rule_id` is unique across all packs and is prefixed by the standard
+  (`CBUAE-001`, `PCIDSS-001`, …).
+- `condition.type` is one of the registered condition classes in
+  `policy/conditions/` (`ALGORITHM_IN_LIST`, `COMPLEX`,
+  `KEY_SIZE_MINIMUM`, …); `COMPLEX` supports `required_scopes`,
+  `if_purpose`/`if_algorithms` (both yield `NOT_APPLICABLE` on mismatch),
+  `forbidden_algorithms`, `require_algorithms`, `require_modes`,
+  `min_key_size`.
+- `remediation` must be actionable and specific — it is surfaced verbatim
+  in reports and the action plan.
+
+Add a new file, open a PR, and the next worker restart picks it up. The
+canonical pack hash (`GET /policy/pack` → `pack_hash`) changes whenever any
+rule changes — reports pin it for reproducibility.

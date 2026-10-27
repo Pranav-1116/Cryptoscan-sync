@@ -6,9 +6,10 @@ from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class CryptoAssetEvidence(BaseModel):
+class CryptoAssetEvidence(BaseModel, TenantScoped):
     __tablename__ = "crypto_asset_evidence"
     __table_args__ = (UniqueConstraint("asset_id", "evidence_id", name="uq_asset_evidence"),)
 

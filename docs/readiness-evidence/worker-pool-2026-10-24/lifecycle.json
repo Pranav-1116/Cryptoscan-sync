@@ -1,0 +1,152 @@
+{
+  "schema": "cryptoscan.worker-pool-lifecycle/1",
+  "result": "PASS",
+  "workload": "SYNTHETIC_LOCAL_HANDLERS_NOT_SCANNERS",
+  "batches": 24,
+  "batch_size": 512,
+  "started_jobs": 12288,
+  "completed_jobs": 12288,
+  "completion_callbacks": 12288,
+  "synthetic_refusals": 723,
+  "workers": 2,
+  "queue_limit": 100,
+  "max_active": 2,
+  "observed_peak_owned_futures": 102,
+  "owned_future_budget": 102,
+  "owned_futures_after_shutdown": 0,
+  "sampled_futures_reclaimed": 192,
+  "batch_observations": [
+    {
+      "batch": 1,
+      "completed": 512,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 2,
+      "completed": 1024,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 3,
+      "completed": 1536,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 4,
+      "completed": 2048,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 5,
+      "completed": 2560,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 6,
+      "completed": 3072,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 7,
+      "completed": 3584,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 8,
+      "completed": 4096,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 9,
+      "completed": 4608,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 10,
+      "completed": 5120,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 11,
+      "completed": 5632,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 12,
+      "completed": 6144,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 13,
+      "completed": 6656,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 14,
+      "completed": 7168,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 15,
+      "completed": 7680,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 16,
+      "completed": 8192,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 17,
+      "completed": 8704,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 18,
+      "completed": 9216,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 19,
+      "completed": 9728,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 20,
+      "completed": 10240,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 21,
+      "completed": 10752,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 22,
+      "completed": 11264,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 23,
+      "completed": 11776,
+      "owned_futures_after_wait": 0
+    },
+    {
+      "batch": 24,
+      "completed": 12288,
+      "owned_futures_after_wait": 0
+    }
+  ],
+  "cleanup": {
+    "pool_shutdown_completed": true,
+    "owned_futures_remaining": 0
+  },
+  "limits": [
+    "Not a production scanner, customer workload or bank/deployment acceptance test",
+    "Bookkeeping bound is not an RSS/memory-pressure or process-memory limit",
+    "No throughput, paired 20-percent improvement or p95/p99 qualification",
+    "Local Future cancellation is not SQL job cancellation or durable-budget release"
+  ],
+  "production_capacity_qualified": false,
+  "bank_approved": false
+}

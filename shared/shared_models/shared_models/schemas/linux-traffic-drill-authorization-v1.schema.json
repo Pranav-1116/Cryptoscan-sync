@@ -1,0 +1,111 @@
+{
+  "$id": "https://cryptoscan.local/schemas/linux-traffic-drill-authorization-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authorizes_real_host_change": {
+      "const": false,
+      "default": false,
+      "title": "Authorizes Real Host Change",
+      "type": "boolean"
+    },
+    "change_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Change Id",
+      "type": "string"
+    },
+    "duration_seconds": {
+      "maximum": 5,
+      "minimum": 1,
+      "title": "Duration Seconds",
+      "type": "integer"
+    },
+    "egress_limit_mbps": {
+      "maximum": 100000,
+      "minimum": 1,
+      "title": "Egress Limit Mbps",
+      "type": "integer"
+    },
+    "expected_parent_boot_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Expected Parent Boot Id",
+      "type": "string"
+    },
+    "expected_parent_mount_namespace_inode": {
+      "maximum": 18446744073709551615,
+      "minimum": 1,
+      "title": "Expected Parent Mount Namespace Inode",
+      "type": "integer"
+    },
+    "expected_parent_network_namespace_inode": {
+      "maximum": 18446744073709551615,
+      "minimum": 1,
+      "title": "Expected Parent Network Namespace Inode",
+      "type": "integer"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "issued_at": {
+      "format": "date-time",
+      "title": "Issued At",
+      "type": "string"
+    },
+    "preflight_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Preflight Sha256",
+      "type": "string"
+    },
+    "profile": {
+      "const": "FRESH_USER_AND_NETWORK_NAMESPACE_ONLY",
+      "default": "FRESH_USER_AND_NETWORK_NAMESPACE_ONLY",
+      "title": "Profile",
+      "type": "string"
+    },
+    "proposal_id": {
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "reviewed_record_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Reviewed Record Sha256",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "cryptoscan.linux-traffic-drill-authorization/v1",
+      "default": "cryptoscan.linux-traffic-drill-authorization/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_authenticity_verified": {
+      "const": false,
+      "default": false,
+      "title": "Source Authenticity Verified",
+      "type": "boolean"
+    },
+    "target_interface": {
+      "const": "lo",
+      "default": "lo",
+      "title": "Target Interface",
+      "type": "string"
+    }
+  },
+  "required": [
+    "change_id",
+    "reviewed_record_sha256",
+    "preflight_sha256",
+    "proposal_id",
+    "egress_limit_mbps",
+    "duration_seconds",
+    "expected_parent_boot_id",
+    "expected_parent_network_namespace_inode",
+    "expected_parent_mount_namespace_inode",
+    "issued_at",
+    "expires_at"
+  ],
+  "title": "DrillAuthorization",
+  "type": "object"
+}

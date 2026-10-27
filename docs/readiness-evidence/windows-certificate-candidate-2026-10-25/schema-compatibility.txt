@@ -1,0 +1,8 @@
+host-manifest-v1 : model/public schema synchronized; Draft2020-12 PASS; only new input literal appended; existing fields/defaults unchanged
+host-snapshot-v1 : model/public schema synchronized; Draft2020-12 PASS; only new input literal appended; existing fields/defaults unchanged
+collection-target-v1 : model/public schema synchronized; Draft2020-12 PASS; only new input literal appended; existing fields/defaults unchanged
+collection-evidence-v1 : model/public schema synchronized; Draft2020-12 PASS; only new input literal appended; existing fields/defaults unchanged
+native-evidence-v1 : model/public schema synchronized; Draft2020-12 PASS; only new input literal appended; existing fields/defaults unchanged
+Baseline schema comparison: d1bf94fa0129143e3959644802793a7947918506
+Candidate source-lock builder includes new native reader; changed host/shared/schema sources require a fresh approved lock.
+No source lock signed, native host execution claimed, or production admission changed.

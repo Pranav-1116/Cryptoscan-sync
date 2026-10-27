@@ -1,0 +1,1 @@
+PASS: 12288 synthetic jobs, 12288 terminal callbacks, 0 futures retained after shutdown; not a capacity benchmark.

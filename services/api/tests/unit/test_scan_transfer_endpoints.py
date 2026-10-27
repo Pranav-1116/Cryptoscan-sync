@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 
 import pytest
@@ -15,6 +16,8 @@ from api.main import create_app
 from db.connection.session import Base
 from db.models.evidence_record import EvidenceRecord
 from db.models.scan import Scan
+from evidence.hashing.chain_hasher import ChainHasher
+from evidence.hashing.content_hasher import ContentHasher
 
 
 def _make_app():
@@ -32,32 +35,34 @@ def _make_app():
 
 
 def _seed(session):
-    session.add(
-        Scan(
-            id="scan-zone-a",
-            scan_start=datetime(2026, 8, 28, 10, 0, 0, tzinfo=timezone.utc),
-            target_location="https://gitlab.zone-a.bank/core.git",
-            target_type="GIT_REPOSITORY",
-            status="COMPLETED",
-            statistics={"total_findings": 2},
+    scan_id = "scan-zone-a"
+    evidence_ids = ["ev-zone-a-1", "ev-zone-a-2"]
+    session.add(Scan(
+        id=scan_id, scan_start=datetime(2026, 8, 28, 10, 0, 0, tzinfo=timezone.utc),
+        target_location="https://gitlab.zone-a.bank/core.git",
+        target_type="GIT_REPOSITORY", status="COMPLETED",
+        statistics={"total_findings": 2},
+        manifest_hash=hashlib.sha256("".join(sorted(evidence_ids)).encode()).hexdigest(),
+    ))
+    previous = None
+    for index, (algorithm, path, line) in enumerate((
+        ("RSA-2048", "src/Pay.java", 7), ("AES-256", "src/Seal.java", 9),
+    )):
+        finding = {"scanner_id": "s", "source": {"file_path": path, "line_number": line},
+                   "crypto": {"algorithm": algorithm}, "metadata": {"confidence": "HIGH"}}
+        digest = ContentHasher.compute_hash(finding)
+        chain = ChainHasher.compute_chain_hash(
+            digest, previous_chain_hash=previous,
+            scan_session_id=scan_id if index == 0 else None,
         )
-    )
-    session.add_all(
-        [
-            EvidenceRecord(
-                scan_id="scan-zone-a", content_hash="a" * 64, chain_hash="h0" + "0" * 62,
-                chain_position=0, previous_hash=None, algorithm="RSA-2048", confidence="HIGH",
-                file_path="src/Pay.java", line_number=7, finding_data={"scanner_id": "s"},
-                compliance_status="FAIL",
-            ),
-            EvidenceRecord(
-                scan_id="scan-zone-a", content_hash="b" * 64, chain_hash="h1" + "1" * 62,
-                chain_position=1, previous_hash="h0" + "0" * 62, algorithm="AES-256", confidence="HIGH",
-                file_path="src/Seal.java", line_number=9, finding_data={"scanner_id": "s"},
-                compliance_status="PASS",
-            ),
-        ]
-    )
+        session.add(EvidenceRecord(
+            id=evidence_ids[index], scan_id=scan_id, content_hash=digest,
+            chain_hash=chain, chain_position=index, previous_hash=previous,
+            algorithm=algorithm, confidence="HIGH", file_path=path,
+            line_number=line, finding_data=finding,
+            compliance_status="FAIL" if index == 0 else "PASS",
+        ))
+        previous = chain
     session.flush()
 
 
@@ -91,7 +96,8 @@ async def test_export_then_import_into_fresh_instance():
     records = list(session_b.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == "scan-zone-a")).scalars())
     assert len(records) == 2
     assert {row.algorithm for row in records} == {"RSA-2048", "AES-256"}
-    assert records[0].policy_evaluation is not None or records[0].finding_data == {"scanner_id": "s"}
+    assert records[0].policy_evaluation is not None or records[0].finding_data["scanner_id"] == "s"
+    assert {row.id for row in records} == {"ev-zone-a-1", "ev-zone-a-2"}
 
     # idempotent re-import: reported, never duplicated
     async with AsyncClient(transport=transport_b, base_url="http://test") as client:

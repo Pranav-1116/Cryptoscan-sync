@@ -25,6 +25,46 @@ class GitMetadata:
     repository_url: str
 
 
+#: transports GitClient will actually use. Anything else claiming a scheme
+#: (ftp://, gopher://, …) is refused before git ever sees it.
+_ALLOWED_SCHEMES = frozenset({"http", "https", "git", "ssh", "file"})
+
+
+def validate_repo_url(repo_url: str) -> str:
+    """Reject repository URLs that could abuse git's transport machinery.
+
+    Audit 10 flagged the clone URL as unvalidated input. GitPython does not
+    use a shell, so classic injection is off the table, but git itself has
+    dangerous transports: ``ext::<command>`` executes an arbitrary helper
+    command (CVE-2022-24439), any ``<helper>::<address>`` invokes a remote
+    helper by name, and a leading ``-`` can be parsed by git as an option.
+    scp-style (``user@host:path``) and plain local paths carry no scheme and
+    stay allowed — the scanner clones local checkouts with the same client.
+    """
+    url = (repo_url or "").strip()
+    if not url:
+        raise ValueError("Repository URL is empty")
+    if url.startswith("-"):
+        raise ValueError("Repository URL must not start with '-' (git option injection)")
+    head, sep, _rest = url.partition("::")
+    if sep and ("//" not in head and ":" not in head):
+        # ``ext::sh -c …`` and every other remote-helper form: the part
+        # before ``::`` is a bare helper name, never a scheme.
+        raise ValueError(
+            "Repository URL uses a git remote helper transport "
+            f"({head!r}::…) — only {sorted(_ALLOWED_SCHEMES)} URLs, "
+            "scp-style or local paths are accepted"
+        )
+    if "://" in url:
+        scheme = url.split("://", 1)[0].lower()
+        if scheme not in _ALLOWED_SCHEMES:
+            raise ValueError(
+                f"Repository URL scheme {scheme!r} is not allowed "
+                f"(allowed: {sorted(_ALLOWED_SCHEMES)})"
+            )
+    return url
+
+
 class GitClient:
     """
     Handles Git repository operations for the scanner.
@@ -54,6 +94,9 @@ class GitClient:
         Returns:
             Path to the cloned repository
         """
+        # Refuse hostile transports before the git module is even imported —
+        # the guard is the first thing clone() does (audit 10).
+        repo_url = validate_repo_url(repo_url)
         import git  # GitPython
 
         log = logger.bind(repo=repo_url, branch=branch, commit=commit_hash)

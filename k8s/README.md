@@ -18,26 +18,62 @@
 
 ## Deploy
 
+The checked-in files are templates and intentionally contain mutable example
+references. Render a release only after the registry returns the manifest
+Digests for the exact API, worker and Neo4j images:
+
 ```bash
-kubectl apply -f app/00-namespace.yaml
-kubectl apply -f app/10-configmap.yaml
-cp app/15-secret.example.yaml app/15-secret.yaml   # edit values, then:
-kubectl apply -f app/15-secret.yaml
+python scripts/pin_release_images.py \
+  --registry ghcr.io/<org> \
+  --api-digest <64-hex-api-manifest-digest> \
+  --worker-digest <64-hex-worker-manifest-digest> \
+  --neo4j-digest <64-hex-neo4j-manifest-digest> \
+  --out /secure/releases/<version>/k8s
+
+kubectl apply -f /secure/releases/<version>/k8s/app/00-namespace.yaml
+kubectl apply -f /secure/releases/<version>/k8s/app/10-configmap.yaml
+cp app/15-secret.example.yaml /secure/releases/<version>/15-secret.yaml # fill via secret manager
+kubectl apply -f /secure/releases/<version>/15-secret.yaml
 
 # Postgres + Redis: run your own (CloudSQL/RDS/ElastiCache or the compose stack),
 # then reference them in the secret's DATABASE_URL / REDIS_URL.
-kubectl apply -f app/20-api-deployment.yaml -f app/21-api-service.yaml
-kubectl apply -f app/30-worker-deployment.yaml
-kubectl apply -f app/40-ingress.yaml   # adjust host/TLS for your domain
+kubectl apply -f /secure/releases/<version>/k8s/app/20-api-deployment.yaml -f /secure/releases/<version>/k8s/app/21-api-service.yaml
+kubectl apply -f /secure/releases/<version>/k8s/app/30-worker-deployment.yaml
+kubectl apply -f /secure/releases/<version>/k8s/app/40-ingress.yaml
 ```
+
+Do not apply `k8s/app/` directly. `scripts/engineering_gate.py` and
+`scripts/release_check.py` deliberately fail while mutable template references
+are the only available release inputs.
 
 ## Notes
 
-- **Migrations:** run once per release before rolling the API:
-  `kubectl run cryptoscan-migrate --rm -it --image cryptoscan-api:TAG --env DATABASE_URL=... --
-  alembic -c services/database/migrations/alembic.ini upgrade head`
+- **Migrations:** run once per release before rolling the API. Use the exact
+  published OCI digest, never a tag or `latest`:
+  `kubectl run cryptoscan-migrate --rm -it --image registry.example/cryptoscan-api@sha256:<API_DIGEST> --env DATABASE_URL=... --
+  alembic -c services/database/migrations/alembic.ini upgrade head`. The
+  checked-in example manifests remain release templates until the release
+  registry supplies the real API/worker/Neo4j digests; run the engineering gate
+  and do not approve while it reports mutable references.
 - **Secrets:** `SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `GITHUB_WEBHOOK_SECRET`, DB URLs live in the
   Secret. Production validation refuses demo defaults at startup.
 - **Backups:** see `docs/admin-guide/backup-restore.md`; run as a CronJob mounting the same image.
 - **Scaling:** API is stateless (scale freely). Workers: one replica per ~`MAX_CONCURRENT_JOBS`
   concurrent scans; SQLite is dev-only — use Postgres before scaling workers.
+
+## Required execution/replay configuration
+
+The manifests are templates, not a qualified Redis topology. Mount an approved
+CA bundle into the API, set `REDIS_CA_CERTS`, and supply a named non-default ACL
+`rediss://` URL through the secret manager. Optional Sentinel needs three distinct
+TLS discovery endpoints, a service name and dedicated discovery credentials;
+discovered data addresses need matching certificate SANs. Edge ingress TLS does
+not provide Redis TLS.
+
+The Sentinel factory covers realtime/current-run state only. Queue/rate-limit/
+health clients and service-specific ACLs still require review. Coordinate new
+pinning producers/workers and approved legacy-job resubmission. Primary changes
+invalidate production replay cursors rather than promising seamless frozen
+snapshot continuation. See [upgrade/recovery](../docs/runbooks/execution-and-replay-upgrade.md)
+and [qualification boundaries](../docs/bank-environment/45-redis-tls-sentinel-qualification.md).
+No manifest, probe or local lab certifies production security/HA.

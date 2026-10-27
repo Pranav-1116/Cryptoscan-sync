@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import socket
 import ssl
 import subprocess
@@ -63,21 +68,37 @@ class Tls12Server:
                 tls.settimeout(3)
                 try:
                     tls.recv(4096)
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.debug(
+                        "expected_exception_boundary",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     pass
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         finally:
             try:
                 conn.close()
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
 
     def close(self):
         self.done.set()
         try:
             self.sock.close()
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
 
@@ -224,7 +245,7 @@ def test_chain_sent_self_signed_leaf_is_not_incomplete():
 
 
 def test_chain_sent_root_disclosed():
-    analysis = analyze_chain_sent([LEAF, INTER, ROOT])
+    analyze_chain_sent([LEAF, INTER, ROOT])
     # a full chain including the self-signed root
     assert "ROOT_CERT_SENT" in analyze_chain_sent([LEAF, ROOT])["issues"]
 

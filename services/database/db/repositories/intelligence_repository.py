@@ -78,7 +78,7 @@ class IntelligenceRepository:
         return list(self.session.execute(select(CloudAccount)).scalars())
 
     def get_cloud_account(self, account_id: str) -> CloudAccount | None:
-        return self.session.get(CloudAccount, account_id)
+        return self.session.execute(select(CloudAccount).where(CloudAccount.id == account_id)).scalars().first()
 
     def find_cloud_account(self, provider: str | None, identifier: str | None) -> CloudAccount | None:
         from sqlalchemy import func
@@ -116,6 +116,7 @@ class IntelligenceRepository:
             "integration_type",
             "primary_contact",
             "security_contact",
+            "technical_contact",
             "extra",
             "extra_json",
         }
@@ -126,7 +127,7 @@ class IntelligenceRepository:
         return row
 
     def get_vendor(self, vendor_id: str) -> Vendor | None:
-        return self.session.get(Vendor, vendor_id)
+        return self.session.execute(select(Vendor).where(Vendor.id == vendor_id)).scalars().first()
 
     def update_vendor(self, vendor_id: str, **kwargs) -> Vendor | None:
         row = self.get_vendor(vendor_id)
@@ -164,7 +165,7 @@ class IntelligenceRepository:
         return row
 
     def update_migration(self, project_id: str, **kwargs) -> MigrationProject | None:
-        row = self.session.get(MigrationProject, project_id)
+        row = self.session.execute(select(MigrationProject).where(MigrationProject.id == project_id)).scalars().first()
         if row is None:
             return None
         for key, value in kwargs.items():

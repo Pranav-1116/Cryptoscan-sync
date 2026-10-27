@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import quote_plus
 
 from sqlalchemy import Engine, create_engine, event, text
-from sqlalchemy.pool import NullPool, QueuePool, StaticPool
+from sqlalchemy.pool import QueuePool, StaticPool
 
 logger = logging.getLogger(__name__)
 
@@ -63,9 +63,18 @@ def create_db_engine(
             database_url,
             echo=echo,
             connect_args={"check_same_thread": False},
-            # File-backed SQLite + multi-threaded workers: one connection per
-            # checkout (WAL allows concurrent readers); :memory: must share one.
-            poolclass=StaticPool if in_memory else NullPool,
+            # File-backed SQLite + multi-threaded workers: reuse connections
+            # from a small pool (WAL allows concurrent readers; the single
+            # writer is serialized by SQLite with busy_timeout below).
+            # NullPool measured 2ms+ of connect+PRAGMA overhead per request.
+            # :memory: must share one connection.
+            poolclass=StaticPool if in_memory else QueuePool,
+            pool_size=10,
+            # Bursts above pool_size (a dashboard with 20 open tabs, a load test) must
+            # not queue for the 30 s pool timeout; WAL readers are cheap, so allow
+            # overflow connections that are closed again when the burst passes.
+            max_overflow=20,
+            pool_timeout=10,
         )
 
         @event.listens_for(engine, "connect")
@@ -104,24 +113,65 @@ def create_db_engine(
     return engine
 
 
+_ENGINE_URL: str | None = None
+
+
+def _configured_url() -> str:
+    return _normalize_url(os.environ.get("DATABASE_URL", "sqlite:///./data/cryptoscan.db"))
+
+
 def get_engine() -> Engine:
-    global _ENGINE
+    """The process engine for the *currently configured* ``DATABASE_URL``.
+
+    The singleton follows the environment: if ``DATABASE_URL`` changed since
+    the engine was built (a test module pointing at its own file, a process
+    reconfigured between runs), the stale engine is disposed and a new one is
+    created for the new URL. An engine installed explicitly with
+    :func:`set_engine` is pinned and never swapped by this check.
+    """
+    global _ENGINE, _ENGINE_URL
+    url = _configured_url()
     if _ENGINE is None:
-        _ENGINE = create_db_engine()
+        _ENGINE = create_db_engine(url)
+        _ENGINE_URL = url
+    elif _ENGINE_URL is not None and _ENGINE_URL != url:
+        stale = _ENGINE
+        _ENGINE = create_db_engine(url)
+        _ENGINE_URL = url
+        try:
+            stale.dispose()
+        except Exception as dispose_exc:  # noqa: BLE001
+            logger.warning(
+                "stale_database_engine_dispose_failed",
+                extra={"error_type": type(dispose_exc).__name__},
+            )
+        try:
+            from db.connection.session import configure_session
+
+            configure_session(_ENGINE)
+        except Exception as configure_exc:  # noqa: BLE001
+            logger.exception(
+                "database_session_reconfigure_failed",
+                extra={"error_type": type(configure_exc).__name__},
+            )
     return _ENGINE
 
 
 def set_engine(engine: Engine) -> None:
-    global _ENGINE
+    """Pin an explicit engine (tests, one-off scripts); env changes won't swap it."""
+    global _ENGINE, _ENGINE_URL
     _ENGINE = engine
+    _ENGINE_URL = None
 
 
 def check_db_health(engine: Engine | None = None) -> dict[str, Any]:
-    engine = engine or get_engine()
     try:
+        engine = engine or get_engine()
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         return {"status": "healthy", "dialect": engine.dialect.name}
     except Exception as exc:
-        logger.exception("database_health_failed")
-        return {"status": "unhealthy", "error": str(exc)}
+        # Health surfaces are public; driver messages/tracebacks can expose
+        # connection credentials and SQL. Keep failure visible, not its payload.
+        logger.error("database_health_failed", extra={"error_type": type(exc).__name__})
+        return {"status": "unhealthy", "error": "Database health probe failed", "error_type": type(exc).__name__}

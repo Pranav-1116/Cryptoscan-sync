@@ -9,7 +9,6 @@ import pytest
 
 from network_scanner.core.scanner import NetworkTlsScanner
 from network_scanner.enterprise.live.loop import (
-    CycleResult,
     LiveNetworkMonitor,
 )
 

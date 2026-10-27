@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from cloud_scanner.enterprise.live.asset_state import (
-    CloudAsset,
     LiveCloudAssetStateEngine,
     action_for_event,
 )
@@ -22,7 +20,6 @@ from cloud_scanner.enterprise.live.collector import (
     RegionalCollector,
 )
 from cloud_scanner.enterprise.live.deep_discovery import (
-    DEEP_SCANNERS,
     DeepDiscoveryPlanner,
 )
 from cloud_scanner.enterprise.live.event_schema import CloudEvent
@@ -44,8 +41,6 @@ from cloud_scanner.enterprise.live.priority import (
 from zelix_live_fixtures import (
     AWS_CERT,
     AWS_KEY,
-    AZURE_CERT,
-    GCP_KEY,
     make_live_engine,
 )
 
@@ -449,16 +444,43 @@ class TestLiveMonitoringLoop:
 # ------------------------------------------------------------------ CLI
 
 class TestLiveCLI:
-    def test_cli_zelix_live_demo(self, tmp_path):
+    def test_cli_without_an_event_source_fails_closed(self, tmp_path):
+        """No bundled demo estate: an absent source must refuse, not invent.
+
+        This asserted a demo run producing >= 5 events from a source shipped
+        inside the package. That source was removed on purpose -- main()
+        now answers "no bundled event source is available" rather than
+        manufacturing cloud observations nobody collected, which is the same
+        no-demo-data rule the rest of the product follows.
+
+        So the old expectation was the thing being fixed. Pinning the refusal
+        is worth more than deleting the test: it keeps a future convenience
+        default from quietly reintroducing fabricated cloud findings.
+        """
         from cloud_scanner.main import main
 
         out = tmp_path / "live.json"
         code = main(["--zelix-live", "--zelix-live-cycles", "1", "-o", str(out)])
+
+        assert code == 2
+        assert not out.exists(), "a refused run must not leave a report behind"
+
+    def test_cli_zelix_live_region_selects_the_collector(self, tmp_path):
+        """The UAE collector path, which the removed demo used to cover."""
+        from cloud_scanner.main import main
+
+        events = tmp_path / "events.json"
+        events.write_text(json.dumps([
+            {"event_id": "uae-1", "provider": "aws", "event_name": "kms:RotateKeyOnDemand",
+             "resource_id": "k-uae-1", "timestamp": "2026-08-30T10:00:00Z"},
+        ]))
+        out = tmp_path / "live-uae.json"
+        code = main(["--zelix-live", "--zelix-live-events", str(events),
+                     "--zelix-live-region", "UAE", "-o", str(out)])
+
         assert code == 0
         report = json.loads(out.read_text())
         assert report["read_only"] is True
-        assert report["evidence_verified"] is True
-        assert len(report["events"]) >= 5
         assert report["collectors"]["collectors"][0]["collector_id"] == "collector-uae"
 
     def test_cli_zelix_live_events_file(self, tmp_path):

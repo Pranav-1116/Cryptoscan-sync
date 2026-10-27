@@ -73,9 +73,9 @@ def rollup(counts: dict[str, int]) -> dict[str, Any]:
         "counts": normalized,
         "stale_after_days": STALE_DAYS,
         "message": (
-            f"{unknown} of {total} systems have unknown cryptography until they are scanned."
+            f"{unknown} of {total} systems have unobserved cryptography until they are scanned."
             if total
-            else "Register systems, then scan them. A CBOM cannot exist without a scan."
+            else "Register systems and run scans to measure scan coverage. Imported declarations do not establish scanner coverage."
         ),
     }
 

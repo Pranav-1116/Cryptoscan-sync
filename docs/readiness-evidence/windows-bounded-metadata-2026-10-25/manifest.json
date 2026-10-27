@@ -1,0 +1,260 @@
+{
+  "schema_version": "cryptoscan.local-readiness-manifest/v1",
+  "baseline_commit": "72a440d42b0ea0a26f85bcc4c7f7e0a421558f31",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "recorded_at": "2026-10-25",
+  "classification": "LOCAL_SYNTHETIC_CANDIDATE_NOT_NATIVE_OR_PRODUCTION_QUALIFICATION",
+  "console_normalization": "ANSI escapes, trailing line whitespace and blank EOF lines removed; XML verbatim",
+  "files": [
+    {
+      "path": "docs/api-reference/collection-surface-coverage.md",
+      "sha256": "3fdc24bc3d74cad09ebe363028559a2ed254e574191e0b94eabf90d3bb495de2",
+      "bytes": 5797
+    },
+    {
+      "path": "docs/api-reference/windows-bounded-metadata.md",
+      "sha256": "9fe25258204c213c753a29aaa54cff429bd9d0571c769d8fd8eda0836373176b",
+      "bytes": 6085
+    },
+    {
+      "path": "docs/api-reference/windows-cng-registration-candidate.md",
+      "sha256": "726a03fa5bbfed609f6fbba1ac7a36f268e526cbb9a84304a4c54095e9772634",
+      "bytes": 4475
+    },
+    {
+      "path": "docs/bank-environment/69-phasewise-universal-collection-build.md",
+      "sha256": "e201725695406bcd554121407ea6a51dcd4b9f587aa8fd5597d21ecf748fc749",
+      "bytes": 11497
+    },
+    {
+      "path": "docs/bank-environment/76-bounded-windows-metadata-and-operator-preflight.md",
+      "sha256": "27ebbbacc3b6796c863bbe24e774f60c76fb571d066c7fba555cbede57d3368b",
+      "bytes": 11496
+    },
+    {
+      "path": "docs/bank-environment/README.md",
+      "sha256": "092666494f55067cbddb3786d21e39341628267e22349c645c8ee7afdbe75883",
+      "bytes": 29537
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25.md",
+      "sha256": "da0ccaa03a2f93e9dcd4278f49cc16d5aecbf1125e8e7edae4d2e1a10a601950",
+      "bytes": 11976
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/build.txt",
+      "sha256": "165f2ae48a186d8237d4f23eca8bda7dd6f18bfafd39dea8f1a129f2ebfb65e2",
+      "bytes": 7052
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/frontend.txt",
+      "sha256": "d8c7fb87013ac246477233a03c0ff282f5e9e36fa42d4e78e1faf6e397174dec",
+      "bytes": 26084
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/postgres.txt",
+      "sha256": "b62177f7b985dfad28ebb5a78fdfbbed18b8c1776e43bf99a7e700a5d9efc925",
+      "bytes": 6751
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/postgres.xml",
+      "sha256": "30574db8bc71cfc9a57cd6c9f9b773d3a9e38c9424a53dc55783f76ffd3b9b90",
+      "bytes": 16376
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/python-packages.json",
+      "sha256": "82516ebf43b21874cbcc18bbaa56b20ee12814157d6fdbb923d85eff745bfd6f",
+      "bytes": 4626
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/python.txt",
+      "sha256": "7a3fa4655d6e3b769a2f6179ed206f9a068926030e2fd9909656a8f1afee1d87",
+      "bytes": 4450
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/python.xml",
+      "sha256": "26320deb4821b748bc62b39e09021be8aed979cd8652dd709c47d6f3cfb35d5f",
+      "bytes": 409708
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/schema-compatibility.txt",
+      "sha256": "21986e2b26ac45fbce113be53a108cfd7aa25a231ab42ab116ac59dd6ae0c99e",
+      "bytes": 925
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/static.txt",
+      "sha256": "aa5af46da1c8ab0df109e62e0fa469d4d9b675cf9a6678ba9c242800172d03bd",
+      "bytes": 76
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/toolchain.txt",
+      "sha256": "bfb8b39a31f5a583f1618cb26395244e2195d113906b6ab3c0fc2a1d6929188e",
+      "bytes": 30
+    },
+    {
+      "path": "docs/readiness-evidence/windows-bounded-metadata-2026-10-25/typecheck.txt",
+      "sha256": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f",
+      "bytes": 50
+    },
+    {
+      "path": "docs/runbooks/operator-install-upgrade-recover.md",
+      "sha256": "bfe6fc26089e2c49f55e96d908478a55f07153f61e9553ba547051cea42decc9",
+      "bytes": 20600
+    },
+    {
+      "path": "docs/runbooks/windows-bounded-qualification-packet.md",
+      "sha256": "8cf3f09a046f2e2472ef597f6b6f4123c50f9c0e3965c77310b841dc226a47d0",
+      "bytes": 9590
+    },
+    {
+      "path": "frontend/src/components/HostEvidencePanel.test.tsx",
+      "sha256": "075ace5f5613cee664f4c692db2e5983eab110cd9fe57a1f0c41e73828c7e3e2",
+      "bytes": 20564
+    },
+    {
+      "path": "frontend/src/components/HostEvidencePanel.tsx",
+      "sha256": "4c0bf4fea242dbcabde51eb0d5fc27160085093ec6da82302d12aa959a9b86fd",
+      "bytes": 19916
+    },
+    {
+      "path": "frontend/src/lib/api.ts",
+      "sha256": "ae479b5523763c7c2919be7646cbc2a3719f49cffffffed8827f3193de385711",
+      "bytes": 245428
+    },
+    {
+      "path": "scripts/capture_native_qualification.py",
+      "sha256": "33ce673807026b6c6e7fd0d71b6879f7a100a1ecacd14f1c3f71c9ef10f950e1",
+      "bytes": 6454
+    },
+    {
+      "path": "scripts/qualify_host_profile.py",
+      "sha256": "632d831ec6172cbd4e643967dec35bb27c67057b53472653de14be6d3578f375",
+      "bytes": 6882
+    },
+    {
+      "path": "scripts/validate_host_evidence.py",
+      "sha256": "e266931d28512e452eb0c48dc3f7e24153d5440d066f37da336c846d531e8654",
+      "bytes": 5921
+    },
+    {
+      "path": "services/api/tests/unit/test_windows_metadata_candidates.py",
+      "sha256": "7fe5740eeaa6dd109e49df3651e3f774fd041977a629c1952164a83914d30fe1",
+      "bytes": 6592
+    },
+    {
+      "path": "services/api/tests/unit/test_windows_metadata_candidates_postgres.py",
+      "sha256": "41ac6316b9586fb7326000ac546c17ab5d4af6074f8c4404516556e9b6e58b58",
+      "bytes": 907
+    },
+    {
+      "path": "services/inventory/inventory/host.py",
+      "sha256": "da3fbb6bffbfeb7a3099fbb188c4a6c7826c79fb15de01b9bc08ff6d512d9551",
+      "bytes": 25190
+    },
+    {
+      "path": "services/inventory/inventory/windows_capi.py",
+      "sha256": "9f96f5a889e0995c55b918e906652eea851d639b9addefd8f54f00b064b0e6d3",
+      "bytes": 3340
+    },
+    {
+      "path": "services/inventory/inventory/windows_listeners.py",
+      "sha256": "322c22c1d3da41e9001cd8a7010fa635f1a3d2a3ba77992f1dfb5b8920c2fd07",
+      "bytes": 5036
+    },
+    {
+      "path": "services/inventory/tests/test_windows_cng.py",
+      "sha256": "54886d62e4f515c04f2d1475daec8c45282d6ca0e8fc222c1c9b47d98fafc368",
+      "bytes": 18859
+    },
+    {
+      "path": "services/inventory/tests/test_windows_metadata.py",
+      "sha256": "a2b127666ea2309e754c6405e5328a2c1977c78cdc1e58412ae10c01b40ff247",
+      "bytes": 14642
+    },
+    {
+      "path": "services/inventory/tests/test_windows_packet_preflight.py",
+      "sha256": "c0ef8b8da423553ad95abf0eefa7f08630187173a276c3656f09a241b732add3",
+      "bytes": 11872
+    },
+    {
+      "path": "shared/shared_models/shared_models/collection.py",
+      "sha256": "f9f254fde856cf95bff5fc06e5ead42d0b34dc53b8e9bbeb159a0261af3735c7",
+      "bytes": 6722
+    },
+    {
+      "path": "shared/shared_models/shared_models/collection_coverage.py",
+      "sha256": "47eacc07f9f1a6d0b8cf0d1546b6cdf5391c1af2a77b5efa1151f72cf9509835",
+      "bytes": 10325
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_collection.py",
+      "sha256": "5e105777ed5ec4c4d0ac5f1d72a7d3218937c9b038ac7e354347b236b8843cde",
+      "bytes": 19339
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_runtime.py",
+      "sha256": "d8ecf1f0b7c407c90c310ede6d5d82dde01ddb0bf181fde9a08b53589b64dc3a",
+      "bytes": 8159
+    },
+    {
+      "path": "shared/shared_models/shared_models/host_runtime_scope.py",
+      "sha256": "134ee5c44bed9f9e442b0d0e8e00ff5b20273f69cc7d96584c372705dc4e8745",
+      "bytes": 4411
+    },
+    {
+      "path": "shared/shared_models/shared_models/qualification_acceptance.py",
+      "sha256": "a7d1be9fbc4444486a11109847e40717f40da27925efdb86416d976407fee155",
+      "bytes": 14878
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/collection-evidence-v1.schema.json",
+      "sha256": "f1d170e9a2bdd4dfdd383aea193f2b29c8bca76b13f3cda0ea9333ec5a892946",
+      "bytes": 45182
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/collection-target-v1.schema.json",
+      "sha256": "59257a43b528dd65dc7023713c5d5743714d2a8cf4f669ab09c2abc4ba268b5d",
+      "bytes": 5788
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/host-manifest-v1.schema.json",
+      "sha256": "3aae1903adfb630ff14198c55d0f34a3c6967b25fbaf97fb619d774322b21c76",
+      "bytes": 3015
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/host-snapshot-v1.schema.json",
+      "sha256": "093c9e82f9729012d799e5297b0e5cc49bad77e10929e0b0edd42221599edccc",
+      "bytes": 42449
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/native-evidence-v1.schema.json",
+      "sha256": "63a50e1a3a9e1c028b824be4786febb3868d3345f0ee5a3cf20d2e190305b293",
+      "bytes": 48682
+    },
+    {
+      "path": "shared/shared_models/shared_models/schemas/windows-qualification-preflight-v1.schema.json",
+      "sha256": "3b75e1f7f7e16ed0c46ad02747a2d4d536222eaad4181391d5db4c51d2b8fe05",
+      "bytes": 1899
+    },
+    {
+      "path": "shared/shared_models/shared_models/windows_capi.py",
+      "sha256": "aad42bac16490694beecd76c3768d25022b3b53058050c32f16cc76213db6c16",
+      "bytes": 2854
+    },
+    {
+      "path": "shared/shared_models/shared_models/windows_cng.py",
+      "sha256": "53989c3406f1e5582e9be50430da53dc89f4e5bf547d006b7019ebea209e4549",
+      "bytes": 4404
+    },
+    {
+      "path": "shared/shared_models/shared_models/windows_listeners.py",
+      "sha256": "e1dbb2835b251e8f37f76dbf382630650a14cce4115a87929e9dbd0d6d2af80a",
+      "bytes": 4652
+    },
+    {
+      "path": "shared/shared_models/shared_models/windows_qualification.py",
+      "sha256": "f6f94ef817017847e9777017b07481d31153bca56fd849c18384e338d6ac5fe2",
+      "bytes": 7337
+    }
+  ]
+}

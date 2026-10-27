@@ -1,0 +1,16 @@
+
+> zelinx-frontend@1.0.0 test
+> vitest run --maxWorkers=2 src/components/CbomRescanInspection.test.tsx src/components/CbomLegacyReview.test.tsx
+
+
+ RUN  v5.0.5 /home/user/CryproScan/frontend
+
+ ✓ src/components/CbomLegacyReview.test.tsx (7 tests) 602ms
+   ✓ Historical import reconciliation (6)
+     ✓ loads only on demand, requires human review and sends the source snapshot 311ms
+ ✓ src/components/CbomRescanInspection.test.tsx (10 tests) 566ms
+
+ Test Files  2 passed (2)
+      Tests  17 passed (17)
+   Start at  10:22:24
+   Duration  1.54s (environment 45%, tests 41%, setup 10%, import 2%, transform 1%, worker 1%)

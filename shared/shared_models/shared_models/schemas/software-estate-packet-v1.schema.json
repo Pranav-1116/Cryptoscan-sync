@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "EstateSurfaceStatement": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Asset Id",
+          "type": "string"
+        },
+        "captured_at": {
+          "format": "date-time",
+          "title": "Captured At",
+          "type": "string"
+        },
+        "plan_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Plan Sha256",
+          "type": "string"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/SoftwareRecord"
+          },
+          "maxItems": 1000,
+          "title": "Records",
+          "type": "array"
+        },
+        "release_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Release Sha256",
+          "type": "string"
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "MEASURED",
+            "DECLARED_ONLY",
+            "UNAVAILABLE",
+            "FAILED"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "surface": {
+          "enum": [
+            "os_packages",
+            "language_dependencies",
+            "unpackaged_binaries",
+            "loaded_code",
+            "container_images",
+            "firmware"
+          ],
+          "title": "Surface",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_sha256",
+        "release_sha256",
+        "asset_id",
+        "surface",
+        "source_sha256",
+        "captured_at",
+        "status",
+        "records"
+      ],
+      "title": "EstateSurfaceStatement",
+      "type": "object"
+    },
+    "SignedEstateSurface": {
+      "additionalProperties": false,
+      "properties": {
+        "signature": {
+          "maxLength": 88,
+          "minLength": 88,
+          "title": "Signature",
+          "type": "string"
+        },
+        "statement": {
+          "$ref": "#/$defs/EstateSurfaceStatement"
+        }
+      },
+      "required": [
+        "statement",
+        "signature"
+      ],
+      "title": "SignedEstateSurface",
+      "type": "object"
+    },
+    "SoftwareRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "content_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Content Sha256"
+        },
+        "identity": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+          "title": "Identity",
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@+ ~()\\[\\]-]{0,119}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Version"
+        }
+      },
+      "required": [
+        "identity",
+        "version",
+        "content_sha256"
+      ],
+      "title": "SoftwareRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "returns": {
+      "items": {
+        "$ref": "#/$defs/SignedEstateSurface"
+      },
+      "maxItems": 120,
+      "title": "Returns",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "cryptoscan.software-estate-packet/v1",
+      "default": "cryptoscan.software-estate-packet/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "returns"
+  ],
+  "title": "SoftwareEstatePacket",
+  "type": "object"
+}

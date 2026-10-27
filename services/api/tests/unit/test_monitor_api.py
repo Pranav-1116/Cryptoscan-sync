@@ -14,6 +14,15 @@ from api.main import create_app
 from db.connection.session import Base
 
 
+@pytest.fixture(autouse=True)
+def monitor_admission_policy(monkeypatch):
+    # Real admission engine with controlled authoritative policy lookups.
+    import api.security.scan_admission as admission
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], {}))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
+
+
 def _make_app():
     import os
 
@@ -175,7 +184,7 @@ async def test_scan_now_runs_the_engine(monkeypatch):
         import worker.monitor.engine as engine_module
 
         def fake_runner(config, sess):
-            return {"summary": {"endpoints": 1, "probed_ok": 1, "unreachable": 0,
+            return {"observation_complete": True, "summary": {"endpoints": 1, "probed_ok": 1, "unreachable": 0,
                                 "issues": ["WEAK_TLS_VERSION:payments.bank.example:443"]},
                     "degraded": True, "issues": ["WEAK_TLS_VERSION:payments.bank.example:443"]}
 
@@ -210,7 +219,7 @@ async def test_status_overview_aggregates_the_live_picture(monkeypatch):
         import worker.monitor.engine as engine_module
 
         monkeypatch.setattr(engine_module, "_default_runners", lambda: {
-            "NETWORK": lambda c, s: {"summary": {"endpoints": 1}, "issues": []},
+            "NETWORK": lambda c, s: {"observation_complete": True, "summary": {"endpoints": 1}, "issues": []},
             "CLOUD": lambda c, s: {"blocked_reason": "config needs provider and account identifier"},
         })
         for name in ("edge-b", "aws-prod"):
@@ -313,3 +322,96 @@ async def test_network_target_with_live_monitor_config():
             "config": {"scope": ["10.0.0.0/24"], "live": "yes"},
         })
         assert bad_shape.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_telecom_target_type_accepted_with_default_interval():
+    """TELECOM (continuous 5GC/roaming posture) is a first-class monitor type:
+    accepted with no required config (the registered estate IS the scope),
+    stored, and listed like any other target."""
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/api/v1/monitor/targets", json={
+            "name": "carrier estate watch", "target_type": "TELECOM",
+            "config": {"carrier": "de-telekom"}})
+        assert created.status_code == 201, created.text
+        body = created.json()
+        assert (body.get("interval_seconds") in (None, 900)), body
+
+        listed = await client.get("/api/v1/monitor/targets")
+        types = {t["target_type"] for t in listed.json().get("targets", listed.json() if isinstance(listed.json(), list) else [])}
+        assert "TELECOM" in types
+
+
+@pytest.mark.asyncio
+async def test_shortened_interval_takes_effect_immediately():
+    """Lowering the interval pulls next_scan_at in (never waits out the old
+    window); lengthening never accelerates the current schedule."""
+    from datetime import datetime, timedelta, timezone
+
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/api/v1/monitor/targets", json={
+            "name": "edge", "target_type": "NETWORK",
+            "config": {"endpoints": ["h.example:443"]}, "interval_seconds": 900})
+        tid = created.json()["id"]
+        row = next(t for t in session.execute(__import__("sqlalchemy").select(
+            __import__("db.models.monitor", fromlike=["MonitorTarget"]).MonitorTarget)).scalars() if False) if False else None
+        from db.models.monitor import MonitorTarget
+        from sqlalchemy import select
+        row = session.execute(select(MonitorTarget)).scalars().first()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)  # DB stores naive UTC
+        row.last_scan_at = now
+        row.next_scan_at = now + timedelta(seconds=900)
+        session.commit()
+
+        r = await client.patch(f"/api/v1/monitor/targets/{tid}", json={"interval_seconds": 60})
+        assert r.status_code == 200, r.text
+        session.expire_all()
+        row = session.execute(select(MonitorTarget)).scalars().first()
+        assert row.interval_seconds == 60
+        assert row.next_scan_at <= now + timedelta(seconds=61)
+
+        # lengthening never accelerates an already-scheduled sooner run
+        soon = now + timedelta(seconds=30)
+        row.next_scan_at = soon
+        session.commit()
+        await client.patch(f"/api/v1/monitor/targets/{tid}", json={"interval_seconds": 3600})
+        session.expire_all()
+        row = session.execute(select(MonitorTarget)).scalars().first()
+        assert row.next_scan_at == soon
+
+
+@pytest.mark.asyncio
+async def test_monitor_network_targets_reject_ssrf_targets():
+    """OWASP A10 (found by live attack testing 2026-09-13): the monitor used
+    to accept loopback / cloud-metadata / URL-scheme endpoints — a monitor
+    target must never become an internal probe primitive. Configs now pass
+    the platform's SSRF choke point at create AND update."""
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for name, cfg in [
+            ("metadata-ip", {"endpoints": ["169.254.169.254:80"]}),
+            ("metadata-url", {"endpoints": ["http://169.254.169.254/latest/meta-data/"]}),
+            ("loopback", {"endpoints": ["127.0.0.1:8010"]}),
+            ("metadata-v6", {"endpoints": ["[fd00:ec2::254]:80"]}),
+            ("scope-metadata", {"scope": ["169.254.169.254/32"]}),
+            ("userinfo", {"endpoints": ["user:pass@internal.example:443"]}),
+        ]:
+            r = await client.post("/api/v1/monitor/targets", json={
+                "name": f"ssrf-{name}", "target_type": "NETWORK", "config": cfg})
+            assert r.status_code == 422, (name, r.status_code, r.text)
+
+        ok = await client.post("/api/v1/monitor/targets", json={
+            "name": "public-edge", "target_type": "NETWORK",
+            "config": {"endpoints": ["api.bank.example:443"]}})
+        assert ok.status_code == 201, ok.text
+
+        # update path is gated too: a legit target cannot be edited into a probe
+        tid = ok.json()["id"]
+        bad = await client.patch(f"/api/v1/monitor/targets/{tid}", json={
+            "config": {"endpoints": ["169.254.169.254:80"]}})
+        assert bad.status_code == 422

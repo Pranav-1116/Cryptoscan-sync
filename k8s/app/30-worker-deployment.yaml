@@ -20,7 +20,8 @@ spec:
         runAsUser: 10001
       containers:
         - name: worker
-          image: cryptoscan-worker:latest   # pin a real tag per release
+          image: cryptoscan-worker:v1.0.0
+          imagePullPolicy: IfNotPresent
           command: ["python", "-m", "worker.main"]
           envFrom:
             - configMapRef:
