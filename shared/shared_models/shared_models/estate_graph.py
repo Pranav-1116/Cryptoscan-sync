@@ -810,6 +810,124 @@ class EstateGraph:
             ),
         }
 
+    # -- PQC readiness ------------------------------------------------------ #
+
+    def pqc_readiness(self) -> dict[str, Any]:
+        """Post-quantum exposure **per layer**, with no single score on purpose.
+
+        Three refusals shape this report:
+
+        * an artefact whose algorithm was never observed is ``NOT_OBSERVED`` — not
+          "classical", and certainly not "safe";
+        * ``SUPPORTED``/``CONFIGURED`` capability is reported in its own bucket, so
+          "the library supports ML-KEM" never reads as "the bank uses ML-KEM";
+        * layers are never summed. A TLS hybrid handshake says nothing about the
+          AES keys the application derives, which says nothing about the HSM's
+          internal PQC readiness. One aggregate "PQC score" is exactly the number
+          that lets a bank claim readiness it cannot evidence (§27).
+        """
+        artifacts = self.crypto_artifacts()
+        pq_tokens = ("MLKEM", "ML-KEM", "KYBER", "BIKE", "HQC", "FRODO", "SLH-DSA", "SPHINCS", "DILITHIUM",
+                     "MLDSA", "ML-DSA", "FALCON", "XMSS", "LMS")
+        hybrid_tokens = ("HYBRID", "X25519MLKEM", "X25519KYBER", "SECP256R1MLKEM")
+        # Symmetric ciphers are included deliberately: AES-256 keeps ~128-bit
+        # strength under Grover and is NOT broken by a quantum computer, but it is
+        # still not post-quantum — calling it anything else would be the over-claim
+        # this method exists to avoid.
+        classical_weak = ("RSA", "DSA", "DH", "ECDH", "ECDSA", "SHA-1", "SHA1", "MD5", "3DES", "RC4",
+                          "AES", "CHACHA20", "CAMELLIA", "SM4", "DES", "BLOWFISH", "EC")
+
+        classified: list[dict[str, Any]] = []
+        for artifact in artifacts:
+            algorithm = str(artifact.get("algorithm") or "").upper()
+            protocol = str(artifact.get("protocol") or "").upper()
+            material = f"{algorithm} {protocol}"
+            if not algorithm and not protocol:
+                state, reason = "NOT_OBSERVED", "no algorithm or protocol was observed for this asset"
+            elif any(token in material for token in hybrid_tokens):
+                state, reason = "POST_QUANTUM_HYBRID", "a hybrid post-quantum construction was observed"
+            elif any(token in material for token in pq_tokens):
+                state, reason = "POST_QUANTUM", "a post-quantum algorithm was observed"
+            elif any(token in material for token in classical_weak):
+                state, reason = "CLASSICAL_ONLY", (
+                    "only classical cryptography is evidenced here: recorded traffic and stored data are "
+                    "harvest-now-decrypt-later exposed"
+                )
+            else:
+                state, reason = "NOT_OBSERVED", (
+                    "the observed algorithm is not in the classical or post-quantum registry, so it cannot be "
+                    "classified"
+                )
+            classified.append(
+                {
+                    "artifact_id": artifact["artifact_id"],
+                    "asset_id": artifact["asset_id"],
+                    "asset_name": artifact.get("asset_name"),
+                    "layer": artifact["layer"],
+                    "algorithm": artifact.get("algorithm"),
+                    "key_size": artifact.get("key_size"),
+                    "usage_state": artifact["usage_state"],
+                    "evidence_type": artifact["evidence_type"],
+                    "evidence_ids": artifact["evidence_ids"],
+                    "pq_state": state,
+                    "harvest_now_decrypt_later": state == "CLASSICAL_ONLY"
+                    and artifact["usage_state"] in {"OBSERVED", "NEGOTIATED"},
+                    "reason": reason,
+                    "quantum_safe_claim": False,
+                }
+            )
+
+        layers: dict[str, dict[str, Any]] = {}
+        for item in classified:
+            bucket = layers.setdefault(item["layer"], {
+                "by_state": {},
+                "artifacts": [],
+                "capability_only": 0,
+                "harvest_now_decrypt_later": 0,
+            })
+            bucket["by_state"][item["pq_state"]] = bucket["by_state"].get(item["pq_state"], 0) + 1
+            if item["harvest_now_decrypt_later"]:
+                bucket["harvest_now_decrypt_later"] += 1
+            if item["usage_state"] in {"SUPPORTED", "CONFIGURED"}:
+                bucket["capability_only"] += 1
+            bucket["artifacts"].append(item)
+
+        for layer_name, bucket in layers.items():
+            observed = bucket["by_state"].get("POST_QUANTUM", 0) + bucket["by_state"].get("POST_QUANTUM_HYBRID", 0)
+            if not bucket["artifacts"]:
+                bucket["readiness"] = "NOT_OBSERVED"
+            elif observed and bucket["by_state"].get("CLASSICAL_ONLY"):
+                bucket["readiness"] = "MIXED"
+            elif observed:
+                bucket["readiness"] = "POST_QUANTUM_OR_HYBRID"
+            elif bucket["by_state"].get("CLASSICAL_ONLY"):
+                bucket["readiness"] = "CLASSICAL_ONLY"
+            else:
+                bucket["readiness"] = "NOT_OBSERVED"
+            bucket["capability_only_note"] = (
+                "capability evidence is not usage evidence: these artefacts are not in production use"
+                if bucket["capability_only"] else None
+            )
+
+        return {
+            "schema": "cryptoscan.estate-pqc-readiness/1",
+            "estate": self.estate,
+            "layers": layers,
+            "artifacts": classified,
+            "counts": {state: sum(1 for item in classified if item["pq_state"] == state)
+                       for state in ("POST_QUANTUM", "POST_QUANTUM_HYBRID", "CLASSICAL_ONLY", "NOT_OBSERVED")},
+            "harvest_now_decrypt_later": sum(1 for item in classified if item["harvest_now_decrypt_later"]),
+            "single_score": None,
+            "single_score_refused_because": (
+                "a per-layer PQC report cannot be reduced to one number without mixing transport, application, "
+                "storage and HSM evidence — the exact over-claim spec 93 §27 forbids"
+            ),
+            "note": (
+                "no artefact is ever reported as quantum safe; capability is not usage, and an unobserved "
+                "algorithm is NOT_OBSERVED rather than classical"
+            ),
+        }
+
     def unknown_workflow(self) -> dict[str, Any]:
         """§13/§25 — the unknown inventory as a workflow, not a count.
 

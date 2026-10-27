@@ -273,3 +273,18 @@ def test_api_unknown_workflow_without_a_run_says_not_observed(api):
     response = http.get("/api/v1/estate/evidence/unknown")
     assert response.status_code == 404
     assert response.json()["detail"]["error"] == "no_estate_discovery"
+
+
+def test_api_pqc_readiness_is_layer_scoped(api):
+    http, _session = api
+    http.post("/api/v1/estate/evidence/discover", json={
+        "estate": "pqc-api",
+        "assets": [{"ref": "app", "type": "APPLICATION", "name": "payments-api"}],
+        "evidence": [{"source": "runtime", "evidence_type": "RUNTIME_OBSERVED", "target": "app",
+                      "layer": "APPLICATION", "facts": {"algorithm": "AES-256", "operation": "ENCRYPT"}}],
+    })
+    response = http.get("/api/v1/estate/evidence/pqc")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["single_score"] is None
+    assert body["layers"]["APPLICATION"]["readiness"] == "CLASSICAL_ONLY"

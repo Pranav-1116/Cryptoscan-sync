@@ -503,3 +503,48 @@ def test_unknown_workflow_counts_unresolved_edges_and_failed_collectors_as_open_
     assert len(workflow["unresolved_relationships"]) == 1
     assert workflow["failed_collectors"][0]["plane"] == "KMS"
     assert workflow["open_work"] >= 2
+
+
+def test_pqc_readiness_keeps_layers_apart_and_never_scores_once():
+    payload = {
+        "estate": "pqc-estate",
+        "assets": [
+            {"ref": "ep", "type": "NETWORK_ENDPOINT", "name": "10.0.0.5:443",
+             "identity": {"endpoint": "10.0.0.5:443"}},
+            {"ref": "app", "type": "APPLICATION", "name": "payments-api"},
+            {"ref": "hsm", "type": "HSM", "name": "HSM-01"},
+        ],
+        "evidence": [
+            {"source": "network", "evidence_type": "NETWORK_ACTIVE_OBSERVED", "target": "ep",
+             "layer": "NETWORK_TRANSPORT", "facts": {"protocol": "TLS", "algorithm": "X25519MLKEM768"}},
+            {"source": "runtime", "evidence_type": "RUNTIME_OBSERVED", "target": "app",
+             "layer": "APPLICATION", "facts": {"algorithm": "AES-256", "operation": "ENCRYPT"}},
+            {"source": "vendor", "evidence_type": "VENDOR_DECLARED", "target": "hsm",
+             "layer": "HSM", "facts": {"algorithm": "RSA-2048"}},
+        ],
+    }
+    report = build_graph(payload).pqc_readiness()
+    assert report["schema"] == "cryptoscan.estate-pqc-readiness/1"
+    assert report["single_score"] is None
+    assert "cannot be reduced to one number" in report["single_score_refused_because"]
+    transport = report["layers"]["NETWORK_TRANSPORT"]
+    assert transport["readiness"] == "POST_QUANTUM_OR_HYBRID"
+    # the classical HSM claim does not contaminate the transport layer's verdict
+    assert report["layers"]["APPLICATION"]["readiness"] == "CLASSICAL_ONLY"
+    assert report["layers"]["HSM"]["capability_only"] == 1
+    assert report["layers"]["HSM"]["capability_only_note"]
+    assert all(item["quantum_safe_claim"] is False for item in report["artifacts"])
+
+
+def test_pqc_readiness_marks_unobserved_evidence_not_observed():
+    payload = {
+        "estate": "pqc-unknown",
+        "assets": [{"ref": "ep", "type": "NETWORK_ENDPOINT", "name": "10.0.0.9:22",
+                    "identity": {"endpoint": "10.0.0.9:22"}}],
+        "evidence": [{"source": "network", "evidence_type": "UNKNOWN", "target": "ep",
+                      "layer": "NETWORK_TRANSPORT", "facts": {"protocol": "SSH"}}],
+    }
+    report = build_graph(payload).pqc_readiness()
+    assert report["counts"]["NOT_OBSERVED"] == 1
+    assert report["harvest_now_decrypt_later"] == 0
+    assert report["layers"]["NETWORK_TRANSPORT"]["readiness"] == "NOT_OBSERVED"

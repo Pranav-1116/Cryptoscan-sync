@@ -408,6 +408,16 @@ def estate_coverage(
     return {"run_id": run.id, **_graph_from_run(run).coverage()}
 
 
+@router.get("/pqc")
+def estate_pqc(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Post-quantum exposure per layer, deliberately without a single score."""
+    run = _latest_run(db)
+    return {"run_id": run.id, **_graph_from_run(run).pqc_readiness()}
+
+
 @router.get("/unknown")
 def estate_unknown_workflow(
     user: str = Depends(get_current_user),
