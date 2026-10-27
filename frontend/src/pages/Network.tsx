@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
+import { IconNetwork, IconCloud, IconHardware, IconSecurity, IconTarget, IconSatellite } from "../components/icons";
 import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
@@ -226,43 +227,95 @@ export default function Network() {
   const subnets = new Set(assets.map((a) => subnetOf(a.ip || ""))).size;
   const hostIps = new Set(assets.map((a) => a.ip)).size;
   const nodeById = useMemo(() => new Map(topo.nodes.map((n) => [n.id, n])), [topo.nodes]);
+  const posturePct = tlsEndpoints.length ? Math.round((chainValid / tlsEndpoints.length) * 100) : 0;
 
   return (
     <>
       <PageHead
         crumb="discovery / network"
         title="Network topology"
-        sub="Observed TLS endpoints grouped into subnets · host → service posture (network scanner, passive-safe)"
+        sub="Live TLS posture mapped from observed endpoints — subnet → host → service, no inference"
         right={
           <>
             {live && <LiveBadge source="live" label="LIVE" />}
-            <Badge tone={assets.length ? "green" : ""}><span className="dot" /> {subnets} subnets · {hostIps} hosts</Badge>
+            <Badge tone={assets.length ? "green" : ""}><span className="dot pulse" /> {subnets} subnets · {hostIps} hosts</Badge>
+            <Badge tone={tlsEndpoints.length ? "cyan" : ""}>{tlsEndpoints.length} TLS endpoints</Badge>
           </>
         }
       />
-      <ResourceMonitoring />
-      <TrafficControlReview />
-      <div className="grid cols-4" style={{ marginBottom: 16 }}>
-        {[["TLS endpoints", c.endpoints], ["with policy issues", c.policyIssues], ["valid chain", c.chainValid], ["discovered (open)", c.discovered]].map(([k, v]) => (
-          <div className="kpi" key={k as string}><span className="k">{k}</span>
-            <span className="v" style={{ color: k === "with policy issues" && Number(v) ? "var(--red)" : undefined }}>{v}</span>
-          </div>
-        ))}
+
+      {/* ── hero KPI strip — visual, not theory ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>
+        {[
+          { k: "TLS endpoints", v: c.endpoints, icon: IconNetwork, tone: "cyan", sub: `${hostIps} hosts in ${subnets} subnets` },
+          { k: "Policy issues", v: c.policyIssues, icon: IconSecurity, tone: c.policyIssues ? "red" : "green", sub: c.policyIssues ? "requires review" : "no open issues" },
+          { k: "Valid chains", v: c.chainValid, icon: IconHardware, tone: "green", sub: `${posturePct}% of endpoints` },
+          { k: "Discovered", v: c.discovered, icon: IconTarget, tone: "violet", sub: "open services" },
+        ].map((item) => {
+          const Ico = item.icon;
+          return <div key={item.k} className="panel" style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: `2px solid var(--${item.tone === "cyan" ? "accent" : item.tone})`, background: "var(--panel-2)" }}>
+            <div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 10, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--faint)", fontFamily: "var(--mono)" }}><Ico size={12} /> {item.k}</div>
+              <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 20, marginTop: 4, color: item.k === "Policy issues" && item.v ? "var(--red)" : "var(--text)" }}>{item.v}</div>
+              <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 2 }}>{item.sub}</div>
+            </div>
+            <div style={{ width: 36, height: 36, borderRadius: "var(--r)", display: "grid", placeItems: "center", background: `color-mix(in srgb, var(--${item.tone === "cyan" ? "accent" : item.tone}) 10%, var(--panel))`, border: `1px solid var(--${item.tone === "cyan" ? "accent" : item.tone})`, color: `var(--${item.tone === "cyan" ? "accent" : item.tone})` }}><Ico size={16} /></div>
+          </div>;
+        })}
       </div>
 
-      <Panel
-        title="Observed network topology"
-        sub={assets.length ? "subnet → host → TLS service · click a service node for detail · red = policy/chain issue" : "populates after a live network scan"}
-      >
+      {/* ── posture overview — visual bar ── */}
+      {tlsEndpoints.length > 0 && <div className="panel" style={{ padding: "12px 16px", marginBottom: 14, display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", background: "var(--panel-2)" }}>
+        <b style={{ fontSize: 12, fontFamily: "var(--mono)", letterSpacing: ".06em", textTransform: "uppercase", color: "var(--faint)" }}>Posture</b>
+        <div style={{ flex: "1 1 300px", minWidth: 220 }}>
+          <div style={{ display: "flex", height: 8, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)", border: "1px solid var(--line)" }}>
+            <i style={{ width: `${tlsEndpoints.length ? (chainValid / tlsEndpoints.length) * 100 : 0}%`, background: "var(--green)" }} />
+            <i style={{ width: `${tlsEndpoints.length ? (withIssues / tlsEndpoints.length) * 100 : 0}%`, background: "var(--red)" }} />
+            <i style={{ flex: 1, background: "var(--line)" }} />
+          </div>
+          <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>
+            <span style={{ color: "var(--green)" }}>● {chainValid} valid chains</span>
+            <span style={{ color: "var(--red)" }}>● {withIssues} policy issues</span>
+            <span style={{ color: "var(--faint)" }}>● {tlsEndpoints.length - chainValid - withIssues} unknown</span>
+            <span style={{ marginLeft: "auto", color: "var(--dim)" }}>{posturePct}% healthy</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <Badge tone="green">LIVE SCAN</Badge>
+          <Badge tone="">passive-safe</Badge>
+        </div>
+      </div>}
+
+      {/* ── hero topology — visual first, not theory ── */}
+      <div className="panel" style={{ padding: 0, overflow: "hidden", border: "1px solid var(--line)", background: "var(--panel)" }}>
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)", background: "var(--bg-2)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span className="brandmark" style={{ width: 32, height: 32, display: "grid", placeItems: "center" }}><IconNetwork size={16} /></span>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>Observed network topology</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{assets.length ? "Subnet → host → TLS service · click service for detail · red = policy/chain issue" : "Awaiting live scan — no fabric inference"}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span className="badge slate" style={{ fontFamily: "var(--mono)" }}>{subnets} subnets</span>
+            <span className="badge slate" style={{ fontFamily: "var(--mono)" }}>{hostIps} hosts</span>
+            <span className="badge cyan">{assets.length} endpoints</span>
+          </div>
+        </div>
         {assets.length === 0 ? (
-          <div className="dim" style={{ fontSize: 13, padding: "30px 6px", textAlign: "center" }}>
-            No network data yet — run a live network scan (set a host:port target) in
-            Operations → Realtime scanners. The topology is drawn from observed endpoints only;
-            nothing is inferred or fabricated.
+          <div className="dim" style={{ fontSize: 13, padding: "40px 20px", textAlign: "center", background: "repeating-linear-gradient(45deg, var(--panel) 0 8px, var(--panel-2) 8px 16px)" }}>
+            <div style={{ maxWidth: 480, margin: "0 auto" }}>
+              <div style={{ width: 48, height: 48, borderRadius: "var(--r)", background: "var(--bg-2)", border: "1px solid var(--line)", display: "grid", placeItems: "center", margin: "0 auto 14px" }}><IconSatellite size={22} style={{ color: "var(--faint)" }} /></div>
+              <b style={{ color: "var(--text)" }}>No network data yet</b><br />
+              <span>Run a live network scan (set a host:port target) in Operations → Realtime scanners.<br />The topology is drawn from observed endpoints only; nothing is inferred or fabricated.</span>
+            </div>
           </div>
         ) : (
-          <div className="graphwrap">
-            <svg viewBox={`0 0 ${topo.width} ${topo.height}`} width="100%" style={{ minWidth: 720 }}>
+          <div className="graphwrap" style={{ background: "radial-gradient(1200px 400px at 20% 0%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 60%), var(--panel)", padding: 8 }}>
+            <svg viewBox={`0 0 ${topo.width} ${topo.height}`} width="100%" style={{ minWidth: 720, display: "block" }}>
+              {/* subtle grid */}
+              <defs><pattern id="net-grid" width={40} height={40} patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="var(--line)" strokeWidth={0.4} opacity={0.5} /></pattern></defs>
+              <rect x={0} y={0} width={topo.width} height={topo.height} fill="url(#net-grid)" opacity={0.35} />
               {topo.edges.map((e, i) => {
                 const a = nodeById.get(e.from);
                 const b = nodeById.get(e.to);
@@ -270,7 +323,7 @@ export default function Network() {
                 return (
                   <line key={i}
                     x1={a.x} y1={a.y + NODE_H / 2} x2={b.x} y2={b.y - NODE_H / 2}
-                    className={`edge ${e.hit ? "hit" : ""}`} />
+                    className={`edge ${e.hit ? "hit" : ""}`} style={{ strokeWidth: e.hit ? 2.2 : 1.3 }} />
                 );
               })}
               {topo.nodes.map((n) => {
@@ -283,16 +336,18 @@ export default function Network() {
                      style={{ cursor: clickable ? "pointer" : "default" }}>
                     <rect
                       x={n.x - NODE_W / 2} y={n.y - NODE_H / 2} width={NODE_W} height={NODE_H}
-                      rx={9}
-                      fill={n.kind === "subnet" ? "color-mix(in srgb, var(--violet) 10%, transparent)" : "var(--panel)"}
-                      stroke={col} strokeWidth={n.kind === "subnet" ? 1.4 : 1.6}
+                      rx={10}
+                      fill={n.kind === "subnet" ? "color-mix(in srgb, var(--violet) 12%, var(--panel))" : isSel ? "color-mix(in srgb, var(--accent) 12%, var(--panel))" : "var(--panel-2)"}
+                      stroke={col} strokeWidth={isSel ? 2 : n.kind === "subnet" ? 1.6 : 1.4}
+                      style={{ filter: isSel ? "drop-shadow(0 2px 8px color-mix(in srgb, var(--accent) 20%, transparent))" : undefined }}
                     />
-                    <text x={n.x} y={n.y - 2} textAnchor="middle"
-                      style={{ fontWeight: 700, fontSize: 13, fill: "var(--text)" }}>
+                    {n.kind === "subnet" && <rect x={n.x - NODE_W / 2} y={n.y - NODE_H / 2} width={NODE_W} height={4} rx={4} fill={col} opacity={0.9} />}
+                    <text x={n.x} y={n.y - 3} textAnchor="middle"
+                      style={{ fontWeight: 700, fontSize: 12.5, fill: "var(--text)", fontFamily: "var(--sans)" }}>
                       {n.label}
                     </text>
-                    <text x={n.x} y={n.y + 16} textAnchor="middle" className="gsub"
-                      style={{ fontSize: 10.5, fill: col }}>
+                    <text x={n.x} y={n.y + 14} textAnchor="middle" className="gsub"
+                      style={{ fontSize: 10, fill: col, fontFamily: "var(--mono)", letterSpacing: ".04em" }}>
                       {n.sub}
                     </text>
                   </g>
@@ -301,30 +356,60 @@ export default function Network() {
             </svg>
           </div>
         )}
-      </Panel>
+        <div style={{ padding: "10px 16px", borderTop: "1px solid var(--line)", background: "var(--bg-2)", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 11, color: "var(--faint)", fontFamily: "var(--mono)" }}>
+          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--accent)" }} /> subnet</span>
+          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--cyan)" }} /> host</span>
+          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--green)" }} /> service OK</span>
+          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><span style={{ width: 8, height: 8, borderRadius: 999, background: "var(--red)" }} /> policy / chain fail</span>
+          <span style={{ marginLeft: "auto", color: "var(--dim)" }}>Deterministic layout — same inventory always draws the same graph</span>
+        </div>
+      </div>
 
-      <Panel title="TLS endpoints" sub="version · cipher · certificate · chain · policy posture (live scan)" className="mt">
-        <Table
-          head={["kind", "id", "ip", "tls / cipher", "certificate", "chain", "status"]}
-          rows={assets.map((n) => [
-            <Badge tone="cyan">{n.kind}</Badge>,
-            <span className="mono">{n.id}</span>,
-            <span className="num">{n.ip}</span>,
-            n.tls,
-            n.certs.length ? n.certs.join(", ") : <span className="faint">—</span>,
-            n.chain_valid === undefined ? <span className="faint">—</span>
-              : n.chain_valid ? <Badge tone="green">valid</Badge> : <Badge tone="red">invalid</Badge>,
-            <Badge tone={statusTone(n.status)}>
-              {n.status}{n.cert_expiry_days != null ? ` · ${n.cert_expiry_days}d` : ""}
-            </Badge>,
-          ])}
-        />
-        {!assets.length && (
-          <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
-            No network data yet — run a live network scan (set a host:port target) in Operations → Realtime scanners.
+      <div className="panel" style={{ marginTop: 14, padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)", background: "var(--bg-2)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 13, display: "flex", gap: 8, alignItems: "center" }}><IconSecurity size={14} style={{ color: "var(--accent)" }} /> TLS endpoints</div>
+            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>Version · cipher · certificate · chain · policy posture (live scan)</div>
           </div>
-        )}
-      </Panel>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Badge tone="cyan">{tlsEndpoints.length} endpoints</Badge>
+            <Badge tone={withIssues ? "red" : "green"}>{withIssues ? `${withIssues} issues` : "no issues"}</Badge>
+          </div>
+        </div>
+        <div style={{ padding: "0 16px 16px" }}>
+          <Table
+            head={["kind", "id", "ip", "tls / cipher", "certificate", "chain", "status"]}
+            rows={assets.map((n) => [
+              <Badge tone="cyan">{n.kind}</Badge>,
+              <span className="mono" style={{ fontSize: 11 }}>{n.id}</span>,
+              <span className="num" style={{ fontFamily: "var(--mono)" }}>{n.ip}</span>,
+              <span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{n.tls || "—"}</span>,
+              n.certs.length ? <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>{n.certs.slice(0, 2).map(c => <Badge key={c} tone="cyan" >{c}</Badge>)}{n.certs.length > 2 ? <span className="faint">+{n.certs.length - 2}</span> : null}</span> : <span className="faint">—</span>,
+              n.chain_valid === undefined ? <span className="faint">—</span>
+                : n.chain_valid ? <Badge tone="green">valid</Badge> : <Badge tone="red">invalid</Badge>,
+              <Badge tone={statusTone(n.status)}>
+                {n.status}{n.cert_expiry_days != null ? ` · ${n.cert_expiry_days}d` : ""}
+              </Badge>,
+            ])}
+          />
+          {!assets.length && (
+            <div className="dim" style={{ fontSize: 13, marginTop: 12, textAlign: "center", padding: "16px 0" }}>
+              No network data yet — run a live network scan (set a host:port target) in Operations → Realtime scanners.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── operational telemetry — visual panels below the primary graph ── */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 0, marginTop: 18 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, paddingLeft: 2 }}>
+          <IconCloud size={14} style={{ color: "var(--faint)" }} />
+          <span style={{ fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--faint)", fontFamily: "var(--mono)" }}>Operational telemetry</span>
+          <span style={{ flex: 1, height: 1, background: "var(--line)", marginLeft: 10 }} />
+        </div>
+        <ResourceMonitoring />
+        <TrafficControlReview />
+      </div>
 
       {detail && (
         <Drawer title={detail.id} sub={`${detail.kind} · ${detail.ip}`} onClose={() => setSel(null)}>
