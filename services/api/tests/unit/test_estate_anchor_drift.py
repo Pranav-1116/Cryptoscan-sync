@@ -228,3 +228,53 @@ def test_drift_reports_coverage_debt_rather_than_an_estate_change():
     assert "coverage debt grew" in coverage["note"]
     assert report["degraded_planes"] == ["NETWORK"]
     assert "not an estate change" in report["meaning"]
+
+
+# --------------------------------------------------------------------------- #
+# external export (spec 67 §31 — an anchor in our own database is not external)
+# --------------------------------------------------------------------------- #
+def test_export_without_a_sink_is_409_and_says_why(api, monkeypatch):
+    http, _session = api
+    monkeypatch.setenv(KEY_ENV, "test-anchor-key")
+    for name in ("ANCHOR_EXPORT_DIR", "ANCHOR_EXPORT_S3_BUCKET", "ANCHOR_EXPORT_WEBHOOK_URL"):
+        monkeypatch.delenv(name, raising=False)
+    _discover(http)
+    assert http.post("/api/v1/estate/evidence/boms/anchor", json={}).status_code == 200
+
+    status = http.get("/api/v1/estate/evidence/boms/anchor/export/status")
+    assert status.status_code == 200 and status.json()["configured"] is False
+
+    response = http.post("/api/v1/estate/evidence/boms/anchor/export", json={})
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["error"] == "anchor_export_not_configured"
+    assert "not external" in detail["reason"]
+
+
+def test_export_to_a_write_once_directory_confirms_the_write(api, monkeypatch, tmp_path):
+    http, _session = api
+    monkeypatch.setenv(KEY_ENV, "test-anchor-key")
+    monkeypatch.setenv("ANCHOR_EXPORT_DIR", str(tmp_path))
+    _discover(http)
+    created = http.post("/api/v1/estate/evidence/boms/anchor", json={}).json()
+
+    exported = http.post("/api/v1/estate/evidence/boms/anchor/export", json={})
+    assert exported.status_code == 200, exported.text
+    body = exported.json()
+    assert body["external"] is True
+    assert body["sink"] == "FILESYSTEM"
+    assert body["anchor_id"] == created["anchor_id"]
+    assert (tmp_path / f"{created['anchor_id']}.json").exists()
+
+    # the sink is write-once: a second export of the same receipt is refused
+    again = http.post("/api/v1/estate/evidence/boms/anchor/export", json={})
+    assert again.status_code == 409
+    assert again.json()["detail"]["error"] == "already_exported"
+
+
+def test_export_without_any_anchor_asks_for_one_first(api, monkeypatch, tmp_path):
+    http, _session = api
+    monkeypatch.setenv("ANCHOR_EXPORT_DIR", str(tmp_path))
+    response = http.post("/api/v1/estate/evidence/boms/anchor/export", json={})
+    assert response.status_code == 404
+    assert response.json()["detail"]["error"] == "no_bom_anchor"

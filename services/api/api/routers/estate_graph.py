@@ -34,6 +34,7 @@ from api import estate_discovery, estate_drift
 from api.dependencies import get_current_user, get_db_session
 from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
+from api.security import anchor_export
 from api.security.estate_bom_anchor import AnchorError, create_anchor, list_anchors, verify_anchor
 from shared_models.estate_graph import BOM_KINDS, SCHEMA, build_graph
 
@@ -46,6 +47,10 @@ class EstateAnchorRequest(BaseModel):
     """Sign the current projected BOM set into an exportable receipt."""
 
     note: str | None = Field(default=None, max_length=400)
+
+
+class EstateAnchorExportRequest(BaseModel):
+    anchor_id: str | None = Field(default=None, max_length=80)
 
 
 class EstateAnchorVerifyRequest(BaseModel):
@@ -237,6 +242,51 @@ def estate_boms_anchor_verify(
     verification["run_id"] = run.id
     verification["current_projection_id"] = projections["projection_id"]
     return verification
+
+
+@router.get("/boms/anchor/export/status")
+def estate_boms_anchor_export_status(user: str = Depends(get_current_user)):
+    """Whether an external export sink is configured, and which one."""
+    return anchor_export.sink_status()
+
+
+@router.post("/boms/anchor/export")
+def estate_boms_anchor_export(
+    body: EstateAnchorExportRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Push a stored anchor receipt to storage CryptoScan does not control.
+
+    A signed receipt inside our own database proves nothing about the outside
+    world: this is the step that puts it where the bank's auditors can read it
+    without asking us. The sink confirms the write; without confirmation the
+    anchor is *not* external and the call fails.
+    """
+    stored = list_anchors(db, tenant_id=current_tenant())["anchors"]
+    if not stored:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "no_bom_anchor",
+                    "reason": "create an anchor receipt first (POST /estate/evidence/boms/anchor)"},
+        )
+    receipt = None
+    if body.anchor_id:
+        receipt = next((item for item in stored if item.get("anchor_id") == body.anchor_id), None)
+        if receipt is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "unknown_bom_anchor", "reason": f"no receipt with id {body.anchor_id!r}"},
+            )
+    else:
+        receipt = stored[-1]
+    try:
+        return anchor_export.export_receipt(receipt)
+    except anchor_export.AnchorExportError as exc:
+        raise HTTPException(
+            status_code=409 if exc.code in {"anchor_export_not_configured", "already_exported"} else 502,
+            detail={"error": exc.code, "reason": exc.reason, **exc.detail},
+        ) from exc
 
 
 @router.get("/plan")

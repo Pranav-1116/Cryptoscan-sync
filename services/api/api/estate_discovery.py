@@ -47,13 +47,19 @@ MODEL = "cryptoscan.estate-discovery-job/1"
 SCHEMA_EVIDENCE = "cryptoscan.estate-evidence/1"
 
 #: §13 discovery planes this repository can actually read today.
-PLANES: tuple[str, ...] = ("NETWORK", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR")
+PLANES: tuple[str, ...] = ("NETWORK", "KUBERNETES", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR")
 
 PLANE_DETAIL: dict[str, dict[str, str]] = {
     "NETWORK": {
         "source": "stored network observation runs",
         "boms": "NBOM, CBOM (NETWORK_TRANSPORT layer), TechBOM",
         "limitation": "only endpoints already observed under an approved scope; unprobed endpoints are NOT_OBSERVED",
+    },
+    "KUBERNETES": {
+        "source": "live cluster API (namespaces, ingresses, services, pods)",
+        "boms": "NBOM, SBOM (images), TechBOM",
+        "limitation": "read-only and CONFIGURED only: an Ingress TLS block is a declaration, and secrets are "
+                      "never read",
     },
     "RUNTIME": {
         "source": "stored runtime crypto events",
@@ -465,8 +471,16 @@ def collect_vendor(db: Any, *, limit: int = 2000) -> dict[str, Any]:
     }
 
 
+def collect_kubernetes_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
+    """Adapter for :mod:`api.estate_kubernetes` (live, read-only cluster API)."""
+    from api.estate_kubernetes import collect_kubernetes
+
+    return collect_kubernetes(db, **kwargs)
+
+
 DEFAULT_COLLECTORS: dict[str, Callable[..., dict[str, Any]]] = {
     "NETWORK": collect_network,
+    "KUBERNETES": collect_kubernetes_plane,
     "RUNTIME": collect_runtime,
     "STATIC": collect_static,
     "PKI": collect_pki,
@@ -507,9 +521,30 @@ def plan(*, planes: Iterable[str] | None = None) -> dict[str, Any]:
 
 
 def _collect(plane: str, collector: Callable[..., dict[str, Any]], db: Any, **kwargs: Any) -> dict[str, Any]:
-    """Run one collector; a raise becomes FAILED with its impact, never an empty plane."""
+    """Run one collector; a raise becomes FAILED with its impact, never an empty plane.
+
+    "No credentials for this source" is different from "the source failed": an
+    unconfigured live collector is ``NOT_ATTEMPTED`` (nothing was asked), while a
+    configured source that errors is ``FAILED``.
+    """
+    from api.estate_kubernetes import PlaneNotConfigured
+
     try:
         result = collector(db, **kwargs) or {}
+    except PlaneNotConfigured as exc:
+        return {
+            "plane": plane,
+            "status": "NOT_ATTEMPTED",
+            "expected": 0,
+            "collected": 0,
+            "assets": [],
+            "evidence": [],
+            "reason": str(exc),
+            "impact": (
+                f"{plane} was not attempted because this deployment has no credentials for it: its estate is "
+                f"NOT_OBSERVED and {PLANE_DETAIL[plane]['boms']} are incomplete"
+            ),
+        }
     except Exception as exc:  # noqa: BLE001 - a plane failure must be reported, not raised
         return {
             "plane": plane,

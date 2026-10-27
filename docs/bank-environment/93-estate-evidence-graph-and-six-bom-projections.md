@@ -549,29 +549,42 @@ Status legend: **done** = implemented and tested on `arena/bb4b80dd-cryproscan`;
 | Six BOM projections from one snapshot | done | `project_all` — SBOM, CBOM, HBOM, NBOM, VBOM, TechBOM share one `projection_id` |
 | SUPPORTED ≠ CONFIGURED ≠ NEGOTIATED ≠ OBSERVED | done | `usage_state` on every CBOM artefact; vendor/imported evidence can never establish in-use usage |
 | API: discovery payload, scan, graph, coverage, BOMs | done | `POST /api/v1/estate/evidence/discover`, `POST …/scan`, `GET …/plan`, `GET …/{summary,graph,coverage,boms}` (`routers/estate_graph.py`; the pre-existing `/estate` campaign router is untouched) |
-| Live collector fan-out (one job calling every plane) | done | `api/estate_discovery.py` — six read-only adapters (NETWORK, RUNTIME, STATIC, PKI, HARDWARE, VENDOR) reading *persisted* evidence, joined into one graph, with a collector plan, lifecycle phases and per-plane coverage |
+| Live collector fan-out (one job calling every plane) | done | `api/estate_discovery.py` — seven adapters (NETWORK, KUBERNETES, RUNTIME, STATIC, PKI, HARDWARE, VENDOR) joined into one graph, with a collector plan, lifecycle phases and per-plane coverage; six read *persisted* evidence, KUBERNETES is live |
+| Live Kubernetes plane (cluster API, not caller-supplied manifests) | done | `api/estate_kubernetes.py` + plane `KUBERNETES` — lists `namespaces/services/pods/ingresses` read-only; credentials from `KUBERNETES_API_URL`+`TOKEN`, an in-cluster service account, or a JSON `KUBECONFIG`; no credentials ⇒ `NOT_ATTEMPTED` (nothing asked), RBAC 403/404 ⇒ `blocked[]` + `PARTIAL` with "NOT_OBSERVED, not empty"; `secrets` is never requested (`tls_secret_ref` only); every fact is `CONFIGURED` with `observed: false`, and sidecar TLS is labelled platform crypto |
+| Operator entry point (same job, same database) | done | `api/cli.py` → `cryptoscan scan|coverage|boms`, registered in `pyproject.toml`; `--json` emits a single parseable document, `--allow-partial` prints the decision it records, exit `0` complete / `2` incomplete / `1` error |
 | Console: coverage matrix + unknown inventory + BOM switch | done | `EstatePanel` (`frontend/src/components/EstatePanel.tsx`) mounted on `Network.tsx` |
 | Signed/anchored projected BOMs | done | `api/security/estate_bom_anchor.py` + `POST /estate/evidence/boms/anchor`, `GET …/boms/anchors`, `POST …/boms/anchor/verify` — HMAC-SHA256 over `{projection_id, per-BOM digests}` with `CRYPTOSCAN_ANCHOR_KEY` held outside the database; no key ⇒ `409 anchor_key_not_configured`, and the receipt says `external: false` until the operator exports it |
+| External anchor export (storage we do not control) | done | `api/security/anchor_export.py` + `POST /estate/evidence/boms/anchor/export`, `GET …/export/status` — three real sinks: append-only directory (`O_CREAT\|O_EXCL`, so a second export cannot overwrite), S3 with SigV4 (verified against the published AWS test vector) + `If-None-Match: *` + Object-Lock retention, and an HMAC-signed webhook; `external: true` only after the sink confirms, unconfigured ⇒ `409`, duplicate ⇒ `409 already_exported` |
 | Drift baseline over the estate graph | done | `api/estate_drift.py` + `GET /estate/evidence/drift` — component-level diff of the six projections between the two newest snapshots, plus coverage deltas; a coverage loss is reported as coverage debt, and a BOM empty in both snapshots is `NOT_COMPARABLE`, never "unchanged" |
 | Unknown inventory as a workflow | done | `EstateGraph.unknown_workflow` + `GET /estate/evidence/unknown` — every asset in exactly one state (`ESTABLISHED_RUNTIME_OBSERVED` … `UNKNOWN_UNRESOLVED`), each with a next action; `IMPORTED`/`VENDOR_DECLARED`/`INFERRED` are listed as open work, and unresolved relationships plus failed collectors are counted in `open_work` |
 | Estate-wide PQC scoring | done (per layer, no aggregate) | `EstateGraph.pqc_readiness` + `GET /estate/evidence/pqc` — per-artefact `POST_QUANTUM / POST_QUANTUM_HYBRID / CLASSICAL_ONLY / NOT_OBSERVED`, bucketed by layer with `harvest_now_decrypt_later` and a `capability_only` split. `single_score` is `null` on purpose, with the reason stated: one number would mix transport, application, storage and HSM evidence (§27) |
 
-Honest limits: this engine is the **joining and projection layer**. It proves that the
-six BOMs are consistent views of one evidence graph; it does not fly drones over the
-estate. The fan-out job reads persisted evidence only — it does not probe or scan
-anything itself, and a plane that did not run is coverage debt with an impact
-statement, never an empty plane. Active collection keeps its own approved scope
-(`/network/crypto-observe`, `/runtime/crypto-events`), which is what makes re-running
-the estate job free of packets.
+Honest limits: this engine is the **joining and projection layer plus one live plane**.
+It proves that the six BOMs are consistent views of one evidence graph. Six planes read
+persisted evidence — they do not probe anything themselves — and a plane that did not
+run is coverage debt with an impact statement, never an empty plane. Only KUBERNETES
+talks to a live system, and it reads configuration (`CONFIGURED`, `observed: false`):
+an Ingress TLS block is a declaration that a controller terminates TLS, not a captured
+handshake. Active collection keeps its own approved scope (`/network/crypto-observe`,
+`/runtime/crypto-events`), which is what keeps re-running the estate job free of
+packets. Still open: live cloud/HSM/KMS connectors, and an approval-gated
+`cryptoscan collect` that would drive the active planes from one command.
 
-Verified by three files: `services/api/tests/unit/test_estate_graph.py` (22 tests:
+Verified by five files: `services/api/tests/unit/test_estate_graph.py` (27 tests:
 identity merges, layer separation, refusals, capability≠usage, conflicts, coverage
-semantics, API), `test_estate_discovery_job.py` (15 tests: fan-out, FAILED plane ⇒
+semantics, API), `test_estate_discovery_job.py` (19 tests: fan-out, FAILED plane ⇒
 impact, partial read ⇒ `PARTIAL`, empty store ≠ empty estate, six BOMs on one
-`projection_id`, lifecycle order, API plan/scan) and `test_estate_anchor_drift.py`
-(14 tests: anchor refuses without a key, signature/`PROJECTION_CHANGED` detection,
+`projection_id`, lifecycle order, API plan/scan), `test_estate_anchor_drift.py`
+(17 tests: anchor refuses without a key, signature/`PROJECTION_CHANGED` detection,
 `NO_BASELINE` vs `NO_DRIFT` vs `DRIFT`, coverage debt ≠ estate change,
-`NOT_COMPARABLE` for one-sided or empty-in-both BOMs). With the network and runtime
+`NOT_COMPARABLE` for one-sided or empty-in-both BOMs, export refuses without a sink,
+write-once export, `already_exported`), `test_estate_kubernetes_cli.py` (14 tests:
+fake cluster transport — 200 lists, one 403 ⇒ `PARTIAL`, no TLS block ⇒ no
+termination claim, sidecar ⇒ platform crypto, `secrets` never requested, missing
+credentials ⇒ `NOT_ATTEMPTED`, kubeconfig resolution; CLI exit codes, `--json`,
+persisted read-back) and `test_anchor_export.py` (9 tests: SigV4 against the AWS
+vector, no secret in status, write-once directory, `412` ⇒ `already_exported`,
+`500`/`401` ⇒ failed and never `external`). With the network and runtime
 suites the eight-file API run is **221 passed**, including the unknown-workflow tests
 (vendor claims are open work, not answers; every asset is accounted for exactly once) and
 the per-layer PQC tests (an HSM's classical claim never contaminates the transport verdict,

@@ -17,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 cryptoscan-api = "api.main:run"
+cryptoscan = "api.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
