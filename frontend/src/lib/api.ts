@@ -4751,6 +4751,54 @@ export const apiIpsecObserve = (endpoints: string[], options: { timeout?: number
 export const apiNetworkCryptoObserve = (endpoints: string[], options: { protocol?: string; operations?: string[]; scan_versions?: boolean; scan_ciphers?: boolean } = {}): Promise<ApiResult<{ model: string; scope: Record<string, unknown>; evidence: NetworkEvidenceRecord[]; summary: NetworkEvidenceSummary; certificates: unknown[] }>> =>
   call("/api/v1/network/crypto-observe", { method: "POST", body: JSON.stringify({ endpoints, ...options }) });
 
+export interface NetworkBudgetResponse {
+  schema: string;
+  inventory_id: string;
+  configured: boolean;
+  reason?: string;
+  window_started_at?: string;
+  window_seconds?: number;
+  connections_used?: number;
+  bytes_used?: number;
+  runs?: number;
+  max_connections?: number;
+  max_bytes?: number;
+  connections_remaining?: number | null;
+  bytes_remaining?: number | null;
+  exhausted?: boolean;
+  distributed?: boolean;
+}
+
+export const apiNetworkCryptoBudget = (inventoryId = "default"): Promise<ApiResult<NetworkBudgetResponse>> =>
+  call(`/api/v1/network/crypto-budget?inventory_id=${encodeURIComponent(inventoryId)}`);
+
+export interface PassiveObservationInput {
+  timestamp?: string;
+  src_ip?: string;
+  src_port?: number;
+  dst_ip: string;
+  dst_port: number;
+  protocol?: string;
+  server_name?: string;
+  tls_version?: string;
+  cipher_suite?: string;
+  certificate_fingerprint_sha256?: string;
+  certificate_public_key_algorithm?: string;
+  certificate_signature_algorithm?: string;
+  certificate_curve?: string;
+  ja3?: string;
+  ja4?: string;
+  alpn?: string;
+  bytes?: number;
+  sensor_id?: string;
+  capture_point?: string;
+  direction?: string;
+}
+
+/** Metadata-only sensor intake (§22): payload/password/private-key fields are refused server-side. */
+export const apiNetworkCryptoPassive = (observations: PassiveObservationInput[], options: { inventory_id?: string; scope_name?: string } = {}): Promise<ApiResult<{ model: string; stored: number; evidence: NetworkEvidenceRecord[]; summary: NetworkEvidenceSummary; active_packets: number; note: string }>> =>
+  call("/api/v1/network/crypto-passive", { method: "POST", body: JSON.stringify({ observations, ...options }) });
+
 export const apiDiscoverNetworkInventory = (body: {
   scope_specs: Array<string | Record<string, unknown>>;
   inventory_id?: string;

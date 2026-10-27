@@ -21,6 +21,23 @@ def parse_cipher_suite(name: str | None, *, tls_version: str | None = None, bits
     if not raw:
         return result
 
+    if raw.startswith("TLS_") and "_WITH_" in raw:
+        # IANA TLS 1.2 name: TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384.
+        # Passive sensors, the IANA registry and CBOM exports use this form,
+        # while the OpenSSL form (ECDHE-RSA-AES256-GCM-SHA384) uses dashes.
+        # Normalise to the OpenSSL spelling so both parse identically, rather
+        # than reporting an observed suite as unparsed.
+        import re
+
+        converted = raw[4:].replace("_WITH_", "_")
+        # IANA writes "AES_256_GCM"; OpenSSL (which the tokenizer below
+        # understands) writes "AES256-GCM". Collapse the key size first so the
+        # bulk cipher is not split into its own tokens.
+        converted = re.sub(r"(AES|CAMELLIA|ARIA|CHACHA20)_(\d+)", r"\1\2", converted)
+        converted = re.sub(r"3DES_EDE_CBC", "3DES-EDE-CBC", converted)
+        raw = converted.replace("_", "-")
+        result["cipher_suite"] = name
+
     if raw.startswith("TLS_"):
         # TLS 1.3: TLS_AES_256_GCM_SHA384 / TLS_CHACHA20_POLY1305_SHA256
         parts = [p for p in raw.split("_") if p and p != "TLS"]

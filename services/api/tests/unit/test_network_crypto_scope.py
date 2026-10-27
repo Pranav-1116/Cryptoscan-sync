@@ -297,3 +297,23 @@ def test_crypto_path_reports_complete_only_when_every_hop_is_observed():
     path = build_crypto_path([record], [{"from": "10.20.10.15:443", "to": "internal-lb"}])
     assert path["complete"] is True
     assert path["unknown_edges"] == 0
+
+
+def test_crypto_path_counts_passive_observations_as_observed():
+    from network_scanner.inventory.network_evidence import build_crypto_path, build_passive_evidence
+
+    record = build_passive_evidence(
+        {
+            "dst_ip": "10.20.10.15",
+            "dst_port": 443,
+            "tls_version": "TLSv1.2",
+            "cipher_suite": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+        }
+    )
+    path = build_crypto_path([record], [{"from": "10.20.10.15:443", "to": "api-gateway"}])
+    assert path["observed_edges"] == 1
+    assert path["complete"] is True
+    edge = path["edges"][0]
+    assert edge["evidence_type"] == "NETWORK_PASSIVE_OBSERVED"
+    assert edge["evidence_mode"] == "PASSIVE"
+    assert edge["confidence"] == "MEDIUM"

@@ -164,13 +164,19 @@ def summarize(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
     evidence_types: dict[str, int] = {}
     issue_counts: dict[str, int] = {}
     observed = 0
+    active = 0
+    passive = 0
     for record in records:
         evidence_types[record.get("evidence_type") or "UNKNOWN"] = (
             evidence_types.get(record.get("evidence_type") or "UNKNOWN", 0) + 1
         )
-        if record.get("evidence_type") != "NETWORK_ACTIVE_OBSERVED":
+        if record.get("evidence_type") not in OBSERVED_EVIDENCE_TYPES:
             continue
         observed += 1
+        if record.get("evidence_type") == "NETWORK_PASSIVE_OBSERVED":
+            passive += 1
+        else:
+            active += 1
         for key, bucket in (
             (record.get("tls_version") or "UNKNOWN", versions),
             (record.get("cipher_suite") or "UNKNOWN", ciphers),
@@ -184,6 +190,8 @@ def summarize(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "schema": "cryptoscan.network-evidence-summary/1",
         "records": len(records),
         "observed": observed,
+        "observed_active": active,
+        "observed_passive": passive,
         "not_observed": len(records) - observed,
         "evidence_types": evidence_types,
         "tls_versions": versions,
@@ -205,6 +213,10 @@ ROLE_TLS_KEX = "tls-key-exchange"
 ROLE_TLS_AUTH = "tls-authentication"
 ROLE_TLS_MAC = "tls-mac-or-prf"
 ROLE_CERT_SIGNATURE = "certificate-signature"
+
+
+#: evidence types that carry observed parameters (active handshake or sensor)
+OBSERVED_EVIDENCE_TYPES = frozenset({"NETWORK_ACTIVE_OBSERVED", "NETWORK_PASSIVE_OBSERVED"})
 
 
 def _asset(
@@ -229,6 +241,9 @@ def _asset(
         "mode": mode,
         # §27 — transport crypto is not application crypto
         "layer": "NETWORK_TRANSPORT",
+        # active handshake vs passive sensor: the same algorithm, two different
+        # strengths of evidence — never collapsed into one confidence.
+        "observation_mode": "PASSIVE" if record.get("evidence_type") == "NETWORK_PASSIVE_OBSERVED" else "ACTIVE",
         "context": {
             "host": target.get("host"),
             "port": target.get("port"),
@@ -254,14 +269,15 @@ def _asset(
 def to_cbom_assets(records: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Project observed network evidence into CBOM-shaped crypto assets (§28).
 
-    Only ``NETWORK_ACTIVE_OBSERVED`` records contribute assets: an endpoint that
-    never handshook has no observed algorithm, so it is counted as
-    ``not_observed`` instead of being given a placeholder asset (§29).
+    Both active handshake and passive sensor records contribute assets (each
+    asset states which). A record with no observed parameters contributes
+    nothing: it is counted as ``not_observed`` instead of being given a
+    placeholder asset (§29).
     """
     assets: list[dict[str, Any]] = []
     not_observed: list[str] = []
     for record in records:
-        if record.get("evidence_type") != "NETWORK_ACTIVE_OBSERVED":
+        if record.get("evidence_type") not in OBSERVED_EVIDENCE_TYPES:
             target = record.get("target") or {}
             not_observed.append(str(target.get("endpoint") or "unknown"))
             continue
@@ -354,6 +370,11 @@ def build_crypto_path(
                 "to": target,
                 "layer": "NETWORK_TRANSPORT",
                 "evidence_type": (record or {}).get("evidence_type") or "UNKNOWN",
+                # passive hop crypto is still observed crypto, but weaker
+                # evidence than a handshake we performed — never conflated.
+                "evidence_mode": "PASSIVE"
+                if (record or {}).get("evidence_type") == "NETWORK_PASSIVE_OBSERVED"
+                else ("ACTIVE" if record else None),
                 "evidence_id": (record or {}).get("evidence_id"),
                 "tls_version": (record or {}).get("tls_version"),
                 "cipher_suite": (record or {}).get("cipher_suite"),
@@ -363,10 +384,11 @@ def build_crypto_path(
                 "note": None
                 if record
                 else "no observation for this hop — transport crypto is UNKNOWN, not absent",
+                "confidence": (record or {}).get("confidence"),
             }
         )
 
-    observed_edges = sum(1 for edge in edges if edge["evidence_type"] == "NETWORK_ACTIVE_OBSERVED")
+    observed_edges = sum(1 for edge in edges if edge["evidence_type"] in OBSERVED_EVIDENCE_TYPES)
     return {
         "model": "cryptoscan.network-crypto-path/1",
         "nodes": list(nodes.values()),
@@ -378,3 +400,173 @@ def build_crypto_path(
         "complete": bool(edges) and observed_edges == len(edges),
         "boundary": "hops are declared; only the annotated crypto is observed",
     }
+
+
+# --------------------------------------------------------------------------- #
+# §22 — passive observation (metadata only, never payload)
+# --------------------------------------------------------------------------- #
+
+#: the only fields a passive sensor may submit. Everything else is refused so a
+#: sensor cannot turn CryptoScan into a packet archive.
+PASSIVE_ALLOWED_FIELDS = frozenset(
+    {
+        "timestamp",
+        "src_ip",
+        "src_port",
+        "dst_ip",
+        "dst_port",
+        "protocol",
+        "server_name",
+        "tls_version",
+        "cipher_suite",
+        "certificate_fingerprint_sha256",
+        "certificate_subject",
+        "certificate_issuer",
+        "certificate_public_key_algorithm",
+        "certificate_curve",
+        "certificate_signature_algorithm",
+        "sni_present",
+        "mtls",
+        "ja3",
+        "ja4",
+        "alpn",
+        "bytes",
+        "sensor_id",
+        "capture_point",
+        "direction",
+    }
+)
+
+#: substrings that must never appear in a passive observation field name
+FORBIDDEN_FIELD_TOKENS = (
+    "payload",
+    "plaintext",
+    "password",
+    "secret",
+    "private_key",
+    "privkey",
+    "session_key",
+    "premaster",
+    "master_secret",
+    "certificate_body",
+    "http_body",
+    "body",
+    "cookie",
+    "authorization",
+    "token",
+)
+
+
+class PassiveObservationRejected(ValueError):
+    """A passive observation carried content the platform must not store."""
+
+
+def _split_bundle(name: str | None, version: str | None) -> dict[str, Any]:
+    """Reuse the TLS decomposition for a passively supplied cipher name."""
+    from network_scanner.probing.cipher_suite_parser import parse_cipher_suite
+
+    parsed = parse_cipher_suite(name, tls_version=version)
+    return {
+        "key_exchange": parsed.get("key_exchange"),
+        "authentication": parsed.get("authentication"),
+        "encryption": parsed.get("encryption"),
+        "mode": parsed.get("mode"),
+        "mac_or_prf": parsed.get("mac"),
+        "key_size_bits": parsed.get("key_size"),
+    }
+
+
+def validate_passive_observation(observation: dict[str, Any]) -> None:
+    """Reject unknown or content-bearing fields before anything is stored."""
+    if not isinstance(observation, dict):
+        raise PassiveObservationRejected("observation must be an object")
+    for field in observation:
+        lowered = str(field).lower()
+        if any(token in lowered for token in FORBIDDEN_FIELD_TOKENS):
+            raise PassiveObservationRejected(
+                f"field '{field}' looks like captured content — passive mode stores handshake metadata only"
+            )
+        if lowered not in PASSIVE_ALLOWED_FIELDS:
+            raise PassiveObservationRejected(
+                f"field '{field}' is not an allowed passive metadata field"
+            )
+
+
+def build_passive_evidence(
+    observation: dict[str, Any],
+    *,
+    scanner_version: str = "network-passive-sensor-v1.0",
+    scope_revision: str | None = None,
+    scope_name: str | None = None,
+    received_at: str | None = None,
+) -> dict[str, Any]:
+    """One §22/§24 evidence record from a metadata-only sensor observation.
+
+    Anything the sensor did not report stays ``None`` — a passive sensor proves
+    only the traffic it actually saw (§22: *no observed traffic ≠ no crypto*).
+    """
+    validate_passive_observation(observation)
+    dst = str(observation.get("dst_ip") or "")
+    port = observation.get("dst_port")
+    endpoint = f"{dst}:{port}" if dst and port is not None else None
+    version = observation.get("tls_version")
+    suite = observation.get("cipher_suite")
+    observed_at = str(observation.get("timestamp") or received_at or _now())
+
+    record = {
+        "schema": SCHEMA,
+        "evidence_type": "NETWORK_PASSIVE_OBSERVED",
+        "evidence_id": None,
+        "target": {
+            "endpoint": endpoint,
+            "host": observation.get("server_name") or dst or None,
+            "port": int(port) if isinstance(port, int) or (isinstance(port, str) and str(port).isdigit()) else None,
+            "ip_address": dst or None,
+        },
+        "protocol": str(observation.get("protocol") or "TLS").upper(),
+        "observation_status": "PASSIVE_SEEN",
+        "tls_version": version,
+        "cipher_suite": suite,
+        "decomposition": _split_bundle(suite, version),
+        "certificate": {
+            "fingerprint_sha256": observation.get("certificate_fingerprint_sha256"),
+            "subject": observation.get("certificate_subject"),
+            "issuer": observation.get("certificate_issuer"),
+            "not_before": None,
+            "not_after": None,
+            "public_key_algorithm": observation.get("certificate_public_key_algorithm"),
+            "public_key_bits": None,
+            "curve": observation.get("certificate_curve"),
+            "signature_algorithm": observation.get("certificate_signature_algorithm"),
+            "san_count": None,
+        },
+        "certificate_chain": {"length": None, "structural_status": None, "trust_status": None, "completeness": None},
+        "mutual_tls": observation.get("mtls") if observation.get("mtls") is not None else "UNKNOWN",
+        "mtls_evidence": "PASSIVE_CLIENT_CERT_SEEN" if observation.get("mtls") else "NOT_OBSERVED",
+        "policy_issues": [],
+        "algorithm_verdict": {},
+        "observed_at": observed_at,
+        "scanner_version": scanner_version,
+        "scope_revision": scope_revision,
+        "scope_name": scope_name,
+        "confidence": "MEDIUM",
+        "limitations": [
+            "passive observation proves only the traffic this sensor saw",
+            "unobserved endpoints are NOT_OBSERVED, not free of crypto",
+            "certificate chain validation and mTLS requirement are not determinable passively",
+        ],
+        "passive": {
+            "sensor_id": observation.get("sensor_id"),
+            "capture_point": observation.get("capture_point"),
+            "direction": observation.get("direction"),
+            "src_ip": observation.get("src_ip"),
+            "src_port": observation.get("src_port"),
+            "ja3": observation.get("ja3"),
+            "ja4": observation.get("ja4"),
+            "alpn": observation.get("alpn"),
+            "sni_present": observation.get("sni_present"),
+            "bytes": observation.get("bytes"),
+            "received_at": received_at or _now(),
+        },
+    }
+    return record

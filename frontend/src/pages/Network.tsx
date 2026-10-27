@@ -4,7 +4,7 @@ import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import { IconNetwork, IconCloud, IconHardware, IconSecurity, IconTarget, IconSatellite } from "../components/icons";
-import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -208,6 +208,41 @@ function NetworkInventoryPanel() {
 }
 
 /* ── Cryptographic Network Intelligence — Approved Scope panel (spec §3) ── */
+/* Rolling-window traffic budget (§3, §30) — the approved cap, actually counted. */
+function BudgetStrip() {
+  const budget = usePollingApi(() => apiNetworkCryptoBudget("default"), 20000);
+  const b = budget.data as NetworkBudgetResponse | null;
+  if (!b || !b.configured) return null;
+  const connMax = b.max_connections || 0;
+  const connPct = connMax ? Math.min(100, Math.round(((b.connections_used || 0) / connMax) * 100)) : 0;
+  const byteMax = b.max_bytes || 0;
+  const bytePct = byteMax ? Math.min(100, Math.round(((b.bytes_used || 0) / byteMax) * 100)) : 0;
+  const tone = b.exhausted ? "var(--red)" : connPct > 80 || bytePct > 80 ? "var(--amber)" : "var(--green)";
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, marginBottom: 10 }}>
+      <div style={{ padding: "8px 12px", border: "1px solid var(--line)", borderLeft: `3px solid ${tone}`, borderRadius: "var(--r)", background: "var(--panel)" }}>
+        <div className="kicker">connections this window</div>
+        <div className="mono" style={{ fontSize: 12, marginTop: 4 }}>{b.connections_used ?? 0} / {connMax || "∞"} · {b.runs ?? 0} runs</div>
+        <span style={{ display: "block", height: 6, marginTop: 6, borderRadius: 999, background: "var(--bg-2)", overflow: "hidden" }}>
+          <span style={{ display: "block", height: "100%", width: `${connPct}%`, background: tone }} />
+        </span>
+      </div>
+      <div style={{ padding: "8px 12px", border: "1px solid var(--line)", borderLeft: `3px solid ${tone}`, borderRadius: "var(--r)", background: "var(--panel)" }}>
+        <div className="kicker">bytes this window</div>
+        <div className="mono" style={{ fontSize: 12, marginTop: 4 }}>{((b.bytes_used ?? 0) / 1024).toFixed(1)} KB / {byteMax ? `${(byteMax / 1024 / 1024).toFixed(1)} MB` : "∞"}</div>
+        <span style={{ display: "block", height: 6, marginTop: 6, borderRadius: 999, background: "var(--bg-2)", overflow: "hidden" }}>
+          <span style={{ display: "block", height: "100%", width: `${bytePct}%`, background: tone }} />
+        </span>
+      </div>
+      <div style={{ padding: "8px 12px", border: "1px solid var(--line)", borderLeft: `3px solid ${b.exhausted ? "var(--red)" : "var(--line-strong)"}`, borderRadius: "var(--r)", background: "var(--panel)" }}>
+        <div className="kicker">window status</div>
+        <div style={{ fontSize: 12, marginTop: 4 }}>{b.exhausted ? <Badge tone="red">EXHAUSTED — runs refused</Badge> : <Badge tone="green">within budget</Badge>}</div>
+        <div className="faint" style={{ fontSize: 10.5, marginTop: 4 }}>{b.distributed === false ? "single-process counter" : "distributed"}</div>
+      </div>
+    </div>
+  );
+}
+
 function NetworkCryptoScopePanel() {
   const scopeRes = usePollingApi(() => apiNetworkCryptoScope("default"), 12000);
   const data = scopeRes.data as { scope: NetworkCryptoScope | null; status: { state: string; expired: boolean; reason: string } } | null;
@@ -319,6 +354,8 @@ function NetworkCryptoScopePanel() {
           </div>
         </div>
       ) : null}
+
+      <BudgetStrip />
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, fontSize: 11, color: "var(--faint)" }}>
         <span className="mono">name: <b style={{ color: "var(--text)" }}>{scope?.name || "—"}</b></span>

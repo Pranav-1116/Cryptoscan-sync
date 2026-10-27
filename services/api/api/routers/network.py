@@ -79,6 +79,38 @@ class CertificateRenewalUpdate(BaseModel):
     note: str | None = None
 
 
+def _enforce_scope_if_configured(
+    db: Session,
+    endpoints: list[str],
+    *,
+    protocol: str = "TLS",
+    operations: list[str] | None = None,
+    inventory_id: str = "default",
+) -> dict:
+    """One scope policy for every network execution path (spec 67 §3).
+
+    When a tenant has saved an approved scope, *every* live path — direct scan,
+    due rotation, SSH, observation — must stay inside it, and a violation is a
+    409 before any socket opens. When no scope exists, the older admission
+    path still applies and the response records ``state: NOT_CONFIGURED``
+    rather than implying the run was scope-approved.
+    """
+    from api.security.network_scope import ScopeViolation, check_scope
+
+    scope = _load_crypto_scope(db, inventory_id)
+    if not scope:
+        return {
+            "state": "NOT_CONFIGURED",
+            "enforced": False,
+            "reason": "no approved network scope saved — legacy tenant/OT admission applied; save a scope to bind probes to exact destinations",
+        }
+    try:
+        receipt = check_scope(scope, endpoints, protocol=protocol, operations=operations)
+    except ScopeViolation as exc:
+        raise HTTPException(status_code=409, detail={"error": exc.code, "reason": exc.reason, **exc.detail}) from exc
+    return {"state": "ENFORCED", "enforced": True, **receipt}
+
+
 @router.get("/network/protocols")
 def list_protocols(
     category: str | None = None,
@@ -291,6 +323,7 @@ def run_due(
         admit_scan(active_probing_requested=True)
         return {"scanned": 0, "findings": []}
     hosts = checked_hosts([item["endpoint"] for item in due if item.get("endpoint")])
+    scope_receipt = _enforce_scope_if_configured(db, hosts, protocol="TLS")
     admission = admit_network(hosts)
     meter_network(db, hosts)
     with network_run(
@@ -319,6 +352,7 @@ def run_due(
                     row.last_scan_time = now
                     row.next_scan_time = next_scan_time(now, row.scan_frequency)
         result["scanned"] = len(hosts)
+        result["scope"] = scope_receipt
         run.succeed(coverage=network_coverage(result))
     return result
 
@@ -372,6 +406,18 @@ def discover_subnet_endpoints(
     from api.security.scan_admission import authorize_network_sweep
 
     ports = sorted(set(body.ports or list(DEFAULT_PORTS)))
+    # A CIDR sweep is structurally outside an exact-destination scope. When a
+    # scope exists, refuse the sweep instead of silently shrinking it.
+    existing_scope = _load_crypto_scope(db, "default")
+    if existing_scope:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "scope_forbids_sweep",
+                "reason": "an approved scope binds probes to exact destinations — a CIDR sweep is not permitted; use POST /network/crypto-observe",
+                "scope_name": existing_scope.get("name"),
+            },
+        )
     admission = admit_network([safe_cidr], protocol="tcp", ports=ports)
     authorized, auth_reason = authorize_network_sweep(safe_cidr)
     if not authorized:
@@ -471,6 +517,9 @@ def scan_ssh_hosts(
     except (TypeError, ValueError) as exc:
         raise HTTPException(422, detail="Invalid SSH target") from exc
     endpoints = checked_hosts(endpoints)
+    scope_receipt = _enforce_scope_if_configured(
+        db, endpoints, protocol="SSH", operations=["CONNECT", "SSH_BANNER"]
+    )
     admission = admit_network(endpoints, protocol="ssh")
     with network_run(
         db,
@@ -531,6 +580,7 @@ def scan_ssh_hosts(
                     "baseline_source": "CALLER_SUPPLIED_UNVERIFIED",
                 },
             )
+            result["scope"] = scope_receipt
             run.succeed(coverage={**network_coverage(result), "protocol": "ssh"})
             return result
         except HTTPException:
@@ -708,6 +758,7 @@ def scan_network(
     _ctx=Depends(network_context),
 ):
     hosts = checked_hosts(body.hosts)
+    scope_receipt = _enforce_scope_if_configured(db, hosts, protocol="TLS")
     admission = admit_network(hosts)
     meter_network(db, hosts)
     with network_run(
@@ -715,7 +766,7 @@ def scan_network(
         user=user,
         target=",".join(hosts)[:2000],
         admission=admission,
-        profile={**body.model_dump(exclude={"hosts"}), "workers": body.workers or 8},
+        profile={**body.model_dump(exclude={"hosts"}), "workers": body.workers or 8, "scope": scope_receipt},
     ) as run:
         result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers or 8).scan_hosts(
             hosts,
@@ -728,6 +779,7 @@ def scan_network(
             live_revocation=body.live_revocation,
         )
         result = persist_network(db, result, run)
+        result["scope"] = scope_receipt
         run.succeed(coverage=network_coverage(result))
     return result
 
@@ -1140,6 +1192,7 @@ def _load_crypto_scope(db: Session, inventory_id: str) -> dict | None:
         data = json.loads(row.value)
         data["_key"] = key
         data["_updated_by"] = row.updated_by
+        data["_tenant"] = current_tenant()
         return data
     except Exception:
         return None
@@ -1308,7 +1361,13 @@ def crypto_observe(
             detail={"error": exc.code, "reason": exc.reason, **exc.detail},
         ) from exc
 
+    from api.security.network_budget import BudgetExhausted, reserve as reserve_budget, settle as settle_budget
+
     endpoints = checked_hosts(scope_admission["destinations"])
+    try:
+        budget = reserve_budget(db, scope, inventory_id=body.inventory_id, connections=len(endpoints), user=user)
+    except BudgetExhausted as exc:
+        raise HTTPException(status_code=429, detail={"error": exc.code, "reason": exc.reason, **exc.detail}) from exc
     admission = admit_network(endpoints)
     meter_network(db, endpoints)
     with network_run(
@@ -1361,6 +1420,12 @@ def crypto_observe(
             },
         )
         run.succeed(coverage=network_coverage(result))
+    observed_bytes = sum(
+        int((record.get("passive") or {}).get("bytes") or 0) for record in evidence
+    )
+    settled = settle_budget(
+        db, scope, inventory_id=body.inventory_id, bytes_used=observed_bytes, user=user
+    )
     return {
         "scan_id": stored["job_id"],
         "run_id": stored["run_id"],
@@ -1369,16 +1434,27 @@ def crypto_observe(
         "summary": summary,
         "probe_telemetry": result.get("probe_telemetry"),
         "certificates": result.get("certificates") or [],
+        "budget": {"reserved": budget, "settled": settled},
         "model": "cryptoscan.network-crypto-observation/1",
     }
 
 
-def _latest_evidence_runs(db: Session, *, limit: int = 5) -> list[dict]:
-    """Stored crypto-observe runs, newest first (tenant-scoped by the repository)."""
-    from api.security.estate_history import history_context  # noqa: F401  (tenant contract)
+#: durable run kinds that carry Cryptographic Network Intelligence evidence
+EVIDENCE_RUN_KINDS = ("crypto-observe", "crypto-passive")
 
-    rows = ScanRunRepository(db).list_runs(limit=limit, target_kind="crypto-observe", owner=current_tenant())
-    return [row.to_dict() for row in rows]
+
+def _latest_evidence_runs(db: Session, *, limit: int = 5) -> list[dict]:
+    """Stored observation runs of every evidence kind, newest first.
+
+    Active handshakes and passive sensor batches are both evidence sources, so
+    the read-back must not silently show only one of them.
+    """
+    runs: list[dict] = []
+    for kind in EVIDENCE_RUN_KINDS:
+        rows = ScanRunRepository(db).list_runs(limit=limit, target_kind=kind, owner=current_tenant())
+        runs.extend(row.to_dict() for row in rows)
+    runs.sort(key=lambda run: str(run.get("created_at") or ""), reverse=True)
+    return runs[:limit]
 
 
 def _latest_evidence(db: Session, *, limit: int = 5) -> list[dict]:
@@ -1529,6 +1605,13 @@ def ipsec_observe(
     except ScopeViolation as exc:
         raise HTTPException(status_code=409, detail={"error": exc.code, "reason": exc.reason, **exc.detail}) from exc
 
+    from api.security.network_budget import BudgetExhausted, reserve as reserve_budget
+
+    try:
+        budget = reserve_budget(db, scope, inventory_id=body.inventory_id, connections=len(scope_admission["destinations"]), user=user)
+    except BudgetExhausted as exc:
+        raise HTTPException(status_code=429, detail={"error": exc.code, "reason": exc.reason, **exc.detail}) from exc
+
     results = []
     for endpoint in scope_admission["destinations"]:
         host, _, port_text = endpoint.rpartition(":")
@@ -1554,7 +1637,13 @@ def ipsec_observe(
         db,
         user=user,
         target=",".join(scope_admission["destinations"])[:2000],
-        admission={"decision": "PERMITTED", "protocol": "IPsec", "scope": scope_admission},
+        admission={
+            "schema": "cryptoscan.network-admission/1",
+            "decision": "PERMITTED",
+            "protocol": "IPsec",
+            "scope": scope_admission,
+            "checked_targets": len(scope_admission["destinations"]),
+        },
         kind="ipsec-observe",
         profile={"protocol": "IPsec", "operation": "IKE_PROBE", "scope_name": scope_admission["scope_name"]},
     ) as run:
@@ -1568,4 +1657,131 @@ def ipsec_observe(
         run.succeed(coverage={"protocol": "ipsec", "observed": len(observed)})
     observation["run_id"] = stored["run_id"]
     observation["scan_id"] = stored["job_id"]
+    observation["budget"] = budget
     return observation
+
+
+# ---------------------------------------------------------------------------
+# Traffic budget (spec 67 §3, §30) — the approved budget is actually counted
+# ---------------------------------------------------------------------------
+
+
+@router.get("/network/crypto-budget")
+def network_crypto_budget(
+    inventory_id: str = "default",
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Current rolling-window usage against the approved traffic budget."""
+    from api.security.network_budget import state as budget_state
+
+    scope = _load_crypto_scope(db, inventory_id)
+    if not scope:
+        return {
+            "schema": "cryptoscan.network-budget/1",
+            "inventory_id": inventory_id,
+            "configured": False,
+            "reason": "no approved scope — there is no budget to report",
+            "distributed": False,
+        }
+    usage = budget_state(
+        db,
+        tenant_id=current_tenant(),
+        inventory_id=inventory_id,
+        limit=scope.get("traffic_budget") or {},
+    )
+    return {"configured": True, **usage}
+
+
+# ---------------------------------------------------------------------------
+# Passive observation intake (spec 67 §22) — handshake metadata only
+# ---------------------------------------------------------------------------
+
+
+class PassiveObservationBatch(BaseModel):
+    observations: list[dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=500)
+    inventory_id: str = Field(default="default", max_length=160)
+    scope_name: str | None = Field(default=None, max_length=120)
+
+
+@router.post("/network/crypto-passive")
+def network_crypto_passive(
+    body: PassiveObservationBatch,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Ingest metadata-only sensor observations (§22).
+
+    A TAP/SPAN or flow-log sensor submits handshake metadata — version, cipher,
+    certificate fingerprint and public-key algorithms, SNI presence, JA3/JA4 —
+    never payload, session content or key material. Any field that looks like
+    captured content is refused for the whole batch (fail-closed), and every
+    record is stored as ``NETWORK_PASSIVE_OBSERVED``. Passive evidence never
+    claims an endpoint is secure: an endpoint with no traffic stays UNKNOWN.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    from network_scanner.inventory.network_evidence import (
+        PassiveObservationRejected,
+        build_passive_evidence,
+        summarize,
+    )
+
+    scope = _load_crypto_scope(db, body.inventory_id)
+    received_at = _dt.now(_tz.utc).isoformat()
+    try:
+        evidence = [
+            build_passive_evidence(
+                observation,
+                scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                scope_name=body.scope_name or (scope or {}).get("name"),
+                received_at=received_at,
+            )
+            for observation in body.observations
+        ]
+    except PassiveObservationRejected as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "passive_observation_rejected", "reason": str(exc)},
+        ) from exc
+
+    summary = summarize(evidence)
+    with network_run(
+        db,
+        user=user,
+        target=f"passive:{len(evidence)} observations",
+        admission={
+            "schema": "cryptoscan.network-admission/1",
+            "decision": "PASSIVE_INGEST",
+            "protocol": "TLS",
+            "active": False,
+            # passive ingest opens no connection: it is charged zero targets,
+            # and the durable run records that explicitly rather than omitting
+            # the field the ledger contract requires.
+            "checked_targets": 0,
+        },
+        kind="crypto-passive",
+        profile={"source": "passive_sensor", "count": len(evidence)},
+    ) as run:
+        stored = persist_network(
+            db,
+            {"network_evidence": evidence, "network_evidence_summary": summary},
+            run,
+            kind="crypto-passive",
+            collection_metadata={
+                "source": "PASSIVE_SENSOR",
+                "evidence_schema": "cryptoscan.network-evidence/1",
+                "active_packets": 0,
+            },
+        )
+        run.succeed(coverage={"protocol": "passive", "observed": summary["observed"]})
+    return {
+        "model": "cryptoscan.network-passive-ingest/1",
+        "scan_id": stored["job_id"],
+        "run_id": stored["run_id"],
+        "stored": len(evidence),
+        "evidence": evidence,
+        "summary": summary,
+        "active_packets": 0,
+        "note": "passive evidence covers only the traffic the sensor saw; absence is NOT_OBSERVED",
+    }
