@@ -79,6 +79,19 @@ class CertificateRenewalUpdate(BaseModel):
     note: str | None = None
 
 
+def _guard_network_stop(db: Session) -> dict:
+    """Refuse an active probe when the operator's STOP switch is engaged (§30)."""
+    from api.security.network_safety import NetworkStopped, require_running
+
+    try:
+        return require_running(db, tenant_id=current_tenant())
+    except NetworkStopped as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": exc.code, "reason": exc.reason, **exc.detail},
+        ) from exc
+
+
 def _enforce_scope_if_configured(
     db: Session,
     endpoints: list[str],
@@ -505,6 +518,7 @@ def scan_ssh_hosts(
     from network_scanner.probing.ssh_kex import probe_ssh_kex_offer
     from network_scanner.probing.ssh_keyscan import scan_ssh_host_keys, split_ssh_target, ssh_probe_telemetry
 
+    _guard_network_stop(db)
     if not body.hosts:
         raise HTTPException(status_code=400, detail="hosts required")
     # Banner/KEX reads are live probes: same admission as every other active
@@ -1354,6 +1368,7 @@ def crypto_observe(
     from api.security.network_scope import ScopeViolation, check_scope
     from network_scanner.inventory.network_evidence import build_evidence, summarize
 
+    _guard_network_stop(db)
     scope = _load_crypto_scope(db, body.inventory_id)
     planned = body.endpoints or list((scope or {}).get("destinations") or [])
     try:
@@ -1444,7 +1459,7 @@ def crypto_observe(
 
 
 #: durable run kinds that carry Cryptographic Network Intelligence evidence
-EVIDENCE_RUN_KINDS = ("crypto-observe", "crypto-passive", "crypto-watch", "ipsec-observe")
+EVIDENCE_RUN_KINDS = ("crypto-observe", "crypto-passive", "crypto-watch", "ipsec-observe", "crypto-probe")
 
 
 def _latest_evidence_runs(db: Session, *, limit: int = 5) -> list[dict]:
@@ -1613,6 +1628,7 @@ def ipsec_observe(
     from network_scanner.inventory.network_evidence import build_ipsec_evidence, summarize
     from network_scanner.probing.ipsec_probe import probe_ike
 
+    _guard_network_stop(db)
     scope = _load_crypto_scope(db, body.inventory_id)
     planned = body.endpoints or list((scope or {}).get("destinations") or [])
     try:
@@ -1966,6 +1982,7 @@ def network_crypto_watch_start(
     """
     from api.security.network_watch import get_watcher
 
+    _guard_network_stop(db)
     scope = _load_crypto_scope(db, body.inventory_id)
     status = _scope_status(scope)
     if status["state"] != "APPROVED":
@@ -2002,6 +2019,7 @@ def network_crypto_watch_tick(
     """Run exactly one observation tick now (useful to verify the loop and budget)."""
     from api.security.network_watch import get_watcher
 
+    _guard_network_stop(db)
     watcher = get_watcher()
     watcher.inventory_id = watcher.inventory_id or "default"
     return watcher.tick()
@@ -2282,5 +2300,455 @@ def network_crypto_correlate(
         "network_facts_from_stored_evidence": derived,
         "evidence_limit": body.evidence_limit,
         "inventory_id": body.inventory_id,
+    }
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Safety: the operator STOP switch (spec 67 §30)
+# ---------------------------------------------------------------------------
+
+
+class NetworkStopRequest(BaseModel):
+    """Engage or release the emergency stop for active network observation."""
+
+    engage: bool = True
+    reason: str | None = Field(default=None, max_length=400)
+    note: str | None = Field(default=None, max_length=400)
+
+
+@router.get("/network/crypto-safety")
+def network_crypto_safety(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Current STOP state for active network observation (§30)."""
+    from api.security.network_safety import state as safety_state
+
+    return safety_state(db, tenant_id=current_tenant())
+
+
+@router.post("/network/crypto-stop")
+def network_crypto_stop(
+    body: NetworkStopRequest,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Engage or release the emergency stop.
+
+    Engaging refuses every active probe *before* a socket is opened; passive
+    metadata ingest and configuration import keep working because they open no
+    connection — stopping them would blind the estate during an incident.
+    """
+    from api.security.network_safety import engage, release
+
+    if body.engage:
+        return engage(
+            db,
+            reason=body.reason or "operator emergency stop",
+            by=user,
+            tenant_id=current_tenant(),
+        )
+    return release(db, by=user, note=body.note or body.reason, tenant_id=current_tenant())
+
+
+# ---------------------------------------------------------------------------
+# Protocol-aware observation (spec 67 §2, §5, §12, §18)
+# ---------------------------------------------------------------------------
+
+
+class CryptoProbeRequest(BaseModel):
+    """Detect the protocol on each approved endpoint, then observe its crypto.
+
+    Detection itself needs only ``CONNECT``; the protocol-specific observation is
+    checked again against the scope's allowed operations, so approving a TLS
+    handshake never silently authorises an SSH banner read.
+    """
+
+    endpoints: list[str] = Field(default_factory=list, max_length=50)
+    protocol: Literal["TLS", "SSH", "IPsec"] = "TLS"
+    operations: list[str] = Field(default_factory=lambda: ["CONNECT"], max_length=10)
+    timeout: float = Field(default=3.0, gt=0, le=15, allow_inf_nan=False)
+    detect_only: bool = False
+    inventory_id: str = Field(default="default", max_length=160)
+
+
+@router.post("/network/crypto-probe")
+def network_crypto_probe(
+    body: CryptoProbeRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+    _ctx=Depends(network_context),
+):
+    """Port ≠ protocol: identify the service from its response, then observe it.
+
+    Detection answers §5 (what does this endpoint actually speak?), and the
+    protocol-specific observation answers §6/§12/§18. Every endpoint ends up with
+    an evidence record — including the ones that expose no crypto, which are
+    stored as ``UNKNOWN`` rather than dropped.
+    """
+    from api.security.network_scope import ScopeViolation, check_scope
+
+    _guard_network_stop(db)
+    scope = _load_crypto_scope(db, body.inventory_id)
+    planned = body.endpoints or list((scope or {}).get("destinations") or [])
+    try:
+        scope_admission = check_scope(
+            scope, planned, protocol=body.protocol, operations=body.operations
+        )
+    except ScopeViolation as exc:
+        raise HTTPException(
+            status_code=409, detail={"error": exc.code, "reason": exc.reason, **exc.detail}
+        ) from exc
+
+    from api.security.network_budget import BudgetExhausted, reserve as reserve_budget, settle as settle_budget
+
+    endpoints = checked_hosts(scope_admission["destinations"])
+    try:
+        budget = reserve_budget(
+            db, scope, inventory_id=body.inventory_id, connections=len(endpoints), user=user
+        )
+    except BudgetExhausted as exc:
+        raise HTTPException(
+            status_code=429, detail={"error": exc.code, "reason": exc.reason, **exc.detail}
+        ) from exc
+    admission = admit_network(endpoints)
+    meter_network(db, endpoints)
+
+    from network_scanner.discovery.protocol_detector import detect_protocol, detection_summary
+
+    with network_run(
+        db,
+        user=user,
+        target=",".join(endpoints)[:2000],
+        admission=admission,
+        kind="crypto-probe",
+        profile={
+            "protocol": scope_admission["protocol"],
+            "operations": scope_admission["operations"],
+            "mode": "PROTOCOL_DETECT",
+            "scope_name": scope_admission["scope_name"],
+        },
+    ) as run:
+        detections: list[dict] = []
+        for endpoint in endpoints:
+            host, _, port_text = endpoint.rpartition(":")
+            port = int(port_text) if port_text.isdigit() else 443
+            try:
+                detection = detect_protocol(host.strip("[]"), port, timeout=body.timeout)
+            except Exception as exc:  # a detector failure is a gap, not a verdict
+                detection = {
+                    "schema": "cryptoscan.protocol-detection/1",
+                    "host": host,
+                    "port": port,
+                    "detected": "UNKNOWN",
+                    "detection_method": "PROBE_ERROR",
+                    "confidence": "LOW",
+                    "service_guess": {"name": "UNKNOWN", "source": "PORT_REGISTRY"},
+                    "port_matches_protocol": None,
+                    "tls_capable": False,
+                    "attempts": [],
+                    "details": {"error": str(exc)[:200]},
+                    "limitations": ["the detector itself failed — UNKNOWN, not a clean port"],
+                }
+            detection["endpoint"] = endpoint
+            detections.append(detection)
+        summary = detection_summary(detections)
+
+        from network_scanner.inventory.protocol_evidence import (
+            build_database_evidence,
+            build_protocol_evidence,
+            build_ssh_evidence,
+            to_protocol_cbom_assets,
+        )
+
+        observed_at = datetime.now(timezone.utc).isoformat()
+        evidence: list[dict] = []
+        tls_targets: list[str] = []
+        ssh_targets: list[dict] = []
+        db_tls_targets: list[dict] = []
+        scope_refusals: list[dict] = []
+
+        def _approves(endpoint: str, protocol: str, operations: list[str]) -> tuple[bool, str | None]:
+            """Detection is approved; the protocol-specific step is checked again.
+
+            Approving a TLS handshake must never silently authorise an SSH banner
+            read, so each detected protocol is validated against the scope's own
+            protocols and operations (§3).
+            """
+            try:
+                check_scope(scope, [endpoint], protocol=protocol, operations=operations)
+                return True, None
+            except ScopeViolation as exc:
+                scope_refusals.append(
+                    {"endpoint": endpoint, "protocol": protocol, "error": exc.code, "reason": exc.reason}
+                )
+                return False, exc.reason
+
+        for detection in detections:
+            protocol = str(detection.get("detected") or "UNKNOWN").upper()
+            endpoint = detection["endpoint"]
+            if body.detect_only:
+                evidence.append(
+                    build_protocol_evidence(
+                        detection,
+                        observed_at=observed_at,
+                        scope_name=scope_admission["scope_name"],
+                        scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                    )
+                )
+                continue
+            if protocol == "TLS":
+                if _approves(endpoint, "TLS", sorted({"CONNECT", "TLS_HANDSHAKE", "CERTIFICATE_READ"}))[0]:
+                    tls_targets.append(endpoint)
+                else:
+                    evidence.append(
+                        build_protocol_evidence(
+                            detection,
+                            observed_at=observed_at,
+                            scope_name=scope_admission["scope_name"],
+                            scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                        )
+                    )
+            elif protocol == "SSH":
+                if _approves(endpoint, "SSH", sorted({"CONNECT", "SSH_BANNER"}))[0]:
+                    ssh_targets.append(detection)
+                else:
+                    evidence.append(
+                        build_protocol_evidence(
+                            detection,
+                            observed_at=observed_at,
+                            scope_name=scope_admission["scope_name"],
+                            scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                        )
+                    )
+            elif protocol == "POSTGRESQL":
+                if _approves(endpoint, "TLS", sorted({"CONNECT", "TLS_HANDSHAKE"}))[0]:
+                    db_tls_targets.append(detection)
+                else:
+                    evidence.append(
+                        build_database_evidence(
+                            endpoint=endpoint,
+                            engine="POSTGRESQL",
+                            detection=detection,
+                            observed_at=observed_at,
+                            scope_name=scope_admission["scope_name"],
+                            scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                            extra={"run_id": run.job_id, "tls_handshake": "NOT_APPROVED_BY_SCOPE"},
+                        )
+                    )
+            elif protocol == "MYSQL":
+                evidence.append(
+                    build_database_evidence(
+                        endpoint=endpoint,
+                        engine="MYSQL",
+                        detection=detection,
+                        observed_at=observed_at,
+                        scope_name=scope_admission["scope_name"],
+                        scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                        extra={
+                            "run_id": run.job_id,
+                            "tls_handshake": "NOT_ATTEMPTED",
+                            "reason": "MySQL TLS needs a client SSLRequest packet after the server handshake",
+                        },
+                    )
+                )
+            else:
+                evidence.append(
+                    build_protocol_evidence(
+                        detection,
+                        observed_at=observed_at,
+                        scope_name=scope_admission["scope_name"],
+                        scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                    )
+                )
+
+        # TLS endpoints get the full TLS observation (version, cipher, chain, mTLS)
+        tls_findings: list[dict] = []
+        if tls_targets:
+            from network_scanner.inventory.network_evidence import build_evidence
+
+            result = NetworkTlsScanner(
+                live=True, timeout=body.timeout, workers=min(8, len(tls_targets))
+            ).scan_hosts(tls_targets)
+            tls_findings = result.get("findings") or []
+            evidence.extend(
+                build_evidence(
+                    finding,
+                    scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                    observed_at=observed_at,
+                    scope_name=scope_admission["scope_name"],
+                    extra={"operation": "TLS_HANDSHAKE", "detected_by": "PROTOCOL_DETECT"},
+                )
+                for finding in tls_findings
+            )
+
+        # Databases that answered "TLS supported" get a real handshake, but only
+        # once TLS_HANDSHAKE is approved for that exact endpoint.
+        if db_tls_targets:
+            from network_scanner.discovery.protocol_detector import postgres_tls_handshake
+
+            for detection in db_tls_targets:
+                tls = postgres_tls_handshake(
+                    detection["host"], detection["port"], timeout=max(2.0, body.timeout)
+                )
+                evidence.append(
+                    build_database_evidence(
+                        endpoint=detection["endpoint"],
+                        engine="POSTGRESQL",
+                        detection=detection,
+                        tls=tls,
+                        observed_at=observed_at,
+                        scope_name=scope_admission["scope_name"],
+                        scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                        extra={
+                            "run_id": run.job_id,
+                            "tls_handshake": "COMPLETED" if tls else "FAILED",
+                        },
+                    )
+                )
+
+        # SSH endpoints get KEXINIT + host keys
+        if ssh_targets:
+            from network_scanner.probing.ssh_kex import probe_ssh_kex_offer
+            from network_scanner.probing.ssh_keyscan import scan_ssh_host_keys, split_ssh_target
+
+            for detection in ssh_targets:
+                host, port = split_ssh_target(f"{detection['host']}:{detection['port']}")
+                try:
+                    kex = probe_ssh_kex_offer(host, port, timeout=max(2.0, body.timeout))
+                except Exception as exc:
+                    kex = {"status": "PROBE_ERROR", "detail": str(exc)[:200]}
+                try:
+                    keys = scan_ssh_host_keys(host, port, timeout=max(2.0, body.timeout))
+                except Exception as exc:
+                    keys = {"status": "PROBE_ERROR", "detail": str(exc)[:200]}
+                evidence.append(
+                    build_ssh_evidence(
+                        endpoint=detection["endpoint"],
+                        kex=kex,
+                        host_keys=keys,
+                        observed_at=observed_at,
+                        scope_name=scope_admission["scope_name"],
+                        scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                        extra={"run_id": run.job_id, "detected_by": "PROTOCOL_DETECT"},
+                    )
+                )
+
+        from network_scanner.inventory.network_evidence import summarize as summarize_network
+        from network_scanner.inventory.network_evidence import to_cbom_assets as to_network_cbom
+
+        network_summary = summarize_network(evidence)
+        # One CBOM for the run: TLS/IPsec assets from the transport projection
+        # plus SSH/database assets from the protocol projection. Layers stay
+        # labelled per asset; nothing is merged into a single algorithm list.
+        transport_cbom = to_network_cbom(evidence)
+        protocol_cbom = to_protocol_cbom_assets(evidence)
+        assets = list(transport_cbom.get("assets") or []) + list(protocol_cbom.get("assets") or [])
+        merged_roles: dict[str, int] = {}
+        merged_algorithms: dict[str, int] = {}
+        for asset in assets:
+            merged_roles[asset["role"]] = merged_roles.get(asset["role"], 0) + 1
+            merged_algorithms[asset["algorithm"]] = merged_algorithms.get(asset["algorithm"], 0) + 1
+        protocol_cbom = {
+            "model": "cryptoscan.network-crypto-probe-cbom/1",
+            "layer": "NETWORK_TRANSPORT",
+            "asset_count": len(assets),
+            "assets": assets,
+            "roles": merged_roles,
+            "algorithms": merged_algorithms,
+            "not_observed": sorted(
+                set(transport_cbom.get("not_observed") or []) | set(protocol_cbom.get("not_observed") or [])
+            ),
+            "boundary": protocol_cbom.get("boundary"),
+        }
+        payload = {
+            "protocol_detections": detections,
+            "scope_refusals": scope_refusals,
+            "protocol_detection_summary": summary,
+            "network_evidence": evidence,
+            "network_evidence_summary": network_summary,
+            "protocol_cbom": protocol_cbom,
+            "tls_findings": tls_findings,
+        }
+        stored = persist_network(
+            db,
+            payload,
+            run,
+            kind="crypto-probe",
+            phase_admission=[
+                {"endpoint": item["endpoint"], "phase": "protocol_detect", "decision": "PERMITTED"}
+                for item in detections
+            ],
+            collection_metadata={
+                "protocol": scope_admission["protocol"],
+                "scope_name": scope_admission["scope_name"],
+                "evidence_schema": "cryptoscan.network-evidence/1",
+                "detection_schema": "cryptoscan.protocol-detection/1",
+            },
+        )
+        run.succeed(
+            coverage={
+                "protocol": "multi",
+                "detected": summary["by_protocol"],
+                "observed": network_summary["observed"],
+            }
+        )
+
+    settled = settle_budget(db, scope, inventory_id=body.inventory_id, bytes_used=0, user=user)
+    return {
+        "model": "cryptoscan.network-crypto-probe/1",
+        "run_id": stored["run_id"],
+        "scan_id": stored["job_id"],
+        "scope": scope_admission,
+        "detections": detections,
+        "detection_summary": summary,
+        "scope_refusals": scope_refusals,
+        "network_summary": network_summary,
+        "cbom": protocol_cbom,
+        "evidence": evidence,
+        "evidence_chain": stored.get("evidence_chain"),
+        "budget": {"reserved": budget, "settled": settled},
+        "note": (
+            "protocol detection reads only what the service answers; SSH entries are algorithm "
+            "offers (no session negotiated) and database entries are transport TLS only"
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Kubernetes network correlation (spec 67 §20)
+# ---------------------------------------------------------------------------
+
+
+class KubernetesCorrelationRequest(BaseModel):
+    """Ingress/Service/Pod manifests to correlate with observed crypto (§20)."""
+
+    manifests: list[dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=500)
+    use_latest_evidence: bool = True
+    evidence_limit: int = Field(default=5, ge=1, le=50)
+
+
+@router.post("/network/kubernetes-correlate")
+def network_kubernetes_correlate(
+    body: KubernetesCorrelationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Map Kubernetes objects to endpoints and annotate them with observed crypto.
+
+    The manifest supplies topology and TLS *intent* (``NETWORK_CONFIGURED``); the
+    annotation comes only from stored observation evidence. A hop with no
+    observation stays ``UNKNOWN``, and a sidecar's TLS is labelled as not being
+    the application's crypto.
+    """
+    from api.security.network_kubernetes import correlate as correlate_kubernetes
+
+    evidence = _latest_evidence(db, limit=body.evidence_limit) if body.use_latest_evidence else []
+    report = correlate_kubernetes(body.manifests, evidence)
+    report["sources"] = {
+        "manifests_supplied": len(body.manifests),
+        "evidence_records": len(evidence),
+        "evidence_limit": body.evidence_limit,
     }
     return report

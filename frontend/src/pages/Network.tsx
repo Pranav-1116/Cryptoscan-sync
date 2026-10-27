@@ -4,7 +4,7 @@ import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import { IconNetwork, IconCloud, IconHardware, IconSecurity, IconTarget, IconSatellite } from "../components/icons";
-import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse, apiNetworkCryptoIntegrity, NetworkEvidenceIntegrity, apiNetworkMessageLayer, apiObserveNetworkMessageLayer, MessageLayerResponse, MessageLayerRecord, apiNetworkCryptoCorrelate, NetworkCorrelationResponse } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse, apiNetworkCryptoIntegrity, NetworkEvidenceIntegrity, apiNetworkMessageLayer, apiObserveNetworkMessageLayer, MessageLayerResponse, MessageLayerRecord, apiNetworkCryptoCorrelate, NetworkCorrelationResponse, apiNetworkCryptoProbe, CryptoProbeResponse, ProtocolDetection, apiNetworkCryptoSafety, apiNetworkCryptoStop, NetworkSafetyState } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -504,6 +504,141 @@ function NetworkCryptoScopePanel() {
             {msg && <span className="dim" style={{ fontSize: 11 }}>{msg}</span>}
           </div>
           <div className="faint" style={{ fontSize: 11 }}>Stored as tenant-scoped <code>network:crypto-scope</code> — probes outside these exact destinations/ports/protocols are refused.</div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/* ── Safety: the operator STOP switch (spec §30) ── */
+function SafetyStopPanel() {
+  const safety = usePollingApi(() => apiNetworkCryptoSafety(), 15000);
+  const state = safety.data as NetworkSafetyState | null;
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const toggle = async () => {
+    setBusy(true);
+    setMsg(null);
+    const result = await apiNetworkCryptoStop(!state?.engaged, !state?.engaged ? "operator emergency stop" : undefined);
+    if (result.data) {
+      setMsg(result.data.engaged ? "active observation stopped" : "active observation released");
+      safety.run();
+    } else {
+      setMsg(result.error || "safety switch failed");
+    }
+    setBusy(false);
+  };
+  return (
+    <Panel
+      title="Observation safety — emergency stop"
+      sub="IDS alert → STOP, never disable the IDS: active probes are refused before any socket opens; passive ingest and config import keep running"
+      className="mt"
+    >
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <Badge tone={state?.engaged ? "red" : "green"}>{state?.engaged ? "STOPPED" : "ACTIVE OBSERVATION PERMITTED"}</Badge>
+        {state?.engaged && <span className="dim" style={{ fontSize: 11 }}>{state.reason} · {state.engaged_by}</span>}
+        <button className={state?.engaged ? "btn sm primary" : "btn sm"} type="button" onClick={() => void toggle()} disabled={busy}>
+          {busy ? "…" : state?.engaged ? "Release stop" : "Stop observation"}
+        </button>
+        {msg && <span className="dim" style={{ fontSize: 11 }}>{msg}</span>}
+      </div>
+      <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>
+        One local switch per tenant · passive metadata ingest stays available · not a distributed kill switch
+      </div>
+    </Panel>
+  );
+}
+
+/* ── Port ≠ protocol: detect what the endpoint actually speaks (spec §5) ── */
+function protocolTone(protocol: string): string {
+  if (protocol === "TLS") return "green";
+  if (protocol === "SSH" || protocol === "POSTGRESQL" || protocol === "MYSQL") return "violet";
+  return "slate";
+}
+
+function ProtocolProbePanel() {
+  const [endpoints, setEndpoints] = useState("");
+  const [detectOnly, setDetectOnly] = useState(true);
+  const [result, setResult] = useState<CryptoProbeResponse | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    setMsg(null);
+    const list = endpoints.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+    if (!list.length) {
+      setMsg("Add at least one approved endpoint (host:port).");
+      setBusy(false);
+      return;
+    }
+    const response = await apiNetworkCryptoProbe(list, { detect_only: detectOnly });
+    if (response.data) setResult(response.data);
+    else setMsg(response.error || "probe refused");
+    setBusy(false);
+  };
+
+  const detections: ProtocolDetection[] = result?.detections ?? [];
+  const summary = result?.detection_summary;
+  return (
+    <Panel
+      title="Service discovery — port ≠ protocol"
+      sub="detection reads only what the endpoint answers; the protocol-specific observation is checked again against the approved operations"
+      className="mt"
+    >
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          value={endpoints}
+          onChange={(event) => setEndpoints(event.target.value)}
+          aria-label="Approved endpoints"
+          placeholder="10.20.10.15:443, 10.20.10.30:22"
+          style={{ flex: "1 1 260px", fontSize: 11, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }}
+        />
+        <label className="dim" style={{ fontSize: 11, display: "flex", gap: 6, alignItems: "center" }}>
+          <input type="checkbox" checked={detectOnly} onChange={(event) => setDetectOnly(event.target.checked)} />
+          detection only
+        </label>
+        <button className="btn sm" type="button" onClick={() => void run()} disabled={busy}>{busy ? "Probing…" : "Detect + observe"}</button>
+        {msg && <span className="dim" style={{ fontSize: 11 }}>{msg}</span>}
+      </div>
+
+      {summary && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+          {Object.entries(summary.by_protocol).map(([protocol, count]) => (
+            <Badge key={protocol} tone={protocolTone(protocol)}>{protocol} · {count}</Badge>
+          ))}
+          {summary.unknown > 0 && <Badge tone="amber">{summary.unknown} UNKNOWN</Badge>}
+          {summary.port_protocol_mismatches.length > 0 && <Badge tone="cyan">{summary.port_protocol_mismatches.length} port/protocol mismatch</Badge>}
+        </div>
+      )}
+
+      {detections.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <Table
+            head={["endpoint", "detected", "method", "port guess", "TLS", "attempts"]}
+            rows={detections.map((item) => [
+              <span className="mono" style={{ fontSize: 11 }}>{item.endpoint ?? `${item.host}:${item.port}`}</span>,
+              <Badge tone={protocolTone(item.detected)}>{item.detected}</Badge>,
+              <span className="faint" style={{ fontSize: 10 }}>{item.detection_method}</span>,
+              <span style={{ fontSize: 10.5 }}>
+                {item.service_guess.name}
+                {item.port_matches_protocol === false && <span style={{ color: "var(--cyan)" }}> · mismatch</span>}
+              </span>,
+              <span className="mono" style={{ fontSize: 10 }}>{item.tls?.tls_version ?? "—"}</span>,
+              <span className="faint" style={{ fontSize: 10 }}>{item.attempts.map((attempt) => attempt.probe).join(" → ") || "—"}</span>,
+            ])}
+          />
+        </div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Badge tone="green">{result.network_summary.observed} observed</Badge>
+          <Badge tone="amber">{result.network_summary.not_observed} not observed</Badge>
+          <Badge tone="violet">{result.cbom.asset_count} CBOM assets</Badge>
+          {result.scope_refusals.map((refusal) => (
+            <Badge key={`${refusal.endpoint}-${refusal.protocol}`} tone="red">{refusal.protocol} not approved · {refusal.error}</Badge>
+          ))}
         </div>
       )}
     </Panel>
@@ -1015,7 +1150,9 @@ export default function Network() {
 
       {/* ── approved scope + observed crypto (spec 67) ── */}
       <NetworkCryptoScopePanel />
+      <SafetyStopPanel />
       <NetworkCryptoIntelligencePanel />
+      <ProtocolProbePanel />
       <MessageLayerPanel />
       <CrossLayerCorrelationPanel />
       <ScopeImportPanel />

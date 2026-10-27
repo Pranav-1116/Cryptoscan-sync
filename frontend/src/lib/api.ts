@@ -4864,6 +4864,64 @@ export const apiNetworkCryptoCorrelate = (payload: {
 }): Promise<ApiResult<NetworkCorrelationResponse>> =>
   call("/api/v1/network/crypto-correlate", { method: "POST", body: JSON.stringify(payload) });
 
+export interface ProtocolDetection {
+  host: string;
+  port: number;
+  endpoint?: string;
+  detected: string;
+  detection_method: string;
+  confidence: string;
+  service_guess: { name: string; source: string };
+  port_matches_protocol: boolean | null;
+  tls_capable: boolean;
+  tls: { tls_version?: string | null; cipher_suite?: string | null } | null;
+  attempts: Array<{ probe: string; result: string }>;
+  details?: Record<string, unknown>;
+  limitations: string[];
+}
+
+export interface CryptoProbeResponse {
+  model: string;
+  run_id: string;
+  scan_id: string | null;
+  detections: ProtocolDetection[];
+  detection_summary: { endpoints: number; by_protocol: Record<string, number>; unknown: number; port_protocol_mismatches: Array<{ endpoint: string; detected: string; port_guess: string | null }>; note: string };
+  scope_refusals: Array<{ endpoint: string; protocol: string; error: string; reason: string }>;
+  network_summary: { observed: number; not_observed: number };
+  cbom: { asset_count: number; roles: Record<string, number>; algorithms: Record<string, number>; boundary?: string };
+  evidence: Array<{ evidence_id: string; protocol: string; evidence_type: string; target: { endpoint: string | null }; tls_version: string | null; cipher_suite: string | null; policy_issues: string[] }>;
+  evidence_chain?: { appended: number; head: string } | null;
+  note: string;
+}
+
+export const apiNetworkCryptoProbe = (
+  endpoints: string[],
+  options: { protocol?: string; detect_only?: boolean; timeout?: number } = {},
+): Promise<ApiResult<CryptoProbeResponse>> =>
+  call("/api/v1/network/crypto-probe", { method: "POST", body: JSON.stringify({ endpoints, ...options }) });
+
+export interface NetworkSafetyState {
+  schema: string;
+  engaged: boolean;
+  reason: string | null;
+  engaged_by: string | null;
+  engaged_at: string | null;
+  released_by: string | null;
+  released_at: string | null;
+  release_note: string | null;
+  active_observation_permitted: boolean;
+  passive_ingest_permitted: boolean;
+  config_import_permitted: boolean;
+  distributed: boolean;
+  boundary: string;
+}
+
+export const apiNetworkCryptoSafety = (): Promise<ApiResult<NetworkSafetyState>> =>
+  call("/api/v1/network/crypto-safety");
+
+export const apiNetworkCryptoStop = (engage: boolean, reason?: string): Promise<ApiResult<NetworkSafetyState>> =>
+  call("/api/v1/network/crypto-stop", { method: "POST", body: JSON.stringify({ engage, reason }) });
+
 export interface NetworkIpsecObservation {
   model: string;
   scope: Record<string, unknown>;
