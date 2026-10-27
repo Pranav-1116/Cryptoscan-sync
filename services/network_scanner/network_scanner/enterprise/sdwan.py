@@ -13,8 +13,9 @@ are the crypto surface the scanner reports.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
 
+from network_scanner.enterprise.protocols.engine import merge_status
 
 
 @dataclass

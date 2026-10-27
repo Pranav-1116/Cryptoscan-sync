@@ -97,40 +97,6 @@ _TEMPLATES: dict[str, dict[str, Any]] = {
         "source": "mapped",
         "mapping_note": "Annex A controls are mapped onto the internal baseline rules.",
     },
-    "nist-sp-800-53": {
-        "name": "NIST SP 800-53 Rev.5 — security & privacy controls (mapped)",
-        "requirements": [
-            {"id": "AU-9", "title": "Protection of audit information (tamper-evident chain)",
-             "standard_substrings": ["audit"], "rule_prefixes": ["BASELINE-002", "AUDIT-001"]},
-            {"id": "SC-8", "title": "Transmission confidentiality & integrity (TLS)",
-             "standard_substrings": ["800-52", "Internal Security Baseline"], "rule_prefixes": ["BASELINE-005", "TLS-001"]},
-            {"id": "SC-12/13", "title": "Cryptographic key establishment / HSM residence",
-             "standard_substrings": ["FIPS 140-3", "HSM"], "rule_prefixes": ["FIPS140-001", "FIPS140-002"]},
-            {"id": "IA-2", "title": "Federated identification & authentication (SSO/MFA)",
-             "standard_substrings": ["Internal Security Baseline"], "rule_prefixes": ["BASELINE-004", "IAM-001"]},
-            {"id": "SA-15", "title": "Supply-chain / SBOM & development process",
-             "standard_substrings": ["SBOM", "supply chain"], "rule_prefixes": ["SBOM-001", "CVE-001"]},
-        ],
-        "source": "mapped",
-        "mapping_note": "NIST 800-53 controls are mapped onto the internal baseline, TLS/FIPS, IAM, and SBOM rule families; policy remains the only pass/fail source.",
-    },
-    "uae-pdpl": {
-        "name": "UAE Personal Data Protection Law (PDPL) — data-security controls (mapped)",
-        "requirements": [
-            {"id": "Art.9", "title": "Security of personal data (encryption in transit/at rest)",
-             "standard_substrings": ["800-52", "FIPS 140-3"], "rule_prefixes": ["BASELINE-005", "FIPS140-001"]},
-            {"id": "Art.10", "title": "Access control to personal data (RBAC/ABAC)",
-             "standard_substrings": ["Internal Security Baseline"], "rule_prefixes": ["BASELINE-004", "IAM-001"]},
-            {"id": "Art.13", "title": "Personal-data breach notification readiness (alerting)",
-             "standard_substrings": ["Internal Security Baseline"], "rule_prefixes": ["BASELINE-001", "ALERT-001"]},
-            {"id": "Art.17", "title": "Records / accountability (tamper-evident audit)",
-             "standard_substrings": ["audit"], "rule_prefixes": ["AUDIT-001", "BASELINE-002"]},
-            {"id": "Art.20", "title": "Transfer security (cryptography for cross-border flows)",
-             "standard_substrings": ["800-52", "TLS"], "rule_prefixes": ["TLS-001", "BASELINE-005"]},
-        ],
-        "source": "mapped",
-        "mapping_note": "UAE PDPL articles are mapped onto the internal baseline/TLS/audit rule families; deterministic evidence mapping, no AI.",
-    },
 }
 
 

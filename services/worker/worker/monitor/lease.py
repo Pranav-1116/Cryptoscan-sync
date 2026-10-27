@@ -90,11 +90,7 @@ class LeaderLease:
             if session is not None:
                 try:
                     session.rollback()
-                except Exception as _handler_exc:
-                    logger.warning(
-                        "exception_suppressed",
-                        extra={"error_type": type(_handler_exc).__name__},
-                    )
+                except Exception:
                     pass
             self._leader = False  # cannot verify leadership -> assume standby, never double-run
             raise

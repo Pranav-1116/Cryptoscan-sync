@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 from pathlib import Path
 from typing import Any
 
@@ -27,11 +22,7 @@ def parse_kubernetes_tree(root: Path) -> list[dict[str, Any]]:
             continue
         try:
             docs = list(yaml.safe_load_all(path.read_text(encoding="utf-8", errors="replace")))
-        except Exception as _handler_exc:
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
+        except Exception:
             continue
         for doc in docs:
             if not isinstance(doc, dict):

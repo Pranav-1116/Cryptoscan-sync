@@ -17,7 +17,7 @@ Two hard rules, enforced by tests:
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 CONFIG_LANGUAGES = {"CONFIG", "TERRAFORM", "K8S", "DOCKERFILE", "CLOUDFORMATION"}

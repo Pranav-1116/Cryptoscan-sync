@@ -9,6 +9,7 @@ disconnected (local queue → evidence cache → reconnect → secure sync).
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 

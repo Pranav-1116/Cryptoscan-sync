@@ -23,10 +23,10 @@ def test_full_pipeline_execution(test_db, temp_workspace, mock_scan_job):
         
         # Mock scanner
         with patch('scanner.core.scanner.Scanner.scan') as mock_scan:
-            from scanner.models.scan_result import ScanResult, ScanStatistics
-            from scanner.models.raw_finding import RawFinding
-
-            result = ScanResult(
+            from scanner.models.scan_result import ScanResult
+            from shared_models.finding import RawFinding
+            
+            mock_scan.return_value = ScanResult(
                 findings=[
                     RawFinding(
                         algorithm="DES",
@@ -35,13 +35,12 @@ def test_full_pipeline_execution(test_db, temp_workspace, mock_scan_job):
                         confidence="HIGH"
                     )
                 ],
+                files_scanned=100,
+                duration_seconds=5.2
             )
-            result.statistics = ScanStatistics(files_scanned=100, duration_seconds=5.2)
-            result.finalize()
-            mock_scan.return_value = result
             
             # Execute pipeline
-            _context = {
+            context = {
                 "job": mock_scan_job,
                 "workspace": temp_workspace,
                 "db": test_db
@@ -57,7 +56,7 @@ def test_full_pipeline_execution(test_db, temp_workspace, mock_scan_job):
             assert scan_id is not None
             
             # Verify evidence in DB
-            from db.repositories.evidence_repository import EvidenceRepository
+            from database.db.repositories.evidence_repository import EvidenceRepository
             evidence_repo = EvidenceRepository(test_db)
             
             evidence_records = evidence_repo.get_by_scan(scan_id)

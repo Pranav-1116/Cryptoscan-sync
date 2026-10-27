@@ -9,7 +9,6 @@ from scanner.core.language_detector import detect_languages_in_repo
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.parse_error_handler import safe_parse
 from scanner.parsers.config_crypto_parser import parse_config_file
-from scanner.parsers.c_parser import parse_c_file
 from scanner.parsers.csharp_parser import parse_csharp_file
 from scanner.parsers.go_parser import parse_go_file
 from scanner.parsers.java_parser import parse_java_file
@@ -43,16 +42,6 @@ PARSERS = {
     ".php": parse_php_file,
     ".rb": parse_ruby_file,
     ".rs": parse_rust_file,
-    ".c": parse_c_file,
-    ".h": parse_c_file,
-    ".cpp": parse_c_file,
-    ".cc": parse_c_file,
-    ".cxx": parse_c_file,
-    ".hpp": parse_c_file,
-    ".hh": parse_c_file,
-    ".hxx": parse_c_file,
-    ".m": parse_c_file,
-    ".mm": parse_c_file,
 }
 
 

@@ -19,17 +19,12 @@ class RelationshipBuilder:
         if f"asset:{asset_id}" in self.engine.nodes:
             self.engine.nodes[f"asset:{asset_id}"] = node
 
-    def _system_edge(self, parent_id: str, child_id: str, relation: str) -> None:
+    def calls(self, parent_id: str, child_id: str, protocol: str = "CALLS") -> None:
         if f"system:{child_id}" not in self.engine.nodes:
             self.engine.add_node(f"system:{child_id}", kind="System", name=child_id)
         if f"system:{parent_id}" not in self.engine.nodes:
             self.engine.add_node(f"system:{parent_id}", kind="System", name=parent_id)
-        self.engine.add_edge(f"system:{parent_id}", f"system:{child_id}", relation)
-
-    def calls(self, parent_id: str, child_id: str, protocol: str = "CALLS") -> None:
-        # A transport argument is not a relation label. Retain this signature
-        # for callers, but CALLS remains CALLS even for HTTP/mesh transports.
-        self._system_edge(parent_id, child_id, "CALLS")
+        self.engine.add_edge(f"system:{parent_id}", f"system:{child_id}", protocol or "CALLS")
 
     def supports(self, system_id: str, process_id: str) -> None:
         self.engine.add_edge(f"system:{system_id}", f"process:{process_id}", "SUPPORTS")
@@ -52,4 +47,4 @@ class RelationshipBuilder:
 
     def apply_calls(self, edges: Iterable[dict[str, Any]]) -> None:
         for row in payload.call_rows(edges):
-            self._system_edge(row["parent_id"], row["child_id"], row["relation"])
+            self.calls(row["parent_id"], row["child_id"], row.get("protocol") or "CALLS")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 QUESTIONS = [
@@ -47,26 +46,6 @@ def generate_questionnaire(vendor_name: str | None = None) -> dict[str, Any]:
     }
 
 
-def _canonical_reported_algorithm(value: str) -> str | None:
-    """Canonicalize supported answers without treating free text as fact."""
-    raw = value.strip()
-    if not raw:
-        return None
-    match = re.fullmatch(r"TLS\s*v?\s*1\.([0-3])", raw, re.IGNORECASE)
-    if match:
-        return f"TLS 1.{match.group(1)}"
-    match = re.fullmatch(r"AES[-\s]?(128|256)(?:[-\s]?(GCM|CBC|CTR))?", raw, re.IGNORECASE)
-    if match:
-        return f"AES-{match.group(1)}" + (f"-{match.group(2).upper()}" if match.group(2) else "")
-    match = re.fullmatch(r"(RSA|ECDSA|ED25519|CHACHA20)", raw, re.IGNORECASE)
-    if match:
-        return match.group(1).upper()
-    match = re.fullmatch(r"SHA[-\s]?(1|256|384|512)", raw, re.IGNORECASE)
-    if match:
-        return f"SHA-{match.group(1)}"
-    return None
-
-
 def parse_questionnaire(responses: dict[str, Any]) -> dict[str, Any]:
     transit = str(responses.get("transit") or responses.get("tls_version") or "")
     rest = str(responses.get("rest") or responses.get("encryption_algorithm") or "")
@@ -74,19 +53,13 @@ def parse_questionnaire(responses: dict[str, Any]) -> dict[str, Any]:
     pqc = str(responses.get("pqc") or responses.get("pqc_adoption") or responses.get("pqc_status") or "No")
     cbom = responses.get("cbom") or responses.get("cbom_provided") or responses.get("cbom_attached")
     inventory = []
-    transit_algorithm = _canonical_reported_algorithm(transit)
-    rest_algorithm = _canonical_reported_algorithm(rest)
     if transit:
         inventory.append(
             {
                 "crypto_use_case": "Data in transit",
-                "algorithm": transit_algorithm,
-                "algorithm_raw": transit if transit_algorithm is None else None,
+                "algorithm": transit.replace(" ", ""),
                 "discovery_method": "QUESTIONNAIRE",
-                "evidence_source": "vendor_self_report",
-                "visibility": "self_reported",
-                "observed_usage": False,
-                "confidence": "LOW",
+                "confidence": "MEDIUM",
                 "pqc_ready": False,
             }
         )
@@ -94,13 +67,9 @@ def parse_questionnaire(responses: dict[str, Any]) -> dict[str, Any]:
         inventory.append(
             {
                 "crypto_use_case": "Data at rest",
-                "algorithm": rest_algorithm,
-                "algorithm_raw": rest if rest_algorithm is None else None,
+                "algorithm": rest.replace(" ", "-"),
                 "discovery_method": "QUESTIONNAIRE",
-                "evidence_source": "vendor_self_report",
-                "visibility": "self_reported",
-                "observed_usage": False,
-                "confidence": "LOW",
+                "confidence": "MEDIUM",
                 "key_management": kms or None,
                 "pqc_ready": False,
             }

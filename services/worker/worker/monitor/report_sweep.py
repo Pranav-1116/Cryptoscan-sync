@@ -30,9 +30,6 @@ def run_due_report_schedules(session: Any, *, on_event=None) -> list[dict[str, A
     ``on_event`` is an optional callback ``(event_type, detail, payload)`` —
     the daemon wires it to monitor events so reports appear on the SSE feed.
     """
-    from db.repositories.execution_control import required, ExecutionDenied
-    if required():
-        raise ExecutionDenied("Report processing has no controlled execution adapter")
     try:
         from db.repositories.report_schedule_repository import ReportScheduleRepository
 

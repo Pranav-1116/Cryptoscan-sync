@@ -11,15 +11,12 @@ from db.models.scan import Scan
 from db.repositories.base_repository import BaseRepository
 
 
-_UNSCOPED = object()
-
-
 class ScanRepository(BaseRepository[Scan]):
     def __init__(self, session: Session):
         super().__init__(Scan, session)
 
     def get_recent_scans(self, limit: int = 10) -> list[Scan]:
-        stmt = select(Scan).order_by(desc(Scan.scan_start)).limit(max(1, min(int(limit or 10), 200)))
+        stmt = select(Scan).order_by(desc(Scan.scan_start)).limit(limit)
         return list(self.session.execute(stmt).scalars().all())
 
     def list_scans(
@@ -29,13 +26,9 @@ class ScanRepository(BaseRepository[Scan]):
         target: str | None = None,
         page: int = 1,
         page_size: int = 50,
-        owner=_UNSCOPED,
     ) -> tuple[list[Scan], int]:
         stmt = select(Scan)
         count_stmt = select(func.count()).select_from(Scan)
-        if owner is not _UNSCOPED:
-            stmt = stmt.where(Scan.tenant_id == owner)
-            count_stmt = count_stmt.where(Scan.tenant_id == owner)
         if status:
             stmt = stmt.where(Scan.status == status)
             count_stmt = count_stmt.where(Scan.status == status)

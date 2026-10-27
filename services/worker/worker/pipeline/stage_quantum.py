@@ -8,8 +8,6 @@ never invented here.
 
 from __future__ import annotations
 
-from db.tenancy import filtered_get
-
 import logging
 from typing import Any
 
@@ -24,9 +22,6 @@ def _summary(report: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
         "overall_hndl_risk": report.get("overall_hndl_risk"),
         "vulnerable_count": report.get("vulnerable_count"),
         "pqc_ready_count": report.get("pqc_ready_count"),
-        "pqc_candidate_count": report.get("pqc_candidate_count"),
-        "deployment_readiness": report.get("deployment_readiness"),
-        "model_assumptions": report.get("model_assumptions"),
         "total_sites": (plan.get("inventory") or {}).get("total_sites"),
         "hndl_counts": report.get("counts"),
         "by_threat_type": (plan.get("inventory") or {}).get("by_threat_type"),
@@ -48,8 +43,6 @@ def _summary(report: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
             "y_migration_years": mosca.get("y_migration_years"),
             "z_years_to_crqc": mosca.get("z_years_to_crqc"),
             "slack_years": mosca.get("slack_years"),
-            "scenario_only": mosca.get("scenario_only"),
-            "threat_year_basis": mosca.get("threat_year_basis"),
         },
         "calculation_version": plan.get("calculation_version") or report.get("calculation_version"),
     }
@@ -86,7 +79,7 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
             }
             for row in rows
         ]
-        system = filtered_get(session, System, ctx.system_id) if ctx.system_id else None
+        system = session.get(System, ctx.system_id) if ctx.system_id else None
         system_rows = []
         migration_years = None
         if system is not None:
@@ -96,18 +89,14 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
         plan = build_migration_plan(findings, systems=system_rows, migration_years=migration_years)
         summary = _summary(report, plan)
         ctx.scan_meta["quantum"] = summary
-        scan = filtered_get(session, Scan, ctx.scan_id)
+        scan = session.get(Scan, ctx.scan_id)
         if scan is not None:
             stats = dict(scan.statistics or {})
             stats["quantum"] = summary
             scan.statistics = stats
             try:
                 flag_modified(scan, "statistics")
-            except Exception as _handler_exc:
-                logger.warning(
-                    "exception_suppressed",
-                    extra={"error_type": type(_handler_exc).__name__},
-                )
+            except Exception:
                 pass
             session.flush()
         verdict = (summary.get("mosca") or {}).get("verdict")

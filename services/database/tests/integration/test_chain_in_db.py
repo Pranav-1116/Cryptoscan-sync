@@ -2,19 +2,17 @@
 Tests for evidence chain verification from the database.
 
 Verifies that the blockchain-style chain hash linkage is maintained
-correctly after insertion and can detect tampering. Uses ORM objects so the
-suite is portable across SQLite (test) and PostgreSQL (production).
+correctly after insertion and can detect tampering.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+
+from sqlalchemy import text
 
 from db.loader.post_load_verifier import PostLoadVerifier
-from db.models.evidence_record import EvidenceRecord
-from db.models.scan import Scan
 
 
 def _sha256(data: str) -> str:
@@ -40,65 +38,26 @@ def _build_chain(n_records: int, scan_session_id: str) -> list[dict]:
         else:
             ch_hash = _sha256(c_hash + prev_hash)
 
-        records.append(
-            {
-                "evidence_id": str(uuid.uuid4()),
-                "content_hash": c_hash,
-                "chain_position": i,
-                "chain_hash": ch_hash,
-                "previous_hash": prev_hash,
-                "algorithm": "AES",
-                "key_size": 256,
-                "purpose": "ENCRYPTION",
-                "confidence": "HIGH",
-                "file_path": f"File{i}.java",
-                "line_number": i * 10,
-                "is_hardcoded_key": False,
-                "finding_data": finding,
-                "provenance": {},
-            }
-        )
+        records.append({
+            "evidence_id": uuid.uuid4(),
+            "scan_id": None,  # Will be set during insert
+            "content_hash": c_hash,
+            "chain_position": i,
+            "chain_hash": ch_hash,
+            "previous_hash": prev_hash,
+            "algorithm": "AES",
+            "key_size": 256,
+            "purpose": "ENCRYPTION",
+            "confidence": "HIGH",
+            "file_path": f"File{i}.java",
+            "line_number": i * 10,
+            "is_hardcoded_key": False,
+            "finding_data": finding,
+            "provenance": {},
+        })
         prev_hash = ch_hash
 
     return records
-
-
-def _insert_scan_and_records(db_session, n_records: int, scan_session_id: str):
-    scan_id = str(uuid.uuid4())
-    scan = Scan(
-        id=scan_id,
-        scan_start=datetime.now(timezone.utc),
-        scanner_id="test",
-        scanner_version="0.1",
-        target_type="GIT_REPOSITORY",
-        target_location="http://test",
-        operator="test",
-        status="COMPLETED",
-    )
-    db_session.add(scan)
-    db_session.flush()
-
-    records = _build_chain(n_records, scan_session_id)
-    for rec in records:
-        db_session.add(
-            EvidenceRecord(
-                id=rec["evidence_id"],
-                scan_id=scan_id,
-                content_hash=rec["content_hash"],
-                chain_position=rec["chain_position"],
-                chain_hash=rec["chain_hash"],
-                previous_hash=rec["previous_hash"],
-                algorithm=rec["algorithm"],
-                confidence=rec["confidence"],
-                is_hardcoded_key=rec["is_hardcoded_key"],
-                file_path=rec["file_path"],
-                line_number=rec["line_number"],
-                finding_data=rec["finding_data"],
-                provenance=rec["provenance"],
-            )
-        )
-    db_session.commit()
-    return scan_id, records
 
 
 class TestChainVerificationFromDB:
@@ -106,11 +65,53 @@ class TestChainVerificationFromDB:
 
     def test_valid_chain_passes_verification(self, db_session):
         """A properly-chained set of records should verify successfully."""
+        scan_id = uuid.uuid4()
         session_id = str(uuid.uuid4())
-        scan_id, _ = _insert_scan_and_records(db_session, 5, session_id)
 
-        result = PostLoadVerifier(db_session).verify(
-            scan_id=scan_id, expected_count=5, scan_session_id=session_id
+        # Insert scan
+        db_session.execute(
+            text("""
+                INSERT INTO scans (scan_id, scan_start, scanner_id, scanner_version,
+                    target_type, target_location, operator, status)
+                VALUES (:sid, NOW(), 'test', '0.1', 'GIT_REPOSITORY', 'http://test', 'test', 'COMPLETED')
+            """),
+            {"sid": scan_id},
+        )
+
+        records = _build_chain(5, session_id)
+        for rec in records:
+            rec["scan_id"] = scan_id
+            db_session.execute(
+                text("""
+                    INSERT INTO evidence_records
+                        (evidence_id, scan_id, content_hash, chain_position, chain_hash,
+                         previous_hash, algorithm, confidence, is_hardcoded_key,
+                         finding_data, provenance)
+                    VALUES
+                        (:eid, :sid, :ch, :pos, :chash, :prev, :algo, :conf, :hk,
+                         :fd::jsonb, :prov::jsonb)
+                """),
+                {
+                    "eid": rec["evidence_id"],
+                    "sid": scan_id,
+                    "ch": rec["content_hash"],
+                    "pos": rec["chain_position"],
+                    "chash": rec["chain_hash"],
+                    "prev": rec["previous_hash"],
+                    "algo": "AES",
+                    "conf": "HIGH",
+                    "hk": False,
+                    "fd": json.dumps(rec["finding_data"]),
+                    "prov": "{}",
+                },
+            )
+        db_session.commit()
+
+        verifier = PostLoadVerifier(db_session)
+        result = verifier.verify(
+            scan_id=scan_id,
+            expected_count=5,
+            scan_session_id=session_id,
         )
 
         assert result.passed is True
@@ -120,17 +121,62 @@ class TestChainVerificationFromDB:
 
     def test_tampered_chain_hash_fails_verification(self, db_session):
         """Manually modifying a chain_hash in the DB should fail verification."""
+        scan_id = uuid.uuid4()
         session_id = str(uuid.uuid4())
-        scan_id, records = _insert_scan_and_records(db_session, 3, session_id)
+
+        # Insert scan
+        db_session.execute(
+            text("""
+                INSERT INTO scans (scan_id, scan_start, scanner_id, scanner_version,
+                    target_type, target_location, operator, status)
+                VALUES (:sid, NOW(), 'test', '0.1', 'GIT_REPOSITORY', 'http://test', 'test', 'COMPLETED')
+            """),
+            {"sid": scan_id},
+        )
+
+        records = _build_chain(3, session_id)
+        for rec in records:
+            rec["scan_id"] = scan_id
+            db_session.execute(
+                text("""
+                    INSERT INTO evidence_records
+                        (evidence_id, scan_id, content_hash, chain_position, chain_hash,
+                         previous_hash, algorithm, confidence, is_hardcoded_key,
+                         finding_data, provenance)
+                    VALUES
+                        (:eid, :sid, :ch, :pos, :chash, :prev, :algo, :conf, :hk,
+                         :fd::jsonb, :prov::jsonb)
+                """),
+                {
+                    "eid": rec["evidence_id"],
+                    "sid": scan_id,
+                    "ch": rec["content_hash"],
+                    "pos": rec["chain_position"],
+                    "chash": rec["chain_hash"],
+                    "prev": rec["previous_hash"],
+                    "algo": "AES",
+                    "conf": "HIGH",
+                    "hk": False,
+                    "fd": json.dumps(rec["finding_data"]),
+                    "prov": "{}",
+                },
+            )
 
         # TAMPER: modify chain_hash of record at position 1
         tampered_id = records[1]["evidence_id"]
-        row = db_session.get(EvidenceRecord, tampered_id)
-        row.chain_hash = "f" * 64
+        db_session.execute(
+            text(
+                "UPDATE evidence_records SET chain_hash = :fake WHERE evidence_id = :eid"
+            ),
+            {"fake": "f" * 64, "eid": tampered_id},
+        )
         db_session.commit()
 
-        result = PostLoadVerifier(db_session).verify(
-            scan_id=scan_id, expected_count=3, scan_session_id=session_id
+        verifier = PostLoadVerifier(db_session)
+        result = verifier.verify(
+            scan_id=scan_id,
+            expected_count=3,
+            scan_session_id=session_id,
         )
 
         assert result.passed is False
@@ -139,10 +185,44 @@ class TestChainVerificationFromDB:
 
     def test_count_mismatch_fails_verification(self, db_session):
         """Expecting more records than in DB should fail verification."""
+        scan_id = uuid.uuid4()
         session_id = str(uuid.uuid4())
-        scan_id, _ = _insert_scan_and_records(db_session, 2, session_id)
 
-        result = PostLoadVerifier(db_session).verify(
+        db_session.execute(
+            text("""
+                INSERT INTO scans (scan_id, scan_start, scanner_id, scanner_version,
+                    target_type, target_location, operator, status)
+                VALUES (:sid, NOW(), 'test', '0.1', 'GIT_REPOSITORY', 'http://test', 'test', 'COMPLETED')
+            """),
+            {"sid": scan_id},
+        )
+
+        records = _build_chain(2, session_id)
+        for rec in records:
+            db_session.execute(
+                text("""
+                    INSERT INTO evidence_records
+                        (evidence_id, scan_id, content_hash, chain_position, chain_hash,
+                         previous_hash, algorithm, confidence, is_hardcoded_key,
+                         finding_data, provenance)
+                    VALUES
+                        (:eid, :sid, :ch, :pos, :chash, :prev, 'AES', 'HIGH', false,
+                         :fd::jsonb, '{}'::jsonb)
+                """),
+                {
+                    "eid": rec["evidence_id"],
+                    "sid": scan_id,
+                    "ch": rec["content_hash"],
+                    "pos": rec["chain_position"],
+                    "chash": rec["chain_hash"],
+                    "prev": rec["previous_hash"],
+                    "fd": json.dumps(rec["finding_data"]),
+                },
+            )
+        db_session.commit()
+
+        verifier = PostLoadVerifier(db_session)
+        result = verifier.verify(
             scan_id=scan_id,
             expected_count=5,  # Wrong — only 2 in DB
             scan_session_id=session_id,

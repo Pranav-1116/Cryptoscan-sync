@@ -7,12 +7,10 @@ walks invocations and constructors, and resolves local string constants.
 
 from __future__ import annotations
 
-import re
-
 from dataclasses import dataclass
 from typing import Optional
 
-from scanner.extractors.algorithm_extractor import known_algorithm_or_unknown, parse_transformation
+from scanner.extractors.algorithm_extractor import parse_transformation
 from scanner.models.enums import ApiType, Purpose
 
 GETINSTANCE_APIS: dict[str, tuple[str, str, str]] = {
@@ -26,11 +24,6 @@ GETINSTANCE_APIS: dict[str, tuple[str, str, str]] = {
     "KeyStore": (ApiType.KEY_GENERATOR.value, Purpose.KEY_GENERATION.value, "java.security"),
     "KeyAgreement": (ApiType.KEY_AGREEMENT.value, "KEY_EXCHANGE", "javax.crypto"),
     "SecureRandom": (ApiType.KEY_GENERATOR.value, Purpose.KEY_GENERATION.value, "java.security"),
-    "SecretKeyFactory": (ApiType.KEY_GENERATOR.value, Purpose.KEY_GENERATION.value, "javax.crypto"),
-    "KeyFactory": (ApiType.KEY_PAIR_GENERATOR.value, Purpose.KEY_GENERATION.value, "java.security"),
-    "AlgorithmParameters": (ApiType.CIPHER_INSTANCE.value, Purpose.ENCRYPTION.value, "java.security"),
-    "AlgorithmParameterGenerator": (ApiType.KEY_PAIR_GENERATOR.value, Purpose.KEY_GENERATION.value, "java.security"),
-    "CertificateFactory": (ApiType.SIGNATURE.value, "VERIFICATION", "java.security.cert"),
 }
 
 TLS_MAP = {
@@ -235,7 +228,6 @@ def _atom(tokens: list[Token]) -> object:
         "numbers": numbers,
         "text": text,
         "offset": tokens[0].offset,
-        "tokens": [(t.kind, t.value) for t in tokens],
     }
 
 
@@ -258,7 +250,7 @@ def extract_calls(tokens: list[Token]) -> tuple[list[Call], dict[str, str]]:
             if j < len(tokens) and tokens[j].kind == "symbol" and tokens[j].value == "(":
                 args, nxt = _parse_args(tokens, j)
                 calls.append(Call(qualifier=qual[:-1], name=qual[-1] if qual else "new", args=args, offset=tok.offset, is_constructor=True))
-                i = j + 1  # keep walking *inside* the argument list: nested calls (c.wrap(new SecretKeySpec(k, "DESede"))) count too
+                i = nxt
                 continue
         if tok.kind == "ident":
             j = i
@@ -270,7 +262,7 @@ def extract_calls(tokens: list[Token]) -> tuple[list[Call], dict[str, str]]:
             if j < len(tokens) and tokens[j].kind == "symbol" and tokens[j].value == "(":
                 args, nxt = _parse_args(tokens, j)
                 calls.append(Call(qualifier=qual[:-1], name=qual[-1], args=args, offset=tok.offset, is_constructor=False))
-                i = j + 1  # descend into the arguments (nested getInstance/SecretKeySpec calls)
+                i = nxt
                 continue
             # String name = "AES";
             if (
@@ -301,67 +293,15 @@ def extract_calls(tokens: list[Token]) -> tuple[list[Call], dict[str, str]]:
     return calls, locals_map
 
 
-def _concat_string(arg: dict, locals_map: dict[str, str]) -> tuple[Optional[str], Optional[str]]:
-    """Fold ``ALG + "/ECB/PKCS5Padding"`` / ``"AES" + mode`` when every piece is a
-    literal or a string constant bound in the file.  Returns (value, variable)."""
-    toks = arg.get("tokens") or []
-    if not any(k == "symbol" and v == "+" for k, v in toks):
-        return None, None
-    pieces: list[str] = []
-    var: Optional[str] = None
-    expect_operand = True
-    for kind, value in toks:
-        if kind == "symbol" and value == "+":
-            expect_operand = True
-            continue
-        if kind == "symbol" and value in {"(", ")"}:
-            continue
-        if not expect_operand:
-            return None, None
-        if kind == "string":
-            pieces.append(value)
-        elif kind == "ident" and value in locals_map:
-            pieces.append(locals_map[value])
-            var = var or value
-        elif kind == "ident" and value in {"String", "valueOf", "toString"}:
-            continue
-        else:
-            return None, None
-        expect_operand = False
-    return ("".join(pieces) if pieces else None), var
-
-
 def _first_string(arg: object, locals_map: dict[str, str]) -> tuple[Optional[str], bool, Optional[str]]:
     if not isinstance(arg, dict):
         return None, False, None
-    folded, folded_var = _concat_string(arg, locals_map)
-    if folded:
-        return folded, True, folded_var
     if arg.get("strings"):
-        # A literal that is itself an argument of a lookup call
-        # (props.getProperty("crypto.alg"), System.getenv("ALG"), cfg.getString(..))
-        # names a *configuration key*, not an algorithm: the value is dynamic.
-        toks = arg.get("tokens") or []
-        callee = None
-        for kind, value in toks:
-            if kind == "string":
-                break
-            if kind == "symbol" and value == "(" and callee not in (None, "String", "valueOf", "toString"):
-                return None, False, callee
-            if kind == "ident":
-                callee = value
         return str(arg["strings"][0]), True, None
-    idents = arg.get("idents") or []
-    # Algorithms.CIPHER / Constants.DIGEST: the constant is bound in this file under its simple name
-    for ident in reversed(idents):
+    for ident in arg.get("idents") or []:
         if ident in locals_map:
             return locals_map[ident], True, ident
-    for ident in idents:
         if ident not in {"String", "new", "byte", "getBytes"}:
-            # keep the qualified spelling (Algorithms.DIGEST) so the repo-level constant index can resolve it
-            qualified = [i for i in idents if i not in {"String", "new", "byte", "getBytes"}]
-            if 1 < len(qualified) <= 3 and all(re.fullmatch(r"\w+", q) for q in qualified) and not (arg.get("tokens") and any(k == "symbol" and v == "(" for k, v in arg["tokens"])):
-                return None, False, ".".join(qualified)
             return None, False, ident
     return None, False, None
 
@@ -398,27 +338,14 @@ def _tls_algo(raw: str) -> str:
     return TLS_MAP.get(key, "TLS" if "TLS" in key or "SSL" in key else raw)
 
 
-_STATIC_IMPORT = re.compile(r"^\s*import\s+static\s+(?:javax\.crypto|java\.security|javax\.net\.ssl)\.(\w+)\.(?:getInstance|\*)\s*;", re.M)
-_JCA_TRANSFORMATION = re.compile(r"^(?:AES|AES_\d{3}|DES|DESede|TripleDES|Blowfish|RC2|RC4|ARCFOUR|ChaCha20|ChaCha20-Poly1305|Camellia|SEED|ARIA|SM4|RSA|ECIES)(?:/[A-Za-z0-9_]+){1,2}$")
-
-
-def _static_import_owner(source: str) -> Optional[str]:
-    """``import static javax.crypto.Cipher.getInstance;`` → ``Cipher`` (first crypto owner wins)."""
-    m = _STATIC_IMPORT.search(source)
-    return m.group(1) if m else None
-
-
 def extract_crypto_events(source: str) -> list[CryptoEvent]:
     tokens = tokenize(source)
     calls, locals_map = extract_calls(tokens)
     events: list[CryptoEvent] = []
     pending_key_size: list[tuple[int, Optional[int]]] = []
-    static_owner = _static_import_owner(source)
 
     for call in calls:
         type_name = call.qualifier[-1] if call.qualifier else call.name
-        if not call.qualifier and call.name == "getInstance" and static_owner:
-            type_name = static_owner
         if call.is_constructor and call.name in {"SecretKeySpec", "PBEKeySpec"}:
             if call.name == "PBEKeySpec":
                 events.append(
@@ -445,7 +372,7 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
                 CryptoEvent(
                     start=call.offset,
                     api_type=ApiType.HARDCODED_KEY.value if hardcoded else ApiType.SECRET_KEY_SPEC.value,
-                    algorithm=known_algorithm_or_unknown(parsed.algorithm if parsed else algo),
+                    algorithm=parsed.algorithm if parsed else algo,
                     purpose=Purpose.KEY_GENERATION.value,
                     library="javax.crypto",
                     is_string_literal=literal,
@@ -490,27 +417,18 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
         if call.args:
             raw, literal, varname = _first_string(call.args[0], locals_map)
         parsed = parse_transformation(raw) if raw else None
-        algorithm = parsed.algorithm if parsed else (raw or "UNKNOWN")
+        algorithm = parsed.algorithm if parsed else raw
         mode = parsed.mode if parsed else None
         padding = parsed.padding if parsed else None
         if type_name == "SSLContext" and raw:
             algorithm = _tls_algo(raw)
-        if type_name == "KeyStore":
-            # KeyStore.getInstance("PKCS12"/"JKS"/"BKS"): a certificate + private-key store.
-            # Inventory it under the X.509 family; the store format stays in raw_transformation.
-            algorithm = "X509"
+        if type_name == "KeyStore" and raw:
+            algorithm = raw.upper()
         if type_name == "KeyAgreement" and raw:
             upper = raw.upper()
-            algorithm = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else ("X25519" if upper in {"XDH", "X25519"} else ("X448" if upper == "X448" else upper)))
+            algorithm = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else upper)
         if type_name == "SecureRandom" and raw:
             algorithm = "SHA1PRNG" if raw.upper() == "SHA1PRNG" else "CSPRNG"
-        if type_name == "SecretKeyFactory" and raw:
-            upper = raw.upper()
-            if upper.startswith("PBKDF2") or upper.startswith("PBE") or upper in {"SCRYPT", "BCRYPT", "ARGON2"}:
-                purpose = "PASSWORD_HASHING"
-                algorithm = "PBKDF2" if upper.startswith("PBKDF2") else algorithm
-        if type_name == "CertificateFactory" and raw:
-            algorithm = raw.upper().replace(".", "")
         if len(call.args) > 1 and isinstance(call.args[1], dict):
             provider = None
             if call.args[1].get("strings"):
@@ -530,31 +448,6 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
                 variable_name=varname,
                 raw_transformation=raw,
                 is_from_local_variable=bool(varname) and not literal if varname and not raw else bool(varname),
-            )
-        )
-
-    # A constants class: `static final String CIPHER = "DESede/CBC/PKCS5Padding"` with the call in another
-    # file. An unambiguous Algorithm/Mode/Padding literal is inventory on its own (LOW-ish: no call here).
-    consumed = {e.raw_transformation for e in events if e.raw_transformation}
-    for name, value in locals_map.items():
-        if value in consumed or not _JCA_TRANSFORMATION.match(value):
-            continue
-        m = re.search(r"\b" + re.escape(name) + r"\s*=\s*\"" + re.escape(value) + r"\"", source)
-        if m is None:
-            continue
-        parsed = parse_transformation(value)
-        events.append(
-            CryptoEvent(
-                start=m.start(),
-                api_type=ApiType.CIPHER_INSTANCE.value,
-                algorithm=parsed.algorithm or "UNKNOWN",
-                purpose=Purpose.ENCRYPTION.value,
-                library="javax.crypto",
-                mode=parsed.mode,
-                padding=parsed.padding,
-                variable_name=name,
-                raw_transformation=value,
-                is_from_local_variable=True,
             )
         )
 

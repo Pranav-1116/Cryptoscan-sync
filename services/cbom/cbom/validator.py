@@ -125,9 +125,6 @@ def deep_validate(bom: dict[str, Any]) -> dict[str, Any]:
 
 def validate_cbom(bom: dict[str, Any]) -> dict[str, Any]:
     """Full validation: schema-subset + deep structural checks."""
-    if isinstance(bom, dict) and bom.get("specVersion") == "1.6":
-        from cbom.cyclonedx16 import validate_cyclonedx16
-        return validate_cyclonedx16(bom)
     base = CbomGenerator().validate(bom)
     deep = deep_validate(bom)
     return {

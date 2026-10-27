@@ -46,6 +46,8 @@ from cloud_scanner.enterprise.live.simulation import LiveSimulationEngine
 from cloud_scanner.enterprise.live.workload_monitors import (
     KubernetesLiveMonitor,
     ServerlessLiveMonitor,
+    is_k8s_event,
+    is_serverless_event,
 )
 from zelix_live_fixtures import (
     AWS_CERT,

@@ -15,7 +15,7 @@ static graph for posture / simulation reuse.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
 
 from cloud_scanner.enterprise.dependency_graph import CloudDependencyGraph
 from cloud_scanner.enterprise.live.event_schema import CloudEvent

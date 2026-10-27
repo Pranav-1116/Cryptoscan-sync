@@ -5,7 +5,8 @@ from network_scanner.certificates.chain_validator import validate_chain
 from network_scanner.core.scanner import NetworkTlsScanner
 from network_scanner.inventory.certificate_inventory import link_issuer_ids
 
-CERTS = Path(__file__).resolve().parent / "fixtures" / "certs"
+ROOT = Path(__file__).resolve().parents[3]
+CERTS = ROOT / "demo" / "certs"
 
 
 def _load(name: str) -> dict:
@@ -59,7 +60,7 @@ def test_chain_links_leaf_to_root():
     assert linked_leaf["issuer_cert_id"] == by_subject[intermediate["subject"]]["fingerprint_sha256"]
 
 
-def test_network_scanner_inventories_fixture_certs():
+def test_network_scanner_inventories_demo_certs():
     result = NetworkTlsScanner(live=False).scan_filesystem(CERTS)
     subjects = " ".join(cert.get("subject") or "" for cert in result["certificates"])
     assert "api.payment.example.com" in subjects

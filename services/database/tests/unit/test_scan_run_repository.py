@@ -33,7 +33,7 @@ def test_get_and_list_runs_newest_first(db_session):
     repo = ScanRunRepository(db_session)
     first = repo.create_run(_result("older"))
     time.sleep(0.01)
-    _second = repo.create_run(_result("newer"))
+    second = repo.create_run(_result("newer"))
     assert repo.get_run(first.id).scan_id == "older"
     listed = repo.list_runs(limit=10)
     assert [row.scan_id for row in listed] == ["newer", "older"]

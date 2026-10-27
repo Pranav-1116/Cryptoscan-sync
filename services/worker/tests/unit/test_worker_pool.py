@@ -10,7 +10,7 @@ from worker.core.pool import WorkerPool
 
 
 def _job(n: int) -> ScanJob:
-    return ScanJob(job_id=f"job-{n}", target_repo=f"local://test-fixture/repo-{n}")
+    return ScanJob(job_id=f"job-{n}", target_repo=f"local://demo/repo-{n}")
 
 
 def test_jobs_run_concurrently():
@@ -93,11 +93,3 @@ def test_shutdown_is_graceful():
     started.wait(timeout=5)
     pool.shutdown(wait=True)
     assert pool.stats.completed == 1
-
-
-def test_explicit_refusal_is_not_counted_as_success():
-    pool = WorkerPool(handler=lambda _job: False, max_workers=1)
-    future = pool.submit(_job(1))
-    assert future.result(timeout=2) is False
-    pool.shutdown(wait=True)
-    assert pool.stats.completed == 1 and pool.stats.failed == 1

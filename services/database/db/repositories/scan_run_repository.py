@@ -2,20 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy import select
 
 from db.models.network_scan_run import NetworkScanRun
-
-
-_UNSCOPED = object()
-
-
-def _for_owner(stmt, owner):
-    # An explicit None means NULL/platform only, never all tenants. Omission
-    # retains internal persistence/analysis semantics and existing ORM guards.
-    return stmt if owner is _UNSCOPED else stmt.where(NetworkScanRun.tenant_id == owner)
 
 
 class ScanRunRepository:
@@ -37,37 +28,27 @@ class ScanRunRepository:
         self.session.flush()
         return row
 
-    def get_run(self, run_id: str, *, owner=_UNSCOPED) -> NetworkScanRun | None:
-        return (
-            self.session.execute(_for_owner(select(NetworkScanRun).where(NetworkScanRun.id == run_id), owner))
-            .scalars()
-            .first()
-        )
+    def get_run(self, run_id: str) -> Optional[NetworkScanRun]:
+        return self.session.get(NetworkScanRun, run_id)
 
-    def list_runs(self, *, limit: int = 20, target_kind: str | None = None, owner=_UNSCOPED) -> list[NetworkScanRun]:
-        stmt = (
-            select(NetworkScanRun)
-            .order_by(NetworkScanRun.created_at.desc(), NetworkScanRun.id.desc())
-            .limit(max(1, min(limit, 500)))
-        )
+    def list_runs(
+        self, *, limit: int = 20, target_kind: Optional[str] = None
+    ) -> list[NetworkScanRun]:
+        stmt = select(NetworkScanRun).order_by(NetworkScanRun.created_at.desc(), NetworkScanRun.id.desc()).limit(max(1, limit))
         if target_kind:
             stmt = stmt.where(NetworkScanRun.target_kind == target_kind)
-        return list(self.session.execute(_for_owner(stmt, owner)).scalars())
+        return list(self.session.execute(stmt).scalars())
 
-    def latest_runs(self, *, count: int = 2, target_kind: str | None = None, owner=_UNSCOPED) -> list[NetworkScanRun]:
-        stmt = (
-            select(NetworkScanRun)
-            .order_by(NetworkScanRun.created_at.desc(), NetworkScanRun.id.desc())
-            .limit(max(1, min(count, 500)))
-        )
+    def latest_runs(self, *, count: int = 2, target_kind: Optional[str] = None) -> list[NetworkScanRun]:
+        stmt = select(NetworkScanRun).order_by(NetworkScanRun.created_at.desc(), NetworkScanRun.id.desc()).limit(max(1, count))
         if target_kind:
             stmt = stmt.where(NetworkScanRun.target_kind == target_kind)
-        return list(self.session.execute(_for_owner(stmt, owner)).scalars())
+        return list(self.session.execute(stmt).scalars())
 
-    def count_runs(self, *, target_kind: str | None = None, owner=_UNSCOPED) -> int:
+    def count_runs(self, *, target_kind: Optional[str] = None) -> int:
         from sqlalchemy import func
 
         stmt = select(func.count(NetworkScanRun.id))
         if target_kind:
             stmt = stmt.where(NetworkScanRun.target_kind == target_kind)
-        return int(self.session.execute(_for_owner(stmt, owner)).scalar() or 0)
+        return int(self.session.execute(stmt).scalar() or 0)

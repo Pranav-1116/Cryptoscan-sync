@@ -5,6 +5,7 @@ tamper-evident evidence chain (§19), intelligent alert correlation (§20).
 
 from __future__ import annotations
 
+import pytest
 
 from cloud_scanner.enterprise.live.alerts import (
     AlertCorrelationEngine,

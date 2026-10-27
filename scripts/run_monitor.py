@@ -25,11 +25,6 @@ def main() -> int:
     from worker.config.settings import WorkerSettings
 
     settings = WorkerSettings()
-    try:
-        settings.validate_runtime()
-    except RuntimeError as exc:
-        logging.getLogger("monitor").error("monitor_config_invalid", extra={"error": str(exc)})
-        return 2
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="run one sweep and exit (cron mode)")
     parser.add_argument("--tick-seconds", type=float, default=settings.MONITOR_TICK_SECONDS,
@@ -54,13 +49,13 @@ def main() -> int:
         )
         args.concurrency = 1
 
-    from db.connection.session import SessionLocal, init_db
+    from db.connection.session import SessionLocal, configure_session
     from worker.monitor.alerting import AlertRouter
     from worker.monitor.engine import MonitorEngine
     from worker.monitor.lease import LeaderLease, ensure_lease_table
     from worker.monitor.loop import MonitorLoop, install_signal_handlers
 
-    init_db()  # bind sessions and fail closed if production migrations lag
+    configure_session()  # bind SessionLocal to the configured database engine
     router = AlertRouter()
     factory = lambda session: MonitorEngine(  # noqa: E731
         session,
@@ -71,17 +66,12 @@ def main() -> int:
         session_factory=SessionLocal,
         concurrency=args.concurrency,
         run_reports=settings.MONITOR_RUN_REPORTS,
-        run_network=settings.MONITOR_RUN_NETWORK,
     )
     lease = None
     if not args.no_lease:
         bootstrap = SessionLocal()
         try:
-            if not settings.is_production:
-                # Development can bootstrap its local SQLite schema. Production
-                # schema changes are migration-owned and were verified by
-                # init_db() above.
-                ensure_lease_table(bootstrap)
+            ensure_lease_table(bootstrap)  # idempotent; migration 0031 does this properly
         finally:
             bootstrap.close()
         lease = LeaderLease(SessionLocal, ttl_seconds=args.lease_ttl)

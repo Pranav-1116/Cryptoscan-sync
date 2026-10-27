@@ -137,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.live_monitor:
         if not args.scope:
             parser.error("--live-monitor requires --scope (one or more scope specs)")
+        from network_scanner.enterprise.live.loop import LiveNetworkMonitor
 
         monitor = scanner.live_monitor(
             list(args.scope),

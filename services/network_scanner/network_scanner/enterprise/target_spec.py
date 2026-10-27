@@ -146,7 +146,7 @@ def classify_target(value: str) -> str:
     if not value:
         return "SINGLE_HOST"
     try:
-        _ip = ipaddress.ip_address(value)
+        ip = ipaddress.ip_address(value)
         return "SINGLE_HOST"
     except ValueError:
         pass

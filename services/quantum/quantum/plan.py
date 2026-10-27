@@ -12,8 +12,6 @@ INPUT the caller estimates — it is never invented here.
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-import math
-from numbers import Real
 from typing import Any, Iterable, Mapping
 
 from quantum.risk import QUANTUM_THREAT_YEAR, CALC_VERSION, analyze_quantum_risk
@@ -29,21 +27,10 @@ def mosca(
     today: date | None = None,
 ) -> dict[str, Any]:
     """Evaluate Mosca's inequality x + y > z for one data category."""
-    if retention_years is not None and (type(retention_years) is not int or not 0 <= retention_years <= 1000):
-        raise ValueError("retention_years must be a nonnegative integer no greater than1000")
-    if migration_years is not None and (isinstance(migration_years, bool) or not isinstance(migration_years, Real)
-            or not math.isfinite(migration_years) or not 0 <= migration_years <= 1000):
-        raise ValueError("migration_years must be finite and between0 and1000")
-    if type(threat_year) is not int or not 1 <= threat_year <= 9999:
-        raise ValueError("threat_year must be an integer calendar year")
-    scenario = {"scenario_only": True,
-        "threat_year_basis": "ASSUMPTION_NOT_FORECAST_OR_REGULATORY_DEADLINE",
-        "time_resolution": "calendar_year"}
     today = today or datetime.now(timezone.utc).date()
     z = threat_year - today.year
     if retention_years is None:
         return {
-            **scenario,
             "computable": False,
             "reason": "no retention data — shelf-life (x) unknown",
             "threat_year": threat_year,
@@ -53,22 +40,21 @@ def mosca(
     y = float(migration_years) if migration_years is not None else None
     if x >= z:
         verdict = "ALREADY_LATE"
-        explanation = "Under this threat-year assumption, the supplied shelf life exceeds the scenario horizon even with zero migration duration"
+        explanation = "data encrypted today outlives the estimated CRQC arrival even if migration finished instantly"
     elif y is not None and x + y >= z:
         # zero slack counts as at-risk: finishing exactly when CRQC arrives is no margin
         verdict = "AT_RISK"
-        explanation = "Under this threat-year assumption, shelf life plus migration meets or exceeds the scenario horizon; review urgency"
+        explanation = "shelf-life plus migration time meets or exceeds the time to CRQC — migration must start now"
     elif y is not None:
         verdict = "SAFE_MARGIN"
-        explanation = "There is scenario slack under the supplied threat-year assumption, not a forecast"
+        explanation = "there is slack between (shelf-life + migration) and CRQC"
     else:
         verdict = "UNKNOWN_MARGIN"
-        explanation = "Shelf life fits within the threat-year assumption, but migration duration was not supplied"
+        explanation = "shelf-life fits before CRQC, but migration time was not provided"
     slack = None
     if y is not None:
         slack = round(z - x - y, 2)
     return {
-        **scenario,
         "computable": True,
         "verdict": verdict,
         "x_shelf_life_years": x,
@@ -82,10 +68,6 @@ def mosca(
 
 
 def _family(algorithm: str | None) -> str:
-    from shared_models.algorithm_registry import parse_algorithm
-
-    if parse_algorithm(algorithm or "").family == "kem-hybrid-pqc":
-        return "PQC"
     algo = str(algorithm or "").upper().replace("_", "-")
     if algo.startswith("RSA"):
         return "RSA"
@@ -115,11 +97,10 @@ def build_migration_plan(
 ) -> dict[str, Any]:
     """Group quantum-vulnerable sites into replacement workstreams and waves."""
     today = today or datetime.now(timezone.utc).date()
-    # Multiple consumers below must see the same cohort, including generators.
-    findings, systems = list(findings), list(systems or [])
     report = analyze_quantum_risk(findings, systems=systems, today=today)
     assets = report["assets"]
 
+    system_by_id = {str(row.get("id") or ""): row for row in (systems or [])}
     retentions: list[int] = []
     for system in systems or []:
         extra = system.get("extra") or {}
@@ -200,8 +181,6 @@ def build_migration_plan(
             "total_sites": len(assets),
             "vulnerable_sites": report["vulnerable_count"],
             "pqc_ready_sites": report["pqc_ready_count"],
-            "pqc_candidate_sites": report["pqc_candidate_count"],
-            "deployment_readiness": "NOT_ESTABLISHED",
             "by_family": dict(sorted(by_family.items())),
             "by_threat_type": dict(sorted(by_threat.items())),
         },
@@ -225,7 +204,7 @@ def build_migration_plan(
         },
         "mosca": plan_mosca,
         "summary": (
-            f"{report['vulnerable_count']} of {len(assets)} sites are migration-review candidates across "
+            f"{report['vulnerable_count']} of {len(assets)} sites quantum-vulnerable across "
             f"{len(streams)} replacement workstreams; HNDL wave 1 = {len(wave1)} sites."
         ),
         "calculation_version": f"{CALC_VERSION}+plan",

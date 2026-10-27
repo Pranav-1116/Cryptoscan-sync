@@ -11,7 +11,7 @@ Example: previous RSA-3072 → current RSA-1024 ⇒ CRITICAL_CRYPTO_DRIFT
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 
 DRIFT_CLASSES = ("NO_CHANGE", "EXPECTED_CHANGE", "APPROVED_CHANGE",

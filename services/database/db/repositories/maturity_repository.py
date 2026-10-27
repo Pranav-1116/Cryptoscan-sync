@@ -72,7 +72,7 @@ class MaturityRepository:
             readiness=payload.get("readiness"),
         )
         self.session.add(row)
-        system = self.session.execute(select(System).where(System.id == system_id)).scalars().first()
+        system = self.session.get(System, system_id)
         if system is not None:
             system.current_agility_score = row.agility_score
             system.agility_category = row.category
@@ -139,7 +139,7 @@ class MaturityRepository:
         return row
 
     def get_exception(self, exception_id: str) -> PolicyException | None:
-        return self.session.execute(select(PolicyException).where(PolicyException.id == exception_id)).scalars().first()
+        return self.session.get(PolicyException, exception_id)
 
     def list_exceptions(self, *, status: str | None = None) -> list[PolicyException]:
         stmt = select(PolicyException).order_by(PolicyException.created_at.desc())
@@ -170,13 +170,7 @@ class MaturityRepository:
         now = now or _now()
         expired = []
         for row in self.list_exceptions(status="APPROVED"):
-            exp = row.expiration_date
-            if exp is None:
-                continue
-            # sqlite returns naive datetimes — normalize to aware UTC before compare
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=timezone.utc)
-            if exp <= now:
+            if row.expiration_date and row.expiration_date <= now:
                 row.status = "EXPIRED"
                 expired.append(row)
         self.session.flush()
@@ -185,25 +179,10 @@ class MaturityRepository:
     # --- vendor crypto ---
 
     def add_vendor_crypto(self, vendor_id: str, **kwargs) -> VendorCryptoInventory:
-        """Persist one normalized inventory observation without parser-only fields.
-
-        Questionnaire/CBOM adapters carry provenance fields such as
-        ``algorithm_raw`` and ``evidence_source`` that are not columns on the
-        legacy inventory table. Keep supported fields and retain an
-        unrecognized reported algorithm in the evidence reference so unknown
-        values stay explicit instead of becoming canonical facts.
-        """
         kwargs.setdefault("discovered_at", _now())
-        allowed = {
-            column.name for column in VendorCryptoInventory.__table__.columns
-        } - {"id", "created_at", "updated_at", "tenant_id", "vendor_id"}
-        values = {key: value for key, value in kwargs.items() if key in allowed}
-        raw_algorithm = kwargs.get("algorithm_raw")
-        if raw_algorithm and not values.get("source_document"):
-            values["source_document"] = f"reported_algorithm={raw_algorithm}"
-        row = VendorCryptoInventory(vendor_id=vendor_id, **values)
+        row = VendorCryptoInventory(vendor_id=vendor_id, **kwargs)
         self.session.add(row)
-        vendor = self.session.execute(select(Vendor).where(Vendor.id == vendor_id)).scalars().first()
+        vendor = self.session.get(Vendor, vendor_id)
         if vendor is not None:
             vendor.last_assessment_date = _now()
         self.session.flush()

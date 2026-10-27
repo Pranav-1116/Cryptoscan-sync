@@ -85,7 +85,7 @@ class RuleValidator:
         if condition_type == RuleType.ALGORITHM_IN_LIST:
             if "algorithm_list" not in parameters:
                 raise ValueError(
-                    "ALGORITHM_IN_LIST requires algorithm_list parameter"
+                    f"ALGORITHM_IN_LIST requires algorithm_list parameter"
                 )
             if not isinstance(parameters["algorithm_list"], list):
                 raise ValueError("algorithm_list must be a list")

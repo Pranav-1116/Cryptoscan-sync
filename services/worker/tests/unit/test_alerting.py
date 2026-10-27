@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 from worker.monitor.alerting import AlertRouter, format_cef
 
@@ -19,15 +17,6 @@ class _Settings:
         self.ALERT_EMAIL_TO = "soc@test"
         for key, value in kwargs.items():
             setattr(self, key, value)
-
-
-@pytest.fixture(autouse=True)
-def monitor_admission_policy(monkeypatch):
-    # Real admission engine with controlled authoritative policy lookups.
-    import api.security.scan_admission as admission
-    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], {}))
-    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
-    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
 
 def test_cef_line_shape():
@@ -108,15 +97,15 @@ def test_engine_alert_hook_dispatches_once_per_new_issue():
     fired = []
 
     def runner(config, session_arg):
-        return {"observation_complete": False, "summary": {"issues": ["UNREACHABLE:dead:1"]}, "degraded": True,
+        return {"summary": {"issues": ["UNREACHABLE:dead:1"]}, "degraded": True,
                 "issues": ["UNREACHABLE:dead:1"]}
 
     monitor = MonitorEngine(session, runners={"NETWORK": runner}, clock=lambda: t0,
                             on_alert=lambda target, issue, payload: fired.append((target, issue)))
     first = monitor.tick()
     session.commit()
-    assert fired == [("edge", "OBSERVATION_INCOMPLETE"), ("edge", "UNREACHABLE:dead:1")]
-    assert first["results"][0]["new_issues"] == ["OBSERVATION_INCOMPLETE", "UNREACHABLE:dead:1"]
+    assert fired == [("edge", "UNREACHABLE:dead:1")]
+    assert first["results"][0]["new_issues"] == ["UNREACHABLE:dead:1"]
 
     fired.clear()
     target = session.query(MonitorTarget).one()

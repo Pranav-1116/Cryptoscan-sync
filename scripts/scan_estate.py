@@ -22,7 +22,7 @@ Read-only: the scanned tree is copied into a workspace (like the worker does);
 nothing in the source tree is modified, no packets are sent.
 
 Usage:
-    python scripts/scan_estate.py --dir /path/to/authorized-source-tree --out /tmp/estate-out
+    python scripts/scan_estate.py --dir demo/vulnerable-app --out /tmp/estate-out
     python scripts/scan_estate.py --dir . --template iso-27001 --keep-workspace
 """
 
@@ -44,6 +44,7 @@ from sqlalchemy import create_engine, select  # noqa: E402
 from db.connection.session import SessionLocal, configure_session, init_db  # noqa: E402
 from db.models.scan import Scan  # noqa: E402
 from db.models.evidence_record import EvidenceRecord  # noqa: E402
+from db.models.crypto_asset import CryptoAsset  # noqa: E402
 
 
 def _policy_engine():
@@ -86,7 +87,7 @@ def _build_artifacts(out_dir: Path, session, scan_id: str, template: str) -> dic
     )
     records = [evidence_to_dict(row) for row in rows]
     scan_payload = scan_to_dict(scan)
-    [
+    findings = [
         {k: row[k] for k in ("algorithm", "key_size", "mode", "purpose",
                              "compliance_status", "file_path", "line_number",
                              "policy_evaluation", "is_hardcoded_key") if k in row}

@@ -20,7 +20,7 @@ from typing import Optional
 
 import structlog
 
-from scanner.extractors.algorithm_extractor import known_algorithm_or_unknown, parse_transformation
+from scanner.extractors.algorithm_extractor import parse_transformation
 from scanner.extractors.confidence_calculator import calculate_confidence
 from scanner.extractors.snippet_extractor import extract_snippet
 from scanner.models.enums import ApiType, Purpose
@@ -214,9 +214,8 @@ KEYSTORE_GETINSTANCE = re.compile(
     r"""KeyStore\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
     re.MULTILINE,
 )
-# JEP 496: javax.crypto.KEM.getInstance("ML-KEM") is the FIPS 203 key-encapsulation entry point (also "DHKEM")
 KEYAGREEMENT_GETINSTANCE = re.compile(
-    r"""(?:KeyAgreement|KEM)\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
+    r"""KeyAgreement\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
     re.MULTILINE,
 )
 SECURERANDOM_GETINSTANCE = re.compile(
@@ -262,7 +261,7 @@ class JavaParser:
     def __init__(self, repo_root: Optional[Path] = None):
         self._repo_root = repo_root
 
-    def parse_file(self, file_path: Path, source: str | None = None) -> list[RawFinding]:
+    def parse_file(self, file_path: Path) -> list[RawFinding]:
         """
         Parse a single Java file and return all crypto findings.
 
@@ -271,22 +270,16 @@ class JavaParser:
         """
         log = logger.bind(file=str(file_path))
 
-        if source is None:
-            try:
-                source = file_path.read_text(encoding="utf-8", errors="replace")
-            except OSError as e:
-                log.error("cannot_read_file", error=str(e))
-                raise
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            log.error("cannot_read_file", error=str(e))
+            raise
+
+        validate_java_syntax(source)
 
         source_lines = source.splitlines()
         context = self._extract_file_context(file_path, source, source_lines)
-        try:
-            validate_java_syntax(source)
-        except JavaSyntaxError as exc:
-            # Kotlin char literals / string templates and generated code trip the shallow
-            # brace check. Never drop the file: the regex path still sees the API calls.
-            log.warning("java_syntax_regex_fallback", error=str(exc))
-            return self._parse_with_regex(file_path, source, source_lines, context, log)
         try:
             from scanner.parsers.java_ast import extract_crypto_events
 
@@ -295,7 +288,6 @@ class JavaParser:
             ]
             findings.extend(self._detect_insecure_tls(source, source_lines, context))
             self._mark_bouncycastle(source, findings)
-            findings.extend(self._supplementary_rules(file_path, source, findings))
             log.debug("file_parsed_ast", findings_count=len(findings))
             return findings
         except Exception as exc:
@@ -310,7 +302,7 @@ class JavaParser:
             match_start=event.start,
             context=context,
             api_type=event.api_type,
-            algorithm=event.algorithm or "UNKNOWN",
+            algorithm=event.algorithm,
             mode=event.mode,
             padding=event.padding,
             key_size=event.key_size,
@@ -327,6 +319,8 @@ class JavaParser:
     def _parse_with_regex(
         self, file_path: Path, source: str, source_lines: list[str], context: ParseContext, log
     ) -> list[RawFinding]:
+        if source.count("{") != source.count("}"):
+            raise ValueError(f"unbalanced braces in {file_path}")
         findings: list[RawFinding] = []
         findings.extend(self._detect_cipher(source, source_lines, context))
         findings.extend(self._detect_message_digest(source, source_lines, context))
@@ -341,20 +335,8 @@ class JavaParser:
         findings.extend(self._detect_pbe(source, source_lines, context))
         findings.extend(self._detect_insecure_tls(source, source_lines, context))
         self._mark_bouncycastle(source, findings)
-        findings.extend(self._supplementary_rules(file_path, source, findings))
         log.debug("file_parsed", findings_count=len(findings))
         return findings
-
-    def _supplementary_rules(self, file_path: Path, source: str, existing: list[RawFinding]) -> list[RawFinding]:
-        """Library APIs that never pass through a JCA getInstance string."""
-        try:
-            from scanner.parsers.java_rules import run_java_rules
-
-            seen = {(f.source.line_number, (f.crypto.algorithm or "").upper()) for f in existing}
-            return run_java_rules(file_path, self._repo_root, source, "JAVA", "static-java-scanner-v0.1", seen=seen)
-        except Exception as exc:  # pragma: no cover - never let the extra pass break the parser
-            logger.warning("java_supplementary_rules_failed", file=str(file_path), error=str(exc))
-            return []
 
     def _extract_file_context(
         self, file_path: Path, source: str, source_lines: list[str]
@@ -804,7 +786,7 @@ class JavaParser:
                 match_start=match.start(),
                 context=context,
                 api_type=ApiType.HARDCODED_KEY.value,
-                algorithm=known_algorithm_or_unknown(parsed.algorithm if parsed else algorithm),
+                algorithm=parsed.algorithm if parsed else algorithm,
                 purpose=Purpose.KEY_GENERATION.value,
                 library="javax.crypto",
                 is_string_literal=True,
@@ -831,7 +813,7 @@ class JavaParser:
                 match_start=match.start(),
                 context=context,
                 api_type=ApiType.HARDCODED_KEY.value,
-                algorithm=known_algorithm_or_unknown(parsed.algorithm if parsed else algorithm),
+                algorithm=parsed.algorithm if parsed else algorithm,
                 purpose=Purpose.KEY_GENERATION.value,
                 library="javax.crypto",
                 is_string_literal=True,
@@ -903,10 +885,6 @@ class JavaParser:
             raw = match.group(1)
             upper = raw.upper()
             algo = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else upper)
-            if upper.startswith(("ML-KEM", "MLKEM", "KYBER")):
-                algo = "ML-KEM"
-            elif upper == "DHKEM":
-                algo = "X25519"
             findings.append(
                 self._build_finding(
                     file_path=context.file_path,

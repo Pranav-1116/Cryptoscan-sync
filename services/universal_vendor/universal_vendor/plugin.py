@@ -102,28 +102,14 @@ class UniversalVendorPlugin(ABC):
         """Raw dependency observations (graph edges)."""
         return []
 
-    def discover_cryptographic_metadata(self, context: dict[str, Any]) -> list[dict[str, Any]]:
-        """Common structured crypto metadata shared by all vendor plugins."""
-        from universal_vendor.common_discovery import discover_common_crypto
-
-        return discover_common_crypto(self, context)
-
-    def discover_common_dependencies(self, context: dict[str, Any]) -> list[dict[str, Any]]:
-        """Dependency edges from common structured dependency fields."""
-        from universal_vendor.common_discovery import discover_common_dependencies
-
-        return discover_common_dependencies(self, context)
-
     def collect_evidence(self, context: dict[str, Any]) -> list[dict[str, Any]]:
-        """Full raw evidence: inventory + config + crypto + certs + metadata."""
+        """Full raw evidence: inventory + config + crypto + certs + deps."""
         raw: list[dict[str, Any]] = []
         raw.extend(self.discover_inventory(context))
         raw.extend(self.discover_configuration(context))
         raw.extend(self.discover_crypto(context))
         raw.extend(self.discover_certificates(context))
-        raw.extend(self.discover_cryptographic_metadata(context))
         raw.extend(self.discover_dependencies(context))
-        raw.extend(self.discover_common_dependencies(context))
         return raw
 
     # ── Normalization (spec §1, §20) ──────────────────────────────────
@@ -184,37 +170,21 @@ class UniversalVendorPlugin(ABC):
         patterns: list of (regex, vendor, product, weight)
         Confidence = highest single matched weight (bounded 0.55–0.97).
         """
-        haystacks: list[tuple[str, str]] = []
-        seen_fields: set[str] = set()
+        haystacks: list[str] = []
         for field in banner_fields:
-            if field in seen_fields:
-                continue
-            seen_fields.add(field)
             value = context.get(field)
             if isinstance(value, str) and value.strip():
-                haystacks.append((field, value))
-        for field in ("vendor", "product", "manufacturer", "model"):
-            value = context.get(field)
-            if isinstance(value, str) and value.strip():
-                haystacks.append((field, value))
-        joined = "\n".join(value for _source, value in haystacks)
+                haystacks.append(value)
+        if isinstance(context.get("config"), str):
+            haystacks.append(context["config"])
+        joined = "\n".join(haystacks)
         best: tuple[float, str, str, str] = (0.0, "", "", "")
         matched_signals: list[dict[str, Any]] = []
-        matched_keys: set[tuple[str, str]] = set()
         for regex, vendor, product, weight in patterns:
-            for source, value in haystacks:
-                if not re.search(regex, value, re.IGNORECASE):
-                    continue
-                key = (regex, source)
-                if key in matched_keys:
-                    continue
-                matched_keys.add(key)
+            if re.search(regex, joined, re.IGNORECASE):
                 if weight > best[0]:
                     best = (weight, vendor, product, regex)
-                matched_signals.append({
-                    "regex": regex, "vendor": vendor, "product": product,
-                    "source": source,
-                })
+                matched_signals.append({"regex": regex, "vendor": vendor, "product": product})
         if best[0] == 0.0:
             return DetectionResult(confidence=0.0)
         version = self._version_from(context, joined)

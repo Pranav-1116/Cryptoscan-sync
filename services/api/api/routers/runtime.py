@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
+from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["runtime"])
-logger = logging.getLogger(__name__)
 
 
 class RuntimeFinding(BaseModel):
@@ -29,17 +27,8 @@ class RuntimeFinding(BaseModel):
 
 
 class RuntimeFindingsBody(BaseModel):
-    # This endpoint ingests runtime observations from whatever agent posts
-    # them; the caller names itself. The default used to be
-    # "ebpf-runtime-agent-v1.0", which made every unattributed batch look as
-    # though it came from an eBPF agent this project ships. It does not — there
-    # is no kernel code in the repository. What does exist is the LD_PRELOAD
-    # tracer in services/runtime (cshim/cryptoscan_trace.c), and it names
-    # itself. Keep this neutral so the inventory never over-claims its source.
-    scanner_id: str = "runtime-agent-unspecified"
-    # Batch cap — agents stream continuously, so a single request must never be
-    # allowed to ingest an unbounded array (resource-exhaustion / DoS, OWASP A04).
-    findings: list[RuntimeFinding] = Field(default_factory=list, max_length=5000)
+    scanner_id: str = "ebpf-runtime-agent-v1.0"
+    findings: list[RuntimeFinding] = Field(default_factory=list)
 
 
 def to_evidence(item: RuntimeFinding, scanner_id: str) -> dict[str, Any]:
@@ -87,10 +76,7 @@ def _verdict_rows(body: RuntimeFindingsBody) -> list[dict[str, Any]]:
         suite = item.cipher_suite
         version = (item.tls_version or "").upper()
         if kind == "session":
-            # an agent that reports a TLS suite gives us the suite; an agent that
-            # reports a bare crypto call (LD_PRELOAD tracer, ADR-012) gives us the
-            # algorithm — either way, that string is what the registry must judge
-            info = parse_algorithm(str(suite or item.algorithm or "TLS"))
+            info = parse_algorithm(str(suite or "TLS"))
             status = extra.get("suite_status") or info.status
             algorithm = info.canonical
             bulk = next((c for c in info.components if c.get("role") == "bulk_cipher"), None)
@@ -161,11 +147,8 @@ def ingest_runtime_findings(
                 },
                 source="runtime",
             )
-        except Exception as publish_exc:  # noqa: BLE001 — the bus must never block ingestion
-            logger.warning(
-                "runtime_finding_event_publish_failed",
-                extra={"error_type": type(publish_exc).__name__},
-            )
+        except Exception:  # noqa: BLE001 — the bus must never block ingestion
+            pass
     return {
         "accepted": len(rows),
         "persisted": stored,
@@ -180,32 +163,13 @@ def list_runtime_findings(
     limit: int = 100,
     kind: str | None = None,
     weak_only: bool = False,
-    q: str | None = Query(None, max_length=200,
-                          description="Server-side search across the whole runtime-findings store: "
-                                      "hostname, process, algorithm, cipher suite, TLS version, "
-                                      "scanner, kind, status"),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
-    """Recent runtime observations + aggregates (weak suites, risky libs).
-
-    With ``q`` the listing becomes a SEARCH over the whole store: rows match
-    the term in the database (not a filter of the recent window) and
-    ``total_count`` reports the number of MATCHING rows, like ``/assets?q=``.
-    Without ``q`` the behavior is unchanged — most-recent rows first, and
-    ``total_count`` is the number of returned rows.
-    """
+    """Recent runtime observations + aggregates (weak suites, risky libs)."""
     from db.repositories.runtime_finding_repository import RuntimeFindingRepository
 
     repo = RuntimeFindingRepository(db)
-    if q and q.strip():
-        rows, total = repo.search(q.strip(), limit=limit)
-        return {
-            "summary": repo.summary(),
-            "query": q.strip(),
-            "total_count": total,
-            "findings": [row.to_dict() for row in rows],
-        }
     rows = repo.list_recent(limit=limit, kind=kind, weak_only=weak_only)
     return {
         "summary": repo.summary(),

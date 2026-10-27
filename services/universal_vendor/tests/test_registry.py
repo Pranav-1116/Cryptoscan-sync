@@ -5,11 +5,13 @@ from __future__ import annotations
 import pytest
 
 from universal_vendor.models import PluginStatus, VendorCapabilities
+from universal_vendor.plugins import build_registry
 from universal_vendor.plugins.network import CiscoPlugin
 from universal_vendor.registry import (
     CapabilityRegistry,
     DuplicatePluginError,
     UnknownPluginError,
+    UntrustedPluginError,
 )
 
 

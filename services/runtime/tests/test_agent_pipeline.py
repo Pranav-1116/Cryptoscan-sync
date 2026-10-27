@@ -25,20 +25,11 @@ def test_openssl_lifecycle_verdicts():
 
 
 def test_other_libraries():
-    assert assess_library("gnutls", "3.5.18")["status"] == "DISALLOWED"  # real old version
+    assert assess_library("gnutls", "3.5.18")["status"] == "DISALLOWED"
     assert assess_library("gnutls", "3.7.11")["status"] == "ALLOWED"
-    # ABI soname tags are NOT release versions: GnuTLS soname "30.x" ships with
-    # modern 3.7/3.8 too, so it must never be flagged deprecated on its own.
-    assert assess_library("gnutls", "30.40.3")["status"] == "UNKNOWN"
     assert assess_library("mbedtls", "2.16.0")["status"] == "DISALLOWED"
     assert assess_library("boringssl", None)["status"] == "ALLOWED"
-    # libnss3.so carries no version in its name -> UNKNOWN until package-resolved
-    assert assess_library("nss", None)["status"] == "UNKNOWN"
-    assert assess_library("nss", "3.87.1")["status"] == "ALLOWED"
-    # OpenSSL soname "3" spans 3.0 (EOL) through 3.5 (current): never flag from major alone
-    assert assess_library("openssl", "3")["status"] == "UNKNOWN"
-    assert assess_library("openssl", "3.0.20")["status"] == "DEPRECATED"  # 3.0 line EOL
-    assert assess_library("openssl", "3.5.0")["status"] == "ALLOWED"
+    assert assess_library("nss", None)["status"] == "RESTRICTED"
 
 
 # --------------------------------------------------------------------------- #

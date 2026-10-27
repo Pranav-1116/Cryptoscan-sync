@@ -34,14 +34,6 @@ curl -H "Authorization: Bearer $TOKEN" \
 The pack also records the policy **pack hash** so you can show which
 rule set produced each FAIL.
 
-3. `extra.analysis` (present when the scan produced it) is inside the HMAC
-   too: `evidence_sources` (findings per source type — code, runtime log,
-   key inventory), `cascade` (summary, business-system rollup, migration
-   waves, key sizes below floor, libraries — not the per-file provider list,
-   which stays at `GET /scans/{id}/cascade`), and `key_reconciliation`
-   (consumers / orphans / not-in-inventory of a key-export scan). Change a
-   number there and `signature_ok` flips to false.
-
 ## Verify offline
 
 The CRA/NIST zip includes `verify_pack.py`. No CryptoScan install:

@@ -7,7 +7,7 @@ owns its local gateway/state/cbom and syncs when reachable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from universal_vendor.live.offline import LocalEventQueue, LocalEvidenceStore, SecureSync

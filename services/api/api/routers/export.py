@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal
 
 import csv
 import io
@@ -11,22 +10,11 @@ import io
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response
 
-from api.dependencies import (
-    TenantContext,
-    get_current_user,
-    get_db_session,
-    get_evidence_repository,
-    get_scan_repository,
-)
-from api.security.estate_history import history_context
-from api.routers.evidence_disposition import export_refused_reason
-from api.security.evidence_projection import project_finding, public_evidence_row
-from sqlalchemy.orm import Session
-
+from api.dependencies import get_current_user, get_evidence_repository, get_scan_repository
 from db.repositories.evidence_repository import EvidenceRepository
 from db.repositories.scan_repository import ScanRepository
+from evidence.hashing.chain_hasher import ChainHasher
 from evidence.hashing.content_hasher import ContentHasher
-from evidence.verification.stored_scan import verify_stored_scan
 
 router = APIRouter(tags=["export"])
 
@@ -35,20 +23,13 @@ router = APIRouter(tags=["export"])
 def export_scan(
     scan_id: str,
     user: str = Depends(get_current_user),
-    ctx: TenantContext = Depends(history_context),
-    db: Session = Depends(get_db_session),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
+    if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    # §4.2 (round 40): an operator disposition can quarantine a scan's
-    # exports until a re-issued chain exists. Refuse, citing the decision.
-    refused = export_refused_reason(db, scan_id)
-    if refused:
-        raise HTTPException(status_code=409, detail=refused)
-    rows = evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id)
+    rows = evidence.get_all_for_scan(scan_id)
     payload = {
         "scan": {
             "scan_id": scan.id,
@@ -59,7 +40,7 @@ def export_scan(
             "statistics": scan.statistics,
             "manifest_hash": scan.manifest_hash,
         },
-        "findings": [public_evidence_row(row) for row in rows],
+        "findings": [row.to_dict() for row in rows],
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "exported_by": user,
     }
@@ -70,18 +51,13 @@ def export_scan(
 def export_scan_csv(
     scan_id: str,
     user: str = Depends(get_current_user),
-    ctx: TenantContext = Depends(history_context),
-    db: Session = Depends(get_db_session),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
+    if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    refused = export_refused_reason(db, scan_id)
-    if refused:
-        raise HTTPException(status_code=409, detail=refused)
-    rows = evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id)
+    rows = evidence.get_all_for_scan(scan_id)
     buffer = io.StringIO()
     writer = csv.DictWriter(
         buffer,
@@ -129,16 +105,15 @@ def export_scan_csv(
 def export_verification_script(
     scan_id: str,
     user: str = Depends(get_current_user),
-    ctx: TenantContext = Depends(history_context),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
+    if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     from evidence.scripts.verification_script_generator import generate_verification_script
 
-    script = generate_verification_script(scan_id=scan_id, records=evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id))
+    script = generate_verification_script(scan_id=scan_id, records=evidence.get_all_for_scan(scan_id))
     return Response(
         content=script,
         media_type="text/x-python",
@@ -149,28 +124,14 @@ def export_verification_script(
 @router.get("/scans/{scan_id}/cbom")
 def export_cbom(
     scan_id: str,
-    spec_version: Literal["1.5", "1.6"] = "1.5",
-    db: Session = Depends(get_db_session),
     user: str = Depends(get_current_user),
-    ctx: TenantContext = Depends(history_context),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
+    if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    refused = export_refused_reason(db, scan_id)
-    if refused:
-        raise HTTPException(status_code=409, detail=refused)
-    rows = evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id)
-    if spec_version == "1.6":
-        from cbom.generator import CbomGenerator
-        try:
-            return CbomGenerator().from_records(rows, name=scan.target_location,
-                version=scan.target_commit or scan.target_branch or "unknown",
-                tool_version=scan.scanner_version or "unknown", scan_id=scan.id, spec_version="1.6")
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail="Native CBOM export failed schema/reference validation") from exc
+    rows = evidence.get_all_for_scan(scan_id)
     components = []
     for row in rows:
         normalized = row.normalized_crypto or {}
@@ -200,15 +161,7 @@ def export_cbom(
                 },
             }
         )
-    # key-inventory records: export metadata as CycloneDX properties (labels, store, state, dates — never values)
-    for row, comp in zip(rows, components):
-        inv = project_finding(row.finding_data)[0].get("inventory")
-        if inv:
-            comp["properties"] = [{"name": f"cryptoscan:key:{k}", "value": str(v)} for k, v in sorted(inv.items()) if v not in (None, "", [])][:24]
-            comp["cryptoProperties"]["assetType"] = "related-crypto-material" if inv.get("key_label") and not inv.get("subject") else ("certificate" if inv.get("subject") else "algorithm")
-    root_ref = f"root:{scan.id}"
-    extra_components, dependencies = _cascade_dependencies(root_ref, (scan.statistics or {}).get("cascade") or {}, rows)
-    bom = {
+    return {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
         "version": 1,
@@ -218,77 +171,38 @@ def export_cbom(
                 "type": "application",
                 "name": scan.target_location,
                 "version": scan.target_commit or scan.target_branch or "unknown",
-                "bom-ref": root_ref,
             },
             "tools": [{"name": "CryptoScan", "version": scan.scanner_version}],
         },
-        "components": components + extra_components,
+        "components": components,
     }
-    if dependencies:
-        bom["dependencies"] = dependencies
-    return bom
-
-
-def _cascade_dependencies(root_ref: str, cascade: dict, rows) -> tuple[list[dict], list[dict]]:
-    """Real CycloneDX `dependencies[]` from the scan's dependency & cascade analysis.
-
-    file components for crypto-provider files (file → the crypto assets found in it, file → provider files it
-    imports crypto from) and application components for business systems declared in cryptoscan-systems.yml
-    (system → its provider files, system → systems whose crypto it imports). Root depends on systems (or on
-    provider files when no system map exists). Every ref points at a component in this BOM.
-    """
-    providers = cascade.get("providers") or []
-    systems = cascade.get("systems") or []
-    if not providers:
-        return [], []
-    from fnmatch import fnmatch
-
-    def _in(path: str, globs: list[str]) -> bool:
-        path = path.split("!", 1)[0]
-        return any(path == g.rstrip("/") or path.startswith(g.rstrip("/").removesuffix("/**").removesuffix("/*") + "/") or fnmatch(path, g) for g in globs)
-
-    assets_by_file: dict[str, list[str]] = {}
-    for row in rows:
-        assets_by_file.setdefault(str(row.file_path).split("!", 1)[0], []).append(row.id)
-    file_refs = {p["file"]: f"file:{p['file']}" for p in providers}
-    components: list[dict] = []
-    deps: list[dict] = []
-    for p in providers:
-        components.append({"type": "file", "name": p["file"], "bom-ref": file_refs[p["file"]],
-                           "properties": [{"name": "cryptoscan:cascade:wave", "value": str(p.get("wave"))},
-                                          {"name": "cryptoscan:cascade:direct_dependents", "value": str(p.get("direct_dependents", 0))},
-                                          {"name": "cryptoscan:cascade:transitive_dependents", "value": str(p.get("transitive_dependents", 0))},
-                                          {"name": "cryptoscan:cascade:algorithms", "value": ",".join(p.get("algorithms") or [])}]})
-        depends = list(assets_by_file.get(p["file"], [])) + [file_refs[q] for q in (p.get("depends_on_providers") or []) if q in file_refs]
-        if depends:
-            deps.append({"ref": file_refs[p["file"]], "dependsOn": depends})
-    sys_refs = {s["system"]: f"system:{s['system']}" for s in systems}
-    for s in systems:
-        components.append({"type": "application", "name": s["system"], "bom-ref": sys_refs[s["system"]],
-                           "properties": [{"name": "cryptoscan:system:criticality", "value": str(s.get("criticality") or "")},
-                                          {"name": "cryptoscan:system:earliest_wave", "value": str(s.get("earliest_wave") or "")}]})
-        depends = [file_refs[p["file"]] for p in providers if _in(p["file"], s.get("paths") or [])]
-        depends += [sys_refs[d] for d in (s.get("depends_on_systems") or []) if d in sys_refs]
-        if depends:
-            deps.append({"ref": sys_refs[s["system"]], "dependsOn": depends})
-    top = list(sys_refs.values()) or list(file_refs.values())
-    deps.insert(0, {"ref": root_ref, "dependsOn": top})
-    return components, deps
 
 
 @router.get("/scans/{scan_id}/verify")
 def verify_scan(
     scan_id: str,
     user: str = Depends(get_current_user),
-    ctx: TenantContext = Depends(history_context),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     scan = scans.get_by_id(scan_id)
-    if scan is None or getattr(scan, "tenant_id", None) != ctx.tenant_id:
+    if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    verdict = verify_stored_scan(scan, evidence.get_all_for_scan(scan_id, owner=ctx.tenant_id))
-    return {**verdict, "verified_by": user, "content_hasher": ContentHasher.ALGORITHM}
+    rows = evidence.get_all_for_scan(scan_id)
+    content_hashes = [r.content_hash for r in rows]
+    chain_hashes = [r.chain_hash for r in rows]
+    chain_ok = ChainHasher.verify_chain(content_hashes, chain_hashes, scan_id) if rows else True
+    hash_ok = all(len(h or "") == 64 for h in content_hashes + chain_hashes)
+    return {
+        "scan_id": scan_id,
+        "records": len(rows),
+        "chain_intact": chain_ok,
+        "hash_format_valid": hash_ok,
+        "manifest_hash": scan.manifest_hash,
+        "result": "PASS" if chain_ok and hash_ok else "FAIL",
+        "verified_by": user,
+        "content_hasher": ContentHasher.ALGORITHM,
+    }
 
 
 @router.get("/export/findings.csv")
@@ -298,7 +212,6 @@ def export_findings_csv(
     scan_id: str | None = None,
     limit: int = 10000,
     user: str = Depends(get_current_user),
-    ctx: TenantContext = Depends(history_context),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
 ):
     """Estate-wide findings export (W59-60): Excel-compatible CSV over all scans.
@@ -317,7 +230,6 @@ def export_findings_csv(
             algorithm=algorithm,
             compliance_status=compliance_status,
             scan_id=scan_id,
-            owner=ctx.tenant_id,
             page=page,
             page_size=page_size,
         )

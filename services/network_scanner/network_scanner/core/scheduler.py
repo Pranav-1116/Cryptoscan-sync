@@ -20,8 +20,7 @@ def _as_dt(value: Any) -> datetime | None:
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     text = str(value)
     try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError:
         return None
 

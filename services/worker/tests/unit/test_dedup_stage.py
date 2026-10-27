@@ -31,7 +31,7 @@ def test_dedup_stage_collapses_and_persists_stats(monkeypatch):
     runner._quantum_assets = lambda ctx, session, stored: None
     ctx = PipelineContext(
         job_id="j1",
-        target_repo="local://test-fixture",
+        target_repo="local://demo",
         target_branch="main",
         triggered_by="t",
         workspace_dir="/tmp",
@@ -73,7 +73,7 @@ def test_dedup_stage_no_duplicates_is_not_verified(monkeypatch):
     runner._quantum_assets = lambda ctx, session, stored: None
     ctx = PipelineContext(
         job_id="j2",
-        target_repo="local://test-fixture",
+        target_repo="local://demo",
         target_branch="main",
         triggered_by="t",
         workspace_dir="/tmp",

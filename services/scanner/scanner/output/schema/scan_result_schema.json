@@ -18,18 +18,6 @@
           "title": "Api Type",
           "type": "string"
         },
-        "hash_algorithm": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Hash Algorithm"
-        },
         "key_size": {
           "anyOf": [
             {
@@ -99,18 +87,6 @@
     },
     "FindingMetadata": {
       "properties": {
-        "code_origin": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Code Origin"
-        },
         "confidence": {
           "title": "Confidence",
           "type": "string"
@@ -287,43 +263,10 @@
     },
     "ScanStatistics": {
       "properties": {
-        "cascade_providers": {
-          "default": 0,
-          "title": "Cascade Providers",
-          "type": "integer"
-        },
-        "cascade_shared_keys": {
-          "default": 0,
-          "title": "Cascade Shared Keys",
-          "type": "integer"
-        },
-        "cascade_weak_parameters": {
-          "default": 0,
-          "title": "Cascade Weak Parameters",
-          "type": "integer"
-        },
         "duration_seconds": {
           "default": 0.0,
           "title": "Duration Seconds",
           "type": "number"
-        },
-        "file_observation_receipts": {
-          "items": {
-            "additionalProperties": true,
-            "type": "object"
-          },
-          "title": "File Observation Receipts",
-          "type": "array"
-        },
-        "file_receipts_complete": {
-          "default": false,
-          "title": "File Receipts Complete",
-          "type": "boolean"
-        },
-        "file_receipts_scope": {
-          "default": "PRIMARY_DISCOVERED_SOURCE_FILES_ONLY",
-          "title": "File Receipts Scope",
-          "type": "string"
         },
         "files_scanned": {
           "default": 0,
@@ -345,13 +288,6 @@
           "title": "Files With Errors",
           "type": "integer"
         },
-        "findings_by_origin": {
-          "additionalProperties": {
-            "type": "integer"
-          },
-          "title": "Findings By Origin",
-          "type": "object"
-        },
         "high_confidence": {
           "default": 0,
           "title": "High Confidence",
@@ -365,11 +301,6 @@
         "medium_confidence": {
           "default": 0,
           "title": "Medium Confidence",
-          "type": "integer"
-        },
-        "resolved_cross_file": {
-          "default": 0,
-          "title": "Resolved Cross File",
           "type": "integer"
         },
         "total_findings": {

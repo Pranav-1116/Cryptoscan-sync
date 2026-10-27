@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import re
 from pathlib import Path
 
@@ -38,9 +33,7 @@ NAMED_FILES = {
     "openssl.cnf",
 }
 
-SSL_PROTOCOLS = re.compile(r"(?im)^\s*(?:proxy_|grpc_|uwsgi_)?ssl_protocols\s+([^;#]+)")
-SSL_ECDH_CURVE = re.compile(r"(?im)^\s*ssl_ecdh_curve\s+([^;#]+)")
-_TEMPLATED = re.compile(r"\{\{|\$\{|%\{|<%|\{%")
+SSL_PROTOCOLS = re.compile(r"(?im)^\s*ssl_protocols\s+([^;#]+)")
 APACHE_PROTO = re.compile(r"(?im)^\s*SSLProtocol\s+(.+)$")
 OPENSSL_MIN = re.compile(r"(?im)^\s*MinProtocol\s*=\s*(\S+)")
 SPRING_PROTO = re.compile(
@@ -89,26 +82,15 @@ def iter_config_files(root: Path):
             yield path
 
 
-def scan_config_tree(
-    root_path: Path | str, repo_root: Path | str | None = None, *, skip_paths: set[Path] | None = None,
-) -> list[RawFinding]:
+def scan_config_tree(root_path: Path | str, repo_root: Path | str | None = None) -> list[RawFinding]:
     root = Path(root_path)
     repo = Path(repo_root) if repo_root else root
     if not root.exists():
         return []
     findings: list[RawFinding] = []
     for path in iter_config_files(root):
-        if skip_paths is not None and path in skip_paths:
-            continue
         findings.extend(parse_config_file(path, repo))
     return findings
-
-
-def _content_start(match: "re.Match[str]") -> int:
-    """``(?m)^\\s*directive`` may begin on the *previous* blank line because ``\\s*``
-    swallows the newline; report the line where the directive text actually starts."""
-    whole = match.group(0)
-    return match.start() + (len(whole) - len(whole.lstrip()))
 
 
 def parse_config_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -125,34 +107,15 @@ def parse_config_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
             make_finding(
                 file_path=file_path,
                 repo_root=repo_root,
-                line_number=text[: _content_start(match)].count("\n") + 1,
+                line_number=text[: match.start()].count("\n") + 1,
                 language="CONFIG",
                 scanner_id=SCANNER_ID,
                 **kwargs,
             )
         )
 
-    for match in SSL_ECDH_CURVE.finditer(text):
-        add(match, api_type="KEY_AGREEMENT", algorithm="ECDH", purpose="KEY_EXCHANGE", library="nginx",
-            raw_transformation=match.group(1).strip()[:60], confidence="MEDIUM")
-        for tok in re.split(r"[\s:,]+", match.group(1).strip()):
-            low = tok.lower()
-            if low in {"x25519", "curve25519"}:
-                add(match, api_type="KEY_AGREEMENT", algorithm="X25519", purpose="KEY_EXCHANGE", library="nginx", raw_transformation=tok, confidence="HIGH")
-            elif low in {"x448"}:
-                add(match, api_type="KEY_AGREEMENT", algorithm="X448", purpose="KEY_EXCHANGE", library="nginx", raw_transformation=tok, confidence="HIGH")
-            elif low.startswith(("x25519kyber", "x25519mlkem", "secp256r1mlkem")):
-                add(match, api_type="KEY_AGREEMENT", algorithm="ML-KEM", purpose="KEY_EXCHANGE", library="nginx", raw_transformation=tok, confidence="HIGH")
     for match in SSL_PROTOCOLS.finditer(text):
-        value = match.group(1).strip()
-        if _TEMPLATED.search(value):
-            # ssl_protocols {{ $cfg.SSLProtocols }} — the version set is decided at
-            # deploy time; record the TLS endpoint without a version.
-            add(match, api_type="KEY_AGREEMENT", algorithm="TLS", purpose="NETWORK_ENCRYPTION",
-                library="nginx", raw_transformation=value[:60], confidence="LOW",
-                confidence_reason="protocol list is a template variable")
-            continue
-        for token in re.split(r"[\s,]+", value):
+        for token in re.split(r"[\s,]+", match.group(1).strip()):
             algo = _normalize_tls(token)
             if not algo:
                 continue
@@ -298,20 +261,6 @@ def parse_config_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
             confidence_reason="cipher-suite-list",
             raw_transformation=suite[:80],
         )
-    try:
-        from scanner.parsers.config_rules import run_config_rules
-
-        seen = {
-            (f.source.line_number, f.crypto.algorithm or "", f.crypto.api_type or "")
-            for f in findings
-        }
-        findings.extend(run_config_rules(file_path, repo_root, text, SCANNER_ID, seen))
-    except Exception as _handler_exc:  # rule pack must never break the base parser
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
-        pass
     return findings
 
 

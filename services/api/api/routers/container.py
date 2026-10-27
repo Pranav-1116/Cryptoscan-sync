@@ -174,19 +174,10 @@ def render_sbom(body: dict, user: str = Depends(get_current_user)):
 
 
 @router.get("/scans")
-def list_container_scan_history(
+def list_container_scans(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Container scan history (alias of GET /container-scans).
-
-    Renamed from ``list_container_scans`` (same path, same behavior): the old
-    name collided with the ``container_scans`` router's function — FastAPI
-    derives operationIds from function name + path, and ``/container/scans``
-    and ``/container-scans`` normalize to the same id
-    (``list_container_scans_api_v1_container_scans_get``), which breaks
-    generated OpenAPI clients (audit 11's contract-testing gap).
-    """
     from sqlalchemy import select
 
     rows = list(db.execute(select(ContainerScan).order_by(ContainerScan.created_at.desc()).limit(50)).scalars())

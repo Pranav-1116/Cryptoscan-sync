@@ -8,7 +8,7 @@ dependency graph this forms a complete technology inventory.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from universal_vendor.hardware.models import HardwareObservation
 
@@ -22,30 +22,14 @@ except Exception:  # pragma: no cover
 
 
 class HbomGenerator:
-    """HBOM with live versioning (§15).
-
-    Every hardware change produces a NEW document state: HBOM v100 →
-    hardware event → HBOM v101. ``snapshot()`` freezes the current document
-    and bumps the version; the snapshot history is retained so any previous
-    HBOM state is retrievable.
-    """
-
     def __init__(self) -> None:
         self._hardware: dict[str, dict[str, Any]] = {}
         self._firmware: list[dict[str, Any]] = []
         self._security_hardware: list[dict[str, Any]] = []
         self._version = 1
-        self._snapshots: list[dict[str, Any]] = []
 
     def add(self, observation: HardwareObservation) -> None:
         asset_id = observation.asset_id
-        # re-observation replaces the asset's stale firmware/security rows
-        # instead of stacking duplicates (round 25, deep/26 §5)
-        self._firmware = [f for f in self._firmware if f.get("asset_id") != asset_id]
-        self._security_hardware = [
-            s for s in self._security_hardware
-            if s.get("asset_id") != asset_id and s.get("bom-ref") != f"hw:{asset_id}"
-        ]
         entry = {
             "bom-ref": f"hw:{asset_id}",
             "type": observation.device_type,
@@ -71,17 +55,6 @@ class HbomGenerator:
             self._security_hardware.append({"asset_id": asset_id,
                                             "type": "tpm", "tpm": observation.tpm})
 
-    def remove(self, asset_id: str) -> bool:
-        """Drop an asset and its firmware/security entries (lifecycle
-        removal). Returns whether the asset was present."""
-        existed = self._hardware.pop(asset_id, None) is not None
-        self._firmware = [f for f in self._firmware if f.get("asset_id") != asset_id]
-        self._security_hardware = [
-            s for s in self._security_hardware
-            if s.get("asset_id") != asset_id and s.get("bom-ref") != f"hw:{asset_id}"
-        ]
-        return existed
-
     # ── output ────────────────────────────────────────────────────────
 
     def hardware(self) -> list[dict[str, Any]]:
@@ -103,38 +76,6 @@ class HbomGenerator:
             "firmware": self.firmware(),
             "security_hardware": self.security_hardware(),
         }
-
-    # ── §15 live versioning ───────────────────────────────────────────
-
-    def snapshot(self, *, reason: str = "", name: str = "zelinx-hbom") -> dict[str, Any]:
-        """Freeze the current HBOM as a new version and bump the counter.
-
-        Returns the snapshot (also appended to the version history).
-        """
-        document = self.to_document(name=name)
-        self._version += 1
-        snapshot = {
-            "version": document["version"],
-            "timestamp": document["timestamp"],
-            "reason": reason,
-            "document": document,
-        }
-        self._snapshots.append(snapshot)
-        return snapshot
-
-    def version_history(self) -> list[dict[str, Any]]:
-        """All frozen HBOM versions, oldest first."""
-        return list(self._snapshots)
-
-    def version(self, number: int) -> Optional[dict[str, Any]]:
-        """Retrieve a frozen HBOM version by its version number."""
-        for snapshot in self._snapshots:
-            if snapshot["version"] == number:
-                return snapshot
-        return None
-
-    def current_version(self) -> int:
-        return self._version
 
     def to_cyclonedx(self, *, name: str = "zelinx-hbom") -> dict[str, Any]:
         """Serializable CycloneDX-style document."""

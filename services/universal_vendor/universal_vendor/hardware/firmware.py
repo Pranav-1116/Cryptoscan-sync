@@ -8,7 +8,7 @@ re-evaluation.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -24,23 +24,17 @@ MONITORED_COMPONENTS = [
 
 @dataclass
 class FirmwareChange:
-    """One firmware change (§7). Stores OLD_VERSION / NEW_VERSION /
-    CHANGE_TIME / SOURCE / EVIDENCE so every change is attributable."""
-
     asset_id: str
     component: str
     previous: str
     current: str
     timestamp: str
     reassessment_triggered: bool = False
-    source: Optional[str] = None
-    evidence_id: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {"asset_id": self.asset_id, "component": self.component,
-                "old_version": self.previous, "new_version": self.current,
-                "change_time": self.timestamp,
-                "source": self.source, "evidence_id": self.evidence_id,
+                "previous": self.previous, "current": self.current,
+                "timestamp": self.timestamp,
                 "reassessment_triggered": self.reassessment_triggered}
 
 
@@ -51,17 +45,6 @@ class FirmwareIntelligence:
         self._states: dict[tuple[str, str], FirmwareState] = {}
         self._changes: list[FirmwareChange] = []
         self._hook = reassessment_hook
-        self._source: Optional[str] = None
-        self._evidence_id: Optional[str] = None
-
-    def set_context(self, *, source: Optional[str] = None,
-                    evidence_id: Optional[str] = None) -> None:
-        """Attach provenance (agent/API source + evidence id) to the NEXT
-        firmware change recorded (and all subsequent until reset)."""
-        if source is not None:
-            self._source = source
-        if evidence_id is not None:
-            self._evidence_id = evidence_id
 
     def observe(self, *, asset_id: str, component: str, version: str) -> FirmwareChange | None:
         component = component.upper()
@@ -85,9 +68,7 @@ class FirmwareIntelligence:
         state.changed_at = now
         change = FirmwareChange(asset_id=asset_id, component=component,
                                 previous=state.previous, current=version,
-                                timestamp=now,
-                                source=self._source,
-                                evidence_id=self._evidence_id)
+                                timestamp=now)
         self._changes.append(change)
 
         # targeted crypto re-evaluation (capability reassessment)

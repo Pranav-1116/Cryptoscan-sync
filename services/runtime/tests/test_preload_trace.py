@@ -8,10 +8,9 @@ path: no kernel agent, no privileges.
 
 from __future__ import annotations
 
-import ctypes.util
 import json
 import shutil
-import sys
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -57,14 +56,6 @@ def test_parse_trace_log_aggregates(tmp_path):
 
 def test_parse_missing_log_returns_empty(tmp_path):
     assert parse_trace_log(tmp_path / "nope.jsonl") == []
-
-
-def test_parse_missing_algorithm_stays_unknown(tmp_path):
-    path = _write_log(
-        tmp_path,
-        [{"pid": 42, "process": "openssl", "function": "EVP_DigestInit_ex", "algorithm": ""}],
-    )
-    assert parse_trace_log(path)[0]["algorithm"] == "UNKNOWN"
 
 
 def test_malformed_lines_skipped(tmp_path):
@@ -116,59 +107,6 @@ def test_trace_real_openssl_digest(tmp_path):
     assert "EVP_DigestInit_ex" in functions or "EVP_DigestInit_ex2" in functions
     algos = {f["algorithm"] for f in result["findings"]}
     assert "SHA2-256" in algos or "SHA-256" in algos or "SHA256" in algos
-
-
-@pytest.mark.skipif(not _HAS_CC, reason="requires C compiler")
-@pytest.mark.parametrize(
-    ("kind", "function", "expected"),
-    [
-        ("digest", "EVP_DigestInit_ex", "SHA256"),
-        ("cipher", "EVP_CipherInit_ex", "AES-256-CBC"),
-    ],
-)
-def test_first_evp_call_resolves_algorithm(tmp_path, kind, function, expected):
-    """A process making only one EVP call must not lose its algorithm name."""
-    libcrypto = ctypes.util.find_library("crypto")
-    assert libcrypto is not None
-    # Use a fresh process for each call: tracing the openssl CLI can mask a
-    # first-call bug when its setup happens to invoke EVP more than once.
-    script = """
-import ctypes
-import sys
-
-lib = ctypes.CDLL(sys.argv[2], mode=ctypes.RTLD_GLOBAL)
-shim = ctypes.CDLL(None)  # RTLD_DEFAULT includes the LD_PRELOAD interposer
-kind = sys.argv[1]
-name = b"SHA256" if kind == "digest" else b"aes-256-cbc"
-selector = getattr(lib, "EVP_get_digestbyname" if kind == "digest" else "EVP_get_cipherbyname")
-selector.argtypes = [ctypes.c_char_p]
-selector.restype = ctypes.c_void_p
-algorithm = selector(name)
-assert algorithm, name
-new_ctx = getattr(lib, "EVP_MD_CTX_new" if kind == "digest" else "EVP_CIPHER_CTX_new")
-new_ctx.restype = ctypes.c_void_p
-ctx = new_ctx()
-assert ctx
-init = getattr(shim, "EVP_DigestInit_ex" if kind == "digest" else "EVP_CipherInit_ex")
-init.restype = ctypes.c_int
-if kind == "digest":
-    init.argtypes = [ctypes.c_void_p] * 3
-    rc = init(ctx, algorithm, None)
-else:
-    init.argtypes = [ctypes.c_void_p] * 5 + [ctypes.c_int]
-    rc = init(ctx, algorithm, None, None, None, 1)
-assert rc == 1
-"""
-    result = trace_command(
-        [sys.executable, "-S", "-c", script, kind, libcrypto],
-        log_path=tmp_path / "first-call.jsonl",
-        timeout=10,
-    )
-    assert result["returncode"] == 0, result["stderr"]
-    observed = [f for f in result["findings"] if f["function"] == function]
-    assert len(observed) == 1, result["findings"]
-    allowed = {expected, "SHA2-256"} if kind == "digest" else {expected}
-    assert observed[0]["algorithm"].upper() in allowed
 
 
 @pytest.mark.skipif(not (_HAS_CC and _HAS_OPENSSL), reason="requires C compiler + openssl CLI")

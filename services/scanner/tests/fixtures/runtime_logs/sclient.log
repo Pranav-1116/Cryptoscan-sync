@@ -1,8 +1,0 @@
-CONNECTED(00000003)
-Peer signature type: RSA-PSS
-Peer signing digest: SHA256
-Server Temp Key: X25519, 253 bits
-Server public key is 2048 bit
-New, TLSv1.3, Cipher is TLS_AES_256_GCM_SHA384
-    Protocol  : TLSv1.3
-    Cipher    : TLS_AES_256_GCM_SHA384

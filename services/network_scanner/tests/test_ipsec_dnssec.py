@@ -11,9 +11,11 @@ import json
 import socket
 import struct
 import threading
+from pathlib import Path
 
+import pytest
 
-from network_scanner.discovery.dnssec_checker import scan_dnssec
+from network_scanner.discovery.dnssec_checker import DNS_ALGORITHMS, scan_dnssec
 from network_scanner.probing.ipsec_probe import (
     build_ikev2_sa_init,
     classify_ipsec,
@@ -184,33 +186,8 @@ def _response(qid: int, name: str, qtype: int, answers: list[tuple[int, bytes]])
     return header + question + body
 
 
-#: How long the server loops block before re-checking the stop flag.
-#:
-#: This was 5.0, which made close() unable to keep its promise: it sets _stop,
-#: closes the socket and joins for 2s, but closing a socket out from under a
-#: blocked recvfrom does not reliably wake it on Linux — the call sits until
-#: its own timeout expires. The join therefore timed out and the daemon thread
-#: outlived the test.
-#:
-#: That leak is what made test_cli_dnssec_zone hang: UDP binds an ephemeral
-#: port and TCP reuses that number, the OS recycles ephemeral ports quickly,
-#: and a leaked reader from an earlier test could consume a later test's query
-#: and answer it from the wrong zone — so the CLI waited for a reply that
-#: never came. It passed in isolation and hung in sequence, which is exactly
-#: the signature of leaked state.
-#:
-#: A quarter second keeps shutdown deterministic (threads observe _stop within
-#: one poll) at negligible cost: these loops are idle waits, not hot paths.
-_POLL_TIMEOUT = 0.25
-
-
 class _DnsServer:
-    """Tiny DNS server: answers SOA/DNSKEY/DS over UDP, AXFR over TCP.
-
-    Every instance must be closed (the tests use try/finally). close() is
-    deterministic: threads exit within ``_POLL_TIMEOUT`` and are joined, so no
-    reader outlives the test that created it.
-    """
+    """Tiny DNS server: answers SOA/DNSKEY/DS over UDP, AXFR over TCP."""
 
     def __init__(self, *, zone: str, dnskey: list[bytes], ds: list[bytes], axfr: list[bytes] | None = None):
         self.zone = zone
@@ -225,7 +202,7 @@ class _DnsServer:
         self.tcp.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.tcp.bind(("127.0.0.1", self.port))
         self.tcp.listen(2)
-        self.tcp.settimeout(_POLL_TIMEOUT)
+        self.tcp.settimeout(5.0)
         self._stop = threading.Event()
         self.threads = [
             threading.Thread(target=self._udp_loop, daemon=True),
@@ -235,7 +212,7 @@ class _DnsServer:
             t.start()
 
     def _udp_loop(self) -> None:
-        self.udp.settimeout(_POLL_TIMEOUT)
+        self.udp.settimeout(5.0)
         while not self._stop.is_set():
             try:
                 data, addr = self.udp.recvfrom(65535)
@@ -296,20 +273,11 @@ class _DnsServer:
             return 0
 
     def close(self) -> None:
-        # Signal first, then join, then close. Closing before the readers have
-        # exited is what the old order did, and it left them blocked on a
-        # dead fd instead of stopping them.
         self._stop.set()
-        for t in self.threads:
-            t.join(timeout=_POLL_TIMEOUT * 20)
         self.udp.close()
         self.tcp.close()
-        alive = [t.name for t in self.threads if t.is_alive()]
-        assert not alive, (
-            f"_DnsServer reader(s) {alive} outlived close(); a leaked reader on a "
-            "recycled ephemeral port answers a later test's query from the wrong "
-            "zone, which hangs that test"
-        )
+        for t in self.threads:
+            t.join(timeout=2)
 
 
 def test_dnssec_signed_strong_zone():

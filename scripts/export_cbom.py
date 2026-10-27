@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export a legacy1.5 extension or native1.6 JSON CBOM for a scan/system."""
+"""Export a CycloneDX 1.5 CBOM for a scan or system."""
 
 from __future__ import annotations
 from _bootstrap import bootstrap  # noqa: E402
@@ -18,13 +18,9 @@ def main() -> None:
     parser.add_argument("target_id", nargs="?", default="", help="scan_id or system_id (omit for portfolio)")
     parser.add_argument("--kind", choices=("scan", "system", "portfolio"), default="scan")
     parser.add_argument("--format", choices=("json", "xml"), default="json")
-    parser.add_argument("--spec-version", choices=("1.5", "1.6"), default="1.5", help="Native1.6 supports JSON only;1.5 is the legacy extension")
     parser.add_argument("--signed", action="store_true")
     parser.add_argument("-o", "--output")
     args = parser.parse_args()
-
-    if args.spec_version == "1.6" and args.format != "json":
-        parser.error("Native CycloneDX1.6 supports JSON only")
 
     from cbom.generator import CbomGenerator
     from db.connection.session import SessionLocal, init_db
@@ -57,7 +53,6 @@ def main() -> None:
                 records.append(data)
             bom = generator.from_records(
                 records,
-                spec_version=args.spec_version,
                 name="cryptoscan-portfolio",
                 version="aggregate",
                 metadata_properties=[{"name": "cryptoscan:scope", "value": "estate"}],
@@ -72,7 +67,6 @@ def main() -> None:
             records = EvidenceRepository(session).get_all_for_scan(args.target_id)
             bom = generator.from_records(
                 records,
-                spec_version=args.spec_version,
                 name=scan.target_location,
                 version=scan.target_commit or scan.target_branch or "unknown",
                 tool_version=scan.scanner_version,
@@ -86,7 +80,6 @@ def main() -> None:
                 raise SystemExit(f"system not found: {args.target_id}")
             bom = generator.from_records(
                 repo.assets_for(args.target_id),
-                spec_version=args.spec_version,
                 name=system.name,
                 version=system.environment or "unknown",
             )

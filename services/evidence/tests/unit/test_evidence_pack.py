@@ -38,7 +38,7 @@ def _records(scan_id: str, payloads: list[str]):
 def test_pack_round_trip_signed():
     scan_id = "scan-pack-1"
     pack = build_evidence_pack(
-        scan={"scan_id": scan_id, "target_location": "local://test-fixture"},
+        scan={"scan_id": scan_id, "target_location": "local://demo"},
         records=_records(scan_id, ["one", "two"]),
         policy={"pack_hash": "abc"},
         secret="unit-secret",

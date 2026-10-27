@@ -9,10 +9,9 @@ from sqlalchemy import DateTime, Float, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class MigrationProject(BaseModel, TenantScoped):
+class MigrationProject(BaseModel):
     __tablename__ = "migration_projects"
 
     name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -26,7 +25,7 @@ class MigrationProject(BaseModel, TenantScoped):
     extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
-class MigrationTask(BaseModel, TenantScoped):
+class MigrationTask(BaseModel):
     """One concrete migration unit inside a project (asset/site to move)."""
 
     __tablename__ = "migration_tasks"
@@ -53,13 +52,9 @@ class MigrationTask(BaseModel, TenantScoped):
     external_ref: Mapped[Optional[str]] = mapped_column(String(300), nullable=True, index=True)
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    # round 30 execution engine (advanced/61 §4.2): task ids that must
-    # reach DONE/SKIPPED before this task may start. Plain list, kept in
-    # sync by the repository's dependency linker (cycle-checked).
-    depends_on: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
 
-class MigrationMilestone(BaseModel, TenantScoped):
+class MigrationMilestone(BaseModel):
     """Timeline anchor for a project; status is recomputed from progress."""
 
     __tablename__ = "migration_milestones"

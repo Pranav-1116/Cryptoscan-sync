@@ -2,14 +2,32 @@
 # shellcheck shell=bash
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export CRYPTOSCAN_ROOT="${CRYPTOSCAN_ROOT:-$ROOT}"
-
-# Auto-discover every service + shared package instead of maintaining a
-# hand-written list that rots each time a service is added (the container
-# image does the same via its cryptoscan.pth file — see .docker/api/Dockerfile).
-_CS_PATHS=()
-for _dir in "$ROOT"/shared/*/ "$ROOT"/services/*/; do
-  [ -d "$_dir" ] && _CS_PATHS+=("$_dir")
-done
+_CS_PATHS=(
+  "$ROOT/shared/shared_config"
+  "$ROOT/shared/shared_logging"
+  "$ROOT/shared/shared_models"
+  "$ROOT/services/api"
+  "$ROOT/services/database"
+  "$ROOT/services/scanner"
+  "$ROOT/services/evidence"
+  "$ROOT/services/normalization"
+  "$ROOT/services/policy"
+  "$ROOT/services/drift"
+  "$ROOT/services/worker"
+  "$ROOT/services/deduplication"
+  "$ROOT/services/cbom"
+  "$ROOT/services/container_scanner"
+  "$ROOT/services/network_scanner"
+  "$ROOT/services/cloud_scanner"
+  "$ROOT/services/graph_engine"
+  "$ROOT/services/business_context"
+  "$ROOT/services/quantum"
+  "$ROOT/services/remediation"
+  "$ROOT/services/reporting"
+  "$ROOT/services/ot_scanner"
+  "$ROOT/services/vendor_intel"
+  "$ROOT/services/agility"
+)
 _JOINED="$(IFS=:; echo "${_CS_PATHS[*]}")"
 export PYTHONPATH="${_JOINED}${PYTHONPATH:+:$PYTHONPATH}"
 mkdir -p "$ROOT/data/workspaces"

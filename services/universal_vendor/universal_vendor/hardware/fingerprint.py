@@ -61,54 +61,27 @@ def fingerprint_hardware(signals: dict[str, Any]) -> HardwareFingerprint:
     pci, usb, device_banner, cloud_metadata — each non-empty string/dict
     counts as corroborating evidence.
     """
-    # Do not turn placeholders or empty containers into corroborating
-    # evidence. Counting ``{"serial": "unknown"}`` as a real DMI signal can
-    # promote an unverified device to HIGH confidence.
-    sources = sorted(
-        key for key, value in signals.items()
-        if key in _EVIDENCE_WEIGHTS and _meaningful_signal(value)
-    )
+    sources = [key for key, value in signals.items()
+               if key in _EVIDENCE_WEIGHTS and value]
     score = sum(_EVIDENCE_WEIGHTS.get(key, 0.0) for key in sources)
 
     dmi = signals.get("dmi") or {}
     if isinstance(dmi, str):
         dmi = {}
-    manufacturer = _usable_text(signals.get("manufacturer")) or _usable_text(
-        dmi.get("manufacturer") if isinstance(dmi, dict) else None
-    ) or ""
-    model = _usable_text(signals.get("model")) or _usable_text(
-        dmi.get("product") if isinstance(dmi, dict) else None
-    ) or ""
-    serial = _usable_text(signals.get("serial")) or _usable_text(
-        dmi.get("serial") if isinstance(dmi, dict) else None
-    )
-    firmware = _usable_text(signals.get("firmware"))
     return HardwareFingerprint(
-        manufacturer=manufacturer,
-        model=model,
-        serial_reference=serial,
+        manufacturer=str(signals.get("manufacturer")
+                         or (dmi.get("manufacturer") if isinstance(dmi, dict) else "")
+                         or ""),
+        model=str(signals.get("model")
+                  or (dmi.get("product") if isinstance(dmi, dict) else "")
+                  or ""),
+        serial_reference=signals.get("serial")
+        or (dmi.get("serial") if isinstance(dmi, dict) else None),
         device_type=str(signals.get("device_type") or "other"),
-        firmware=firmware,
+        firmware=signals.get("firmware"),
         evidence_sources=sources,
         confidence=_confidence_for(score),
     )
-
-
-def _usable_text(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text or text.lower() in {"unknown", "n/a", "na", "none", "null", "-"}:
-        return None
-    return text
-
-
-def _meaningful_signal(value: Any) -> bool:
-    if isinstance(value, dict):
-        return any(_meaningful_signal(item) for item in value.values())
-    if isinstance(value, (list, tuple, set)):
-        return any(_meaningful_signal(item) for item in value)
-    return _usable_text(value) is not None
 
 
 class FingerprintTracker:
@@ -116,7 +89,7 @@ class FingerprintTracker:
 
     def __init__(self) -> None:
         self._current: dict[str, str] = {}
-        self._previous: dict[str, str | None] = {}
+        self._previous: dict[str, str] = {}
 
     def observe(self, asset_id: str, fingerprint: HardwareFingerprint) -> dict[str, Any]:
         import hashlib
@@ -126,12 +99,9 @@ class FingerprintTracker:
             json.dumps(fingerprint.to_dict(), sort_keys=True, default=str).encode()
         ).hexdigest()[:16]
         previous = self._current.get(asset_id)
-        # A first observation has no previous fingerprint. Returning the new
-        # digest as ``previous_hash`` falsely implies that a baseline existed
-        # and makes downstream drift reports look like a comparison.
-        self._previous[asset_id] = previous
+        self._previous[asset_id] = previous or digest
         self._current[asset_id] = digest
         return {"asset_id": asset_id, "fingerprint_hash": digest,
-                "previous_hash": previous,
+                "previous_hash": self._previous[asset_id],
                 "changed": previous is not None and previous != digest,
                 "first_seen": previous is None}

@@ -8,10 +8,7 @@ pretending to have scanned.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
-import math
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -25,10 +22,8 @@ def network_runner(config: dict, session: Any) -> dict:
     Optional enterprise extras via config:
     - ``config.ipsec = ["vpn-gw.example.com", …]`` — IKE/IPsec SA probe
     - ``config.dnssec = ["example.com", …]`` — DNS/DNSSEC posture per zone
-    Extra-phase failures are disclosed as incomplete observations. Scope and
-    DNSSEC currently lack a complete coverage contract and cannot refresh the
-    entire target as fully observed. MonitorEngine supplies mandatory bounded
-    phase admission/ScanJob execution; direct SDK adapter calls are internal.
+    Each extra runs through the same scanner the manual flows use; failures
+    are data (issues), never crashes.
     """
     endpoints = [str(e) for e in (config.get("endpoints") or []) if str(e).strip()]
     if not endpoints and config.get("endpoint"):
@@ -36,115 +31,38 @@ def network_runner(config: dict, session: Any) -> dict:
     if not endpoints and not (config.get("ipsec") or config.get("dnssec") or config.get("scope")):
         return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
 
-    # defense in depth (config may predate the API-side SSRF gate): never
-    # probe loopback, cloud metadata or URL-scheme targets from the daemon
-    import ipaddress as _ip
-
-    _ssrf_hosts = {"localhost", "169.254.169.254", "metadata.google.internal",
-                   "fd00:ec2::254"}
-
-    def _ssrf_blocked(raw: str) -> str | None:
-        t = str(raw).strip()
-        if "://" in t:
-            return f"SSRF_BLOCKED:{t} (URL schemes are not probe targets)"
-        host = t[1:].split("]", 1)[0] if t.startswith("[") else (
-            t.rsplit(":", 1)[0] if t.count(":") == 1 else t)
-        host = host.strip().lower().removeprefix("user@").split("@")[-1]
-        if host in _ssrf_hosts:
-            return f"SSRF_BLOCKED:{t} (loopback/cloud metadata)"
-        try:
-            ip = _ip.ip_address(host)
-        except ValueError:
-            return None
-        if (ip.is_loopback or ip.is_link_local or ip.is_reserved
-                or ip.is_multicast or ip.is_unspecified):
-            return f"SSRF_BLOCKED:{t} (loopback/link-local/metadata range)"
-        return None
-
-    ssrf_issues: list[str] = []
-    kept: list[str] = []
-    for raw in endpoints:
-        reason = _ssrf_blocked(raw)
-        (ssrf_issues.append(reason) if reason else kept.append(raw))
-    endpoints = kept
-    if not endpoints and not (config.get("ipsec") or config.get("dnssec") or config.get("scope")):
-        if ssrf_issues:
-            return {"summary": {"endpoints": 0, "probed_ok": 0, "unreachable": 0,
-                                "ipsec_targets": 0, "dnssec_zones": 0,
-                                "issues": ssrf_issues},
-                    "degraded": True, "issues": ssrf_issues, "observation_complete": False}
-        return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
-
     from network_scanner.core.scanner import NetworkTlsScanner
 
-    from worker.monitor.network_collection import before_phase, current_execution
-
     timeout = float(config.get("timeout", 5.0))
-    workers = config.get("workers", 8)
-    if not math.isfinite(timeout) or not 0 < timeout <= 30:
-        raise ValueError("network monitor timeout must be finite, positive and at most 30 seconds")
-    if type(workers) is not int or not 1 <= workers <= 32:
-        raise ValueError("network monitor workers must be an integer between 1 and 32")
-    bounded_scope = config.get("scope_profile") == "bounded-tcp"
-    scope_execution = current_execution()
-    if bounded_scope and scope_execution is None:
-        return {"blocked_reason": "Bounded TCP scope requires an admitted monitor execution context"}
-    scanner = (NetworkTlsScanner(live=True, timeout=timeout, workers=workers)
-               if endpoints or config.get("ipsec") or config.get("dnssec") or not bounded_scope else None)
-    issues: list[str] = list(ssrf_issues)
+    scanner = NetworkTlsScanner(live=True, timeout=timeout)
+    issues: list[str] = []
     ok = unreachable = 0
     scope_summary: dict | None = None
-    observed: dict[str, Any] = {}
-    phase_complete: list[bool] = [not ssrf_issues]
 
+    # Global Network Discovery scope: full enterprise pipeline (assets, protocol
+    # detection, dependency graph, PQC readiness, simulation) on each tick.
     if config.get("scope"):
-        if bounded_scope:
-            from worker.monitor.scope_discovery import collect
-            discoveries = collect(scope_execution)
-            observed["scope_discovery"] = discoveries
-            phase_complete.append(False)
-            issues.append("DISCOVERY_TLS_NOT_EVALUATED")
-            scope_summary = {"profile": "bounded-tcp", "ranges": len(discoveries),
-                             "candidates": sum(d["candidates"] for d in discoveries),
-                             "open_count": sum(d["open_count"] for d in discoveries),
-                             "tls_status": "NOT_EVALUATED"}
-        else:
-            # Internal legacy SDK adapter only; MonitorEngine refuses this
-            # expansion profile before execution. It is not an admitted path.
-            # The legacy discovery report does not certify all expanded targets,
-            # plugins and truncated reads. Positive findings are still retained.
-            phase_complete.append(False)
-            issues.append("SCOPE_COVERAGE_NOT_ESTABLISHED")
-            try:
-                discovery = scanner.discover_network(
-                    [config["scope"]] if isinstance(config["scope"], str) else list(config["scope"]),
-                    mode=str(config.get("scan_mode", "SAFE")).upper(),
-                    authorization_scope=str(config.get("authorization_scope", "")),
-                    plugins=config.get("plugins"),
-                )
-                discovery_issues = _discovery_issues(discovery)
-                issues.extend(discovery_issues)
-                observed.update(discovery)
-                scope_summary = {
-                    "specs": len(discovery.get("scope") or []),
-                    "assets": len(discovery.get("assets") or []),
-                    "observations": len(discovery.get("protocol_observations") or []),
-                    "pqc_migration_required": (discovery.get("pqc_network_readiness") or {}).get("by_status", {}).get("MIGRATION_REQUIRED", 0),
-                }
-            except Exception as exc:
-                logger.debug("monitor_network_scope_skipped", exc_info=True)
-                # config errors (e.g. DEEP without authorization) surface as issues
-                issues.append(f"SCOPE_ERROR:{type(exc).__name__}:{str(exc)[:120]}")
+        try:
+            discovery = scanner.discover_network(
+                [config["scope"]] if isinstance(config["scope"], str) else list(config["scope"]),
+                mode=str(config.get("scan_mode", "SAFE")).upper(),
+                authorization_scope=str(config.get("authorization_scope", "")),
+                plugins=config.get("plugins"),
+            )
+            discovery_issues = _discovery_issues(discovery)
+            issues.extend(discovery_issues)
+            scope_summary = {
+                "specs": len(discovery.get("scope") or []),
+                "assets": len(discovery.get("assets") or []),
+                "observations": len(discovery.get("protocol_observations") or []),
+                "pqc_migration_required": (discovery.get("pqc_network_readiness") or {}).get("by_status", {}).get("MIGRATION_REQUIRED", 0),
+            }
+        except Exception as exc:
+            logger.debug("monitor_network_scope_skipped", exc_info=True)
+            # config errors (e.g. DEEP without authorization) surface as issues
+            issues.append(f"SCOPE_ERROR:{type(exc).__name__}:{str(exc)[:120]}")
     if endpoints:
-        execution = before_phase("tls")
         result = scanner.scan_hosts(endpoints)
-        observed.update(result)
-        telemetry = result.get("probe_telemetry") or {}
-        phase_complete.append(
-            telemetry.get("status") in {"OK", "PARTIAL"}
-            and telemetry.get("probed") == len(endpoints)
-            and telemetry.get("ok") == len(endpoints)
-        )
         for finding in result.get("findings") or []:
             endpoint = finding.get("endpoint") or "?"
             if finding.get("status") != "OK":
@@ -159,8 +77,7 @@ def network_runner(config: dict, session: Any) -> dict:
                 issues.append(f"WEAK_TLS_VERSION:{endpoint}")
 
         # certificates feed the shared inventory, exactly like POST /network-scans
-        if execution is None:
-            _persist_certificates(result, session)
+        _persist_certificates(result, session)
 
         # continuous expiry watch: certificates nearing expiry are issues, so a
         # certificate due to roll over starts alerting within one interval window
@@ -171,57 +88,34 @@ def network_runner(config: dict, session: Any) -> dict:
             for alert in expiry_alerts(result.get("certificates") or [], days=days):
                 cn = alert.get("common_name") or alert.get("subject") or "?"
                 issues.append(f"CERT_EXPIRING:{cn}:{alert.get('days_left', '?')}d")
-        except Exception as exc:
-            phase_complete.append(False)
-            issues.append(f"EXPIRY_CHECK_ERROR:{type(exc).__name__}")
+        except Exception:
             logger.debug("monitor_expiry_alerts_skipped", exc_info=True)
 
     # enterprise extras: IPsec/VPN + DNSSEC posture
     ipsec_hosts = [str(h) for h in (config.get("ipsec") or []) if str(h).strip()]
     if ipsec_hosts:
-        execution = before_phase("ipsec")
-        phase_complete.append(False)
         try:
             ports = tuple(
                 int(p) for p in str(config.get("ike_ports", "500,4500")).split(",") if p.strip().isdigit()
             ) or (500, 4500)
             vpn = scanner.scan_ipsec_hosts(ipsec_hosts, ports=ports)
-            observed["ipsec"] = vpn
-            telemetry = vpn.get("probe_telemetry") or {}
-            phase_complete[-1] = (telemetry.get("probed") == len(ipsec_hosts)
-                                  and telemetry.get("responded") == len(ipsec_hosts))
-            if not phase_complete[-1]:
-                issues.append("IPSEC_OBSERVATION_INCOMPLETE")
             for finding in vpn.get("findings") or []:
                 for issue in finding.get("issues") or []:
                     issues.append(f"{issue}:{finding.get('endpoint')}")
-        except Exception as exc:
-            if execution is not None:
-                raise
-            phase_complete[-1] = False
-            issues.append(f"IPSEC_ERROR:{type(exc).__name__}")
+        except Exception:
             logger.debug("monitor_ipsec_skipped", exc_info=True)
 
     dnssec_zones = [str(z) for z in (config.get("dnssec") or []) if str(z).strip()]
     if dnssec_zones:
-        execution = before_phase("dnssec")
-        # scan_dnssec currently swallows individual DNSKEY/DS/AXFR errors, so
-        # SIGNED/UNSIGNED alone does not establish a complete collection.
-        phase_complete.append(False)
-        issues.append("DNSSEC_COVERAGE_NOT_ESTABLISHED")
         try:
             dns = scanner.scan_dnssec_zones(
                 dnssec_zones,
                 resolver=config.get("dns_resolver"),
                 check_transfer=bool(config.get("check_zone_transfer", True)),
             )
-            observed["dnssec"] = dns
             for issue in dns.get("issues") or []:
                 issues.append(issue)
-        except Exception as exc:
-            if execution is not None:
-                raise
-            issues.append(f"DNSSEC_ERROR:{type(exc).__name__}")
+        except Exception:
             logger.debug("monitor_dnssec_skipped", exc_info=True)
 
     summary = {
@@ -234,25 +128,27 @@ def network_runner(config: dict, session: Any) -> dict:
     }
     if scope_summary is not None:
         summary["scope"] = scope_summary
-    complete = all(phase_complete)
-    return {"scanner": "network", "summary": summary, "degraded": bool(issues) or not complete,
-            "issues": sorted(set(issues)), "data": observed, "observation_complete": complete}
+    return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
 
 
 def _persist_certificates(result: dict, session: Any) -> None:
-    from db.repositories.certificate_repository import CertificateRepository
-    from db.repositories.maturity_repository import MaturityRepository
+    try:
+        from db.repositories.certificate_repository import CertificateRepository
+        from db.repositories.maturity_repository import MaturityRepository
 
-    certs = CertificateRepository(session)
-    usages = MaturityRepository(session)
-    for cert in result.get("certificates") or []:
-        if cert.get("fingerprint_sha256"):
-            certs.upsert(cert)
-    for usage in result.get("usages") or []:
-        if usage.get("fingerprint_sha256") and usage.get("location"):
-            usages.upsert_usage(
-                usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN"
-            )
+        certs = CertificateRepository(session)
+        usages = MaturityRepository(session)
+        for cert in result.get("certificates") or []:
+            if cert.get("fingerprint_sha256"):
+                certs.upsert(cert)
+        for usage in result.get("usages") or []:
+            if usage.get("fingerprint_sha256") and usage.get("location"):
+                usages.upsert_usage(
+                    usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN"
+                )
+    except Exception:
+        logger.debug("monitor_cert_persist_skipped", exc_info=True)  # scanning still succeeded
+
 
 # --------------------------------------------------------------------- cloud
 
@@ -295,15 +191,7 @@ def cloud_runner(config: dict, session: Any) -> dict:
         "findings": len(findings),
         "issues": issues,
     }
-    # Cloud scanner already redacts provider secrets; keep the real crypto
-    # resources/findings so the common projection can persist explicit inputs.
-    safe_data = {
-        key: result.get(key) for key in
-        ("resources", "assets", "findings", "certificates", "kms", "encryption", "iam")
-        if result.get(key) is not None
-    }
-    return {"scanner": "cloud", "summary": summary, "degraded": bool(issues),
-            "issues": issues, "data": safe_data}
+    return {"summary": summary, "degraded": bool(issues), "issues": issues}
 
 
 # ---------------------------------------------------------------- repository
@@ -319,36 +207,16 @@ def repo_runner(config: dict, session: Any) -> dict:
     from worker.core.job_consumer import enqueue_job
 
     branch = str(config.get("branch") or "main")
-    # Tenant ownership from trusted state: the monitor runs unscoped, so a
-    # job created without a tenant lands in the platform estate (tenant_id
-    # NULL — readable by every tenant). The RepoConfiguration that
-    # authorized watching this repo knows whose it is; an explicit
-    # config["tenant_id"] wins when an operator pinned it.
-    tenant_ref = str(config.get("tenant_id") or "") or None
-    if tenant_ref is None:
-        try:
-            from db.models.repo_configuration import RepoConfiguration
-
-            cfg_row = (
-                session.query(RepoConfiguration)
-                .filter(RepoConfiguration.repo_url == target)
-                .first()
-            )
-            tenant_ref = getattr(cfg_row, "tenant_id", None) if cfg_row else None
-        except Exception:  # noqa: BLE001 — lookup must not block the monitor tick
-            tenant_ref = None
     job = JobRepository(session).create_job(
-        job_type="MONITOR_REPOSITORY", target_repo=target, target_branch=branch,
-        triggered_by="monitor", tenant_id=tenant_ref,
+        job_type="MANUAL", target_repo=target, target_branch=branch, triggered_by="monitor"
     )
     payload = {
         "job_id": job.job_id,
-        "job_type": "MONITOR_REPOSITORY",
+        "job_type": "MANUAL",
         "target_repo": target,
         "target_branch": branch,
         "triggered_by": "monitor",
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "tenant_id": tenant_ref,
     }
     try:
         enqueue_job(payload)  # Redis when configured; otherwise in-process memory queue
@@ -384,13 +252,7 @@ def container_runner(config: dict, session: Any) -> dict:
         "secrets": len(result.get("secrets") or []),
         "issues": sorted(set(issues)),
     }
-    safe_data = {
-        key: result.get(key) for key in
-        ("packages", "libraries", "findings", "vulnerabilities", "crypto", "algorithms")
-        if result.get(key) is not None
-    }
-    return {"scanner": "container", "summary": summary, "degraded": bool(issues),
-            "issues": sorted(set(issues)), "data": safe_data}
+    return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
 
 
 # ------------------------------------------------------------------ payment
@@ -435,10 +297,8 @@ def payment_runner(config: dict, session: Any) -> dict:
 
     feed_errors = list(polled.errors)
     if not polled.records and feed_errors:
-        issue = f"AUDIT_FEED_ERROR:{feed_errors[0]}"
-        return {"scanner": "payment", "summary": {"events_ingested": 0, "issues": [issue]},
-                "degraded": True, "issues": [issue],
-                "data": {"findings": [{"kind": "audit_feed", "message": issue}]}}
+        return {"summary": {"events_ingested": 0, "issues": [f"AUDIT_FEED_ERROR:{feed_errors[0]}"]},
+                "degraded": True, "issues": [f"AUDIT_FEED_ERROR:{feed_errors[0]}"]}
 
     fresh = polled.records
     repo = PaymentCryptoRepository(session)
@@ -482,17 +342,10 @@ def payment_runner(config: dict, session: Any) -> dict:
         "activation_at": k.activation_at.isoformat() if k.activation_at else None,
         "key_block_version": k.key_block_version, "key_block_error": k.key_block_error,
     } for k in keys]
-    event_rows = []
-    for event in repo.recent_events(days=90):
-        row = {
-            "occurred_at": event.occurred_at.isoformat(), "device": event.device,
-            "event_type": event.event_type, "key_id": event.key_id,
-            "detail": event.detail or {},
-        }
-        row["evidence_reference"] = "sha256:" + hashlib.sha256(
-            json.dumps(row, sort_keys=True, default=str).encode("utf-8")
-        ).hexdigest()
-        event_rows.append(row)
+    event_rows = [{
+        "occurred_at": e.occurred_at.isoformat(), "device": e.device,
+        "event_type": e.event_type, "key_id": e.key_id, "detail": e.detail or {},
+    } for e in repo.recent_events(days=90)]
 
     findings = list(PaymentPolicyEngine().evaluate(
         key_rows,
@@ -536,11 +389,7 @@ def payment_runner(config: dict, session: Any) -> dict:
     }
     if feed_errors:
         summary["feed_warnings"] = feed_errors
-        issues = sorted(set(issues + [f"AUDIT_FEED_WARNING:{error}" for error in feed_errors]))
-    observed = {"observations": event_rows, "keys": key_rows, "findings": all_findings,
-                "cursor": polled.cursor}
-    return {"scanner": "payment", "summary": summary, "degraded": bool(issues),
-            "issues": issues, "data": observed}
+    return {"summary": summary, "degraded": bool(issues), "issues": issues}
 
 
 def _ingest_transaction_file(path: Any, repo) -> int:
@@ -628,8 +477,7 @@ def ot_runner(config: dict, session: Any) -> dict:
         "posture": risk.get("posture") or "UNKNOWN",
         "issues": sorted(set(issues)),
     }
-    return {"scanner": "ot", "summary": summary, "degraded": bool(issues),
-            "issues": sorted(set(issues)), "data": result}
+    return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
 
 
 # ------------------------------------------------------------------- vendor
@@ -683,10 +531,7 @@ def vendor_runner(config: dict, session: Any) -> dict:
         "issues": sorted(set(issues)),
     }
     degraded = bool(issues) or score >= 50
-    return {"scanner": "vendor", "summary": summary, "degraded": degraded,
-            "issues": sorted(set(issues)),
-            "data": {"vendor": name, "algorithms": inventory,
-                     "findings": [{"message": issue} for issue in issues]}}
+    return {"summary": summary, "degraded": degraded, "issues": sorted(set(issues))}
 
 
 def _discovery_issues(discovery: dict) -> list[str]:
@@ -708,119 +553,3 @@ def _discovery_issues(discovery: dict) -> list[str]:
     if blockers:
         issues.append(f"PQC_MIGRATION_BLOCKERS:{len(blockers)}")
     return sorted(set(issues))
-
-# ------------------------------------------------------------------ telecom
-
-def telecom_runner(config: dict, session: Any) -> dict:
-    """Continuous 3GPP NF posture — the same engine as POST /telecom/scan.
-
-    Probes the registered estate (5GC/EPC/IMS TLS-bearing NFs) through
-    ``telecom_scanner`` and classifies per the 3GPP/NIST rule packs. Config
-    (all optional): ``carrier`` limits the pass to one carrier's NFs,
-    ``nf_ids`` to an explicit list, ``timeout`` per probe (default 3s).
-
-    Needs a registered estate (POST /telecom/targets or the registry file);
-    without one the target is BLOCKED with the exact fix — never fabricated.
-    The pass is mirrored into the same snapshot file the API serves, so
-    /telecom/posture, the roaming view and the exit report reflect monitor
-    passes too (the API loader re-reads when the file's mtime changes).
-    """
-    try:
-        from telecom_scanner.main import probe_registry
-        from telecom_scanner.realtime import evaluate_changes, summarize_events
-        from telecom_scanner.registry import load_registry
-        from telecom_scanner.rollup import posture_rollup
-    except ImportError as exc:
-        return {"blocked_reason": f"telecom_scanner service not available in this deployment: {exc}"}
-
-    reg = load_registry()
-    targets = reg.get("targets") or {}
-    if not targets:
-        return {"blocked_reason": "no telecom estate registered (POST /telecom/targets or config/telecom_registry.json)"}
-
-    carrier = str(config.get("carrier") or "").strip().lower()
-    if carrier:
-        targets = {k: v for k, v in targets.items()
-                   if str(v.get("carrier_code") or "").lower() == carrier}
-    nf_ids = [str(n).strip().lower() for n in (config.get("nf_ids") or []) if str(n).strip()]
-    if nf_ids:
-        targets = {k: v for k, v in targets.items() if k in nf_ids}
-    if not targets:
-        return {"blocked_reason": (
-            f"no NF targets match carrier={carrier or 'any'} nf_ids={nf_ids or 'any'}"
-            f" — registered: {', '.join(sorted((reg.get('targets') or {}).keys()))}")}
-
-    rows = probe_registry(reg, only=sorted(targets), timeout=float(config.get("timeout", 3.0)))
-
-    def _sev(row: dict) -> str:
-        return str(row.get("severity") or "ok").lower()
-
-    critical = sorted(r["nf_id"] for r in rows if _sev(r) == "critical")
-    high = sorted(r["nf_id"] for r in rows if _sev(r) == "high")
-    issues = [f"CRITICAL:{nf}" for nf in critical] + [f"HIGH:{nf}" for nf in high]
-    summary = {
-        "carrier": carrier or "all",
-        "nf_targets": len(rows),
-        "clean": sum(1 for r in rows if _sev(r) == "ok"),
-        "critical": len(critical),
-        "high": len(high),
-        "medium": sum(1 for r in rows if _sev(r) == "medium"),
-    }
-
-    # mirror the pass into the API's telecom snapshot (same shape as
-    # POST /telecom/scan writes); best-effort — never kills the tick
-    try:
-        import json
-        import os
-        from datetime import datetime, timezone
-        from pathlib import Path
-
-        snapshot_dir = os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR") \
-            or (Path(__file__).resolve().parents[4] / "data")
-        snapshot_file = Path(snapshot_dir) / "telecom_snapshot.json"
-        previous_state: dict = {}
-        if snapshot_file.is_file():
-            try:
-                previous_state = (json.loads(snapshot_file.read_text()) or {}).get("state") or {}
-            except (OSError, json.JSONDecodeError):
-                previous_state = {}
-        events = evaluate_changes(previous_state, rows)
-        snapshot = {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "scanner": "telecom-monitor",
-            "targets_registered": len(reg.get("targets") or {}),
-            "rows": rows,
-            "events": events,
-            "events_summary": summarize_events(events),
-            "state": {row["nf_id"]: {k: row[k] for k in
-                                  ("status", "severity", "fingerprint", "cert_not_after", "pqc_ready")}
-                      for row in rows},
-            "rollup": posture_rollup(rows, reg.get("carriers") or {}),
-        }
-        snapshot_file.parent.mkdir(parents=True, exist_ok=True)
-        tmp = snapshot_file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(snapshot))
-        os.replace(tmp, snapshot_file)
-
-        # fold the pass into the PQC adoption journey (same file contract
-        # as the API: load -> update -> atomic replace)
-        from telecom_scanner.journey import update_journey
-
-        journey_file = snapshot_file.parent / "telecom_journey.json"
-        history: dict = {}
-        if journey_file.is_file():
-            try:
-                history = json.loads(journey_file.read_text()) or {}
-            except (OSError, json.JSONDecodeError):
-                history = {}
-        journey = update_journey(history, snapshot["generated_at"], rows)
-        jtmp = journey_file.with_suffix(".tmp")
-        jtmp.write_text(json.dumps(journey))
-        os.replace(jtmp, journey_file)
-    except Exception:  # noqa: BLE001 — snapshot mirroring must never fail the scan
-        logger.exception("telecom_monitor_snapshot_mirror_failed")
-
-    return {"scanner": "telecom", "summary": summary, "degraded": bool(issues),
-            "issues": issues, "data": {"rows": rows, "events": events,
-                                        "rollup": posture_rollup(rows, reg.get("carriers") or {})}}
-

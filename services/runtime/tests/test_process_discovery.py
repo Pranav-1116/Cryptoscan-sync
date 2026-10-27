@@ -99,15 +99,10 @@ def test_process_discovery_flags_risky_libraries(tmp_path):
     result = scan_processes(str(tmp_path))
     findings = result["findings"]
 
-    # OpenSSL 1.0.2 (nginx) genuinely EOL — must be flagged. The legacy GnuTLS
-    # daemon's map only carries the ABI soname (libgnutls.so.30.x) which is NOT
-    # a release version; in the fixture the fake path has no package-manager
-    # owner, so it is inventory-only (UNKNOWN), never a false DEPRECATED.
+    # OpenSSL 1.0.2 (nginx) and GnuTLS 3.5.x (legacyd) must be flagged
     flagged = {(f["process_name"], f["library"], f["version"]) for f in findings}
     assert ("nginx", "openssl", "1.0.2") in flagged
-    # soname-only GnuTLS (30.14) must NOT be flagged — 30 is the stable ABI
-    # tag shared by modern GnuTLS 3.3–3.8, not an "old 3.5" indicator.
-    assert not any(f["pid"] == 404 for f in findings)
+    assert ("legacyd", "gnutls", "30.14") in flagged  # soname form flagged DEPRECATED
     # modern OpenSSL 3 (java) must NOT be flagged
     assert not any(f["pid"] == 202 for f in findings)
 

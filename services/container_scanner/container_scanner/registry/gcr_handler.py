@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import json
 from typing import Any
 
@@ -25,11 +20,7 @@ def parse_gcr_event(payload: dict[str, Any] | None) -> dict[str, Any]:
             inner = json.loads(decoded)
             if isinstance(inner, dict):
                 body.update(inner)
-        except Exception as _handler_exc:
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
+        except Exception:
             pass
     tag = body.get("tag") or body.get("digest")
     if body.get("action") in {None, "INSERT"} and body.get("tag"):

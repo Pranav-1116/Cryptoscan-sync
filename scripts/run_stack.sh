@@ -3,6 +3,8 @@ set -euo pipefail
 # shellcheck source=env.sh
 source "$(cd "$(dirname "$0")" && pwd)/env.sh"
 export ENVIRONMENT="${ENVIRONMENT:-development}"
-# No demo data, no seeding: a fresh boot is EMPTY. Inventory appears only
-# when real scans run against targets the operator configured.
-exec python3 -m uvicorn api.main:app --host 0.0.0.0 --port "${API_PORT:-8010}" --proxy-headers --forwarded-allow-ips='*'
+if [[ ! -f "$ROOT/data/cryptoscan.db" && -z "${DATABASE_URL:-}" ]]; then
+  echo "seeding local sqlite database…"
+  python3 "$ROOT/scripts/seed_demo.py"
+fi
+exec python3 -m uvicorn api.main:app --host 0.0.0.0 --port "${API_PORT:-8000}" --proxy-headers --forwarded-allow-ips='*'

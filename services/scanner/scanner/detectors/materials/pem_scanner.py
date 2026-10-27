@@ -8,11 +8,6 @@ file-stem matching (foo.pem ↔ foo.java / foo.py).
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import base64
 import re
 from datetime import datetime, timezone
@@ -98,11 +93,7 @@ def _try_parse_certificate(pem_text: str) -> dict:
                     info["algorithm"] = "RSA"
                 elif b"\x2a\x86\x48\xce\x3d\x02\x01" in der:
                     info["algorithm"] = "ECDSA"
-        except Exception as _handler_exc:
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
+        except Exception:
             pass
     return info
 

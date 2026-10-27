@@ -20,6 +20,7 @@ from typing import Any, Callable, Iterable
 
 from network_scanner.enterprise.live.alerts import AlertEngine
 from network_scanner.enterprise.live.asset_state import (
+    AssetState,
     AssetStateEngine,
 )
 from network_scanner.enterprise.live.cbom import CbomMaterializer
@@ -29,6 +30,7 @@ from network_scanner.enterprise.live.events import (
     AssetIdentification,
     EventNormalizer,
     ImpactAnalysis,
+    NetworkEvent,
 )
 from network_scanner.enterprise.live.evidence import EvidenceChain
 from network_scanner.enterprise.live.health import ScannerHealthMonitor

@@ -10,7 +10,7 @@ Policy is never decided by AI. Fail/pass comes from YAML in `services/policy/rul
 python3 -m pip install -r requirements.txt
 export CRYPTOSCAN_ROOT=$PWD
 export PYTHONPATH=$PWD/shared/shared_config:$PWD/shared/shared_logging:$PWD/shared/shared_models:$PWD/services/api:$PWD/services/database:$PWD/services/scanner:$PWD/services/evidence:$PWD/services/normalization:$PWD/services/policy:$PWD/services/drift:$PWD/services/worker:$PWD/services/deduplication:$PWD/services/cbom:$PWD/services/container_scanner:$PWD/services/network_scanner:$PWD/services/cloud_scanner:$PWD/services/graph_engine:$PWD/services/business_context:$PWD/services/quantum:$PWD/services/remediation:$PWD/services/reporting
-bash scripts/run_stack.sh
+python3 scripts/seed_demo.py
 bash scripts/run_stack.sh
 ```
 
@@ -18,10 +18,10 @@ Development login is `admin` / `cryptoscan`. Open `/ui` or the dashboard contain
 
 ```bash
 make test    # per-service pytest (avoids shared `tests` package clash)
-make api     # frontend :3003 + API :8010
+make api     # dashboard + API on :8000
 ```
 
-Trigger a scan of the bundled sample with `local://<authorized-source>`.
+Trigger a scan of the bundled sample with `local://demo/vulnerable-app`.
 
 **24/7 live scanning** (see `docs/dev/LIVE-SCANNING.md` for the full picture):
 
@@ -72,19 +72,7 @@ bash scripts/deploy_prod.sh -d
 
 Details: `docs/admin-guide/production.md`.
 
-The API refuses production startup with demo secrets, SQLite, wildcard CORS or
-an unusable required realtime journal. Provision a named non-default Redis ACL
-user, `rediss://`, hostname-valid certificates and an approved CA bundle mounted
-inside the API container. Startup tests actual journal commands, not just PING.
-The edge TLS overlay does not configure Redis TLS; the checked-in Compose Redis
-service is not automatically a verified TLS/Sentinel deployment.
-
-Optional `REDIS_SENTINELS`/`REDIS_SENTINEL_MASTER` and dedicated discovery
-credentials apply to realtime/current-run factory clients, not every worker
-queue or rate-limit consumer. Review each consumer before starting. Follow the
-[coordinated upgrade runbook](docs/runbooks/execution-and-replay-upgrade.md),
-including resubmission of unpinned legacy work. Postgres/Redis/Neo4j are not
-published on the host by the production overlay.
+The API refuses to start in production if demo secrets, SQLite, or `CORS_ORIGINS=*` are still configured. Postgres/Redis/Neo4j are not published on the host.
 
 ## Development credentials
 

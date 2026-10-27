@@ -6,7 +6,8 @@ import shutil
 from pathlib import Path
 
 
-from shared_models.oci_overlay import WHITEOUT_PREFIX, OPAQUE
+WHITEOUT_PREFIX = ".wh."
+OPAQUE = ".wh..wh..opq"
 
 
 def merge_layers(layer_dirs: list[Path | str], dest: Path | str) -> Path:
@@ -29,7 +30,7 @@ def merge_layers(layer_dirs: list[Path | str], dest: Path | str) -> Path:
 def _apply_layer(layer: Path, dest: Path) -> None:
     if not layer.exists():
         return
-    for src in sorted(layer.rglob("*"), key=lambda p: (not p.name.startswith(WHITEOUT_PREFIX), len(p.parts), str(p))):
+    for src in layer.rglob("*"):
         rel = src.relative_to(layer)
         name = src.name
         parent = dest / rel.parent

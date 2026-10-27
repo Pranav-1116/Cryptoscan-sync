@@ -13,7 +13,7 @@ def test_rsa_is_hndl_high_aes256_is_low():
             {"algorithm": "AES", "key_size": 256, "file_path": "b.py", "line_number": 2},
         ]
     )
-    assert report["overall_hndl_risk"] == "UNKNOWN"  # confidentiality retention is absent
+    assert report["overall_hndl_risk"] == "HIGH"
     assert report["vulnerable_count"] == 1
 
 
@@ -34,6 +34,5 @@ def test_hndl_and_deadline_for_healthcare_rsa():
     assert scored["recommended_replacement"] == "ML-KEM-768"
     assert scored["hybrid_mode_recommended"] is True
     deadline = migration_deadline(scopes=["DORA"], retention_years=30, today=date(2024, 2, 1))
-    assert deadline["deadline_date"] == "2026-02-01"
-    assert deadline["days_remaining"] == 731
-    assert deadline["regulatory_deadline_established"] is False
+    assert deadline["deadline_date"] == "2025-01-17"
+    assert deadline["days_remaining"] == 351

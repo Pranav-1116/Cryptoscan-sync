@@ -19,11 +19,6 @@ class ScanTarget(BaseModel):
 
 
 class ScanStatistics(BaseModel):
-    # Bounded source-file receipts enable held-out/regression byte identity.
-    # Missing/truncated/failed files cannot establish a negative observation.
-    file_observation_receipts: list[dict] = Field(default_factory=list)
-    file_receipts_complete: bool = False
-    file_receipts_scope: str = "PRIMARY_DISCOVERED_SOURCE_FILES_ONLY"
     files_scanned: int = 0
     files_with_crypto: int = 0
     files_skipped: int = 0
@@ -33,13 +28,6 @@ class ScanStatistics(BaseModel):
     medium_confidence: int = 0
     low_confidence: int = 0
     duration_seconds: float = 0.0
-    # findings per code origin (source/test/generated/vendored/archive) — triage view, never a filter
-    findings_by_origin: dict[str, int] = Field(default_factory=dict)
-    # UNKNOWN findings whose algorithm was filled from a constant declared in another file
-    resolved_cross_file: int = 0
-    cascade_providers: int = 0
-    cascade_shared_keys: int = 0
-    cascade_weak_parameters: int = 0
 
 
 class ScanResult(BaseModel):
@@ -66,11 +54,6 @@ class ScanResult(BaseModel):
         except ValueError:
             self.statistics.duration_seconds = 0.0
         self.statistics.total_findings = len(self.findings)
-        by_origin: dict[str, int] = {}
-        for f in self.findings:
-            o = getattr(f.metadata, "code_origin", None) or "source"
-            by_origin[o] = by_origin.get(o, 0) + 1
-        self.statistics.findings_by_origin = by_origin
         self.statistics.high_confidence = sum(
             1 for f in self.findings if f.metadata.confidence == "HIGH"
         )

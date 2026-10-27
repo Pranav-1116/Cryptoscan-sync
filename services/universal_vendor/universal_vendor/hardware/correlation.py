@@ -65,19 +65,6 @@ class HardwareCorrelationEngine:
         self.graph.add_edge(firewall, load_balancer, "PROTECTS")
         self.graph.add_edge(load_balancer, application, "SERVES")
 
-    def network_relationships(self, server: str) -> list[dict[str, Any]]:
-        """§12 — when NIC hardware changes, which network relationships are
-        affected: NIC → switch → firewall → load balancer → application."""
-        out: list[dict[str, Any]] = []
-        for node in self.graph.nodes():
-            nid = node.get("id") or node.get("asset_id")
-            if not nid or nid == server:
-                continue
-            if self.graph.paths(server, nid, max_depth=6):
-                out.append({"node": nid,
-                            "asset_type": node.get("asset_type") or "unknown"})
-        return out
-
     # ── §13 hardware → cloud ───────────────────────────────────────────
 
     def cloud_visibility(self, raw: dict[str, Any]) -> str:

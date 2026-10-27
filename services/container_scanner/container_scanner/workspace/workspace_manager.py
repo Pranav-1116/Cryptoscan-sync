@@ -27,11 +27,7 @@ class WorkspaceManager:
             from worker.workspace.workspace_manager import WorkspaceManager as WorkerWorkspace
 
             return WorkerWorkspace(str(self.base_temp_dir))
-        except Exception as _handler_exc:
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
+        except Exception:
             return None
 
     def create(self, job_id: str | None = None) -> Path:

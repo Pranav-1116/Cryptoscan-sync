@@ -9,6 +9,7 @@ layers, image metadata, base images, registry access, image signing
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from universal_vendor.models import (

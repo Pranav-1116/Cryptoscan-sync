@@ -1,6 +1,3 @@
-import logging
-
-logger = logging.getLogger(__name__)
 """Compatibility package: `database.db` is an alias for `db`."""
 
 from importlib import import_module
@@ -37,11 +34,7 @@ for name in _ALIASES:
     try:
         module = import_module(name)
         sys.modules[f"database.{name}"] = module
-    except Exception as _handler_exc:
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
+    except Exception:
         continue
 
 sys.modules["database.db"] = db

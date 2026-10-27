@@ -97,44 +97,12 @@ services:
       SCAN_JOB_QUEUE_KEY: cryptoscan:jobs:queue
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       DOCS_ENABLED: ${DOCS_ENABLED:-true}
-      # Event stream (r29): persistent HMAC-signed event logs + live CBOM.
-      # The stream/CBOM dirs ride the telecom snapshot volume; set a real
-      # CBOM_SIGNING_SECRET in production (dev default is NOT safe).
-      STREAM_LOG_DIR: /var/lib/cryptoscan/telecom/eventstream
-      CBOM_STORE_DIR: /var/lib/cryptoscan/telecom/live_cbom
-      CBOM_SIGNING_SECRET: ${CBOM_SIGNING_SECRET:-dev-cbom-signing-secret-change-me-32ch}
       CRYPTOSCAN_ROOT: /app
-      # Scan-target sandbox: sources are cloned/extracted here; the target
-      # validation guard allows paths under this root (SSRF/traversal confine).
-      WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
-      CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-cryptoscan}
       NEO4J_DATABASE: neo4j
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
-      # Telecom realtime: the monitor daemon writes snapshot passes to the
-      # SAME shared volume this API reads — cross-process freshness without
-      # a restart. Drop your estate at ./config/telecom_registry.json to
-      # enable TELECOM monitor targets (absent file = honest BLOCKED).
-      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
-      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
-      # Registry webhooks (signed push events): set a strong secret in every
-      # real deployment — with a secret configured a bad signature is 401 in
-      # ALL environments (fail-closed), and unsigned events are 401 in prod.
-      REGISTRY_WEBHOOK_SECRET: ${REGISTRY_WEBHOOK_SECRET:-}
-      # Auditor API: dedicated read-only credential for /compliance/audit/*.
-      # Absent in non-prod = admin-session fallback; in prod it is REQUIRED
-      # for auditor access (fail-closed 401 without it).
-      AUDITOR_API_KEY: ${AUDITOR_API_KEY:-}
-      # Platform self-observability: W3C trace-context + Prometheus on every
-      # request. Set OTEL_EXPORTER_OTLP_ENDPOINT to also stream OTLP/JSON.
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      STREAM_SECRET: ${STREAM_SECRET:-}
-    volumes:
-      - telecom_data:/var/lib/cryptoscan/telecom
-      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
-      - traces_data:/var/lib/cryptoscan/telecom/traces
     depends_on:
       postgres:
         condition: service_healthy
@@ -146,21 +114,12 @@ services:
       - postgres
       - redis
       - neo4j
-    ports:
-      - "${API_PORT:-8010}:8010"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 8
       start_period: 120s
-    # Defense-in-depth: the container process runs as the non-root
-    # `cryptoscan` uid already; block privilege escalation and drop every
-    # Linux capability the API does not need.
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
     networks: [cryptoscan-net]
     restart: unless-stopped
 
@@ -175,17 +134,12 @@ services:
       REDIS_URL: redis://redis:6379/0
       SCAN_JOB_QUEUE_KEY: cryptoscan:jobs:queue
       WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
-      CRYPTOSCAN_STATIC_SCAN_MODE: ${CRYPTOSCAN_STATIC_SCAN_MODE:-}
-      CRYPTOSCAN_SCANNER_IMAGE: ${CRYPTOSCAN_SCANNER_IMAGE:-}
-      CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S: ${CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S:-600}
-      CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       CRYPTOSCAN_ROOT: /app
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-cryptoscan}
       NEO4J_DATABASE: neo4j
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
-      STREAM_SECRET: ${STREAM_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -197,41 +151,8 @@ services:
       - postgres
       - redis
       - neo4j
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
     networks: [cryptoscan-net]
     restart: unless-stopped
-
-  notifications:
-    profiles: [notifications]
-    build:
-      context: .
-      dockerfile: .docker/worker/Dockerfile
-    command: ["python", "scripts/run_notifications.py"]
-    environment:
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:-cryptoscan_secret}@postgres:5432/${POSTGRES_DB:-cryptoscan}
-      DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
-      NOTIFICATION_DISPATCH_ENABLED: ${NOTIFICATION_DISPATCH_ENABLED:-false}
-      NOTIFICATION_DISPATCH_PLATFORM: ${NOTIFICATION_DISPATCH_PLATFORM:-false}
-      NOTIFICATION_DISPATCH_TENANTS: ${NOTIFICATION_DISPATCH_TENANTS:-[]}
-      NOTIFICATION_DISPATCH_REGION: ${NOTIFICATION_DISPATCH_REGION:-}
-      NOTIFICATION_DISPATCH_INTERVAL_SECONDS: ${NOTIFICATION_DISPATCH_INTERVAL_SECONDS:-30}
-      NOTIFICATION_DISPATCH_BUDGET_SECONDS: ${NOTIFICATION_DISPATCH_BUDGET_SECONDS:-20}
-      NOTIFICATION_DISPATCH_SCOPE_BUDGET_SECONDS: ${NOTIFICATION_DISPATCH_SCOPE_BUDGET_SECONDS:-5}
-      NOTIFICATION_DISPATCH_MAX_SCOPES: ${NOTIFICATION_DISPATCH_MAX_SCOPES:-10}
-      NOTIFICATION_DISPATCH_LIMIT: ${NOTIFICATION_DISPATCH_LIMIT:-50}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    networks: [cryptoscan-net]
-    restart: "on-failure:3"
 
   monitor:
     build:
@@ -250,7 +171,6 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-cryptoscan}
       NEO4J_DATABASE: neo4j
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
-      STREAM_SECRET: ${STREAM_SECRET:-}
       MONITOR_TICK_SECONDS: ${MONITOR_TICK_SECONDS:-30}
       MONITOR_LEASE_TTL_SECONDS: ${MONITOR_LEASE_TTL_SECONDS:-60}
       MONITOR_JITTER_FRACTION: ${MONITOR_JITTER_FRACTION:-0.1}
@@ -258,19 +178,12 @@ services:
       MONITOR_WATCH_PROBE_TIMEOUT_SECONDS: ${MONITOR_WATCH_PROBE_TIMEOUT_SECONDS:-10}
       MONITOR_CONCURRENCY: ${MONITOR_CONCURRENCY:-2}
       MONITOR_RUN_REPORTS: ${MONITOR_RUN_REPORTS:-true}
-      # Telecom realtime: same shared snapshot dir + registry as the API —
-      # TELECOM targets probe the same estate and the API serves the passes.
-      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
-      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
       ALERT_CEF_HOST: ${ALERT_CEF_HOST:-}
       ALERT_CEF_PORT: ${ALERT_CEF_PORT:-514}
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
       SMTP_HOST: ${SMTP_HOST:-}
       ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
-    volumes:
-      - telecom_data:/var/lib/cryptoscan/telecom
-      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -282,27 +195,16 @@ services:
       - postgres
       - redis
       - neo4j
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
     networks: [cryptoscan-net]
     restart: unless-stopped
 
-  frontend:
+  dashboard:
     build:
       context: .
-      dockerfile: .docker/frontend/Dockerfile
-    container_name: cryptoscan-frontend
+      dockerfile: .docker/dashboard/Dockerfile
+    container_name: cryptoscan-dashboard
     depends_on:
-      api:
-        condition: service_healthy
-    ports:
-      - "${FRONTEND_PORT:-3003}:3003"
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
+      - api
     networks: [cryptoscan-net]
     restart: unless-stopped
 
@@ -316,22 +218,12 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      frontend:
+      dashboard:
         condition: service_started
-    # nginx binds :80 (needs NET_BIND_SERVICE); keep that single capability
-    # and drop everything else, plus block privilege escalation.
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE
     networks: [cryptoscan-net]
     restart: unless-stopped
 
 volumes:
-  telecom_data:
-  traces_data:
   postgres_data:
   redis_data:
   neo4j_data:

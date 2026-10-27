@@ -100,9 +100,6 @@ def main() -> int:
     parser.add_argument("--out", default=str(ROOT / "backups"))
     parser.add_argument("--db", default=DEFAULT_DB)
     parser.add_argument("--verify", action="store_true", help="verify evidence chain on the backup copy")
-    parser.add_argument(
-        "--encrypt", action="store_true",
-        help=f"encrypt the backup with AES-256-GCM (key from ${'BACKUP_ENCRYPTION_KEY'}, see scripts/backup_crypto.py)")
     args = parser.parse_args()
 
     out_dir = Path(args.out)
@@ -137,25 +134,6 @@ def main() -> int:
         except Exception as exc:
             manifest["evidence_chain"] = {"error": str(exc)}
             print(f"chain verification skipped: {exc}")
-
-    if args.encrypt:
-        # Encrypt AFTER the plaintext sha256 landed in the manifest: the
-        # manifest keeps the PLAINTEXT digest, so restores verify content
-        # integrity after decryption rather than trusting only the GCM tag.
-        import sys
-
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import backup_crypto
-
-        key = backup_crypto.load_key()
-        encrypted_file = backup_file.with_suffix(backup_file.suffix + ".enc")
-        backup_crypto.encrypt_file(backup_file, encrypted_file, key)
-        manifest["encrypted"] = True
-        manifest["kdf"] = f"{backup_crypto.KDF_NAME}-{backup_crypto.KDF_PARAMS['n']}"
-        manifest["size_bytes_encrypted"] = encrypted_file.stat().st_size
-        backup_file = encrypted_file
-        manifest["file"] = backup_file.name
-        print("encrypted: AES-256-GCM via scrypt KDF (plaintext digest stays in the manifest)")
 
     manifest_path = backup_file.with_suffix(backup_file.suffix + ".manifest.json")
     manifest_path.write_text(json.dumps(manifest, indent=2))

@@ -16,7 +16,7 @@ CVEs are matched against the local advisory file
 ## Dashboard
 
 **Container → Scan filesystem** and point at a directory such as
-`/path/to/authorized-source-tree`.
+`demo/polyglot-app`.
 
 ## API
 
@@ -33,5 +33,5 @@ pull is out of scope.
 ## CLI
 
 ```
-python scripts/scan_container.py /path/to/authorized-source-tree -o container.json
+python scripts/scan_container.py demo/polyglot-app -o container.json
 ```

@@ -8,10 +8,9 @@ from sqlalchemy import Boolean, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class RepoConfiguration(BaseModel, TenantScoped):
+class RepoConfiguration(BaseModel):
     __tablename__ = "repo_configurations"
 
     repo_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)

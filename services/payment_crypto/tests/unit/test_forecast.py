@@ -67,7 +67,7 @@ def test_certificates_share_the_calendar():
 
 
 def test_rotation_calendar_groups_by_iso_week():
-    NOW - timedelta(days=NOW.weekday())  # 2026-08-31 is a Monday? compute
+    monday = NOW - timedelta(days=NOW.weekday())  # 2026-08-31 is a Monday? compute
     report = ExpiryForecaster(now=NOW).forecast([
         _key("K-A", 1), _key("K-B", 3),  # same ISO week as NOW
         _key("K-C", 40),                  # ~6 weeks out

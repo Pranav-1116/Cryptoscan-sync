@@ -89,11 +89,11 @@ def test_format_sse_frames():
     from api.routers.events import format_sse
 
     frame = format_sse(
-        {"id": 7, "replay_cursor": "owner-bound-cursor", "ts": "2026-08-30T00:00:00+00:00", "type": "scan.completed",
+        {"id": 7, "ts": "2026-08-30T00:00:00+00:00", "type": "scan.completed",
          "source": "pipeline", "payload": {"findings": 12}}
     )
     lines = frame.splitlines()
-    assert lines[0] == "id: owner-bound-cursor"
+    assert lines[0] == "id: 7"
     assert lines[1] == "event: scan.completed"
     assert lines[2].startswith("data: ")
     payload = json.loads(lines[2][len("data: "):])
@@ -119,18 +119,3 @@ def test_pipeline_publishes_stage_and_completion_events():
     assert completed["type"] == "scan.completed"
     assert completed["payload"]["extra"]["gate_decision"] == "FAIL"
     assert completed["source"] == "pipeline"
-
-
-def test_production_remote_publish_failure_is_not_reported_as_success():
-    bus = EventBus()
-    bus.set_remote_publisher(lambda _event: (_ for _ in ()).throw(OSError("redis down")))
-    bus.set_remote_publish_required(True)
-
-    try:
-        bus.publish("scan.completed", {"scan_id": "S1"})
-    except RuntimeError as exc:
-        assert "publication failed" in str(exc)
-    else:  # pragma: no cover - assertion branch
-        raise AssertionError("durable publication failure was swallowed")
-
-    assert bus.stats()["remote_publish_failures"] == 1

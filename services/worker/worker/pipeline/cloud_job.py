@@ -7,7 +7,6 @@ from typing import Any
 
 from cloud_scanner.estate import ingest_findings, parse_cloud_target
 from worker.core.job_consumer import ScanJob
-from worker.pipeline.public_failure import log_job_failure, public_cloud_telemetry, public_count, public_failure
 
 logger = logging.getLogger(__name__)
 
@@ -24,18 +23,13 @@ def run_cloud_job(job: ScanJob) -> bool:
         result = _scan(session, job)
         findings = result.get("findings") or []
         live_scan = result.get("live_scan") or {}
-        safe_scan = public_cloud_telemetry(live_scan) if live_scan else None
-        if live_scan.get("errors") or result.get("errors"):
-            logger.warning("cloud_job_scan_errors", extra={
-                "job_id": job.job_id, "stage": "cloud_inventory", "error_type": "ScanTelemetryError",
-                "error_count": safe_scan["error_count"] if safe_scan else 0,
-            })
-        if safe_scan and safe_scan["status"] == "FAILED":
+        if live_scan.get("status") == "FAILED":
             # Configured but every call errored — report failure, never an
             # empty success, and do not stamp systems CURRENT from nothing.
+            first = (live_scan.get("errors") or [{}])[0]
             summary = (
-                f"{public_failure('Cloud inventory', 'cloud_inventory')}: "
-                f"{safe_scan['error_count']} errors, 0 resources"
+                f"live scan FAILED: {live_scan.get('error_count', 0)} errors, "
+                f"0 resources ({first.get('provider', '?')}/{first.get('service', '?')}: {first.get('error', '')[:120]})"
             )
             jobs.update_status(
                 job.job_id,
@@ -48,15 +42,12 @@ def run_cloud_job(job: ScanJob) -> bool:
                     "cloud": {
                         "resources": 0,
                         "systems": 0,
-                        "live_scan": safe_scan,
+                        "live_scan": live_scan,
                     },
                 },
             )
             session.commit()
-            logger.warning("cloud_job_live_scan_failed", extra={
-                "job_id": job.job_id, "stage": "cloud_inventory", "error_type": "ScanTelemetryError",
-                "error_count": safe_scan["error_count"],
-            })
+            logger.warning("cloud_job_live_scan_failed", extra={"job_id": job.job_id})
             return False
         ingested = ingest_findings(
             session,
@@ -85,33 +76,26 @@ def run_cloud_job(job: ScanJob) -> bool:
                 "percent": 100,
                 "status": "COMPLETED",
                 "cloud": {
-                    "resources": public_count(result.get("resources")),
-                    "systems": public_count(ingested.get("systems")),
-                    "errors": safe_scan["errors"] if safe_scan else [],
-                    "live_scan": safe_scan,
+                    "resources": result.get("resources") or 0,
+                    "systems": ingested.get("systems") or 0,
+                    "errors": result.get("errors") or [],
+                    "live_scan": live_scan or None,
                 },
             },
         )
         session.commit()
         logger.info(
             "cloud_job_done",
-            extra={"job_id": job.job_id, "systems": public_count(ingested.get("systems")),
-                   "resources": public_count(result.get("resources"))},
+            extra={"job_id": job.job_id, "systems": ingested.get("systems"), "resources": result.get("resources")},
         )
         return True
     except Exception as exc:
-        log_job_failure(logger, "cloud_job_failed", exc, job_id=job.job_id, stage="cloud_inventory")
+        logger.exception("cloud_job_failed", extra={"job_id": job.job_id})
         try:
             session.rollback()
-            jobs.update_status(
-                job.job_id, "FAILED",
-                error_message=public_failure("Cloud inventory", "cloud_inventory"),
-                progress={"current_stage": "cloud_inventory", "status": "FAILED", "percent": 100},
-            )
+            jobs.update_status(job.job_id, "FAILED", error_message=str(exc)[:500])
             session.commit()
-        except Exception as status_exc:
-            log_job_failure(logger, "cloud_job_failure_status_persist_failed", status_exc,
-                            job_id=job.job_id, stage="cloud_inventory")
+        except Exception:
             session.rollback()
         return False
     finally:

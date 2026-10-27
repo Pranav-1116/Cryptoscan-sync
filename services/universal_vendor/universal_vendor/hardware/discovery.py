@@ -147,9 +147,14 @@ class HardwareDiscoveryOrchestrator:
                     asset_id = raw.get("asset_id") or "unknown"
                     existing = merged.get(asset_id)
                     if existing is None:
-                        merged[asset_id] = _seed_merge_record(raw)
-                    else:
-                        merged[asset_id] = _merge_discovery_record(existing, raw)
+                        merged[asset_id] = raw
+                        continue
+                    # merge: keep higher-confidence source, union vendor_specific
+                    if _confidence_rank(raw.get("confidence")) > _confidence_rank(
+                            existing.get("confidence")):
+                        merged[asset_id] = raw
+                    existing.setdefault("vendor_specific", {}).update(
+                        raw.get("vendor_specific") or {})
         observations = []
         for raw in merged.values():
             observations.append(HardwareObservation(
@@ -164,89 +169,9 @@ class HardwareDiscoveryOrchestrator:
                 source=str(raw.get("source") or "unknown"),
                 confidence=str(raw.get("confidence") or HardwareConfidence.LOW.value),
                 visibility=str(raw.get("visibility") or CloudVisibility.OBSERVED.value),
-                discovery_sources=list(raw.get("discovery_sources") or []),
-                identity_conflicts=dict(raw.get("identity_conflicts") or {}),
                 vendor_specific=dict(raw.get("vendor_specific") or {}),
             ))
         return observations
-
-
-_CANONICAL_IDENTITY_FIELDS = (
-    "manufacturer", "model", "serial_reference", "device_type",
-    "firmware", "environment", "region", "visibility",
-)
-
-
-def _seed_merge_record(raw: dict[str, Any]) -> dict[str, Any]:
-    record = dict(raw)
-    record["discovery_sources"] = [str(raw.get("source") or "unknown")]
-    record["identity_conflicts"] = {}
-    record["vendor_specific"] = dict(raw.get("vendor_specific") or {})
-    return record
-
-
-def _meaningful(value: Any) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip()) and value.strip().lower() not in {"unknown", "n/a", "none", "null", "-"}
-    return bool(value)
-
-
-def _identity_values_conflict(field: str, old_value: Any, new_value: Any) -> bool:
-    old_text, new_text = str(old_value).strip().casefold(), str(new_value).strip().casefold()
-    if old_text == new_text:
-        return False
-    # A vendor plugin or management API may report a product family while DMI
-    # reports the more specific SKU. Treat that as corroboration, not a false
-    # identity conflict; unrelated names remain explicit conflicts.
-    if field == "model" and (old_text.startswith(new_text) or new_text.startswith(old_text)):
-        return False
-    return True
-
-
-def _merge_discovery_record(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
-    """Merge source observations without losing weaker evidence or conflicts."""
-    old_source = str(existing.get("source") or "unknown")
-    new_source = str(incoming.get("source") or "unknown")
-    old_rank = _confidence_rank(existing.get("confidence"))
-    new_rank = _confidence_rank(incoming.get("confidence"))
-    # Ties keep the first source for deterministic canonical output; all source
-    # evidence is still retained below.
-    winner = dict(incoming if new_rank > old_rank else existing)
-    conflicts = {
-        key: [dict(item) for item in values]
-        for key, values in (existing.get("identity_conflicts") or {}).items()
-    }
-    for key in _CANONICAL_IDENTITY_FIELDS:
-        old_value = existing.get(key)
-        new_value = incoming.get(key)
-        if (_meaningful(old_value) and _meaningful(new_value)
-                and _identity_values_conflict(key, old_value, new_value)):
-            rows = conflicts.setdefault(key, [])
-            for source, value in ((old_source, old_value), (new_source, new_value)):
-                if not any(item.get("source") == source and str(item.get("value")) == str(value)
-                           for item in rows):
-                    rows.append({"source": source, "value": value})
-        # Do not replace a useful winner field with an absent/placeholder field.
-        if not _meaningful(winner.get(key)):
-            winner[key] = new_value if _meaningful(new_value) else old_value
-
-    vendor_specific = dict(existing.get("vendor_specific") or {})
-    for key, value in (incoming.get("vendor_specific") or {}).items():
-        if key not in vendor_specific or vendor_specific[key] in (None, "", {}, []):
-            vendor_specific[key] = value
-        elif vendor_specific[key] != value:
-            # Preserve both observations under a provenance namespace rather
-            # than allowing the later source to erase the earlier one.
-            evidence = vendor_specific.setdefault("discovery_evidence", {})
-            evidence.setdefault(old_source, {})[key] = vendor_specific[key]
-            evidence.setdefault(new_source, {})[key] = value
-    sources = sorted(set(existing.get("discovery_sources") or [old_source]) | {new_source})
-    winner["discovery_sources"] = sources
-    winner["identity_conflicts"] = conflicts
-    winner["vendor_specific"] = vendor_specific
-    return winner
 
 
 def _confidence_rank(value: Any) -> int:

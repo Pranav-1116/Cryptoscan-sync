@@ -12,11 +12,6 @@ Failures are always non-fatal: plenty of TLS endpoints are not HTTP.
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 from typing import Any
 
 
@@ -33,11 +28,7 @@ def check_http_headers(tls_socket, host: str, *, timeout: float = 4.0) -> dict[s
             if not chunk:
                 break
             raw.extend(chunk)
-    except Exception as _handler_exc:
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
+    except Exception:
         return None
     if not raw:
         return None

@@ -1,1 +1,0 @@
-Owned server stopped; temporary pgdata and parent removed.

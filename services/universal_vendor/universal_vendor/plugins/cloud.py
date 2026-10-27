@@ -11,6 +11,7 @@ from the provided metadata blob (never fabricated).
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from universal_vendor.models import (
@@ -21,7 +22,7 @@ from universal_vendor.models import (
     Visibility,
 )
 from universal_vendor.plugin import scrub_secrets
-from universal_vendor.plugins._helpers import BannerPluginBase
+from universal_vendor.plugins._helpers import BannerPluginBase, extract_algorithms
 
 
 class _CloudPluginBase(BannerPluginBase):

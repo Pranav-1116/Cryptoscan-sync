@@ -121,7 +121,7 @@ curl -fsS http://localhost/api/v1/healthz
 curl -fsS http://localhost/metrics | head
 
 # 4.3 — a full scan of a bundled local target, entirely in-process
-python3 scripts/trigger_scan.py local://<authorized-source> --inline
+python3 scripts/trigger_scan.py local://demo/polyglot-app --inline
 #   expect: findings across languages, exit 0
 
 # 4.4 — evidence chain verifies offline
@@ -165,16 +165,3 @@ quiet apart from your own admin access).
 | Webhook alerts SKIPPED | no webhook URL configured — SKIPPED is the honest state, nothing is fabricated as sent |
 | Cloud/TLS sections empty | expected: live probing is disabled in the gap; findings come from transferred code/images |
 | Neo4j graph page empty | populate with `scripts/populate_graph.py` after scans exist; the dependency graph falls back to the local store when Neo4j is unreachable |
-
-## Offline execution/replay prerequisites
-
-The same production TLS/ACL checks apply without internet access. Import the
-approved Redis/runtime packages and CA bundle; mount CA material at the API's
-`REDIS_CA_CERTS` path. Certificates must cover Sentinel and every discovered data
-address. The edge HTTPS overlay is not Redis transport configuration.
-
-Do not carry disposable lab credentials/certificates into the air gap. Review
-all direct queue/rate-limit/health consumers, not only the realtime Sentinel
-factory. Coordinate producer/worker authority-pin upgrades and explicitly
-resubmit approved legacy work as described in the
-[upgrade runbook](../runbooks/execution-and-replay-upgrade.md).

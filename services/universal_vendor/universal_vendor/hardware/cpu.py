@@ -35,11 +35,7 @@ _EXTENSION_ALIASES = {
 class CpuDiscovery:
     def parse(self, raw: dict[str, Any]) -> CpuInfo:
         """Parse CPU evidence from agent/API metadata."""
-        raw_extensions = raw.get("instruction_extensions")
-        if raw_extensions is None:
-            flags = raw.get("flags")
-            raw_extensions = flags.split() if isinstance(flags, str) else (flags or [])
-        extensions = [str(ext) for ext in raw_extensions]
+        extensions = [str(ext) for ext in raw.get("instruction_extensions") or []]
         # normalize aliases and dedupe
         normalized: list[str] = []
         for ext in extensions:

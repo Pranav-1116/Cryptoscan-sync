@@ -12,11 +12,6 @@ recognize the input.
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 from typing import Any, Optional
 
 try:  # heavy import kept guarded so the service stays import-light
@@ -49,11 +44,7 @@ def _info(raw: str) -> Optional[Any]:
         return None
     try:
         info = parse_algorithm(str(raw))
-    except Exception as _handler_exc:
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
+    except Exception:
         return None
     return info if getattr(info, "recognized", False) else None
 
@@ -125,15 +116,6 @@ def nist_designation(raw: str, key_size: Optional[int] = None) -> Optional[str]:
             return "DISALLOWED"
         return "APPROVED"
     return None
-
-
-def quantum_impact(raw: str) -> Optional[str]:
-    """Registry quantum impact: "shor" (broken by CRQC), "grover" (security halved), or None if unrecognized."""
-    info = _info(raw)
-    if info is None:
-        return None
-    impact = getattr(info, "quantum_impact", None)
-    return str(impact) if impact else ("none" if getattr(info, "recognized", False) else None)
 
 
 def registry_family(raw: str) -> Optional[str]:

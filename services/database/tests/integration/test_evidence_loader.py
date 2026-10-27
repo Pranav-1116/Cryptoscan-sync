@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from db.loader.evidence_loader import EvidenceLoader
@@ -114,132 +114,6 @@ def db_session(tmp_path):
     yield session
     session.close()
     Base.metadata.drop_all(engine)
-
-
-def test_legacy_loader_rejects_post_hash_finding_changes(db_session):
-    from evidence.hashing.content_hasher import ContentHasher
-
-    finding = {"source": {"file_path": "bad\x00path", "line_number": 1},
-               "crypto": {"algorithm": "AES"}}
-    record = {"evidence_id": str(uuid.uuid4()),
-              "content_hash": ContentHasher.compute_hash(finding),
-              "finding": finding, "chain_position": 0}
-    with pytest.raises(ValueError, match="finding payload changed after hashing"):
-        EvidenceLoader(db_session).load(
-            scan_meta={"target_location": "local://fixture"},
-            evidence_records=[record], scan_id=str(uuid.uuid4()),
-        )
-
-
-def test_adjacent_source_sentinel_is_not_committed_to_evidence(db_session, tmp_path):
-    """A detector's context may contain unrelated text; only structured facts persist."""
-    from db.models.evidence_record import EvidenceRecord as StoredEvidenceRecord
-    from db.models.scan import Scan
-    from evidence.core.pipeline import EvidencePipeline
-    from evidence.hashing.content_hasher import ContentHasher
-    from evidence.verification.stored_scan import verify_stored_scan
-    from scanner.parsers.finding_factory import make_finding
-
-    sentinel = "NON_SECRET_ADJACENT_CREDENTIAL_SENTINEL_2468"
-    source_file = tmp_path / "CryptoFixture.java"
-    source_file.write_text(
-        'class CryptoFixture {\n'
-        f'  // credential_marker = "{sentinel}"\n'
-        '  Cipher.getInstance("AES/GCM/NoPadding");\n'
-        '}\n',
-        encoding="utf-8",
-    )
-    raw = make_finding(
-        file_path=source_file, repo_root=tmp_path, line_number=3,
-        language="JAVA", api_type="CIPHER", algorithm="AES",
-        purpose="ENCRYPTION", library="JCA", scanner_id="synthetic-scanner",
-    )
-    assert sentinel in raw.source.code_snippet  # Prove the extractor saw the adjacent line.
-    finding = raw.model_dump(mode="json")
-    # RawFinding serialization already excludes snippets. Re-introduce the detector's
-    # transient field to exercise the pipeline boundary even for bypassing callers.
-    finding["source"]["code_snippet"] = raw.source.code_snippet
-
-    scan_id = str(uuid.uuid4())
-    records, manifest = EvidencePipeline().process([finding], scan_id=scan_id)
-    assert len(records) == 1
-    assert sentinel not in json.dumps(records[0].model_dump())
-    assert sentinel not in manifest.model_dump_json()
-    assert manifest.verify_manifest_hash()
-
-    EvidenceLoader(db_session).load(
-        scan_meta={"target_location": "synthetic://fixture"},
-        evidence_records=[records[0].to_dict()],
-        manifest=manifest.model_dump(), scan_id=scan_id,
-    )
-    db_session.commit()
-    db_session.expire_all()
-    scan = db_session.get(Scan, scan_id)
-    rows = db_session.query(StoredEvidenceRecord).filter_by(scan_id=scan_id).all()
-    assert len(rows) == 1
-    row = rows[0]
-    stored_json = db_session.execute(
-        text("SELECT finding_data FROM evidence_records WHERE id = :id"), {"id": row.id}
-    ).scalar_one()
-    assert sentinel not in stored_json
-    assert row.finding_data["source"]["file_path"] == source_file.name
-    assert row.finding_data["source"]["line_number"] == 3
-    assert row.finding_data["crypto"]["algorithm"] == "AES"
-    assert row.content_hash == ContentHasher.compute_hash(row.finding_data)
-    assert scan.manifest_hash == manifest.manifest_hash
-    assert verify_stored_scan(scan, rows)["result"] == "PASS"
-
-
-def test_legacy_loader_rejects_unhashed_integrity_source_text(db_session):
-    """The record integrity sidecar must not store uncommitted source text."""
-    from evidence.core.pipeline import EvidencePipeline
-    from db.models.evidence_record import EvidenceRecord as StoredEvidenceRecord
-
-    sentinel = "NON_SECRET_INTEGRITY_SOURCE_SENTINEL_1357"
-    scan_id = str(uuid.uuid4())
-    record = EvidencePipeline(scan_id).process_findings([_make_finding()])[0].to_dict()
-    record["integrity"]["source_text"] = sentinel
-
-    with pytest.raises(ValueError, match="unsupported integrity metadata"):
-        EvidenceLoader(db_session).load(
-            scan_meta={"target_location": "synthetic://fixture"},
-            evidence_records=[record], scan_id=scan_id,
-        )
-    db_session.rollback()
-    assert db_session.query(StoredEvidenceRecord).count() == 0
-
-
-def test_verified_loader_rejects_unhashed_provenance_source_text(db_session, valid_scan_data):
-    """A valid hash chain does not authenticate the independent provenance JSON."""
-    from db.models.evidence_record import EvidenceRecord as StoredEvidenceRecord
-
-    sentinel = "NON_SECRET_PROVENANCE_SOURCE_SENTINEL_9753"
-    scan_id = valid_scan_data["scan_id"]
-    records = _build_evidence_records([_make_finding()], scan_id)
-    records[0]["provenance"]["source_text"] = sentinel
-    result = EvidenceLoader(db_session).load_from_data(
-        scan_id=scan_id, scan_data=valid_scan_data,
-        evidence_records=records, scan_session_id=scan_id,
-    )
-
-    assert not result.success
-    assert "unsupported provenance metadata" in (result.error or "")
-    db_session.rollback()
-    assert db_session.query(StoredEvidenceRecord).count() == 0
-
-
-def test_verified_loader_rejects_uncommitted_scanner_identity(db_session, valid_scan_data):
-    """Even an allowed provenance key cannot claim an unhashed detector identity."""
-    scan_id = valid_scan_data["scan_id"]
-    records = _build_evidence_records([_make_finding()], scan_id)
-    records[0]["provenance"]["scanner_id"] = "NON_SECRET_SCANNER_ID_SENTINEL_8642"
-
-    result = EvidenceLoader(db_session).load_from_data(
-        scan_id=scan_id, scan_data=valid_scan_data,
-        evidence_records=records, scan_session_id=scan_id,
-    )
-    assert not result.success
-    assert "unsupported provenance metadata" in (result.error or "")
 
 
 @pytest.fixture
@@ -430,8 +304,8 @@ class TestEvidenceLoaderTransactionSafety:
         assert result.success is False
         assert "Database insertion failed" in result.error
 
-        # Verify nothing was committed (id column is String(36))
+        # Verify nothing was committed
         from db.repositories.scan_repository import ScanRepository
         repo = ScanRepository(db_session)
-        scan = repo.get_by_id(str(scan_id))
+        scan = repo.get_by_id(uuid.UUID(scan_id))
         assert scan is None

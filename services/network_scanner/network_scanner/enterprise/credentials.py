@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 CREDENTIAL_TYPES = (
     "SSH", "SNMPV3", "REST_API", "NETCONF", "RESTCONF", "GNMI",

@@ -1,3 +1,0 @@
-InputCoverage: Draft 2020-12 schema valid; extra fields forbidden
-SurfaceCoverage: Draft 2020-12 schema valid; extra fields forbidden
-CoverageReport: Draft 2020-12 schema valid; extra fields forbidden

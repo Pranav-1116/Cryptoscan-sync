@@ -84,7 +84,7 @@ class AuthService:
         repo.create_user(
             settings.ADMIN_USERNAME or "admin",
             stored,
-            roles=["superadmin"],  # canonical 8-role-catalog name (legacy "admin" alias still accepted)
+            roles=["admin"],
             display_name="Bootstrap Admin",
         )
         self.session.commit()
@@ -134,12 +134,10 @@ class AuthService:
             self.session.commit()
             raise AuthenticationError("Account temporarily locked. Try again later.")
 
-        if getattr(user, "deleted_at", None) is not None or not user.is_active:
-            # Same message for deleted/disabled/unknown accounts so an attacker
-            # cannot enumerate valid usernames from the login response (A07).
+        if not user.is_active:
             repo.audit(candidate, "auth.login", outcome="DISABLED", ip=client_key)
             self.session.commit()
-            raise AuthenticationError("Invalid username or password")
+            raise AuthenticationError("Account is disabled.")
 
         if not verify_password(password or "", user.password_hash):
             repo.record_failure(

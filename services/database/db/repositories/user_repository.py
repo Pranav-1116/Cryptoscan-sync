@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models.user import AuditLog, User, UserSession, VALID_ROLES
@@ -77,194 +77,6 @@ def verify_audit_chain(session: Session) -> dict:
     }
 
 
-# --------------------------------------------------------------------------- #
-# Incremental anchor verification
-#
-# The audit chain grows forever (regulatory retention is 5+ years), but the
-# chain's structure means an honest verifier does not need to re-walk every
-# row on every check: re-anchor at the last verified head and verify only the
-# appended suffix. A full walk still runs on cold start, when the anchor is
-# invalidated (truncation / tamper at or before the anchor), when forced, or
-# when the last full walk is older than `full_max_age_days` — bounding how far
-# back an undetected pre-anchor edit can be.
-# --------------------------------------------------------------------------- #
-_ANCHOR_KEY = "audit_chain_anchor"
-
-
-def _load_chain_anchor(session: Session) -> dict | None:
-    from db.repositories.settings_repository import SettingsRepository
-
-    anchor = SettingsRepository(session).get(_ANCHOR_KEY)
-    return anchor if isinstance(anchor, dict) else None
-
-
-def _save_chain_anchor(session: Session, *, sequence: int, head: str,
-                       full_verified_at: str) -> None:
-    from db.repositories.settings_repository import SettingsRepository
-
-    SettingsRepository(session).set(_ANCHOR_KEY, {
-        "sequence": int(sequence),
-        "head": str(head),
-        "full_verified_at": full_verified_at,
-    })
-
-
-def _anchor_is_fresh(anchor: dict, full_max_age_days: int) -> bool:
-    raw = anchor.get("full_verified_at")
-    if not raw:
-        return False
-    try:
-        ts = datetime.fromisoformat(str(raw))
-    except (TypeError, ValueError):
-        return False
-    if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
-    age = datetime.now(timezone.utc) - ts
-    return age <= timedelta(days=int(full_max_age_days))
-
-
-def verify_audit_chain_incremental(session: Session, *, force_full: bool = False,
-                                   full_max_age_days: int = 7) -> dict:
-    """Verify the audit chain with O(new rows) cost per call.
-
-    Returns the same shape as :func:`verify_audit_chain` plus:
-      mode              "full" | "incremental"
-      full_verified_at  ISO time of the most recent full walk
-      entry_count       total chained entries (chain size)
-
-    Tamper classes caught (a superset of the full walk):
-      * content edit anywhere after the anchor head      (suffix hash re-check)
-      * deletion / reordering after the anchor head      (link + gap re-check)
-      * tail truncation below the anchored head          (NEW — undetectable
-        by a plain walk of the remaining chain)
-      * content edit at or before the anchor head        (full-walk fallback,
-        at most once per `full_max_age_days` window)
-    """
-    anchor = None if force_full else _load_chain_anchor(session)
-    if (anchor is None
-            or not anchor.get("sequence")
-            or not anchor.get("head")
-            or not _anchor_is_fresh(anchor, full_max_age_days)):
-        result = verify_audit_chain(session)
-        result["mode"] = "full"
-        if result["status"] == "OK":
-            now_iso = datetime.now(timezone.utc).isoformat()
-            # Anchor at the TOP SEQUENCE VALUE (not the row count): the chain
-            # is normally dense, but the anchor must survive any gap.
-            top = session.execute(
-                select(func.max(AuditLog.chain_sequence))
-                .where(AuditLog.chain_sequence.is_not(None))
-            ).scalar_one()
-            _save_chain_anchor(session, sequence=int(top or 0),
-                               head=result["chain_head"] or "",
-                               full_verified_at=now_iso)
-            result["full_verified_at"] = now_iso
-        return result
-
-    anchor_seq = int(anchor["sequence"])
-    anchor_head = str(anchor["head"])
-
-    top = session.execute(
-        select(func.max(AuditLog.chain_sequence))
-        .where(AuditLog.chain_sequence.is_not(None))
-    ).scalar_one()
-    if top is None or int(top) < anchor_seq:
-        # Entries vanished below the last verified head: the anchored entry is
-        # gone, which a plain walk of the surviving prefix would report OK.
-        return {
-            "status": "TAMPERED",
-            "checked": 0,
-            "entry_count": int(top or 0),
-            "break_at_sequence": anchor_seq,
-            "reason": "chain truncated below last verified head (entries deleted)",
-            "chain_head": None,
-            "mode": "incremental",
-            "full_verified_at": anchor.get("full_verified_at"),
-        }
-
-    row = session.execute(
-        select(AuditLog).where(AuditLog.chain_sequence == anchor_seq)
-    ).scalar_one_or_none()
-    if (row is None
-            or row.entry_hash != anchor_head
-            or audit_entry_hash(row, previous_hash=row.previous_hash) != row.entry_hash):
-        # The anchor itself no longer verifies — including the lazy-attacker
-        # case where the anchor row's CONTENT is edited while its stored hash
-        # column (and every later row's link) is left intact: the stored-hash
-        # comparison alone would trust a row whose bytes no longer hash to it,
-        # and the incremental pass never re-hashes the anchor row itself. One
-        # SHA-256 closes that. Fall back to a full walk to locate the break
-        # honestly (and refresh the anchor if it comes back OK).
-        result = verify_audit_chain(session)
-        result["mode"] = "full"
-        if result["status"] == "OK":
-            now_iso = datetime.now(timezone.utc).isoformat()
-            top = session.execute(
-                select(func.max(AuditLog.chain_sequence))
-                .where(AuditLog.chain_sequence.is_not(None))
-            ).scalar_one()
-            _save_chain_anchor(session, sequence=int(top or 0),
-                               head=result["chain_head"] or "",
-                               full_verified_at=now_iso)
-            result["full_verified_at"] = now_iso
-        return result
-
-    suffix = list(session.execute(
-        select(AuditLog).where(AuditLog.chain_sequence > anchor_seq)
-        .order_by(AuditLog.chain_sequence)
-    ).scalars())
-    entry_count = anchor_seq + len(suffix)
-
-    expected_prev = anchor_head
-    prev_seq = anchor_seq
-    checked = 0
-    for r in suffix:
-        if r.chain_sequence <= prev_seq:
-            reason = ("sequence not increasing after anchored head "
-                      "(entry removed, reordered, or forged)")
-        elif r.previous_hash != expected_prev:
-            reason = ("previous_hash mismatch after anchored head "
-                      "(entry removed, reordered, or forged)")
-        else:
-            reason = None
-        if reason:
-            return {
-                "status": "TAMPERED",
-                "checked": checked,
-                "entry_count": entry_count,
-                "break_at_sequence": r.chain_sequence,
-                "reason": reason,
-                "chain_head": None,
-                "mode": "incremental",
-                "full_verified_at": anchor.get("full_verified_at"),
-            }
-        if audit_entry_hash(r, previous_hash=r.previous_hash) != r.entry_hash:
-            return {
-                "status": "TAMPERED",
-                "checked": checked,
-                "entry_count": entry_count,
-                "break_at_sequence": r.chain_sequence,
-                "reason": "entry_hash mismatch (entry content modified after write)",
-                "chain_head": None,
-                "mode": "incremental",
-                "full_verified_at": anchor.get("full_verified_at"),
-            }
-        expected_prev = r.entry_hash
-        prev_seq = int(r.chain_sequence)
-        checked += 1
-
-    _save_chain_anchor(session, sequence=prev_seq, head=expected_prev,
-                       full_verified_at=str(anchor.get("full_verified_at")))
-    return {
-        "status": "OK",
-        "checked": checked,
-        "entry_count": prev_seq,
-        "chain_head": expected_prev,
-        "mode": "incremental",
-        "full_verified_at": anchor.get("full_verified_at"),
-    }
-
-
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
@@ -285,20 +97,6 @@ class UserRepository:
             select(User).where(User.username == (username or "").strip().lower())
         ).scalar_one_or_none()
 
-    def _known_role_names(self) -> set[str]:
-        """Built-in role names plus the custom roles defined in this
-        deployment (round 30): a custom role survives assignment instead
-        of silently degrading to the viewer default."""
-        names = set(VALID_ROLES)
-        try:
-            from db.models.custom_role import CustomRole
-
-            rows = self.session.query(CustomRole.name).all()
-            names.update(str(r[0]).strip().lower() for r in rows if r[0])
-        except Exception:  # noqa: BLE001 — no table / read error: built-ins
-            pass
-        return names
-
     def create_user(
         self,
         username: str,
@@ -309,8 +107,7 @@ class UserRepository:
         email: str | None = None,
         is_active: bool = True,
     ) -> User:
-        known = self._known_role_names()
-        clean_roles = sorted({r for r in (roles or ["viewer"]) if r in known}) or ["viewer"]
+        clean_roles = sorted({r for r in (roles or ["viewer"]) if r in VALID_ROLES}) or ["viewer"]
         user = User(
             username=(username or "").strip().lower(),
             password_hash=password_hash,
@@ -327,8 +124,7 @@ class UserRepository:
         user = self.get_by_username(username)
         if user is None:
             return None
-        known = self._known_role_names()
-        clean = sorted({r for r in roles if r in known})
+        clean = sorted({r for r in roles if r in VALID_ROLES})
         user.roles = ",".join(clean) if clean else user.roles
         self.session.flush()
         return user
@@ -343,41 +139,6 @@ class UserRepository:
             user.locked_until = None
         self.session.flush()
         return user
-
-    def soft_delete_user(self, username: str) -> User | None:
-        """Soft-delete a user (compliance-safe): mark deleted_at, disable the
-        account. The row is retained so the audit hash chain and historical
-        actor references remain verifiable. Idempotent — re-deleting an
-        already-removed account returns the row without changing the
-        original deletion timestamp. Returns None if no such user."""
-        user = self.get_by_username(username)
-        if user is None:
-            return None
-        if user.deleted_at is None:
-            user.deleted_at = datetime.now(timezone.utc)
-        user.is_active = False
-        self.session.flush()
-        return user
-
-    def restore_user(self, username: str) -> User | None:
-        """Undo a soft delete: clear deleted_at and re-enable the account."""
-        user = self.get_by_username(username)
-        if user is None or user.deleted_at is None:
-            return None
-        user.deleted_at = None
-        user.is_active = True
-        user.failed_attempts = 0
-        user.locked_until = None
-        self.session.flush()
-        return user
-
-    def list_active_users(self) -> list[User]:
-        """Users that are neither soft-deleted nor disabled (login candidates)."""
-        return list(
-            self.session.execute(
-                select(User).where(User.deleted_at.is_(None), User.is_active.is_(True))
-            ).scalars().all()
-        )
 
     def set_password(self, username: str, password_hash: str) -> User | None:
         user = self.get_by_username(username)
@@ -416,9 +177,7 @@ class UserRepository:
     # --------------------------------------------------------------- sessions
 
     def create_session(self, token: str, username: str, expires_at: datetime, ip: str | None = None) -> UserSession:
-        user = self.get_by_username(username)
         row = UserSession(
-            user_id=user.id if user is not None else None,
             token_hash=token_hash(token),
             username=username,
             created_at_ts=datetime.now(timezone.utc),
@@ -456,46 +215,6 @@ class UserRepository:
             row.revoked_at = now
         self.session.flush()
         return len(rows)
-
-    def revoke_other_sessions(self, username: str, keep_token: str) -> int:
-        """Revoke every active session for ``username`` except ``keep_token``.
-
-        Used by self-service credential rotation: the caller's current
-        session stays valid so they are not logged out mid-request, while any
-        token on another device/browser is invalidated. Returns the count of
-        sessions revoked.
-        """
-        keep_hash = token_hash(keep_token) if keep_token else ""
-        rows = list(
-            self.session.execute(
-                select(UserSession).where(
-                    UserSession.username == username,
-                    UserSession.revoked_at.is_(None),
-                    UserSession.token_hash != keep_hash,
-                )
-            ).scalars().all()
-        )
-        now = datetime.now(timezone.utc)
-        for row in rows:
-            row.revoked_at = now
-        self.session.flush()
-        return len(rows)
-
-    def count_active_sessions(self, username: str) -> int:
-        """Number of sessions for a user that have not been revoked and have
-        not expired (expiry is best-effort here; expired rows are harmless)."""
-        from sqlalchemy import func
-
-        return int(
-            self.session.execute(
-                select(func.count())
-                .select_from(UserSession)
-                .where(
-                    UserSession.username == username,
-                    UserSession.revoked_at.is_(None),
-                )
-            ).scalar_one()
-        )
 
     # ------------------------------------------------------------------ audit
 
@@ -563,18 +282,6 @@ class UserRepository:
             detail = json.dumps(detail, default=str)
         from db.models.base import utcnow as _utcnow
 
-        if self.session.get_bind().dialect.name == "postgresql":
-            # The chain is global, not per tenant. Lock BEFORE reading its
-            # head and hold through commit/rollback; locking the latest row
-            # alone misses concurrent first writers and can fork the chain.
-            # All application appends use this repository. This is not a
-            # claim of DB-admin-proof immutability or a repair of old forks.
-            from sqlalchemy import BigInteger, literal
-            from sqlalchemy.exc import InvalidRequestError
-            if self.session.connection().get_isolation_level() != "READ COMMITTED":
-                raise InvalidRequestError("Concurrent audit appends require PostgreSQL READ COMMITTED isolation")
-            self.session.execute(select(func.pg_advisory_xact_lock(
-                literal(0x43525950544F4155, type_=BigInteger))))
         head = self._audit_chain_head()
         row = AuditLog(
             created_at=_utcnow(),  # hash covers a real timestamp, never the pre-flush None

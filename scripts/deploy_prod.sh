@@ -41,10 +41,4 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   exit 2
 fi
 
-COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.prod.yml)
-if [[ "${1:-}" == "--tls" ]]; then
-  shift
-  COMPOSE_FILES+=(-f docker-compose.tls.yml)
-fi
-
-exec docker compose "${COMPOSE_FILES[@]}" up --build "$@"
+exec docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build "$@"

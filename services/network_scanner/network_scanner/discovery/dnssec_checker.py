@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import socket
 import struct
-from typing import Any
+from typing import Any, Iterable
 
 DNS_SERVER_PORT = 53
 AXFR = 252

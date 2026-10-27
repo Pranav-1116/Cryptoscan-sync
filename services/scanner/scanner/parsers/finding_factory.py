@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 from pathlib import Path
 from typing import Optional
 
@@ -48,11 +43,7 @@ def make_finding(
                 key_size = info.key_size
             if mode is None and info.mode:
                 mode = info.mode
-    except Exception as _handler_exc:
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
+    except Exception:
         pass
 
     relative = str(file_path)

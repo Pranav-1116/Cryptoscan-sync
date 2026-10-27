@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -230,7 +231,7 @@ def test_engine_watch_first_observation_is_baseline_not_alert():
 def test_engine_watch_probe_failure_keeps_scanning_and_dedupes_events():
     """Probe down: target still scans on schedule; WATCH_PROBE_FAILED once per error."""
     session = _session()
-    _watch_target = _target(session, config={"watch": True, "repo": "/r"})  # due at T0
+    target = _target(session, config={"watch": True, "repo": "/r"})  # due at T0
 
     def fake_probe(config, *, timeout):
         return ProbeResult(state=None, ok=False, error="remote unreachable")

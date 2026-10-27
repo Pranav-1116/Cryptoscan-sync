@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 # fields that count as "crypto state" for change classification
 CRYPTO_FIELDS = frozenset({

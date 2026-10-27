@@ -58,26 +58,3 @@ logs/
 
 # Compiled artifacts (rebuilt on demand by runtime agent)
 *.so
-
-# delivery artifacts (bundle/patch exports — not product code)
-frontend/public/
-
-# Scanner output artifacts
-scan-results/
-
-# local SQLite DBs
-data/
-# The TLS registry snapshot is a checked-in test input, not local runtime data.
-!shared/shared_models/shared_models/data/
-!shared/shared_models/shared_models/data/iana_tls_parameters.csv
-
-# frontend test artefacts
-frontend/coverage/
-
-# runtime-log parser fixtures are real inputs, not build noise
-!services/scanner/tests/fixtures/runtime_logs/*.log
-_tmp/
-build/
-
-# local dev stack runtime (scripts/run_local_stack.sh)
-.local-stack/

@@ -238,7 +238,7 @@ class PaymentCryptoRepository:
     def set_finding_status(self, finding_id: str, status: str, *, resolved_by: str | None = None) -> Optional[PaymentPolicyFinding]:
         if status not in {"OPEN", "ACCEPTED", "RESOLVED"}:
             raise ValueError("status must be OPEN, ACCEPTED or RESOLVED")
-        row = self.session.execute(select(PaymentPolicyFinding).where(PaymentPolicyFinding.id == finding_id)).scalars().first()
+        row = self.session.get(PaymentPolicyFinding, finding_id)
         if row is None:
             return None
         row.status = status

@@ -18,7 +18,7 @@ def test_rollup_bank_message():
     assert summary["systems"] == 100
     assert summary["unknown_crypto"] == 90
     assert summary["with_cbom"] == 9
-    assert "unobserved cryptography until they are scanned" in summary["message"]
+    assert "unknown cryptography until they are scanned" in summary["message"]
 
 
 def test_parse_cmdb_csv_and_json():

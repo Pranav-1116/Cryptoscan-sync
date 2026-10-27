@@ -12,14 +12,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class ReportSchedule(BaseModel, TenantScoped):
+class ReportSchedule(BaseModel):
     __tablename__ = "report_schedules"
 
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
@@ -34,13 +33,8 @@ class ReportSchedule(BaseModel, TenantScoped):
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
-class ReportSnapshot(BaseModel, TenantScoped):
+class ReportSnapshot(BaseModel):
     __tablename__ = "report_snapshots"
-    __table_args__ = (
-        # identical (scan, payload) pins collapse to one row — the same
-        # content-addressing discipline as cbom_snapshots (round 69)
-        UniqueConstraint("scan_id", "payload_hash", name="uq_report_snapshot_scan_payload"),
-    )
 
     schedule_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("report_schedules.id", ondelete="SET NULL"), nullable=True, index=True
@@ -49,11 +43,6 @@ class ReportSnapshot(BaseModel, TenantScoped):
     scan_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     template_id: Mapped[str] = mapped_column(String(60), nullable=False)
     report_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    #: SHA-256 over the canonical JSON of the EXACT stored payload (PDF,
-    #: signature and the scan→BOM chain citation included) — the report leg
-    #: of scan-run → BOM → report (round 69). NULL on legacy rows, which the
-    #: read path reports as UNVERIFIED_LEGACY instead of pretending.
-    payload_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     report: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     generated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     emailed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

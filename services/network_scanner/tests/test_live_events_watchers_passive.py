@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from network_scanner.enterprise.live.cert_watcher import (
     CERT_EVENTS,
+    CertChange,
     CertificateWatcher,
 )
 from network_scanner.enterprise.live.events import (
@@ -27,10 +28,12 @@ from network_scanner.enterprise.live.passive_monitor import (
 )
 from network_scanner.enterprise.live.tls_watcher import (
     TLS_STATE_FIELDS,
+    TlsStateChange,
     TlsWatcher,
 )
 from network_scanner.enterprise.live.topology_monitor import (
     TOPOLOGY_CHANGE_KINDS,
+    TopologyChange,
     TopologyMonitor,
 )
 

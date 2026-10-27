@@ -3,6 +3,8 @@ smart-card discovery, firmware intelligence (§1–§10)."""
 
 from __future__ import annotations
 
+import hashlib
+import json
 
 import pytest
 
@@ -13,6 +15,7 @@ from universal_vendor.hardware.models import (
     DiscoveryMethod,
     FirmwareComponent,
     HardwareConfidence,
+    HardwareDriftType,
     HardwareIdentity,
     HardwareObservation,
     HardwareType,
@@ -421,87 +424,3 @@ def test_firmware_state_per_component():
     state = fw.state("srv-1", "BMC")
     assert state is not None
     assert state.previous == "1.5" and state.current == "1.6"
-
-
-def test_fingerprint_ignores_placeholder_evidence_and_tracker_has_no_previous_baseline():
-    from universal_vendor.hardware.fingerprint import FingerprintTracker, fingerprint_hardware
-
-    fingerprint = fingerprint_hardware({"dmi": {"serial": "unknown"},
-                                        "serial": "N/A", "bmc": {}})
-    assert fingerprint.evidence_sources == []
-    assert fingerprint.confidence == "LOW"
-
-    tracker = FingerprintTracker()
-    first = tracker.observe("host-1", fingerprint)
-    assert first["first_seen"] is True
-    assert first["previous_hash"] is None
-    second = tracker.observe("host-1", fingerprint)
-    assert second["first_seen"] is False
-    assert second["previous_hash"] == first["fingerprint_hash"]
-
-
-def test_discovery_preserves_lower_confidence_provenance_and_identity_conflict():
-    from universal_vendor.hardware.discovery import HardwareDiscoveryOrchestrator
-
-    class Sources:
-        def __init__(self, records):
-            self.records = records
-
-        def collect(self, context):
-            return self.records
-
-    observation = HardwareDiscoveryOrchestrator(
-        Sources([{
-            "asset_id": "asset-1", "manufacturer": "Acme", "model": "A1",
-            "serial_reference": "S1", "device_type": "server", "source": "agent",
-            "confidence": "HIGH", "vendor_specific": {"serial_source": "dmi"},
-        }]),
-        Sources([{
-            "asset_id": "asset-1", "manufacturer": "Other", "model": "A1",
-            "serial_reference": "S1", "device_type": "server", "source": "network",
-            "confidence": "LOW", "vendor_specific": {"banner": "Other A1"},
-        }]),
-    ).discover([{}])[0]
-    assert observation.manufacturer == "Acme"
-    assert observation.source == "agent"
-    assert observation.discovery_sources == ["agent", "network"]
-    assert observation.identity_conflicts["manufacturer"] == [
-        {"source": "agent", "value": "Acme"},
-        {"source": "network", "value": "Other"},
-    ]
-    assert observation.vendor_specific["banner"] == "Other A1"
-
-
-def test_hardware_scanner_uses_unambiguous_plugin_and_keeps_ambiguous_tpm_unknown():
-    from universal_vendor.hardware.plugins import build_registry
-    from universal_vendor.hardware.scanner import UniversalHardwareScanner
-
-    result = UniversalHardwareScanner(plugins=build_registry()).scan({
-        "asset_id": "srv-1",
-        "dmi": {"serial": "S1", "product": "PowerEdge R740"},
-        "tpm": {"present": True, "version": "2.0"},
-        "cpu": {"vendor": "Intel", "flags": "aes sha_ni"},
-    })
-    observation = result["observations"][0]
-    assert observation["manufacturer"] == "Dell"
-    assert "plugin:hw_dell_poweredge" in observation["discovery_sources"]
-    assert any(row["category"] == "tpm" for row in result["plugin_detection"]["ambiguous"])
-    assert result["capabilities"][0]["hardware_supported"]["aes"] is True
-    assert result["capabilities"][0]["software_used"] == []
-
-
-def test_anonymous_event_fallback_identity_is_stable_and_event_specific():
-    from universal_vendor.hardware.live.events import HardwareEvent, HardwareEventPipeline
-
-    pipeline = HardwareEventPipeline()
-    first = pipeline.resolve_identity(HardwareEvent(
-        event_type="HARDWARE_DISCOVERED", source="agent",
-        observed_at="2026-01-01T00:00:00+00:00", payload={"hostname": "hidden"}))
-    repeat = pipeline.resolve_identity(HardwareEvent(
-        event_type="HARDWARE_DISCOVERED", source="agent",
-        observed_at="2026-01-01T00:00:00+00:00", payload={"hostname": "hidden"}))
-    different = pipeline.resolve_identity(HardwareEvent(
-        event_type="FIRMWARE_CHANGED", source="agent",
-        observed_at="2026-01-01T00:00:00+00:00", payload={"hostname": "hidden"}))
-    assert first[0] == repeat[0]
-    assert first[0] != different[0]

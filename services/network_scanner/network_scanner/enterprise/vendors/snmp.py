@@ -16,6 +16,7 @@ responder without touching the network.
 from __future__ import annotations
 
 import socket
+import struct
 from dataclasses import dataclass, field
 from typing import Any, Callable
 

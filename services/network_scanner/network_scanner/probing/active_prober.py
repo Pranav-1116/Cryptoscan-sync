@@ -34,64 +34,6 @@ def _split_endpoint(endpoint: str) -> tuple[str, int]:
     return raw, 443
 
 
-def _resolve_addresses(host: str, port: int) -> list[tuple[int, int, int, tuple[Any, ...]]]:
-    """Return deterministic, de-duplicated TCP candidates from DNS."""
-    infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    candidates: list[tuple[int, int, int, tuple[Any, ...]]] = []
-    seen: set[tuple[int, str, int]] = set()
-    for family, socktype, proto, _canonname, sockaddr in infos:
-        address = str(sockaddr[0])
-        key = (family, address, int(sockaddr[1]))
-        if key in seen:
-            continue
-        seen.add(key)
-        candidates.append((family, socktype, proto, sockaddr))
-    return candidates
-
-
-class _AddressConnectionError(OSError):
-    def __init__(self, last_error: OSError, attempts: list[dict[str, Any]]) -> None:
-        super().__init__(str(last_error))
-        self.last_error = last_error
-        self.attempts = attempts
-
-
-def _connect_addresses(
-    candidates: list[tuple[int, int, int, tuple[Any, ...]]],
-    *,
-    timeout: float,
-) -> tuple[socket.socket, str, list[dict[str, Any]]]:
-    """Connect to each resolved address until one succeeds.
-
-    ``socket.create_connection`` also tries multiple addresses, but does not
-    expose which candidates were attempted. Keeping that telemetry here makes
-    a successful fallback distinguishable from a genuinely unreachable host.
-    """
-    attempts: list[dict[str, Any]] = []
-    last_error: OSError | None = None
-    for family, socktype, proto, sockaddr in candidates:
-        address = str(sockaddr[0])
-        attempt = {"address": address, "port": int(sockaddr[1]), "status": "FAILED"}
-        sock: socket.socket | None = None
-        try:
-            sock = socket.socket(family, socktype, proto)
-            sock.settimeout(timeout)
-            sock.connect(sockaddr)
-            attempt["status"] = "CONNECTED"
-            attempts.append(attempt)
-            return sock, address, attempts
-        except OSError as exc:
-            last_error = exc
-            attempt["error_type"] = type(exc).__name__
-            attempt["error"] = str(exc)
-            attempts.append(attempt)
-            if sock is not None:
-                sock.close()
-    if last_error is None:
-        last_error = OSError("no TCP address candidates")
-    raise _AddressConnectionError(last_error, attempts)
-
-
 def probe_endpoint(
     endpoint: str,
     *,
@@ -115,35 +57,18 @@ def probe_endpoint(
         "crypto": {"purpose": "NETWORK_ENCRYPTION", "algorithm": "TLS"},
         "metadata": {"confidence": "HIGH", "scan_method": "ACTIVE_PROBE", "library": "stdlib-ssl", "starttls": None},
         "certificates": [],
-        "chain_validation": {
-            "is_valid": False,
-            "structural_valid": False,
-            "structural_status": "NOT_EVALUATED",
-            "errors": [],
-            "chain_completeness": "NOT_EVALUATED",
-            "trust_status": "NOT_VERIFIED",
-            "trust_verification": {"status": "NOT_PERFORMED", "reason": "trust_store_not_loaded"},
-        },
+        "chain_validation": {"is_valid": False, "errors": []},
         "revocation_status": {"method": None, "status": "UNKNOWN"},
     }
     try:
-        candidates = _resolve_addresses(host, port)
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+        ip = infos[0][4][0] if infos else None
     except socket.gaierror as exc:
         finding["status"] = "DNS_FAILED"
         finding["error"] = str(exc)
-        finding["resolved_addresses"] = []
-        finding["connection_attempts"] = []
         finding["metadata"]["confidence"] = "LOW"
         return finding
-    if not candidates:
-        finding["status"] = "DNS_FAILED"
-        finding["error"] = "DNS returned no TCP addresses"
-        finding["resolved_addresses"] = []
-        finding["connection_attempts"] = []
-        finding["metadata"]["confidence"] = "LOW"
-        return finding
-    finding["resolved_addresses"] = [str(item[3][0]) for item in candidates]
-    finding["connection_attempts"] = []
+    finding["ip_address"] = ip
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
@@ -156,11 +81,7 @@ def probe_endpoint(
     if starttls_protocol == "none":
         starttls_protocol = None
     try:
-        raw, ip, connection_attempts = _connect_addresses(candidates, timeout=timeout)
-        finding["ip_address"] = ip
-        finding["selected_address"] = ip
-        finding["connection_attempts"] = connection_attempts
-        with raw:
+        with socket.create_connection((ip or host, port), timeout=timeout) as raw:
             if starttls_protocol:
                 upgrade = negotiate_starttls(raw, starttls_protocol, timeout=timeout)
                 if not upgrade.get("ok"):
@@ -207,13 +128,8 @@ def probe_endpoint(
                     if parsed_extra.get("fingerprint_sha256") == leaf.get("fingerprint_sha256"):
                         continue
                     chain_certs.append(parsed_extra)
-                certificate_hostname = sni or host
-                finding["metadata"]["endpoint_hostname"] = host
-                finding["metadata"]["certificate_hostname"] = certificate_hostname
-                chain = validate_chain(chain_certs, hostname=certificate_hostname)
-                finding["metadata"]["chain_completeness"] = chain.get("chain_completeness")
-                finding["metadata"]["trust_verification"] = chain.get("trust_status")
-                if not hostname_matches(certificate_hostname, leaf) and "HOSTNAME_MISMATCH" not in chain["errors"]:
+                chain = validate_chain(chain_certs, hostname=host)
+                if not hostname_matches(host, leaf) and "HOSTNAME_MISMATCH" not in chain["errors"]:
                     chain["errors"].append("HOSTNAME_MISMATCH")
                     chain["is_valid"] = False
                 revoked_live = False
@@ -321,17 +237,6 @@ def probe_endpoint(
                 )
                 finding["algorithm"] = algo
                 finding["policy_issues"] = issues
-    except _AddressConnectionError as exc:
-        finding["connection_attempts"] = exc.attempts
-        finding["error"] = str(exc.last_error)
-        errors = [item.get("error_type") for item in exc.attempts]
-        if errors and all(item in {"TimeoutError", "socket.timeout"} for item in errors):
-            finding["status"] = "TIMEOUT"
-        elif errors and all(item == "ConnectionRefusedError" for item in errors):
-            finding["status"] = "PORT_CLOSED"
-        else:
-            finding["status"] = "CONNECT_ERROR"
-        finding["metadata"]["confidence"] = "LOW"
     except TimeoutError:
         finding["status"] = "TIMEOUT"
         finding["metadata"]["confidence"] = "LOW"

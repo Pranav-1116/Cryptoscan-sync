@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 
 from drift.core.config_detector import detect_config_drift
 from drift.core.config_facts import ConfigFact, extract_config_facts

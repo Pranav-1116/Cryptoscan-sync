@@ -1,5 +1,0 @@
-CampaignCreate: Draft 2020-12 schema valid; extra fields forbidden
-ExpectedRevision: Draft 2020-12 schema valid; extra fields forbidden
-Assignments: Draft 2020-12 schema valid; extra fields forbidden
-FreezeEvidence: Draft 2020-12 schema valid; extra fields forbidden
-SubmitReview: Draft 2020-12 schema valid; extra fields forbidden

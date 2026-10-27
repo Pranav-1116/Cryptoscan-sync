@@ -9,10 +9,9 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class OtDevice(BaseModel, TenantScoped):
+class OtDevice(BaseModel):
     __tablename__ = "ot_devices"
 
     ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
@@ -35,7 +34,7 @@ class OtDevice(BaseModel, TenantScoped):
     )
 
 
-class OtCryptoFinding(BaseModel, TenantScoped):
+class OtCryptoFinding(BaseModel):
     __tablename__ = "ot_crypto_findings"
 
     device_id: Mapped[Optional[str]] = mapped_column(

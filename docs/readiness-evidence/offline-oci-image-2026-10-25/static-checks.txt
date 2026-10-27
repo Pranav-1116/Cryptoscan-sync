@@ -1,6 +1,0 @@
-All checks passed!
-6 files already formatted
-No broken requirements found.
-Pre-existing tracked diff SHA256 before/after:
-11765d3b393c2be4f6dcdff1508bf29b0b6e25e8c785956c5d71c2e59903e33f  -
-11765d3b393c2be4f6dcdff1508bf29b0b6e25e8c785956c5d71c2e59903e33f  -

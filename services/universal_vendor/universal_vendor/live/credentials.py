@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from universal_vendor.plugin import scrub_secrets
 
 _SECRET_KEYS = ("password", "secret", "token", "apikey", "api_key",
                 "private_key", "preshared", "passphrase", "credential",

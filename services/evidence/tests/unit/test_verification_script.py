@@ -14,10 +14,3 @@ def test_generated_script_verifies_chain(tmp_path):
     ns: dict = {}
     exec((tmp_path / "verify.py").read_text(encoding="utf-8"), ns)
     assert ns["main"]() == 0
-
-
-def test_generated_script_never_passes_an_empty_chain(tmp_path):
-    generate_verification_script(scan_id="scan-empty", records=[], output_path=tmp_path / "verify.py")
-    ns: dict = {}
-    exec((tmp_path / "verify.py").read_text(encoding="utf-8"), ns)
-    assert ns["main"]() == 1

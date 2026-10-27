@@ -16,7 +16,7 @@ RUN python -m pip install --no-cache-dir -e shared/shared_config -e shared/share
     -e services/normalization -e services/policy -e services/drift -e services/worker \
     -e services/api -e services/payment_crypto
 
-ENV PYTHONPATH=/app/shared/shared_config:/app/shared/shared_logging:/app/shared/shared_models:/app/services/api:/app/services/database:/app/services/scanner:/app/services/evidence:/app/services/normalization:/app/services/policy:/app/services/drift:/app/services/worker:/app/services/deduplication:/app/services/cbom:/app/services/container_scanner:/app/services/network_scanner:/app/services/cloud_scanner:/app/services/graph_engine:/app/services/business_context:/app/services/quantum:/app/services/remediation:/app/services/reporting:/app/services/ot_scanner:/app/services/vendor_intel:/app/services/agility:/app/services/payment_crypto:/app/services/universal_platform:/app/services/universal_crypto:/app/services/universal_vendor:/app/services/runtime
+ENV PYTHONPATH=/app/shared/shared_config:/app/shared/shared_logging:/app/shared/shared_models:/app/services/api:/app/services/database:/app/services/scanner:/app/services/evidence:/app/services/normalization:/app/services/policy:/app/services/drift:/app/services/worker:/app/services/deduplication:/app/services/cbom:/app/services/container_scanner:/app/services/network_scanner:/app/services/cloud_scanner:/app/services/graph_engine:/app/services/business_context:/app/services/quantum:/app/services/remediation:/app/services/reporting:/app/services/ot_scanner:/app/services/vendor_intel:/app/services/agility:/app/services/payment_crypto
 
 # unprivileged runtime user
 RUN useradd --system --uid 10001 cryptoscan && mkdir -p /app/backups && chown -R cryptoscan /app

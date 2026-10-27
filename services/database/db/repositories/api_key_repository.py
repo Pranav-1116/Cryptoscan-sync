@@ -32,23 +32,14 @@ class ApiKeyRepository:
         created_by: str,
         roles: list[str] | None = None,
         expires_at: datetime | None = None,
-        scopes: list[str] | None = None,
-        allowed_methods: list[str] | None = None,
-        rate_per_minute: int = 0,
-        allowed_ips: list[str] | str | None = None,
-        rotate_after_days: int | None = None,
-        tenant_id: str | None = None,
     ) -> tuple[ApiKey, str]:
         """Create a key; returns (row, raw_key). The raw key is shown once."""
-        from identity.api_key_guard import normalize_allowlist
-
         clean = name.strip()
         if not clean:
             raise ValueError("name is required")
         clean_roles = sorted({r for r in (roles or ["viewer"]) if r in ApiKey.valid_roles()})
         if not clean_roles:
             raise ValueError(f"roles must be a subset of {', '.join(ApiKey.valid_roles())}")
-        ip_rules = normalize_allowlist(allowed_ips)  # raises ValueError on junk
         raw = KEY_PREFIX + secrets.token_urlsafe(_RAW_LEN)
         row = ApiKey(
             name=clean[:100],
@@ -57,12 +48,6 @@ class ApiKeyRepository:
             created_by=created_by[:100],
             roles=",".join(clean_roles),
             expires_at=expires_at,
-            scopes=",".join(scopes) if scopes else None,
-            allowed_methods=",".join(m.upper() for m in allowed_methods) if allowed_methods else None,
-            rate_per_minute=max(0, int(rate_per_minute or 0)),
-            allowed_ips=",".join(ip_rules) if ip_rules else None,
-            rotate_after_days=(int(rotate_after_days) if rotate_after_days else None),
-            tenant_id=tenant_id,
         )
         self.session.add(row)
         self.session.flush()
@@ -80,15 +65,10 @@ class ApiKeyRepository:
         return row
 
     def get(self, key_id: str) -> Optional[ApiKey]:
-        return self.session.execute(select(ApiKey).where(ApiKey.id == key_id)).scalars().first()
+        return self.session.get(ApiKey, key_id)
 
-    def list_keys(self, include_revoked: bool = True, *, tenant_id: str | None = None,
-                  platform: bool = False) -> list[ApiKey]:
+    def list_keys(self, include_revoked: bool = True) -> list[ApiKey]:
         stmt = select(ApiKey).order_by(ApiKey.created_at.desc())
-        if platform:
-            stmt = stmt.where(ApiKey.tenant_id.is_(None))
-        elif tenant_id is not None:
-            stmt = stmt.where(ApiKey.tenant_id == tenant_id)
         rows = list(self.session.execute(stmt).scalars().all())
         if include_revoked:
             return rows
@@ -107,15 +87,5 @@ class ApiKeyRepository:
         row = self.get(key_id)
         if row is None:
             return
-        row.last_used_at = datetime.now(timezone.utc)
-        self.session.flush()
-
-    def record_request(self, key_id: str, *, denied: bool = False) -> None:
-        """Best-effort lifetime usage counter increment (+ last_used stamp)."""
-        row = self.get(key_id)
-        if row is None:
-            return
-        row.request_count = int(row.request_count or 0) + (0 if denied else 1)
-        row.denied_count = int(row.denied_count or 0) + (1 if denied else 0)
         row.last_used_at = datetime.now(timezone.utc)
         self.session.flush()

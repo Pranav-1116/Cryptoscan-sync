@@ -57,7 +57,6 @@ class NodeBuilder:
         vendors: Iterable[dict[str, Any]] = (),
         certificates: Iterable[dict[str, Any]] = (),
         cloud_resources: Iterable[dict[str, Any]] = (),
-        network_resources: Iterable[dict[str, Any]] = (),
     ) -> GraphEngine:
         return self.engine.build(
             systems=systems,
@@ -68,5 +67,4 @@ class NodeBuilder:
             vendors=vendors,
             certificates=certificates,
             cloud_resources=cloud_resources,
-            network_resources=network_resources,
         )

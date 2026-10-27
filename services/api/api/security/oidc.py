@@ -27,18 +27,13 @@ roles stay assigned locally in CryptoScan.
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import base64
 import json
 import time
 import urllib.request
 from typing import Any
 
-__all__ = ["OidcError", "discover_jwks_url", "load_jwks", "verify_id_token"]
+__all__ = ["OidcError", "verify_id_token", "discover_jwks_url", "load_jwks"]
 
 
 class OidcError(Exception):
@@ -82,40 +77,7 @@ def discover_jwks_url(issuer: str, *, timeout: float = 5.0) -> str:
     jwks_uri = (document or {}).get("jwks_uri")
     if not jwks_uri:
         raise OidcError(f"OIDC discovery document at {url} has no jwks_uri")
-    _validate_jwks_uri(str(jwks_uri), issuer)
     return str(jwks_uri)
-
-
-def _validate_jwks_uri(jwks_uri: str, issuer: str) -> None:
-    """Defense-in-depth SSRF guard for the discovered JWKS endpoint.
-
-    A compromised/hostile discovery document must not point the verifier at an
-    internal address or a non-TLS URL. Only http(s) is allowed, production
-    issuers must use https, and the JWKS host must match the issuer host (an
-    IdP never legitimately serves keys from a different origin).
-    """
-    try:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(jwks_uri)
-        if parsed.scheme not in {"http", "https"}:
-            raise OidcError(f"jwks_uri uses disallowed scheme {parsed.scheme!r}")
-        if not parsed.hostname:
-            raise OidcError("jwks_uri has no host")
-        # Block literal local/metadata targets outright.
-        if parsed.hostname in {"localhost", "127.0.0.1", "0.0.0.0", "::1"} or parsed.hostname.startswith("169.254."):
-            raise OidcError("jwks_uri points to a loopback/metadata address")
-        issuer_parsed = urlparse(issuer)
-        if issuer_parsed.hostname and parsed.hostname.lower() != issuer_parsed.hostname.lower():
-            raise OidcError(
-                f"jwks_uri host {parsed.hostname!r} does not match issuer host {issuer_parsed.hostname!r}"
-            )
-        if issuer.startswith("https://") and parsed.scheme != "https":
-            raise OidcError("jwks_uri must use https for an https issuer")
-    except OidcError:
-        raise
-    except Exception as exc:
-        raise OidcError(f"unvalidatable jwks_uri: {exc}") from exc
 
 
 def load_jwks(*, url: str | None = None, path: str | None = None, issuer: str | None = None) -> dict[str, Any]:
@@ -130,9 +92,6 @@ def load_jwks(*, url: str | None = None, path: str | None = None, issuer: str | 
         url = discover_jwks_url(issuer)
     if not url:
         raise OidcError("no JWKS source configured (set OIDC_JWKS_URL, OIDC_JWKS_FILE or OIDC_ISSUER)")
-    # Validate an explicitly-configured JWKS URL the same way as a discovered one.
-    if url and not issuer:
-        _validate_jwks_uri(url, url.split("/.well-known/")[0])
     now = time.monotonic()
     cached = _JWKS_CACHE.get(url)
     if cached and now - cached[0] < _JWKS_TTL_SECONDS:
@@ -273,174 +232,3 @@ def verify_id_token(
     if iat is not None and int(iat) > now + clock_leeway:
         raise OidcError("token issued in the future (clock skew?)")
     return claims
-
-
-# ------------------------------------------------- authorization-code flow
-#
-# The token-relay endpoint (POST /auth/oidc) trusts the caller to hand over an
-# IdP-issued id_token. Enterprises usually want the classic redirect flow:
-# the browser is sent to the IdP, CryptoScan receives the code server-side and
-# exchanges it confidentially. Once the id_token exists, the SAME verification
-# rules apply — signature, issuer, audience, expiry — plus the nonce bound at
-# authorization time.
-
-
-def _b64url_encode(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
-
-
-def _default_fetch(url: str, timeout: float) -> bytes:
-    with urllib.request.urlopen(url, timeout=timeout) as response:
-        return response.read()
-
-
-def _default_post(url: str, data: bytes, timeout: float) -> bytes:
-    request = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/x-www-form-urlencoded"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
-
-
-def discover_oidc_endpoints(issuer: str, *, timeout: float = 5.0, fetch=None) -> dict[str, str]:
-    """Read authorization/token endpoints from the issuer's discovery document.
-
-    Same SSRF discipline as JWKS discovery: a hostile document must not point
-    us at a different host, a loopback/metadata address or a non-TLS URL.
-    """
-    reader = fetch or _default_fetch
-    base = issuer.rstrip("/")
-    url = f"{base}/.well-known/openid-configuration"
-    try:
-        document = json.loads(reader(url, timeout).decode("utf-8"))
-    except Exception as exc:
-        raise OidcError(f"OIDC discovery failed for {issuer}: {exc}") from exc
-    out: dict[str, str] = {}
-    for field in ("authorization_endpoint", "token_endpoint"):
-        value = str((document or {}).get(field) or "").strip()
-        if not value:
-            continue
-        _validate_jwks_uri(value, base)  # shared guard: same host, https for https issuers
-        out[field] = value
-    if "token_endpoint" not in out:
-        raise OidcError(f"discovery document at {url} has no token_endpoint")
-    return out
-
-
-def make_authorize_url(authorization_endpoint: str, *, client_id: str,
-                       redirect_uri: str, scope: str, state: str, nonce: str,
-                       code_challenge: str = "") -> str:
-    from urllib.parse import urlencode
-
-    params = {
-        "response_type": "code",
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "scope": scope or "openid",
-        "state": state,
-        "nonce": nonce,
-    }
-    if code_challenge:
-        # RFC 7636 PKCE, S256 — used whenever no client secret is configured
-        # (public client); the verifier itself never travels the front channel.
-        params["code_challenge"] = code_challenge
-        params["code_challenge_method"] = "S256"
-    params = urlencode(params)
-    separator = "&" if "?" in authorization_endpoint else "?"
-    return f"{authorization_endpoint}{separator}{params}"
-
-
-def make_pkce() -> tuple[str, str]:
-    """RFC 7636 PKCE pair: (code_verifier, S256 code_challenge).
-
-    Verifier is 64 base64url characters (within the required 43..128);
-    challenge is base64url(SHA256(verifier)) with no padding.
-    """
-    import hashlib
-    import secrets as _secrets
-
-    verifier = _b64url_encode(_secrets.token_bytes(48))
-    challenge = _b64url_encode(hashlib.sha256(verifier.encode("ascii")).digest())
-    return verifier, challenge
-
-
-def exchange_code(token_endpoint: str, *, code: str, client_id: str, redirect_uri: str,
-                  client_secret: str = "", timeout: float = 5.0, poster=None,
-                  code_verifier: str = "") -> dict[str, Any]:
-    """Confidential-client code exchange (RFC 6749 §4.1.3).
-
-    Returns the raw token response; the caller verifies the contained
-    id_token. When no client secret is configured the parameter is simply
-    omitted (public client) — honest, not silently substituted. A PKCE
-    code_verifier is included when provided (RFC 7636 §4.5).
-    """
-    from urllib.parse import urlencode
-
-    form: dict[str, str] = {
-        "grant_type": "authorization_code",
-        "code": code,
-        "redirect_uri": redirect_uri,
-        "client_id": client_id,
-    }
-    if client_secret:
-        form["client_secret"] = client_secret
-    if code_verifier:
-        form["code_verifier"] = code_verifier
-    poster_fn = poster or _default_post
-    try:
-        raw = poster_fn(token_endpoint, urlencode(form).encode("utf-8"), timeout)
-    except OidcError:
-        raise
-    except Exception as exc:
-        raise OidcError(f"code exchange failed: {exc}") from exc
-    try:
-        document = json.loads(raw.decode("utf-8"))
-    except Exception as exc:
-        raise OidcError(f"token endpoint returned non-JSON: {exc}") from exc
-    if isinstance(document, dict) and document.get("error"):
-        raise OidcError(f"token endpoint error: {document.get('error')}")
-    return document
-
-
-def make_state(secret: str, nonce: str, *, now: float | None = None) -> str:
-    """Signed, self-contained OAuth state: base64url(payload).base64url(HMAC).
-
-    Carries the nonce and issue time so the callback needs no server-side
-    session store. The HMAC key is the platform SECRET_KEY.
-    """
-    import hashlib
-    import hmac
-
-    payload = _b64url_encode(json.dumps(
-        {"nonce": nonce, "iat": int(now if now is not None else time.time())}).encode("utf-8"))
-    signature = _b64url_encode(
-        hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest())
-    return f"{payload}.{signature}"
-
-
-def read_state(secret: str, state: str, *, now: float | None = None, max_age: int = 600) -> str | None:
-    """Return the nonce iff the signature verifies and the state is fresh."""
-    import hashlib
-    import hmac
-
-    try:
-        payload, signature = state.split(".", 1)
-    except ValueError:
-        return None
-    expected = _b64url_encode(
-        hmac.new(secret.encode("utf-8"), payload.encode("ascii"), hashlib.sha256).digest())
-    if not hmac.compare_digest(expected, signature):
-        return None
-    try:
-        data = json.loads(_b64url_decode(payload).decode("utf-8"))
-        issued = int(data.get("iat") or 0)
-        current = int(now if now is not None else time.time())
-        nonce = str(data.get("nonce") or "")
-        if not nonce or issued > current + 60 or current - issued > max_age:
-            return None
-        return nonce
-    except Exception as _handler_exc:
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
-        return None

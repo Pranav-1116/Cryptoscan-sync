@@ -27,7 +27,7 @@ class SourceLocation(BaseModel):
     column_number: Optional[int] = None
     method_name: Optional[str] = None
     class_name: Optional[str] = None
-    code_snippet: Optional[str] = Field(default=None, exclude=True)
+    code_snippet: Optional[str] = None
     variable_name: Optional[str] = None
     is_in_try_catch: bool = False
 
@@ -39,8 +39,7 @@ class CryptoInfo(BaseModel):
     padding: Optional[str] = None
     key_size: Optional[int] = None
     purpose: Optional[str] = None
-    raw_transformation: Optional[str] = Field(default=None, exclude=True)
-    hash_algorithm: Optional[str] = None
+    raw_transformation: Optional[str] = None
 
 
 class FindingMetadata(BaseModel):
@@ -49,9 +48,6 @@ class FindingMetadata(BaseModel):
     library: Optional[str] = None
     is_hardcoded_key: bool = False
     hardcoded_key_length: Optional[int] = None
-    # Where the file sits in the estate: source | test | generated | vendored | archive.
-    # Inventory keeps everything; triage/SLA views filter on it.
-    code_origin: Optional[str] = None
 
 
 class RawFinding(BaseModel):

@@ -21,12 +21,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from cloud_scanner.enterprise.live.alerts import AlertCorrelationEngine
+from cloud_scanner.enterprise.live.alerts import AlertCorrelationEngine, CorrelatedAlert
 from cloud_scanner.enterprise.live.asset_state import LiveCloudAssetStateEngine
 from cloud_scanner.enterprise.live.cbom import LiveEventSourcedCBOM, LiveCloudCBOM
 from cloud_scanner.enterprise.live.cert_watcher import MultiCloudCertificateWatcher
 from cloud_scanner.enterprise.live.change_classifier import ClassifiedChange, classify_change
-from cloud_scanner.enterprise.live.collector import GlobalControlPlane
+from cloud_scanner.enterprise.live.collector import GlobalControlPlane, RegionalCollector
 from cloud_scanner.enterprise.live.connectors import ProviderConnector
 from cloud_scanner.enterprise.live.deep_discovery import CrossCloudMonitor, DeepDiscoveryPlanner
 from cloud_scanner.enterprise.live.drift import LiveDriftDetector, LiveDriftResult

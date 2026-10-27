@@ -106,7 +106,7 @@ def test_migration_chain_covers_every_model_table():
         d = re.search(r'down_revision\s*=\s*["\']([\w]+)["\']', source)
         if m:
             revisions[m.group(1)] = d.group(1) if d else None
-    _model_tables = set(Base.metadata.tables)
+    model_tables = set(Base.metadata.tables)
     # every model table is either migrated or created by create_all — the
     # invariant that matters is: newest tables are in the chain.
     assert "runtime_findings" in created, "runtime_findings migration missing"

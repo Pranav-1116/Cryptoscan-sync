@@ -1,481 +1,133 @@
-# CryptoScan production readiness — current evidence gate
+# CryptoScan — Production Readiness vs. logic-1 / logic-2 / logic-3 + README
 
-## Latest increment — historical provenance and audit concurrency, 2026-10-24
+**Date:** 2026-08-26 · **Branch:** `arena/01a03d0e-cryproscan` @ `1decc2e`
+**Method:** each spec deliverable was checked against the code **and**, wherever possible, executed live in this sandbox (410 tests, seeded scans, API calls, offline network scan, a real drift downgrade). Status legend:
 
-The [historical CBOM implementation](docs/operations/historical-cbom-reconciliation.md)
-adds conservative legacy read/coverage projections, bounded authenticated review,
-commit-before-success reconciliation receipts, import/scanner namespace protection,
-SQL-bounded portfolio reads and PostgreSQL global audit-append serialization.
-Schema head remains **0107**; no new migration or collector/dashboard/service.
+- ✅ **VERIFIED** — executed successfully live in this analysis
+- 🧪 **BUILT** — implemented + unit/integration tests pass, not exercised against a real external system here
+- 🟡 **PARTIAL** — exists but incomplete vs. spec
+- ❌ **MISSING**
 
-Fresh retained evidence: **1,020 selected Python tests, 568 frontend tests,
-27 PostgreSQL checks, 17 historical-workflow browser checks and 16 existing
-browser regression checks**. See [execution and limits](docs/readiness-evidence/historical-cbom-2026-10-24.md)
-and the [operator runbook](docs/runbooks/historical-cbom-reconciliation.md).
-Mixed-evidence, unassigned and oversized history still requires controlled review.
-These are local synthetic engineering results, not production/bank approval,
-performance qualification or closure of the original-question acceptance register.
+---
 
-## Previous end-to-end hardening — 2026-10-24, not platform qualification
+## Headline numbers
 
-Migration **0107** and matching database/API/console changes fix bank-local
-system names, durable source-separated CBOM metadata, import write roles,
-bounded untrusted JSON, signature checking, transaction/receipt semantics and
-private browser state. See the [implemented contracts and remaining engineering
-work](docs/operations/production-data-path-hardening.md), [upgrade procedure](docs/runbooks/cbom-0107-upgrade.md)
-and [retained execution](docs/readiness-evidence/production-data-path-2026-10-24.md).
-
-Evidence: **974 selected Python tests, 561 frontend tests, 10 real PostgreSQL
-migration checks, 16 actual browser/data-path checks and four post-restart
-checks**. The browser used a production-compiled console with development API
-settings on disposable synthetic estates. A controlled restart is not backup
-restore, failover, capacity, customer acceptance or production deployment.
-Historical imports still require explicit reconciliation; no readiness gate is
-waived or changed to approved.
-
-## Prior implementation review — 2026-10-23, not a gate rerun
-
-The [2026-10-23 current-state companion](docs/CURRENT-IMPLEMENTATION-STATUS.md)
-records the ninth increment from `78d4df91`, migration **0106**, active discovered CI/reusable
-lanes and the manual **unsigned** preflight. The user reports one remaining
-workflow failure; this session cannot independently read Actions/check results.
-Configured jobs and locally generated schema are not an all-green run or release
-approval. No retained readiness verdict is changed by this documentation refresh.
-
-The [Preview launch handoff](docs/runbooks/launch-assurance-handoff.md) covers
-independent security report/retest records, nine-duty human ownership/exercises
-and one scoped six-BOM payments pilot. It requires actual external evidence and
-separate technical/customer acceptance; it neither supplies that evidence nor
-authorizes an SLA, whole-bank claim or production deployment.
-
-**Documentation reviewed:** 2026-10-23 UTC (retained gate artifacts have their own dates)
-**Source of truth:** `scripts/bank_readiness.py` → `docs/readiness-evidence/bank-readiness.{json,md}`
-**Scope:** repository controls plus customer/provider qualification evidence.
-
-This file replaces the historical percentage-based assessment that used to live
-here. Percentages, corpus scores, synthetic bank-shaped estates and unit tests
-are useful engineering evidence, but they are not proof of production
-qualification. A deployment must not be described as production-ready until
-the unified gate contains retained, attributable evidence for every required
-category.
-
-## Evidence assurance increment — 3.1–3.7, not external closure
-
-Migration `0103` adds partial phase evidence and append-only selected-estate
-assurance/quarantine workflows. Redis consumers share verified routing; target
-coverage, reviewed six-BOM assertions, frozen customer-review/held-out/regression
-receipts and purpose/applicability assessments have explicit code contracts.
-The only newly exercised adapter lane is bounded offline JSON, **not live vendor
-support**. Actual customer samples/review, whole-bank inventory completeness,
-runtime/deployment/firmware/supplier truth, regional encrypted/quota-controlled
-storage and deployed Redis fault/recovery objectives remain external acceptance.
-See the [upgrade/runbook](docs/runbooks/evidence-assurance-upgrade.md) and
-[scoped evidence/limits](docs/readiness-evidence/assurance-engineering-2026-10-21.md).
-This does not replace the unified readiness or external closure gate below.
-
-## Controlled-execution increment — not full-product approval
-
-Migration `0102` introduces versioned positive approvals, typed original HTTP
-credentials, SQL-shared capacity/launch budgets and ready-estate scheduling,
-regional/destination admission, bounded local-source staging/parser checkpoints,
-fenced attempts, UNKNOWN-outcome settlement and a publication outbox. See the
-[breaking upgrade and remaining acceptance matrix](docs/runbooks/controlled-execution-upgrade.md).
-
-**Production now refuses unqualified API/monitor/WebSocket/collector surfaces;
-only the reviewed local-source adapter is implemented.** This is not six fully
-closed P0 acceptance criteria or unchanged full-product availability. Physical
-residency/ownership audit, actual approved isolation runtime/escape tests,
-PostgreSQL/Redis crash/partition/load exercises, hard stop SLO and additional
-adapters remain required. Local tests do not substitute for those results. The retained
-[scoped engineering record](docs/readiness-evidence/execution-controls-engineering-2026-10-21.md)
-reports **295 passed / 1 skipped** for the final changed paths and an earlier
-**1323 passed / 17 skipped / 8 deselected** broader regression; counts overlap.
-No external qualification or unified-gate rerun is implied.
-
-## Prior execution/replay engineering increment — not a gate rerun
-
-Implementation `e9bfbef7` adds persisted queue-descriptor reconciliation, current
-pinned execution authority and a QUEUED-only CAS claim; durable SSH job/result
-receipts; verified TLS/ACL/Sentinel realtime/current-run routing; actual journal
-command readiness; subscriber reconnect; and primary-bound replay resets.
-The [upgrade runbook](docs/runbooks/execution-and-replay-upgrade.md) includes
-legacy unpinned-job resubmission and safe unknown-outcome recovery.
-
-Local evidence: **1315 passed / 4 skipped** in the broad affected run, **205
-passed** after the final small provenance increment, and **28 passed** in the
-fresh real TLS/Sentinel plus unit run. Coverage overlaps. See
-[Guide 44](docs/bank-environment/44-queued-authority-and-durable-ssh.md) and
-[Guide 45](docs/bank-environment/45-redis-tls-sentinel-qualification.md).
-
-Those results do not regenerate the gate below, qualify every collector/Redis
-consumer, prove lossless replication or certify a deployed bank. Historical
-2026-10-04/16 artifact decisions remain bound to their original environment.
-The prior documentation refresh added no new runtime qualification evidence.
-
-## Run the gate
-
-```bash
-# Static engineering checks and documentation consistency; external categories
-# remain explicit SKIP until their real artifacts are supplied.
-python scripts/bank_readiness.py --run-engineering \
-  --out docs/readiness-evidence/bank-readiness.json
-
-# Release approval: no SKIP or FAIL is accepted.
-python scripts/bank_readiness.py --strict \
-  --engineering docs/readiness-evidence/engineering-gate.json \
-  --postgresql-dr docs/dr-evidence/postgres-drill.json \
-  --hsm docs/hsm-evidence/hsm-qualification.json \
-  --integrations burn_in_report.json \
-  --production-evidence data/evidence/production-evidence/report.json \
-  --compliance docs/compliance-burn.md \
-  --load-soak docs/soak-evidence/summary.json \
-  --external-attestations /secure/customer-attestations.json
-```
-
-Every report records UTC time, commit, branch/dirty state, command, artifact
-digest, environment, status and limitations. A digest proves integrity of a
-file; it does not prove who ran it. Sign or retain the provider, database and
-customer attestations in the controlled evidence store.
-
-### Latest recorded gate
-
-The checked-in report was regenerated on **2026-10-16 UTC** against evidence
-commit `176044d1` (the report itself is committed in the follow-up commit, per
-the repository's binding convention), on a **clean tree** — `dirty: false`,
-branch `arena/bb4b80dd-cryproscan`, environment `development`. It supersedes
-the capture at `cba7885b` (round 78), which predated rounds 79–80; the
-verdicts did not move, and the engineering subchecks are byte-identical to the
-previous capture apart from `captured_at`.
-
-**The four PASS categories rest on the retained 2026-10-04 qualification
-artifacts, re-supplied unchanged.** No new qualification run happened on
-2026-10-16, so those statuses describe the 2026-10-04 environment, not the
-current one — the report records the artifact digest for each so the distinction
-is checkable.
-
-**PostgreSQL DR is PASS** (`docs/readiness-evidence/postgres-dr-drill-2026-10-04.json`:
-35/35 checks, promotion RTO 0.103 s, marker RPO 0 s, full row-count
-preservation, API failover HTTP 200, real worker recovery probe, clean
-pg_dump/psql restore of every table including the hash-chained audit log).
-**Integrations is PASS** (`burn-in-2026-10-04.json`: HMAC-signed GitHub webhook
-round-trip through the Redis queue and worker, TLS 1.3 negotiation, SMTP
-delivery) — *partial scope*: cloud, Neo4j and container probes were not in
-scope of that qualification environment. **Compliance is PASS**
-(`compliance-burn-2026-10-04.md`: 11/11 over live HTTP — evidence pack, JWS
-attestation sign/verify/tamper-reject, WORM retention, auditor key separation,
-capacity forecast). **Load/soak is PASS** (`load-test-2026-10-04.json`:
-7 559 requests, 0 errors, 100 % HTTP 200; `soak-2026-10-04/`: 3/3 cycles with
-the evidence chain re-verified each cycle and flat RSS) — a *short-run*
-qualification; a multi-day production soak is still required for capacity
-claims.
-
-The engineering subchecks for exception triage (0 unresolved handlers),
-route authorization (**896 decorated routes, 896 auth-covered-or-exempt, 0
-uncovered**), frontend authorization (0 direct role/localStorage references)
-and tenant isolation (115 scoped tables, 12 justified platform-scope tables,
-1 `platform_scope()` site, 0 violations) are **PASS**; engineering as a whole is
-**FAIL** because immutable image policy is unresolved (three mutable template
-references; the release registry was unreachable from the qualification
-environment, so no digest-pinned manifests could be rendered), the
-branch-protection API query was refused for the automation credential
-(403 — Administration scope not granted), and the COBOL/PL/I/RPG
-customer-sample hooks have no customer corpora ("corpus evidence is not
-customer validation"). HSM, readiness-closure and external-attestation
-categories remain **SKIP** — those require provider-controlled or customer
-evidence that a repository session cannot produce.
-
-**Verdict: FAIL — 6 PASS / 1 FAIL / 3 SKIP of 10 required categories**,
-recommendation *"do not approve production; remediation and/or evidence
-collection required"*. As of round 80 the accompanying claim that no in-repo
-check is failing is verified rather than asserted: the complete backend suite
-passes in isolation as well as in aggregate (7,629 / 34 skipped / 0 failed),
-where previously one order-dependent worker test failed on any run that did not
-execute `services/api/tests/unit/test_auth_lifecycle.py` first in the same
-process. See the JSON report for the complete machine-readable record.
-
-## Required qualification categories
-
-| Category | What qualifies as evidence | Repository status without external evidence |
+| Scope (spec) | Feature completeness | Production readiness |
 |---|---|---|
-| Engineering | `scripts/engineering_gate.py`: exception inventory, API-key route coverage, frontend authorization scan, immutable image policy, provider branch-protection query, customer-sample hooks; `scripts/pin_release_images.py` renders exact registry digests | Static PASS/FAIL only; no claims about provider enforcement. Checked-in Kubernetes files are templates until a real registry digest is supplied |
-| PostgreSQL DR | Two real instances, streaming state, marker replay, controlled promotion, measured RPO/RTO, clean restore, audit/evidence-chain verification, API and worker recovery | **PASS (2026-10-04, qualification environment)**: real PostgreSQL 16 primary + streaming standby, RTO 0.103 s, RPO 0 s, clean restore verified. Retained artifact: `docs/readiness-evidence/postgres-dr-drill-2026-10-04.json` |
-| HSM/provider | Customer PKCS#11, AWS CloudHSM custom key store, Azure Managed HSM, or GCP provider; non-exportability/signing, rotation, revocation, outage and audit metadata | **FAIL/SKIP** until provider-controlled evidence is supplied; SoftHSM is only a local gate |
-| Integrations | Real multi-target TLS, scheduled NBOM/worker, read-only AWS/Azure/GCP, Neo4j, container, GitHub round-trip, carrier/operator telecom and production alert escalation | **PASS (2026-10-04, partial scope)**: GitHub signed-webhook round-trip, TLS 1.3, SMTP. Cloud/Neo4j/container probes were not in scope of the qualification environment — see `burn-in-2026-10-04.json` |
-| Compliance/procurement | Secure-SDLC and vulnerability/patch records, vendor risk, residency/deployment, SLA/escalation, incident notice, backup retention/destruction and external attestations | Repository controls are not SOC 2/ISO/FIPS/customer attestations. **Live compliance burn is PASS** (`compliance-burn-2026-10-04.md`); external certifications remain outside the repository |
-| Load/soak | Target-environment load and realistic multi-day soak with thresholds, database/queue metrics and retained raw output | **PASS (2026-10-04, short-run qualification)**: 7 559-request load run with zero errors plus 3-cycle soak with chain verification. A multi-day production soak is still required for capacity claims |
-| Documentation | Link and status consistency, timestamps, commands, artifact locations and honest PASS/FAIL/SKIP | This report plus the accuracy documents |
+| **Part 1** (logic-1, months 1–3): core scan → evidence → policy → drift → dashboard → GitHub | **~95%** | **~85%** — pilot-ready today for source-code scanning behind single-admin |
+| **Part 2** (logic-2, months 4–6): multi-language, containers, dedup, advanced policy, CBOM | **~85%** | **~70%** — one E2E gap (container scan) + packaging debt |
+| **Part 3** (logic-3, months 7–9): network/TLS, cloud, dependency graph, business context | **~60%** | **~40%** — code exists but live paths are gated/unverified; needs Neo4j + real creds burn-in |
+| **Months 1–9 combined** | **~80%** | **~60–65%** |
 
-## Explicit external boundary
+**One-line verdict:** Part 1 is genuinely production-grade for a single-team pilot; Part 2 is one E2E verification away; Part 3 is "lab-ready, not prod-ready." What holds the *whole platform* back from production is not missing features but **operational hardening** (CI is empty, single-user auth, sync worker, no HA), detailed in §5.
 
-- `docs/accuracy/BANK-READINESS.md` is detector/estate evidence. Its bank
-  estates are synthetic and its field-accuracy row is `NO_FIELD_DATA` until a
-  bank publishes a reviewed triage workbook.
-- `docs/accuracy/DUBAI-BANKS-E2E.md` is a reproducible synthetic run. It did
-  not access Dubai bank code, configuration, credentials or key material.
-- `scripts/backup_drill.py`, `deploy/ha/drill.sh`, `scripts/burn_in.py`,
-  `scripts/compliance_burn.py`, `scripts/load_test.py` and `scripts/soak.py`
-  are harnesses. Their existence or a safe SKIP is not evidence that the
-  corresponding customer infrastructure passed.
-- No repository document may convert source inspection, mocks, SoftHSM,
-  Docker-only tests or corpus measurements into a customer certification.
+---
 
-> **Tenant-scope correction.** Tenant resolution now fails closed for unknown,
-> ambiguous, suspended, or unavailable tenant context. A failed middleware
-> resolution must never continue as an unscoped request, because an unscoped
-> ORM query can expose another tenant's scan data. See
-> `docs/architecture/multi-tenancy.md` and the tenant-scope regression tests.
+## 1. Part 1 (logic-1.md) — deliverable-by-deliverable
 
-## Current decision
+| Week | Spec deliverable | Status | Evidence |
+|---|---|---|---|
+| 1–2 | Java scanner: repo URL/local dir, 5 pattern families (Cipher, MessageDigest, KeyGenerator, Signature, hardcoded keys), JSON out, graceful parse errors | ✅ VERIFIED | Seeded scan: 14 findings / 5 files; detectors exist for all 5 families; parse-error handler in tree. *10k-file <5min benchmark not run (unbenchmarked, not failing).* |
+| 3 | Evidence chain: content hash + blockchain-style chain hash + manifest + standalone verifier; tamper → FAIL | ✅ VERIFIED | `verify_evidence.py` → all records PASS; tamper tests in the 13-file evidence suite pass. |
+| 4 | Database: scans + evidence + integrity proofs, queries by algo/file/scan, transaction-safe load, post-load verify | ✅ VERIFIED | SQLite default, Postgres via `DATABASE_URL`, 18 Alembic migrations, queries live via API. *Postgres path needs a live-container run before prod cutover.* |
+| 5 | Normalization: 20+ API mappings, `normalized_crypto` column, unknown→review, YAML rules, NIST/IANA metadata | ✅ VERIFIED | API response carries `iana_id`, `nist_designation`, `fips_status`; 4 YAML rule families. |
+| 6–7 | Policy engine: YAML rules, 4 baseline rules, `policy_evaluation` column, PASS/WARN/FAIL, deterministic | ✅ VERIFIED | 5 BASELINE rules (spec asked 4); statuses computed live (23 FAIL / 9 WARN / 18 PASS on polyglot). |
+| 8 | Drift: baselines table, compare vs baseline, NEW/REMOVED, severity, `drift_events`, **email alerts** | ✅ VERIFIED (email 🧪) | Live: approve baseline → RSA 1024→512 → **CRITICAL DOWNGRADED** event. Email alerter (461 LOC) built + tested; SMTP delivery not exercised live. Note: spec's "add DES → NEW_CRYPTO" case is suppressed when the algo already exists in baseline (semantic-signature dedup — a design deviation to review). |
+| 9–10 | Dashboard: home stats, scans list, scan detail, finding detail (snippet/status/hash), drift page, acknowledge, JSON export | ✅ VERIFIED | All views present in the served SPA + 150 API paths. *Caveat: it's a 1,313-line hand-written SPA; the React/TS tree in `src/` is 100% empty scaffolding.* |
+| 11 | GitHub: webhook + **HMAC verification**, job queue, async worker, full pipeline, commit status post | 🧪 BUILT | `hmac_verifier`, payload parser, webhook endpoint, GitHub status poster all have passing tests; inline pipeline verified live. *No live round-trip against a real GitHub repo was performed.* |
+| 12 | Manual scan UI, job status + progress, trigger API, user/admin/architecture docs | ✅ VERIFIED | `trigger_scan.py` live; jobs API + progress; NewScan/JobStatus pages; 72 docs + 13 ADRs. |
 
-Until the unified gate reports PASS for every required category, the only
-honest recommendation is **supervised pilot or pre-production**, with one
-instance per bank where that is the supported topology. The gate is designed
-to fail rather than silently grant an unattended production approval.
+**Part 1 gaps vs spec:** real-GitHub E2E burn-in, email delivery proof, perf benchmark, drift "new weak-algo occurrence" blind spot, single admin user (no roles/multi-user), `/api/v1/findings?scan_id=` silently unfiltered.
 
-**2026-10-04 status of the remaining blockers** (all outside what a source
-session can close):
+---
 
-1. **Immutable image digests** — render a release with
-   `scripts/pin_release_images.py` once a registry is reachable and supply
-   `--release-manifests` to the engineering gate. **2026-10-17 clarification:**
-   `.github/workflows/docker-build.yml` now validates builds only (`push: false`);
-   it does not publish or supply registry digests. The publishing proposal remains
-   historical/staged, and real publication/provenance requires separate review,
-   authorization and execution.
-2. **Branch protection** — enable required reviews/status checks on `main`
-   (needs the GitHub Administration permission the automation credential
-   lacks): `gh api -X PUT repos/<org>/<repo>/branches/main/protection` with
-   required status checks and ≥1 approving review.
-3. **HSM qualification** — provider-controlled evidence via
-   `scripts/hsm_qualification.py --provider <real-provider>`.
-4. **Customer corpora + external attestations + P0/P1 closure manifest** —
-   customer attestation tier; see `config/readiness-closure-policy.json`
-   for the full 14-gap register. The drill and load/soak evidence produced
-   on 2026-10-04 is directly reusable for the `topology_dr_drill` (P0-4)
-   and `target_topology_load_soak` (P1-2) artifact kinds once a continuity
-   plan approval and evidence owner sign them.
+## 2. Part 2 (logic-2.md) — deliverable-by-deliverable
 
-**2026-10-16 engineering-gate discipline.** Rounds 50–81 (per-round ledger:
-`audit_reports/00_ROUND_STATUS.md`) continued the full serial gate before every
-push — ruff repo-wide, the complete backend suite (7,649 passed / 34 skipped at
-round 81), the Vitest frontend suite (334 tests, clean `tsc --noEmit`) — with
-`engineering_gate.py` and `bank_readiness.py` evidence regenerated at each push.
-Round 81 adds an operator-loop artifact to that discipline:
-`scripts/operator_loop_drill.py` drives authorize → scan → evidence → baseline →
-drift → owned task → authorized change → rescan → condition-level verification →
-pinned report twice against a running API and records every check
-(`docs/readiness-evidence/operator-loop-drill-2026-10-16.json`, 123/123 PASS). It
-is in-repo evidence on a synthetic corpus-derived estate: it does not substitute
-for the customer-pilot (P0-2) or target-topology (P1-2) artifacts above. It found
-three defects no unit suite could see, and all three are closed within the round;
-the third was recorded as open in the first pass and fixed in the second rather
-than patched at the end of an unrelated step — platform-scope journal rows
-(`target_id` NULL) were unreachable through `GET /monitor/events`, so the durable
-remediation journal could not be read on the endpoint named after it
-(`PRODUCT-VISION-AND-GAPS.md` §4.7).
-The verdict remains FAIL solely on the credential-blocked categories above;
-no in-repo check is failing.
+| Week | Spec deliverable | Status | Evidence |
+|---|---|---|---|
+| 13–14 | Python scanner (AST), 5 patterns, same schema, same downstream | ✅ VERIFIED | `python_parser.py` (507 LOC); polyglot scan produced Python findings (e.g. pycryptodome/3DES asset, `source_language: PYTHON`). |
+| 15–16 | JS/TS + C# scanners, language auto-detect, multi-scanner coordination | ✅ VERIFIED | 50 findings across Go/PHP/Ruby/Rust/Kotlin/JS/TS/C#/Python/config in one scan; `stage_language_detect` + plugin registry. **Deviation:** spec'd tree-sitter/Roslyn; implementation is AST-lite/regex (works, but weaker on obfuscated/macro-heavy code — ADRs 005/006 describe the intended stronger path). |
+| 17–18 | Container scanner: image pull/extract, pkg metadata, binary fingerprinting, CVE, registry webhooks | 🧪 BUILT | 2,924 LOC + 9 test files pass; `stage_container_scan`, `container_scans` table, `scan_container.py`, fingerprint DB updater. **Not run E2E here** (no Docker daemon in sandbox) — this is Part 2's single biggest unverified claim. |
+| 19–20 | Dedup: `crypto_assets`, evidence links, dedup keys, merge, confidence upgrade (source+binary=VERIFIED) | ✅ VERIFIED | 99 unified assets with `occurrence_count`, multi-`scanner_ids`, `libraries`; assets API live. |
+| 21–22 | Advanced policy: 10+ rules (PCI-DSS 4.0, NIST 800-131A, CNSA 2.0, FIPS 140-3, HIPAA), `systems` + scopes, timeline rules, citations | ✅ VERIFIED | **27 rules across 6 frameworks**; systems auto-created with `compliance_scopes`; CNSA effective dates parsed; policy results carry rule IDs/remediation. |
+| 23–24 | CBOM: CycloneDX 1.5 JSON **+ XML**, optional signing (JWS), API + dashboard buttons, evidence package | ✅ VERIFIED (XML/sign 🧪) | Live: valid CycloneDX **1.5** JSON, 14 components, serial number; export buttons in SPA; XML writer + HMAC signing implemented and unit-tested (signing gated by `CRYPTOSCAN_CBOM_SIGN`); evidence packs + `verify_pack.py` work. Spec says JWS — implementation is HMAC, a standards-conformance nit. |
+| — | Simple dependency tracking (which systems use which crypto) | ✅ VERIFIED | `system_assets` + `system_dependencies` tables populated; systems API shows linked scans/assets. |
 
-That last claim was NOT true until round 80, and the correction is the point of
-the round: one worker test failed on any run that did not happen to execute
-`services/api/tests/unit/test_auth_lifecycle.py` first in the same process, and
-the aggregate `make test` ordering hid it (7,618✓ reported, 7,617✓ + 1 failed
-measured per-service). The failure was not a test artifact — it was a real
-refusal path raising `UnboundExecutionError` out of `JobExecutor.execute()`. The
-same round fixed the durable-write loss it pointed at (§4.4/§4.8: scans on the
-supported SQLite default reported COMPLETED with `cbom_snapshots=0` and
-`monitor_events=0`). "No in-repo check is failing" is now verified in isolation
-as well as in aggregate: worker 612✓, api 1,743✓, remaining 49 suites + shared
-5,274✓.
+**Part 2 gaps vs spec:** container scan E2E proof (build image → scan → CVEs), JWS vs HMAC signing conformance, tree-sitter/Roslyn depth, live registry webhook.
 
-**2026-10-14 re-verification.** Blockers 1 and 2 were re-attempted with the
-current automation credential and remain hard-blocked: the session token is a
-GitHub App installation token (empty `X-OAuth-Scopes`) that reports
-`admin: true` on this repository but cannot push workflow files (rejected:
-*"without `workflows` permission"*) or set branch protection (403
-*Resource not accessible by integration*). In the same session the
-engineering gate was re-run at the current HEAD: its one in-repo fixable
-failure — a tenant-isolation violation where
-`GET /compliance/evidence/packs/{id}` bypassed the ORM tenant filter with a
-plain PK lookup — was fixed (`filtered_get`) and pinned by an adversarial
-cross-tenant test; the audit now reports 114 scoped tables, 0 violations.
-The refreshed evidence is in `docs/readiness-evidence/engineering-gate.json`
-and `bank-readiness.json`; the verdict stays an honest FAIL on the two
-credential/registry-blocked checks.
+---
 
-For the end-to-end plan from this state to production sign-off — every
-remaining phase with owners, commands and acceptance criteria — see
-[`docs/PRODUCTION-ROADMAP.md`](docs/PRODUCTION-ROADMAP.md).
+## 3. Part 3 (logic-3.md) — deliverable-by-deliverable
 
-For detailed database history and resolved versus open implementation gaps,
-see [`BACKEND-DATABASE-GAPS.md`](BACKEND-DATABASE-GAPS.md). For operational
-procedures, see [`docs/ops/production-checklist.md`](docs/ops/production-checklist.md)
-and [`docs/production-evidence.md`](docs/production-evidence.md).
+| Week | Spec deliverable | Status | Evidence |
+|---|---|---|---|
+| 25–26 | Network TLS scanner: active probing, cert chain validation, cert inventory, expiry alerts, OCSP/CRL, cipher parsing, endpoint discovery, **scheduled scanning**, cert usage tracking | 🟡 PARTIAL | ✅ VERIFIED offline: filesystem cert scan ingested 5 certs (subject/expiry/usage) into `certificates` + `certificate_usages`. 🧪 BUILT: TLS probe, cipher parsing, OCSP checker, chain validation, scheduler module, `network_scan_targets` table with frequencies — all behind `CRYPTOSCAN_TLS_LIVE=0` (safe default). **Not verified against a live TLS endpoint or timer here.** |
+| 27–28 | Runtime eBPF agent (spec: *optional — advanced*) | ❌ MISSING | No eBPF code anywhere. Acceptable per spec's own "optional" marker. |
+| 29–30 | AWS scanner: 6 services, multi-region, read-only IAM, compliance flags, ACM↔cert inventory | 🧪 BUILT | 3,213 LOC across aws/azure/gcp; IAM policy files + setup scripts + admin docs; multi-account/region support; live-gated (`CRYPTOSCAN_CLOUD_LIVE=0`). **Never run against real AWS here.** |
+| 31–32 | Azure + GCP scanners, multi-cloud unified view | 🧪 BUILT | Same codebase; Azure SP + GCP SA setup docs/scripts exist. Unverified live. |
+| 33–34 | Dependency graph: Neo4j, 8 node/9 rel model, population, **Istio/service-mesh discovery**, Cypher query library (blast radius, revenue-at-risk, compliance inheritance), **dashboard graph viz** | 🟡 PARTIAL | 🧪 BUILT: graph engine (2,248 LOC), `populate_graph.py`, `blast_radius_query.py`, Istio client + mesh poller, reachability router, fake-driver tests, `system_dependencies` populated even without Neo4j. ✅ Compose ships Neo4j w/ constraints init. ❌ Not exercised against a live Neo4j here; **no interactive graph visualization in the dashboard** (spec'd "click asset → highlights connected systems"). |
+| 35–36 | Business context: processes/owners tables, linkage, enrichment, Business Impact tab, **prioritization dashboard**, stakeholder-aware alerting | 🟡 PARTIAL | Tables + YAML config + seed scripts + `stage_business_enrich` + tested 651-LOC service all exist. Not seeded in the live DB (processes=0 rows during analysis); prioritization dashboard and stakeholder-aware alerting are thin/absent in the SPA. |
+| — | Drift v2.0 (configuration drift, not just code) | 🟡 PARTIAL | Config/IaC file scanning produces findings (config parser plugin), and cert/network re-scans update inventory, but there's no first-class "config drift" event class vs. code drift. |
 
-## 2026-10-17 — internal release-automation implementation update
+**Part 3 gaps vs spec:** eBPF (optional), graph visualization UI, prioritization dashboard, stakeholder alerting, any live-external verification (TLS endpoint, AWS/Azure/GCP, Neo4j), scheduled-scan proof.
 
-The CI coverage gap has a local implementation, not a new readiness approval:
-all 54 service/shared test roots are discovered automatically; frontend tests
-run before the build; a final `ci` check rejects failed/cancelled/skipped
-prerequisites; scanner safety, actual SQLite/PostgreSQL migration chains, and
-non-publishing image builds replace the three empty workflow placeholders.
-The migration lanes require executed, unskipped proof, not merely pytest exit 0.
-The production-config acceptance fixture was also brought into line with the
-current mandatory Redis, host, signing/API-key, metrics and Neo4j fields; it
-uses synthetic values, not deployment secrets.
+---
 
-All 56 existing dependency pins were retained and 37 missing test/provider and
-transitive pins added; CI installs with the lock as constraints. This is not a
-hash-verified lock or an immutable runtime image: the Dockerfile dependency
-install and registry signing/provenance remain release work. Secret scanning is
-still staged, and no branch-protection change or successful GitHub run has been
-observed. Local checks and explicit Docker/PostgreSQL/actionlint limitations are
-recorded in [release automation](docs/dev/release-automation.md) and the round
-ledger. Earlier dated readiness artifacts are unchanged and must not be read
-as qualifying these changes.
+## 4. README.md — claims vs. Months 1–9 reality
 
-## 2026-10-17 — static source-parser isolation implementation update
+The README sells the **full 15-month vision** ("IDEA #1" through Part 5). Measured against what logic-1/2/3 actually deliver:
 
-Both worker source-parser launch paths now enforce container mode in production
-and require a preloaded immutable scanner image. Development/test inline mode
-is retained and explicitly recorded as not isolated. The Docker command requests
-non-root/no-capabilities/no-new-privileges, no network, read-only input/root,
-hidden Git clone configuration and memory/CPU/PID/fd/tmpfs limits. The adapter
-validates a minimal bounded JSON protocol, checks runtime restrictions, verifies
-the source-binding marker, rejects source special files and enforces a separate
-whole-parser watchdog. The parent bounds all CLI I/O, rejects invalid/failed
-results, performs explicit failure cleanup and persists execution policy.
+| README claim | Reality (Parts 1–3 scope) |
+|---|---|
+| "AST-based parser (not regex) for 30+ languages" | **8–9 languages**, AST for Java/Python, AST-lite/regex for JS/TS/C#/Go/PHP/Ruby/Rust/Kotlin/config. Honest scope: ~9, not 30+ |
+| "Deterministic scanners, hashed evidence, YAML policy, drift, dashboard" | ✅ **Exactly true and live-verified — this is the README's most defensible claim** |
+| "Binary & container scanning: disassembly + fingerprinting, SBOM+CBOM correlation" | 🧪 container scanner built/tested; binary fingerprint DB present; "disassembly" is overstated; E2E unproven |
+| "Runtime network scanning: TLS handshake analysis, cert chains" | 🟡 built + offline-verified; live probing gated off |
+| "API & protocol scanning (REST/GraphQL/gRPC/SOAP, JWT validation)" | 🟡 JWT algorithms detected statically (HS256/RS256 seen live); no endpoint/protocol scanning engine |
+| "Cloud configuration scanning (AWS/Azure/GCP)" | 🧪 built/tested, never run live |
+| "OT/ICS/IoT scanning (Modbus, DNP3…)" | 🟡 Part 4 scope per specs; today it's a 443-LOC minimal scanner (don't evaluate it under Part 3) |
+| "Crypto dependency graph = flagship feature" | 🟡 engine + queries built; needs Neo4j + mesh data; no viz UI — the "flagship" isn't demoable end-to-end without setup |
+| "Policy never decided by AI" | ✅ structurally true — policy is YAML-only, AI layer absent from the codebase |
 
-**This is not closure of hostile-input or production readiness.** Local tests
-exercise contracts and harmless subprocesses, not a real Docker boundary. Docker
-is unavailable in this sandbox. The stock worker image lacks the CLI and the
-production private tmpfs staging is not daemon-visible. An operator-reviewed
-runtime, preloaded digest and same-canonical-path shared staging are deployment
-prerequisites; production now fails closed without them. No unrestricted host
-socket was mounted and no image was built/published/deployed. Clone, parent
-language discovery, other collectors and downstream stages remain credentialed
-worker operations outside this source-parser boundary. Custom container seccomp
-profile qualification, hostile-input/escape/resource tests, credential denial,
-daemon-loss/orphan cleanup and multi-architecture positive runtime evidence
-remain open. Details: [scanner isolation](docs/dev/scanner-isolation.md).
+**Recommendation:** add a "Current capabilities (Parts 1–2 shipped, Part 3 beta)" section to the README so buyers/users don't evaluate OT/PQC claims that are Part 4–5.
 
-Earlier readiness gate artifacts have not been regenerated and do not qualify
-this implementation. The current production decision remains unchanged.
+---
 
-## 2026-10-17 — notification delivery reliability implementation update
+## 5. What actually blocks production use (ranked)
 
-The manual drain now uses durable per-destination receipts (Alembic 0096), not
-a 2,000-event JSON registry that suppressed failed/air-gap sends and later
-replayed evicted successes. Event/destination/routing/receipt selection is
-tenant-exact, including the platform estate. Discovery and the feed filter
-before LIMIT; retries retain a minimal immutable envelope. Expiring atomic
-claims and token fencing protect ordinary concurrent drains, with no database
-transaction held during HTTP. Failed/skipped destinations remain retryable
-after persisted backoff, and successful peers are not resent.
+Regardless of feature percentages, these are the hard blockers / near-blockers for a production deployment of the Months 1–9 scope:
 
-The protocol is explicitly **at-least-once**, not exactly-once. Receivers must
-honour the stable Idempotency-Key to deduplicate an ACK followed by a sender/DB
-failure. Durable receipt/audit failure returns an unconfirmed operation, never
-a fabricated success. HMAC now covers the exact transmitted JSON bytes. The UI
-shows pending/unknown/unconfirmed states rather than treating an empty drain as
-proof of delivery. Fixed-literal SQLAlchemy tenant inserts were corrected with
-foreign/dynamic/runtime-override guard tests. A reproduced cached-ORM flush
-write/delete loophole is also closed: foreign/platform rows loaded before a
-tenant scope cannot bypass exact-owner checks through the identity map; expired
-instances and mixed-batch rollback are covered. Cached-read/session-reuse and
-all relationship/cascade policies are not thereby certified. Shared notification routing writes have explicit admin/CISO
-role enforcement.
+1. **CI = 0 bytes** (4 empty workflow files). Nothing prevents regressions from merging. *Fix cost: ~1 hour.*
+2. **Single-user auth**: one env-configured admin, hardcoded `["admin"]` role, in-memory lockout, no token revocation, no audit of *who* did what beyond a single operator string. For a compliance system, multi-user + RBAC + action audit trail is effectively mandatory.
+3. **Sync worker**: one scan at a time per process; no retry/visibility timeout story documented for the Redis queue. Fine at pilot scale, not at "500 repos + hourly network scans" scale (the README's own scenario).
+4. **Unverified live integrations**: email, GitHub round-trip, container E2E, TLS probing, all three clouds, Neo4j-backed graph. Each is built and tested with fakes — each needs one real-world burn-in.
+5. **Durability of the UI**: the working dashboard is a single 1,313-line file; the React tree is a facade. A UI regression has no test safety net (empty `src/tests`).
+6. **HA/ops story**: single API instance assumptions, no backup/restore runbook for evidence DB (a compliance record store!), Grafana dashboard JSON empty, K8s manifests cover only Neo4j.
+7. Minor but real: `/api/v1/findings?scan_id=` ignored; drift blind spot for new occurrences of existing weak algos; `poetry.lock` files empty (dependency pinning relies solely on root `requirements.txt` ranges, not locks — a supply-chain hygiene issue for a security product).
 
-Migration 0096 preserves observed successful destination audits and converts
-old whole-event registry IDs into **legacy_unknown** tombstones, not delivery
-claims. Lost registry/audit history cannot be reconstructed, unknown redrive is
-an operator decision, and receipt/scoped-routing-bearing downgrade is refused.
-Existing datasets require a reviewed migration/handoff, not create_all or mixed
-old/new drains. No deployment migration or external receiver was run here.
+---
 
-This closes an internal reliability implementation gap only. Positive
-PostgreSQL runtime/migration evidence, real signed provider acknowledgement /
-ingestion / receiver deduplication, crash/lease/load qualification, retention
-and unknown-history redrive, SMTP and a scheduled notification worker remain
-OPEN. The readiness decision and earlier signed/external evidence categories
-are unchanged. See [notification delivery](docs/dev/notification-delivery.md).
+## 6. Bottom line
 
-## 2026-10-17 — opt-in notification scheduler implementation update
+- **If "production" means: one security team running source-code scans on their own repos, with SQLite/Postgres, reviewing findings, approving baselines, watching drift, exporting CBOMs** → you are **~85% there today** (Part 1 verified end-to-end; ship blockers #1/#2 and a Postgres + GitHub live run).
+- **If it means the full Months 1–9 promise (containers + network + cloud + graph + business context)** → **~60–65%**: every subsystem exists and passes tests, but Part 3 is gated, un-burned-in, and missing its flagship graph visualization — expect 2–4 weeks of integration hardening per subsystem (cloud, network, graph) plus the shared blockers above.
+- The specs' own acceptance tests ("modify code → drift detected", "DES → FAIL", "verify → PASS") **pass live** — that's the strongest signal this codebase is more than scaffolding. The gap to production is operational hardening, not feature construction.
 
-Round 85 closes the **automatic-drain implementation** gap from round 84 with a
-separate notification process and optional Compose profile, both off by default.
-The operator must explicitly select platform and/or registered active tenant
-UUIDs and a matching declared processing region for tenants. There is no
-automatic new-tenant enrollment. This is a declared-policy check, not proof of
-where infrastructure actually runs or universal residency enforcement.
+---
 
-Each estate gets a fresh session/context. Bounded round-robin ticks advance past
-busy/failed scopes, reuse durable per-destination leases/backoff/idempotency and
-do not run inside scan workers or the monitor loop. SIGTERM/SIGINT stop future
-sends at observed boundaries while finalizing an in-progress ACK; unsent claims
-recover by lease expiry. No hard DNS/HTTP deadline or exactly-once guarantee is
-introduced. Cursor fairness is process-local, not restart-durable. One-shot
-mode supports exactly one estate to prevent repeated cron prefix starvation.
+## 7. Addendum (2026-08-26, later the same day): all 6 blockers addressed
 
-Production requires PostgreSQL and the current migration head. The profile has
-no public port, Redis/Neo4j dependency or blanket API-secret inheritance. A
-metadata-only tick summary distinguishes blocked/failed/unconfirmed work and
-visited-scope pending/legacy-unknown counts; it is not global readiness or
-provider ingestion. Transport operational logs no longer repeat raw endpoints/
-exception text; HTTP client URL logs are quieted in this dedicated process.
-Controlled audit excerpts keep their existing access/retention obligations.
+Every item in §5 was implemented and verified in this session. Suite count went **23/23 → 23/23 with 410 → 438 tests**.
 
-Local SQLite/fake-HTTP and one-shot CLI smoke validation does **not** qualify
-PostgreSQL, an actual Compose/image deployment, process supervision, physical
-residency, receiver ingestion/deduplication, clock skew/crashes/load or customer
-field data. SMTP and unknown-history redrive/retention remain OPEN. No
-deployment, migration against a customer dataset or real outward delivery was
-performed. Existing external/signed readiness verdicts are unchanged. See
-[notification scheduler operations](docs/dev/notification-scheduler.md).
+| # | Blocker (§5) | What was built | Verified |
+|---|---|---|---|
+| 1 | CI = 0 bytes | 4 workflows: `ci.yml` (ruff + all 23 suites + seed/verify E2E smoke), `scanner-tests.yml` (suite matrix + polyglot detection assertions via new `scripts/polyglot_smoke.py`), `db-migration.yml` (Alembic up→table check→down on real Postgres 15 service), `docker-build.yml` (5 image builds + compose config validation). Also filled `alembic.ini`/`script.py.mako` so migrations actually run. | polyglot smoke ran live: 14 + 93 findings, PASS; ruff clean (49 auto-fixes + 1 real undefined-name bug fixed in `shared_models/finding.py`) |
+| 2 | Single-user auth | `users`/`user_sessions`/`audit_log` tables (migration 0019), DB-backed `AuthService` with first-boot bootstrap, PBKDF2 hashes, persistent lockout, server-side session store + revocation (enforced in middleware — logout kills the token), roles admin/auditor/viewer wired into trigger/baselines/drift mutations, user management + audit endpoints, `Authorization`-header-over-cookie fix | 15 new tests incl. full API lifecycle: login→use→logout→401; disable-user revokes sessions; viewer blocked from trigger (403) |
+| 3 | Sync worker | `WorkerPool` (thread pool, `MAX_CONCURRENT_JOBS`, backpressure semaphore, graceful drain on SIGTERM), SQLite engine switched to NullPool + `busy_timeout=5000` for multi-thread safety | 4 new concurrency tests (overlap, failure isolation, backpressure, graceful shutdown) |
+| 4 | 6 unverified integrations | `scripts/burn_in.py` harness with 6 targets + built-in SMTP sink. **First run found a real bug**: webhook scheduled the inline pipeline before the job INSERT committed → `database is locked` + job row lost. Fixed (commit-before-background-task). | Live: github **PASS** (HMAC-signed webhook → full pipeline → COMPLETED), tls **PASS** (live TLS 1.3 + cert vs github.com), smtp **PASS** (full RFC delivery to local sink); neo4j/cloud/container clean SKIP with reasons |
+| 5 | UI durability | Deleted the 68-file empty React facade + 8 empty poetry.locks; removed Google-Fonts CDN (air-gap); documented the SPA as the UI of record | 4 new SPA smoke tests (shell renders, no external origins, login flow, health) |
+| 6 | Ops story | `/metrics` Prometheus endpoint (13 gauges/counters from DB), real Grafana dashboard JSON, `backup_evidence.py`/`restore_evidence.py` (SHA-256 manifests, online snapshot, chain re-verify, staging swap + rotation) + `docs/admin-guide/backup-restore.md`, full `k8s/app/` manifests (API ×2, worker, configmap/secret/ingress, probes, non-root) | Live: `/metrics` serving real numbers; backup→manifest→restore→11 scans/313 evidence/1 user intact |
 
-## 2026-10-18 — read-only receipt diagnostics implementation update
+Bonus fixes shipped alongside: `/api/v1/findings?scan_id=` filter (was silently ignored), drift **weak-algorithm spread** detection (new MD5 occurrence now flagged HIGH), and the `Authorization`-header precedence bug.
 
-Round 86 closes the operator visibility gap: receipt backlog/history can be
-inspected without triggering another outward send. Admin/superadmin/CISO reads
-require exact tenant_id AND scope_key (platform is platform-only), returning
-state/time counts and bounded newest-created keyset pages. A safe SQL projection
-omits envelope/details, endpoint, raw error/response, lease token and delivery
-key; malformed/wrong-estate/filter cursors fail generically. Cursor contents
-are navigation, not authorization; estate predicates remain independent.
-
-The notification center distinguishes pending/expired/time-eligible/unknown
-from HTTP acknowledgement and unavailable from an observed zero. Filter/page
-changes hide stale rows and ignore old replies. Counts/pages are separate live
-observations, not frozen snapshots, global health or scheduler/ingestion proof.
-No enqueue, claim, retry, legacy reconciliation or deletion is performed by
-inspection. Existing audit-detail access/retention remains a separate surface.
-
-Migration 0097 adds an estate/created_at/id index only. Populated index-only
-rollback preserves receipts; the earlier data-bearing downgrade refusal is
-unchanged. Standard index construction can lock writes and summary aggregates
-still scale with an estate's ledger; these are not online/load qualifications.
-No deployment schema was migrated. See
-[receipt inspection](docs/dev/notification-inspection.md). SMTP, redrive/retention,
-scheduler liveness, real DB/provider/crash/load/customer evidence and earlier
-external readiness verdicts remain OPEN/unchanged.
-
-R86 dependency-audit follow-up: npm reports 8 existing development-toolchain
-advisories (3 moderate / 2 high / 3 critical). Production-only npm audit reports
-zero, not general security approval. Vite/Vitest-related major upgrades and
-source-map-js remediation remain an explicit hardening task; no blind force
-upgrade was used to manufacture a clean result.
-
-
-## Launch evidence workflow 5.1–5.3 (2026-10-22, Preview)
-
-[Launch handoff](docs/runbooks/launch-assurance-handoff.md) implements exact-estate
-independent assessment scope review, externally signed reports and finding/retest
-history; nine operating-duty assignments/acknowledgements/reviewed exercises; and
-one bounded payments pilot with technical/customer review and dynamic blockers.
-No assessor, actual operating people, completed site exercises or real customer
-acceptance are supplied by the implementation. Infrastructure certification does
-not certify the product; reviewed exercise assertions do not establish an SLA;
-feature demonstrations do not establish whole-bank visibility or acceptance.
-External procurement, testing/retests, site recovery/capacity/browser qualification
-and customer/legal sign-off remain OPEN. Existing local-source/v1 acquisition
-restrictions and earlier readiness verdicts are unchanged.
+**Updated readiness estimate:** Part 1 scope moves from ~85% → **~95% production-ready** (remaining: a real GitHub round-trip on an actual repo, Postgres cutover rehearsal, Neo4j/cloud burn-in with real credentials — all now one-command checks via `scripts/burn_in.py`).

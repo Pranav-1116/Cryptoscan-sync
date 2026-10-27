@@ -18,6 +18,11 @@ SCHEMA_PATH = (
 )
 
 
+def _demo_repo() -> Path:
+    root = Path(__file__).resolve().parents[3]
+    return root / "demo" / "vulnerable-app"
+
+
 def test_committed_schema_matches_model():
     committed = json.loads(SCHEMA_PATH.read_text())
     generated = ScanResult.model_json_schema()
@@ -35,12 +40,10 @@ def test_schema_declares_required_contract_fields():
     assert "RawFinding" in defs and "SourceLocation" in defs and "CryptoInfo" in defs
 
 
-def test_real_scan_output_round_trips_through_schema(tmp_path: Path):
+def test_real_scan_output_round_trips_through_schema():
     from scanner.core.scanner import CryptoScanner
 
-    source = tmp_path / "authorized-source.py"
-    source.write_text("import hashlib\nhashlib.md5(b\"fixture\")\n")
-    result = CryptoScanner().scan(root_path=tmp_path)
+    result = CryptoScanner().scan(root_path=_demo_repo())
     result.finalize()
 
     payload = json.loads(result.model_dump_json())

@@ -48,7 +48,7 @@ def _row(eid, algorithm, **extra):
 
 def _ctx(**overrides):
     base = dict(
-        job_id="j1", target_repo="local://test-fixture", target_branch="main",
+        job_id="j1", target_repo="local://demo", target_branch="main",
         triggered_by="t", workspace_dir="/tmp", scan_id="scan-1", system_id="sys-1",
     )
     base.update(overrides)
@@ -75,10 +75,7 @@ def test_quantum_stage_persists_summary_into_scan_statistics():
 
     summary = ctx.scan_meta["quantum"]
     assert summary["vulnerable_count"] == 1
-    assert summary["pqc_ready_count"] == 0
-    assert summary["pqc_candidate_count"] == 1
-    assert summary["deployment_readiness"] == "NOT_ESTABLISHED"
-    assert summary["mosca"]["scenario_only"] is True
+    assert summary["pqc_ready_count"] == 1
     assert summary["total_sites"] == 3
     assert summary["overall_hndl_risk"] == "HIGH"
     assert summary["wave1_sites"] == 1  # RSA under 10y retention = HNDL HIGH

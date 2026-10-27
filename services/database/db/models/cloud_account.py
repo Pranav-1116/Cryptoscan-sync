@@ -8,10 +8,9 @@ from sqlalchemy import Boolean, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class CloudAccount(BaseModel, TenantScoped):
+class CloudAccount(BaseModel):
     __tablename__ = "cloud_accounts"
 
     cloud_provider: Mapped[str] = mapped_column(String(20), nullable=False)

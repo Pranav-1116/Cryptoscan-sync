@@ -1,13 +1,5 @@
 # Production deploy
 
-> **Current supported-profile boundary — 2026-10-22:** use the
-> [operator install/upgrade/recover runbook](../runbooks/operator-install-upgrade-recover.md)
-> for the controlled **local-source/v1** package, external PostgreSQL/TLS Redis,
-> parser isolation and migration **0105**. The Compose commands below are retained
-> legacy/development deployment patterns, not a newly approved production topology.
-> Do not enable Neo4j, live collectors or plaintext Redis to make old examples boot.
-> See [current implementation status](../CURRENT-IMPLEMENTATION-STATUS.md).
-
 Use this on a **dedicated host**. Do not run the production overlay on a laptop that already binds `:80`, `:5432`, `:6379`, or `:7687`.
 
 ## 1. Secrets
@@ -24,37 +16,10 @@ Set strong `POSTGRES_PASSWORD` and `NEO4J_PASSWORD`. Leave `ADMIN_PASSWORD` empt
 
 The API and worker refuse to start if demo secrets, SQLite, or `CORS_ORIGINS=*` are still present.
 
-## 2. Required Redis transport and coordinated upgrade
-
-Before executing the launch commands, provision a verified TLS Redis service
-and named non-default ACL account. Set `REDIS_URL=rediss://...`, mount the approved
-CA bundle in the API and set `REDIS_CA_CERTS` to that container path. Do not use
-placeholder secrets or disable certificate/hostname checks. Edge nginx HTTPS
-does not configure Redis TLS, and the Compose Redis template alone does not
-satisfy this requirement.
-
-Optional Sentinel requires three distinct TLS discovery host/port pairs,
-`REDIS_SENTINEL_MASTER`, `REDIS_SENTINEL_USERNAME` and
-`REDIS_SENTINEL_PASSWORD`. Discovered data endpoints also need valid certificate
-SANs. The factory covers realtime/current-run state only; independently review
-queue, rate-limit and health clients and their ACL/CA options.
-
-Production readiness exercises scratch journal writes/replay/cleanup, including
-INCRBY, WATCH/MULTI, XADD and INFO for primary-bound snapshots. PING-only or
-read-only ACLs cannot prove readiness. A required failure is not local fallback.
-
-Coordinate producer/worker rollout: persisted authority pins are mandatory for
-new queued work; approved legacy unpinned jobs must be resubmitted. Recovered
-RUNNING deliveries cannot bypass the QUEUED-only claim. Follow
-[upgrade/recovery](../runbooks/execution-and-replay-upgrade.md) and
-[TLS/Sentinel qualification](../bank-environment/45-redis-tls-sentinel-qualification.md).
-No production deployment is certified by these launch commands.
-
-## 2a. Start
+## 2. Start
 
 ```bash
-bash scripts/deploy_prod.sh -d           # plain HTTP edge on :80
-bash scripts/deploy_prod.sh --tls -d     # with the TLS overlay (certs in deploy/nginx/certs/)
+bash scripts/deploy_prod.sh -d
 ```
 
 Equivalent:
@@ -69,52 +34,15 @@ resolves on the Compose network from the base file. If the API logs
 
 Nginx listens on `${NGINX_PORT:-80}`. Postgres, Redis, and Neo4j are **not** published on the host.
 
-## 3. TLS (recommended)
-
-Terminate HTTPS at the nginx edge with `docker-compose.tls.yml`. Put
-`fullchain.pem` + `privkey.pem` in `deploy/nginx/certs/` (see the README there),
-then:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tls.yml up --build -d
-```
-
-`:80` becomes a 301 redirect; `:443` serves TLS 1.2/1.3 with HSTS. The header
-rules (rate limits, security headers, SSE-safe proxying) are identical to the
-plain-HTTP edge.
-
-## 4. Health
+## 3. Health
 
 - `GET /health` — process up
-- `GET /ready` — readiness probe; inspect dependency/federation state, not just process liveness
+- `GET /ready` — database reachable
 - `GET /api/v1/meta` — `environment=production`, `docs_enabled=false`
 
 OpenAPI (`/api/docs`) is off unless you set `DOCS_ENABLED=true`.
 
-## 5. Backups
-
-```bash
-bash scripts/db_backup.sh                 # postgres dump + sha256 manifest + retention
-bash scripts/db_backup.sh --with-neo4j    # also dump the graph (brief neo4j stop)
-bash scripts/db_restore.sh backups/db/pg-<ts>.dump   # verify checksum + restore
-```
-
-Schedule the first form nightly from cron/systemd and copy `backups/db/` off
-the host — details and the restore drill live in
-[`docs/runbooks/dr-recovery.md`](../runbooks/dr-recovery.md).
-
-## 6. CI
-
-GitHub Actions run on every PR and push to `main`:
-
-| Workflow | What proves |
-|---|---|
-| `ci.yml` | ruff, backend unit tests (15 core services), frontend typecheck + build, and that the production config guard **rejects** demo secrets and **accepts** a real configuration |
-| `scanner-tests.yml` | the five scanner suites, hard-offline (`CRYPTOSCAN_*_LIVE=0`), nightly too |
-| `db-migration.yml` | `alembic upgrade head` from empty on real PostgreSQL 15 + idempotency (also runnable locally: `deploy/staging/staging-up.sh up` then `make test-live`) |
-| `docker-build.yml` | all six runtime images build |
-
-## 7. What this overlay changes
+## 4. What this overlay changes
 
 | Item | Development compose | Production overlay |
 |---|---|---|

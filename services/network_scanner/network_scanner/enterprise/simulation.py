@@ -13,7 +13,7 @@ profile or TLS policy affects exactly the paths the graph says it affects.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Iterable
 
 from network_scanner.enterprise.topology import NetworkGraph
 

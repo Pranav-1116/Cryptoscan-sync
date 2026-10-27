@@ -8,8 +8,8 @@ environments expose incomplete or duplicated identifiers).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Any, Optional
 
 from universal_vendor.hardware.models import (
     HardwareConfidence,

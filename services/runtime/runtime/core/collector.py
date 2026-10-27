@@ -8,16 +8,9 @@ attached (key sizes, DISALLOWED suites, quantum impact).
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
-try:  # the platform's shared algorithm registry ships richer verdicts; the
-    # agent must still run standalone on a laptop without the full repo on
-    # PYTHONPATH, so fall back to a minimal stdlib-only parser.
-    from shared_models.algorithm_registry import parse_algorithm
-except ImportError:  # pragma: no cover - exercised only outside the platform
-    def parse_algorithm(name: str) -> Any:
-        return SimpleNamespace(canonical=name or "TLS", components=[])
+from shared_models.algorithm_registry import parse_algorithm
 
 WEAK_TLS_VERSIONS = {"SSLv3", "TLSv1.0", "TLSv1.1", "TLSv1", "SSLv2"}
 WEAK_SUITE_STATUSES = {"DISALLOWED", "DEPRECATED"}
@@ -68,86 +61,29 @@ def sessions_to_findings(sessions: list[dict[str, Any]], *, scanner_id: str = "t
 
 
 def processes_to_findings(process_scan: dict[str, Any]) -> list[dict[str, Any]]:
-    """Process scan -> runtime findings.
-
-    Emits one observation per unique (process, library, resolved version),
-    covering risk verdicts (DEPRECATED/DISALLOWED/RESTRICTED), healthy current
-    libraries (ALLOWED) and UNKNOWN unmanaged copies. The backend sets
-    ``weak_tls`` from the status, so a fully-patched estate shows up in the
-    dashboard as current inventory rather than a blank host. De-dup is by
-    (host, process, library, version, status) because every Chromium/Firefox
-    child maps the same library dozens of times.
-    """
-    host = process_scan.get("host")
+    """Library-risk findings from a process scan -> runtime findings."""
     findings: list[dict[str, Any]] = []
-    seen: set[tuple] = set()
-
-    # Prefer the enriched per-process inventory (full ALLOWED/UNKNOWN/risk
-    # picture). Fall back to the legacy risk-only "findings" list for callers
-    # that build the payload by hand.
-    processes = process_scan.get("processes")
-    if not processes and process_scan.get("findings"):
-        for row in process_scan["findings"]:
-            findings.append(
-                {
-                    "process_name": row.get("process_name") or "process",
-                    "pid": row.get("pid"),
-                    "hostname": host,
-                    "algorithm": "TLS",
-                    "observation_count": 1,
-                    "extra": {
-                        "source": "process-discovery-v1.0",
-                        "kind": "tls-library-risk",
-                        "library": row.get("library"),
-                        "library_version": row.get("version"),
-                        "version_source": row.get("version_source"),
-                        "package": row.get("package"),
-                        "package_version": row.get("package_version"),
-                        "library_status": row.get("status"),
-                        "library_notes": row.get("notes"),
-                        "library_name": row.get("library_name"),
-                        "listening_ports": row.get("listening_ports") or [],
-                        "containerized": row.get("containerized"),
-                    },
-                }
-            )
-        return findings
-
-    for proc in processes or []:
-        comm = proc.get("process_name") or "process"
-        pid = proc.get("pid")
-        ports = proc.get("listening_ports") or []
-        containerized = proc.get("containerized")
-        for lib in proc.get("library_details") or []:
-            status = lib.get("status") or "UNKNOWN"
-            version = lib.get("version")
-            dedup = (host, comm, lib.get("library"), version, status)
-            if dedup in seen:
-                continue
-            seen.add(dedup)
-            findings.append(
-                {
-                    "process_name": comm,
-                    "pid": pid,
-                    "hostname": host,
-                    "algorithm": "TLS",
-                    "observation_count": 1,
-                    "extra": {
-                        "source": "process-discovery-v1.0",
-                        "kind": "tls-library-risk",
-                        "library": lib.get("library"),
-                        "library_version": version,
-                        "version_source": lib.get("version_source"),
-                        "package": lib.get("package"),
-                        "package_version": lib.get("package_version"),
-                        "library_status": status,
-                        "library_notes": lib.get("notes"),
-                        "library_name": lib.get("library_name"),
-                        "listening_ports": ports,
-                        "containerized": containerized,
-                    },
-                }
-            )
+    for row in process_scan.get("findings") or []:
+        findings.append(
+            {
+                "process_name": row.get("process_name") or "process",
+                "pid": row.get("pid"),
+                "hostname": process_scan.get("host"),
+                "algorithm": "TLS",
+                "observation_count": 1,
+                "extra": {
+                    "source": "process-discovery-v1.0",
+                    "kind": "tls-library-risk",
+                    "library": row.get("library"),
+                    "library_version": row.get("version"),
+                    "library_status": row.get("status"),
+                    "library_notes": row.get("notes"),
+                    "library_name": row.get("library_name"),
+                    "listening_ports": row.get("listening_ports") or [],
+                    "containerized": row.get("containerized"),
+                },
+            }
+        )
     return findings
 
 
@@ -177,11 +113,6 @@ def collect(*, sessions: list[dict[str, Any]] | None = None, process_scan: dict[
 
     weak_suites = [f for f in session_findings if (f.get("extra") or {}).get("suite_status") in WEAK_SUITE_STATUSES]
     weak_versions = [f for f in session_findings if (f.get("extra") or {}).get("weak_tls_version")]
-    risky_libs = [
-        f for f in process_findings
-        if (f.get("extra") or {}).get("library_status") in WEAK_SUITE_STATUSES
-    ]
-    allowed_libs = [f for f in process_findings if (f.get("extra") or {}).get("library_status") == "ALLOWED"]
     return {
         "scanner_id": scanner_id,
         "findings": session_findings + process_findings,
@@ -191,7 +122,6 @@ def collect(*, sessions: list[dict[str, Any]] | None = None, process_scan: dict[
             "process_findings": len(process_findings),
             "weak_cipher_suites": len(weak_suites),
             "weak_tls_versions": len(weak_versions),
-            "risky_libraries": len(risky_libs),
-            "current_libraries": len(allowed_libs),
+            "risky_libraries": len(process_findings),
         },
     }

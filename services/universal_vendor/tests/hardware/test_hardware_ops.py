@@ -7,6 +7,7 @@ import pytest
 
 from universal_vendor.hardware.models import (
     HardwareObservation,
+    HardwareType,
 )
 
 

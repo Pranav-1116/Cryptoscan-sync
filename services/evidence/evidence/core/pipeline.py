@@ -12,7 +12,6 @@ from evidence.hashing.chain_hasher import ChainHasher
 from evidence.hashing.content_hasher import ContentHasher
 from evidence.models.evidence_record import EvidenceRecord
 from evidence.models.scan_manifest import ScanManifest
-from shared_models.safe_finding import safe_finding
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +20,6 @@ class EvidencePipeline:
     def __init__(self, scan_session_id: str | None = None):
         self.scan_session_id = scan_session_id or str(uuid.uuid4())
         self.evidence_records: list[EvidenceRecord] = []
-        # How many byte-identical findings the last process_findings() call
-        # collapsed. Surfaced so a detector that starts double-reporting is
-        # visible rather than silently inflating the counts.
-        self.duplicates_collapsed: int = 0
 
     def process(
         self,
@@ -53,51 +48,21 @@ class EvidencePipeline:
     def process_findings(self, findings: list[Any]) -> list[EvidenceRecord]:
         normalized: list[dict[str, Any]] = []
         for finding in findings:
-            data = finding.model_dump(mode="json") if hasattr(finding, "model_dump") else finding
-            normalized.append(safe_finding(data))
+            if hasattr(finding, "model_dump"):
+                normalized.append(finding.model_dump(mode="json"))
+            elif isinstance(finding, dict):
+                normalized.append(finding)
+            else:
+                normalized.append({"raw": str(finding)})
 
-        # IDs are detector-provided and not necessarily unique (for example,
-        # passive OT observations may share a host/protocol). Hash each payload
-        # before content deduplication rather than indexing by finding_id.
-        hashed = [(finding, ContentHasher.compute_hash(finding)) for finding in normalized]
-
-        # Collapse findings that are byte-identical after canonicalization.
-        #
-        # The AST and regex detection paths can both report the same crypto
-        # use on the same line, and each emitted its own evidence record.
-        # content_hash excludes evidence_id, finding_id, created_at and
-        # scan_timestamp (CanonicalSerializer.EXCLUDED_FIELDS), so two such
-        # findings hash identically -- the duplicate is the *same observed
-        # fact* recorded twice, not two findings that happen to look alike.
-        #
-        # It has to happen here, before chain_position is assigned. The
-        # evidence table is a contiguous append-only hash chain, so the
-        # alternative fix -- a unique index on (scan_id, content_hash) --
-        # would be wrong twice over: it aborts a load mid-chain, and an
-        # already-stored duplicate cannot be deleted afterwards without
-        # breaking the previous_hash links it sits between. Dropping the
-        # repeat before the chain is built keeps positions gapless and the
-        # chain verifiable from genesis.
-        #
-        # The inflated count was not cosmetic: it reached finding totals,
-        # compliance percentages and CBOM component counts -- the numbers a
-        # bank reads. Duplicates are counted and logged rather than dropped
-        # silently, so a detector that starts double-reporting is visible.
-        deduped: list[tuple[dict[str, Any], str]] = []
-        seen_hashes: set[str] = set()
-        for finding, chash in hashed:
-            if chash in seen_hashes:
-                continue
-            seen_hashes.add(chash)
-            deduped.append((finding, chash))
-        duplicates_collapsed = len(normalized) - len(deduped)
-
+        content_hashes = ContentHasher.compute_batch(normalized)
         records: list[EvidenceRecord] = []
-        for position, (finding, chash) in enumerate(deduped):
+        for position, finding in enumerate(normalized):
+            finding_id = finding.get("finding_id") or str(uuid.uuid4())
             record = EvidenceRecord(
                 evidence_id=str(uuid.uuid4()),
                 scan_id=self.scan_session_id,
-                content_hash=chash,
+                content_hash=content_hashes[finding_id],
                 chain_position=position,
                 finding=finding,
                 created_at=datetime.now(timezone.utc).isoformat(),
@@ -113,17 +78,6 @@ class EvidencePipeline:
             previous = chain_hashes[i]
 
         self.evidence_records = records
-        self.duplicates_collapsed = duplicates_collapsed
-        if duplicates_collapsed:
-            logger.info(
-                "evidence_duplicates_collapsed",
-                extra={
-                    "scan_id": self.scan_session_id,
-                    "submitted": len(normalized),
-                    "stored": len(records),
-                    "collapsed": duplicates_collapsed,
-                },
-            )
         logger.info("evidence_records_created", extra={"count": len(records)})
         return records
 

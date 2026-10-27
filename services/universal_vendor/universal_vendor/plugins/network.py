@@ -12,15 +12,17 @@ from typing import Any
 
 from universal_vendor.models import (
     AssetType,
+    ConnectionResult,
     CryptoType,
     UniversalObservation,
     VendorCategory,
     Visibility,
 )
-from universal_vendor.plugin import scrub_secrets
+from universal_vendor.plugin import UniversalVendorPlugin, scrub_secrets
 from universal_vendor.plugins._helpers import (
     BannerPluginBase,
     extract_algorithms,
+    parse_kv_lines,
 )
 
 try:  # reuse the real Cisco running-config parser when available

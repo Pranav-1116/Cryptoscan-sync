@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from network_scanner.enterprise.vendors.base import NetworkVendorPlugin, register_plugin
-from network_scanner.enterprise.vendors.snmp import snmp_discover, vendor_from_sys_object_id
+from network_scanner.enterprise.vendors.snmp import SnmpClient, SnmpError, snmp_discover, vendor_from_sys_object_id
 
 
 class GenericSNMPPlugin(NetworkVendorPlugin):
@@ -113,7 +113,7 @@ register_plugin(GenericSNMPPlugin)
 _IF_TYPE_NAMES = {
     1: "ETHERNET", 6: "ETHERNET", 23: "PPP", 24: "SOFTWARE_LOOPBACK",
     53: "PROP_VIRTUAL", 131: "TUNNEL", 135: "L2VLAN", 161: "IEEE80211",
-    117: "GRE", 150: "MPLS_TUNNEL",
+    117: "GRE", 131: "TUNNEL", 150: "MPLS_TUNNEL",
 }
 
 

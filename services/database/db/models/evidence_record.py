@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, Index
+from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class EvidenceRecord(BaseModel, TenantScoped):
+class EvidenceRecord(BaseModel):
     __tablename__ = "evidence_records"
     __table_args__ = (
         Index("ix_evidence_scan_chain", "scan_id", "chain_position"),
@@ -44,17 +43,6 @@ class EvidenceRecord(BaseModel, TenantScoped):
     normalized_crypto: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     policy_evaluation: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     compliance_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
-
-    # Soft-delete tombstone (migration 0075, audits 15/16): NULL = alive.
-    # Consumption surfaces filter on deleted_at; chain verification and
-    # exports do NOT — a tombstone stays in the hash chain it committed to,
-    # which is the entire point (retracting a finding must never break the
-    # integrity of the scan that recorded it).
-    deleted_at: Mapped[Optional[object]] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True
-    )
-    deleted_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    delete_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     scan = relationship("Scan", back_populates="evidence_records")
 

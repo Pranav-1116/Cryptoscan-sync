@@ -12,6 +12,7 @@ from universal_vendor.live.credentials import (
     strip_credentials,
 )
 from universal_vendor.live.events import (
+    ChangeType,
     EventType,
     UniversalVendorEvent,
 )

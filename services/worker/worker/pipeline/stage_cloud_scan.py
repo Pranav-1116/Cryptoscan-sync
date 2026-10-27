@@ -13,7 +13,6 @@ import os
 from pathlib import Path
 
 from worker.pipeline.pipeline_runner import PipelineContext
-from worker.pipeline.public_failure import log_job_failure, public_cloud_telemetry, public_count
 
 logger = logging.getLogger(__name__)
 
@@ -40,19 +39,8 @@ def _run_live(ctx: PipelineContext) -> dict:
     return result
 
 
-def _safe_providers(value: object) -> list[str]:
-    """Only known provider names belong in stage metadata or log extras."""
-    if not isinstance(value, list):
-        return []
-    return sorted({provider for provider in value if type(provider) is str and provider in {"AWS", "AZURE", "GCP"}})
-
-
-def _safe_live_scan(value: object) -> dict | None:
-    return public_cloud_telemetry(value) if isinstance(value, dict) else None
-
-
 def execute(ctx: PipelineContext) -> PipelineContext:
-    from cloud_scanner.estate import parse_cloud_target, should_run_cloud_job
+    from cloud_scanner.estate import should_run_cloud_job
 
     if should_run_cloud_job(
         {"job_type": getattr(ctx, "job_type", "") or "", "target_repo": ctx.target_repo}
@@ -60,21 +48,19 @@ def execute(ctx: PipelineContext) -> PipelineContext:
         try:
             result = _run_live(ctx)
         except Exception as exc:
-            log_job_failure(logger, "stage_cloud_scan_live_failed", exc, job_id=ctx.job_id, stage="cloud_scan")
-            provider, _account = parse_cloud_target(ctx.target_repo)
+            logger.warning("stage_cloud_scan_live_failed: %s", exc)
             ctx.cloud_result = {"live": True, "findings": [], "resources": 0, "issues": 0}
             ctx.scan_meta = dict(ctx.scan_meta or {})
             ctx.scan_meta["cloud"] = {
                 "resources": 0,
                 "issues": 0,
                 "providers": [],
-                "provider": provider.upper() if provider in {"aws", "azure", "gcp"} else "unknown",
                 "live": True,
                 "live_scan": {
                     "enabled": True,
                     "status": "FAILED",
                     "resources_scanned": 0,
-                    "errors": [{"error": "Cloud provider call failed"}],
+                    "errors": [{"provider": "unknown", "service": "stage", "region": "global", "code": type(exc).__name__, "error": str(exc)[:300]}],
                     "truncations": [],
                     "error_count": 1,
                     "truncation_count": 0,
@@ -84,17 +70,16 @@ def execute(ctx: PipelineContext) -> PipelineContext:
         ctx.cloud_result = result
         ctx.findings.extend(result.get("findings") or [])
         ctx.scan_meta = dict(ctx.scan_meta or {})
-        safe_scan = _safe_live_scan(result.get("live_scan"))
         ctx.scan_meta["cloud"] = {
-            "resources": public_count(result.get("resources")),
-            "issues": public_count(result.get("issues")),
-            "providers": _safe_providers(result.get("providers")),
+            "resources": result.get("resources") or 0,
+            "issues": result.get("issues") or 0,
+            "providers": result.get("providers") or [],
             "live": True,
-            "live_scan": safe_scan,
+            "live_scan": result.get("live_scan") or None,
         }
         logger.info(
             "stage_cloud_scan_live_done",
-            extra={"status": safe_scan["status"] if safe_scan else "UNKNOWN"},
+            extra={"status": (result.get("live_scan") or {}).get("status", "UNKNOWN")},
         )
         return ctx
 
@@ -111,11 +96,11 @@ def execute(ctx: PipelineContext) -> PipelineContext:
     ctx.findings.extend(result.get("findings") or [])
     ctx.scan_meta = dict(ctx.scan_meta or {})
     ctx.scan_meta["cloud"] = {
-        "resources": public_count(result.get("resources")),
-        "issues": public_count(result.get("issues")),
-        "providers": _safe_providers(result.get("providers")),
+        "resources": result.get("resources") or 0,
+        "issues": result.get("issues") or 0,
+        "providers": result.get("providers") or [],
         "live": bool(result.get("live")),
-        "live_scan": _safe_live_scan(result.get("live_scan")),
+        "live_scan": result.get("live_scan"),
     }
     logger.info("stage_cloud_scan_done", extra=ctx.scan_meta["cloud"])
     return ctx

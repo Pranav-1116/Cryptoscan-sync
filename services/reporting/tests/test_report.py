@@ -3,7 +3,7 @@ from reporting.compliance_report import render_html, render_json
 
 def test_report_json_and_html():
     report = render_json(
-        scan={"target_location": "local://test-fixture"},
+        scan={"target_location": "local://demo"},
         findings=[
             {
                 "compliance_status": "FAIL",

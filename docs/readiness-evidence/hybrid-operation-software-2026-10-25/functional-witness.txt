@@ -1,4 +1,0 @@
-Actual owned TCP hybrid: X25519MLKEM768 OpenSSL 4.0.3 29 Sep 2026
-Actual software operation signatures and two public logs: True True
-Actual dpkg database / dpkg-query record match: 283 MATCHED_AGREED_PACKAGE_RECORD_SET bytes 266494
-Source-lock: 104 files; native Windows/container/HSM NOT qualified

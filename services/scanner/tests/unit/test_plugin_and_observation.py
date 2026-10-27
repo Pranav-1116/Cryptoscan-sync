@@ -29,7 +29,6 @@ def test_source_plugins_are_registered():
         "static-rust-scanner",
         "static-kotlin-scanner",
         "static-config-scanner",
-        "static-c-scanner",
     }
 
 

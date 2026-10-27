@@ -1,7 +1,0 @@
-host-manifest-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline 838be60086eda2ec7aec2d790bf742244a6c6965; all old fact shapes/defaults unchanged
-host-snapshot-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline 838be60086eda2ec7aec2d790bf742244a6c6965; all old fact shapes/defaults unchanged
-collection-target-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline 838be60086eda2ec7aec2d790bf742244a6c6965; all old fact shapes/defaults unchanged
-collection-evidence-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline 838be60086eda2ec7aec2d790bf742244a6c6965; all old fact shapes/defaults unchanged
-native-evidence-v1: schema/model/Draft2020-12 PASS; removing only OCI input/fact union/definitions exactly reproduces baseline 838be60086eda2ec7aec2d790bf742244a6c6965; all old fact shapes/defaults unchanged
-Source-lock inclusion PASS: 89 files; no signature, admission or measured-execution approval generated.
-Production allowlist: unchanged relative to baseline (verified separately by git diff); container is still not supported.

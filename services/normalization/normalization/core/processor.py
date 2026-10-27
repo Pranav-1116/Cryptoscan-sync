@@ -11,40 +11,12 @@ from typing import Optional
 
 from normalization.enrichers.cbom_enricher import CbomEnricher
 from normalization.enrichers.family_enricher import FamilyEnricher
-from normalization.enrichers.quantum_enricher import QuantumEnricher
 from normalization.enrichers.iana_enricher import IanaEnricher
 from normalization.enrichers.nist_enricher import NistEnricher
 from normalization.matchers.exact_matcher import ExactMatcher
-from normalization.matchers.alias_canonicalizer import canonicalize
 from normalization.matchers.fallback_handler import FallbackHandler
 from normalization.matchers.pattern_matcher import PatternMatcher
 from normalization.core.registry_bridge import resolve_key_size
-
-#: §4.3 cross-scanner equivalence (round 55): families whose sized
-#: convention is ALGORITHM-SIZE. A scanner that reports the bare family
-#: plus a measured size (network prober: "RSA" + 2048) must land on the
-#: same standard name as the sized spelling ("RSA-2048"), not stay "RSA".
-_SIZED_FAMILIES = {"AES", "RSA", "DSA", "DH", "DES", "DESEDE", "3DES"}
-
-
-def _standard_name_from_size(output: dict) -> None:
-    """Rebuild a bare standard name once the key size is resolved.
-
-    Only fires when the matched rule left standard_name equal to the bare
-    algorithm (no richer convention like "SHA-256" or "P-256" to preserve)
-    and the family uses the ALGORITHM-SIZE convention.
-    """
-    algorithm = output.get("algorithm")
-    if (
-        algorithm in _SIZED_FAMILIES
-        and output.get("standard_name") in (None, "", algorithm)
-        and output.get("key_size") is not None
-    ):
-        name = f"{algorithm}-{int(output['key_size'])}"
-        mode = output.get("mode")
-        if mode and str(mode).upper() not in str(algorithm).upper():
-            name = f"{name}-{str(mode).upper()}"
-        output["standard_name"] = name
 from normalization.models.normalization_rule import NormalizationRule
 from normalization.models.normalized_crypto import NormalizedCrypto
 from normalization.rules.rule_registry import RuleRegistry
@@ -73,7 +45,6 @@ class NormalizationProcessor:
         self._iana_enricher = IanaEnricher()
         self._cbom_enricher = CbomEnricher()
         self._family_enricher = FamilyEnricher()
-        self._quantum_enricher = QuantumEnricher()
 
     def process(
         self,
@@ -111,28 +82,10 @@ class NormalizationProcessor:
         confidence = "HIGH"
         parse_mode: str = "exact"
 
-        # ── Step 1b: Alias rescue (report 53's collision catalogue) ────
-        # Only consulted when the raw string did not exact-match, so every
-        # working path is untouched: AES256/AES_256 -> AES-256,
-        # secp256r1/prime256v1 -> P-256, HMACSHA256 -> HMAC-SHA256,
-        # lowercase spellings retried uppercased. The string that produced
-        # the match (raw or canonical) drives pattern matching and key-size
-        # extraction downstream.
-        match_input = raw_stripped
-        if matched_rule is None:
-            canonical = canonicalize(raw_stripped)
-            if canonical != raw_stripped:
-                match_input = canonical
-                aliased_hit = self._exact_matcher.match(canonical)
-                if isinstance(aliased_hit, NormalizationRule):
-                    matched_rule = aliased_hit
-                    confidence = "HIGH"
-                    parse_mode = "exact-alias"
-
         # ── Step 2: Pattern match (compound strings) ──────────────────
         pattern_hit = None
         if matched_rule is None:
-            pattern_hit = self._pattern_matcher.match(match_input)
+            pattern_hit = self._pattern_matcher.match(raw_stripped)
             if isinstance(pattern_hit, NormalizationRule):
                 matched_rule = pattern_hit
                 confidence = "MEDIUM"
@@ -164,17 +117,8 @@ class NormalizationProcessor:
         if isinstance(pattern_hit, NormalizedCrypto) and matched_rule is None:
             normalized = pattern_hit
             normalized.key_size = resolve_key_size(
-                normalized.key_size, match_input, key_size
+                normalized.key_size, raw_stripped, key_size
             )
-            if (
-                normalized.algorithm in _SIZED_FAMILIES
-                and normalized.standard_name in (None, "", normalized.algorithm)
-                and normalized.key_size is not None
-            ):
-                _name = f"{normalized.algorithm}-{int(normalized.key_size)}"
-                if normalized.mode and str(normalized.mode).upper() not in str(normalized.algorithm).upper():
-                    _name = f"{_name}-{str(normalized.mode).upper()}"
-                normalized.standard_name = _name
             if mode is not None and not normalized.mode:
                 normalized.mode = str(mode).upper()
             if padding is not None and not normalized.padding:
@@ -188,9 +132,8 @@ class NormalizationProcessor:
         else:
             output = matched_rule.normalized_output.copy()
             output["key_size"] = resolve_key_size(
-                output.get("key_size"), match_input, key_size
+                output.get("key_size"), raw_stripped, key_size
             )
-            _standard_name_from_size(output)
             if mode is not None and not output.get("mode"):
                 output["mode"] = str(mode).upper()
             if padding is not None and not output.get("padding"):
@@ -224,7 +167,6 @@ class NormalizationProcessor:
         normalized = self._iana_enricher.enrich(normalized)
         normalized = self._cbom_enricher.enrich(normalized)
         normalized = self._family_enricher.enrich(normalized)
-        normalized = self._quantum_enricher.enrich(normalized)
 
         logger.debug(
             "Normalization complete",

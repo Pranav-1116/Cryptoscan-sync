@@ -44,47 +44,12 @@ services:
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
 
-  migrate:
-    build:
-      context: .
-      dockerfile: .docker/api/Dockerfile
-    environment:
-      ENVIRONMENT: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
-    command:
-      - alembic
-      - -c
-      - services/database/migrations/alembic.ini
-      - upgrade
-      - head
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-    security_opt: !override
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    networks: [cryptoscan-net]
-
   api:
-    ports: !reset []
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: INFO
-      # §4.8 round 70: the nginx edge is the ONE trusted proxy hop — the
-      # API honors X-Forwarded-For only as the outermost trusted entry
-      # (never the first, client-controlled one). The API service exposes
-      # no ports of its own, so the socket peer is always nginx here;
-      # tighten further with TRUSTED_PROXY_CIDRS if the network shape allows.
-      TRUSTED_PROXY_COUNT: "1"
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to an explicit origin list}
-      METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN for Prometheus /metrics scraping}
-      TRUSTED_HOSTS: ${TRUSTED_HOSTS:?set TRUSTED_HOSTS as a JSON host list}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -93,135 +58,49 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       ALLOW_SQLITE: "false"
       ALLOW_INSECURE_CORS: "false"
-      # Event stream (r29): CBOM signing secret is REQUIRED in production.
-      CBOM_SIGNING_SECRET: ${CBOM_SIGNING_SECRET:?set CBOM_SIGNING_SECRET}
-      # Signed registry webhooks: REQUIRED in production — unsigned events
-      # are rejected 401; a wrong signature is always 401 (fail-closed).
-      REGISTRY_WEBHOOK_SECRET: ${REGISTRY_WEBHOOK_SECRET:?set REGISTRY_WEBHOOK_SECRET}
-      # Stream HMAC secret (event bus / replication / PITR verification).
-      STREAM_SECRET: ${STREAM_SECRET:?set STREAM_SECRET}
-      # Auditor API: production auditor access to /compliance/audit/* is
-      # fail-closed 401 WITHOUT this key.
-      AUDITOR_API_KEY: ${AUDITOR_API_KEY:?set AUDITOR_API_KEY}
-      # Platform self-observability: W3C trace-context + Prometheus on every
-      # request; set OTEL_EXPORTER_OTLP_ENDPOINT for OTLP/JSON export too.
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
       REDIS_URL: redis://redis:6379/0
-      WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
-      CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
-      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
-      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
-    volumes:
-      - telecom_data:/var/lib/cryptoscan/telecom
-      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
     command:
       - uvicorn
       - api.main:app
       - --host
       - 0.0.0.0
       - --port
-      - "8010"
+      - "8000"
       - --proxy-headers
       - --forwarded-allow-ips
       - "*"
       - --workers
       - "2"
-      # The structured http_request logger (LoggingMiddleware) records
-      # method/path/status/duration/request_id/trace_id/span_id for every
-      # request — uvicorn's access log is a redundant second line per request
-      # and measurably adds ~12% to sequential latency.
-      - --no-access-log
     logging: *json-log
     mem_limit: 1g
-    security_opt: !override
+    security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-    tmpfs:
-      - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
 
   worker:
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
     environment:
       ENVIRONMENT: production
-      # Fail closed until an operator provisions the separate parser runtime.
-      # This file deliberately does not mount a host Docker socket. The default
-      # private tmpfs workspace must also be replaced by a same-path shared
-      # staging mount; see docs/dev/scanner-isolation.md.
-      CRYPTOSCAN_STATIC_SCAN_MODE: container
-      CRYPTOSCAN_SCANNER_IMAGE: ${CRYPTOSCAN_SCANNER_IMAGE:-}
-      CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S: ${CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S:-600}
       LOG_LEVEL: INFO
       ALLOW_SQLITE: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
       REDIS_URL: redis://redis:6379/0
-      STREAM_SECRET: ${STREAM_SECRET:?set STREAM_SECRET}
-      WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
-      CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
-      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
     logging: *json-log
     mem_limit: 2g
-    security_opt: !override
+    security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-    tmpfs:
-      - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
 
-  notifications:
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      ENVIRONMENT: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+  dashboard:
     logging: *json-log
-    mem_limit: 256m
-    security_opt: !override
+    mem_limit: 64m
+    security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-
-  monitor:
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      STREAM_SECRET: ${STREAM_SECRET:?set STREAM_SECRET}
-      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
-      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
-    volumes:
-      - telecom_data:/var/lib/cryptoscan/telecom
-      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
-    logging: *json-log
-    mem_limit: 512m
-    security_opt: !override
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-
-  frontend:
-    ports: !reset []
-    logging: *json-log
-    mem_limit: 256m
-    security_opt: !override
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
 
   nginx:
     ports: !override
       - "${NGINX_PORT:-80}:80"
     logging: *json-log
     mem_limit: 128m
-    security_opt: !override
+    security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - NET_BIND_SERVICE

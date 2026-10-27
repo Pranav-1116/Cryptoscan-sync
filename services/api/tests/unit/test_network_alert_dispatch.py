@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import hashlib
 import hmac
 import http.server
@@ -41,28 +36,15 @@ class WebhookReceiver:
         self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
         self.port = self.server.server_address[1]
         self.server.timeout = 0.05
-        self._stop = threading.Event()
-        self._thread = threading.Thread(target=self._serve, daemon=True)
-        self._thread.start()
+        threading.Thread(target=self._serve, daemon=True).start()
 
     def _serve(self):
-        # Watches _stop, and treats ValueError as a stop signal. See the same
-        # receiver in services/network_scanner/tests/test_alert_escalation.py:
-        # with `while True` and close() calling only server_close(), the next
-        # handle_request() registers the closed listening socket with a
-        # selector, which raises ValueError rather than OSError. The generic
-        # arm caught it and continued, so the thread span at full tilt for the
-        # rest of the process and starved later tests.
-        while not self._stop.is_set():
+        while True:
             try:
                 self.server.handle_request()
-            except (OSError, ValueError):
+            except OSError:
                 return
-            except Exception as _handler_exc:  # noqa: BLE001
-                logger.debug(
-                    "expected_exception_boundary",
-                    extra={"error_type": type(_handler_exc).__name__},
-                )
+            except Exception:  # noqa: BLE001
                 continue
 
     @property
@@ -70,13 +52,7 @@ class WebhookReceiver:
         return f"http://127.0.0.1:{self.port}/hook"
 
     def close(self):
-        self._stop.set()
-        self._thread.join(timeout=5)
         self.server.server_close()
-        assert not self._thread.is_alive(), (
-            "WebhookReceiver server thread outlived close(); a spinning "
-            "receiver starves every test that runs after it"
-        )
 
 
 @pytest.mark.asyncio

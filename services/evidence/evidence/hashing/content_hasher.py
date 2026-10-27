@@ -38,10 +38,7 @@ class ContentHasher:
                     finding = dict(finding)
             finding_id = finding.get("finding_id") or str(uuid.uuid4())
             finding["finding_id"] = finding_id
-            digest = ContentHasher.compute_hash(finding)
-            if finding_id in result and result[finding_id] != digest:
-                raise ValueError(f"conflicting findings share finding_id {finding_id!r}")
-            result[finding_id] = digest
+            result[finding_id] = ContentHasher.compute_hash(finding)
         return result
 
     @staticmethod

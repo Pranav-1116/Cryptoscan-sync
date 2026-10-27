@@ -36,7 +36,7 @@ def _api(base: str, path: str, token: str, payload: dict | None = None) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Evaluate the CryptoScan PR drift gate")
     parser.add_argument("--scan-id", required=True)
-    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8010/api/v1"))
+    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8000/api/v1"))
     parser.add_argument("--token", default=os.environ.get("CRYPTOSCAN_TOKEN", ""))
     parser.add_argument("--sarif", help="Write SARIF to this path")
     parser.add_argument("--require-baseline", action="store_true")

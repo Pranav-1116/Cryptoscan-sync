@@ -1,31 +1,13 @@
-# VCS / tooling
 .git
 .arena
-.github
-
-# Python caches and virtualenvs
+.cache
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache
-**/.mypy_cache
 **/.venv
-**/venv
-*.pyc
-
-# Node / frontend build output (rebuilt inside the image)
 **/node_modules
-frontend/dist
-**/dist
-**/build
-
-# Local data / secrets / logs
 data
 *.db
-*.sqlite*
-*.log
-.env
-
-# Docs and analysis notes not needed in the runtime image
-*.md
+*.pyc
+ANALYSIS.md
 logic-*.md
-docs/

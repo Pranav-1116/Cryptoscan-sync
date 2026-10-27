@@ -1,5 +1,0 @@
-[
- {"name":"projects/bank/locations/europe-west1/keyRings/core/cryptoKeys/ledger-cmek","purpose":"ENCRYPT_DECRYPT","createTime":"2021-06-01T00:00:00Z","rotationPeriod":"7776000s","versionTemplate":{"protectionLevel":"HSM","algorithm":"GOOGLE_SYMMETRIC_ENCRYPTION"},"primary":{"state":"ENABLED"}},
- {"name":"projects/bank/locations/europe-west1/keyRings/core/cryptoKeys/doc-sign","purpose":"ASYMMETRIC_SIGN","createTime":"2020-01-01T00:00:00Z","versionTemplate":{"protectionLevel":"SOFTWARE","algorithm":"RSA_SIGN_PKCS1_2048_SHA256"}},
- {"name":"projects/bank/locations/europe-west1/keyRings/core/cryptoKeys/mobile-attest","purpose":"ASYMMETRIC_SIGN","versionTemplate":{"protectionLevel":"HSM","algorithm":"EC_SIGN_P256_SHA256"}}
-]

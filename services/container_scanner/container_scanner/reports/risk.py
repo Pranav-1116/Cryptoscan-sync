@@ -17,11 +17,6 @@ catalog's own deprecation flags:
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 from typing import Any, Iterable
 
 _SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
@@ -37,11 +32,7 @@ def algorithm_verdicts(algorithms: Iterable[str]) -> dict[str, dict[str, Any]]:
     for name in {str(item) for item in algorithms if item}:
         try:
             info = parse_algorithm(name)
-        except Exception as _handler_exc:  # noqa: BLE001
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
+        except Exception:  # noqa: BLE001
             continue
         out[name] = {"status": info.status, "quantum_impact": info.quantum_impact}
     return dict(sorted(out.items(), key=lambda kv: _status_rank(kv[1]["status"])))

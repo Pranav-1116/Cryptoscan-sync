@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import hashlib
 import hmac
 import json
-import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from typing import Optional
 
 from api.config.settings import get_settings
 
@@ -25,14 +20,9 @@ class SessionManager:
 
     def create_session(self, username: str, **kwargs) -> str:
         now = time.time()
-        # Roles come ONLY from the authenticated identity. Default to the
-        # least-privileged read-only role rather than "admin" — a missing role
-        # must never silently elevate a session.
-        roles = kwargs.get("roles")
         payload = {
             "username": username,
-            "roles": roles if roles else ["readonly"],
-            "jti": secrets.token_urlsafe(18),  # unique per minted token
+            "roles": kwargs.get("roles") or ["admin"],
             "created_at": now,
             "expires_at": now + self.ttl,
         }
@@ -48,12 +38,11 @@ class SessionManager:
         return self._sign({
             "username": username,
             "purpose": "mfa_challenge",
-            "jti": secrets.token_urlsafe(18),
             "created_at": now,
             "expires_at": now + ttl_seconds,
         })
 
-    def validate_mfa_challenge(self, token: str) -> str | None:
+    def validate_mfa_challenge(self, token: str) -> Optional[str]:
         data = self._decode(token)
         if data and data.get("purpose") == "mfa_challenge":
             return data["username"]
@@ -64,7 +53,7 @@ class SessionManager:
         sig = hmac.new(self.secret, raw.encode(), hashlib.sha256).hexdigest()
         return f"{raw}.{sig}"
 
-    def validate_session(self, token: str) -> str | None:
+    def validate_session(self, token: str) -> Optional[str]:
         data = self._decode(token)
         # only purpose-less payloads are sessions; mfa challenges are not
         if data and data.get("purpose") is None:
@@ -77,7 +66,7 @@ class SessionManager:
             return _SessionView(data)
         return None
 
-    def validate_api_token(self, token: str) -> str | None:
+    def validate_api_token(self, token: str) -> Optional[str]:
         return self.validate_session(token)
 
     def invalidate_session(self, token: str) -> None:
@@ -94,11 +83,7 @@ class SessionManager:
             if time.time() > data.get("expires_at", 0):
                 return None
             return data
-        except Exception as _handler_exc:
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
+        except Exception:
             return None
 
 

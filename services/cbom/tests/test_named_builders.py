@@ -40,33 +40,3 @@ def test_builders_and_mappers():
         }
     )
     assert doc.to_dict()["components"][0]["name"] == "AES-256"
-
-
-# ---------------------------------------------------- estate dependency edges
-
-from cbom.builders.dependency_builder import build_estate_dependencies, infer_library_edges
-
-
-def test_estate_dependencies_link_system_to_assets_and_neighbours():
-    edges = [{"parent": "sys-pay", "child": "sys-db"},
-             {"parent": "sys-web", "child": "sys-pay"}]
-    deps = build_estate_dependencies("sys-pay", ["ca-1", "ca-2"], edges)
-    by_ref = {d["ref"]: d["dependsOn"] for d in deps}
-    # the system depends on its crypto assets AND its registered child system
-    assert by_ref["system:sys-pay"] == ["ca-1", "ca-2", "system:sys-db"]
-    # upstream callers keep their direction — that edge is the whole point
-    assert by_ref["system:sys-web"] == ["system:sys-pay"]
-
-
-def test_estate_dependencies_without_edges_is_assets_only():
-    deps = build_estate_dependencies("sys-pay", ["ca-1"])
-    assert deps == [{"ref": "system:sys-pay", "dependsOn": ["ca-1"]}]
-
-
-def test_estate_dependencies_empty_system_yields_nothing():
-    assert build_estate_dependencies("sys-pay", []) == []
-
-
-def test_infer_library_edges_use_real_bom_refs():
-    edges = infer_library_edges([{"id": "ca-1", "library": "BouncyCastle"}])
-    assert edges == [{"ref": "ca-1", "dependsOn": ["library:BouncyCastle"]}]

@@ -8,7 +8,7 @@ collecting during temporary central-platform outages:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from universal_vendor.live.offline import (

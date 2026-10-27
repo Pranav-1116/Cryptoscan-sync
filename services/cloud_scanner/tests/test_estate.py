@@ -17,7 +17,7 @@ def test_classifies_cloud_and_git_targets():
     assert is_cloud_target("aws://kms/alias/pay")
     assert is_cloud_target("azure://vaults/core")
     assert not is_cloud_target("https://github.com/bank/pay.git")
-    assert not is_cloud_target("local://test-fixture/polyglot-app")
+    assert not is_cloud_target("local://demo/polyglot-app")
     assert job_type_for_target("cloud://gcp/proj") == "CLOUD"
     assert job_type_for_target("https://git/bank/pay.git") == "SYSTEM"
 

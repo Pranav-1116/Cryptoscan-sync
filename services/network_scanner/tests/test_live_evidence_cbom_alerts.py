@@ -30,6 +30,7 @@ from network_scanner.enterprise.live.cbom import (
 from network_scanner.enterprise.live.evidence import (
     GENESIS_HASH,
     EvidenceChain,
+    EvidenceRecord,
     canonical_bytes,
 )
 from network_scanner.enterprise.live.health import (
@@ -63,7 +64,7 @@ def test_evidence_chain_detects_tamper():
 
 def test_evidence_chain_detects_middle_break():
     chain = EvidenceChain()
-    chain.append({"event": "A"})
+    r1 = chain.append({"event": "A"})
     r2 = chain.append({"event": "B"})
     r3 = chain.append({"event": "C"})
     # break the middle link by mutating r2's previous hash
@@ -113,7 +114,7 @@ def test_evidence_extend():
 # ---------------------------------------------------------------- CBOM
 
 def test_cbom_event_validation():
-    CbomEventLog()
+    log = CbomEventLog()
     with pytest.raises(ValueError):
         CbomEvent(sequence=0, event_type="BOGUS", asset_id="a", occurred_at=T0)
 

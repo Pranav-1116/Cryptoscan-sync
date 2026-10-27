@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 from pathlib import Path
 from typing import Any
 
@@ -30,11 +25,7 @@ def discover_from_tree(root: str | Path) -> list[dict[str, Any]]:
             continue
         try:
             documents = list(yaml.safe_load_all(path.read_text(encoding="utf-8", errors="replace")))
-        except Exception as _handler_exc:
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
+        except Exception:
             continue
         for doc in documents:
             if not isinstance(doc, dict):

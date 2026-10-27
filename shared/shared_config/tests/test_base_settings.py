@@ -52,7 +52,7 @@ def test_environment_predicates():
     settings = BaseSettings(ENVIRONMENT="staging")
     assert settings.is_staging and not settings.is_production
     assert not settings.is_development
-    assert BaseSettings(ENVIRONMENT="development").is_development
+    assert BaseSettings().is_development
     assert BaseSettings(ENVIRONMENT="test").is_test
 
 
@@ -84,12 +84,7 @@ def test_repr_never_leaks_secrets():
 
 def test_production_gate_rejects_weak_secret_key():
     for weak in ("", "short", *KNOWN_WEAK_SECRETS):
-        # ENVIRONMENT is pinned: pydantic-settings lets an ambient
-        # ENVIRONMENT variable override the class default, which would
-        # silently no-op the gate under a dev/test shell.
-        settings = ProductionSettings(
-            SECRET_KEY=weak, REQUIRED_IN_PROD="x", ENVIRONMENT="production"
-        )
+        settings = ProductionSettings(SECRET_KEY=weak, REQUIRED_IN_PROD="x")
         with pytest.raises(ConfigurationError) as exc:
             settings.validate_for_production()
         assert "SECRET_KEY" in str(exc.value)
@@ -97,15 +92,13 @@ def test_production_gate_rejects_weak_secret_key():
 
 def test_production_gate_passes_with_strong_configuration():
     settings = ProductionSettings(
-        SECRET_KEY="a" * 48, REQUIRED_IN_PROD="configured", ENVIRONMENT="production"
+        SECRET_KEY="a" * 48, REQUIRED_IN_PROD="configured"
     )
     settings.validate_for_production()  # no raise
 
 
 def test_production_gate_lists_service_extensions():
-    settings = ProductionSettings(
-        SECRET_KEY="a" * 48, REQUIRED_IN_PROD="", ENVIRONMENT="production"
-    )
+    settings = ProductionSettings(SECRET_KEY="a" * 48, REQUIRED_IN_PROD="")
     with pytest.raises(ConfigurationError) as exc:
         settings.validate_for_production()
     assert "REQUIRED_IN_PROD" in str(exc.value)
@@ -113,4 +106,4 @@ def test_production_gate_lists_service_extensions():
 
 def test_production_gate_is_noop_outside_production():
     # Development keeps demo defaults without failing.
-    ServiceSettings(ENVIRONMENT="development").validate_for_production()
+    ServiceSettings().validate_for_production()

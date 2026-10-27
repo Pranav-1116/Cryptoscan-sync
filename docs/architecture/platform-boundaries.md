@@ -11,23 +11,13 @@ decisions, and they are the reason the tool is approvable in regulated
 environments: **it only ever looks at key *metadata*, read-only, and chains
 every observation to evidence.**
 
-> **2026-10-16 correction (round 80).** This page had drifted from the manifest
-> it mirrors. Non-goal 4 read "Not mainframe core banking. AS/400 and COBOL
-> assets are out of scope — we do not scan mainframe core banking systems",
-> while `platform_scope.py` declares `zos-crypto-discovery` as the **first**
-> covered area and its only mainframe non-goal is
-> `no-mainframe-app-logic-analysis`. The covered-areas table was also missing
-> that row entirely. Both now match the manifest verbatim; the manifest still
-> wins if they ever disagree again.
-
 ---
 
 ## What it covers
 
 | Area | What it does |
 |---|---|
-| z/OS mainframe crypto discovery | Ingest of operator-produced z/OS security extracts — RACF `RACDCERT LIST`, ICSF key inventories, DB2 TLS configuration, CICS `TCPIPSERVICE` definitions — into the unified crypto inventory, plus crypto-call detection in mainframe application source (COBOL, PL/I, Natural, HLASM, JCL, REXX, CLIST): ICSF `CSN*`/`CSF*` verbs and PCI parameters |
-| Source-tree crypto inventory | Deterministic detection of crypto API usage (algorithm, mode, key size, hardcoded keys, certificates) across Java / C# / Go / Python / JS and more — crypto-only, not general SAST |
+| Source-tree crypto inventory | Deterministic detection of crypto API usage (algorithm, mode, key size, hardcoded keys, certificates) across Java / C# / Go / Python / JS and more |
 | Network & TLS posture | Passive TLS handshake inventory, certificate posture + expiry, weak protocol detection, DNSSEC / IPsec targets |
 | Containers & IaC | Image layer analysis, package/manifest parsing, embedded JARs and shared libraries, Dockerfile / IaC crypto configuration |
 | Cloud accounts & tenants | AWS / Azure / GCP discovery **inside the accounts and tenants the operator has access to** — read-only, credential-scoped |
@@ -54,27 +44,8 @@ every observation to evidence.**
    **outbound alert sink**, but we do not perform behavior analytics,
    correlation hunting, or endpoint telemetry analysis.
 
-4. **Not mainframe business-logic analysis.** Mainframe source
-   (COBOL / PL-I / Natural / HLASM) **is** scanned — but only for
-   cryptographic service calls and key parameters. We do not analyse business
-   logic, data flow, or modernisation. (Manifest id
-   `no-mainframe-app-logic-analysis`; the covered side is
-   `zos-crypto-discovery` above.)
-
-   **IBM i / AS/400, stated precisely because this page previously got it
-   wrong:** the scanner ships an RPG IV (fixed and `**FREE`), CL/CLLE and ILE C
-   detector — `services/scanner/scanner/parsers/rpg_parser.py` — that resolves
-   the Cryptographic Services APIs (`Qc3EncryptData`, `Qc3CalculateHash`,
-   `Qc3CalculateHMAC`, `Qc3CalculateSignature`, `Qc3GenPRNs`) through the
-   numeric algorithm codes in `ALGD0200` / `ALGD0400` / `ALGD0500` from the
-   algorithm-field initialiser or a ±12-line keyword window, and reports
-   `UNKNOWN` rather than guessing when it cannot resolve one; it also reads
-   GSKit TLS configuration (`GSK_PROTOCOL_TLSV12`, cipher specs, keyring
-   files). What is **not** claimed: `platform_scope.py` does not declare
-   AS/400 a covered area, and the engineering gate records the COBOL, PL-I and
-   RPG **customer sample** checks as SKIP — "corpus evidence is not customer
-   validation". So IBM i support is code-present and corpus-tested, not
-   customer-validated and not a declared platform commitment.
+4. **Not mainframe core banking.** AS/400 and COBOL assets are out of
+   scope — we do not scan mainframe core banking systems.
 
 5. **Not employee endpoint scanning.** No agents on, and no scans of,
    employee workstations/endpoints.

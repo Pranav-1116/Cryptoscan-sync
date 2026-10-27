@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import hashlib
 from typing import Any
 
@@ -38,11 +33,7 @@ def _registry_canonical(algorithm: str) -> str:
         info = parse_algorithm(algorithm or "")
         if info.recognized:
             return info.canonical
-    except Exception as _handler_exc:
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
+    except Exception:
         pass
     return str(algorithm or "").upper() or "UNKNOWN"
 
@@ -58,11 +49,7 @@ def _key_size(finding: dict[str, Any]) -> int | None:
             info = parse_algorithm(_get(finding, "crypto", "algorithm") or finding.get("algorithm") or "")
             if info.recognized:
                 return info.key_size
-        except Exception as _handler_exc:
-            logger.warning(
-                "exception_suppressed",
-                extra={"error_type": type(_handler_exc).__name__},
-            )
+        except Exception:
             pass
         return None
     try:

@@ -114,7 +114,7 @@ class AlertDeduplicator:
             group.sort(key=lambda a: _SEVERITY_RANK[a.severity], reverse=True)
             top = group[0]
             affected: list[str] = []
-            _impacted = 0
+            impacted = 0
             for alert in group:
                 for asset in (alert.dependencies or []):
                     if asset not in affected:

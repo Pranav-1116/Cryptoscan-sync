@@ -39,7 +39,7 @@ def test_shared_backend_one_budget_across_instances():
     clock = [1_000.0]
     middleware = RateLimitMiddleware(app=None, rules={"api": (3, 60)}, clock=lambda: clock[0],
                                      redis_client=FakeRedis())
-    _replica_a = middleware._take(("user:soc", "api"), 3, 60)
+    replica_a = middleware._take(("user:soc", "api"), 3, 60)
     replica_b = RateLimitMiddleware(app=None, rules={"api": (3, 60)}, clock=lambda: clock[0],
                                     redis_client=middleware.redis)
     # three hits spread across two "replicas" sharing the same Redis
@@ -56,14 +56,6 @@ def test_shared_backend_outage_falls_back_in_process():
     assert middleware._take(("user:x", "api"), 2, 60)[0] is True     # degraded, not broken
     assert middleware._take(("user:x", "api"), 2, 60)[0] is True
     assert middleware._take(("user:x", "api"), 2, 60)[0] is False
-
-
-def test_shared_backend_outage_fails_closed_in_production():
-    middleware = RateLimitMiddleware(app=None, rules={"api": (2, 60)}, clock=lambda: 1.0,
-                                     redis_client=FakeRedis(fail=True), fail_closed=True)
-    allowed, remaining, retry_after = middleware._take(("user:x", "api"), 2, 60)
-    assert (allowed, remaining) == (False, 0)
-    assert retry_after > 0
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from policy.conditions.base_condition import BaseCondition, EvaluationOutcome, algorithm_matches
+from policy.conditions.base_condition import BaseCondition, EvaluationOutcome
 from policy.models.policy_rule import KeySizeMinimumParameters
 
 
@@ -18,7 +18,7 @@ class KeySizeMinimumCondition(BaseCondition):
         normalized = evidence_data.get("normalized_crypto") or {}
         if isinstance(normalized, dict) and normalized.get("algorithm"):
             algorithm = normalized["algorithm"]
-        if not algorithm or algorithm_matches(evidence_data, target) is None:
+        if not algorithm or algorithm.upper() != target:
             return EvaluationOutcome("NOT_APPLICABLE", f"Rule applies only to {target}")
 
         key_size = None

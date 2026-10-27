@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 
 from cbom.assessment import assess_cbom
 

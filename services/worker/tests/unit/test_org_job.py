@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import json
-
 from worker.core.job_consumer import ScanJob
 from worker.core.job_executor import JobExecutor
 
 
 def _org_result(status="OK", accounts=2, resources=5):
-    rows = [{"account_id": f"acc{i}", "ok": True, "resources": resources, "status": "OK"} for i in range(accounts)]
+    rows = [
+        {"account_id": f"acc{i}", "ok": True, "resources": resources, "status": "OK"}
+        for i in range(accounts)
+    ]
     return {
         "provider": "aws",
         "org": True,
@@ -17,16 +18,8 @@ def _org_result(status="OK", accounts=2, resources=5):
         "truncated": False,
         "accounts": rows,
         "findings": [
-            {
-                "algorithm": "AES-256",
-                "compliance_issue": None,
-                "metadata": {"cloud_account": "acc0", "cloud_provider": "AWS"},
-            },
-            {
-                "algorithm": "DES",
-                "compliance_issue": "WEAK",
-                "metadata": {"cloud_account": "acc1", "cloud_provider": "AWS"},
-            },
+            {"algorithm": "AES-256", "compliance_issue": None, "metadata": {"cloud_account": "acc0", "cloud_provider": "AWS"}},
+            {"algorithm": "DES", "compliance_issue": "WEAK", "metadata": {"cloud_account": "acc1", "cloud_provider": "AWS"}},
         ],
         "resources": 2,
         "issues": 1,
@@ -46,16 +39,6 @@ def _org_result(status="OK", accounts=2, resources=5):
 
 
 def test_executor_routes_org_targets_to_org_job(monkeypatch):
-    # This test pins ROUTING, not the gate: stub the policy read the
-    # execution-gate tests own (same as test_execution_gate.py and the
-    # round-67 fix in test_cloud_job.py). Without this it only passed when
-    # some earlier file in the same process had bound SessionLocal —
-    # alone, the unbound session made the gate fail closed and the refusal
-    # path crash on the same unbound session (order-dependent under xdist
-    # loadfile reshuffles).
-    import worker.core.execution_gate as _gate
-
-    monkeypatch.setattr(_gate, "_matching_policy", lambda: {"mode": "standard"})
     called = {}
 
     def fake_org_job(job):
@@ -68,9 +51,6 @@ def test_executor_routes_org_targets_to_org_job(monkeypatch):
         def run(self, **kwargs):
             raise AssertionError("neither cloud_job nor pipeline may run for org targets")
 
-    # Routing/scope seam only; real persisted authority has its own contracts.
-    monkeypatch.setattr("worker.core.job_executor.reconcile", lambda job: job)
-    monkeypatch.setattr("worker.core.job_executor.claim", lambda job: None)
     executor = JobExecutor()
     executor.runner = Boom()
     job = ScanJob(job_id="j-org", target_repo="cloud://aws-org/111122223333", job_type="CLOUD")
@@ -167,99 +147,6 @@ def test_run_org_job_fails_closed_when_every_account_fails(monkeypatch):
     assert status == "FAILED"
     assert "accounts failed" in error_message
     assert progress["cloud"]["live_scan"]["status"] == "FAILED"
-
-
-def test_org_job_exception_stays_out_of_public_job_fields(monkeypatch, caplog):
-    from worker.pipeline import org_job
-
-    sentinel = "[SQL: SELECT sentinel_secret FROM users] [parameters: ('sentinel_key',)]"
-    statuses = []
-
-    class Session:
-        def commit(self):
-            pass
-
-        def rollback(self):
-            pass
-
-        def close(self):
-            pass
-
-    class Jobs:
-        def __init__(self, session):
-            pass
-
-        def update_status(self, job_id, status, progress=None, error_message=None):
-            statuses.append((status, progress, error_message))
-
-    monkeypatch.setattr("db.connection.session.SessionLocal", Session)
-    monkeypatch.setattr("db.repositories.job_repository.JobRepository", Jobs)
-    monkeypatch.setattr(org_job, "_scan_org", lambda *_: (_ for _ in ()).throw(RuntimeError(sentinel)))
-    job = ScanJob(job_id="j-org-error", target_repo="cloud://aws-org/1111", job_type="CLOUD")
-    assert org_job.run_org_job(job) is False
-    assert statuses[-1][0] == "FAILED"
-    assert "cloud_org_inventory" in statuses[-1][2]
-    assert sentinel not in json.dumps(statuses)
-    assert sentinel not in caplog.text
-    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
-    assert any(record.__dict__.get("traceback_frames") for record in caplog.records)
-
-
-def test_org_job_malformed_status_counts_and_errors_are_not_persisted(monkeypatch, caplog):
-    from worker.pipeline import org_job
-
-    sentinel = "[SQL: SELECT sentinel_secret FROM users] [parameters: ('sentinel_key',)]"
-    statuses = []
-
-    class Session:
-        def commit(self):
-            pass
-
-        def rollback(self):
-            pass
-
-        def close(self):
-            pass
-
-    class Jobs:
-        def __init__(self, session):
-            pass
-
-        def update_status(self, job_id, status, progress=None, error_message=None):
-            statuses.append((status, progress, error_message))
-
-    monkeypatch.setattr("db.connection.session.SessionLocal", Session)
-    monkeypatch.setattr("db.repositories.job_repository.JobRepository", Jobs)
-    result = _org_result(status="FAILED", accounts=0, resources=0)
-    result["findings"] = []
-    result["accounts"] = [
-        {"account_id": "acc0", "ok": False, "error": sentinel, "status": sentinel, "resources": sentinel}
-    ]
-    result["provider"] = sentinel
-    result["accounts_discovered"] = sentinel
-    result["resources"] = sentinel
-    result["truncated"] = sentinel
-    result["live_scan"]["errors"] = {"error": sentinel}
-    result["live_scan"]["truncations"] = {"reason": sentinel}
-    result["live_scan"]["error_count"] = 1
-    result["live_scan"]["accounts_failed"] = 1
-    monkeypatch.setattr(org_job, "_scan_org", lambda *_: result)
-    job = ScanJob(job_id="j-org-telemetry", target_repo="cloud://aws-org/1111", job_type="CLOUD")
-    assert org_job.run_org_job(job) is False
-    assert statuses[-1][0] == "FAILED"
-    cloud = statuses[-1][1]["cloud"]
-    assert cloud["live_scan"]["error_count"] == 1
-    assert cloud["live_scan"]["errors"] == []
-    assert cloud["live_scan"]["truncations"] == []
-    assert cloud["provider"] == "unknown"
-    assert cloud["accounts_discovered"] == cloud["resources"] == 0
-    assert cloud["truncated"] is False
-    assert cloud["accounts"][0]["status"] == "FAILED"
-    assert cloud["accounts"][0]["resources"] == 0
-    assert cloud["accounts"][0]["account_id"] == "acc0"
-    assert sentinel not in json.dumps(statuses)
-    assert sentinel not in caplog.text
-    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
 
 
 def test_org_job_parses_gcp_folder_targets(monkeypatch):

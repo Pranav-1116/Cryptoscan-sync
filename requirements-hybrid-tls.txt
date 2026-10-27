@@ -1,4 +1,0 @@
-# Optional operator-only hybrid TLS profile; not a production admission or base dependency upgrade.
-# Install only into the reviewed collector environment. Transitive/site qualification remains separate.
-pyOpenSSL==26.4.0
-cryptography==50.0.2

@@ -10,5 +10,5 @@ def test_email_alerter_constructs():
 
 def test_send_drift_alert_logs(caplog):
     alerter = EmailAlerter()
-    alerter.send_drift_alert("local://test-fixture", [{"algorithm": "DES"}])
+    alerter.send_drift_alert("local://demo", [{"algorithm": "DES"}])
     assert True

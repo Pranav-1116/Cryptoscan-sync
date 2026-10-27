@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from db.tenancy import filtered_get
-
 import hashlib
 import hmac
 from datetime import datetime, timezone
@@ -94,7 +92,7 @@ def approve_exception(
         notes=(body.notes if body else None) or row.notes,
     )
     if updated and updated.asset_id:
-        asset = filtered_get(db, CryptoAsset, updated.asset_id)
+        asset = db.get(CryptoAsset, updated.asset_id)
         if asset is not None:
             extra = dict(asset.extra or {})
             extra["compliance_status"] = "EXCEPTION"
@@ -130,7 +128,7 @@ def revoke_exception(
     if row is None:
         raise HTTPException(status_code=404, detail="Exception not found")
     if row.asset_id:
-        asset = filtered_get(db, CryptoAsset, row.asset_id)
+        asset = db.get(CryptoAsset, row.asset_id)
         if asset is not None:
             extra = dict(asset.extra or {})
             extra["compliance_status"] = "FAIL"
@@ -167,7 +165,7 @@ def expire_due(user: str = Depends(get_current_user), db: Session = Depends(get_
     for row in expired:
         if not row.asset_id:
             continue
-        asset = filtered_get(db, CryptoAsset, row.asset_id)
+        asset = db.get(CryptoAsset, row.asset_id)
         if asset is None:
             continue
         extra = dict(asset.extra or {})

@@ -13,22 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-try:  # platform registry provides rich verdicts; the agent also runs
-    # standalone on a laptop without shared_models on PYTHONPATH — fall back
-    # to a minimal stdlib-only stand-in that exposes the attributes we read.
-    from shared_models.algorithm_registry import parse_algorithm
-except ImportError:  # pragma: no cover - exercised only outside the platform
-    from types import SimpleNamespace
-
-    def parse_algorithm(name: str) -> Any:
-        return SimpleNamespace(
-            canonical=name or "TLS",
-            components=[],
-            key_size=None,
-            status=None,
-            quantum_impact=None,
-            to_dict=lambda: {"algorithm": name, "key_size": None, "status": None},
-        )
+from shared_models.algorithm_registry import parse_algorithm
 
 
 def parse_sclient_output(text: str) -> dict[str, Any]:
@@ -71,6 +56,7 @@ _PQC_KX = frozenset({"XYBER", "MLKEM", "HYBRID"})
 def parse_openssl_cipher(name: str) -> dict[str, Any]:
     """Decompose an OpenSSL cipher name into components + verdict."""
     raw = (name or "").strip()
+    parts = [p for p in raw.split("-") if p]
     kx: str | None = None
     for token in _KX_TOKENS + tuple(sorted(_PQC_KX)):
         if raw.upper().replace("_", "-").startswith(token.upper().replace("_", "-")):

@@ -1,7 +1,0 @@
-Changed Python: Ruff F checks
-All checks passed!
-Dependency consistency
-No broken requirements found.
-PASS: git diff --check
-PASS: shell replay syntax
-PASS: staged whitespace check, including retained transcripts

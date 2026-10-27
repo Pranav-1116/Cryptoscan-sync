@@ -9,10 +9,9 @@ from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class Baseline(BaseModel, TenantScoped):
+class Baseline(BaseModel):
     __tablename__ = "baselines"
 
     system_identifier: Mapped[str] = mapped_column(String(400), nullable=False, index=True)

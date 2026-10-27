@@ -32,23 +32,12 @@ class CryptoCapabilityEngine:
         self._hardware[asset_id] = capability
 
     def record_hardware_from_dict(self, asset_id: str, data: dict[str, Any]) -> None:
-        supported = [str(a) for a in data.get("supported_algorithms") or []]
-        incoming_fields = {name: bool(data.get(name, False)) for name in _CAPABILITY_FIELDS}
-        # Empty capability containers are not observations. This matters for
-        # plugins that expose a capability endpoint even when it returned no
-        # algorithm list: UNKNOWN is more accurate than known-all-false.
-        if not any(incoming_fields.values()) and not supported:
-            return
-        previous = self._hardware.get(asset_id)
-        fields = {
-            name: incoming_fields[name] or bool(getattr(previous, name, False))
-            for name in _CAPABILITY_FIELDS
-        }
-        supported = sorted(set(supported) | set(getattr(previous, "supported_algorithms", []) or []))
-        used = sorted(set(str(a) for a in data.get("used_algorithms") or [])
-                      | set(getattr(previous, "used_algorithms", []) or []))
+        fields = {name: bool(data.get(name, False)) for name in _CAPABILITY_FIELDS}
         self._hardware[asset_id] = CryptoCapability(
-            **fields, supported_algorithms=supported, used_algorithms=used)
+            **fields,
+            supported_algorithms=[str(a) for a in data.get("supported_algorithms") or []],
+            used_algorithms=[str(a) for a in data.get("used_algorithms") or []],
+        )
 
     def record_usage(self, asset_id: str, algorithms: list[str]) -> None:
         self._used.setdefault(asset_id, set()).update(algorithms)

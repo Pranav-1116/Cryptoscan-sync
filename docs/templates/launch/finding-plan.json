@@ -1,8 +1,0 @@
-{
-  "expected_revision": 1,
-  "owner_user_id": "<ACTIVE_REMEDIATION_OWNER_ID>",
-  "replacement_artifact_id": "<APPROVED_REPLACEMENT_ARTIFACT_ID>",
-  "deployment_manifest_blob_id": "<REPLACEMENT_DEPLOYMENT_BLOB_ID>",
-  "change_ref": "REPLACE: authorized remediation change",
-  "verification_criteria": "REPLACE: reproduce original negative case on the intended replacement after completion"
-}

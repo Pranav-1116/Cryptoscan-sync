@@ -14,15 +14,14 @@ from db.connection.session import Base
 from db.models.payment_crypto import HsmEvent, PaymentKey, PaymentTransactionVolume
 from worker.monitor.runners import payment_runner
 
-AUDIT_DAY = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
-AUDIT = """{"occurred_at":"AUDIT_DAYT10:00:00Z","device":"hsm-prod-1","event_type":"KEY_GENERATED","key_id":"ZMK-01","actor":"custodian-a","detail":{"algorithm":"TRIPLE_DES"}}
-{"occurred_at":"AUDIT_DAYT10:05:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
-{"occurred_at":"AUDIT_DAYT10:06:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
-{"occurred_at":"AUDIT_DAYT10:07:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
-{"occurred_at":"AUDIT_DAYT10:08:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
-{"occurred_at":"AUDIT_DAYT10:09:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
-{"occurred_at":"AUDIT_DAYT11:00:00Z","device":"hsm-prod-1","event_type":"CLEAR_KEY_EXPORT","key_id":"ZMK-01","actor":"svc-pin","severity":"CRITICAL"}
-""".replace("AUDIT_DAY", AUDIT_DAY)
+AUDIT = """{"occurred_at":"2026-08-30T10:00:00Z","device":"hsm-prod-1","event_type":"KEY_GENERATED","key_id":"ZMK-01","actor":"custodian-a","detail":{"algorithm":"TRIPLE_DES"}}
+{"occurred_at":"2026-08-30T10:05:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
+{"occurred_at":"2026-08-30T10:06:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
+{"occurred_at":"2026-08-30T10:07:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
+{"occurred_at":"2026-08-30T10:08:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
+{"occurred_at":"2026-08-30T10:09:00Z","device":"hsm-prod-1","event_type":"AUTH_FAILURE","actor":"nobody"}
+{"occurred_at":"2026-08-30T11:00:00Z","device":"hsm-prod-1","event_type":"CLEAR_KEY_EXPORT","key_id":"ZMK-01","actor":"svc-pin","severity":"CRITICAL"}
+"""
 
 
 def _session():

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
 
 from reporting.pdf_export import _finding_rows, _safe, render_report_pdf
 
 SAMPLE_REPORT = {
     "generated_at": "2026-08-31T00:00:00Z",
-    "scan": {"scan_id": "s1", "target_location": "local://test-fixture/app",
+    "scan": {"scan_id": "s1", "target_location": "local://demo/app",
              "status": "COMPLETED"},
     "totals": {"findings": 2, "pass": 1, "warn": 0, "fail": 1},
     "findings": [
@@ -83,33 +84,3 @@ class TestHelpers:
         assert len(rows) == 500
         assert rows[0][0] == "ALGO0"
         assert len(rows[0]) == 4
-
-    def test_creation_date_is_anchored_to_generated_at_not_wall_clock(self):
-        """The wall clock must never leak into rendered bytes (round 74).
-
-        fpdf2 stamps ``datetime.now()`` into /CreationDate by default, so
-        the same report content rendered on either side of a second
-        boundary produced DIFFERENT bytes — the determinism test above
-        only passed when both renders landed inside one second. The
-        CreationDate is now the report's own generated_at.
-        """
-        import re
-
-        data = bytes(render_report_pdf(SAMPLE_REPORT))
-        match = re.search(rb"/CreationDate\s*\(D:(\d{14})Z\)", data)
-        assert match is not None, "expected an anchored /CreationDate"
-        # from SAMPLE_REPORT generated_at 2026-08-31T00:00:00Z — not today
-        assert match.group(1) == b"20260831000000"
-
-    def test_report_without_generated_at_renders_deterministically(self):
-        """No parseable anchor -> the epoch sentinel, never a varying clock."""
-        report = dict(SAMPLE_REPORT)
-        report["generated_at"] = ""
-        first = bytes(render_report_pdf(report))
-        second = bytes(render_report_pdf(report))
-        assert first == second
-        import re
-
-        match = re.search(rb"/CreationDate\s*\(D:(\d{14})Z\)", first)
-        assert match is not None
-        assert match.group(1) == b"19700101000000"

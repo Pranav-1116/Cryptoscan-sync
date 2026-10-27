@@ -8,10 +8,9 @@ from sqlalchemy import Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class ContainerScan(BaseModel, TenantScoped):
+class ContainerScan(BaseModel):
     __tablename__ = "container_scans"
 
     scan_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)

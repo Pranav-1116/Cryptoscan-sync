@@ -14,11 +14,6 @@ terminates TLS, so no key material is ever touched.
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import hashlib
 import struct
 from typing import Any
@@ -247,16 +242,7 @@ _GROUP_NAMES: dict[int, str] = {
     0x0100: "ffdhe2048",
     0x0101: "ffdhe3072",
     0x0102: "ffdhe4096",
-    0x0103: "ffdhe6144",
-    0x0104: "ffdhe8192",  # 0x00FF is reserved — 8192 lives at 0x0104 (RFC 7919)
-    # RFC 10024 hybrid ML-KEM groups + pre-standard Kyber drafts
-    0x11EB: "SecP256r1MLKEM768",
-    0x11EC: "X25519MLKEM768",
-    0x11ED: "SecP384r1MLKEM1024",
-    0x11EE: "SecP521r1MLKEM1024",
-    0x11EF: "X25519MLKEM1024",
-    0x6399: "X25519Kyber768Draft00",
-    0x639A: "SecP256r1Kyber768Draft00",
+    0x00FF: "ffdhe8192",
 }
 
 
@@ -279,11 +265,7 @@ def _parse_extensions(ext_bytes: bytes) -> dict[str, Any]:
                         out["sni"] = host.decode("idna")
                     except UnicodeError:
                         out["sni"] = host.decode("utf-8", errors="replace")
-            except Exception as _handler_exc:
-                logger.warning(
-                    "exception_suppressed",
-                    extra={"error_type": type(_handler_exc).__name__},
-                )
+            except Exception:
                 pass
         elif name == "alpn" and data:
             try:
@@ -296,11 +278,7 @@ def _parse_extensions(ext_bytes: bytes) -> dict[str, Any]:
                     protocols.append(proto[i + 1 : i + 1 + plen].decode("ascii", errors="replace"))
                     i += 1 + plen
                 out["alpn"] = protocols
-            except Exception as _handler_exc:
-                logger.warning(
-                    "exception_suppressed",
-                    extra={"error_type": type(_handler_exc).__name__},
-                )
+            except Exception:
                 pass
         elif name == "supported_versions":
             if ext_type == EXT_SUPPORTED_VERSIONS:
@@ -315,22 +293,14 @@ def _parse_extensions(ext_bytes: bytes) -> dict[str, Any]:
                 sig_bytes, _ = _vector16(data, 0)
                 algos = [_u16(sig_bytes, i) for i in range(0, len(sig_bytes) - 1, 2)]
                 out["signature_algorithms"] = [_SIG_ALGO_NAMES.get(a, f"0x{a:04X}") for a in algos]
-            except Exception as _handler_exc:
-                logger.warning(
-                    "exception_suppressed",
-                    extra={"error_type": type(_handler_exc).__name__},
-                )
+            except Exception:
                 pass
         elif name == "supported_groups":
             try:
                 group_bytes, _ = _vector16(data, 0)
                 groups = [_u16(group_bytes, i) for i in range(0, len(group_bytes) - 1, 2)]
                 out["supported_groups"] = [_GROUP_NAMES.get(g, f"0x{g:04X}") for g in groups]
-            except Exception as _handler_exc:
-                logger.warning(
-                    "exception_suppressed",
-                    extra={"error_type": type(_handler_exc).__name__},
-                )
+            except Exception:
                 pass
     return out
 

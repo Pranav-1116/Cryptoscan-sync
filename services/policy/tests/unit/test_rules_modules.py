@@ -10,6 +10,7 @@ from policy.models.policy_rule import (
     Condition,
     PolicyRule,
     PolicyRuleSet,
+    RuleType,
     Severity,
 )
 from policy.rules.rule_loader import RuleLoader

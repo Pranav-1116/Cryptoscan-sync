@@ -18,14 +18,6 @@ TASK_STATUSES = {"TODO", "IN_PROGRESS", "DONE", "SKIPPED", "BLOCKED"}
 _SYNC_STATUSES = {"DONE", "IN_PROGRESS", "TODO", "SKIPPED", "BLOCKED"}
 
 
-class _DependencyGateError(ValueError):
-    """Start gate refusal — carries the blocking chain for the API layer."""
-
-    def __init__(self, message: str, *, blockers: list) -> None:
-        super().__init__(message)
-        self.blockers = blockers
-
-
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -43,7 +35,7 @@ class MigrationTaskRepository:
     # ------------------------------------------------------------- tasks
 
     def add_task(self, project_id: str, **kwargs) -> MigrationTask:
-        project = self.session.execute(select(MigrationProject).where(MigrationProject.id == project_id)).scalars().first()
+        project = self.session.get(MigrationProject, project_id)
         if project is None:
             raise ValueError("migration project not found")
         status = str(kwargs.get("status") or "TODO").upper()
@@ -84,7 +76,7 @@ class MigrationTaskRepository:
         )
 
     def update_task(self, task_id: str, **kwargs) -> Optional[MigrationTask]:
-        task = self.session.execute(select(MigrationTask).where(MigrationTask.id == task_id)).scalars().first()
+        task = self.session.get(MigrationTask, task_id)
         if task is None:
             return None
         if "status" in kwargs and kwargs["status"] is not None:
@@ -98,18 +90,6 @@ class MigrationTaskRepository:
             task.completed_at = _now() if status == "DONE" else task.completed_at
             if status != "BLOCKED":
                 task.blocked_reason = None
-        if "depends_on" in kwargs and kwargs["depends_on"] is not None:
-            deps = [str(ref) for ref in kwargs["depends_on"] if str(ref).strip()] \
-                if isinstance(kwargs["depends_on"], (list, tuple)) else None
-            if deps is None:
-                raise ValueError("depends_on must be a list of task ids")
-            if task.id in deps:
-                raise ValueError("a task cannot depend on itself")
-            known = {row.id for row in self.list_tasks(task.project_id)}
-            unknown = [ref for ref in deps if ref not in known]
-            if unknown:
-                raise ValueError(f"unknown dependency task ids: {', '.join(unknown)}")
-            task.depends_on = sorted(set(deps))
         for key in ("owner", "external_ref", "due_date", "blocked_reason", "title"):
             if key in kwargs and kwargs[key] is not None:
                 setattr(task, key, kwargs[key])
@@ -147,177 +127,6 @@ class MigrationTaskRepository:
         self._refresh_project(project_id)
         return {"applied": len(applied), "applied_refs": applied, "unknown_refs": unknown, "invalid": invalid}
 
-    # ------------------------------------------- execution engine (R30)
-
-    def _engine_index(self, project_id: str) -> dict:
-        from db import migration_execution as _engine
-
-        return _engine.index_tasks([row.to_dict() for row in self.list_tasks(project_id)])
-
-    def link_dependency(self, task_id: str, depends_on_task_id: str) -> MigrationTask:
-        """Add one dependency edge, rejecting cycles before persisting."""
-        task = self.session.execute(select(MigrationTask).where(MigrationTask.id == task_id)).scalars().first()
-        if task is None:
-            raise ValueError("migration task not found")
-        dep = self.session.execute(
-            select(MigrationTask).where(MigrationTask.id == depends_on_task_id)
-        ).scalars().first()
-        if dep is None:
-            raise ValueError(f"dependency task not found: {depends_on_task_id}")
-        if dep.project_id != task.project_id:
-            raise ValueError("dependencies must stay inside one project")
-        if depends_on_task_id == task_id:
-            raise ValueError("a task cannot depend on itself")
-        current = list(task.depends_on or [])
-        if depends_on_task_id in current:
-            return task  # idempotent
-        current.append(depends_on_task_id)
-
-        from db import migration_execution as _engine
-
-        staged = [row.to_dict() for row in self.list_tasks(task.project_id)]
-        for row in staged:
-            if row["id"] == task_id:
-                row["depends_on"] = current
-        try:
-            _engine.topological_stages(staged)
-        except _engine.ExecutionPlanError as exc:
-            raise ValueError(str(exc)) from exc
-        task.depends_on = current
-        self.session.flush()
-        return task
-
-    def auto_derive_dependencies(self, project_id: str) -> dict:
-        """Derive task dependencies from system-level dependency edges.
-
-        advanced/61 §4.2: auto-created tasks arrived unordered. If the
-        graph says system A CALLS system B, every B-task becomes a
-        dependency of every A-task — migrate the callee before the
-        caller. Cycle-safe: derived edges are validated as one batch
-        and rejected whole if they close a cycle.
-        """
-        from db import migration_execution as _engine
-
-        rows = [row.to_dict() for row in self.list_tasks(project_id)]
-        system_ids = {row["system_id"] for row in rows if row.get("system_id")}
-        if not system_ids:
-            return {"derived": 0, "edges": [], "note": "no tasks carry a system_id"}
-
-        from db.repositories.system_repository import SystemRepository
-
-        system_repo = SystemRepository(self.session)
-        edges: list[dict] = []
-        for system_id in sorted(system_ids):
-            for edge in system_repo.dependencies_for(system_id):
-                edges.append({"parent_id": edge.parent_id, "child_id": edge.child_id,
-                              "relation": edge.relation or "CALLS"})
-
-        derived = _engine.derive_system_dependencies(rows, edges)
-        if not derived:
-            return {"derived": 0, "edges": []}
-
-        # validate the whole batch together before persisting anything
-        staged = [dict(row) for row in rows]
-        by_id = {row["id"]: row for row in staged}
-        for item in derived:
-            row = by_id[item["task_id"]]
-            deps = set(row.get("depends_on") or []) | {item["depends_on_task_id"]}
-            row["depends_on"] = sorted(deps)
-        try:
-            _engine.topological_stages(staged)
-        except _engine.ExecutionPlanError as exc:
-            raise ValueError(f"derived edges would close a cycle: {exc}") from exc
-
-        for item in derived:
-            row = by_id[item["task_id"]]
-            deps = set(row.get("depends_on") or []) | {item["depends_on_task_id"]}
-            self.update_task(item["task_id"], depends_on=sorted(deps))
-        return {"derived": len(derived), "edges": derived}
-
-    def execution_plan(self, project_id: str) -> dict:
-        """Stages, parallelization, critical path, ready set, blockers."""
-        from db import migration_execution as _engine
-
-        rows = [row.to_dict() for row in self.list_tasks(project_id)]
-        plan = _engine.execution_plan(rows)
-        titles = {row["id"]: row["title"] for row in rows}
-        for stage in plan["stages"]:
-            stage["tasks"] = [
-                {"task_id": tid, "title": titles.get(tid)} for tid in stage["task_ids"]
-            ]
-        plan["critical_path_titles"] = [titles.get(t) for t in plan["critical_path"]]
-        plan["ready_now_titles"] = [titles.get(t) for t in plan["ready_now"]]
-        return plan
-
-    def start_task(self, task_id: str) -> MigrationTask:
-        """Gate: only TODO tasks with all dependencies satisfied."""
-        from db import migration_execution as _engine
-
-        task = self.session.execute(select(MigrationTask).where(MigrationTask.id == task_id)).scalars().first()
-        if task is None:
-            raise ValueError("migration task not found")
-        index = self._engine_index(task.project_id)
-        allowed, blockers = _engine.can_start(index[task_id], index)
-        if not allowed:
-            detail = "; ".join(
-                f"{b['task_id']} ({b['status']})" for b in blockers
-            )
-            raise _DependencyGateError(f"task is not startable — blocked by: {detail}",
-                                       blockers=blockers)
-        return self.update_task(task_id, status="IN_PROGRESS")
-
-    def complete_task(self, task_id: str) -> MigrationTask:
-        task = self.session.execute(select(MigrationTask).where(MigrationTask.id == task_id)).scalars().first()
-        if task is None:
-            raise ValueError("migration task not found")
-        if task.status != "IN_PROGRESS":
-            raise ValueError(f"only IN_PROGRESS tasks can complete (current: {task.status})")
-        return self.update_task(task_id, status="DONE")
-
-    def rollback_task(self, task_id: str, reason: str) -> dict:
-        """Revert a finished/in-progress task; cascade per the plan.
-
-        DONE/SKIPPED dependents roll back transitively; IN_PROGRESS
-        dependents become BLOCKED with the reason naming the rollback.
-        """
-        from db import migration_execution as _engine
-
-        if not (reason or "").strip():
-            raise ValueError("rollback requires a reason")
-        task = self.session.execute(select(MigrationTask).where(MigrationTask.id == task_id)).scalars().first()
-        if task is None:
-            raise ValueError("migration task not found")
-        rows = [row.to_dict() for row in self.list_tasks(task.project_id)]
-        plan = _engine.rollback_plan(task_id, rows)
-        rolled_back, blocked = [], []
-        for row_id in plan["rollback"]:
-            self.update_task(row_id, status="TODO", blocked_reason=None)
-            rolled_back.append(row_id)
-        for row_id in plan["block"]:
-            self.update_task(
-                row_id, status="BLOCKED",
-                blocked_reason=f"dependency {task_id} rolled back: {reason.strip()}",
-            )
-            blocked.append(row_id)
-        return {
-            "rolled_back": rolled_back,
-            "blocked": blocked,
-            "reason": reason.strip(),
-            "task_id": task_id,
-        }
-
-    def advance_ready(self, project_id: str, *, limit: int = 25) -> dict:
-        """Bulk-start the current ready set (wave kickoff)."""
-        from db import migration_execution as _engine
-
-        rows = [row.to_dict() for row in self.list_tasks(project_id)]
-        ready = _engine.ready_set(rows)[:max(1, limit)]
-        started = []
-        for row_id in ready:
-            self.update_task(row_id, status="IN_PROGRESS")
-            started.append(row_id)
-        return {"started": started, "count": len(started)}
-
     # ----------------------------------------------------- derived state
 
     def _task_rows(self, project_id: str) -> list[MigrationTask]:
@@ -325,7 +134,7 @@ class MigrationTaskRepository:
 
     def _refresh_project(self, project_id: str) -> None:
         """Recompute the project's progress + status from its tasks."""
-        project = self.session.execute(select(MigrationProject).where(MigrationProject.id == project_id)).scalars().first()
+        project = self.session.get(MigrationProject, project_id)
         if project is None:
             return
         rows = self._task_rows(project_id)
@@ -456,7 +265,7 @@ class MigrationTaskRepository:
     # -------------------------------------------------------- milestones
 
     def add_milestone(self, project_id: str, name: str, target_date: datetime | None = None, notes: str | None = None) -> MigrationMilestone:
-        if self.session.execute(select(MigrationProject).where(MigrationProject.id == project_id)).scalars().first() is None:
+        if self.session.get(MigrationProject, project_id) is None:
             raise ValueError("migration project not found")
         row = MigrationMilestone(
             project_id=project_id,

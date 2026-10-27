@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
-from fastapi import HTTPException
+
+from sqlalchemy import create_engine
 
 from api.config.settings import get_settings
-from api.security.auth import AuthenticationError, AuthService
+from api.security.auth import AuthService, AuthenticationError
 from api.security.passwords import hash_password, verify_password
 from api.security.session_manager import SessionManager
 from db.connection.session import Base, SessionLocal, configure_session
 from db.repositories.user_repository import UserRepository
-from sqlalchemy import create_engine
 
 
 @pytest.fixture()
@@ -33,8 +31,7 @@ def test_bootstrap_creates_admin_once(session, monkeypatch):
     service = AuthService(session=session)
     assert service.bootstrap_admin() is True
     user = UserRepository(session).get_by_username("admin")
-    # canonical 8-role-catalog name (legacy alias "admin" still maps to superadmin)
-    assert user is not None and user.role_list == ["superadmin"]
+    assert user is not None and user.role_list == ["admin"]
     assert verify_password("cryptoscan", user.password_hash)
     # Second call is a no-op — existing users are never overwritten.
     assert service.bootstrap_admin() is False
@@ -80,9 +77,7 @@ def test_disabled_user_cannot_authenticate(session):
     repo = UserRepository(session)
     repo.create_user("nina", hash_password("correct-horse-battery"), roles=["viewer"])
     repo.set_active("nina", False)
-    # Disabled/deleted accounts return the same generic message as bad
-    # credentials so usernames cannot be enumerated from the login response.
-    with pytest.raises(AuthenticationError, match="Invalid username or password"):
+    with pytest.raises(AuthenticationError, match="disabled"):
         AuthService(session=session).authenticate("nina", "correct-horse-battery")
 
 
@@ -99,14 +94,9 @@ def test_require_roles_allows_only_permitted(session, monkeypatch):
     class FakeRequest:
         headers = {"Authorization": f"Bearer {token}"}
         cookies = {}
-        # _resolve_api_key caches its verdict on request.state. A real Starlette
-        # request always has one; this stub did not, so the dependency raised
-        # AttributeError before it ever reached the role check and the test
-        # asserted 403 against the wrong exception.
-        state = SimpleNamespace()
 
-    with pytest.raises(HTTPException) as excinfo:
-        dep(FakeRequest(), user="olga", db=session)
+    with pytest.raises(Exception) as excinfo:
+        dep(FakeRequest())
     assert excinfo.value.status_code == 403
 
     # An auditor token passes the same gate.
@@ -116,6 +106,5 @@ def test_require_roles_allows_only_permitted(session, monkeypatch):
     class FakeRequest2:
         headers = {"Authorization": f"Bearer {token2}"}
         cookies = {}
-        state = SimpleNamespace()
 
-    assert dep(FakeRequest2(), user="olga", db=session) == "olga"
+    assert dep(FakeRequest2()) == "olga"

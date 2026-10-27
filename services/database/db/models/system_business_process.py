@@ -8,10 +8,9 @@ from sqlalchemy import ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
 
 
-class SystemBusinessProcess(BaseModel, TenantScoped):
+class SystemBusinessProcess(BaseModel):
     __tablename__ = "system_business_process_map"
     __table_args__ = (UniqueConstraint("system_id", "process_id", name="uq_system_process"),)
 

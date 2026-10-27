@@ -74,10 +74,10 @@ class TestBulkInserterTransactions:
 
         assert count == 5
 
-        # Verify data is in DB (id columns are String(36) — bind the UUID as str)
+        # Verify data is in DB
         result = db_session.execute(
             text("SELECT COUNT(*) FROM evidence_records WHERE scan_id = :sid"),
-            {"sid": str(scan_data["scan_id"])},
+            {"sid": scan_data["scan_id"]},
         )
         assert result.scalar_one() == 5
 

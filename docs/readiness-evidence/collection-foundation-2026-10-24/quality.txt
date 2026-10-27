@@ -1,4 +1,0 @@
-All checks passed!
-No broken requirements found.
-Tracked whitespace: PASS
-Staged code/tests/docs/artifacts whitespace: PASS

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from db.tenancy import filtered_get
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -41,7 +39,7 @@ def _evidence_for(db: Session, system_id: str) -> list[dict]:
 
 def _score_system(db: Session, system: System) -> dict:
     deps = SystemRepository(db).dependencies_for(system.id)
-    _extra = system.extra or {}
+    extra = system.extra or {}
     payload = system.to_dict()
     score = calculate_agility_score(_evidence_for(db, system.id), payload)
     ready = readiness_from_system(
@@ -60,7 +58,7 @@ def _score_system(db: Session, system: System) -> dict:
 
 @router.get("/agility")
 def list_agility(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    systems, _trunc = SystemRepository(db).list_all_bounded()
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=500)
     rows = []
     for system in systems:
         latest = MaturityRepository(db).latest_agility(system.id)
@@ -86,13 +84,12 @@ def list_agility(user: str = Depends(get_current_user), db: Session = Depends(ge
         "average": avg,
         "distribution": dist,
         "trend": portfolio_trend(rows),
-        "systems_truncated": _trunc,
     }
 
 
 @router.get("/systems/{system_id}/agility")
 def get_system_agility(system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    system = filtered_get(db, System, system_id)
+    system = db.get(System, system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     latest = MaturityRepository(db).latest_agility(system_id)
@@ -105,7 +102,7 @@ def get_system_agility(system_id: str, user: str = Depends(get_current_user), db
 
 @router.post("/systems/{system_id}/agility/recalculate")
 def recalculate(system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    system = filtered_get(db, System, system_id)
+    system = db.get(System, system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     return _score_system(db, system)
@@ -114,7 +111,7 @@ def recalculate(system_id: str, user: str = Depends(get_current_user), db: Sessi
 @router.get("/agility/roadmap")
 def agility_roadmap(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Deterministic migration sequencing across the portfolio."""
-    systems, _trunc = SystemRepository(db).list_all_bounded()
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=500)
     entries = []
     for system in systems:
         latest = MaturityRepository(db).latest_agility(system.id)
@@ -136,16 +133,13 @@ def agility_roadmap(user: str = Depends(get_current_user), db: Session = Depends
                 "dependency_count": len(SystemRepository(db).dependencies_for(system.id)),
             }
         )
-    roadmap = build_roadmap(entries)
-    if isinstance(roadmap, dict):
-        roadmap["systems_truncated"] = _trunc
-    return roadmap
+    return build_roadmap(entries)
 
 
 @router.get("/systems/{system_id}/agility/history")
 def agility_history(system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Saved score rows over time + trajectory classification."""
-    system = filtered_get(db, System, system_id)
+    system = db.get(System, system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     rows = MaturityRepository(db).agility_history(system_id)
@@ -179,7 +173,7 @@ def agility_simulate(
     body: AgilitySimulateRequest, system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
 ):
     """What-if projection through the real scoring engine. Nothing is persisted."""
-    system = filtered_get(db, System, system_id)
+    system = db.get(System, system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     result = simulate_improvements(_evidence_for(db, system_id), system.to_dict(), body.actions)
@@ -192,13 +186,13 @@ def agility_simulate(
 @router.get("/agility/pqc")
 def agility_pqc(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Portfolio-wide post-quantum exposure, computed live from crypto assets."""
-    systems, _trunc = SystemRepository(db).list_all_bounded()
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=500)
     per_system = []
     total_vulnerable_sites = 0
     vulnerable_algorithms: set[str] = set()
     hybrid_systems = 0
     for system in systems:
-        _repo = SystemRepository(db)
+        repo = SystemRepository(db)
         evidence = _evidence_for(db, system.id)
         if not evidence:
             continue
@@ -225,13 +219,12 @@ def agility_pqc(user: str = Depends(get_current_user), db: Session = Depends(get
         "quantum_vulnerable_algorithms": sorted(vulnerable_algorithms),
         "hybrid_systems": hybrid_systems,
         "note": "computed live from crypto assets; asymmetric algorithms require PQC migration",
-        "systems_truncated": _trunc,
     }
 
 
 @router.get("/readiness")
 def list_readiness(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    systems, _trunc = SystemRepository(db).list_all_bounded()
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=500)
     waves = {"READY_NOW": [], "READY_WITH_PREP": [], "NOT_READY": [], "BLOCKED": []}
     for system in systems:
         latest = MaturityRepository(db).latest_agility(system.id)
@@ -253,5 +246,4 @@ def list_readiness(user: str = Depends(get_current_user), db: Session = Depends(
                 "agility_score": scored["agility_score"],
             }
         waves.setdefault(item["readiness_category"], []).append(item)
-    return {"waves": waves, "systems": [item for bucket in waves.values() for item in bucket],
-            "systems_truncated": _trunc}
+    return {"waves": waves, "systems": [item for bucket in waves.values() for item in bucket]}

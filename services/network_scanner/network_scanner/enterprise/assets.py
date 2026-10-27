@@ -7,6 +7,7 @@ crypto finding, topology edge and PQC readiness record hangs off an
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Iterable

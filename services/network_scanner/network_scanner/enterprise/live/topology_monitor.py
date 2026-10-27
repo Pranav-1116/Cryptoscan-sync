@@ -12,9 +12,9 @@ graph chain current.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 TOPOLOGY_CHANGE_KINDS = (
     "NEW_CONNECTION", "REMOVED_CONNECTION", "ROUTE_CHANGED", "VPN_CREATED",

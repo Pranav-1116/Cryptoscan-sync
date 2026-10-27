@@ -32,17 +32,6 @@ MISSION = (
 
 COVERED_AREAS: list[dict[str, Any]] = [
     {
-        "id": "zos-crypto-discovery",
-        "label": "z/OS mainframe crypto discovery",
-        "detail": "Ingest of operator-produced z/OS security extracts — RACF "
-                  "RACDCERT LIST, ICSF key inventories, DB2 TLS configuration, "
-                  "CICS TCPIPSERVICE definitions — into the unified crypto "
-                  "inventory, plus crypto-call detection in mainframe "
-                  "application source (COBOL, PL/I, Natural, HLASM, JCL, "
-                  "REXX, CLIST) — ICSF CSN* / CSF* verbs and PCI parameter "
-                  "blocks only; crypto inventory, not general SAST.",
-    },
-    {
         "id": "source-tree-crypto",
         "label": "Source-tree crypto inventory",
         "detail": "Deterministic detection of cryptographic API usage "
@@ -128,11 +117,10 @@ NON_GOALS: list[dict[str, Any]] = [
                   "hunting, or endpoint telemetry analysis.",
     },
     {
-        "id": "no-mainframe-app-logic-analysis",
-        "label": "Mainframe business-logic analysis",
-        "detail": "Mainframe source (COBOL/PL-I/Natural/HLASM) is scanned only "
-                  "for cryptographic service calls and key parameters; we do "
-                  "not analyse business logic, data flow or modernisation.",
+        "id": "no-mainframe",
+        "label": "Mainframe core banking (AS/400, COBOL)",
+        "detail": "We do not scan mainframe core banking systems or COBOL "
+                  "assets.",
     },
     {
         "id": "no-endpoint-agents",
@@ -208,8 +196,10 @@ INVARIANTS: list[dict[str, Any]] = [
 # Banned module-path tokens: any python file under services/ or shared/
 # whose path contains one of these is out of scope by construction.
 BANNED_PATH_TOKENS: tuple[str, ...] = (
+    "mainframe",
     "as400",
     "as_400",
+    "cobol",
     "malware",
     "endpoint_agent",
     "endpoint_agents",
@@ -222,6 +212,8 @@ BANNED_DOC_PHRASES: tuple[str, ...] = (
     "behavior analytics",
     "behavioral analytics",
     "endpoint agent",
+    "mainframe",
+    "cobol",
     "source-code hacking",
 )
 
@@ -249,13 +241,5 @@ def scope_manifest() -> dict[str, Any]:
         "non_goals": NON_GOALS,
         "access_model": ACCESS_MODEL,
         "invariants": INVARIANTS,
-        "capabilities": _capabilities(),
-        "schema_version": 2,
+        "schema_version": 1,
     }
-
-
-def _capabilities() -> dict[str, Any]:
-    """GA / beta / preview tier of every console surface (capability_maturity)."""
-    from shared_models.capability_maturity import capability_manifest
-
-    return capability_manifest()

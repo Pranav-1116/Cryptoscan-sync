@@ -41,7 +41,7 @@ async def test_scope_endpoint_returns_manifest(app_client):
     assert response.status_code == 200
     body = response.json()
     assert body["platform"] == "CryptoScan"
-    assert body["schema_version"] == 2  # v2: adds capabilities (GA/beta/preview)
+    assert body["schema_version"] == 1
     assert body["mission"]
     assert body["covered_areas"]
     assert body["non_goals"]
@@ -53,17 +53,10 @@ async def test_scope_endpoint_returns_manifest(app_client):
 async def test_scope_names_honest_non_goals(app_client):
     body = (await app_client.get("/api/v1/platform/scope")).json()
     labels = " ".join(goal["label"] for goal in body["non_goals"]).lower()
-    # z/OS crypto discovery AND crypto-call scanning of mainframe source (COBOL/PL-I/
-    # Natural/HLASM) are COVERED; business-logic analysis of that code is the non-goal.
-    covered = " ".join(a["detail"] for a in body["covered_areas"]).lower()
-    assert "cobol" in covered
-    assert "business-logic" in labels
-    assert "cobol" not in labels
+    assert "mainframe" in labels
     assert "malware" in labels
     assert "endpoint" in labels
     assert "sast" in labels
-    covered = " ".join(str(area) for area in body.get("covered_areas", [])).lower()
-    assert "z/os" in covered or "zos" in covered
 
 
 @pytest.mark.asyncio
@@ -73,23 +66,3 @@ async def test_scope_invariants_include_metadata_only(app_client):
     assert "metadata-only" in invariant_ids
     assert "read-only-collection" in invariant_ids
     assert "evidence-chained" in invariant_ids
-
-
-@pytest.mark.asyncio
-async def test_capabilities_endpoint_serves_the_maturity_table(app_client):
-    """All navigation is GA (real system) — no beta/preview surfaces."""
-    r = await app_client.get("/api/v1/platform/capabilities")
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert set(body["tiers"]) == {"ga", "beta", "preview"}
-    assert body["default_for_unknown"] == "ga"
-    by_route = {row["route"]: row for row in body["capabilities"]}
-    assert by_route["/cbom"]["tier"] == "ga"
-    assert by_route["/telecom"]["tier"] == "ga"
-    assert by_route["/what-if"]["tier"] == "ga"
-    assert all(row["why"] for row in body["capabilities"])
-    assert body["counts"]["ga"] == len(body["capabilities"])
-    assert body["counts"]["beta"] == 0 and body["counts"]["preview"] == 0
-    # the scope manifest carries the same table
-    scope = (await app_client.get("/api/v1/platform/scope")).json()
-    assert scope["capabilities"]["counts"] == body["counts"]

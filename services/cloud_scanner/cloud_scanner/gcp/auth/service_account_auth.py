@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import json
 import os
 from pathlib import Path
@@ -22,10 +17,6 @@ def service_account_info(*, path: str | None = None) -> dict[str, Any] | None:
         return None
     try:
         data = json.loads(file_path.read_text(encoding="utf-8"))
-    except Exception as _handler_exc:
-        logger.warning(
-            "exception_suppressed",
-            extra={"error_type": type(_handler_exc).__name__},
-        )
+    except Exception:
         return None
     return data if isinstance(data, dict) else None
