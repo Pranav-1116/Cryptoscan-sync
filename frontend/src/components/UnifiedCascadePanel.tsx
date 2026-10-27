@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Badge, Panel } from "./ui";
+import { Badge, Panel, Bar, Ring, Table } from "./ui";
+import { IconTarget, IconSearch } from "./icons";
 import {
   apiCascadeRunDiff,
   apiCascadeRuns,
@@ -88,41 +89,60 @@ export default function UnifiedCascadePanel() {
 
   return (
     <Panel
-      title="Cross-BOM cascade"
-      sub="Review modeled dependencies across BOM layers — not confirmed failures or outage predictions"
+      title={
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconTarget size={14} style={{ color: "var(--accent)" }} /> Cross-BOM cascade
+          <Badge tone="cyan">DETERMINISTIC</Badge>
+          <Badge tone="slate">BFS</Badge>
+        </span>
+      }
+      sub="One target → every layer (code, network, system, process, vendor). Honest unknowns, no inference."
       className="mt"
+      style={{ borderTop: "2px solid var(--accent)", padding: 0, overflow: "hidden" }}
     >
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-        <input
-          className="inp sm"
-          style={{ minWidth: 260, fontSize: 12 }}
-          placeholder="Target: RSA-2048 · CN=…/fingerprint · host:port · system · vendor · device · library · process · exact PURL · sha256:digest"
-          value={target}
-          onChange={(e) => setTarget(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && run()}
-          aria-label="cascade target"
-        />
-        <select value={kind} onChange={(e) => setKind(e.target.value)} style={{ fontSize: 12, padding: "4px 8px" }} aria-label="target kind">
-          {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-        </select>
-        <label style={{ fontSize: 12, color: "var(--dim)" }}>
-          depth
-          <input
-            type="number" min={1} max={12} value={depth}
-            onChange={(e) => setDepth(Math.max(1, Math.min(12, Number(e.target.value) || 6)))}
-            style={{ width: 52, marginLeft: 6, fontSize: 12, padding: "4px 6px" }}
-            aria-label="max depth"
-          />
+      <div style={{ padding: "16px", background: "var(--panel)", borderBottom: result || error ? "1px solid var(--line)" : "none" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(260px,1fr) 140px 96px 132px", gap: 10, alignItems: "end" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--dim)", textTransform: "uppercase" }}>Target</span>
+            <input
+              className="inp"
+              placeholder="RSA-2048 · CN=… · host:port · system · vendor · sha256:…"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && run()}
+              aria-label="cascade target"
+              style={{ fontFamily: "var(--mono)", fontSize: 12.5 }}
+            />
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--dim)", textTransform: "uppercase" }}>Kind</span>
+            <select className="inp" value={kind} onChange={(e) => setKind(e.target.value)} aria-label="target kind" style={{ fontSize: 12, fontWeight: 600 }}>
+              {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--dim)", textTransform: "uppercase" }}>Depth</span>
+            <input
+              className="inp"
+              type="number" min={1} max={12} value={depth}
+              onChange={(e) => setDepth(Math.max(1, Math.min(12, Number(e.target.value) || 6)))}
+              aria-label="max depth"
+              style={{ textAlign: "center", fontWeight: 600 }}
+            />
+          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", color: "transparent", textTransform: "uppercase" }}>run</span>
+            <button className="btn primary" onClick={run} disabled={running || !target.trim()} style={{ height: 36, width: "100%" }}>
+              {running ? "Walking…" : "Run cascade"}
+            </button>
+          </div>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 11, color: "var(--dim)", cursor: "pointer", padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
+          <input type="checkbox" checked={nameSearch} onChange={e => setNameSearch(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
+          Search broad certificate / vendor / package names — choices only, no automatic cascade
+          <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--faint)" }}>Exact identities only cascade</span>
         </label>
-        <button className="btn sm primary" onClick={run} disabled={running || !target.trim()}>
-          {running ? "Cascading…" : "Run cascade"}
-        </button>
       </div>
-
-      <label style={{ fontSize: 12 }}>
-        <input type="checkbox" checked={nameSearch} onChange={e => setNameSearch(e.target.checked)} />
-        Search broad certificate/vendor/package names (choices only; no automatic cascade)
-      </label>
 
       {error && (
         <div style={{ fontSize: 12, color: "var(--red)", marginBottom: 10 }}>{error}</div>

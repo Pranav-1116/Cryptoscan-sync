@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Badge, Panel, Table } from "./ui";
+import { Badge, Panel, Table, Bar, Ring } from "./ui";
 import { apiScanCascade, apiScansRecent, CascadeReport, ScanSummaryRow } from "../lib/api";
 import { CountUp, StaggerGroup, StaggerItem } from "../lib/motion";
+import { IconCode, IconHardware } from "./icons";
 
 /** Code-level dependency & cascade for one scan: which files do crypto, who depends on them, in what order to migrate. */
 export default function CodeCascadePanel() {
@@ -39,27 +40,44 @@ export default function CodeCascadePanel() {
   const s = report?.summary || {};
   return (
     <Panel
-      title="Code-level cascade"
-      sub="Cryptographic providers, blast radius, migration waves, libraries, shared keys and weak key sizes"
+      title={
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconCode size={14} style={{ color: "var(--accent)" }} /> Code-level cascade
+          <Badge tone="cyan">DETERMINISTIC</Badge>
+          <Badge tone="slate">BFS</Badge>
+        </span>
+      }
+      sub="Code → system → dependents. Only registered edges. No inference."
       className="mt"
+      style={{ borderTop: "2px solid var(--accent)", padding: 0, overflow: "hidden" }}
     >
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
-        <label style={{ fontSize: 12, color: "var(--dim)" }}>Scan</label>
-        <select value={scanId} onChange={(e) => { setScanId(e.target.value); setSystem(""); }} style={{ fontSize: 12, padding: "4px 8px" }} aria-label="scan">
-          {scans.map((sc) => (
-            <option key={sc.scan_id} value={sc.scan_id}>{sc.target_location.replace(/^https?:\/\//, "")} · {(sc.scan_end || "").slice(0, 16)}</option>
-          ))}
-        </select>
-        {report?.systems && report.systems.length > 0 && !system && (
-          <>
-            <label style={{ fontSize: 12, color: "var(--dim)" }}>System</label>
-            <select value={system} onChange={(e) => setSystem(e.target.value)} style={{ fontSize: 12, padding: "4px 8px" }} aria-label="system">
-              <option value="">all</option>
-              {report.systems.map((sy) => <option key={sy.system} value={sy.system}>{sy.system}</option>)}
+      <div style={{ padding: "14px 16px", background: "var(--panel)", borderBottom: state === "ready" ? "1px solid var(--line)" : "none" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(280px,1fr) 160px auto", gap: 10, alignItems: "end" }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--dim)", textTransform: "uppercase" }}>Source scan</span>
+            <select className="inp" value={scanId} onChange={(e) => { setScanId(e.target.value); setSystem(""); }} aria-label="scan" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+              {scans.map((sc) => (
+                <option key={sc.scan_id} value={sc.scan_id}>{sc.target_location.replace(/^https?:\/\//, "")} · {(sc.scan_end || "").slice(0, 16)}</option>
+              ))}
             </select>
-          </>
-        )}
-        {system && <Badge tone="cyan">{system} <button className="btn outline" style={{ marginLeft: 6, fontSize: 10, padding: "0 6px" }} onClick={() => setSystem("")}>×</button></Badge>}
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--dim)", textTransform: "uppercase" }}>System filter</span>
+            {report?.systems && report.systems.length > 0 ? (
+              <select className="inp" value={system} onChange={(e) => setSystem(e.target.value)} aria-label="system" style={{ fontSize: 12 }}>
+                <option value="">All systems</option>
+                {report.systems.map((sy) => <option key={sy.system} value={sy.system}>{sy.system}</option>)}
+              </select>
+            ) : (
+              <span style={{ fontSize: 11, color: "var(--faint)", padding: "8px 0" }}>No system filter — all providers</span>
+            )}
+          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "transparent", textTransform: "uppercase" }}>filter</span>
+            {system && <Badge tone="cyan">{system} <button onClick={() => setSystem("")} style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: 700 }}>×</button></Badge>}
+          </div>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8 }}>Scope determines entry edge — code providers are resolved to their owning system, then BFS walks the dependency graph.</div>
       </div>
 
       {state === "offline" && <p style={{ color: "var(--dim)", fontSize: 13 }}>Backend offline.</p>}
