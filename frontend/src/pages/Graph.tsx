@@ -63,6 +63,7 @@ export default function Graph() {
   const graph = useLive<{ nodes: RawNode[]; edges: RawEdge[]; backend?: string }>("/api/v1/graph", { nodes: [], edges: [] });
   const stats = useLive<any>("/api/v1/graph/stats", {});
   const [sel, setSel] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
   const motionOK = useMotionOK();
   const [live, setLive] = useState<ApiResult<Record<string, unknown>> | null>(null);
   const [busy, setBusy] = useState(false);
@@ -129,7 +130,18 @@ export default function Graph() {
         </Panel>
       )}
 
-      <Panel title="Graph" sub={NODES.length ? `edges are dependency edges from the CBOM · backend: ${graph.data.backend ?? "—"}` : "no CBOM yet — run discovery and a scan to build the crypto dependency graph"}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", padding: "6px 10px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
+          <span style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", alignItems: "center", gap: 6 }}>[<span style={{ color: "var(--accent)", fontWeight: 700 }}>G</span>]RAPH VISUAL</span>
+          <button className="btn sm" onClick={() => setZoom(z => Math.min(1.6, +(z + 0.1).toFixed(1)))} style={{ fontSize: 12, padding: "4px 8px", minWidth: 28 }}>+</button>
+          <button className="btn sm outline" onClick={() => setZoom(z => Math.max(0.7, +(z - 0.1).toFixed(1)))} style={{ fontSize: 12, padding: "4px 8px", minWidth: 28 }}>−</button>
+          <button className="btn sm outline" onClick={() => setZoom(1)} style={{ fontSize: 11, padding: "4px 8px" }}>[ ]</button>
+          <span style={{ fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>{Math.round(zoom*100)}%</span>
+          <span style={{ fontSize: 10, color: "var(--faint)" }}>+/− zoom · [ ] reset · click node → blast</span>
+        </div>
+        {sel && <Badge tone="amber">[ {byId.get(sel)?.label ?? sel} ] SELECTED</Badge>}
+      </div>
+      <Panel title="Graph" sub={NODES.length ? `edges are dependency edges from the CBOM · backend: ${graph.data.backend ?? "—"} · ${NODES.length} nodes · ${EDGES.length} edges` : "no CBOM yet — run discovery and a scan to build the crypto dependency graph"}>
         {NODES.length === 0 ? (
           <div style={{ minHeight: 200, display: "grid", placeItems: "center" }}>
             <div className="frame" style={{ border: "1px dashed var(--line-strong)", borderRadius: "var(--r)", padding: "34px 40px", textAlign: "center", color: "var(--faint)", fontSize: 13.5, maxWidth: 440 }}>
@@ -138,8 +150,9 @@ export default function Graph() {
             </div>
           </div>
         ) : (
-          <div className="graphwrap">
-            <svg viewBox="0 0 800 380" width="100%" style={{ minWidth: 700 }}>
+          <div className="graphwrap" style={{ overflow: "auto", border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--bg-2)" }}>
+            <div style={{ transform: `scale(${zoom})`, transformOrigin: "top center", transition: "transform 160ms ease" }}>
+            <svg viewBox="0 0 800 380" width="100%" style={{ minWidth: 700, background: "var(--panel)" }}>
               {EDGES.map((e, i) => {
                 const a = byId.get(e.from); const b = byId.get(e.to);
                 if (!a || !b) return null;
@@ -186,6 +199,7 @@ export default function Graph() {
                 );
               })}
             </svg>
+            </div>
           </div>
         )}
       </Panel>

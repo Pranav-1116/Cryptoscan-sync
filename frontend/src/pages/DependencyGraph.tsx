@@ -1,8 +1,9 @@
 import { Link, useSearchParams } from "react-router-dom";
 import React, { useEffect, useState } from "react";
-import { Badge, Button } from "../components/ui";
+import { Badge, Button, Bar, Ring } from "../components/ui";
 import { apiGraph, apiGraphStats, apiGraphBlastRadius, apiGraphBlastRadiusFromAsset } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
+import { IconComponent, IconSearch, IconTarget, IconSecurity, IconCloud, IconHardware } from "../components/icons";
 import CodeCascadePanel from "../components/CodeCascadePanel";
 import UnifiedCascadePanel from "../components/UnifiedCascadePanel";
 import EdgeManagerPanel from "../components/EdgeManagerPanel";
@@ -103,99 +104,52 @@ export default function DependencyGraph() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
-        <div>
-          <div style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            Deterministic Topology & Impact
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)" }}><IconComponent size={16} style={{ color: "var(--accent)" }} /></span>
+          <div>
+            <div style={{ fontSize: 10, letterSpacing: .12, fontFamily: "var(--mono)", color: "var(--accent)" }}>DETERMINISTIC TOPOLOGY · LIVE BFS · NO INFERENCE</div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, margin: "2px 0 2px", lineHeight: 1 }}>Cryptographic Dependency Graph</h1>
+            <div style={{ fontSize: 12, color: "var(--dim)" }}>Systems → libraries → certs → HSMs — observed edges with provenance</div>
           </div>
-          <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Cryptographic Dependency Graph</h1>
-          <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
-            Observed relationships between systems, services, cryptographic libraries, HSMs, and digital certificates.
-          </p>
         </div>
-
-        <div style={{ display: "flex", gap: "10px" }}>
-          <AuthenticatedDownload
-            path="/api/v1/graph"
-            filename="cryptoscan-graph.json"
-            className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
-          >
-            Export Graph JSON
-          </AuthenticatedDownload>
-          <Link
-            to="/scanners"
-            className="btn primary"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
-          >
-            Discover Topology
-          </Link>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {!loading && nodes.length > 0 && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Ring pct={edges.length ? Math.min(1, edges.length / Math.max(1, nodes.length * 1.5)) : 0} label={nodes.length} sub="nodes" tone="cyan" /><div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.3 }}>{edges.length} edges<br />{provenanceSummary ? <span style={{ color: "var(--accent)" }}>{provenanceSummary.split(" · ")[0]}</span> : <span>no edges yet</span>}</div></div>}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <AuthenticatedDownload path="/api/v1/graph" filename="cryptoscan-graph.json" className="btn outline" style={{ fontSize: 12, padding: "7px 12px", borderRadius: "var(--r)" }}>Export Graph JSON</AuthenticatedDownload>
+            <Link to="/scanners" className="btn primary" style={{ textDecoration: "none", fontSize: 12, padding: "7px 12px", borderRadius: "var(--r)", textAlign: "center" }}>Discover Topology</Link>
+          </div>
         </div>
       </div>
 
-      {/* Stats bar */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px", marginBottom: "24px" }}>
-        <div className="panel" style={{ padding: "16px" }}>
-          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Graph Nodes
-          </div>
-          <div style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0" }}>
-            {loading ? "..." : (graphStats?.nodes ?? nodes.length)}
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            Systems, libraries, certificates & HSMs
-          </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
+        <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--accent)" }}>
+          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--accent)", width: 6, height: 6, borderRadius: 99 }} />NODES</div>
+          <div style={{ fontSize: 22, fontWeight: 800, margin: "4px 0 2px" }}>{loading ? "…" : (graphStats?.nodes ?? nodes.length)}</div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>Systems · libs · certs · HSMs</div>
+          {!loading && <Bar value={1} tone="cyan" />}
         </div>
-
-        <div className="panel" style={{ padding: "16px" }}>
-          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Edges by Provenance
-          </div>
-          <div style={{ fontSize: "26px", fontWeight: 700, color: "var(--cyan)", margin: "4px 0" }}>
-            {loading ? "..." : (graphStats?.edges ?? edges.length)}
-          </div>
-          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            {loading ? "…" : (provenanceSummary || "no edges yet")}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>
-            declared = operator statement · scanner-derived = from scan evidence · unattributed = origin unknown
-          </div>
+        <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--cyan)" }}>
+          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--cyan)", width: 6, height: 6, borderRadius: 99 }} />EDGES</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--cyan)", margin: "4px 0 2px" }}>{loading ? "…" : (graphStats?.edges ?? edges.length)}</div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>{loading ? "…" : (provenanceSummary || "no edges yet")}</div>
+          {!loading && edges.length > 0 && <Bar value={Math.min(1, edges.length / Math.max(1, (graphStats?.nodes ?? nodes.length)))} tone="cyan" />}
+          <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 4 }}>declared = operator · scanner-derived = evidence</div>
         </div>
-
-        <div className="panel" style={{ padding: "16px" }}>
-          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Graph Backend Engine
-          </div>
-          <div style={{ fontSize: "20px", fontWeight: 700, margin: "7px 0" }}>
-            {loading
-              ? "..."
-              : graphData.backend === "memory"
-                ? "Deterministic Memory Engine"
-                : graphData.backend
-                  ? `Neo4j (${graphData.backend})`
-                  : "Not reported"}
-          </div>
-          <div style={{ fontSize: "12px", color: loading || graphData.backend ? "var(--green)" : "var(--dim)" }}>
-            {loading || graphData.backend ? "Fail-closed BFS traversal ready" : "Backend not reported by the API"}
-          </div>
+        <div className="panel" style={{ padding: "12px 14px", borderTop: loading || graphData.backend ? "2px solid var(--green)" : "2px solid var(--line-strong)" }}>
+          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: loading || graphData.backend ? "var(--green)" : "var(--slate)", width: 6, height: 6, borderRadius: 99 }} />ENGINE</div>
+          <div style={{ fontSize: 14, fontWeight: 700, margin: "6px 0 2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{loading ? "…" : graphData.backend === "memory" ? "Deterministic Memory" : graphData.backend ? `Neo4j (${graphData.backend})` : "Not reported"}</div>
+          <div style={{ fontSize: 11, color: loading || graphData.backend ? "var(--green)" : "var(--dim)" }}>{loading || graphData.backend ? "Fail-closed BFS ready" : "Backend not reported"}</div>
         </div>
       </div>
 
       {/* Main Workspace Layout */}
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "20px" }}>
         {/* Left: Node Explorer / Visual Map */}
-        <div className="panel" style={{ padding: "20px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", gap: "10px" }}>
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>Topology Elements</h3>
-            <input
-              type="text"
-              placeholder="Filter nodes..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="inp sm"
-              style={{ width: "180px", fontSize: "12px" }}
-            />
+        <div className="panel" style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><IconComponent size={14} style={{ color: "var(--accent)" }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Topology Elements</span><Badge tone={nodes.length ? "cyan" : "slate"}>{filteredNodes.length} / {nodes.length}</Badge></div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "1", minWidth: 160, maxWidth: 220 }}><IconSearch size={13} style={{ color: "var(--faint)" }} /><input type="text" placeholder="Filter nodes…" value={search} onChange={(e) => setSearch(e.target.value)} className="inp sm" style={{ flex: 1, fontSize: 12 }} /></div>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "550px", overflowY: "auto" }}>
@@ -206,9 +160,10 @@ export default function DependencyGraph() {
                   key={n.id}
                   onClick={() => handleSelectNode(n)}
                   style={{
-                    padding: "10px 14px",
-                    background: isSelected ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--bg-2)",
-                    border: `1px solid ${isSelected ? "var(--cyan)" : "var(--line)"}`,
+                    padding: "9px 12px",
+                    background: isSelected ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "var(--panel-2)",
+                    border: `1px solid ${isSelected ? "var(--accent)" : "var(--line)"}`,
+                    borderLeft: `3px solid ${isSelected ? "var(--accent)" : n.kind === "certificate" ? "var(--green)" : n.kind === "hardware" ? "var(--orange)" : "var(--line-strong)"}`,
                     borderRadius: "var(--r)",
                     cursor: "pointer",
                     display: "flex",
@@ -217,8 +172,8 @@ export default function DependencyGraph() {
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>
-                      {n.label || n.id}
+                    <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)", fontFamily: "var(--mono)" }}>
+                      [<span style={{ color: isSelected ? "var(--accent)" : "var(--text)" }}>{n.label || n.id}</span>]
                     </div>
                     <div style={{ fontSize: "11px", color: "var(--dim)" }}>
                       Kind: {n.kind || "system"} · In-Degree: {n.in_degree ?? 0} · Out-Degree: {n.out_degree ?? 0}
@@ -248,11 +203,11 @@ export default function DependencyGraph() {
         </div>
 
         {/* Right: Selected Node Details & Blast Radius Calculator */}
-        <div className="panel" style={{ padding: "20px" }}>
-          <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Blast Radius & Impact Analysis</h3>
-          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
-            Exact BFS traversal calculating downstream cascading compromise exposure.
-          </p>
+        <div className="panel" style={{ padding: "14px 16px", borderTop: "2px solid var(--red)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8, padding: "8px 10px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><IconTarget size={14} style={{ color: "var(--red)" }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Blast Radius & Impact</span><Badge tone={blastRadius ? "red" : "slate"}>{blastRadius ? `${blastRadius.systems?.length ?? 0} impacted` : "select node"}</Badge></div>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>Exact BFS · downstream exposure</span>
+          </div>
 
           {selectedNode ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
