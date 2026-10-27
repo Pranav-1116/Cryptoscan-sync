@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Panel, Badge, Table, PageHead, Code, Tabs } from "../components/ui.jsx";
+import { Panel, Badge, Table, PageHead, Code, Tabs, Ring, Bar, ProgressBar } from "../components/ui.jsx";
+import { IconCode, IconContainer, IconCloud, IconComponent, IconSecurity, IconNetwork, IconHardware, IconCertificate, IconTarget, IconTrendUp } from "../components/icons";
 import { ApiResult } from "../lib/api.js";
 import {
   apiContainerScan, apiK8sScan, apiCloudPosture, apiSbomImport,
@@ -26,38 +27,43 @@ function Err({ res }: { res: ApiResult<any> | null }) {
 }
 
 function EvidenceBoundaryStrip() {
-  const stages = [
-    ["01", "Source / binary", "observed scope"],
-    ["02", "SBOM + CBOM", "components + crypto"],
-    ["03", "HBOM + NBOM", "context / candidates"],
-    ["04", "VBOM + advisories", "provider provenance"],
-    ["05", "Policy + evidence", "gates / tasks"],
+  const stages: Array<[string, string, string, any]> = [
+    ["01", "Source / binary", "observed scope", IconCode],
+    ["02", "SBOM + CBOM", "components + crypto", IconComponent],
+    ["03", "HBOM + NBOM", "context / candidates", IconHardware],
+    ["04", "VBOM + advisories", "provider provenance", IconCloud],
+    ["05", "Policy + evidence", "gates / tasks", IconSecurity],
   ];
   return (
-    <section className="pipeline-strip" aria-label="Applications evidence pipeline">
-      <div className="pipeline-strip-head">
+    <section className="pipeline-strip" aria-label="Applications evidence pipeline" style={{ background: "linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%)", border: "1px solid var(--line)", overflow: "hidden" }}>
+      <div className="pipeline-strip-head" style={{ alignItems: "center" }}>
         <div>
-          <span className="kicker">Bounded evidence pipeline</span>
-          <h2>From artifact to accountable decision</h2>
+          <span className="kicker" style={{ color: "var(--accent)" }}>Bounded evidence pipeline</span>
+          <h2 style={{ display: "flex", gap: 10, alignItems: "center" }}><IconTarget size={22} style={{ color: "var(--accent)" }} /> From artifact to accountable decision</h2>
+          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4, fontFamily: "var(--mono)" }}>Deterministic, fail-closed · every finding cites its evidence · no inferred clean</div>
         </div>
-        <Badge tone="amber"><span className="dot" /> CLEAN ≠ COMPLETE</Badge>
+        <Badge tone="amber" style={{ fontFamily: "var(--mono)", letterSpacing: ".04em" }}><span className="dot" /> CLEAN ≠ COMPLETE</Badge>
       </div>
-      <div className="pipeline-stages">
-        {stages.map(([number, title, detail], index) => (
+      <div className="pipeline-stages" style={{ gap: 10 }}>
+        {stages.map(([number, title, detail, Ico], index) => (
           <React.Fragment key={number}>
-            <div className="pipeline-stage">
-              <span className="pipeline-number">{number}</span>
-              <strong>{title}</strong>
-              <small>{detail}</small>
+            <div className="pipeline-stage" style={{ flex: 1, minWidth: 0, padding: "14px 12px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel-2)", display: "flex", flexDirection: "column", gap: 8, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: index === 0 ? "var(--accent)" : index === 1 ? "var(--cyan)" : index === 2 ? "var(--violet)" : index === 3 ? "var(--amber)" : "var(--green)" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span className="pipeline-number" style={{ color: "var(--accent)", fontWeight: 700 }}>{number}</span>
+                <Ico size={14} style={{ color: "var(--faint)" }} />
+              </div>
+              <strong style={{ fontSize: 11.5, lineHeight: 1.2 }}>{title}</strong>
+              <small style={{ color: "var(--faint)", fontFamily: "var(--mono)", fontSize: 9.5 }}>{detail}</small>
             </div>
-            {index < stages.length - 1 && <span className="pipeline-arrow" aria-hidden="true">→</span>}
+            {index < stages.length - 1 && <span className="pipeline-arrow" aria-hidden="true" style={{ color: "var(--accent)", opacity: .6 }}>→</span>}
           </React.Fragment>
         ))}
       </div>
-      <div className="pipeline-boundaries">
-        <span><b>Observed</b> is not inferred.</span>
-        <span><b>Signatures</b> are not trust decisions.</span>
-        <span><b>No finding</b> means no match in scope, never an unobserved clean estate.</span>
+      <div className="pipeline-boundaries" style={{ background: "var(--bg-2)", margin: "14px -20px -20px", padding: "10px 20px", borderTop: "1px solid var(--line)", display: "flex", gap: 16, flexWrap: "wrap" }}>
+        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--accent)" }} /><b>Observed</b> is not inferred.</span>
+        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--cyan)" }} /><b>Signatures</b> are not trust decisions.</span>
+        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--amber)" }} /><b>No finding</b> means no match in scope, never an unobserved clean estate.</span>
       </div>
     </section>
   );
@@ -95,26 +101,73 @@ function ContainerPanel() {
     setBusy(false);
   };
   const d = res?.data;
+  const sevCounts = d ? d.cve_matches.reduce((a: any, c: any) => (a[c.severity] = (a[c.severity]||0)+1, a), {} as any) : {};
   return (
-    <Panel title="Container image scan (on push)" sub="Dockerfile policy + deterministic CVE match of installed packages against NVD-style feeds" className="mt">
-      <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-        <textarea className="inp" rows={4} value={dockerfile} onChange={(e) => setDockerfile(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5 }} placeholder="Dockerfile" />
-        <textarea className="inp" rows={4} value={packages} onChange={(e) => setPackages(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5 }} placeholder='packages [{"name","version","ecosystem"}]' />
+    <Panel title="Container image scan (on push)" sub="Dockerfile policy + deterministic CVE match — visual posture, not raw dumps" className="mt" style={{ overflow: "hidden", padding: 0 }}>
+      <div style={{ padding: "14px 16px", background: "var(--bg-2)", borderBottom: "1px solid var(--line)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <span className="brandmark" style={{ width: 32, height: 32, display: "grid", placeItems: "center" }}><IconContainer size={16} /></span>
+        <div><div style={{ fontWeight: 700, fontSize: 13 }}>Container image scan</div><div style={{ fontSize: 11, color: "var(--dim)" }}>Dockerfile policy + NVD-style feed · deterministic, offline match</div></div>
+        <span className="badge amber" style={{ marginLeft: "auto" }}><span className="dot" /> ON PUSH GATE</span>
       </div>
-      <textarea className="inp" rows={3} value={feed} onChange={(e) => setFeed(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} placeholder="advisory feed (NVD-style JSON)" />
-      <button className="btn sm primary" onClick={() => void run()} disabled={busy}>{busy ? "Scanning…" : "Scan image"}</button>
-      <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
-      {d && (
-        <>
-          <div className="row" style={{ gap: 8, marginBottom: 10 }}>
-            <Badge tone={d.worst_severity === "CRITICAL" ? "red" : "green"}>{d.vulnerabilities} CVEs · worst {d.worst_severity}</Badge>
-            <Badge tone={d.fixable ? "amber" : "green"}>{d.fixable} fixable</Badge>
-            <Badge tone={d.dockerfile_findings.length ? "amber" : "green"}>{d.dockerfile_findings.length} Dockerfile issues</Badge>
-          </div>
-          <FindingTable rows={d.cve_matches.map((c: any) => ({ ...c, name: `${c.package}@${c.version}`, detail: `${c.cve_id}${c.fixed_version ? " → fix " + c.fixed_version : ""} (${c.ecosystem})` }))} codeKey={(r) => r.cve_id} sevKey={(r) => r.severity} />
-          <div className="mt"><FindingTable rows={d.dockerfile_findings} codeKey={(r) => r.code} sevKey={(r) => r.severity} /></div>
-        </>
-      )}
+      <div style={{ padding: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)", display: "flex", gap: 6, alignItems: "center" }}><IconCode size={12} /> Dockerfile</span>
+            <textarea className="inp" rows={5} value={dockerfile} onChange={(e) => setDockerfile(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11, background: "var(--bg)", border: "1px solid var(--line)" }} placeholder="FROM ubuntu:latest" />
+            <span style={{ fontSize: 10, color: "var(--faint)" }}>Policy: latest tag, apt-get pinning, USER non-root</span>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)", display: "flex", gap: 6, alignItems: "center" }}><IconComponent size={12} /> Installed packages</span>
+            <textarea className="inp" rows={5} value={packages} onChange={(e) => setPackages(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11, background: "var(--bg)", border: "1px solid var(--line)" }} placeholder='[{"name","version","ecosystem"}]' />
+            <span style={{ fontSize: 10, color: "var(--faint)" }}>Exact versions from image layer · ecosystem-aware</span>
+          </label>
+        </div>
+        <label style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)", display: "flex", gap: 6, alignItems: "center" }}><IconCloud size={12} /> Advisory feed (NVD-style)</span>
+          <textarea className="inp" rows={3} value={feed} onChange={(e) => setFeed(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11, background: "var(--bg)", border: "1px solid var(--line)" }} placeholder='[{"cve_id":"CVE-...","severity":"CRITICAL",...}]' />
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="btn sm primary" onClick={() => void run()} disabled={busy} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><IconTarget size={12} /> {busy ? "Scanning…" : "Scan image"}</button>
+          <span style={{ fontSize: 11, color: "var(--faint)" }}>Deterministic — same input → same CVEs, offline & no inference</span>
+        </div>
+        <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
+        {d && (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 16, alignItems: "center", padding: "12px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+                <Ring pct={Math.max(0, Math.min(1, 1 - (d.vulnerabilities / Math.max(1, d.vulnerabilities + 3))))} label={`${d.vulnerabilities}`} sub="CVEs" tone={d.worst_severity === "CRITICAL" ? "red" : d.vulnerabilities ? "amber" : "green"} />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>worst <span style={{ color: d.worst_severity === "CRITICAL" ? "var(--red)" : "var(--amber)" }}>{d.worst_severity}</span> · {d.vulnerabilities} CVEs</div>
+                  <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{d.fixable} fixable · {d.dockerfile_findings.length} Dockerfile issues</div>
+                  <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                    <Badge tone={d.worst_severity === "CRITICAL" ? "red" : "green"}>{d.vulnerabilities} CVEs · worst {d.worst_severity}</Badge>
+                    <Badge tone={d.fixable ? "amber" : "green"}>{d.fixable} fixable</Badge>
+                    <Badge tone={d.dockerfile_findings.length ? "amber" : "green"}>{d.dockerfile_findings.length} Dockerfile issues</Badge>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--faint)", fontFamily: "var(--mono)", marginBottom: 6 }}>Severity breakdown</div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {["CRITICAL","HIGH","MEDIUM","LOW"].map(s => sevCounts[s] ? <span key={s} className={`badge ${sevTone(s)}`} style={{ fontFamily: "var(--mono)" }}>{s} {sevCounts[s]}</span> : null)}
+                  {!Object.keys(sevCounts).length && <span className="faint" style={{ fontSize: 12 }}>No CVEs — clean image</span>}
+                </div>
+                <div className="bar" style={{ marginTop: 10, height: 8 }}><i className={d.worst_severity === "CRITICAL" ? "red" : d.vulnerabilities ? "amber" : "green"} style={{ width: `${d.vulnerabilities ? Math.min(100, d.vulnerabilities * 18) : 4}%` }} /></div>
+              </div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)", marginBottom: 6, display: "flex", gap: 6, alignItems: "center" }}><IconSecurity size={12} /> CVE matches</div>
+                <FindingTable rows={d.cve_matches.map((c: any) => ({ ...c, name: `${c.package}@${c.version}`, detail: `${c.cve_id}${c.fixed_version ? " → fix " + c.fixed_version : ""} (${c.ecosystem})` }))} codeKey={(r) => r.cve_id} sevKey={(r) => r.severity} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)", marginBottom: 6, display: "flex", gap: 6, alignItems: "center" }}><IconCode size={12} /> Dockerfile policy</div>
+                <FindingTable rows={d.dockerfile_findings} codeKey={(r) => r.code} sevKey={(r) => r.severity} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </Panel>
   );
 }
