@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Badge, Feed, Kpi, PageHead, Panel, Stat, Table, Tabs, Code,
+  Badge, Feed, Kpi, PageHead, Panel, Stat, Table, Tabs, Code, Bar, Ring,
 } from "../components/ui.jsx";
 import { useRealtime, useRealtimeRefresh, severityOf } from "../lib/realtime.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
-import { ICON_MD, ICON_SM, IconCalendar, IconClose, IconWarn } from "../components/icons";
+import { ICON_MD, ICON_SM, IconCalendar, IconClose, IconWarn, IconClock, IconCrypto, IconHardware, IconTarget, IconSecurity, IconInfo, IconSearch, IconComponent, IconCertificate } from "../components/icons";
 import {
   apiTechBomLive, apiTechBomSnapshot, apiTechBomVersions, apiTechBomCompare,
   apiTechBomExport, apiTechBomExportCsv, apiTechBomExportRaw, fmtSnapshotId,
@@ -786,28 +786,151 @@ export default function LiveAssetIntelligence() {
   const assuranceData = (assurance.data as TechBomAssurance) ?? null;
   const bankingData = (banking.data as BankOverview) ?? null;
 
-  return (
-    <div>
-      <PageHead
-        crumb="Intelligence / Technology BOM"
-        title="Live Asset Intelligence"
-        sub={`Unified SBOM · CBOM · HBOM · Vendor — one asset model, four materialized views. Snapshot v${state?.state_version ?? 0} · ${fmtSnapshotId(state?.snapshot_id)}`}
-        right={
-          <div style={{ display: "flex", gap: 8 }}>
-            <Badge tone={rt.connected ? "green" : "amber"}>
-              {rt.connected ? "SSE LIVE" : rt.backend === false ? "OFFLINE" : "POLLING"}
-            </Badge>
-            <button className="btn" onClick={captureSnapshot}>Capture snapshot</button>
-          </div>
-        }
-      />
+  const layerTotal = Math.max(1, total);
+  const sbomPct = (counts.sbom ?? 0) / layerTotal;
+  const cbomPct = (counts.cbom ?? 0) / layerTotal;
+  const hbomPct = (counts.hbom ?? 0) / layerTotal;
+  const vendorPct = (counts.vendor ?? 0) / layerTotal;
+  const certPct = (counts.certificates ?? 0) / layerTotal;
+  const estateRingPct = Math.min(1, total / 500);
+  const ringTone = total ? total > 200 ? "green" : total > 50 ? "cyan" : "amber" : "slate";
 
-      <div className="grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
-        <Kpi k="Assets" v={total} tone="cyan" />
-        <Kpi k="SBOM" v={counts.sbom ?? 0} tone="cyan" />
-        <Kpi k="CBOM" v={counts.cbom ?? 0} tone="cyan" />
-        <Kpi k="HBOM" v={counts.hbom ?? 0} tone="orange" />
-        <Kpi k="Vendors" v={counts.vendor ?? 0} tone="violet" />
+  return (
+    <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      {/* Visual Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
+        <div style={{ flex: "1 1 460px", minWidth: 280 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+            <span style={{ width: 6, height: 6, borderRadius: 99, background: rt.connected ? "var(--green)" : "var(--accent)" }} /> INTELLIGENCE · TECHNOLOGY BOM · ONE ASSET MODEL
+          </div>
+          <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--accent)", color: "var(--on-accent)" }}><IconComponent size={18} /></span>
+            Live Asset Intelligence
+          </h1>
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
+            Unified <b style={{ color: "var(--text)" }}>SBOM · CBOM · HBOM · Vendor</b> — one asset model, four materialized views. Snapshot <span style={{ color: "var(--accent)", fontFamily: "var(--mono)" }}>v{state?.state_version ?? 0} · {fmtSnapshotId(state?.snapshot_id)}</span>
+          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <span className="kicker" style={{ fontSize: 10 }}>MATERIALIZED VIEWS</span>
+            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span className="kicker" style={{ fontSize: 10 }}>HMAC-SIGNED EXPORTS</span>
+            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>dependency edges {state?.dependency_count ?? 0}</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
+            <Ring pct={estateRingPct} label={String(total)} sub="assets" tone={ringTone} />
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>ESTATE COVERAGE</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{total ? `${Object.keys(counts).length} layers · ${state?.dependency_count ?? 0} edges` : "No BOM yet — run a scan"}</div>
+              <div style={{ marginTop: 6 }}><Bar value={estateRingPct} tone={ringTone} /></div>
+            </div>
+          </Panel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button className="btn primary" onClick={captureSnapshot} style={{ fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)" }}>Capture snapshot</button>
+            <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+              <Badge tone={rt.connected ? "green" : "amber"}>{rt.connected ? "SSE LIVE" : rt.backend === false ? "OFFLINE" : "POLLING"}</Badge>
+            </div>
+            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>v{state?.state_version ?? 0} · {fmtSnapshotId(state?.snapshot_id).slice(0, 16)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Visual KPI cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 14 }}>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--accent)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconTarget size={12} /> TOTAL ASSETS</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{total}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>Across all layers</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconComponent size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ height: 6, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
+              <div style={{ width: `${sbomPct * 100}%`, background: "var(--violet)" }} /><div style={{ width: `${cbomPct * 100}%`, background: "var(--accent)" }} /><div style={{ width: `${hbomPct * 100}%`, background: "var(--slate)" }} /><div style={{ flex: 1, background: "var(--green)" }} />
+            </div>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6, display: "flex", gap: 8 }}><span>● SBOM</span><span>● CBOM</span><span>● HBOM</span><span>● Vendor</span></div>
+          </div>
+        </div>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--violet)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>SBOM — APPLICATION</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{counts.sbom ?? 0}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>Software components</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}>SB</span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <Bar value={sbomPct} tone="violet" />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{Math.round(sbomPct * 100)}% of estate</div>
+          </div>
+        </div>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--accent)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>CBOM — CRYPTO</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{counts.cbom ?? 0}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>Crypto assets</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconCrypto size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <Bar value={cbomPct} tone="cyan" />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{Math.round(cbomPct * 100)}% of estate</div>
+          </div>
+        </div>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--slate)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>HBOM — HARDWARE</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{counts.hbom ?? 0}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>Hardware roots</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--slate)" }}><IconHardware size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <Bar value={hbomPct} tone="slate" />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{Math.round(hbomPct * 100)}% of estate</div>
+          </div>
+        </div>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--green)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>VENDOR · CERTS</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{(counts.vendor ?? 0) + (counts.certificates ?? 0)}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{counts.vendor ?? 0} vendors · {counts.certificates ?? 0} certs</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid var(--green)", color: "var(--green)" }}><IconCertificate size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <div style={{ display: "flex", gap: 4 }}><span style={{ flex: 1 }}><Bar value={(counts.vendor ?? 0) / layerTotal} tone="green" /></span><span style={{ flex: 1 }}><Bar value={(counts.certificates ?? 0) / layerTotal} tone="green" /></span></div>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Supply chain + TLS trust</div>
+          </div>
+        </div>
+      </div>
+      {/* Layer composition strip */}
+      <div className="panel" style={{ padding: "12px 16px", marginBottom: 14, borderLeft: "3px solid var(--accent)", background: "color-mix(in srgb, var(--accent) 4%, var(--panel))" }}>
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", color: "var(--faint)" }}>LAYER COMPOSITION</div>
+          <div style={{ flex: 1, minWidth: 200, height: 10, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
+            <div style={{ width: `${sbomPct * 100}%`, background: "var(--violet)" }} title={`SBOM ${counts.sbom ?? 0}`} />
+            <div style={{ width: `${cbomPct * 100}%`, background: "var(--accent)" }} title={`CBOM ${counts.cbom ?? 0}`} />
+            <div style={{ width: `${hbomPct * 100}%`, background: "var(--slate)" }} title={`HBOM ${counts.hbom ?? 0}`} />
+            <div style={{ width: `${vendorPct * 100}%`, background: "var(--green)" }} title={`Vendor ${counts.vendor ?? 0}`} />
+            <div style={{ flex: 1, background: "color-mix(in srgb, var(--green) 60%, transparent)" }} title={`Certs ${counts.certificates ?? 0}`} />
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Badge tone="violet">SBOM {counts.sbom ?? 0}</Badge>
+            <Badge tone="cyan">CBOM {counts.cbom ?? 0}</Badge>
+            <Badge tone="slate">HBOM {counts.hbom ?? 0}</Badge>
+            <Badge tone="green">Vendor {counts.vendor ?? 0}</Badge>
+          </div>
+          <Badge tone={state?.dependency_count ? "green" : "slate"}>{state?.dependency_count ?? 0} edges</Badge>
+        </div>
       </div>
 
       {state?.scan_in_progress && (
