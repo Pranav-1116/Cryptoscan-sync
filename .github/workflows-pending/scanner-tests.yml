@@ -1,0 +1,67 @@
+# Scanner-heavy suites — kept out of the main ci.yml gate for speed.
+#
+# This file was empty while ci.yml referenced it: the scanner suites ran
+# nowhere. It now runs the five scanner-heavy services on the same PYTHONPATH
+# bootstrap the container image uses.
+name: scanner-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "services/scanner/**"
+      - "services/network_scanner/**"
+      - "services/cloud_scanner/**"
+      - "services/container_scanner/**"
+      - "services/universal_vendor/**"
+      - "shared/**"
+      - "requirements.txt"
+      - ".github/workflows/scanner-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scanner-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_NO_CACHE_DIR: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  scanner:
+    name: scanner tests / ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - scanner
+          - network_scanner
+          - cloud_scanner
+          - container_scanner
+          - universal_vendor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Build PYTHONPATH (all services + shared)
+        run: |
+          echo "PYTHONPATH=$(find services shared -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')" >> "$GITHUB_ENV"
+      - name: Pytest (${{ matrix.service }})
+        run: python -m pytest services/${{ matrix.service }}/tests -q
+        env:
+          # Offline, deterministic: no live probes from CI, ever.
+          ENVIRONMENT: test
+          CRYPTOSCAN_TLS_LIVE: "0"
+          CRYPTOSCAN_CLOUD_LIVE: "0"
+          CRYPTOSCAN_CVE_LIVE: "0"
+          SECRET_KEY: test-secret-key-for-sessions-min-32-chars

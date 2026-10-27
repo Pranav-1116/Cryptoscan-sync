@@ -1,0 +1,200 @@
+# Main CI gate — lint + backend unit tests (core services) + frontend build
+# + production configuration guard.
+#
+# The PYTHONPATH bootstrap mirrors the container image: every directory under
+# services/ and shared/ is put on sys.path (the Docker image does the same via
+# its cryptoscan.pth file), so a newly added service never needs CI edits.
+#
+# Scanner-heavy suites (network/cloud/container/universal_vendor/scanner) run
+# separately in scanner-tests.yml to keep this gate fast.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PIP_NO_CACHE_DIR: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install "ruff>=0.1.14"
+      - name: Ruff (repo-wide defect gate, baseline in ruff.toml)
+        # shared/ was outside the gate, which is why a duplicate "FALCON" key in
+        # the algorithm registry (one entry silently discarding the other) sat
+        # there undetected. It holds the cross-service models every scanner and
+        # policy path imports, so it is the last place that should be unlinted.
+        run: ruff check services scripts shared
+
+  backend:
+    name: tests / ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api
+          - cbom
+          - control_plane
+          - database
+          - drift
+          - evidence
+          - graph_engine
+          - normalization
+          - policy
+          - privacy
+          - reporting
+          - runtime
+          - universal_crypto
+          - universal_platform
+          - worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Build PYTHONPATH (all services + shared)
+        run: |
+          echo "PYTHONPATH=$(find services shared -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')" >> "$GITHUB_ENV"
+      - name: Pytest (${{ matrix.service }})
+        # Per-test timeout comes from the repo pytest.ini (120s, thread method).
+        run: python -m pytest services/${{ matrix.service }}/tests -q
+        env:
+          # Deterministic, offline test environment. No live scans, no demo
+          # credentials, isolated temp workspaces.
+          ENVIRONMENT: test
+          GITHUB_WEBHOOK_SECRET: test-webhook-secret-abc123
+          SECRET_KEY: test-secret-key-for-sessions-min-32-chars
+          # REDIS_URL is deliberately NOT set. The suite's rate limiter uses
+          # in-process windows when it is empty; pointed at a real server its
+          # fixed-window counters outlive both the per-test app and the pytest
+          # process (the register class has an hour-long TTL), so the auth
+          # suites fail on any machine that happens to have Redis on 6379.
+          # CI never had one running, which is precisely why this went unseen.
+          CRYPTOSCAN_CVE_LIVE: "0"
+          CRYPTOSCAN_TLS_LIVE: "0"
+          CRYPTOSCAN_CLOUD_LIVE: "0"
+          CRYPTOSCAN_CLOUD_SUBMIT: "0"
+          CRYPTOSCAN_CBOM_SIGN: "0"
+          CRYPTOSCAN_HOME: /tmp/cryptoscan-home
+
+  frontend:
+    name: frontend (typecheck + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: frontend
+      - name: Unit tests (vitest)
+        # the smoke contract ("no fabricated data" offline renders) and the
+        # per-page suites run in CI, not only locally: a page that fabricates
+        # state or throws offline must fail the gate here.
+        run: npx vitest run
+        working-directory: frontend
+      - name: Production build
+        run: npx vite build
+        working-directory: frontend
+
+  prod-config-guard:
+    name: production config guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+        env:
+          PIP_NO_CACHE_DIR: "1"
+      - name: Build PYTHONPATH (all services + shared)
+        run: |
+          echo "PYTHONPATH=$(find services shared -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')" >> "$GITHUB_ENV"
+      - name: API refuses to boot with demo secrets in production
+        run: python scripts/check_prod_guard.py --expect-reject
+        env:
+          ENVIRONMENT: production
+          SECRET_KEY: cryptoscan-dev-secret
+          DATABASE_URL: sqlite:///./data/demo.db
+          CORS_ORIGINS: "*"
+      - name: API accepts a fully specified production configuration
+        run: python scripts/check_prod_guard.py
+        env:
+          ENVIRONMENT: production
+          SECRET_KEY: ${{ secrets.PROD_GUARD_SECRET_KEY || 'ci-only-production-guard-secret-key-0123456789abcdef' }}
+          ADMIN_PASSWORD_HASH: ${{ secrets.PROD_GUARD_ADMIN_HASH || 'ci-only-placeholder-hash' }}
+          GITHUB_WEBHOOK_SECRET: ci-only-webhook-secret-0123456789abcdef
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+          CORS_ORIGINS: https://cryptoscan.example.com
+
+  postgres-parity:
+    name: postgres parity (production database path)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The ordinary suite runs on SQLite; production mandates PostgreSQL. Without
+    # this job the database the product actually ships on is never exercised.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cryptoscan
+          POSTGRES_PASSWORD: parity
+          POSTGRES_DB: cryptoscan
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cryptoscan"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Alembic chain + worker suite + estate read-back, on PostgreSQL
+        # The service container is already up, so the script uses it rather
+        # than starting one of its own.
+        run: bash scripts/postgres_parity.sh
+        env:
+          CRYPTOSCAN_TEST_DATABASE_URL: postgresql+psycopg2://cryptoscan:parity@127.0.0.1:5432/cryptoscan
+          CRYPTOSCAN_PARITY_NO_DOCKER: "1"
+          PYTHON: python
+          ENVIRONMENT: test
+          SECRET_KEY: test-secret-key-for-sessions-min-32-chars
+          GITHUB_WEBHOOK_SECRET: test-webhook-secret-abc123
+          CRYPTOSCAN_HOME: /tmp/cryptoscan-home
