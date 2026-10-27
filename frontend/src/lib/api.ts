@@ -5156,6 +5156,37 @@ export interface EstateBom {
   counts: Record<string, number>;
 }
 
+export interface EstateBomAnchor {
+  schema: string; anchor_id: string; projection_id: string; run_id: number | null;
+  bom_count: number; bom_digests: Record<string, string>; bom_set_digest: string;
+  created_at: string; created_by: string | null; note: string | null;
+  signature_scheme: string; key_source: string; external: boolean; signature: string;
+  export_hint: string; boundary: string;
+}
+
+export interface EstateAnchorVerify {
+  anchor_id: string; projection_id: string; status: string; signature_valid: boolean | null;
+  changed_boms: string[]; added_boms: string[]; removed_boms: string[]; reason: string; note?: string;
+}
+
+export interface EstateDriftReport {
+  model: string; verdict: string; reason?: string; note?: string;
+  baseline_projection_id?: string; current_projection_id?: string; same_snapshot?: boolean;
+  boms?: Record<string, { status: string; reason: string | null; counts: { added: number; removed: number; changed: number } }>;
+  coverage?: Record<string, { status: string; delta_expected?: number; delta_collected?: number; note: string | null }>;
+  changed_boms?: string[]; changed_coverage?: string[]; degraded_planes?: string[];
+  summary?: string; meaning?: string; runs_compared?: Array<number | null>;
+}
+
+export const apiEstateBomAnchor = (note?: string): Promise<ApiResult<EstateBomAnchor>> =>
+  _rsPost<EstateBomAnchor>("/api/v1/estate/evidence/boms/anchor", { note: note ?? null });
+
+export const apiEstateBomAnchorVerify = (anchor_id?: string): Promise<ApiResult<EstateAnchorVerify>> =>
+  _rsPost<EstateAnchorVerify>("/api/v1/estate/evidence/boms/anchor/verify", { anchor_id: anchor_id ?? null });
+
+export const apiEstateDrift = (): Promise<ApiResult<EstateDriftReport>> =>
+  _rsGet<EstateDriftReport>("/api/v1/estate/evidence/drift");
+
 export interface EstateScanReport {
   model: string;
   run_id: number | null;

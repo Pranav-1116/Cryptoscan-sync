@@ -3,6 +3,8 @@ import { Panel, Badge, Table } from "./ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import {
   apiEstatePlan, apiEstateScan, EstatePlan, EstateScanReport, EstateCoverageRow, EstateBom,
+  apiEstateBomAnchor, apiEstateBomAnchorVerify, apiEstateDrift,
+  EstateBomAnchor, EstateAnchorVerify, EstateDriftReport,
 } from "../lib/api.js";
 
 /* EstatePanel — spec 93, and the correction it exists to make visible.
@@ -100,6 +102,9 @@ export default function EstatePanel() {
   const planDoc = (plan.data ?? null) as EstatePlan | null;
 
   const [report, setReport] = useState<EstateScanReport | null>(null);
+  const [anchor, setAnchor] = useState<EstateBomAnchor | null>(null);
+  const [verification, setVerification] = useState<EstateAnchorVerify | null>(null);
+  const [drift, setDrift] = useState<EstateDriftReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [estate, setEstate] = useState("default");
@@ -118,6 +123,20 @@ export default function EstatePanel() {
       setError(result.error ?? "estate discovery failed");
     }
     setBusy(false);
+  };
+
+  const anchorNow = async () => {
+    const created = await apiEstateBomAnchor(`${estate} snapshot`);
+    if (created.ok && created.data) {
+      setAnchor(created.data as EstateBomAnchor);
+      const checked = await apiEstateBomAnchorVerify((created.data as EstateBomAnchor).anchor_id);
+      setVerification(checked.ok ? (checked.data as EstateAnchorVerify) : null);
+    }
+  };
+
+  const checkDrift = async () => {
+    const result = await apiEstateDrift();
+    setDrift(result.ok ? (result.data as EstateDriftReport) : null);
   };
 
   const coverage = report?.coverage;
@@ -186,6 +205,33 @@ export default function EstatePanel() {
           )}
 
           {report.boms && report.bom_counts && <BomSwitch boms={report.boms} counts={report.bom_counts} />}
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 12 }}>
+            <button type="button" className="btn sm" onClick={() => void anchorNow()}>Anchor this BOM set</button>
+            <button type="button" className="btn sm" onClick={() => void checkDrift()}>Check drift</button>
+            {anchor && <Badge tone="violet">{anchor.anchor_id.slice(0, 18)}</Badge>}
+            {anchor && <Badge tone="slate">{anchor.external ? "external" : "exportable (not external yet)"}</Badge>}
+            {verification && (
+              <Badge tone={verification.status === "PROJECTION_INTACT" ? "green" : verification.status === "PROJECTION_CHANGED" ? "amber" : "red"}>
+                {verification.status}
+              </Badge>
+            )}
+          </div>
+
+          {drift && (
+            <div style={{ marginTop: 10, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <Badge tone={drift.verdict === "NO_DRIFT" ? "green" : drift.verdict === "DRIFT" ? "amber" : "slate"}>
+                {drift.verdict}
+              </Badge>
+              {!!drift.changed_boms?.length && <span className="dim" style={{ fontSize: 10.5 }}>changed: {drift.changed_boms.join(" · ")}</span>}
+              {!!drift.degraded_planes?.length && (
+                <span className="dim" style={{ fontSize: 10.5, color: "var(--amber)" }}>
+                  stopped collecting: {drift.degraded_planes.join(" · ")}
+                </span>
+              )}
+              <span className="faint" style={{ fontSize: 10.5 }}>{drift.reason ?? drift.summary ?? drift.meaning}</span>
+            </div>
+          )}
 
           <div className="faint" style={{ fontSize: 10.5, marginTop: 10 }}>
             {report.verdict_detail}

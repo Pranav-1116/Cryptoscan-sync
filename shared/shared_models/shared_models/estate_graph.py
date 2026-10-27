@@ -278,6 +278,30 @@ def normalize_asset(
     }
 
 
+def _content_evidence_id(
+    evidence_type: str,
+    target: str,
+    facts: Mapping[str, Any] | None,
+    layer: str,
+    source: Any = None,
+    collector: Any = None,
+) -> str:
+    """Deterministic evidence id: identity is what was observed, not when."""
+    material = json.dumps(
+        {
+            "evidence_type": evidence_type,
+            "target": target,
+            "layer": layer,
+            "source": source,
+            "collector": collector,
+            "facts": facts or {},
+        },
+        sort_keys=True,
+        default=str,
+    )
+    return "ev-" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
 def make_evidence(
     *,
     source: str,
@@ -297,7 +321,10 @@ def make_evidence(
     if layer_name not in CRYPTO_LAYERS:
         raise ValueError(f"unknown layer {layer!r}; expected one of {', '.join(CRYPTO_LAYERS)}")
     return {
-        "evidence_id": evidence_id or f"ev-{uuid.uuid4().hex[:16]}",
+        # content-addressed unless the caller supplies an id: the same fact seen
+        # twice is ONE evidence record, and a snapshot id does not change just
+        # because the graph was rebuilt from the same stored payload.
+        "evidence_id": evidence_id or _content_evidence_id(kind, target, facts, layer_name, source, collector),
         "schema": "cryptoscan.estate-evidence/1",
         "source": source,
         "collector": collector or source,
@@ -786,14 +813,36 @@ class EstateGraph:
     # -- projections -------------------------------------------------------- #
 
     def fingerprint(self) -> str:
-        """Deterministic snapshot id so all six BOMs share one provenance stamp."""
+        """Deterministic snapshot id so all six BOMs share one provenance stamp.
+
+        The id is stamped over the snapshot's **content**, not over its
+        bookkeeping: evidence ``evidence_id`` is a per-build uuid and
+        ``observed_at`` is the clock at build time, so hashing them would make the
+        same stored discovery fingerprint differently every time it is read back.
+        That would break the one thing this id is for — proving that two reads,
+        and the six BOMs projected from them, are the same snapshot.
+        """
         material = {
             "assets": sorted(self._assets),
             "relationships": sorted(
                 f"{edge['subject']}|{edge['predicate']}|{edge['object']}|{edge.get('basis')}"
                 for edge in self._relationships
             ),
-            "evidence": sorted(self._evidence),
+            "evidence": sorted(
+                json.dumps(
+                    {
+                        "source": record.get("source"),
+                        "collector": record.get("collector"),
+                        "evidence_type": record.get("evidence_type"),
+                        "target": record.get("target"),
+                        "layer": record.get("layer"),
+                        "facts": record.get("facts") or {},
+                    },
+                    sort_keys=True,
+                    default=str,
+                )
+                for record in self._evidence.values()
+            ),
             "version": IDENTITY_VERSION,
         }
         return hashlib.sha256(json.dumps(material, sort_keys=True).encode("utf-8")).hexdigest()[:32]

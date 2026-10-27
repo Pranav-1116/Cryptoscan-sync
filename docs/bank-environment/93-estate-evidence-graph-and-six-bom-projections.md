@@ -551,8 +551,9 @@ Status legend: **done** = implemented and tested on `arena/bb4b80dd-cryproscan`;
 | API: discovery payload, scan, graph, coverage, BOMs | done | `POST /api/v1/estate/evidence/discover`, `POST …/scan`, `GET …/plan`, `GET …/{summary,graph,coverage,boms}` (`routers/estate_graph.py`; the pre-existing `/estate` campaign router is untouched) |
 | Live collector fan-out (one job calling every plane) | done | `api/estate_discovery.py` — six read-only adapters (NETWORK, RUNTIME, STATIC, PKI, HARDWARE, VENDOR) reading *persisted* evidence, joined into one graph, with a collector plan, lifecycle phases and per-plane coverage |
 | Console: coverage matrix + unknown inventory + BOM switch | done | `EstatePanel` (`frontend/src/components/EstatePanel.tsx`) mounted on `Network.tsx` |
-| Signed/anchored projected BOMs | open | projection ids are content hashes; signing still goes through the existing CBOM snapshot path rather than a dedicated projected-BOM signature |
-| Drift baseline / PQC scoring over the estate graph | open | drift and PQC exist per plane (§67 `/network/crypto-risk`, §92 runtime risk); an estate-wide baseline is not stored yet |
+| Signed/anchored projected BOMs | done | `api/security/estate_bom_anchor.py` + `POST /estate/evidence/boms/anchor`, `GET …/boms/anchors`, `POST …/boms/anchor/verify` — HMAC-SHA256 over `{projection_id, per-BOM digests}` with `CRYPTOSCAN_ANCHOR_KEY` held outside the database; no key ⇒ `409 anchor_key_not_configured`, and the receipt says `external: false` until the operator exports it |
+| Drift baseline over the estate graph | done | `api/estate_drift.py` + `GET /estate/evidence/drift` — component-level diff of the six projections between the two newest snapshots, plus coverage deltas; a coverage loss is reported as coverage debt, and a BOM empty in both snapshots is `NOT_COMPARABLE`, never "unchanged" |
+| Estate-wide PQC scoring | partial | PQC readiness is computed per plane (§67 `/network/crypto-risk` `pqc`, §92 runtime risk); there is no single estate PQC score yet, deliberately — mixing layers into one number is the failure mode §27 warns about |
 
 Honest limits: this engine is the **joining and projection layer**. It proves that the
 six BOMs are consistent views of one evidence graph; it does not fly drones over the
@@ -562,9 +563,24 @@ statement, never an empty plane. Active collection keeps its own approved scope
 (`/network/crypto-observe`, `/runtime/crypto-events`), which is what makes re-running
 the estate job free of packets.
 
-Verified by `services/api/tests/unit/test_estate_graph.py` (22 tests: identity merges,
-layer separation, refusals, capability≠usage, conflicts, coverage semantics, API) and
-`services/api/tests/unit/test_estate_discovery_job.py` (15 tests: fan-out, FAILED
-plane ⇒ impact, partial read ⇒ `PARTIAL`, empty store ≠ empty estate, six BOMs on one
-`projection_id`, lifecycle order, API plan/scan). Together with the network and
-runtime suites the six-file API run is **198 passed**.
+Verified by three files: `services/api/tests/unit/test_estate_graph.py` (22 tests:
+identity merges, layer separation, refusals, capability≠usage, conflicts, coverage
+semantics, API), `test_estate_discovery_job.py` (15 tests: fan-out, FAILED plane ⇒
+impact, partial read ⇒ `PARTIAL`, empty store ≠ empty estate, six BOMs on one
+`projection_id`, lifecycle order, API plan/scan) and `test_estate_anchor_drift.py`
+(14 tests: anchor refuses without a key, signature/`PROJECTION_CHANGED` detection,
+`NO_BASELINE` vs `NO_DRIFT` vs `DRIFT`, coverage debt ≠ estate change,
+`NOT_COMPARABLE` for one-sided or empty-in-both BOMs). With the network and runtime
+suites the eight-file API run is **212 passed**.
+
+Two properties had to be fixed in the engine to make anchoring and drift mean
+anything, both with tests:
+
+* **snapshot ids are content ids.** `fingerprint()` now hashes asset ids,
+  relationship content and evidence *content* — not the per-build evidence uuid or
+  the wall clock — and `make_evidence` derives a deterministic id from what was
+  observed. The same stored discovery therefore fingerprints identically on every
+  read, which is what makes "all six BOMs share one snapshot" checkable later.
+* **BOM digests ignore render timestamps.** `generated_at`/`observed_at` are dropped
+  before hashing (`stable_view`), so a re-rendered projection of unchanged evidence
+  does not look like drift.

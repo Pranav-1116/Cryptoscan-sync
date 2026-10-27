@@ -30,15 +30,28 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api import estate_discovery
+from api import estate_discovery, estate_drift
 from api.dependencies import get_current_user, get_db_session
 from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
+from api.security.estate_bom_anchor import AnchorError, create_anchor, list_anchors, verify_anchor
 from shared_models.estate_graph import BOM_KINDS, SCHEMA, build_graph
 
 router = APIRouter(prefix="/estate/evidence", tags=["estate-evidence"])
 
 RUN_KIND = "estate-discovery"
+
+
+class EstateAnchorRequest(BaseModel):
+    """Sign the current projected BOM set into an exportable receipt."""
+
+    note: str | None = Field(default=None, max_length=400)
+
+
+class EstateAnchorVerifyRequest(BaseModel):
+    """Verify one stored receipt against the BOMs projected from the stored graph."""
+
+    anchor_id: str | None = Field(default=None, max_length=80)
 
 
 class EstateScanRequest(BaseModel):
@@ -116,6 +129,114 @@ def _latest_run(db: Session) -> Any:
 def _graph_from_run(run) -> Any:
     payload = (run.result or {}).get("estate_discovery") or {}
     return build_graph(payload)
+
+
+def _report_from_run(run) -> dict[str, Any]:
+    """Rebuild one stored discovery into the report shape the drift module reads."""
+    graph = _graph_from_run(run)
+    payload = ((run.result or {}).get("estate_discovery") or {})
+    projections = graph.project_all()
+    return {
+        "run_id": run.id,
+        "projection_id": graph.fingerprint(),
+        "estate": payload.get("estate"),
+        "scope": payload.get("scope"),
+        "summary": graph.summary(),
+        "coverage": graph.coverage(),
+        "collectors": payload.get("collectors") or [],
+        "boms": projections["boms"],
+    }
+
+
+@router.get("/drift")
+def estate_drift_view(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Drift between the two newest stored discovery snapshots.
+
+    One run is ``NO_BASELINE`` rather than "no drift", and a plane that stopped
+    collecting is reported as coverage debt, not as the estate losing assets.
+    """
+    runs = ScanRunRepository(db).list_runs(limit=2, target_kind=RUN_KIND, owner=current_tenant())
+    reports = [_report_from_run(run) for run in runs]
+    return estate_drift.compare_latest(reports)
+
+
+@router.post("/boms/anchor")
+def estate_boms_anchor(
+    body: EstateAnchorRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Sign the projected BOM set with a key the database does not hold."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    projections = graph.project_all()
+    try:
+        return create_anchor(
+            db,
+            boms=projections["boms"],
+            projection_id=projections["projection_id"],
+            tenant_id=current_tenant(),
+            run_id=run.id,
+            user=user,
+            note=body.note,
+        )
+    except AnchorError as exc:
+        raise HTTPException(
+            status_code=409, detail={"error": exc.code, "reason": exc.reason}
+        ) from exc
+
+
+@router.get("/boms/anchors")
+def estate_boms_anchors(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Stored projected-BOM anchor receipts, oldest first."""
+    return list_anchors(db, tenant_id=current_tenant())
+
+
+@router.post("/boms/anchor/verify")
+def estate_boms_anchor_verify(
+    body: EstateAnchorVerifyRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Recompute the current BOM digests and compare them with a stored receipt."""
+    from api.security.network_evidence_anchor import anchor_key
+
+    stored = list_anchors(db, tenant_id=current_tenant())["anchors"]
+    if not stored:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_bom_anchor",
+                "reason": (
+                    "no projected BOM set has been anchored for this tenant — POST /estate/evidence/boms/anchor; "
+                    "an unanchored projection is not evidence of what was published"
+                ),
+            },
+        )
+    receipt = None
+    if body.anchor_id:
+        receipt = next((item for item in stored if item.get("anchor_id") == body.anchor_id), None)
+        if receipt is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "unknown_bom_anchor", "reason": f"no receipt with id {body.anchor_id!r}"},
+            )
+    else:
+        receipt = stored[-1]
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    projections = graph.project_all()
+    key, _source = anchor_key()
+    verification = verify_anchor(receipt, projections["boms"], key=key)
+    verification["run_id"] = run.id
+    verification["current_projection_id"] = projections["projection_id"]
+    return verification
 
 
 @router.get("/plan")
