@@ -35,6 +35,7 @@ const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Overview",
     items: [
+      { to: "/live-monitor", label: "Live Monitor", icon: Pulse },
       { to: "/command-center", label: "Dashboard", icon: ChartLineUp },
       { to: "/launch-readiness", label: "Launch readiness", icon: Pulse },
       { to: "/operator-decisions", label: "Operator decisions", icon: Pulse },
@@ -62,10 +63,8 @@ const PRIMARY_SECTIONS: NavSection[] = [
       { to: "/cbom", label: "Crypto Inventory (CBOM)", icon: Atom },
       { to: "/crypto-assets", label: "Algorithm Catalog", icon: Key },
       { to: "/live-asset-intelligence", label: "Technology BOM", icon: Stack },
-      { to: "/sbom", label: "SBOM", icon: Cube },
       { to: "/hbom", label: "HBOM", icon: HardDrives },
       { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest },
-      { to: "/vbom", label: "VBOM", icon: Buildings },
       { to: "/dependency-graph", label: "Dependencies", icon: Graph },
       { to: "/graph", label: "Graph Explorer", icon: Graph },
       { to: "/findings", label: "Findings", icon: ListChecks },

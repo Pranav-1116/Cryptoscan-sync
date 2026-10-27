@@ -42,7 +42,7 @@ function EvidenceBoundaryStrip() {
           <h2 style={{ display: "flex", gap: 10, alignItems: "center" }}><IconTarget size={22} style={{ color: "var(--accent)" }} /> From artifact to accountable decision</h2>
           <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4, fontFamily: "var(--mono)" }}>Deterministic, fail-closed · every finding cites its evidence · no inferred clean</div>
         </div>
-        <Badge tone="amber" style={{ fontFamily: "var(--mono)", letterSpacing: ".04em" }}><span className="dot" /> CLEAN ≠ COMPLETE</Badge>
+        <span style={{ fontFamily: "var(--mono)", letterSpacing: ".04em" }}><Badge tone="amber"><span className="dot" /> CLEAN ≠ COMPLETE</Badge></span>
       </div>
       <div className="pipeline-stages" style={{ gap: 10 }}>
         {stages.map(([number, title, detail, Ico], index) => (
@@ -203,7 +203,7 @@ function K8sPanel() {
                   {["CRITICAL","HIGH","MEDIUM","LOW"].map(s => sevCountsK8s[s] ? <span key={s} className={`badge ${sevTone(s)}`}>{s} {sevCountsK8s[s]}</span> : null)}
                   {!Object.keys(sevCountsK8s).length && <span className="faint">Clean — no misconfig</span>}
                 </div>
-                <Badge tone={d.total_findings ? "red" : "green"} style={{ marginTop: 6 }}>{d.total_findings} findings across {d.manifests_scanned} manifest(s)</Badge>
+                <span style={{ marginTop: 6, display: "inline-block" }}><Badge tone={d.total_findings ? "red" : "green"}>{d.total_findings} findings across {d.manifests_scanned} manifest(s)</Badge></span>
               </div>
             </div>
             <FindingTable rows={d.findings} codeKey={(r) => r.code} sevKey={(r) => r.severity} />

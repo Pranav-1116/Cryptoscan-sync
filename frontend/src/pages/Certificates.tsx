@@ -540,7 +540,7 @@ export default function Certificates() {
           onSelect={setEstateSel}
           head={["subject", "issuer", "key", "days left", "owner", "revocation", "renewal"]}
           rows={estateRows.map((c) => [
-            <span className="mono" style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180, display: "inline-block" }} title={c.subject}>{c.subject || c.fingerprint_sha256.slice(0, 16)}</span>,
+            <span className="mono" style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180, display: "inline-block" }} title={c.subject ?? undefined}>{c.subject || c.fingerprint_sha256.slice(0, 16)}</span>,
             <span style={{ fontSize: 12 }}>{c.issuer || "—"}</span>,
             <span className="num">{c.public_key_algorithm || "—"}{c.public_key_size ? ` ${c.public_key_size}` : ""}</span>,
             <span className="num" style={{ color: (c.days_until_expiry ?? 999) < 0 ? "var(--red)" : (c.days_until_expiry ?? 999) < 30 ? "var(--amber)" : undefined }}>{c.days_until_expiry ?? "—"}</span>,

@@ -22,8 +22,6 @@ const Automation = lazy(() => import("./pages/Automation"));
 const BankingRegulatory = lazy(() => import("./pages/BankingRegulatory"));
 const Catalog = lazy(() => import("./pages/Catalog"));
 const Cbom = lazy(() => import("./pages/Cbom"));
-const Sbom = lazy(() => import("./pages/Sbom"));
-const Vbom = lazy(() => import("./pages/Vbom"));
 const Certificates = lazy(() => import("./pages/Certificates"));
 const Cloud = lazy(() => import("./pages/Cloud"));
 const Cmdb = lazy(() => import("./pages/Cmdb"));
@@ -51,6 +49,7 @@ const InviteAccept = lazy(() => import("./pages/InviteAccept"));
 const Libraries = lazy(() => import("./pages/Libraries"));
 const LiveAssetIntelligence = lazy(() => import("./pages/LiveAssetIntelligence"));
 const LiveEnvironment = lazy(() => import("./pages/LiveEnvironment"));
+const LiveMonitor = lazy(() => import("./pages/LiveMonitor"));
 const LiveScanners = lazy(() => import("./pages/LiveScanners"));
 const LiveStream = lazy(() => import("./pages/LiveStream"));
 const Login = lazy(() => import("./pages/Login"));
@@ -162,8 +161,6 @@ function RoutedPages() {
       <Route path="/automation" element={<Automation />} />
       <Route path="/catalog" element={<Catalog />} />
       <Route path="/cbom" element={<Cbom />} />
-      <Route path="/sbom" element={<Sbom />} />
-      <Route path="/vbom" element={<Vbom />} />
       <Route path="/certificates" element={<Certificates />} />
       <Route path="/cloud" element={<Cloud />} />
       <Route path="/cmdb" element={<Cmdb />} />
@@ -190,6 +187,7 @@ function RoutedPages() {
       <Route path="/libraries" element={<Libraries />} />
       <Route path="/live-asset-intelligence" element={<LiveAssetIntelligence />} />
       <Route path="/live-environment" element={<LiveEnvironment />} />
+      <Route path="/live-monitor" element={<LiveMonitor />} />
       <Route path="/live-scanners" element={<LiveScanners />} />
       <Route path="/live-stream" element={<LiveStream />} />
       <Route path="/migration" element={<Migration />} />
