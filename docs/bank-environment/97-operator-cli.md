@@ -48,10 +48,18 @@ something invented.
 | `jobs list / show / logs` | `GET /jobs`, `/{id}`, `/{id}/logs` | |
 | `jobs cancel` | `POST /collection/jobs/{id}/cancel` | collection jobs own cancellation; the generic job API has no cancel |
 | `jobs watch` | `GET /jobs/{id}` | terminal states only; a timeout is exit 2, not success |
+| `jobs watch --coverage` | `GET /collection/jobs/{id}/coverage` | printed when the job settles: `surfaces`, `basis`, `limits`; no percentage |
+| `jobs retry <id>` | `POST /jobs/{id}/retry` | a 409 is shown with the server's reason, not retried blindly |
 | `evidence list` | `GET /estate/evidence/evidence/records` | `--target`, `--evidence-type`, `--limit` |
+| `evidence show <id>` | `GET /estate/evidence/evidence/records/{id}` | 404 is `evidence_not_in_this_estate`, never an empty record |
+| `evidence verify <id>` | `GET …/records/{id}/verify` | recomputes the content address: exit 0 intact, 2 not content-addressed, 1 mismatch |
 | `bom <kind>` | `GET /estate/evidence/boms?bom=<KIND>` | SBOM, CBOM, HBOM, NBOM, VBOM, TECHBOM |
 | `pqc status` | `GET /estate/evidence/pqc` | per-layer exposure, never summed |
 | `pqc blockers` | same, `blockers` field | refuses to invent one if the field is absent |
+| `pqc impact` | `POST /estate/evidence/twin/impact` | blast radius from an algorithm, protocol, asset or key size; truncated walks exit 2 |
+| `ci gate --scan <id>` | `GET /scans/{id}/gate`, `…/gate.sarif`, `POST /ci/gate` | never recomputes the decision: PASS 0, WARN 2 (with `--fail-on warn`), FAIL 1 |
+| `bundle export / verify / import` | `GET` of nine evidence and projection routes | `--encrypt` (AES-256-GCM + scrypt), `verify` byte-checks the files against the manifest, `import` refuses a tar member escaping the target |
+| `collect --submit` | `POST /collection/jobs`, `/systems/{id}/scan`, `/estate/evidence/scan` | hands the work to the control plane; prints "no collection happened in this process" |
 | `scope show` | `GET /platform/scope` | |
 | `explain asset / system / node` | `/estate/evidence/why/{id}?fact_type=`, `/risk/systems/{id}/explain`, `/graph/explain` | every answer names its source |
 | `report generate` | `/scans/{id}/report`, `.html`, `.pdf` | streamed to a file, sha256 printed |
@@ -62,6 +70,7 @@ something invented.
 | `scan` (no target) | `POST /estate/evidence/scan` | estate discovery run |
 | `scan --manifest <file>` | as above | JSON or YAML (§5) |
 | `verify-installation` | *(local)* | hashes files against a release manifest (§6) |
+| `collect` (no `--submit`) | *(local collection)* | the one in-process mode; it prints, on stderr, that this process is the collector |
 
 ## 3. What the CLI refuses, on purpose
 
@@ -69,8 +78,7 @@ A refusal exits `3` and names the closest endpoints that *do* exist:
 
 | command | why it refuses |
 | --- | --- |
-| `evidence show <id>` | there is no per-evidence read route; evidence is read through its estate, its scan or its asset |
-| `evidence verify <id>` | verification is per scan (hash chain) or per evidence pack; verifying one with an evidence id would verify something else |
+| `ci scan <dir>` | there is no source-tree scan route; `ci gate` evaluates a scan that already ran, and the refusal says so instead of implying otherwise |
 | `scope diff` | no scope-to-scope diff route exists; snapshot compare and coverage are the closest |
 | `explain finding <id>` | the explain routes are per asset, per system and per graph node — a finding id has no route |
 | `target register` without the authorisation fields | `not_before`, `allowed_operations`, owner and environment have no safe default; a target registered with "everything, already valid" is an authorisation nobody granted |

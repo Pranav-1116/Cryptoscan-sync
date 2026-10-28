@@ -180,9 +180,12 @@ cryptoscan jobs list [--limit N]
 cryptoscan jobs show <job-id>
 cryptoscan jobs logs <job-id>
 cryptoscan jobs cancel <job-id>
-cryptoscan jobs watch <job-id> [--timeout S] [--interval S]
+cryptoscan jobs retry <job-id>
+cryptoscan jobs watch <job-id> [--timeout S] [--interval S] [--coverage]
 
 cryptoscan evidence list [--target …] [--evidence-type …] [--limit N]
+cryptoscan evidence show <evidence-id>
+cryptoscan evidence verify <evidence-id>
 
 cryptoscan bom sbom | cbom | hbom | nbom | vbom | techbom
 
@@ -194,6 +197,15 @@ cryptoscan twin diff [--from snapshot-a --to snapshot-b]
 
 cryptoscan pqc status
 cryptoscan pqc blockers
+cryptoscan pqc impact --algorithm RSA|--protocol TLS|--asset <id> [--depth N]
+
+cryptoscan ci gate --scan <id> [--profile banking] [--record] [--fail-on warn] [--sarif f]
+
+cryptoscan bundle export --out DIR [--encrypt --passphrase-stdin]
+cryptoscan bundle verify DIR
+cryptoscan bundle import bundle.cse --into DIR
+
+cryptoscan collect --submit --server URL [--system ID | --target ID --target-revision N] [--wait]
 
 cryptoscan scope show
 
@@ -321,17 +333,40 @@ substitute for one.
 
 ### Component 7 — offline / air-gapped operation
 
-**Partially implemented; the export path is roadmap.**
+**Implemented for the transfer artefact; roadmap for provenance.** The product is on-prem
+first — nothing in the CLI or the API requires outbound internet — and an evidence bundle can
+now be carried across a gap:
 
-- the product is on-prem first: nothing in the CLI or the API requires outbound internet;
-  dependency installation is the only online step, and images can be mirrored;
-- **not implemented:** a signed, encrypted evidence-bundle export → controlled transfer →
-  analysis-environment import (`cryptoscan bundle export/import`). The closest existing
-  capabilities are the evidence-pack endpoints (`/scans/{id}/evidence-pack`,
-  `/evidence-pack/verify`, `/compliance/evidence/packs`) and the BOM anchor export
-  (`/estate/evidence/boms/anchor/export`), none of which is a signed transfer bundle;
-- **roadmap:** an air-gap mode with an explicit `MODE` in `cryptoscan status` (`ONLINE` /
-  `AIR_GAPPED`), offline licence and offline upgrade verification.
+```bash
+$ cryptoscan bundle export --out ./bundle --encrypt        # reads CRYPTOSCAN_BUNDLE_PASSPHRASE
+bundle      ./bundle (9 files)
+  unavailable boms/SBOM.json: HTTP 404: no stored run
+encrypted   ./bundle.cse
+
+$ cryptoscan bundle verify ./bundle
+files       9 (0 missing, 0 modified)
+signature   UNSIGNED
+verdict     INTACT
+
+$ cryptoscan bundle import ./bundle.cse --into ./restored
+decrypted into ./restored
+… then verified against the manifest it carried
+```
+
+What it carries, each file with the endpoint that answered it (`bundle.json → sources`):
+the evidence records, the twin snapshot, the PQC exposure and each BOM projection. A
+projection the platform cannot serve is written into `bundle.json → unavailable` and the
+export exits `2` — a bundle that quietly omitted a BOM would read as a complete estate.
+
+What it does not do, stated in every bundle's own `limits`: it carries stored evidence and
+projections, **not** the collectors or their raw output; the manifest hashes prove the files
+match the manifest, **not** who produced them (bundles are unsigned); encryption is
+AES-256-GCM under a scrypt-derived key from one shared passphrase — confidentiality only, no
+forward secrecy; and importing a bundle into another installation does not make its evidence
+yours, because records keep the estate they were observed under.
+
+Still roadmap: a signed bundle (an Ed25519 release/operator key over the manifest), incremental
+bundles, a bundle that carries raw collector output, and offline licence/upgrade verification.
 
 ### Component 8 — signed packages
 
@@ -369,23 +404,25 @@ they are release-key operations outside this repository, and until they exist
 | `scan --dry-run` | **Implemented** | `GET /estate/evidence/plan`; no write |
 | `scan --manifest` | **Implemented (subset)** | `scope.name` + `collectors`; everything else is printed as NOT sent |
 | `jobs`, `jobs show`, `jobs cancel` | **Implemented** | `cancel` = `POST /collection/jobs/{id}/cancel` |
-| `jobs watch` | **Implemented** | terminal states only; timeout exits 2 |
+| `jobs watch` | **Implemented** | terminal states only; timeout exits 2; `--coverage` prints the platform's per-surface coverage |
+| `jobs retry` | **Implemented** | `POST /jobs/{id}/retry`; prints the 409 reasons the server can refuse with |
 | `evidence list` | **Implemented** | `GET /estate/evidence/evidence/records` |
-| `evidence show <id>` | **Refused by design** | no per-evidence read route; names the three closest |
-| `evidence verify <id>` | **Refused by design** | verification is per scan or per pack |
+| `evidence show <id>` | **Implemented** | `GET …/records/{id}` — added in this batch |
+| `evidence verify <id>` | **Implemented** | `GET …/records/{id}/verify` — recomputes the content address (below) |
 | `bom {sbom,cbom,hbom,nbom,vbom,techbom}` | **Implemented** | `GET /estate/evidence/boms?bom=<KIND>` |
 | `report generate [--format]` | **Implemented** | streams to a file; prints sha256 of what it wrote |
 | `twin status/snapshot/diff` | **Implemented** (remote) | never opens a local database |
 | `pqc status` | **Implemented** | per-layer exposure only |
 | `pqc blockers` | **Implemented, conditional** | exits 2 if the payload has no `blockers` field |
-| `pqc impact` | **Roadmap** | closest: `/estate/evidence/twin/impact` — not wired, and the CLI does not pretend `pqc status` is it |
+| `pqc impact` | **Implemented (as blast radius)** | `POST /estate/evidence/twin/impact`; refuses without a selector; exits 2 when the walk is truncated |
 | `scope show` | **Implemented** | `GET /platform/scope` |
 | `scope diff` | **Refused by design** | no scope-to-scope diff route |
 | `explain finding <id>` | **Refused by design** | explain is per asset / system / node |
 | `explain asset/system/node` | **Implemented** | every answer names its endpoint |
 | `verify-installation` | **Implemented** (hashes only) | `MANIFEST_UNSIGNED` until releases are signed |
-| `ci scan` + policy PASS/WARN/FAIL | **Roadmap** | closest: `/scans/{id}/gate`, `/gate.sarif`, `/crypto/scan` |
-| `bundle export/import` (air-gap) | **Roadmap** | see §4 Component 7 |
+| `ci gate --scan <id>` | **Implemented** | `GET /scans/{id}/gate`, or `POST /ci/gate` with `--record`; exit 0 PASS / 2 WARN (`--fail-on warn`) / 1 FAIL; `--sarif` writes the report |
+| `ci scan` (source tree) | **Roadmap** | the gate evaluates a completed scan; there is no source-tree mode, and the CLI refuses rather than pretending `ci gate` is one |
+| `bundle export/verify/import` | **Implemented** | encrypted air-gap transfer; see §4 Component 7 |
 
 Exit codes: `0` ok · `1` error or 4xx · `2` incomplete (5xx, coverage incomplete, watch
 timeout, manifest mismatch, missing `blockers`) · `3` refused (capability absent, or
@@ -504,11 +541,20 @@ $ cryptoscan jobs watch scan-77
 [14:07:44] COMPLETED
 ```
 
-**Not implemented: per-collector progress.** The proposal's "Static Collection 83%" screen is
-the right idea, and the platform does not expose that on these endpoints today. The CLI prints
-real transitions only — no percentage that would have to be invented. The honest source for
-"what was actually covered" after the fact is the estate coverage report
-(`GET /estate/evidence/coverage`, `GET /collection/jobs/{id}/coverage`), not a progress bar.
+**Progress is coverage, not a percentage.** The proposal's "Static Collection 83%" screen is
+the right idea; a fabricated bar is not. `jobs watch --coverage` prints the platform's own
+per-surface report (`GET /collection/jobs/{id}/coverage`) when the job settles:
+
+```text
+coverage
+  PACKAGES               COLLECTED        412
+  TLS                    NOT_AUTHORIZED
+  basis: EXACT_AUTHORIZED_MANIFEST_INPUTS_NOT_ESTATE_INVENTORY
+```
+
+The `basis` line is printed verbatim because it is the honest scope of the number: the coverage
+is the exact authorised manifest inputs, **not** an estate inventory. `NOT_AUTHORIZED` stays
+`NOT_AUTHORIZED` — it is not rendered as 0%, which a reader would take as "nothing there".
 
 ---
 
@@ -570,15 +616,15 @@ The proposal's phases, against this repository:
 | Phase | Content | State |
 |---|---|---|
 | 1 | CLI foundation: auth, config, TLS/mTLS, API client, `doctor`, `status` | **Done** (`cli_remote.py`, commit `9031574f`) |
-| 2 | Target registry, scope, authorisation, revision, expiry, audit | **Partial** — registry/authorise/revoke and `not_before` exist; scope **revision diff** does not |
-| 3 | Job engine: submit, queue, scheduler, worker, state, cancel, retry | **Partial** — submit/watch/cancel implemented; generic `retry` exists per job (`/jobs/{id}/retry`) but is not wired into `jobs` |
+| 2 | Target registry, scope, authorisation, revision, expiry, audit | **Partial** — registry/authorise/revoke and `not_before` exist; scope **revision diff** still has no route |
+| 3 | Job engine: submit, queue, scheduler, worker, state, cancel, retry | **Partial** — submit/watch/cancel/**retry** and per-surface coverage are wired; queue inspection stays with the API |
 | 4 | Evidence engine: schema, provenance, hashing, validation, storage, coverage | **Done** (spec 93/94 work; migrations `0116`/`0117`) |
 | 5 | Collectors: Linux, Windows, network/TLS, certificates, containers, Kubernetes, SBOM, CBOM → HSM, KMS, database, cloud, PKI, runtime, vendor | **Partial** — Linux/network/TLS/Kubernetes/SBOM paths exist; the rest is roadmap |
 | 6 | Correlation: identity resolution, relationships, crypto/dependency graph, conflicts | **Done** (`estate_graph.py`, `estate_conflicts.py`, `estate_catalog.py`) |
 | 7 | Digital Twin: canonical estate, snapshots, history, drift, blast radius | **Done** (spec 94; `/twin/*`, `cryptoscan twin`) |
 | 8 | BOMs: six projections | **Done** (`BOM_KINDS`, `/boms`) |
-| 9 | Intelligence: risk, PQC readiness/blockers/impact, policy, compliance | **Partial** — PQC per-layer exposure done; `pqc impact` unwired; policy engines exist but are not exposed as a CLI verdict |
-| 10 | Bank hardening: HA, backup/restore, air-gap, mTLS, SSO, RBAC, audit, monitoring, k8s, upgrade/rollback | **Partial, deployment-level** — `deploy/`, `k8s/`, `docker-compose*.yml`, runbooks; air-gap bundles and signed releases are roadmap |
+| 9 | Intelligence: risk, PQC readiness/blockers/impact, policy, compliance | **Partial** — exposure, `blockers` and `impact` wired, and the CI policy verdict is now a real command (`ci gate`); risk/compliance still console-side |
+| 10 | Bank hardening: HA, backup/restore, air-gap, mTLS, SSO, RBAC, audit, monitoring, k8s, upgrade/rollback | **Partial, deployment-level** — `deploy/`, `k8s/`, `docker-compose*.yml`, runbooks; air-gap **bundles** now exist (§4 Component 7); **signed** releases and bundles remain roadmap |
 
 Phase 10 is the one to be careful about. Most of it is true of a *deployment*, not of a
 repository, and this document does not claim a bank has run it.
@@ -737,8 +783,8 @@ runbooks under `docs/runbooks/`.
 ## 19. What this document does not claim
 
 1. No bank has run this CLI. It is tested against a fake control plane
-   (`test_cli_control_plane.py`, 41 tests) and against the real API surface only by endpoint
-   existence, not by an end-to-end bank installation.
+   (`test_cli_control_plane.py`, 61 tests) and against the real API surface by endpoint
+   existence and route-level tests, not by an end-to-end bank installation.
 2. `doctor` proves probes answered. It does not prove the estate is covered, and it does not
    prove a collector is authorised.
 3. `scan` submits work. It does not prove the control plane will execute it with the
@@ -751,8 +797,15 @@ runbooks under `docs/runbooks/`.
 6. The collector list in §4 is the platform's, not the CLI's, and its qualification status is
    whatever the collector verdicts and `CURRENT-IMPLEMENTATION-STATUS.md` say — never this
    document.
-7. Air-gap bundle export, signed releases, `scope diff`, `pqc impact`, `ci scan` policy verdicts
-   and per-collector progress are **roadmap**, listed as such in §5 and §12.
+7. **Signed** bundles and **signed** releases, `scope diff`, `ci scan` over a source tree,
+   per-collector progress percentages and console risk/compliance verdicts are **roadmap**,
+   listed as such in §5 and §12. The air-gap *bundle* and the CI *gate* exist, with the limits
+   printed above: the bundle is unsigned and encrypts under one shared passphrase; the gate
+   reports a decision the platform already made.
+8. `evidence verify` recomputes a content address. A record whose id was assigned by the
+   catalogue writer rather than derived from its content is reported as `ID_NOT_CONTENT_ADDRESSED`
+   (exit 2), **not** as intact — and an intact hash says the record was not altered at rest, not
+   that the observation it describes was true.
 
 ---
 

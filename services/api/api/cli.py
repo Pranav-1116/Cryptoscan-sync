@@ -122,6 +122,17 @@ def _build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--json", action="store_true", help="emit one JSON document")
     collect.add_argument("--no-estate", action="store_true", help="collect only; do not run the estate job")
     collect.add_argument("--allow-partial", action="store_true")
+    # The boundary, made explicit: local collection remains available for a single node, but
+    # it is a mode you choose, and --submit hands the work to the control plane instead.
+    collect.add_argument("--submit", action="store_true",
+                         help="hand the work to the control plane instead of collecting here")
+    collect.add_argument("--server", default=None, help="control-plane base URL (with --submit)")
+    collect.add_argument("--system", default=None, help="with --submit: trigger a system scan")
+    collect.add_argument("--target", default=None, help="with --submit: submit a target job")
+    collect.add_argument("--target-revision", dest="target_revision", type=int, default=None)
+    collect.add_argument("--wait", action="store_true", help="with --submit: follow the job")
+    collect.add_argument("--token", default=None)
+    collect.add_argument("--api-key", dest="api_key", default=None)
 
     schedule = sub.add_parser("schedule", help="save, list, enable or remove scheduled estate runs")
     schedule_sub = schedule.add_subparsers(dest="schedule_command", required=True)
@@ -583,7 +594,26 @@ def _cmd_boms(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
     return EXIT_OK
 
 
+def _collect_boundary_notice() -> None:
+    """Say, on every local collection, that this process is the collector.
+
+    ``collect`` is the one operation the CLI can still perform itself, which is a deviation
+    from "the CLI is not the scanner". Printing it every time is the difference between a
+    documented exception and a silent one.
+    """
+    print(
+        "boundary: collecting from THIS process (single-node mode). The supported bank "
+        "deployment submits work instead: cryptoscan collect --submit --server <control-plane>",
+        file=sys.stderr,
+    )
+
+
 def _cmd_collect(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
+    if getattr(args, "submit", False):
+        from api import cli_remote
+
+        return cli_remote.collect_remote(args, session_factory)
+    _collect_boundary_notice()
     """Collect evidence (bounded by the approved scope), then project the estate.
 
     Both halves run in one process against one database, which is the point: an

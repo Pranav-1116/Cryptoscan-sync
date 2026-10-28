@@ -37,10 +37,14 @@ incomplete/drifted, ``3`` refused (capability or authority missing).
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import os
+import secrets
 import ssl
 import sys
+import tarfile
 import time
 import urllib.error
 import urllib.parse
@@ -769,11 +773,59 @@ def _cmd_jobs(args: argparse.Namespace, _session: Any = None) -> int:
             print(f"cancel requested for {args.job_id} via {path}")
             return _emit(args, payload, source=client.source("POST", path))
 
+        if action == "retry":
+            path = f"/api/v1/jobs/{urllib.parse.quote(args.job_id)}/retry"
+            payload = client.post(path)
+            print(f"retry requested for {args.job_id} via {path}")
+            print("note: the control plane refuses a retry when an execution is unsettled (409) "
+                  "and for synchronous network collections, which must go back through their "
+                  "original admitted route")
+            return _emit(args, payload, source=client.source("POST", path))
+
         if action == "watch":
             return _watch(client, args)
     except (Refused, ApiError) as exc:
         return _fail(f"jobs {action}", exc)
     return EXIT_ERROR
+
+
+TERMINAL_OK = frozenset({"COMPLETED", "SUCCEEDED", "SUCCESS"})
+TERMINAL_BAD = frozenset({"FAILED", "CANCELLED", "CANCELED", "ERROR", "TIMED_OUT"})
+
+
+def _print_coverage(client: Client, job_id: str) -> None:
+    """Per-surface collection coverage, from the platform's own report.
+
+    This is what replaces a fabricated progress bar: the endpoint states which surfaces were
+    collected, how much of each, and — in the payload's own words — that the basis is the
+    authorised manifest rather than the whole estate. Printing ``None`` as a percentage
+    would undo the point of the field.
+    """
+    path = f"/api/v1/collection/jobs/{urllib.parse.quote(str(job_id))}/coverage"
+    try:
+        payload = client.get(path)
+    except (Refused, ApiError) as exc:
+        print(f"coverage unavailable: {_reason(exc)}", file=sys.stderr)
+        return
+    surfaces = _field(payload, "surfaces") or {}
+    basis = _field(payload, "basis")
+    print("coverage")
+    if isinstance(surfaces, Mapping) and surfaces:
+        for name, surface in surfaces.items():
+            if isinstance(surface, Mapping):
+                state = surface.get("state") or surface.get("status") or "—"
+                count = surface.get("count") or surface.get("items") or surface.get("observations")
+                detail = f"{count}" if count is not None else ""
+                print(f"  {name:<22} {state:<16} {detail}".rstrip())
+            else:
+                print(f"  {name:<22} {_short(surface)}")
+    else:
+        print("  — (the job reports no surface coverage)")
+    if basis:
+        print(f"  basis: {basis}")
+    for limit in _field(payload, "limits", default=[]) or []:
+        print(f"  limit: {_short(limit, 100)}")
+    print(f"  source: {client.source('GET', path)}")
 
 
 def _watch(client: Client, args: argparse.Namespace) -> int:
@@ -790,10 +842,16 @@ def _watch(client: Client, args: argparse.Namespace) -> int:
         if state != last:
             print(f"[{time.strftime('%H:%M:%S')}] {state}")
             last = state
-        if state in {"COMPLETED", "SUCCEEDED", "SUCCESS"}:
+            if getattr(args, "coverage", False) and state not in TERMINAL_OK | TERMINAL_BAD:
+                _print_coverage(client, args.job_id)
+        if state in TERMINAL_OK:
+            if getattr(args, "coverage", False):
+                _print_coverage(client, args.job_id)
             _emit(args, payload, source=client.source("GET", path))
             return EXIT_OK
-        if state in {"FAILED", "CANCELLED", "CANCELED", "ERROR", "TIMED_OUT"}:
+        if state in TERMINAL_BAD:
+            if getattr(args, "coverage", False):
+                _print_coverage(client, args.job_id)
             _emit(args, payload, source=client.source("GET", path))
             return EXIT_ERROR
         if time.monotonic() >= deadline:
@@ -831,28 +889,52 @@ def _cmd_evidence(args: argparse.Namespace, _session: Any = None) -> int:
             return _emit(args, payload, source=client.source("GET", RECORDS, **query), render=render)
 
         if action == "show":
-            raise Refused(
-                "the control plane has no per-evidence read endpoint",
-                detail="evidence is read through its estate, its scan, or its asset — a bare "
-                       "evidence id has no route in this build",
-                closest=(
-                    "GET /api/v1/estate/evidence/evidence/records?target=<asset>",
-                    "GET /api/v1/estate/evidence/why/{identifier}?fact_type=<type>",
-                    "GET /api/v1/cbom/evidence/{content_hash}",
-                ),
-            )
+            path = f"{RECORDS}/{urllib.parse.quote(args.evidence_id)}"
+            payload = client.get(path)
+            record = _field(payload, "record") or {}
+
+            def render_show() -> None:
+                print(f"evidence      {record.get('evidence_id', '—')}")
+                print(f"type          {record.get('evidence_type', '—')}")
+                print(f"target        {record.get('target', '—')}")
+                print(f"layer         {record.get('layer', '—')}")
+                print(f"collector     {record.get('collector', '—')} {record.get('collector_version') or ''}".rstrip())
+                print(f"source        {record.get('source', '—')}")
+                print(f"confidence    {record.get('confidence', '—')}")
+                print(f"observed      {record.get('observed_at', '—')}")
+                print(f"first/last    {record.get('first_seen_at', '—')} / {record.get('last_seen_at', '—')}")
+                print(f"observations  {record.get('observation_count', '—')}")
+                print(f"state         {record.get('lifecycle_state', '—')}")
+                print(f"raw reference {record.get('raw_reference') or '— (the raw output location was not recorded)'}")
+                facts = record.get("facts") or {}
+                if facts:
+                    print("facts")
+                    for key, value in sorted(facts.items()):
+                        print(f"  {key:<22} {_short(value, 80)}")
+                else:
+                    print("facts         — (the record carries no facts)")
+            return _emit(args, payload, source=client.source("GET", path), render=render_show)
 
         if action == "verify":
-            raise Refused(
-                "there is no per-evidence verification endpoint",
-                detail="verification in this build is per scan (hash chain) or per evidence pack — "
-                       "calling either with an evidence id would verify something else",
-                closest=(
-                    "GET /api/v1/scans/{scan_id}/verify",
-                    "GET /api/v1/report/verify",
-                    "GET /api/v1/estate/evidence/boms/anchor/verify",
-                ),
-            )
+            path = f"{RECORDS}/{urllib.parse.quote(args.evidence_id)}/verify"
+            payload = client.get(path)
+
+            def render_verify() -> None:
+                print(f"evidence      {_field(payload, 'evidence_id', default='—')}")
+                print(f"verdict       {_field(payload, 'verdict', default='—')}")
+                print(f"recomputed    {_field(payload, 'recomputed_id', default='—')}")
+                print(f"content addr  {_field(payload, 'content_addressed', default='—')}")
+                for item in _field(payload, "not_checked", default=[]) or []:
+                    print(f"not checked   {item}")
+                print(f"\n{_field(payload, 'limits', default='')}")
+            _emit(args, payload, source=client.source("GET", path), render=render_verify)
+            verdict = str(_field(payload, "verdict") or "")
+            if verdict == "CONTENT_ADDRESS_INTACT":
+                return EXIT_OK
+            if verdict == "ID_NOT_CONTENT_ADDRESSED":
+                # nothing was compared: the record's id was assigned, not derived
+                return EXIT_INCOMPLETE
+            return EXIT_ERROR
     except (Refused, ApiError) as exc:
         return _fail(f"evidence {action}", exc)
     return EXIT_ERROR
@@ -942,6 +1024,10 @@ PQC = "/api/v1/estate/evidence/pqc"
 
 
 def _cmd_pqc(args: argparse.Namespace, _session: Any = None) -> int:
+    # impact asks a different endpoint (the twin's blast-radius walk); dispatching it after
+    # the exposure read would make a 404 on /pqc look like a failure of the impact command
+    if getattr(args, "pqc_command", None) == "impact":
+        return _pqc_impact(args)
     client = _client(args)
     try:
         payload = client.get(PQC)
@@ -978,6 +1064,57 @@ def _cmd_pqc(args: argparse.Namespace, _session: Any = None) -> int:
 
 
 SCOPES = ("/api/v1/platform/scope", "/api/v1/onboarding/scope", "/api/v1/scope/envelope")
+
+
+IMPACT = f"{TWIN}/impact"
+
+
+def _pqc_impact(args: argparse.Namespace) -> int:
+    """Blast radius for one crypto selector, framed as what it is.
+
+    This is the twin's impact walk (`POST /twin/impact`), not a PQC score. It answers "if
+    this algorithm moved, what is downstream of it" — which is the question a migration
+    plan actually needs — and it reports its own blind spots. It deliberately does not
+    convert reachability into a readiness number: the PQC endpoint refuses to sum layers,
+    and a CLI that summed them here would undo that.
+    """
+    selector = {
+        "algorithm": args.algorithm,
+        "protocol": args.protocol,
+        "asset": args.asset,
+        "key_size": args.key_size,
+        "depth": args.depth,
+    }
+    if not any(selector[key] for key in ("algorithm", "protocol", "asset", "key_size")):
+        return _refuse("pqc impact", Refused(
+            "no selector given",
+            detail="name what would change: --algorithm, --protocol, --asset or --key-size",
+        ))
+    client = _client(args)
+    try:
+        payload = client.post(IMPACT, {k: v for k, v in selector.items() if v is not None})
+    except (Refused, ApiError) as exc:
+        return _fail("pqc impact", exc)
+
+    def render() -> None:
+        print(f"run           {_field(payload, 'run_id', default='—')}")
+        print("selector      " + ", ".join(f"{k}={v}" for k, v in selector.items()
+                                            if v is not None and k != "depth"))
+        for key in ("affected", "assets", "impacted", "reachable", "depth", "truncated"):
+            value = _field(payload, key)
+            if value is not None:
+                count = len(value) if isinstance(value, list) else value
+                print(f"{key:<13} {count}")
+        for limit in _field(payload, "limits", default=[]) or []:
+            print(f"limit         {_short(limit, 100)}")
+        print("\nthis is blast radius for a change, not a PQC readiness score: the per-layer "
+              "exposure is `cryptoscan pqc status`, and layers are never summed")
+
+    _emit(args, payload, source=client.source("POST", IMPACT), render=render)
+    if _field(payload, "truncated"):
+        # a truncated walk is a partial answer and must not read as the whole estate
+        return EXIT_INCOMPLETE
+    return EXIT_OK
 
 
 def _cmd_scope(args: argparse.Namespace, _session: Any = None) -> int:
@@ -1089,9 +1226,332 @@ def _cmd_report(args: argparse.Namespace, _session: Any = None) -> int:
 
 
 def _sha256(data: bytes) -> str:
-    import hashlib
 
     return hashlib.sha256(data).hexdigest()
+
+
+# --------------------------------------------------------------------------------------
+# commands: CI gate
+# --------------------------------------------------------------------------------------
+
+GATE = "/api/v1/scans/{scan}/gate"
+CI_GATE = "/api/v1/ci/gate"
+
+
+def _cmd_ci(args: argparse.Namespace, _session: Any = None) -> int:
+    """The build gate: PASS / WARN / FAIL from the platform's own decision.
+
+    The decision is never recomputed here. `drift.core.gate` evaluates it against a policy
+    profile and records the evaluation server-side; a CLI that re-derived PASS/FAIL from the
+    finding list would be a second policy engine that can disagree with the one the bank
+    audited.
+    """
+    client = _client(args)
+    action = args.ci_command
+    if action != "gate":
+        return _refuse("ci", Refused(
+            f"unknown ci action {action!r}",
+            detail="the gate evaluates a completed scan; there is no source-tree scan mode here",
+            closest=("cryptoscan bom cbom", "cryptoscan scan --manifest", "GET /api/v1/scans/{id}/gate"),
+        ))
+
+    path = GATE.format(scan=urllib.parse.quote(args.scan))
+    try:
+        if args.record:
+            # recording is the audited path: it stores the evaluation and the actor
+            payload = client.post(CI_GATE, {
+                "scan_id": args.scan,
+                "profile": args.profile,
+                "require_baseline": bool(args.require_baseline),
+            })
+            source = client.source("POST", CI_GATE)
+        else:
+            payload = client.get(path)
+            source = client.source("GET", path)
+    except (Refused, ApiError) as exc:
+        return _fail("ci gate", exc)
+
+    decision = str(_field(payload, "decision") or "UNKNOWN").upper()
+    blocking = _field(payload, "blocking", default=[]) or []
+    warnings_ = _field(payload, "warnings", default=[]) or []
+
+    def render() -> None:
+        print(f"decision      {decision}")
+        print(f"profile       {_field(payload, 'profile', default=args.profile or 'standard')}")
+        print(f"blocking      {len(blocking)}")
+        for item in blocking[:20]:
+            print(f"  ✗ {_short(_field(item, 'code'), 28):<28} {_short(_field(item, 'message'), 80)}")
+        print(f"warnings      {len(warnings_)}")
+        for item in warnings_[:20]:
+            print(f"  ⚠ {_short(_field(item, 'code'), 28):<28} {_short(_field(item, 'message'), 80)}")
+        if args.record:
+            print(f"recorded      {_field(payload, 'recorded', default='—')}")
+        print("\nthis decision comes from the platform's policy profile, not from this client")
+
+    _emit(args, payload, source=source, render=render)
+
+    if getattr(args, "sarif", None):
+        try:
+            sarif = client.get(f"{path}.sarif")
+        except (Refused, ApiError) as exc:
+            print(f"ci gate: SARIF unavailable — {_reason(exc)}", file=sys.stderr)
+            return EXIT_INCOMPLETE
+        out = Path(args.sarif)
+        out.write_text(json.dumps(sarif, indent=2))
+        print(f"wrote {out} (SARIF)")
+
+    fail_on = (args.fail_on or "fail").lower()
+    if decision == "PASS":
+        return EXIT_OK
+    if decision == "WARN":
+        return EXIT_OK if fail_on != "warn" else EXIT_INCOMPLETE
+    if decision == "FAIL":
+        return EXIT_ERROR
+    # an unrecognised decision is not a pass
+    print(f"ci gate: the platform returned decision {decision!r}, which this client does not "
+          f"treat as success", file=sys.stderr)
+    return EXIT_INCOMPLETE
+
+
+# --------------------------------------------------------------------------------------
+# commands: air-gap bundles
+# --------------------------------------------------------------------------------------
+
+BUNDLE_SCHEMA = "cryptoscan.bundle/1"
+BUNDLE_LIMITS = [
+    "the bundle carries stored evidence, projections and the twin snapshot — not the "
+    "collectors, their raw output, or the database",
+    "the manifest hashes prove the files are unmodified relative to the manifest; they do "
+    "not prove who produced them: bundles are not signed",
+    "encryption (if used) is confidentiality only: one shared passphrase, no forward secrecy, "
+    "and no protection against someone who has the passphrase",
+    "importing a bundle into another installation does not make its evidence yours; the "
+    "records keep the estate they were observed under",
+]
+
+
+def _bundle_sources(client: Client) -> dict[str, Any]:
+    """Everything a bundle carries, each with the endpoint that answered it."""
+    wanted: list[tuple[str, str]] = [
+        ("evidence.json", RECORDS + "?limit=1000"),
+        ("twin.json", f"{TWIN}/snapshot"),
+        ("pqc.json", PQC),
+        ("boms.json", BOMS),
+    ]
+    for kind in BOM_KINDS:
+        wanted.append((f"boms/{kind}.json", f"{BOMS}?bom={kind}"))
+    documents: dict[str, Any] = {}
+    sources: dict[str, str] = {}
+    failures: dict[str, str] = {}
+    for name, path in wanted:
+        try:
+            documents[name] = client.get(path)
+            sources[name] = client.source("GET", path.split("?")[0], **dict(
+                urllib.parse.parse_qsl(path.split("?", 1)[1])) if "?" in path else {})
+        except (Refused, ApiError) as exc:
+            # A missing projection is recorded as missing. An export that quietly omitted a
+            # BOM would produce a bundle a reader could mistake for a complete estate.
+            failures[name] = _reason(exc)
+    return {"documents": documents, "sources": sources, "failures": failures}
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _write_bundle(destination: Path, payload: dict[str, Any]) -> dict[str, Any]:
+    destination.mkdir(parents=True, exist_ok=True)
+    files: dict[str, str] = {}
+    for name, document in payload["documents"].items():
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        body = json.dumps(document, indent=2, default=str).encode()
+        target.write_bytes(body)
+        files[name] = _sha256_bytes(body)
+    manifest = {
+        "schema": BUNDLE_SCHEMA,
+        "created_at": datetime_now(),
+        "server": payload.get("server"),
+        "files": files,
+        "sources": payload["sources"],
+        "unavailable": payload["failures"],
+        "signature": None,
+        "limits": BUNDLE_LIMITS,
+    }
+    body = json.dumps(manifest, indent=2).encode()
+    (destination / "bundle.json").write_bytes(body)
+    files["bundle.json"] = _sha256_bytes(body)
+    return manifest
+
+
+def datetime_now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _read_passphrase(args: argparse.Namespace) -> str:
+    from os import environ
+
+    if getattr(args, "passphrase_stdin", False):
+        return sys.stdin.readline().rstrip("\n")
+    value = environ.get("CRYPTOSCAN_BUNDLE_PASSPHRASE")
+    if not value:
+        raise Refused(
+            "no bundle passphrase",
+            detail="set CRYPTOSCAN_BUNDLE_PASSPHRASE or pass --passphrase-stdin; a bundle "
+                   "encrypted with a passphrase on the command line would leak it to ps(1)",
+        )
+    return value
+
+
+def _encrypt_bundle(directory: Path, passphrase: str) -> Path:
+    """Tar the directory, then AES-256-GCM it under a scrypt-derived key."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for path in sorted(directory.rglob("*")):
+            if path.is_file():
+                archive.add(path, arcname=str(path.relative_to(directory)))
+    salt = secrets.token_bytes(16)
+    nonce = secrets.token_bytes(12)
+    key = Scrypt(salt=salt, length=32, n=2 ** 14, r=8, p=1).derive(passphrase.encode())
+    ciphertext = AESGCM(key).encrypt(nonce, buffer.getvalue(), BUNDLE_SCHEMA.encode())
+    header = {
+        "schema": "cryptoscan.bundle-envelope/1",
+        "kdf": {"name": "scrypt", "n": 2 ** 14, "r": 8, "p": 1, "salt": salt.hex()},
+        "cipher": {"name": "AES-256-GCM", "nonce": nonce.hex()},
+        "plaintext": "tar.gz of the bundle directory",
+    }
+    header_bytes = json.dumps(header, sort_keys=True).encode()
+    target = directory.with_suffix(".cse")
+    target.write_bytes(len(header_bytes).to_bytes(4, "big") + header_bytes + ciphertext)
+    return target
+
+
+def _decrypt_bundle(path: Path, passphrase: str) -> bytes:
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+
+    raw = path.read_bytes()
+    length = int.from_bytes(raw[:4], "big")
+    header = json.loads(raw[4:4 + length])
+    body = raw[4 + length:]
+    salt = bytes.fromhex(header["kdf"]["salt"])
+    nonce = bytes.fromhex(header["cipher"]["nonce"])
+    key = Scrypt(
+        salt=salt, length=32,
+        n=header["kdf"]["n"], r=header["kdf"]["r"], p=header["kdf"]["p"],
+    ).derive(passphrase.encode())
+    try:
+        return AESGCM(key).decrypt(nonce, body, BUNDLE_SCHEMA.encode())
+    except Exception as exc:  # noqa: BLE001 — a wrong passphrase and a tampered file look alike
+        raise Refused(
+            "the bundle could not be decrypted",
+            detail="wrong passphrase, or the file was modified after export (AES-GCM cannot "
+                   "tell these apart)",
+        ) from exc
+
+
+def _cmd_bundle(args: argparse.Namespace, _session: Any = None) -> int:
+    action = args.bundle_command
+    if action == "export":
+        client = _client(args)
+        payload = {**_bundle_sources(client), "server": client.config.server}
+        destination = Path(args.out or f"cryptoscan-bundle-{time.strftime('%Y%m%dT%H%M%S')}")
+        manifest = _write_bundle(destination, payload)
+        written = {
+            "bundle": str(destination),
+            "files": len(manifest["files"]),
+            "unavailable": manifest["unavailable"],
+            "encrypted": None,
+        }
+        if args.encrypt:
+            encrypted = _encrypt_bundle(destination, _read_passphrase(args))
+            written["encrypted"] = str(encrypted)
+        if args.json:
+            _print_json({**written, "manifest": manifest})
+        else:
+            print(f"bundle      {destination} ({len(manifest['files'])} files)")
+            for name in manifest["unavailable"]:
+                print(f"  unavailable {name}: {manifest['unavailable'][name]}")
+            if written["encrypted"]:
+                print(f"encrypted   {written['encrypted']}")
+            print("\nsource of each file is recorded in bundle.json under `sources`")
+            print("limits (also in bundle.json):")
+            for limit in BUNDLE_LIMITS:
+                print(f"  - {limit}")
+        return EXIT_OK if not manifest["unavailable"] else EXIT_INCOMPLETE
+
+    if action == "verify":
+        directory = Path(args.bundle)
+        manifest_path = directory / "bundle.json"
+        if not manifest_path.exists():
+            return _refuse("bundle verify", Refused(
+                f"no bundle.json in {directory}",
+                detail="a bundle is a directory with a bundle.json manifest; decrypt a .cse "
+                       "envelope first with `bundle import`",
+            ))
+        manifest = json.loads(manifest_path.read_text())
+        mismatched, missing = [], []
+        for name, expected in sorted((manifest.get("files") or {}).items()):
+            candidate = directory / name
+            if not candidate.exists():
+                missing.append(name)
+            elif _sha256_bytes(candidate.read_bytes()) != str(expected):
+                mismatched.append(name)
+        result = {
+            "bundle": str(directory),
+            "files": len(manifest.get("files") or {}),
+            "missing": missing,
+            "mismatched": mismatched,
+            "unsigned": manifest.get("signature") is None,
+            "verdict": "INTACT" if not missing and not mismatched else "MODIFIED",
+        }
+        if args.json:
+            _print_json(result)
+        else:
+            print(f"bundle      {directory}")
+            print(f"files       {result['files']} ({len(missing)} missing, {len(mismatched)} modified)")
+            for name in missing:
+                print(f"  missing   {name}")
+            for name in mismatched:
+                print(f"  modified  {name}")
+            print(f"signature   {'UNSIGNED' if result['unsigned'] else 'present, not checked'}")
+            print(f"verdict     {result['verdict']}")
+            print("\nthis proves the files match the manifest. It does not prove who made the "
+                  "bundle: bundles are not signed.")
+        return EXIT_OK if result["verdict"] == "INTACT" else EXIT_INCOMPLETE
+
+    if action == "import":
+        source = Path(args.bundle)
+        into = Path(args.into or "cryptoscan-bundle")
+        if source.suffix == ".cse" or (source.is_file() and source.name.endswith(".cse")):
+            plaintext = _decrypt_bundle(source, _read_passphrase(args))
+            into.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(fileobj=io.BytesIO(plaintext), mode="r:gz") as archive:
+                for member in archive.getmembers():
+                    if member.name.startswith("/") or ".." in Path(member.name).parts:
+                        raise Refused(
+                            f"refusing bundle member {member.name!r}",
+                            detail="absolute paths and parent traversal are not accepted from an "
+                                   "imported bundle",
+                        )
+                archive.extractall(into)
+            print(f"decrypted into {into}")
+        else:
+            print("bundle import: the source is not an encrypted envelope; verifying it in place")
+            args.bundle = str(source)
+            args.json = args.json
+            return _cmd_bundle(argparse.Namespace(**{**vars(args), "bundle_command": "verify"}),
+                               _session)
+        # verify what was just extracted, rather than trusting the archive
+        return _cmd_bundle(argparse.Namespace(**{**vars(args), "bundle_command": "verify",
+                                                "bundle": str(into)}), _session)
+
+    return _refuse("bundle", Refused(f"unknown bundle action {action!r}"))
 
 
 # --------------------------------------------------------------------------------------
@@ -1330,6 +1790,60 @@ def _scan_body(args: argparse.Namespace, manifest: Mapping[str, Any] | None) -> 
     return body, ignored
 
 
+def collect_remote(args: argparse.Namespace, _session: Any = None) -> int:
+    """``collect --submit``: hand collection to the control plane, collect nothing here.
+
+    The in-process ``collect`` negotiates TLS from the operator's terminal. This mode does
+    not: it submits, prints the id, and — with ``--wait`` — follows the job and its real
+    per-surface coverage. The plane list is *requested*, and the response is what decides
+    what actually ran.
+    """
+    client = _client(args)
+    try:
+        if getattr(args, "target", None):
+            if args.target_revision is None:
+                return _refuse("collect --submit --target", Refused(
+                    "expected target revision is required",
+                    detail="pass --target-revision (see `cryptoscan target show <id>`)",
+                ))
+            payload = client.post("/api/v1/collection/jobs", {
+                "target_id": args.target,
+                "expected_target_revision": args.target_revision,
+            })
+            source = client.source("POST", "/api/v1/collection/jobs", 202)
+        elif getattr(args, "system", None):
+            path = f"/api/v1/systems/{urllib.parse.quote(args.system)}/scan"
+            payload = client.post(path)
+            source = client.source("POST", path, 202)
+        else:
+            body = {
+                "estate": getattr(args, "estate", "default") or "default",
+                "scope": getattr(args, "scope", "production"),
+                "include_boms": True,
+                "persist": True,
+            }
+            payload = client.post("/api/v1/estate/evidence/scan", body)
+            source = client.source("POST", "/api/v1/estate/evidence/scan", 202)
+    except (Refused, ApiError) as exc:
+        return _fail("collect --submit", exc)
+
+    job_id = (_field(payload, "job_id") or _field(payload, "id")
+              or _field(payload, "scan_id") or _field(payload, "identifier"))
+    print("submitted — no collection happened in this process")
+    print(f"job           {job_id or '— (the control plane returned no id)'}")
+    print(f"status        {_field(payload, 'status', default='—')}")
+    if job_id:
+        print(f"\nwatch: cryptoscan jobs watch {job_id} --coverage")
+    print(f"source: {source}")
+    if getattr(args, "wait", False) and job_id:
+        args.job_id = str(job_id)
+        args.coverage = True
+        args.interval = getattr(args, "interval", 5.0)
+        args.timeout = getattr(args, "timeout", 1800.0)
+        return _watch(client, args)
+    return EXIT_OK
+
+
 # --------------------------------------------------------------------------------------
 # parser registration
 # --------------------------------------------------------------------------------------
@@ -1420,8 +1934,13 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     jobs_cancel = jobs_sub.add_parser("cancel", help="cancel a collection job")
     jobs_cancel.add_argument("job_id")
     _add_common(jobs_cancel)
+    jobs_retry = jobs_sub.add_parser("retry", help="re-run a failed job through its own route")
+    jobs_retry.add_argument("job_id")
+    _add_common(jobs_retry)
     jobs_watch = jobs_sub.add_parser("watch", help="follow a job until it reaches a terminal state")
     jobs_watch.add_argument("job_id")
+    jobs_watch.add_argument("--coverage", action="store_true",
+                            help="also print per-surface collection coverage when the job settles")
     jobs_watch.add_argument("--timeout", type=float, default=1800.0)
     jobs_watch.add_argument("--interval", type=float, default=5.0)
     _add_common(jobs_watch)
@@ -1433,10 +1952,11 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     evidence_list.add_argument("--evidence-type", dest="evidence_type", default=None)
     evidence_list.add_argument("--limit", type=int, default=50)
     _add_common(evidence_list)
-    evidence_show = evidence_sub.add_parser("show", help="one evidence record (refuses: no such route)")
+    evidence_show = evidence_sub.add_parser("show", help="one stored evidence record, with its provenance")
     evidence_show.add_argument("evidence_id")
     _add_common(evidence_show)
-    evidence_verify = evidence_sub.add_parser("verify", help="verify evidence (refuses: no per-evidence route)")
+    evidence_verify = evidence_sub.add_parser(
+        "verify", help="recompute a record's content address and check it against its id")
     evidence_verify.add_argument("evidence_id")
     _add_common(evidence_verify)
 
@@ -1450,6 +1970,14 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
                               ("blockers", "the blockers field, if the platform reports one")):
         node = pqc_sub.add_parser(action, help=help_text)
         _add_common(node)
+    pqc_impact = pqc_sub.add_parser(
+        "impact", help="blast radius for one algorithm/protocol/asset (not a PQC score)")
+    pqc_impact.add_argument("--algorithm", default=None)
+    pqc_impact.add_argument("--protocol", default=None)
+    pqc_impact.add_argument("--asset", default=None)
+    pqc_impact.add_argument("--key-size", dest="key_size", default=None)
+    pqc_impact.add_argument("--depth", type=int, default=3)
+    _add_common(pqc_impact)
 
     scope = sub.add_parser("scope", help="the authorised scope this installation may touch")
     scope_sub = scope.add_subparsers(dest="scope_command", required=True)
@@ -1483,6 +2011,36 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     generate.add_argument("--format", default="json", choices=["json", "html", "pdf"])
     generate.add_argument("--output", "-o", default=None)
     _add_common(generate)
+
+    ci = sub.add_parser("ci", help="build gate: PASS / WARN / FAIL for a completed scan")
+    ci_sub = ci.add_subparsers(dest="ci_command", required=True)
+    ci_gate = ci_sub.add_parser("gate", help="evaluate (and optionally record) the policy gate")
+    ci_gate.add_argument("--scan", required=True)
+    ci_gate.add_argument("--profile", default=None, help="standard | strict | lenient")
+    ci_gate.add_argument("--record", action="store_true",
+                         help="record the evaluation server-side (audited, with the actor)")
+    ci_gate.add_argument("--require-baseline", dest="require_baseline", action="store_true")
+    ci_gate.add_argument("--fail-on", dest="fail_on", default="fail", choices=["fail", "warn"],
+                         help="exit non-zero on FAIL (default) or also on WARN")
+    ci_gate.add_argument("--sarif", default=None, help="also write the SARIF report to this path")
+    _add_common(ci_gate)
+
+    bundle = sub.add_parser("bundle", help="air-gap bundles: export, verify, import")
+    bundle_sub = bundle.add_subparsers(dest="bundle_command", required=True)
+    bundle_export = bundle_sub.add_parser("export", help="write a bundle directory from this estate")
+    bundle_export.add_argument("--out", default=None, help="destination directory")
+    bundle_export.add_argument("--encrypt", action="store_true",
+                               help="also write an AES-256-GCM envelope (.cse) beside it")
+    bundle_export.add_argument("--passphrase-stdin", dest="passphrase_stdin", action="store_true")
+    _add_common(bundle_export)
+    bundle_verify = bundle_sub.add_parser("verify", help="recompute a bundle's manifest hashes")
+    bundle_verify.add_argument("bundle", help="bundle directory")
+    _add_common(bundle_verify, credential_flags=False)
+    bundle_import = bundle_sub.add_parser("import", help="decrypt and extract a bundle envelope")
+    bundle_import.add_argument("bundle", help="path to a .cse envelope (or a bundle directory)")
+    bundle_import.add_argument("--into", default=None, help="destination directory")
+    bundle_import.add_argument("--passphrase-stdin", dest="passphrase_stdin", action="store_true")
+    _add_common(bundle_import, credential_flags=False)
 
     verify = sub.add_parser("verify-installation", help="hash installed files against a release manifest")
     verify.add_argument("--manifest", required=True, help="path to the release manifest (JSON)")
@@ -1539,6 +2097,8 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Any], int]] = {
         ("scope", _cmd_scope),
         ("explain", _cmd_explain),
         ("report", _cmd_report),
+        ("ci", _cmd_ci),
+        ("bundle", _cmd_bundle),
         ("verify-installation", _cmd_verify_installation),
     )
 }

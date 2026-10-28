@@ -1601,6 +1601,55 @@ def estate_evidence_records(
     )
 
 
+@router.get("/evidence/records/{evidence_id}")
+def estate_evidence_record(
+    evidence_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """One stored evidence record by id.
+
+    A 404 here means *this estate does not hold that record* — not that it never existed
+    anywhere: the read is tenant-scoped, and a platform-estate record is invisible to a
+    bank-estate caller.
+    """
+    found = estate_observations.evidence_record(db, evidence_id, tenant_id=current_tenant())
+    if found is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "evidence_not_in_this_estate",
+                "reason": "no stored evidence record with that id belongs to the selected estate",
+                "list": "/api/v1/estate/evidence/evidence/records",
+            },
+        )
+    return found
+
+
+@router.get("/evidence/records/{evidence_id}/verify")
+def estate_evidence_record_verify(
+    evidence_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Recompute the record's content address from its stored fields.
+
+    This checks that the stored row still hashes to the id it is filed under. It does not
+    attest the observation: nothing signs a collector's output yet, and the payload says so
+    in ``not_checked`` rather than leaving the caller to assume otherwise.
+    """
+    verdict = estate_observations.verify_record(db, evidence_id, tenant_id=current_tenant())
+    if verdict is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "evidence_not_in_this_estate",
+                "reason": "no stored evidence record with that id belongs to the selected estate",
+            },
+        )
+    return verdict
+
+
 @router.get("/history/summary")
 def estate_observation_summary(
     user: str = Depends(get_current_user),

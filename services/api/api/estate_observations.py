@@ -25,12 +25,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from sqlalchemy import select
 
 from api.estate_catalog import entries as catalogue_entries
+from shared_models.estate_graph import content_evidence_id
 from db.models.estate_catalog import (
     EstateAssetRecord,
     EstateEvidenceRecord,
@@ -38,6 +40,9 @@ from db.models.estate_catalog import (
 )
 
 SCHEMA = "cryptoscan.estate-observations/1"
+
+#: a content-addressed evidence id: ``ev-`` plus the first 16 hex of the sha256 of the fact
+_CONTENT_ID = re.compile(r"^ev-[0-9a-f]{16}$")
 
 # The facts a catalogued asset carries of its own. Attributes and crypto facts are
 # added on top of these, keyed by their own names.
@@ -613,30 +618,113 @@ def evidence_for(
         "count": len(rows),
         "target": target,
         "evidence_type": evidence_type.upper() if evidence_type else None,
-        "records": [
-            {
-                "evidence_id": row.evidence_id,
-                "collector": row.collector,
-                "collector_version": row.collector_version,
-                "raw_reference": row.raw_reference,
-                "source": row.source,
-                "evidence_type": row.evidence_type,
-                "confidence": row.confidence,
-                "target": row.target_id,
-                "layer": row.layer,
-                "observed_at": row.observed_at,
-                "lifecycle_state": row.lifecycle_state,
-                "observation_count": row.observation_count,
-                "first_seen_at": _iso(row.first_seen_at),
-                "last_seen_at": _iso(row.last_seen_at),
-                "facts": row.facts or {},
-            }
-            for row in rows
-        ],
+        "records": [_public_record(row) for row in rows],
         "meaning": (
             "evidence is content-addressed: the same record observed twice is one row whose "
             "observation_count advances, and a record no longer produced is STALE with its "
             "first sighting intact"
+        ),
+    }
+
+
+def _public_record(row: Any) -> dict[str, Any]:
+    return {
+        "evidence_id": row.evidence_id,
+        "collector": row.collector,
+        "collector_version": row.collector_version,
+        "raw_reference": row.raw_reference,
+        "source": row.source,
+        "evidence_type": row.evidence_type,
+        "confidence": row.confidence,
+        "target": row.target_id,
+        "layer": row.layer,
+        "observed_at": row.observed_at,
+        "lifecycle_state": row.lifecycle_state,
+        "observation_count": row.observation_count,
+        "first_seen_at": _iso(row.first_seen_at),
+        "last_seen_at": _iso(row.last_seen_at),
+        "facts": row.facts or {},
+    }
+
+
+def evidence_record(db: Any, evidence_id: str, *, tenant_id: str | None) -> dict[str, Any] | None:
+    """One stored evidence record by id, or ``None`` when this estate does not hold it.
+
+    ``None`` rather than an empty record: "this estate never observed that" and "this
+    estate observed it and the facts are empty" are different answers, and a caller that
+    cannot tell them apart will report the second as the first.
+    """
+    stmt = select(EstateEvidenceRecord).where(EstateEvidenceRecord.evidence_id == str(evidence_id))
+    stmt = stmt.where(
+        EstateEvidenceRecord.tenant_id == tenant_id
+        if tenant_id
+        else EstateEvidenceRecord.tenant_id.is_(None)
+    )
+    row = db.execute(stmt.limit(1)).scalars().first()
+    if row is None:
+        return None
+    return {
+        "schema": SCHEMA,
+        "record": _public_record(row),
+        "meaning": (
+            "one stored evidence record; the same fact observed twice is the same row with a "
+            "higher observation_count, and provenance updates do not change its id"
+        ),
+    }
+
+
+def verify_record(db: Any, evidence_id: str, *, tenant_id: str | None) -> dict[str, Any] | None:
+    """Recompute the content address of a stored record and compare it with its id.
+
+    What this proves: the row's ``evidence_type``, ``target``, ``layer``, ``source``,
+    ``collector`` and ``facts`` still hash to the ``evidence_id`` it is filed under — the
+    record was not edited in place after collection.
+
+    What it does **not** prove, and says so in the payload: that the collector was honest,
+    that the observation happened at ``observed_at``, or that the estate was in the state
+    the facts describe. Those need the collector's own signature and a trusted clock, which
+    this platform does not have yet.
+    """
+    found = evidence_record(db, evidence_id, tenant_id=tenant_id)
+    if found is None:
+        return None
+    row = found["record"]
+    recomputed = content_evidence_id(
+        str(row.get("evidence_type") or "").upper(),
+        str(row.get("target") or ""),
+        row.get("facts") or {},
+        str(row.get("layer") or "UNKNOWN").upper(),
+        row.get("source"),
+        row.get("collector"),
+    )
+    stored_id = str(row["evidence_id"])
+    intact = recomputed == stored_id
+    # Not every id is a content address: an importer or a test payload may assign one. In
+    # that case there is nothing to compare, and calling it a mismatch would accuse a
+    # legitimate row of tampering. Say what the id is instead.
+    content_addressed = _CONTENT_ID.match(stored_id) is not None
+    verdict = (
+        "CONTENT_ADDRESS_INTACT" if intact and content_addressed
+        else "ID_NOT_CONTENT_ADDRESSED" if not content_addressed
+        else "CONTENT_ADDRESS_MISMATCH"
+    )
+    return {
+        "schema": SCHEMA,
+        "evidence_id": stored_id,
+        "recomputed_id": recomputed,
+        "content_address_intact": intact if content_addressed else None,
+        "content_addressed": content_addressed,
+        "verdict": verdict,
+        "checked": ["evidence_type", "target", "layer", "source", "collector", "facts"],
+        "not_checked": [
+            "collector honesty: nothing signs the observation, so an intact row can still "
+            "record something the collector got wrong",
+            "observation time: observed_at is written by the writer, not attested",
+            "estate state at collection time: the twin reflects what was reported",
+        ],
+        "limits": (
+            "this is an integrity check on the stored record, not an attestation of the "
+            "observation it describes"
         ),
     }
 

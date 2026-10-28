@@ -310,8 +310,6 @@ def test_scan_remote_mode_is_selected_by_flags_not_by_silence(monkeypatch, env):
 
 
 @pytest.mark.parametrize("argv,reason", [
-    (("evidence", "show", "ev-1"), "no per-evidence read endpoint"),
-    (("evidence", "verify", "ev-1"), "no per-evidence verification endpoint"),
     (("scope", "diff"), "no scope-diff endpoint"),
     (("explain", "finding", "FIND-1"), "cannot be explained by id"),
 ])
@@ -522,3 +520,278 @@ def test_every_remote_command_is_registered_once(monkeypatch):
     # the in-process commands survive the merge
     for name in ("scan", "collect", "coverage", "boms", "twin", "schedule", "tick", "serve"):
         assert name in cli.COMMANDS
+
+
+# --- evidence show / verify now that the routes exist ----------------------------------
+
+
+def test_evidence_show_prints_provenance_and_the_raw_reference(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/evidence/records/ev-abc"): (200, {"record": {
+            "evidence_id": "ev-abc", "evidence_type": "RUNTIME_OBSERVED",
+            "target": "application:payments-api", "layer": "APPLICATION",
+            "collector": "linux-runtime", "collector_version": "estate-collectors/1",
+            "source": "runtime", "confidence": "HIGH", "observed_at": "2026-10-28T06:20:00Z",
+            "observation_count": 4, "lifecycle_state": "ACTIVE", "raw_reference": "run:42",
+            "facts": {"algorithm": "AES-256-GCM"},
+        }}),
+    })
+    assert run(monkeypatch, transport, "evidence", "show", "ev-abc") == 0
+    out = capsys.readouterr().out
+    assert "estate-collectors/1" in out
+    assert "run:42" in out
+    assert "algorithm" in out and "AES-256-GCM" in out
+
+
+def test_evidence_show_says_so_when_the_raw_reference_was_not_recorded(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/evidence/records/ev-x"): (200, {"record": {
+            "evidence_id": "ev-x", "raw_reference": None, "facts": {},
+        }}),
+    })
+    assert run(monkeypatch, transport, "evidence", "show", "ev-x") == 0
+    out = capsys.readouterr().out
+    assert "the raw output location was not recorded" in out
+    assert "the record carries no facts" in out
+
+
+@pytest.mark.parametrize("verdict,expected", [
+    ("CONTENT_ADDRESS_INTACT", 0),
+    ("ID_NOT_CONTENT_ADDRESSED", 2),
+    ("CONTENT_ADDRESS_MISMATCH", 1),
+])
+def test_evidence_verify_maps_the_verdict_to_an_exit_code(capsys, monkeypatch, env, verdict, expected):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/evidence/records/ev-1/verify"): (200, {
+            "evidence_id": "ev-1", "recomputed_id": "ev-2", "verdict": verdict,
+            "content_addressed": verdict != "ID_NOT_CONTENT_ADDRESSED",
+            "not_checked": ["collector honesty: nothing signs the observation"],
+            "limits": "this is an integrity check on the stored record, not an attestation "
+                      "of the observation it describes",
+        }),
+    })
+    assert run(monkeypatch, transport, "evidence", "verify", "ev-1") == expected
+    out = capsys.readouterr().out
+    assert verdict in out
+    assert "not an attestation" in out
+
+
+# --- jobs retry / coverage -------------------------------------------------------------
+
+
+def test_jobs_retry_uses_the_retry_route_and_warns_about_the_refusals(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/jobs/job-3/retry"): (202, {"id": "job-4", "status": "QUEUED"}),
+    })
+    assert run(monkeypatch, transport, "jobs", "retry", "job-3") == 0
+    out = capsys.readouterr().out
+    assert "job-4" in out
+    assert "unsettled (409)" in out
+
+
+def test_jobs_watch_can_print_real_surface_coverage(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/jobs/job-9"): (200, {"status": "COMPLETED"}),
+        ("GET", "/api/v1/collection/jobs/job-9/coverage"): (200, {
+            "surfaces": {"PACKAGES": {"state": "COLLECTED", "count": 412},
+                         "TLS": {"state": "NOT_AUTHORIZED"}},
+            "basis": "EXACT_AUTHORIZED_MANIFEST_INPUTS_NOT_ESTATE_INVENTORY",
+        }),
+    })
+    monkeypatch.setattr(cli_remote.time, "sleep", lambda _s: None)
+    assert run(monkeypatch, transport, "jobs", "watch", "job-9", "--coverage") == 0
+    out = capsys.readouterr().out
+    assert "PACKAGES" in out and "412" in out
+    assert "NOT_AUTHORIZED" in out
+    assert "EXACT_AUTHORIZED_MANIFEST_INPUTS_NOT_ESTATE_INVENTORY" in out
+
+
+# --- ci gate ---------------------------------------------------------------------------
+
+
+def _gate(decision, blocking=(), warnings=()):
+    return {"decision": decision, "profile": "banking", "blocking": list(blocking),
+            "warnings": list(warnings), "scan_id": "scan-1"}
+
+
+def test_ci_gate_fails_the_build_on_fail_and_names_the_blocking_items(capsys, monkeypatch, env):
+    transport = FakeControlPlane({("GET", "/api/v1/scans/scan-1/gate"): (200, _gate(
+        "FAIL", blocking=[{"code": "WEAK_CRYPTO", "message": "3DES in payments"}]))})
+    assert run(monkeypatch, transport, "ci", "gate", "--scan", "scan-1") == 1
+    out = capsys.readouterr().out
+    assert "FAIL" in out and "WEAK_CRYPTO" in out
+    assert "not from this client" in out
+
+
+def test_ci_gate_treats_warn_as_success_unless_asked_otherwise(monkeypatch, env):
+    transport = FakeControlPlane({("GET", "/api/v1/scans/scan-1/gate"): (200, _gate("WARN"))})
+    assert run(monkeypatch, transport, "ci", "gate", "--scan", "scan-1") == 0
+    assert run(monkeypatch, transport, "ci", "gate", "--scan", "scan-1", "--fail-on", "warn") == 2
+
+
+def test_ci_gate_does_not_treat_an_unknown_decision_as_a_pass(capsys, monkeypatch, env):
+    transport = FakeControlPlane({("GET", "/api/v1/scans/scan-1/gate"): (200, {"decision": "MAYBE"})})
+    assert run(monkeypatch, transport, "ci", "gate", "--scan", "scan-1") == 2
+    assert "does not treat as success" in capsys.readouterr().err
+
+
+def test_ci_gate_can_record_the_evaluation_and_write_sarif(tmp_path, monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/ci/gate"): (200, {**_gate("PASS"), "recorded": True}),
+        ("GET", "/api/v1/scans/scan-1/gate.sarif"): (200, {"version": "2.1.0", "runs": []}),
+    })
+    out_file = tmp_path / "gate.sarif"
+    assert run(monkeypatch, transport, "ci", "gate", "--scan", "scan-1", "--profile", "banking",
+               "--record", "--sarif", str(out_file)) == 0
+    body = json.loads(transport.calls[0][3])
+    assert body == {"scan_id": "scan-1", "profile": "banking", "require_baseline": False}
+    assert json.loads(out_file.read_text())["version"] == "2.1.0"
+    assert "recorded      True" in capsys.readouterr().out
+
+
+# --- pqc impact ------------------------------------------------------------------------
+
+
+def test_pqc_impact_refuses_without_a_selector(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "pqc", "impact") == 3
+    assert transport.calls == []
+    assert "no selector given" in capsys.readouterr().err
+
+
+def test_pqc_impact_posts_the_selector_and_keeps_blast_radius_separate_from_readiness(
+        capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/estate/evidence/twin/impact"): (200, {
+            "run_id": 7, "affected": ["application:payments-api", "address:10.0.0.5"], "depth": 2,
+            "limits": ["walk stops at depth 2"]}),
+    })
+    assert run(monkeypatch, transport, "pqc", "impact", "--algorithm", "RSA") == 0
+    body = json.loads(transport.calls[0][3])
+    assert body["algorithm"] == "RSA" and body["depth"] == 3
+    out = capsys.readouterr().out
+    assert "affected      2" in out
+    assert "not a PQC readiness score" in out
+
+
+def test_a_truncated_impact_walk_is_incomplete_not_complete(monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/estate/evidence/twin/impact"): (200, {"truncated": True, "affected": []}),
+    })
+    assert run(monkeypatch, transport, "pqc", "impact", "--asset", "payments-api") == 2
+
+
+# --- air-gap bundles -------------------------------------------------------------------
+
+
+def _bundle_routes():
+    return {
+        ("GET", "/api/v1/estate/evidence/evidence/records"): (200, {"records": [{"evidence_id": "ev-1"}]}),
+        ("GET", "/api/v1/estate/evidence/twin/snapshot"): (200, {"assets": 2}),
+        ("GET", "/api/v1/estate/evidence/pqc"): (200, {"layers": {}}),
+        # the six BOM projections are deliberately absent: an export must record them as
+        # unavailable rather than produce a bundle that reads as a complete estate
+    }
+
+
+def test_bundle_export_writes_a_manifest_and_records_unavailable_projections(
+        tmp_path, monkeypatch, env, capsys):
+    transport = FakeControlPlane(_bundle_routes())
+    out = tmp_path / "bundle"
+    code = run(monkeypatch, transport, "bundle", "export", "--out", str(out))
+    assert code == 2, "missing BOM projections must not read as a complete export"
+    manifest = json.loads((out / "bundle.json").read_text())
+    assert "evidence.json" in manifest["files"]
+    assert "boms/SBOM.json" in manifest["unavailable"]
+    assert manifest["signature"] is None
+    assert any("not signed" in limit for limit in manifest["limits"])
+    assert manifest["sources"]["evidence.json"].startswith("GET ")
+    text = capsys.readouterr().out
+    assert "unavailable" in text and "not signed" in text
+
+
+def test_bundle_verify_detects_a_modified_file(tmp_path, monkeypatch, env, capsys):
+    transport = FakeControlPlane(_bundle_routes())
+    out = tmp_path / "bundle"
+    run(monkeypatch, transport, "bundle", "export", "--out", str(out))
+    assert run(monkeypatch, transport, "bundle", "verify", str(out)) == 0  # nothing touched yet
+    (out / "pqc.json").write_text('{"layers": {"TLS": "changed"}}')
+    assert run(monkeypatch, transport, "bundle", "verify", str(out)) == 2
+    text = capsys.readouterr().out
+    assert "modified  pqc.json" in text
+    assert "bundles are not signed" in text
+
+
+def test_bundle_round_trips_through_encryption(tmp_path, monkeypatch, env, capsys):
+    transport = FakeControlPlane(_bundle_routes())
+    monkeypatch.setenv("CRYPTOSCAN_BUNDLE_PASSPHRASE", "correct horse battery staple")
+    out = tmp_path / "bundle"
+    run(monkeypatch, transport, "bundle", "export", "--out", str(out), "--encrypt")
+    envelope = tmp_path / "bundle.cse"
+    assert envelope.exists()
+    raw = envelope.read_bytes()
+    assert b"application:payments-api" not in raw and b"evidence_id" not in raw, "bundle is not encrypted"
+
+    into = tmp_path / "restored"
+    # 0: every file matches the manifest. The missing BOMs are recorded in the manifest's
+    # `unavailable` block, not in the file verdict — those are different claims.
+    assert run(monkeypatch, transport, "bundle", "import", str(envelope), "--into", str(into)) == 0
+    assert (into / "bundle.json").exists()
+    assert json.loads((into / "pqc.json").read_text()) == {"layers": {}}
+    assert "boms/SBOM.json" in json.loads((into / "bundle.json").read_text())["unavailable"]
+
+
+def test_a_wrong_bundle_passphrase_is_refused_not_partially_decrypted(tmp_path, monkeypatch, env, capsys):
+    transport = FakeControlPlane(_bundle_routes())
+    monkeypatch.setenv("CRYPTOSCAN_BUNDLE_PASSPHRASE", "right")
+    out = tmp_path / "bundle"
+    run(monkeypatch, transport, "bundle", "export", "--out", str(out), "--encrypt")
+    monkeypatch.setenv("CRYPTOSCAN_BUNDLE_PASSPHRASE", "wrong")
+    assert run(monkeypatch, transport, "bundle", "import", str(tmp_path / "bundle.cse"),
+               "--into", str(tmp_path / "nope")) == 3
+    err = capsys.readouterr().err
+    assert "could not be decrypted" in err
+    assert "cannot tell these apart" in err
+
+
+def test_export_without_a_passphrase_refuses_before_writing_an_envelope(tmp_path, monkeypatch, env, capsys):
+    transport = FakeControlPlane(_bundle_routes())
+    monkeypatch.delenv("CRYPTOSCAN_BUNDLE_PASSPHRASE", raising=False)
+    assert run(monkeypatch, transport, "bundle", "export", "--out", str(tmp_path / "b"),
+               "--encrypt") == 3
+    assert "no bundle passphrase" in capsys.readouterr().err
+    assert not (tmp_path / "b.cse").exists()
+
+
+# --- collect --submit: the boundary, made explicit ------------------------------------
+
+
+def test_collect_submit_sends_work_and_collects_nothing_here(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/systems/payments/scan"): (202, {"scan_id": "scan-88", "status": "QUEUED"}),
+    })
+    run(monkeypatch, transport, "collect", "--submit", "--system", "payments")
+    out = capsys.readouterr().out
+    assert "no collection happened in this process" in out
+    assert "scan-88" in out
+    # the only request is the submission: nothing was negotiated from this terminal
+    assert transport.paths == ["/api/v1/systems/payments/scan"]
+
+
+def test_local_collection_announces_the_boundary_it_crosses(capsys):
+    """The in-process path still exists; it says so rather than leaving it to the docs."""
+    from api import cli
+
+    args = cli._build_parser().parse_args(["collect"])
+    assert args.submit is False, "local collection must be the explicit absence of --submit"
+    cli._collect_boundary_notice()
+    err = capsys.readouterr().err
+    assert "collecting from THIS process" in err
+    assert "--submit" in err
+
+
+def test_collect_submit_requires_a_target_revision(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "collect", "--submit", "--target", "pay-01") == 3
+    assert transport.calls == []
+    assert "expected target revision" in capsys.readouterr().err

@@ -356,6 +356,22 @@ def _content_evidence_id(
     return "ev-" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
+def content_evidence_id(
+    evidence_type: str,
+    target: str,
+    facts: Mapping[str, Any] | None,
+    layer: str,
+    source: Any = None,
+    collector: Any = None,
+) -> str:
+    """The public name for the content address: identity is what was observed, not when.
+
+    Exported because verification has to recompute the id from a stored row, and a verifier
+    that re-implements the hash is a verifier that can silently disagree with the writer.
+    """
+    return _content_evidence_id(evidence_type, target, facts, layer, source, collector)
+
+
 def make_evidence(
     *,
     source: str,

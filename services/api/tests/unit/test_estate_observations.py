@@ -29,7 +29,7 @@ from sqlalchemy.pool import StaticPool
 
 from api import estate_catalog as catalog
 from api import estate_observations as history
-from shared_models.estate_graph import build_graph
+from shared_models.estate_graph import build_graph, content_evidence_id
 
 import test_network_protocol_safety as shared_api
 
@@ -365,3 +365,82 @@ def test_a_record_without_a_version_does_not_claim_one(db):
     records = history.evidence_for(db, target=None, tenant_id=None)["records"]
 
     assert all(item["collector_version"] is None for item in records)
+
+
+def _insert_record(db, *, facts=None, store_version="estate-collectors/1", evidence_id=None):
+    """Insert one content-addressed record the way the discovery writer does."""
+    from db.models.estate_catalog import EstateEvidenceRecord
+
+    body = facts or {"algorithm": "AES-256-GCM", "role": "encrypt"}
+    rid = evidence_id or content_evidence_id(
+        "RUNTIME_OBSERVED", "application:payments-api", body, "APPLICATION", "runtime", "linux-runtime",
+    )
+    db.add(EstateEvidenceRecord(
+        tenant_id=None, evidence_id=rid, schema_version="cryptoscan.estate-evidence/1",
+        source="runtime", collector="linux-runtime", collector_version=store_version,
+        raw_reference="run:42", evidence_type="RUNTIME_OBSERVED", confidence="HIGH",
+        target_id="application:payments-api", layer="APPLICATION", facts=body,
+        observed_at="2026-10-28T06:20:00Z", lifecycle_state="ACTIVE", observation_count=1,
+    ))
+    db.commit()
+    return rid
+
+
+def test_one_evidence_record_can_be_read_by_id_and_only_within_its_estate(api):
+    """The record read is the CLI's `evidence show`; a missing row is a 404, not an empty one."""
+    client, db = api
+    rid = _insert_record(db)
+
+    found = client.get(f"{BASE}/evidence/records/{rid}")
+    assert found.status_code == 200
+    record = found.json()["record"]
+    assert record["evidence_id"] == rid
+    assert record["collector_version"] == "estate-collectors/1"
+    assert record["raw_reference"] == "run:42"
+    assert record["facts"] == {"algorithm": "AES-256-GCM", "role": "encrypt"}
+
+    missing = client.get(f"{BASE}/evidence/records/ev-0000000000000000")
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["error"] == "evidence_not_in_this_estate"
+
+
+def test_verify_recomputes_the_content_address_and_names_what_it_cannot_check(api):
+    client, db = api
+    rid = _insert_record(db)
+
+    body = client.get(f"{BASE}/evidence/records/{rid}/verify").json()
+    assert body["content_address_intact"] is True
+    assert body["content_addressed"] is True
+    assert body["recomputed_id"] == rid
+    assert body["verdict"] == "CONTENT_ADDRESS_INTACT"
+    # the honest half: an intact row is not an attested observation
+    assert any("collector honesty" in item for item in body["not_checked"])
+    assert "not an attestation" in body["limits"]
+
+
+def test_verify_notices_a_row_edited_after_collection(api):
+    """Editing the facts in place breaks the content address — that is the point of it."""
+    from db.models.estate_catalog import EstateEvidenceRecord
+
+    client, db = api
+    rid = _insert_record(db)
+    row = db.execute(select(EstateEvidenceRecord).where(EstateEvidenceRecord.evidence_id == rid)).scalars().one()
+    row.facts = {**row.facts, "algorithm": "AES-256-GCM-tampered"}
+    db.commit()
+
+    body = client.get(f"{BASE}/evidence/records/{rid}/verify").json()
+    assert body["content_address_intact"] is False
+    assert body["verdict"] == "CONTENT_ADDRESS_MISMATCH"
+    assert body["recomputed_id"] != rid
+
+
+def test_verify_does_not_accuse_a_record_whose_id_was_assigned(api):
+    """An imported/assigned id has nothing to compare; the verdict says which, not "mismatch"."""
+    client, db = api
+    rid = _insert_record(db, evidence_id="ev-1")
+
+    body = client.get(f"{BASE}/evidence/records/{rid}/verify").json()
+    assert body["verdict"] == "ID_NOT_CONTENT_ADDRESSED"
+    assert body["content_addressed"] is False
+    assert body["content_address_intact"] is None
+    assert body["recomputed_id"] != "ev-1"
