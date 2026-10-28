@@ -551,7 +551,9 @@ Status legend: **done** = implemented and tested on `arena/bb4b80dd-cryproscan`;
 | API: discovery payload, scan, graph, coverage, BOMs | done | `POST /api/v1/estate/evidence/discover`, `POST …/scan`, `GET …/plan`, `GET …/{summary,graph,coverage,boms}` (`routers/estate_graph.py`; the pre-existing `/estate` campaign router is untouched) |
 | Live collector fan-out (one job calling every plane) | done | `api/estate_discovery.py` — seven adapters (NETWORK, KUBERNETES, RUNTIME, STATIC, PKI, HARDWARE, VENDOR) joined into one graph, with a collector plan, lifecycle phases and per-plane coverage; six read *persisted* evidence, KUBERNETES is live |
 | Live Kubernetes plane (cluster API, not caller-supplied manifests) | done | `api/estate_kubernetes.py` + plane `KUBERNETES` — lists `namespaces/services/pods/ingresses` read-only; credentials from `KUBERNETES_API_URL`+`TOKEN`, an in-cluster service account, or a JSON `KUBECONFIG`; no credentials ⇒ `NOT_ATTEMPTED` (nothing asked), RBAC 403/404 ⇒ `blocked[]` + `PARTIAL` with "NOT_OBSERVED, not empty"; `secrets` is never requested (`tls_secret_ref` only); every fact is `CONFIGURED` with `observed: false`, and sidecar TLS is labelled platform crypto |
-| Operator entry point (same job, same database) | done | `api/cli.py` → `cryptoscan scan|coverage|boms`, registered in `pyproject.toml`; `--json` emits a single parseable document, `--allow-partial` prints the decision it records, exit `0` complete / `2` incomplete / `1` error |
+| Operator entry point (same job, same database) | done | `api/cli.py` → `cryptoscan scan|collect|coverage|boms`, registered in `pyproject.toml`; `--json` emits a single parseable document, `--allow-partial` prints the decision it records, exit `0` complete / `2` incomplete / `3` refused / `1` error. `collect` runs the bounded observation and then the estate job in one process |
+| One rulebook for active collection | done | `api/network_collect.py` — the STOP switch, approved scope, budget, admission, audit run and persistence live in one function used by both `POST /network/crypto-observe` and `cryptoscan collect`; a refusal is a `CollectRefused` code (409/422/429 over HTTP, exit 3 in the CLI) |
+| Live cloud plane (AWS control plane, not caller-supplied metadata) | done | `api/estate_cloud.py` + plane `CLOUD` — SigV4-signed read-only ELBv2/ACM/RDS/KMS/API Gateway calls; everything reported is `CONFIGURED`, KMS is `SUPPORTED` (capability, never application use); 403 ⇒ `blocked[]` + `PARTIAL`, no credentials ⇒ `NOT_ATTEMPTED` |
 | Console: coverage matrix + unknown inventory + BOM switch | done | `EstatePanel` (`frontend/src/components/EstatePanel.tsx`) mounted on `Network.tsx` |
 | Signed/anchored projected BOMs | done | `api/security/estate_bom_anchor.py` + `POST /estate/evidence/boms/anchor`, `GET …/boms/anchors`, `POST …/boms/anchor/verify` — HMAC-SHA256 over `{projection_id, per-BOM digests}` with `CRYPTOSCAN_ANCHOR_KEY` held outside the database; no key ⇒ `409 anchor_key_not_configured`, and the receipt says `external: false` until the operator exports it |
 | External anchor export (storage we do not control) | done | `api/security/anchor_export.py` + `POST /estate/evidence/boms/anchor/export`, `GET …/export/status` — three real sinks: append-only directory (`O_CREAT\|O_EXCL`, so a second export cannot overwrite), S3 with SigV4 (verified against the published AWS test vector) + `If-None-Match: *` + Object-Lock retention, and an HMAC-signed webhook; `external: true` only after the sink confirms, unconfigured ⇒ `409`, duplicate ⇒ `409 already_exported` |
@@ -567,8 +569,9 @@ talks to a live system, and it reads configuration (`CONFIGURED`, `observed: fal
 an Ingress TLS block is a declaration that a controller terminates TLS, not a captured
 handshake. Active collection keeps its own approved scope (`/network/crypto-observe`,
 `/runtime/crypto-events`), which is what keeps re-running the estate job free of
-packets. Still open: live cloud/HSM/KMS connectors, and an approval-gated
-`cryptoscan collect` that would drive the active planes from one command.
+packets. Live collectors today: Kubernetes and AWS (`CONFIGURED` control-plane
+metadata). Still open: live HSM/KMS *usage* observation (vendors expose that only
+through audited partitions), a CMDB connector, and scheduled estate runs.
 
 Verified by five files: `services/api/tests/unit/test_estate_graph.py` (27 tests:
 identity merges, layer separation, refusals, capability≠usage, conflicts, coverage

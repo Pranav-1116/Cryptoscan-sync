@@ -419,7 +419,7 @@ cannot see, and every response carries its own limitations.
 | 1 | Purpose: who speaks what, TLS version, cipher, cert, KEX, auth, exposure | done | `POST /network/crypto-observe`, `POST /network/crypto-probe` |
 | 2 | Scope → discovery → protocol → TLS/SSH/IPsec → evidence → normalize → CBOM/NBOM/TechBOM → risk → dashboard | done | router + inventory modules + `Network.tsx` |
 | 3 | Explicit approved scope (destinations/ports/protocols/operations/budget/valid_until) | done | `api/security/network_scope.py`, CIDR sweeps refused |
-| 4 | Discovery sources: inventory / approved active / passive | partial | import + passive + approved active; **open**: live CMDB/K8s/cloud collectors |
+| 4 | Discovery sources: inventory / approved active / passive | partial | import + passive + approved active + **live** read-only K8s (`api/estate_kubernetes.py`) and AWS (`api/estate_cloud.py`) collectors; **open**: live CMDB/ServiceNow connector |
 | 5 | Port ≠ protocol, detect from the response | done | `discovery/protocol_detector.py`, `port_matches_protocol` |
 | 6 | TLS observation (version, suite, KEX, group, cert, ALPN, SNI, mTLS) | done | `probing/tls_handshaker.py` → evidence |
 | 7 | TLS 1.3 cipher decomposition | done | `decomposition{}` on every record |
@@ -436,7 +436,7 @@ cannot see, and every response carries its own limitations.
 | 18 | Database transport vs TDE | done | `inventory/protocol_evidence.py` (`DB_TRANSPORT_TLS_NOT_OFFERED`, TDE `NOT_OBSERVED`) |
 | 19 | Kafka / MQ: transport vs message encryption | done | `inventory/message_layer.py`, `POST /network/message-layer-observe` |
 | 20 | Kubernetes ingress/service/pod correlation | done | `POST /network/kubernetes-correlate` |
-| 21 | Cloud endpoints (LB / API GW / private endpoint / KMS) | partial | `POST /network/cloud-correlate` from caller-supplied metadata; **open**: read-only cloud API collectors |
+| 21 | Cloud endpoints (LB / API GW / private endpoint / KMS) | done | `POST /network/cloud-correlate` for supplied metadata **and** the live read-only collector `api/estate_cloud.py` (plane `CLOUD`): ELBv2 listeners/SSL policies, ACM key algorithms, RDS storage encryption + KMS key, KMS key specs, API Gateway TLS floors — all `CONFIGURED`, KMS `SUPPORTED` only |
 | 22 | Passive TAP/SPAN metadata-only | done | `POST /network/crypto-passive`, strict field whitelist, `NOT_OBSERVED ≠ NO_CRYPTO` |
 | 23 | Evidence taxonomy (7 values) | done | `cryptoscan.network-evidence/1` |
 | 24 | Evidence record (target, protocol, params, cert, mTLS, scope revision) | done | `inventory/network_evidence.py` |
@@ -446,7 +446,7 @@ cannot see, and every response carries its own limitations.
 | 28 | CBOM / NBOM / TechBOM with context + evidence ID | done | `POST /network/crypto-nbom` (CycloneDX 1.5), `GET /network/crypto-cbom` |
 | 29 | Explicit limitations; UNKNOWN is a valid result | done | per-record `limitations[]`, report-level limitations, coverage gaps |
 | 30 | Safety: scope, budget, stop, escalation, never disable IDS | done | `api/security/network_safety.py`, `POST /network/crypto-stop` (local, `distributed:false`) |
-| 31 | Policy / risk, PQC readiness, drift, dashboard | partial | `POST /network/crypto-risk` (baseline pack + PQC), `POST /network/crypto-estate-risk` (policy over the correlated estate, one verdict per service), `GET /network/scan-drifts`; signed anchor receipts (`POST /network/crypto-evidence/anchor`), database lease for single-writer scheduling (`GET/POST /network/crypto-watch/lease`); **open**: threat-intelligence enrichment, an *external* store for the receipts |
+| 31 | Policy / risk, PQC readiness, drift, dashboard | partial | `POST /network/crypto-risk` (baseline pack + PQC), `POST /network/crypto-estate-risk` (policy over the correlated estate, one verdict per service), `GET /network/scan-drifts`; signed anchor receipts (`POST /network/crypto-evidence/anchor`), database lease for single-writer scheduling (`GET/POST /network/crypto-watch/lease`), plus **external** receipt export (`api/security/anchor_export.py`: write-once directory, S3 with SigV4 + `If-None-Match` + Object Lock, HMAC webhook); **open**: threat-intelligence enrichment |
 
 Still open, in priority order: live cloud/Kubernetes collectors (the current paths accept
 caller-supplied metadata), IKEv1, ESP/PFS *in use*, threat-intelligence enrichment, and a
