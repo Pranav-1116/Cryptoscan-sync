@@ -3,7 +3,9 @@ import { Panel, Badge } from "./ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import {
   apiEstateTwin, apiEstateTwinSearch, apiEstateTwinImpact, apiEstateTwinSimulate, apiEstateTwinAsset,
+  apiEstateTwinSnapshots, apiEstateTwinCapture, apiEstateTwinCompare, apiEstateTwinCryptoGraph, apiEstateTwinGraph,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
+  EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -108,19 +110,100 @@ export default function DigitalTwinPanel() {
 
   const completeness = doc?.completeness;
 
+  /* Four views over one twin. "Live" is the current evidence; the other three are
+     the parts spec 94 §24 lists that a BOM panel cannot answer: what moved, what is
+     capability vs use, and what a graph store would receive. */
+  const [view, setView] = useState<"live" | "crypto" | "history" | "graph">("live");
+  const [snapshots, setSnapshots] = useState<EstateTwinSnapshotList | null>(null);
+  const [comparison, setComparison] = useState<EstateTwinCompare | null>(null);
+  const [crypto, setCrypto] = useState<EstateTwinCryptoGraph | null>(null);
+  const [exported, setExported] = useState<EstateTwinGraphExport | null>(null);
+
+  const capture = async () => {
+    setBusy(true);
+    setError(null);
+    const result = await apiEstateTwinCapture(`captured from the twin panel`);
+    if (result.ok) {
+      await loadHistory();
+    } else {
+      setError("capture failed — no snapshot was written");
+    }
+    setBusy(false);
+  };
+
+  const loadHistory = async () => {
+    const result = await apiEstateTwinSnapshots();
+    if (result.ok) setSnapshots(result.data as EstateTwinSnapshotList);
+    else setError("snapshot history unavailable — that is not 'no history'");
+  };
+
+  const loadCompare = async (before?: string, after?: string) => {
+    setBusy(true);
+    setError(null);
+    const result = await apiEstateTwinCompare(before, after);
+    if (result.ok) setComparison(result.data as EstateTwinCompare);
+    else setError("compare unavailable — no comparison is not the same as no change");
+    setBusy(false);
+  };
+
+  const loadCrypto = async () => {
+    const result = await apiEstateTwinCryptoGraph();
+    if (result.ok) setCrypto(result.data as EstateTwinCryptoGraph);
+    else setError("crypto graph unavailable");
+  };
+
+  const loadExport = async () => {
+    const result = await apiEstateTwinGraph();
+    if (result.ok) setExported(result.data as EstateTwinGraphExport);
+    else setError("graph export unavailable");
+  };
+
+  React.useEffect(() => {
+    if (view === "history" && snapshots === null) void loadHistory();
+    if (view === "crypto" && crypto === null) void loadCrypto();
+    if (view === "graph" && exported === null) void loadExport();
+  }, [view]);
+
+  const TABS: Array<{ id: typeof view; label: string }> = [
+    { id: "live", label: "Live estate" },
+    { id: "crypto", label: "Crypto graph" },
+    { id: "history", label: "History & compare" },
+    { id: "graph", label: "Graph export" },
+  ];
+
   return (
     <Panel
       title="Digital twin — the model the six BOMs are projected from"
       sub="placement, description completeness, blast radius and simulation; a simulation runs on a copy and says so"
       className="mt"
     >
+      {error && (
+        <div className="dim" style={{ fontSize: 11.5, marginTop: 4, marginBottom: 6, color: "var(--red)" }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`btn sm${view === tab.id ? " primary" : ""}`}
+            style={{ fontSize: 10.5 }}
+            onClick={() => setView(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {!doc && !error && (
         <div className="dim" style={{ fontSize: 12 }}>
           {twin.error ? "no stored estate discovery yet — the twin is NOT_OBSERVED, not empty" : "loading the twin…"}
         </div>
       )}
 
-      {doc && (
+      {doc && view === "live" && (
         <>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             <Badge tone="violet">{doc.projection_id.slice(0, 12)}</Badge>
@@ -191,7 +274,6 @@ export default function DigitalTwinPanel() {
             {busy && <span className="faint" style={{ fontSize: 10.5 }}>working…</span>}
           </div>
 
-          {error && <div className="dim" style={{ fontSize: 11.5, marginTop: 8, color: "var(--red)" }}>{error}</div>}
 
           {found && (
             <div style={{ marginTop: 10 }}>
@@ -392,6 +474,224 @@ export default function DigitalTwinPanel() {
             </div>
           )}
         </>
+      )}
+
+      {view === "crypto" && (
+        <div style={{ marginTop: 4 }}>
+          {!crypto && <div className="dim" style={{ fontSize: 11 }}>{error ?? "loading the crypto graph…"}</div>}
+          {crypto && (
+            <>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge tone="violet">{crypto.projection_id.slice(0, 12)}</Badge>
+                <Badge tone={crypto.conflict_counts.real ? "red" : "green"}>
+                  {crypto.conflict_counts.real} real conflict(s)
+                </Badge>
+                <Badge tone="slate">{crypto.conflict_counts.explained} explained disagreement(s)</Badge>
+                <span className="faint" style={{ fontSize: 10 }}>
+                  capability, configuration, runtime and wire facts are drawn on separate planes
+                </span>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginTop: 12 }}>
+                {["CAPABILITY", "CONFIGURED", "RUNTIME_OBSERVED", "NETWORK_OBSERVED"].map((plane) => (
+                  <div key={plane}>
+                    <div className="mono" style={{ fontSize: 10, color: "var(--cyan)" }}>{plane}</div>
+                    <div className="faint" style={{ fontSize: 9.5, marginBottom: 4 }}>
+                      {crypto.plane_meanings[plane]}
+                    </div>
+                    {(crypto.planes[plane] ?? []).length === 0 && (
+                      <div className="dim" style={{ fontSize: 10 }}>nothing on this plane</div>
+                    )}
+                    {(crypto.planes[plane] ?? []).slice(0, 12).map((item, index) => (
+                      <div key={index} className="faint" style={{ fontSize: 10 }}>
+                        <span className="mono" style={{ color: "var(--fg)" }}>{item.label}</span>
+                        {" · "}{item.asset_name ?? item.asset_id.slice(0, 8)}
+                        {" · "}{item.layer}
+                      </div>
+                    ))}
+                    {(crypto.planes[plane] ?? []).length > 12 && (
+                      <div className="faint" style={{ fontSize: 9.5 }}>
+                        +{(crypto.planes[plane] ?? []).length - 12} more
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {crypto.coexistence.length > 0 && (
+                <div style={{ marginTop: 14 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--cyan)" }}>
+                    CAPABILITY IS NOT USE
+                  </div>
+                  {crypto.coexistence.slice(0, 5).map((entry, index) => (
+                    <div key={index} className="faint" style={{ fontSize: 10, marginTop: 3 }}>
+                      <span style={{ color: "var(--fg)" }}>{entry.asset_name}</span> can do{" "}
+                      {entry.capability.join(", ")}; seen doing {entry.in_use.join(", ") || "nothing"}.
+                      {entry.supported_but_not_observed.length > 0 && (
+                        <> Supported but not observed: {entry.supported_but_not_observed.join(", ")}.</>
+                      )}
+                    </div>
+                  ))}
+                  <div className="faint" style={{ fontSize: 9.5, marginTop: 4 }}>
+                    {crypto.coexistence[0]?.explanation}
+                  </div>
+                </div>
+              )}
+
+              {crypto.conflicts.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--amber)" }}>REAL CONFLICTS</div>
+                  {crypto.conflicts.slice(0, 6).map((conflict, index) => (
+                    <div key={index} className="dim" style={{ fontSize: 10 }}>
+                      {String(conflict.asset_name ?? conflict.asset_id)} · {String(conflict.field)} — two
+                      sources on the same plane disagree; not auto-resolved
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {view === "history" && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" className="btn sm" onClick={() => void capture()} disabled={busy}>
+              Capture snapshot
+            </button>
+            <button type="button" className="btn sm" onClick={() => void loadCompare()} disabled={busy}>
+              Compare two newest
+            </button>
+            {snapshots && (
+              <Badge tone={snapshots.persisted ? "green" : "amber"}>
+                {snapshots.persisted ? `${snapshots.count} persisted` : "derived from scan runs (not persisted)"}
+              </Badge>
+            )}
+          </div>
+          {snapshots && !snapshots.persisted && (
+            <div className="dim" style={{ fontSize: 10.5, marginTop: 6 }}>{snapshots.note}</div>
+          )}
+
+          {snapshots && snapshots.snapshots.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              {snapshots.snapshots.slice(0, 8).map((snapshot) => (
+                <div
+                  key={snapshot.id}
+                  style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}
+                >
+                  <Badge tone="violet">{snapshot.projection_id.slice(0, 10)}</Badge>
+                  <span className="faint" style={{ fontSize: 10 }}>
+                    {snapshot.assets} assets · {snapshot.evidence} evidence · {snapshot.relationships} edges
+                  </span>
+                  <Badge tone="slate">
+                    completeness {snapshot.completeness_percent == null ? "n/a" : `${snapshot.completeness_percent}%`}
+                  </Badge>
+                  {snapshot.observations > 1 && <Badge tone="cyan">seen {snapshot.observations}×</Badge>}
+                  <button
+                    type="button"
+                    className="btn sm"
+                    style={{ fontSize: 10 }}
+                    onClick={() => void loadCompare(undefined, snapshot.projection_id)}
+                  >
+                    compare to newest
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {comparison && (
+            <div style={{ marginTop: 12, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 8 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge
+                  tone={
+                    comparison.verdict === "NO_CHANGE"
+                      ? "green"
+                      : comparison.verdict === "NOT_COMPARABLE"
+                        ? "slate"
+                        : comparison.verdict === "COVERAGE_DEGRADED"
+                          ? "red"
+                          : "amber"
+                  }
+                >
+                  {comparison.verdict}
+                </Badge>
+                {comparison.assets && (
+                  <Badge tone="slate">
+                    assets +{comparison.assets.counts.added ?? 0}/−{comparison.assets.counts.removed ?? 0}/
+                    ~{comparison.assets.counts.changed ?? 0}
+                  </Badge>
+                )}
+                {comparison.crypto && (
+                  <Badge tone="violet">
+                    crypto +{comparison.crypto.counts.added ?? 0}/−{comparison.crypto.counts.removed ?? 0}
+                  </Badge>
+                )}
+                {comparison.coverage && comparison.coverage.counts.degraded > 0 && (
+                  <Badge tone="red">{comparison.coverage.counts.degraded} plane(s) degraded</Badge>
+                )}
+              </div>
+              <div className="dim" style={{ fontSize: 10.5, marginTop: 4 }}>{comparison.reason}</div>
+
+              {comparison.coverage?.degraded.map((entry, index) => (
+                <div key={index} className="faint" style={{ fontSize: 10, color: "var(--red)" }}>
+                  {String(entry.plane)}: {String(entry.before)} → {String(entry.after)} —{" "}
+                  {String(entry.reason ?? "no reason recorded")}
+                </div>
+              ))}
+              {comparison.crypto?.promoted.map((entry, index) => (
+                <div key={`p${index}`} className="faint" style={{ fontSize: 10, color: "var(--green)" }}>
+                  promoted {String(entry.algorithm ?? entry.protocol)} on {String(entry.asset_name)}:{" "}
+                  {String(entry.before)} → {String(entry.after)}
+                </div>
+              ))}
+              {comparison.crypto?.demoted.map((entry, index) => (
+                <div key={`d${index}`} className="faint" style={{ fontSize: 10, color: "var(--amber)" }}>
+                  lost proof for {String(entry.algorithm ?? entry.protocol)} on {String(entry.asset_name)}:{" "}
+                  {String(entry.before)} → {String(entry.after)}
+                </div>
+              ))}
+              {comparison.assets?.changed.slice(0, 5).map((entry, index) => (
+                <div key={`c${index}`} className="faint" style={{ fontSize: 10 }}>
+                  {entry.name} changed: {entry.changed_fields.join(", ")}
+                </div>
+              ))}
+              {comparison.note && <div className="faint" style={{ fontSize: 9.5, marginTop: 4 }}>{comparison.note}</div>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === "graph" && (
+        <div style={{ marginTop: 4 }}>
+          {!exported && <div className="dim" style={{ fontSize: 11 }}>{error ?? "loading the graph export…"}</div>}
+          {exported && (
+            <>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge tone="violet">{exported.projection_id.slice(0, 12)}</Badge>
+                <Badge tone="slate">{exported.counts.asset_nodes} asset nodes</Badge>
+                <Badge tone="slate">{exported.counts.evidence_nodes} evidence nodes</Badge>
+                <Badge tone="cyan">{exported.counts.relationships} edges</Badge>
+                {exported.counts.unresolved > 0 && (
+                  <Badge tone="amber">{exported.counts.unresolved} unresolved (shipped separately)</Badge>
+                )}
+              </div>
+              <div className="dim" style={{ fontSize: 10.5, marginTop: 6 }}>
+                {String(exported.load_notes.not_source_of_truth)}
+              </div>
+              <div className="faint" style={{ fontSize: 10, marginTop: 4 }}>
+                {String(exported.load_notes.edge_identity)}
+              </div>
+              <pre
+                className="mono"
+                style={{ fontSize: 9.5, marginTop: 8, maxHeight: 220, overflow: "auto", opacity: 0.8 }}
+              >
+                {JSON.stringify({ nodes: exported.nodes.slice(0, 2), relationships: exported.relationships.slice(0, 3) }, null, 1)}
+              </pre>
+            </>
+          )}
+        </div>
       )}
     </Panel>
   );

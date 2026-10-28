@@ -6133,3 +6133,90 @@ export const apiCollectionEnqueue = (id: string, expected_revision: number): Pro
 
 export const apiCollectionCancel = (id: string, expected_revision: number): Promise<ApiResult<Record<string, unknown>>> =>
   _rsPost<Record<string, unknown>>(`/api/v1/collection/jobs/${encodeURIComponent(id)}/cancel`, { expected_revision });
+
+/* ── Digital Twin: history, compare, crypto graph, graph export ────────────
+   `compare` is not a BOM diff: its verdict is worst-first, so COVERAGE_DEGRADED
+   outranks CRYPTO_CHANGED — once a plane stopped collecting, everything below it
+   is unreliable. The crypto graph keeps capability, configuration, runtime and
+   wire facts on separate planes because merging them is the CBOM bug. */
+
+export interface EstateTwinSnapshotSummary {
+  id: string; snapshot_id: string; projection_id: string;
+  estate: string | null; scope: string | null;
+  assets: number; evidence: number; relationships: number; unresolved_relationships: number;
+  completeness_percent: number | null; observations: number;
+  first_seen_at: string | null; last_seen_at: string | null;
+  captured_by: string | null; note: string | null; source_run_id?: string | null;
+}
+
+export interface EstateTwinSnapshotList {
+  model: string; persisted: boolean; snapshots: EstateTwinSnapshotSummary[]; count: number; note: string;
+}
+
+export interface EstateTwinCompare {
+  schema: string; verdict: string; reason: string;
+  before_snapshot?: EstateTwinSnapshotSummary;
+  after_snapshot?: EstateTwinSnapshotSummary;
+  before?: Record<string, unknown>; after?: Record<string, unknown>;
+  sameness?: boolean;
+  assets?: {
+    added: Array<Record<string, unknown>>; removed: Array<Record<string, unknown>>;
+    changed: Array<{ name?: string; changed_fields: string[]; before: Record<string, unknown>; after: Record<string, unknown> }>;
+    counts: Record<string, number>;
+  };
+  relationships?: { established: Array<Record<string, unknown>>; lost: Array<Record<string, unknown>>; counts: Record<string, number> };
+  crypto?: { added: Array<Record<string, unknown>>; removed: Array<Record<string, unknown>>; promoted: Array<Record<string, unknown>>; demoted: Array<Record<string, unknown>>; counts: Record<string, number>; note: string };
+  coverage?: { degraded: Array<Record<string, unknown>>; improved: Array<Record<string, unknown>>; counts: Record<string, number> };
+  evidence?: Record<string, unknown>;
+  unknown?: Record<string, number>;
+  note?: string;
+}
+
+export interface EstateTwinCryptoPlaneItem {
+  label: string; algorithm?: string | null; protocol?: string | null; key_size?: number | null;
+  layer: string; usage_state: string; evidence_type: string; confidence: string;
+  asset_id: string; asset_name?: string | null; asset_type?: string | null;
+}
+
+export interface EstateTwinCryptoGraph {
+  schema: string; projection_id: string;
+  planes: Record<string, EstateTwinCryptoPlaneItem[]>;
+  plane_meanings: Record<string, string>;
+  counts: Record<string, number>;
+  nodes: Array<{ node_id: string; kind: string; name?: string | null; type?: string | null; planes: Record<string, string[]> }>;
+  edges: Array<{ from: string; to: string; predicate: string; plane: string; layer: string; evidence_ids: string[] }>;
+  coexistence: Array<{ asset_name?: string | null; capability: string[]; in_use: string[]; supported_but_not_observed: string[]; explanation: string }>;
+  conflicts: Array<Record<string, unknown>>;
+  explained_disagreements: Array<Record<string, unknown>>;
+  conflict_counts: { real: number; explained: number };
+  note: string;
+}
+
+export interface EstateTwinGraphExport {
+  schema: string; projection_id: string; generated_at: string;
+  counts: Record<string, number>;
+  nodes: Array<{ id: string; labels: string[]; properties: Record<string, unknown> }>;
+  relationships: Array<{ type: string; from: string; to: string; properties: Record<string, unknown> }>;
+  unresolved: Array<Record<string, unknown>>;
+  load_notes: Record<string, unknown>;
+}
+
+export const apiEstateTwinSnapshots = (): Promise<ApiResult<EstateTwinSnapshotList>> =>
+  _rsGet<EstateTwinSnapshotList>("/api/v1/estate/evidence/twin/snapshots");
+
+export const apiEstateTwinCapture = (note?: string): Promise<ApiResult<{ created: boolean; snapshot: EstateTwinSnapshotSummary; note: string }>> =>
+  _rsPost<{ created: boolean; snapshot: EstateTwinSnapshotSummary; note: string }>(
+    "/api/v1/estate/evidence/twin/snapshots", { note: note ?? null },
+  );
+
+export const apiEstateTwinCompare = (before?: string, after?: string): Promise<ApiResult<EstateTwinCompare>> => {
+  const query = [before ? `before=${encodeURIComponent(before)}` : "", after ? `after=${encodeURIComponent(after)}` : ""]
+    .filter(Boolean).join("&");
+  return _rsGet<EstateTwinCompare>(`/api/v1/estate/evidence/twin/compare${query ? `?${query}` : ""}`);
+};
+
+export const apiEstateTwinCryptoGraph = (): Promise<ApiResult<EstateTwinCryptoGraph>> =>
+  _rsGet<EstateTwinCryptoGraph>("/api/v1/estate/evidence/twin/crypto-graph");
+
+export const apiEstateTwinGraph = (): Promise<ApiResult<EstateTwinGraphExport>> =>
+  _rsGet<EstateTwinGraphExport>("/api/v1/estate/evidence/twin/graph");
