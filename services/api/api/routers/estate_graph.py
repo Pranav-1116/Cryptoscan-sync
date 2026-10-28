@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from api import (
     estate_catalog,
+    estate_observations,
     estate_change_feed,
     estate_discovery,
     estate_drift,
@@ -1556,3 +1557,94 @@ def estate_catalog_crypto(
         asset_type=asset_type,
         include_stale=include_stale,
     )
+
+
+# -- evidence records and per-fact history (spec 94 §11, §19, §28) ---------- #
+
+
+@router.get("/evidence/records")
+def estate_evidence_records(
+    target: str | None = Query(default=None, description="asset id or collector target"),
+    evidence_type: str | None = Query(default=None, description="OBSERVED | CONFIGURED | INFERRED | ..."),
+    limit: int = Query(default=200, ge=1, le=1000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every stored evidence record, with its collector, source, confidence and age (§11).
+
+    Evidence is content-addressed, so a record observed in forty runs is one row whose
+    ``observation_count`` is forty — not forty rows that make a quiet estate look busy.
+    """
+    return estate_observations.evidence_for(
+        db,
+        target=target,
+        evidence_type=evidence_type,
+        limit=limit,
+        tenant_id=current_tenant(),
+    )
+
+
+@router.get("/history/summary")
+def estate_observation_summary(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """How much history the twin holds: current and historical facts, and the disputes."""
+    return estate_observations.summary(db, tenant_id=current_tenant())
+
+
+@router.get("/history/assets/{identifier}")
+def estate_asset_history(
+    identifier: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every fact this asset ever asserted, current value first, with windows (§19).
+
+    A fact's state is ``CURRENT``, ``HISTORICAL`` or ``CONFLICT``. ``CONFLICT`` means two
+    values are still asserted and the twin will not pick one: that is a question for a
+    human, and it is reported as such.
+    """
+    detail = estate_observations.history(db, identifier, tenant_id=current_tenant())
+    if detail["fact_count"] == 0:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_history",
+                "reason": (
+                    "the catalogue holds no fact for that asset id. Either the asset has never been "
+                    "observed, or it was catalogued before per-fact history existed — this is not an "
+                    "assertion that it has no properties"
+                ),
+            },
+        )
+    return detail
+
+
+@router.get("/why/{identifier}")
+def estate_why(
+    identifier: str,
+    fact_type: str = Query(..., description="e.g. environment, attribute:region, crypto:algorithm"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """§28: why does the twin believe this fact about this asset?
+
+    Returns the windows in which each value held and the evidence behind the asset, and
+    states the limit plainly: collectors attribute evidence to an asset, not to an
+    individual attribute, so this is the evidence for the asset rather than per-value
+    provenance dressed up as more than it is.
+    """
+    answer = estate_observations.why(db, identifier, fact_type, tenant_id=current_tenant())
+    if answer is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "nothing_to_explain",
+                "reason": (
+                    "no catalogue record or no observation of that fact for this asset in this "
+                    "tenant. Absence of an explanation is not evidence that the fact is false"
+                ),
+            },
+        )
+    return answer

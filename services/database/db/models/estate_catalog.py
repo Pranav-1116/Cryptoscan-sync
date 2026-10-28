@@ -141,3 +141,71 @@ class EstateCryptoRecord(BaseModel, TenantScoped):
     first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class EstateEvidenceRecord(BaseModel, TenantScoped):
+    """One evidence record, kept after the run that produced it (spec 94 §11, §19).
+
+    Evidence used to live only inside the stored discovery payload, which made a
+    provenance question ("who observed this, from where, when, with what hash") an
+    exercise in finding the right run. The record is content-addressed, so the same
+    fact observed twice is one row whose ``observation_count`` advances — not two
+    rows that make a steady estate look busy.
+    """
+
+    __tablename__ = "estate_evidence"
+    __table_args__ = (
+        Index("ix_estate_evidence_tenant_evidence", "tenant_id", "evidence_id", unique=True),
+        Index("ix_estate_evidence_target", "target_id"),
+    )
+
+    evidence_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    schema_version: Mapped[Optional[str]] = mapped_column(String(80))
+    source: Mapped[Optional[str]] = mapped_column(String(400))
+    collector: Mapped[Optional[str]] = mapped_column(String(400), index=True)
+    evidence_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    confidence: Mapped[Optional[str]] = mapped_column(String(20))
+    target_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    layer: Mapped[Optional[str]] = mapped_column(String(40), index=True)
+    facts: Mapped[Optional[dict]] = mapped_column(JSON)
+    observed_at: Mapped[Optional[str]] = mapped_column(String(64))
+
+    #: ACTIVE while the collector still produces it, STALE once it stops
+    lifecycle_state: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
+    first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class EstateObservationRecord(BaseModel, TenantScoped):
+    """One fact *value*, with the window in which it was the observed truth (§19).
+
+    This is the table the twin was missing: ``observation_count`` on an asset says how
+    often the asset was seen, and cannot answer "what was its version on Tuesday".
+    Each row is one ``(asset, fact_type, value)`` triple, so a value that changes adds a
+    row and retires the previous one to ``HISTORICAL`` instead of overwriting it.
+
+    ``CURRENT`` / ``HISTORICAL`` is about *this fact*, not about the estate: a fact that
+    is no longer observed is history, and a fact still observed holds its current value
+    however many times it has moved.
+    """
+
+    __tablename__ = "estate_observations"
+    __table_args__ = (
+        Index("ix_estate_observations_tenant_obs", "tenant_id", "observation_id", unique=True),
+        Index("ix_estate_observations_asset_fact", "asset_id", "fact_type"),
+    )
+
+    observation_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    asset_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    fact_type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    value: Mapped[Optional[str]] = mapped_column(Text)
+    value_kind: Mapped[Optional[str]] = mapped_column(String(40))
+    evidence_id: Mapped[Optional[str]] = mapped_column(String(80), index=True)
+    evidence_type: Mapped[Optional[str]] = mapped_column(String(40))
+    layer: Mapped[Optional[str]] = mapped_column(String(40))
+
+    lifecycle_state: Mapped[str] = mapped_column(String(20), nullable=False, default="CURRENT", index=True)
+    first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

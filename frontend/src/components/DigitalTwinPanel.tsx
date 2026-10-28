@@ -8,12 +8,13 @@ import {
   apiEstateChanges, apiEstateChangesDetect, apiEstateChangeAcknowledge,
   apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
   apiEstateTwinPlacement,
+  apiEstateAssetHistory, apiEstateHistorySummary,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
   EstateChangeFeed, EstateChangeEvent,
   EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
-  EstatePlacement,
+  EstatePlacement, EstateAssetHistory, EstateHistorySummary,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -141,6 +142,10 @@ export default function DigitalTwinPanel() {
   const [registry, setRegistry] = useState<EstateCryptoRegistry | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [placement, setPlacement] = useState<EstatePlacement | null>(null);
+  const [assetHistory, setAssetHistory] = useState<EstateAssetHistory | null>(null);
+  const [historySummary, setHistorySummary] = useState<EstateHistorySummary | null>(null);
+  /* its own error again: a missing history must not erase the catalogue record */
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -207,9 +212,21 @@ export default function DigitalTwinPanel() {
   };
 
   const openCatalogAsset = async (identifier: string) => {
+    setAssetHistory(null);
+    setHistoryError(null);
     const detail = await apiEstateCatalogAsset(identifier);
     if (detail.ok) setCatalogRecord(detail.data as EstateCatalogDetail);
     else setCatalogError("asset not in the catalogue — it may never have been observed");
+    const history = await apiEstateAssetHistory(identifier);
+    if (history.ok) setAssetHistory(history.data as EstateAssetHistory);
+    // 404 here means "no per-fact history", which is not the same as "no facts"
+    else setHistoryError("no per-fact history for this asset — not the same as no properties");
+  };
+
+  const loadHistorySummary = async () => {
+    const result = await apiEstateHistorySummary();
+    if (result.ok) setHistorySummary(result.data as EstateHistorySummary);
+    else setHistoryError("history summary unavailable");
   };
 
   /* The change feed: what moved between observations, and what that does not prove. */
@@ -262,6 +279,7 @@ export default function DigitalTwinPanel() {
     if (view === "graph" && exported === null) void loadExport();
     if (view === "changes" && changeFeed === null) void loadChanges();
     if (view === "catalog" && catalogAssets === null) void loadCatalog();
+    if (view === "catalog" && historySummary === null) void loadHistorySummary();
     if (view === "live" && placement === null) void loadPlacement();
   }, [view]);
 
@@ -850,6 +868,22 @@ export default function DigitalTwinPanel() {
               <span className="faint" style={{ fontSize: 9.5 }}>
                 rows survive observations — stale means &ldquo;not in the latest run&rdquo;, never deleted
               </span>
+              {historySummary && (
+                <>
+                  <Badge tone="slate">
+                    {historySummary.observations.current} current fact(s)
+                  </Badge>
+                  <Badge tone="slate">
+                    {historySummary.observations.historical} superseded
+                  </Badge>
+                  <Badge tone="slate">{historySummary.evidence.total} evidence record(s)</Badge>
+                  {historySummary.observations.disputed_facts > 0 && (
+                    <Badge tone="amber">
+                      {historySummary.observations.disputed_facts} disputed fact(s) — nothing chosen
+                    </Badge>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -939,6 +973,41 @@ export default function DigitalTwinPanel() {
                   </span>
                 </div>
               ))}
+              {assetHistory && (
+                <div style={{ marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 6 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--cyan)" }}>
+                    {`FACT HISTORY · ${assetHistory.fact_count} fact(s) · a change closes a window, it does not overwrite one`}
+                  </div>
+                  {assetHistory.facts.map((fact) => (
+                    <div key={fact.fact_type} style={{ fontSize: 10, marginTop: 3 }}>
+                      <span className="mono" style={{ fontSize: 9.5, opacity: 0.75 }}>
+                        {fact.fact_type}
+                      </span>{" "}
+                      {fact.current_values.join(", ") || "(no longer observed)"}{" "}
+                      {fact.state === "CONFLICT" && <Badge tone="amber">CONFLICT</Badge>}{" "}
+                      {fact.state === "HISTORICAL" && <Badge tone="slate">historical</Badge>}
+                      {fact.timeline
+                        .filter((window) => window.state !== "CURRENT")
+                        .map((window) => (
+                          <div key={window.observation_id} className="faint" style={{ fontSize: 9.5 }}>
+                            was {window.value} until {window.last_seen_at ?? "unknown"} (seen{" "}
+                            {window.observation_count}×)
+                          </div>
+                        ))}
+                    </div>
+                  ))}
+                  {assetHistory.conflicted_facts.length > 0 && (
+                    <div style={{ fontSize: 9.5, marginTop: 4, color: "var(--amber)" }}>
+                      {assetHistory.conflicted_facts.join(", ")} — two values still asserted; the twin
+                      reports the disagreement instead of picking one
+                    </div>
+                  )}
+                </div>
+              )}
+              {historyError && (
+                <div className="dim" style={{ fontSize: 9.5, marginTop: 6 }}>{historyError}</div>
+              )}
+
               {catalogRecord.unresolved_candidates.map((edge) => (
                 <div key={edge.relationship_id} style={{ fontSize: 10.5, marginTop: 2, color: "var(--amber)" }}>
                   candidate {edge.predicate} → {edge.object_name ?? edge.object_id} — REFUSED:{" "}

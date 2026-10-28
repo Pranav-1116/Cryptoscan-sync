@@ -323,3 +323,76 @@ def test_placement_without_an_observation_refuses_to_invent_a_hierarchy(cli_sess
     captured = capsys.readouterr()
     assert code == cli.EXIT_INCOMPLETE
     assert "NOT_OBSERVED" in captured.err
+
+
+def _record_history(session, region: str = "me-central-1"):
+    from api import estate_observations
+    from shared_models.estate_graph import build_graph
+
+    payload = _payload()
+    target = next(item for item in payload["assets"] if item["name"] == "Payment API")
+    target["attributes"] = {"region": region}
+    estate_observations.sync_all(session, build_graph(payload), tenant_id=None)
+    return session
+
+
+def test_history_shows_a_window_that_closed(with_discovery, capsys):
+    from api import cli
+
+    _record_history(with_discovery, region="me-central-1")
+    _record_history(with_discovery, region="me-west-1")
+
+    code = cli.main(["twin", "history", "Payment API"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "attribute:region" in out
+    assert "me-west-1" in out
+    assert "was 'me-central-1'" in out
+
+
+def test_history_says_absence_is_not_a_denial(cli_session, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "history", "Unknown"], session_factory=lambda: cli_session)
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_INCOMPLETE
+    assert "not observed" in captured.err
+
+
+def test_why_names_the_evidence_and_its_limit(with_discovery, capsys):
+    from api import cli
+
+    _record_history(with_discovery)
+    code = cli.main(
+        ["twin", "why", "Payment API", "--fact", "attribute:region"],
+        session_factory=lambda: with_discovery,
+    )
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "attribute:region" in out
+    assert "limit" in out
+    assert "not one record per attribute value" in out
+
+
+def test_why_refuses_to_invent_an_explanation(with_discovery, capsys):
+    from api import cli
+
+    _record_history(with_discovery)
+    code = cli.main(
+        ["twin", "why", "Payment API", "--fact", "attribute:nowhere"],
+        session_factory=lambda: with_discovery,
+    )
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_INCOMPLETE
+    assert "not evidence" in captured.err
+
+
+def test_evidence_lists_stored_records(with_discovery, capsys):
+    from api import cli
+
+    _record_history(with_discovery)
+    code = cli.main(["twin", "evidence", "--json"], session_factory=lambda: with_discovery)
+    body = json.loads(capsys.readouterr().out)
+    assert code == cli.EXIT_OK
+    assert body["count"] >= 1
+    assert body["records"][0]["evidence_id"]

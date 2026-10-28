@@ -6421,3 +6421,40 @@ export interface EstatePlacement {
 
 export const apiEstateTwinPlacement = (): Promise<ApiResult<EstatePlacement>> =>
   _rsGet<EstatePlacement>("/api/v1/estate/evidence/twin/placement");
+
+/* §19/§28: what a fact said over time. A fact is a value with a window — a change
+   retires the previous value instead of overwriting it, and two values still asserted
+   are a CONFLICT the console shows rather than a choice it makes. */
+export interface EstateFactWindow {
+  observation_id: string; value: string | null; value_kind: string | null;
+  state: "CURRENT" | "HISTORICAL"; evidence_id: string | null;
+  evidence_type: string | null; layer: string | null;
+  first_seen_at: string | null; last_seen_at: string | null; observation_count: number;
+}
+
+export interface EstateFactHistory {
+  fact_type: string; provenance: string; state: "CURRENT" | "HISTORICAL" | "CONFLICT";
+  current_values: string[]; timeline: EstateFactWindow[];
+}
+
+export interface EstateAssetHistory {
+  schema: string; asset_id: string; fact_count: number; fact_types: string[];
+  conflicted_facts: string[]; facts: EstateFactHistory[]; meaning: string;
+}
+
+export interface EstateHistorySummary {
+  schema: string;
+  evidence: { total: number; active: number; stale: number; collectors: string[]; by_type: Record<string, number> };
+  observations: {
+    total: number; current: number; historical: number; assets: number;
+    changed_facts: number; disputed_facts: number;
+  };
+  disputes: Array<{ asset_id: string; fact_type: string }>;
+  meaning: string;
+}
+
+export const apiEstateAssetHistory = (identifier: string): Promise<ApiResult<EstateAssetHistory>> =>
+  _rsGet<EstateAssetHistory>(`/api/v1/estate/evidence/history/assets/${encodeURIComponent(identifier)}`);
+
+export const apiEstateHistorySummary = (): Promise<ApiResult<EstateHistorySummary>> =>
+  _rsGet<EstateHistorySummary>("/api/v1/estate/evidence/history/summary");

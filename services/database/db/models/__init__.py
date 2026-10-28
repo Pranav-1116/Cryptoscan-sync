@@ -229,5 +229,7 @@ from db.models.estate_change_event import EstateChangeEvent  # noqa: E402,F401
 from db.models.estate_catalog import (  # noqa: E402,F401
     EstateAssetRecord,
     EstateCryptoRecord,
+    EstateEvidenceRecord,
+    EstateObservationRecord,
     EstateRelationshipRecord,
 )

@@ -926,6 +926,17 @@ def run(
     # already happened, and a catalogue failure must not erase it.
     catalog: dict[str, Any] | None = None
     catalog_error: str | None = None
+    history: dict[str, Any] | None = None
+    history_error: str | None = None
+
+    def _guard() -> None:
+        rollback = getattr(db, "rollback", None)
+        if callable(rollback):
+            try:
+                rollback()
+            except Exception:  # noqa: BLE001
+                pass
+
     try:
         from api import estate_catalog
         from db.tenancy import current_tenant
@@ -933,12 +944,19 @@ def run(
         catalog = estate_catalog.sync(db, graph, tenant_id=current_tenant(), run_id=run_id)
     except Exception as exc:  # noqa: BLE001 — a catalogue write cannot fail the scan
         catalog_error = f"{type(exc).__name__}: {exc}"
-        rollback = getattr(db, "rollback", None)
-        if callable(rollback):
-            try:
-                rollback()
-            except Exception:  # noqa: BLE001
-                pass
+        _guard()
+
+    # The record of what each fact *said* — the catalogue's observation_count can say an
+    # asset was seen 40 times and cannot say its algorithm changed on the 31st. Separate
+    # guard, so a history write failing does not discard a good catalogue.
+    try:
+        from api import estate_observations
+        from db.tenancy import current_tenant
+
+        history = estate_observations.sync_all(db, graph, tenant_id=current_tenant())
+    except Exception as exc:  # noqa: BLE001 — history is a record, not a gate
+        history_error = f"{type(exc).__name__}: {exc}"
+        _guard()
 
     failed = [item["plane"] for item in outcomes if item["status"] == "FAILED"]
     partial = [item["plane"] for item in outcomes if item["status"] == "PARTIAL"]
@@ -1013,6 +1031,7 @@ def run(
     report["change"] = change
     report["detection"] = detection or ({"error": detection_error} if detection_error else None)
     report["catalog"] = catalog or ({"error": catalog_error} if catalog_error else None)
+    report["history"] = history or ({"error": history_error} if history_error else None)
     if change["severity"] in {"WARNING", "CRITICAL"}:
         emit("estate.change.detected", {
             "estate": estate,

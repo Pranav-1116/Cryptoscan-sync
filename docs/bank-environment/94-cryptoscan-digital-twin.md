@@ -567,7 +567,11 @@ WHY IS THIS RELATIONSHIP PRESENT?
   Evidence hash:   sha256:...
 ```
 
-This is what bank auditors ask for.
+This is what bank auditors ask for. The shipped answer is
+`GET /estate/evidence/why/{asset}?fact_type=…` and `cryptoscan twin why`; it returns the
+evidence records behind the asset (collector, source, type, confidence, `observed_at`,
+`first_seen_at`/`last_seen_at`) plus every window the fact's values held, and names the
+attribution limit instead of implying per-attribute provenance.
 
 ## Twin completeness
 
@@ -624,6 +628,7 @@ bank.
 | Graph projection (§20) | **shipped** — deterministic typed nodes/edges, evidence ids on every edge, unresolved edges shipped separately, `not_source_of_truth` in the payload | `estate_twin.graph_export()` |
 | Graph store load (§20–§21) | **shipped** — `POST /twin/graph/load` and `cryptoscan twin graph-load` plan by default and write only on an explicit ask; MERGE by deterministic id (a re-load converges), labels/types validated against the graph vocabulary before they reach Cypher, whole-export refusal, opt-in `prune_missing`, and **read-back verification** (`VERIFIED` / `MISMATCH` / `NOT_CONNECTED` rather than "loaded") | `api/estate_graph_loader.py` |
 | Simulation history (§17, §19) | **shipped, quarantined** — `estate_simulation_runs` (migration 0111). A stored simulation is a *question asked of a copy*: `quarantined=true`, `is_estate_state=false`, refused at write time unless the engine reports the live state untouched, incremented (not duplicated) when the same question is asked again, and marked `superseded` once the estate moves. Reachable as `POST /twin/simulate {persist:true}`, `GET /twin/simulations`, `cryptoscan twin simulate --save` | `api/estate_simulation_store.py` |
+| Layer 5 evidence records + per-fact history (§11, §19, §28) | **shipped** — evidence stored as content-addressed records; every fact kept as a value *with a window*, and "why" answered from the evidence behind the asset | `estate_observations.py`, migration 0114, `GET /evidence/records`, `GET /history/summary`, `GET /history/assets/{id}`, `GET /why/{id}`, `cryptoscan twin history|why|evidence` |
 | Layer 1 estate placement (§4) | **shipped at all six levels** — `BANK → REGION → DATA_CENTER → CLOUD_ENVIRONMENT → ENVIRONMENT → BUSINESS_SYSTEM`. The upper three appear **only where a collector asserted them** (`attributes.region`, `attributes.data_center`, `attributes.provider/cloud_account`); an asset no evidence places is counted under `unassigned` with the reason, and a level with no data is named in `levels_unobserved` rather than drawn as an empty box | `estate_twin.placement_model()`, `GET /twin/placement`, `cryptoscan twin placement` |
 | Twin completeness (§29) | **shipped** — description quality, never a posture score | `estate_twin.completeness()` |
 | Asset investigation (§25) | **shipped** | `estate_twin.investigate()` |
@@ -663,6 +668,49 @@ with only facts in the hash, a run where a plane `FAILED` fingerprinted identica
 to one where it succeeded over the same (smaller) set of facts — so "we stopped
 looking" was indistinguishable from "nothing changed". That is the single most
 dangerous comparison this product can get wrong, and it is now a regression test.
+
+### What each fact said, and when
+
+The catalogue remembers *assets*. It cannot answer "what was this asset's algorithm on
+Tuesday": a changed attribute was an overwritten column, and the evidence behind it was
+only reachable by finding the stored run. Migration 0114 adds the other half of the
+memory.
+
+**Evidence records (`estate_evidence`).** One row per evidence record, keyed by the
+record's own content-addressed id. The same record observed in forty runs is *one* row
+whose `observation_count` is forty — a quiet estate must not look busy — with
+`first_seen_at` held from the first sighting and `last_seen_at` advanced each time. A
+record a collector stops producing becomes `STALE`; it is never deleted.
+
+**Observations (`estate_observations`).** One row per `(asset, fact_type, value)` with
+the window in which that value was the observed truth. `fact_type` names the fact
+plainly: `environment`, `owner`, `attribute:region`, `crypto:algorithm`,
+`relationship:USES_HSM`. The window is the point:
+
+* a **changed** value adds a row and retires the previous one to `HISTORICAL` — the old
+  row keeps `first_seen_at`/`last_seen_at`, so "it was me-central-1 until the 24th" is
+  a fact rather than a lost column;
+* the same value observed again is a **refresh** — `observation_count` advances and
+  nothing is duplicated;
+* a value that **returns** is revived in the row it already had, so a flapping region is
+  one fact with two windows instead of a growing pile;
+* a fact that is **no longer observed** is retired, never deleted. "The region is no
+  longer reported" and "the region is stable" are different observations, and only one
+  of them is silence;
+* **two values still asserted are two `CURRENT` rows** and are reported as a conflict.
+  The twin does not pick one. `GET /history/summary` counts disputed facts and names
+  them; `cryptoscan twin history` marks them `!`.
+
+`GET /why/{id}?fact_type=…` (§28) answers the auditor's question — the windows each
+value held, and the evidence behind the asset with its collector, source, confidence and
+sighting history. It also states its limit rather than overclaiming:
+
+> collectors attach evidence to an **asset**, not to an individual attribute: this shows
+> the evidence behind the asset, not one record per attribute value.
+
+That is the honest boundary of the current design. Per-attribute provenance would
+require every collector to emit one record per attribute, and until they do, an endpoint
+that implied otherwise would be a more convincing lie than no endpoint at all.
 
 ### What the catalogue remembers, precisely
 

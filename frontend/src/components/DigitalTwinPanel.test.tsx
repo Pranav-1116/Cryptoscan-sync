@@ -21,6 +21,7 @@ const SIMULATIONS = `${TWIN}/simulations`;
 const CHANGES = "/api/v1/estate/evidence/changes";
 const CATALOG = "/api/v1/estate/evidence/catalog";
 const PLACEMENT = `${TWIN}/placement`;
+const HISTORY = "/api/v1/estate/evidence/history";
 const SNAPSHOTS = `${TWIN}/snapshots`;
 
 function overview() {
@@ -256,6 +257,12 @@ it("shows stale catalogue rows instead of hiding what stopped being observed", a
       assets_by_type: { HSM: 2 }, assets_by_lifecycle: { ACTIVE: 1, STALE: 1 },
       note: "the catalogue is what has been observed",
     },
+    [`${HISTORY}/summary`]: {
+      schema: "cryptoscan.estate-observations/1",
+      evidence: { total: 7, active: 6, stale: 1, collectors: ["linux-static"], by_type: { CONFIGURED: 7 } },
+      observations: { total: 9, current: 8, historical: 1, assets: 2, changed_facts: 1, disputed_facts: 0 },
+      disputes: [], meaning: "the twin remembers every value it has asserted",
+    },
     [`${CATALOG}/assets`]: {
       count: 2,
       note: "empty means nothing matching has been observed",
@@ -297,6 +304,76 @@ it("shows stale catalogue rows instead of hiding what stopped being observed", a
   expect(screen.getByText(/1 active/)).toBeInTheDocument();
   expect(screen.getByText("AES-256-GCM")).toBeInTheDocument();
   expect(screen.getByText(/capability never counts as use/)).toBeInTheDocument();
+  expect(screen.getByText("8 current fact(s)")).toBeInTheDocument();
+  expect(screen.getByText("1 superseded")).toBeInTheDocument();
+});
+
+it("shows a fact as a window that closed, not a value that was overwritten", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [CATALOG]: {
+      schema: "cryptoscan.estate-catalog/1", assets: 1,
+      assets_by_type: { APPLICATION: 1 }, assets_by_lifecycle: { ACTIVE: 1 },
+      note: "the catalogue is what has been observed",
+    },
+    [`${HISTORY}/summary`]: {
+      schema: "cryptoscan.estate-observations/1",
+      evidence: { total: 2, active: 2, stale: 0, collectors: ["linux-static"], by_type: { CONFIGURED: 2 } },
+      observations: { total: 4, current: 3, historical: 1, assets: 1, changed_facts: 1, disputed_facts: 1 },
+      disputes: [{ asset_id: "asset:api", fact_type: "relationship:USES_HSM" }],
+      meaning: "the twin remembers every value it has asserted",
+    },
+    [`${CATALOG}/assets`]: {
+      count: 1,
+      note: "",
+      assets: [{
+        asset_id: "asset:api", asset_type: "APPLICATION", name: "Payment API",
+        environment: "production", owner: "Payments", location: null, source: null,
+        identity: {}, attributes: {}, evidence_ids: ["ev-1"], evidence_count: 1,
+        lifecycle_state: "ACTIVE" as const, first_seen_at: "2026-10-20T00:00:00Z",
+        last_seen_at: "2026-10-27T00:00:00Z", observation_count: 4, is_estate_state: true as const,
+      }],
+    },
+    [`${CATALOG}/assets/asset%3Aapi`]: {
+      asset: {
+        asset_id: "asset:api", asset_type: "APPLICATION", name: "Payment API",
+        environment: "production", owner: "Payments", location: null, source: null,
+        identity: {}, attributes: {}, evidence_ids: ["ev-1"], evidence_count: 1,
+        lifecycle_state: "ACTIVE", first_seen_at: "2026-10-20T00:00:00Z",
+        last_seen_at: "2026-10-27T00:00:00Z", observation_count: 4, is_estate_state: true,
+      },
+      crypto: [], relationships: [], unresolved_candidates: [],
+      evidence: [], counts: { evidence: 1, relationships: 0, unresolved: 0, crypto: 0 },
+    },
+    [`${HISTORY}/assets/asset%3Aapi`]: {
+      schema: "cryptoscan.estate-observations/1", asset_id: "asset:api",
+      fact_count: 1, fact_types: ["attribute:region"], conflicted_facts: [],
+      meaning: "a fact is a value with a window",
+      facts: [{
+        fact_type: "attribute:region", provenance: "ASSET", state: "CURRENT" as const,
+        current_values: ["me-west-1"],
+        timeline: [
+          { observation_id: "obs-1", value: "me-central-1", value_kind: "text",
+            state: "HISTORICAL" as const, evidence_id: "ev-1", evidence_type: "CONFIGURED",
+            layer: "APPLICATION", first_seen_at: "2026-10-20T00:00:00Z",
+            last_seen_at: "2026-10-24T00:00:00Z", observation_count: 3 },
+          { observation_id: "obs-2", value: "me-west-1", value_kind: "text",
+            state: "CURRENT" as const, evidence_id: "ev-1", evidence_type: "CONFIGURED",
+            layer: "APPLICATION", first_seen_at: "2026-10-24T00:00:00Z",
+            last_seen_at: "2026-10-27T00:00:00Z", observation_count: 1 },
+        ],
+      }],
+    },
+  });
+  render(<DigitalTwinPanel />);
+  (await screen.findByText("Catalogue")).click();
+  await waitFor(() => expect(screen.getByText("3 current fact(s)")).toBeInTheDocument());
+  expect(screen.getByText("1 superseded")).toBeInTheDocument();
+  expect(screen.getByText("1 disputed fact(s) — nothing chosen")).toBeInTheDocument();
+  await waitFor(() => screen.getByRole("button", { name: /Payment API/ }).click());
+  await waitFor(() => expect(screen.getByText(/FACT HISTORY · 1 fact/)).toBeInTheDocument());
+  expect(screen.getByText("me-west-1")).toBeInTheDocument();
+  expect(screen.getByText(/was me-central-1 until 2026-10-24/)).toBeInTheDocument();
 });
 
 it("draws the estate hierarchy only where evidence puts something", async () => {

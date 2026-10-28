@@ -199,6 +199,35 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_algorithms.add_argument("--tenant", default=None)
     twin_algorithms.add_argument("--json", action="store_true")
 
+    twin_history = twin_sub.add_parser(
+        "history",
+        help="what an asset's facts said over time, current value first (needs the catalogue)",
+    )
+    twin_history.add_argument("identifier", help="asset id or exact name")
+    twin_history.add_argument("--tenant", default=None)
+    twin_history.add_argument("--json", action="store_true")
+
+    twin_why = twin_sub.add_parser(
+        "why",
+        help="why the twin believes a fact, and where the evidence for it stops",
+    )
+    twin_why.add_argument("identifier", help="asset id or exact name")
+    twin_why.add_argument("--fact", required=True,
+                          help="fact type, e.g. environment, attribute:region, crypto:algorithm")
+    twin_why.add_argument("--tenant", default=None)
+    twin_why.add_argument("--json", action="store_true")
+
+    twin_evidence = twin_sub.add_parser(
+        "evidence",
+        help="stored evidence records: collector, source, confidence, age",
+    )
+    twin_evidence.add_argument("--target", default=None, help="asset id or collector target")
+    twin_evidence.add_argument("--type", dest="evidence_type", default=None,
+                               help="OBSERVED | CONFIGURED | INFERRED | ...")
+    twin_evidence.add_argument("--limit", type=int, default=50)
+    twin_evidence.add_argument("--tenant", default=None)
+    twin_evidence.add_argument("--json", action="store_true")
+
     twin_placement = twin_sub.add_parser(
         "placement",
         help="where everything belongs: bank -> region -> data centre -> cloud -> environment",
@@ -695,7 +724,13 @@ def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | No
 
 def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
     """Graph-store load, simulation and simulation history (spec 94 §17, §20)."""
-    from api import estate_catalog, estate_change_feed, estate_graph_loader, estate_simulation_store
+    from api import (
+        estate_catalog,
+        estate_change_feed,
+        estate_graph_loader,
+        estate_observations,
+        estate_simulation_store,
+    )
     from api.estate_twin_graph import latest_twin_graph
     from db.repositories.scan_run_repository import ScanRunRepository
     from db.tenancy import current_tenant, tenant_scope
@@ -779,7 +814,79 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                     print(f"\n{body['meaning']}")
                 return EXIT_OK
 
-            if args.twin_command in {"changes", "assets", "asset", "algorithms"}:
+            if args.twin_command == "history":
+                detail = estate_observations.history(session, args.identifier, tenant_id=args.tenant)
+                if args.json:
+                    print(json.dumps(detail, indent=2, default=str))
+                elif detail["fact_count"] == 0:
+                    print(f"no recorded fact for {args.identifier!r} — not observed, or "
+                          "catalogued before per-fact history existed", file=sys.stderr)
+                else:
+                    print(f"{args.identifier} · {detail['fact_count']} fact(s)")
+                    for fact in detail["facts"]:
+                        mark = {"CURRENT": " ", "HISTORICAL": "-", "CONFLICT": "!"}[fact["state"]]
+                        current = ", ".join(fact["current_values"]) or "(no longer observed)"
+                        print(f" {mark} {fact['fact_type']:<34} {current}")
+                        for window in fact["timeline"]:
+                            if window["state"] == "CURRENT":
+                                continue
+                            print(f"     was {window['value']!r} until "
+                                  f"{window['last_seen_at'] or 'unknown'} "
+                                  f"(seen {window['observation_count']}x)")
+                    if detail["conflicted_facts"]:
+                        print(f" disputes  {', '.join(detail['conflicted_facts'])} — "
+                              "both values still asserted, nothing chosen")
+                return EXIT_OK if detail["fact_count"] else EXIT_INCOMPLETE
+
+            if args.twin_command == "why":
+                answer = estate_observations.why(
+                    session, args.identifier, args.fact, tenant_id=args.tenant
+                )
+                if answer is None:
+                    print(
+                        f"nothing to explain: no observation of {args.fact!r} for "
+                        f"{args.identifier!r}. Absence of an explanation is not evidence "
+                        "that the fact is false.",
+                        file=sys.stderr,
+                    )
+                    return EXIT_INCOMPLETE
+                if args.json:
+                    print(json.dumps(answer, indent=2, default=str))
+                else:
+                    print(f"{answer['asset_name']} · {answer['fact_type']} · {answer['resolution']}")
+                    print(f"  value      {', '.join(answer['current_values']) or '(not observed)'}")
+                    for item in answer["observations"]:
+                        print(f"  window     {item['value']!r} {item['state'].lower()} "
+                              f"{item['first_seen_at']} → {item['last_seen_at']}")
+                    for record in answer["evidence"]:
+                        print(f"  evidence   {record['evidence_type']:<18} {record['collector']} "
+                              f"via {record['source']} ({record['evidence_id']})")
+                    print(f"  limit      {answer['limit']}")
+                return EXIT_OK
+
+            if args.twin_command == "evidence":
+                rows = estate_observations.evidence_for(
+                    session,
+                    target=args.target,
+                    evidence_type=args.evidence_type,
+                    limit=args.limit,
+                    tenant_id=args.tenant,
+                )
+                if args.json:
+                    print(json.dumps(rows, indent=2, default=str))
+                elif rows["count"] == 0:
+                    print("no stored evidence — nothing has been observed and recorded yet",
+                          file=sys.stderr)
+                else:
+                    print(f"{rows['count']} evidence record(s)")
+                    for record in rows["records"]:
+                        print(f"  {record['evidence_type']:<20} {record['collector'] or '-':<22} "
+                              f"{record['observation_count']:>3}x  {record['evidence_id']}")
+                return EXIT_OK if rows["count"] else EXIT_INCOMPLETE
+
+            if args.twin_command in {
+                "changes", "assets", "asset", "algorithms", "history", "why", "evidence"
+            }:
                 # records of past observations: readable even when the current twin
                 # cannot be rebuilt, and saying otherwise would hide the history
                 # exactly when it matters
@@ -789,7 +896,8 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
             else:
                 graph = latest_twin_graph(session, getattr(args, "tenant", None))
             if graph is None and args.twin_command not in {
-                "changes", "ack", "detect", "assets", "asset", "algorithms"
+                "changes", "ack", "detect", "assets", "asset", "algorithms",
+                "history", "why", "evidence",
             }:
                 
                 print(
