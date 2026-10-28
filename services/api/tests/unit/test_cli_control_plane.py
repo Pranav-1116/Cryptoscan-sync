@@ -1132,3 +1132,109 @@ def test_collector_show_for_an_absent_id_refuses_with_the_real_route(monkeypatch
     err = capsys.readouterr().err
     assert "no collector 'windows-agent/v1' in the catalog" in err
     assert "GET /api/v1/collection/collectors" in err
+
+
+# -- assurance reads ---------------------------------------------------------------
+
+
+def test_assurance_records_lists_every_revision_and_says_so(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/assurance/records"): (200, {
+            "records": [{"id": "r-2", "kind": "estate_register", "subject_id": "reg-1", "revision": 2,
+                         "payload_sha256": "a" * 64, "previous_sha256": "b" * 64,
+                         "created_by": "11111111-1111-1111-1111-111111111111"}],
+            "has_more": True, "next_offset": 100, "includes_all_revisions": True}),
+    })
+
+    assert run(monkeypatch, transport, "assurance", "records", "--kind", "estate_register") == 0
+
+    query = transport.calls[0][1]
+    assert "kind=estate_register" in query and "limit=100" in query
+    out = capsys.readouterr().out
+    assert "every retained revision, not only the latest" in out
+    assert "has_more=true, next_offset=100" in out
+    assert "source: GET /api/v1/assurance/records" in out
+
+
+def test_assurance_records_zero_rows_is_not_a_clean_estate(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/assurance/records"): (200, {
+            "records": [], "has_more": False, "next_offset": None, "includes_all_revisions": True}),
+    })
+
+    assert run(monkeypatch, transport, "assurance", "records", "--kind", "accuracy_sample") == 0
+    assert "empty table, not a clean estate" in capsys.readouterr().out
+
+
+def test_assurance_coverage_prints_the_basis_and_no_percentage(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/assurance/registers/reg-1/coverage"): (200, {
+            "register_id": "reg-1", "revision": 2, "registered_targets": 3,
+            "counts": {"OBSERVED": 1, "STALE": 2, "BLOCKED": 0, "UNSUPPORTED": 0, "NOT_ATTEMPTED": 0},
+            "denominator_basis": "REGISTERED_TARGETS_ONLY_NOT_DISCOVERED_ASSETS",
+            "completeness_basis": "OWNER_ATTESTATION_NOT_INDEPENDENT_VERIFICATION",
+            "whole_bank_verified": False}),
+    })
+
+    assert run(monkeypatch, transport, "assurance", "coverage", "reg-1") == 0
+    out = capsys.readouterr().out
+    assert "3 target(s)" in out
+    assert "REGISTERED_TARGETS_ONLY_NOT_DISCOVERED_ASSETS" in out
+    assert "whole bank    NOT VERIFIED" in out
+    assert "no percentage here on purpose" in out
+    assert "%" not in out
+
+
+def test_assurance_trace_keeps_unresolved_components_visible(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/assurance/applications/app-1/trace"): (200, {
+            "application_id": "app-1", "complete": False, "runtime_verified": False,
+            "paths": [{"package_identity": "pkg:generic/openssl@3.0.1", "algorithm": "RSA",
+                       "location": {"file": "src/tls.c", "line": 42}}],
+            "unresolved": [{"reason": "NO_CURRENT_REVIEWED_CRYPTO_EDGE", "package_identity": "pkg:generic/zlib@1.3"}]}),
+    })
+
+    assert run(monkeypatch, transport, "assurance", "trace", "app-1") == 0
+    out = capsys.readouterr().out
+    assert "1 resolved, 1 unresolved" in out
+    assert "UNRESOLVED NO_CURRENT_REVIEWED_CRYPTO_EDGE" in out
+    assert "not a call graph" in out
+
+
+def test_assurance_adapter_without_qualification_is_not_support(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/assurance/adapters/adp-1"): (200, {
+            "manifest": {"id": "adp-1", "payload_sha256": "c" * 64},
+            "qualification": None, "offline_profile_exercised": False,
+            "live_vendor_supported": False, "support_status": "NOT_QUALIFIED"}),
+    })
+
+    assert run(monkeypatch, transport, "assurance", "adapter", "adp-1") == 0
+    out = capsys.readouterr().out
+    assert "NOT_QUALIFIED" in out
+    assert "live vendor   NOT SUPPORTED" in out
+    assert "not a supported adapter" in out
+
+
+def test_assurance_workbook_reads_the_phase_and_computes_no_metric(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/assurance/samples/smp-1/workbook"): (200, {
+            "sample_id": "smp-1", "phase": "HOLDOUT", "domain_owner": "payments",
+            "units": [{"unit_id": "u-1", "truth_label": "UNREVIEWED"}]}),
+    })
+
+    assert run(monkeypatch, transport, "assurance", "workbook", "smp-1", "--phase", "HOLDOUT") == 0
+
+    assert "phase=HOLDOUT" in transport.calls[0][1]
+    out = capsys.readouterr().out
+    assert "truth=UNREVIEWED" in out
+    assert "no precision or recall is computed here" in out
+
+
+def test_assurance_missing_register_is_a_server_error_not_a_zero_report(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+
+    assert run(monkeypatch, transport, "assurance", "coverage", "reg-missing") == 1
+    err = capsys.readouterr().err
+    assert "assurance coverage: FAILED" in err
+    assert "HTTP 404" in err

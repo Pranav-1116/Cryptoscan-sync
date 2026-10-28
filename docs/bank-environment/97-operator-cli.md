@@ -64,6 +64,17 @@ something invented.
 | `bundle export / verify / import` | `GET` of nine evidence and projection routes | `--encrypt` (AES-256-GCM + scrypt), `verify` byte-checks the files against the manifest, `import` refuses a tar member escaping the target |
 | `collect --submit` | `POST /collection/jobs`, `/systems/{id}/scan`, `/estate/evidence/scan` | hands the work to the control plane; prints "no collection happened in this process" |
 | `scope show` | `GET /platform/scope` | |
+| `assurance records --kind` | `GET /assurance/records` | every retained revision, with `has_more`/`next_offset`; an empty kind is printed as an empty table, not a clean estate |
+| `assurance history <kind> <id>` | `GET /assurance/records/{kind}/{id}` | the chain for one exact subject |
+| `assurance coverage <register>` | `GET /assurance/registers/{id}/coverage` | counts plus the denominator and completeness basis; **no percentage**, because the denominator is the register |
+| `assurance trace <application>` | `GET /assurance/applications/{id}/trace` | resolved paths and unresolved components; `complete`/`runtime_verified` are printed as false |
+| `assurance workbook <sample>` | `GET /assurance/samples/{id}/workbook` | the frozen prediction set with blind truth labels; no precision or recall is computed |
+| `assurance adapter <id>` | `GET /assurance/adapters/{id}` | `OFFLINE_PROFILE_EXERCISED` or `NOT_QUALIFIED`; live vendor support is printed as NOT SUPPORTED |
+| `assurance observations <adapter> <evidence>` | `GET …/supplier-evidence/{id}/observations` | supplier facts, with "no automatic join" and "not independently verified" stated |
+| `assurance redis <objectives>` | `GET /assurance/redis-objectives/{id}/qualification` | role × scenario matrix, accepted flags, unqualified roles |
+| `assurance decisions` | `GET /assurance/operator-decisions` | section counts and the server's own `uncertainty` string |
+| `assurance launch · engagement · pilot` | `GET /assurance/launch/operations`, `…/engagements/{id}/status`, `…/pilots/{id}/status` | the launch payload is printed verbatim; it is not summarised into a verdict |
+| `assurance collection <job>` | `GET /assurance/collections/{job}` | partial progress; an unfinished phase is not a failed one |
 | `explain finding <id>` | `GET /findings/{id}`, `/verify` | reports `NOT_JOINABLE` for the estate half: a finding has a file path, not an asset id |
 | `ci scan --path <dir>` | `POST /devsecops/sbom/scan` | the path is resolved **on the control plane**, and `--gate` needs a scan id |
 | `explain asset / system / node` | `/estate/evidence/why/{id}?fact_type=`, `/risk/systems/{id}/explain`, `/graph/explain` | every answer names its source |

@@ -656,6 +656,8 @@ def _doctor_render(rows: Sequence[tuple[str, str, str]], blocking: int, warnings
 
 TARGETS = "/api/v1/collection/targets"
 COLLECTORS = "/api/v1/collection/collectors"
+ASSURANCE = "/api/v1/assurance"
+LAUNCH = "/api/v1/assurance/launch"
 
 
 def _cmd_target(args: argparse.Namespace, _session: Any = None) -> int:
@@ -925,6 +927,194 @@ def _watch(client: Client, args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------------------
 
 RECORDS = "/api/v1/estate/evidence/evidence/records"
+
+
+def _cmd_assurance(args: argparse.Namespace, _session: Any = None) -> int:
+    """Read the seven evidence-assurance workflows through the control plane.
+
+    These are all reads of retained assertions. The command prints what the server
+    returned and the basis the server attached to it — it never turns a registered
+    denominator into a completion percentage, and it never reports an unqualified
+    adapter as supported.
+    """
+    client = _client(args)
+    action = args.assurance_command
+    try:
+        if action == "records":
+            query = {"kind": args.kind, "offset": args.offset, "limit": args.limit}
+            path = f"{ASSURANCE}/records"
+            payload = client.get(path, **query)
+
+            def render_records() -> None:
+                rows = _items(payload, key="records")
+                if not rows:
+                    print(f"no revision of kind {args.kind!r} in this estate — an empty table, "
+                          "not a clean estate: a workflow nobody ran leaves no record")
+                    return
+                _table([[row.get("revision", "—"), _short(row.get("subject_id"), 36),
+                         _short(row.get("payload_sha256"), 14),
+                         _short(row.get("previous_sha256") or "—", 14),
+                         _short(row.get("created_by"), 14)] for row in rows],
+                       ["revision", "subject", "payload sha256", "previous", "by"], limit=args.limit)
+                print("\nthis lists every retained revision, not only the latest; "
+                      f"has_more={str(payload.get('has_more')).lower()}"
+                      + (f", next_offset={payload.get('next_offset')}" if payload.get("has_more") else ""))
+            return _emit(args, payload, source=client.source("GET", path, **query), render=render_records)
+
+        if action == "history":
+            path = f"{ASSURANCE}/records/{urllib.parse.quote(args.kind)}/{urllib.parse.quote(args.identifier)}"
+            payload = client.get(path, after_revision=args.after)
+
+            def render_history() -> None:
+                rows = _items(payload, key="revisions")
+                print(f"subject       {args.kind} / {args.identifier}")
+                print(f"revisions     {len(rows)}" + (" (server reports more remain)" if payload.get("has_more") else ""))
+                for row in rows[:20]:
+                    print(f"  r{row.get('revision')}  {_short(row.get('payload_sha256'), 16)}  "
+                          f"{row.get('created_at') or '—'}")
+            return _emit(args, payload, source=client.source("GET", path), render=render_history)
+
+        if action == "coverage":
+            path = f"{ASSURANCE}/registers/{urllib.parse.quote(args.register)}/coverage"
+            payload = client.get(path)
+
+            def render_coverage() -> None:
+                counts = payload.get("counts") or {}
+                print(f"register      {payload.get('register_id')} (revision {payload.get('revision')})")
+                print(f"registered    {payload.get('registered_targets')} target(s)")
+                for state in ("OBSERVED", "STALE", "BLOCKED", "UNSUPPORTED", "NOT_ATTEMPTED"):
+                    print(f"  {state:<14}{counts.get(state, 0)}")
+                print(f"denominator   {payload.get('denominator_basis')}")
+                print(f"completeness  {payload.get('completeness_basis')}")
+                print(f"whole bank    {'VERIFIED' if payload.get('whole_bank_verified') else 'NOT VERIFIED'}")
+                print("\nthere is no percentage here on purpose: the denominator is the owner's register, "
+                      "not discovered assets, so a small estate and a complete one look the same.")
+            return _emit(args, payload, source=client.source("GET", path), render=render_coverage)
+
+        if action == "trace":
+            path = f"{ASSURANCE}/applications/{urllib.parse.quote(args.application)}/trace"
+            payload = client.get(path)
+
+            def render_trace() -> None:
+                paths = payload.get("paths") or []
+                unresolved = payload.get("unresolved") or []
+                print(f"application   {payload.get('application_id')}")
+                print(f"paths         {len(paths)} resolved, {len(unresolved)} unresolved")
+                print(f"complete      {payload.get('complete')} · runtime verified "
+                      f"{payload.get('runtime_verified')}")
+                for row in paths[:20]:
+                    location = row.get("location") or {}
+                    print(f"  {_short(row.get('package_identity'), 44):<44} "
+                          f"{_short(row.get('algorithm'), 12):<12} "
+                          f"{_short(location.get('file'), 30)}")
+                for row in unresolved[:20]:
+                    print(f"  UNRESOLVED {row.get('reason')} · {_short(row.get('package_identity') or row.get('bom_ref'), 40)}")
+                print("\na resolved path is an evidence chain, not a call graph; deployed_verified and "
+                      "invocation_verified are false on every path the API returns.")
+            return _emit(args, payload, source=client.source("GET", path), render=render_trace)
+
+        if action == "workbook":
+            path = f"{ASSURANCE}/samples/{urllib.parse.quote(args.sample)}/workbook"
+            payload = client.get(path, phase=args.phase)
+
+            def render_workbook() -> None:
+                units = _items(payload, key="units")
+                print(f"sample        {payload.get('sample_id')} · phase {payload.get('phase')}")
+                print(f"units         {len(units)}")
+                print(f"domain owner  {payload.get('domain_owner') or '—'}")
+                for unit in units[:20]:
+                    print(f"  {_short(unit.get('unit_id'), 28):<28} truth="
+                          f"{unit.get('truth_label') or 'UNREVIEWED'}")
+                print("\nno precision or recall is computed here: those numbers come from a published "
+                      "review, and this workbook is the question, not the answer.")
+            return _emit(args, payload, source=client.source("GET", path), render=render_workbook)
+
+        if action == "adapter":
+            path = f"{ASSURANCE}/adapters/{urllib.parse.quote(args.adapter)}"
+            payload = client.get(path)
+
+            def render_adapter() -> None:
+                print(f"support       {payload.get('support_status')}")
+                print(f"offline       {'EXERCISED' if payload.get('offline_profile_exercised') else 'NOT EXERCISED'}")
+                print(f"live vendor   {'SUPPORTED' if payload.get('live_vendor_supported') else 'NOT SUPPORTED'}")
+                if not payload.get("qualification"):
+                    print("\nno qualification exists for this manifest: it is a declared profile, "
+                          "not a supported adapter, and supplier observations will be refused (409).")
+                manifest = payload.get("manifest") or {}
+                print(f"manifest      {manifest.get('id')} · {_short(manifest.get('payload_sha256'), 16)}")
+            return _emit(args, payload, source=client.source("GET", path), render=render_adapter)
+
+        if action == "observations":
+            path = (f"{ASSURANCE}/adapters/{urllib.parse.quote(args.adapter)}/supplier-evidence/"
+                    f"{urllib.parse.quote(args.evidence)}/observations")
+            payload = client.get(path)
+
+            def render_observations() -> None:
+                facts = payload.get("facts") or []
+                print(f"evidence      {payload.get('source_evidence_id')} · "
+                      f"sha256 {_short(payload.get('source_sha256'), 16)}")
+                print(f"build         {payload.get('build_digest')}")
+                print(f"facts         {len(facts)} (supplier statement, not estate observation)")
+                print(f"identity      {'AUTOMATIC' if payload.get('automatic_identity_joins') else 'NO AUTOMATIC JOIN'}")
+                print(f"independent   {'VERIFIED' if payload.get('independent_truth_verified') else 'NOT VERIFIED'}")
+            return _emit(args, payload, source=client.source("GET", path), render=render_observations)
+
+        if action == "redis":
+            path = f"{ASSURANCE}/redis-objectives/{urllib.parse.quote(args.objectives)}/qualification"
+            payload = client.get(path)
+
+            def render_redis() -> None:
+                matrix = _items(payload, key="matrix")
+                accepted = sum(1 for cell in matrix if cell.get("accepted"))
+                print(f"objectives    {_field(payload, 'objectives', 'id')}")
+                print(f"cells         {accepted} accepted of {len(matrix)}")
+                print(f"deployment    {'MEETS OBJECTIVES' if payload.get('deployment_evidence_meets_objectives') else 'DOES NOT MEET OBJECTIVES'}")
+                print(f"whole infra   {'QUALIFIED' if payload.get('whole_infrastructure_qualified') else 'NOT QUALIFIED'}")
+                for cell in matrix[:20]:
+                    print(f"  {_short(cell.get('role'), 20):<20} {_short(cell.get('scenario'), 20):<20} "
+                          f"{cell.get('state')}")
+            return _emit(args, payload, source=client.source("GET", path), render=render_redis)
+
+        if action == "decisions":
+            path = f"{ASSURANCE}/operator-decisions"
+            query = {"offset": args.offset, "limit": args.limit}
+            payload = client.get(path, **query)
+
+            def render_decisions() -> None:
+                sections = payload.get("sections") or {}
+                print(f"as of         {payload.get('as_of')}")
+                for name, section in sections.items():
+                    items = (section or {}).get("items") or []
+                    print(f"  {name:<12}{len(items)}" + (" (more)" if (section or {}).get("has_more") else ""))
+                print(f"uncertainty   {payload.get('uncertainty')}")
+            return _emit(args, payload, source=client.source("GET", path, **query), render=render_decisions)
+
+        if action in {"launch", "engagement", "pilot"}:
+            if action == "launch":
+                path = f"{LAUNCH}/operations"
+            elif action == "engagement":
+                path = f"{LAUNCH}/engagements/{urllib.parse.quote(args.identifier)}/status"
+            else:
+                path = f"{LAUNCH}/pilots/{urllib.parse.quote(args.identifier)}/status"
+            payload = client.get(path)
+            return _emit(args, payload, source=client.source("GET", path),
+                         render=lambda: _print_json(payload))
+
+        if action == "collection":
+            path = f"{ASSURANCE}/collections/{urllib.parse.quote(args.job)}"
+            payload = client.get(path)
+
+            def render_collection() -> None:
+                print(f"job           {payload.get('job_id') or args.job}")
+                for key in ("state", "status", "phase"):
+                    if key in payload:
+                        print(f"{key:<13} {payload[key]}")
+                print("\npartial progress is what the server recorded; an unfinished phase is not a "
+                      "failed one, and a missing phase is not an empty surface.")
+            return _emit(args, payload, source=client.source("GET", path), render=render_collection)
+    except (Refused, ApiError) as exc:
+        return _fail(f"assurance {action}", exc)
+    raise Refused(f"unknown assurance action {action!r}")
 
 
 def _cmd_collector(args: argparse.Namespace, _session: Any = None) -> int:
@@ -2327,6 +2517,53 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     jobs_watch.add_argument("--interval", type=float, default=5.0)
     _add_common(jobs_watch)
 
+    assurance = sub.add_parser("assurance", help="read the seven evidence-assurance workflows")
+    assurance_sub = assurance.add_subparsers(dest="assurance_command", required=True)
+    a_records = assurance_sub.add_parser("records", help="retained revisions of one kind")
+    a_records.add_argument("--kind", required=True, help="register | bom_relationship | accuracy_sample | ...")
+    a_records.add_argument("--offset", type=int, default=0)
+    a_records.add_argument("--limit", type=int, default=100)
+    _add_common(a_records)
+    a_history = assurance_sub.add_parser("history", help="every retained revision of one exact subject")
+    a_history.add_argument("kind")
+    a_history.add_argument("identifier")
+    a_history.add_argument("--after", type=int, default=0)
+    _add_common(a_history)
+    a_coverage = assurance_sub.add_parser("coverage", help="registered coverage for one register")
+    a_coverage.add_argument("register")
+    _add_common(a_coverage)
+    a_trace = assurance_sub.add_parser("trace", help="deployment to crypto evidence for one application")
+    a_trace.add_argument("application")
+    _add_common(a_trace)
+    a_workbook = assurance_sub.add_parser("workbook", help="the frozen predictions a domain owner labels")
+    a_workbook.add_argument("sample")
+    a_workbook.add_argument("--phase", default="FIRST_PASS", choices=("FIRST_PASS", "HOLDOUT"))
+    _add_common(a_workbook)
+    a_adapter = assurance_sub.add_parser("adapter", help="one adapter profile and its qualification")
+    a_adapter.add_argument("adapter")
+    _add_common(a_adapter)
+    a_observations = assurance_sub.add_parser("observations", help="supplier facts from an approved blob")
+    a_observations.add_argument("adapter")
+    a_observations.add_argument("evidence")
+    _add_common(a_observations)
+    a_redis = assurance_sub.add_parser("redis", help="role x scenario qualification matrix")
+    a_redis.add_argument("objectives")
+    _add_common(a_redis)
+    a_decisions = assurance_sub.add_parser("decisions", help="the operator decision inbox")
+    a_decisions.add_argument("--offset", type=int, default=0)
+    a_decisions.add_argument("--limit", type=int, default=25)
+    _add_common(a_decisions)
+    a_launch = assurance_sub.add_parser("launch", help="launch-readiness operations")
+    _add_common(a_launch)
+    for name, help_text in (("engagement", "one security engagement status"),
+                            ("pilot", "one bounded pilot status")):
+        parser_ = assurance_sub.add_parser(name, help=help_text)
+        parser_.add_argument("identifier")
+        _add_common(parser_)
+    a_collection = assurance_sub.add_parser("collection", help="partial progress of one collection job")
+    a_collection.add_argument("job")
+    _add_common(a_collection)
+
     collector = sub.add_parser("collector", help="what this build can actually collect")
     collector_sub = collector.add_subparsers(dest="collector_command", required=True)
     collector_list = collector_sub.add_parser("list", help="the collector catalog served with the build")
@@ -2510,6 +2747,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Any], int]] = {
         ("target", _cmd_target),
         ("jobs", _cmd_jobs),
         ("collector", _cmd_collector),
+        ("assurance", _cmd_assurance),
         ("evidence", _cmd_evidence),
         ("bom", _cmd_bom),
         ("pqc", _cmd_pqc),

@@ -632,6 +632,7 @@ The proposal's phases, against this repository:
 | 6 | Correlation: identity resolution, relationships, crypto/dependency graph, conflicts | **Done** (`estate_graph.py`, `estate_conflicts.py`, `estate_catalog.py`) |
 | 7 | Digital Twin: canonical estate, snapshots, history, drift, blast radius | **Done** (spec 94; `/twin/*`, `cryptoscan twin`) |
 | 8 | BOMs: six projections | **Done** (`BOM_KINDS`, `/boms`) |
+| 8a | Seven evidence-assurance workflows | **Partial** — `assurance records/history/coverage/trace/workbook/adapter/observations/redis/decisions/launch/engagement/pilot/collection` read the retained assertions; the *writes* of those workflows stay in the console, where a reason, an actor and a receipt have a form |
 | 9 | Intelligence: risk, PQC readiness/blockers/impact, policy, compliance | **Partial** — exposure, `blockers` and `impact` wired, and the CI policy verdict is now a real command (`ci gate`); risk/compliance still console-side |
 | 10 | Bank hardening: HA, backup/restore, air-gap, mTLS, SSO, RBAC, audit, monitoring, k8s, upgrade/rollback | **Partial, deployment-level** — `deploy/`, `k8s/`, `docker-compose*.yml`, runbooks; air-gap **bundles** now exist (§4 Component 7); **signed** releases and bundles remain roadmap |
 
