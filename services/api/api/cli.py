@@ -34,6 +34,7 @@ from typing import Any, Callable, Sequence
 EXIT_OK = 0
 EXIT_INCOMPLETE = 2
 EXIT_ERROR = 1
+EXIT_REFUSED = 3
 
 DEFAULT_PLANES = None  # every plane
 
@@ -69,6 +70,23 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="exit 0 even when coverage is incomplete (the incompleteness is still printed and stored)",
     )
+
+    collect = sub.add_parser(
+        "collect",
+        help="collect crypto evidence inside the approved scope, then build the estate and the six BOMs",
+    )
+    collect.add_argument("--endpoints", default="",
+                         help="comma-separated endpoints; omitted = every scope destination")
+    collect.add_argument("--protocol", default="TLS", choices=["TLS", "mTLS", "STARTTLS"])
+    collect.add_argument("--timeout", type=float, default=5.0)
+    collect.add_argument("--inventory", default="default", help="which approved scope to use")
+    collect.add_argument("--versions", action="store_true", help="also negotiate every supported TLS version")
+    collect.add_argument("--ciphers", action="store_true", help="also enumerate cipher suites")
+    collect.add_argument("--tenant", default=None)
+    collect.add_argument("--scope", default="production", help="scope label recorded with the estate run")
+    collect.add_argument("--json", action="store_true", help="emit one JSON document")
+    collect.add_argument("--no-estate", action="store_true", help="collect only; do not run the estate job")
+    collect.add_argument("--allow-partial", action="store_true")
 
     coverage = sub.add_parser("coverage", help="print the coverage matrix of the latest stored run")
     coverage.add_argument("--tenant", default=None)
@@ -262,7 +280,76 @@ def _cmd_boms(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
     return EXIT_OK
 
 
+def _cmd_collect(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
+    """Collect evidence (bounded by the approved scope), then project the estate.
+
+    Both halves run in one process against one database, which is the point: an
+    operator does not have to remember that observation and projection are two
+    steps, and the estate job reads the evidence this run just stored.
+    """
+    from api import estate_discovery
+    from api.network_collect import CollectRefused, collect_network
+    from db.tenancy import tenant_scope
+
+    endpoints = [item.strip() for item in str(args.endpoints or "").split(",") if item.strip()]
+    session = _session(session_factory)
+    try:
+        with tenant_scope(args.tenant):
+            try:
+                result = collect_network(
+                    session,
+                    endpoints=endpoints,
+                    protocol=args.protocol,
+                    timeout=args.timeout,
+                    inventory_id=args.inventory,
+                    scan_versions=args.versions,
+                    scan_ciphers=args.ciphers,
+                    user="cryptoscan-cli",
+                )
+            except CollectRefused as exc:
+                print(f"refused    {exc.code}: {exc.reason}")
+                print("           nothing was collected — the approved scope decides what may be probed")
+                return EXIT_REFUSED
+
+            payload: dict[str, Any] = {"collection": result}
+            if args.json:
+                if args.no_estate:
+                    print(json.dumps(result, indent=2, default=str))
+                    return EXIT_OK
+            else:
+                summary = result.get("summary") or {}
+                scope_name = (result.get("scope") or {}).get("scope_name")
+                print(f"collected  {len(result.get('evidence') or [])} endpoint records "
+                      f"under scope {scope_name}")
+                observed = int(summary.get("observed") or 0)
+                unknown = int(summary.get("records") or 0) - observed
+                print(f"tls        {observed} observed, {unknown} not observed (a refused handshake is "
+                      f"UNKNOWN, never safe)")
+                print(f"run        {result['run_id']}")
+
+            if args.no_estate:
+                return EXIT_OK
+            report = estate_discovery.run(session, scope=args.scope)
+            if args.json:
+                payload["estate"] = {
+                    "verdict": report.get("verdict"),
+                    "verdict_detail": report.get("verdict_detail"),
+                    "coverage": report.get("coverage"),
+                    "bom_counts": report.get("bom_counts"),
+                    "collectors": report.get("collectors"),
+                }
+                print(json.dumps(payload, indent=2, default=str))
+                return _verdict_exit_code(report, args.allow_partial, quiet=True)
+            _print_coverage(report)
+            return _print_verdict(report, args.allow_partial)
+    finally:
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int]] = {
+    "collect": _cmd_collect,
     "scan": _cmd_scan,
     "coverage": _cmd_coverage,
     "boms": _cmd_boms,

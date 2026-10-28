@@ -91,7 +91,7 @@ def _guard_network_stop(db: Session) -> dict:
             detail={
                 "error": exc.code,
                 "reason": exc.reason,
-                "engaged_by": exc.engaged_by,
+                "engaged_by": (exc.detail or {}).get("engaged_by"),
             },
         ) from exc
 
@@ -1200,23 +1200,9 @@ def _scope_key(tenant_id: str | None, inventory_id: str) -> str:
 
 
 def _load_crypto_scope(db: Session, inventory_id: str) -> dict | None:
-    from db.models.app_setting import AppSetting
-    from sqlalchemy import select
+    from api.network_collect import load_scope
 
-    key = _scope_key(current_tenant(), inventory_id)
-    row = db.execute(select(AppSetting).where(AppSetting.key == key)).scalars().first()
-    if row is None or not row.value:
-        return None
-    try:
-        import json
-
-        data = json.loads(row.value)
-        data["_key"] = key
-        data["_updated_by"] = row.updated_by
-        data["_tenant"] = current_tenant()
-        return data
-    except Exception:
-        return None
+    return load_scope(db, inventory_id)
 
 
 def _save_crypto_scope(db: Session, scope: NetworkCryptoScopeIn, user: str) -> dict:
@@ -1368,98 +1354,37 @@ def crypto_observe(
     refused before any socket is opened. Each observed endpoint returns a §24
     evidence record; endpoints that never handshook return ``UNKNOWN``, never
     "safe" (§29).
+
+    The collection itself lives in :mod:`api.network_collect`, because
+    ``cryptoscan collect`` must obey exactly the same rules — two code paths with
+    one rulebook would eventually disagree.
     """
-    from api.security.network_scope import ScopeViolation, check_scope
-    from network_scanner.inventory.network_evidence import build_evidence, summarize
+    from api.network_collect import CollectRefused, collect_network
 
-    _guard_network_stop(db)
-    scope = _load_crypto_scope(db, body.inventory_id)
-    planned = body.endpoints or list((scope or {}).get("destinations") or [])
     try:
-        scope_admission = check_scope(scope, planned, protocol=body.protocol, operations=body.operations)
-    except ScopeViolation as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={"error": exc.code, "reason": exc.reason, **exc.detail},
-        ) from exc
-
-    from api.security.network_budget import BudgetExhausted, reserve as reserve_budget, settle as settle_budget
-
-    endpoints = checked_hosts(scope_admission["destinations"])
-    try:
-        budget = reserve_budget(db, scope, inventory_id=body.inventory_id, connections=len(endpoints), user=user)
-    except BudgetExhausted as exc:
-        raise HTTPException(status_code=429, detail={"error": exc.code, "reason": exc.reason, **exc.detail}) from exc
-    admission = admit_network(endpoints)
-    meter_network(db, endpoints)
-    with network_run(
-        db,
-        user=user,
-        target=",".join(endpoints)[:2000],
-        admission=admission,
-        kind="crypto-observe",
-        profile={
-            "protocol": scope_admission["protocol"],
-            "operations": scope_admission["operations"],
-            "scope_name": scope_admission["scope_name"],
-            "scope_admission": scope_admission,
-        },
-    ) as run:
-        result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=min(8, len(endpoints))).scan_hosts(
-            endpoints,
+        return collect_network(
+            db,
+            endpoints=body.endpoints,
+            protocol=body.protocol,
+            operations=body.operations,
+            timeout=body.timeout,
+            inventory_id=body.inventory_id,
             scan_versions=body.scan_versions,
             scan_ciphers=body.scan_ciphers,
+            user=user,
+            # the router's own names, so a test (or a deployment) that replaces
+            # admission/metering here replaces it for this path too
+            admit=admit_network,
+            meter=meter_network,
         )
-        findings = result.get("findings") or []
-        observed_at = datetime.now(timezone.utc).isoformat()
-        evidence = [
-            build_evidence(
-                finding,
-                scope_revision=str(scope.get("saved_at") or "") or None,
-                observed_at=observed_at,
-                scope_name=scope_admission["scope_name"],
-                extra={"operation": "TLS_HANDSHAKE", "run_id": run.job_id},
-            )
-            for finding in findings
-        ]
-        summary = summarize(evidence)
-        payload = {
-            **result,
-            "network_evidence": evidence,
-            "network_evidence_summary": summary,
-            "scope_admission": scope_admission,
-        }
-        stored = persist_network(
-            db,
-            payload,
-            run,
-            kind="crypto-observe",
-            phase_admission=[{"endpoint": endpoint, "phase": "tls_handshake", "decision": "PERMITTED"} for endpoint in endpoints],
-            collection_metadata={
-                "protocol": scope_admission["protocol"],
-                "scope_name": scope_admission["scope_name"],
-                "evidence_schema": "cryptoscan.network-evidence/1",
-            },
-        )
-        run.succeed(coverage=network_coverage(result))
-    observed_bytes = sum(
-        int((record.get("passive") or {}).get("bytes") or 0) for record in evidence
-    )
-    settled = settle_budget(
-        db, scope, inventory_id=body.inventory_id, bytes_used=observed_bytes, user=user
-    )
-    return {
-        "scan_id": stored["job_id"],
-        "run_id": stored["run_id"],
-        "scope": scope_admission,
-        "evidence": evidence,
-        "summary": summary,
-        "probe_telemetry": result.get("probe_telemetry"),
-        "certificates": result.get("certificates") or [],
-        "budget": {"reserved": budget, "settled": settled},
-        "evidence_chain": stored.get("evidence_chain"),
-        "model": "cryptoscan.network-crypto-observation/1",
-    }
+    except CollectRefused as exc:
+        status = 429 if exc.code in {"budget_exhausted", "network_budget_exhausted"} else 409
+        if exc.code == "invalid_targets":
+            status = 422
+        raise HTTPException(
+            status_code=status,
+            detail={"error": exc.code, "reason": exc.reason, **exc.detail},
+        ) from exc
 
 
 #: durable run kinds that carry Cryptographic Network Intelligence evidence

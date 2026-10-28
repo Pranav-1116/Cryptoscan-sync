@@ -47,13 +47,19 @@ MODEL = "cryptoscan.estate-discovery-job/1"
 SCHEMA_EVIDENCE = "cryptoscan.estate-evidence/1"
 
 #: §13 discovery planes this repository can actually read today.
-PLANES: tuple[str, ...] = ("NETWORK", "KUBERNETES", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR")
+PLANES: tuple[str, ...] = ("NETWORK", "CLOUD", "KUBERNETES", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR")
 
 PLANE_DETAIL: dict[str, dict[str, str]] = {
     "NETWORK": {
         "source": "stored network observation runs",
         "boms": "NBOM, CBOM (NETWORK_TRANSPORT layer), TechBOM",
         "limitation": "only endpoints already observed under an approved scope; unprobed endpoints are NOT_OBSERVED",
+    },
+    "CLOUD": {
+        "source": "live AWS control plane (ELBv2, ACM, RDS, KMS, API Gateway)",
+        "boms": "NBOM, CBOM (transport and storage configuration), VBOM (managed services)",
+        "limitation": "control-plane configuration only: a listener policy or key spec is what the service "
+                      "allows, not what a client negotiated, and KMS only shows capability",
     },
     "KUBERNETES": {
         "source": "live cluster API (namespaces, ingresses, services, pods)",
@@ -471,6 +477,13 @@ def collect_vendor(db: Any, *, limit: int = 2000) -> dict[str, Any]:
     }
 
 
+def collect_cloud_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
+    """Adapter for :mod:`api.estate_cloud` (live, read-only cloud control plane)."""
+    from api.estate_cloud import collect_cloud
+
+    return collect_cloud(db, **kwargs)
+
+
 def collect_kubernetes_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
     """Adapter for :mod:`api.estate_kubernetes` (live, read-only cluster API)."""
     from api.estate_kubernetes import collect_kubernetes
@@ -480,6 +493,7 @@ def collect_kubernetes_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
 
 DEFAULT_COLLECTORS: dict[str, Callable[..., dict[str, Any]]] = {
     "NETWORK": collect_network,
+    "CLOUD": collect_cloud_plane,
     "KUBERNETES": collect_kubernetes_plane,
     "RUNTIME": collect_runtime,
     "STATIC": collect_static,
@@ -527,7 +541,7 @@ def _collect(plane: str, collector: Callable[..., dict[str, Any]], db: Any, **kw
     unconfigured live collector is ``NOT_ATTEMPTED`` (nothing was asked), while a
     configured source that errors is ``FAILED``.
     """
-    from api.estate_kubernetes import PlaneNotConfigured
+    from api.estate_planes import PlaneNotConfigured
 
     try:
         result = collector(db, **kwargs) or {}

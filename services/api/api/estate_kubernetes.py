@@ -47,6 +47,7 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable, Mapping
 
+from api.estate_planes import PlaneNotConfigured
 from shared_models.estate_graph import make_evidence, normalize_asset
 
 SCHEMA = "cryptoscan.estate-kubernetes/1"
@@ -72,10 +73,6 @@ TLS_ANNOTATIONS = (
 )
 
 Transport = Callable[[str, Mapping[str, str], float], tuple[int, bytes]]
-
-
-class PlaneNotConfigured(RuntimeError):
-    """No cluster can be reached from this process — NOT_ATTEMPTED, not a failure."""
 
 
 class KubernetesReadError(RuntimeError):
