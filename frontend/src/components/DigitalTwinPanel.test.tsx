@@ -590,6 +590,30 @@ it("keeps weak capability apart from weak use, and an invented algorithm apart f
       next_action: "start with the in-use weak algorithms",
       limits: ["a verdict comes from this product's algorithm registry"],
     },
+    "/api/v1/estate/evidence/twin/trust-paths": {
+      schema: "cryptoscan.estate-trust-paths/1",
+      count: 2, rooted_count: 1, broken_count: 1, unjudged_count: 0, longest_chain: 3,
+      by_status: { ROOTED: 1, SELF_SIGNED: 0, BROKEN: 1, CYCLE: 0, UNKNOWN_ISSUER: 0 },
+      chains: [
+        { asset_id: "cert:api", asset_name: "api.example.com", asset_type: "CERTIFICATE",
+          status: "ROOTED", length: 3,
+          chain: [
+            { asset_id: "cert:api", asset_name: "api.example.com", present: true, evidence_ids: [] },
+            { asset_id: "ca:issuing", asset_name: "Bank Issuing CA", present: true, evidence_ids: ["ev-cert"] },
+            { asset_id: "ca:root", asset_name: "Bank Root CA", present: true, evidence_ids: ["ev-cert"] },
+          ],
+          reason: "a root as far as this evidence goes" },
+        { asset_id: "cert:legacy", asset_name: "legacy.example.com", asset_type: "CERTIFICATE",
+          status: "BROKEN", length: 2,
+          chain: [
+            { asset_id: "cert:legacy", asset_name: "legacy.example.com", present: true, evidence_ids: [] },
+            { asset_id: "vendor:thales", asset_name: "Thales", asset_type: "VENDOR", present: true, evidence_ids: ["ev-old"] },
+          ],
+          reason: "Thales is named as the issuer, but it is a VENDOR, which cannot vouch for a certificate" },
+      ],
+      meaning: "where the walk stops, not a judgement",
+      limits: ["no signature is verified", "no expiry is checked"],
+    },
   });
   render(<DigitalTwinPanel />);
 
@@ -603,4 +627,9 @@ it("keeps weak capability apart from weak use, and an invented algorithm apart f
   expect(screen.getByText(/unrecognised/)).toBeInTheDocument();
   expect(screen.getByText(/blocker: HSM-04/)).toBeInTheDocument();
   expect(screen.getByText(/start with the in-use weak algorithms/)).toBeInTheDocument();
+  expect(screen.getByText("TRUST PATHS")).toBeInTheDocument();
+  expect(screen.getByText("1 rooted")).toBeInTheDocument();
+  expect(screen.getByText("1 broken")).toBeInTheDocument();
+  expect(screen.getByText(/cannot vouch for a certificate/)).toBeInTheDocument();
+  expect(screen.getByText(/no signature is verified/)).toBeInTheDocument();
 });

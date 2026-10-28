@@ -35,6 +35,7 @@ from api import (
     estate_conflicts,
     estate_crypto_intel,
     estate_lifecycle,
+    estate_trust,
     estate_observations,
     estate_search,
     estate_change_feed,
@@ -1826,3 +1827,30 @@ def estate_twin_algorithm(
             "found": False,
         }
     return estate_crypto_intel.algorithm(graph, name, limit=limit)
+
+
+@router.get("/twin/trust-paths")
+def estate_twin_trust_paths(
+    limit: int = Query(200, ge=1, le=2000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Certificate chains as the evidence describes them, and where each one stops (§24).
+
+    ``ROOTED``, ``SELF_SIGNED``, ``BROKEN``, ``CYCLE`` and ``UNKNOWN_ISSUER`` are five
+    different answers: an issuer outside the collected scope and an invalid chain look
+    identical from here, and neither is chosen for the reader. No signature is verified and
+    no expiry is checked.
+    """
+    graph = _latest_twin_graph_or_none(db)
+    if graph is None:
+        return {
+            "schema": estate_trust.SCHEMA,
+            "status": "NOT_OBSERVED",
+            "detail": (
+                "there is no stored estate observation, so no chain can be walked. That is not "
+                "the same as an estate with no certificates"
+            ),
+            "count": 0,
+        }
+    return estate_trust.survey(graph, limit=limit)

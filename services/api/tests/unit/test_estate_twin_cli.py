@@ -503,3 +503,19 @@ def test_algorithm_cli_answers_with_counts_and_says_when_it_found_nothing(with_d
     printed = capsys.readouterr().out
     assert code == cli.EXIT_OK
     assert "not a statement that the estate does not use it" in printed
+
+
+def test_trust_paths_cli_says_where_a_chain_stops(with_discovery, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "trust-paths", "--json"], session_factory=lambda: with_discovery)
+    body = json.loads(capsys.readouterr().out)
+
+    assert code == cli.EXIT_OK
+    assert body["schema"] == "cryptoscan.estate-trust-paths/1"
+    assert set(body["by_status"]) == {"ROOTED", "SELF_SIGNED", "BROKEN", "CYCLE", "UNKNOWN_ISSUER"}
+
+    code = cli.main(["twin", "trust-paths"], session_factory=lambda: with_discovery)
+    printed = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "certificate chain(s)" in printed

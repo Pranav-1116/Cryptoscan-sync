@@ -267,6 +267,14 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_algorithm.add_argument("--limit", type=int, default=50)
     twin_algorithm.add_argument("--json", action="store_true")
 
+    twin_trust = twin_sub.add_parser(
+        "trust-paths",
+        help="certificate chains as the evidence describes them, and where each one stops",
+    )
+    twin_trust.add_argument("--tenant", default=None)
+    twin_trust.add_argument("--limit", type=int, default=50)
+    twin_trust.add_argument("--json", action="store_true")
+
     twin_search = twin_sub.add_parser(
         "search",
         help="search assets, artefacts, edges, evidence, facts and changes in one call",
@@ -780,6 +788,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
         estate_conflicts,
         estate_crypto_intel,
         estate_lifecycle,
+        estate_trust,
         estate_graph_loader,
         estate_observations,
         estate_search,
@@ -951,6 +960,33 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                         print(body["next_action"])
                 return EXIT_OK
 
+            if args.twin_command == "trust-paths":
+                current = latest_twin_graph(session, args.tenant)
+                if current is None:
+                    print("no stored estate discovery — no chain can be walked, which is not "
+                          "an estate with no certificates.", file=sys.stderr)
+                    return EXIT_INCOMPLETE
+                body = estate_trust.survey(current, limit=args.limit)
+                if args.json:
+                    print(json.dumps(body, indent=2, default=str))
+                else:
+                    print(f"{body['count']} certificate chain(s), longest {body['longest_chain']} link(s)")
+                    for status, count in body["by_status"].items():
+                        print(f"  {status:<14} {count}")
+                    for entry in body["chains"][:10]:
+                        name = entry["asset_name"] or entry["asset_id"]
+                        path = " -> ".join(
+                            (step["asset_name"] or step["asset_id"] or "?")
+                            + ("" if step["present"] else " (not collected)")
+                            for step in entry["chain"]
+                        )
+                        print(f"  {name}: {entry['status']} · {path}")
+                    if body["broken_count"] or body["unjudged_count"]:
+                        print()
+                        print("a broken chain usually means the authority was not collected — "
+                              "it is not proof the certificate is untrusted")
+                return EXIT_OK
+
             if args.twin_command == "lifecycle":
                 body = estate_lifecycle.survey(
                     session, latest_twin_graph(session, args.tenant), tenant_id=args.tenant
@@ -1085,7 +1121,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
             if graph is None and args.twin_command not in {
                 "changes", "ack", "detect", "assets", "asset", "algorithms",
                 "history", "why", "evidence", "search", "conflicts", "lifecycle",
-                "intel", "algorithm",
+                "intel", "algorithm", "trust-paths",
             }:
                 
                 print(

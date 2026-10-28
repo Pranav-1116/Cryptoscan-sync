@@ -6595,3 +6595,24 @@ export const apiEstateIntel = (): Promise<ApiResult<EstateCryptoIntel>> =>
 
 export const apiEstateAlgorithm = (name: string): Promise<ApiResult<EstateAlgorithmView>> =>
   _rsGet<EstateAlgorithmView>(`/api/v1/estate/evidence/twin/algorithm/${encodeURIComponent(name)}`);
+
+/* §24 "trust paths": where each certificate's chain stops, and what that does not prove. */
+export interface EstateTrustStep {
+  asset_id?: string | null; asset_name?: string | null; asset_type?: string | null;
+  present: boolean; evidence_ids: string[]; basis?: string | null; confidence?: string | null;
+}
+
+export interface EstateTrustChain {
+  asset_id: string; asset_name?: string | null; asset_type?: string | null;
+  status: "ROOTED" | "SELF_SIGNED" | "BROKEN" | "CYCLE" | "UNKNOWN_ISSUER";
+  length: number; chain: EstateTrustStep[]; reason: string;
+}
+
+export interface EstateTrustPaths {
+  schema: string; chains: EstateTrustChain[]; count: number;
+  by_status: Record<string, number>; rooted_count: number; broken_count: number;
+  unjudged_count: number; longest_chain: number; meaning: string; limits: string[];
+}
+
+export const apiEstateTrustPaths = (): Promise<ApiResult<EstateTrustPaths>> =>
+  _rsGet<EstateTrustPaths>("/api/v1/estate/evidence/twin/trust-paths");

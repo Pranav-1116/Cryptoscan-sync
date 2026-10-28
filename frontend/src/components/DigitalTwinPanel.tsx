@@ -9,7 +9,7 @@ import {
   apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
   apiEstateTwinPlacement,
   apiEstateAssetHistory, apiEstateHistorySummary, apiEstateSearch, apiEstateConflicts,
-  apiEstateLifecycle, apiEstateIntel, apiEstateAlgorithm,
+  apiEstateLifecycle, apiEstateIntel, apiEstateAlgorithm, apiEstateTrustPaths,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
@@ -17,6 +17,7 @@ import {
   EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
   EstatePlacement, EstateAssetHistory, EstateHistorySummary, EstateSearchResult,
   EstateConflictSurvey, EstateLifecycle, EstateCryptoIntel, EstateAlgorithmView,
+  EstateTrustPaths,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -161,6 +162,8 @@ export default function DigitalTwinPanel() {
   const [intelView, setIntelView] = useState<EstateCryptoIntel | null>(null);
   const [algorithmName, setAlgorithmName] = useState("");
   const [algorithmView, setAlgorithmView] = useState<EstateAlgorithmView | null>(null);
+  /* §24: where each certificate chain stops, and what that does not prove */
+  const [trustPaths, setTrustPaths] = useState<EstateTrustPaths | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -268,6 +271,11 @@ export default function DigitalTwinPanel() {
     else setIntelView(null);
   };
 
+  const loadTrustPaths = async () => {
+    const result = await apiEstateTrustPaths();
+    setTrustPaths(result.ok ? (result.data as EstateTrustPaths) : null);
+  };
+
   const loadAlgorithm = async (name: string) => {
     const text = name.trim();
     if (!text) return;
@@ -336,6 +344,7 @@ export default function DigitalTwinPanel() {
     if (view === "live" && placement === null) void loadPlacement();
     if (view === "loop" && loop === null) void loadLoop();
     if (view === "intel" && intelView === null) void loadIntel();
+    if (view === "intel" && trustPaths === null) void loadTrustPaths();
   }, [view]);
 
   const TABS: Array<{ id: typeof view; label: string }> = [
@@ -1378,6 +1387,33 @@ export default function DigitalTwinPanel() {
                       {type}: {count} using it
                     </div>
                   ))}
+                </div>
+              )}
+
+              {trustPaths && trustPaths.count > 0 && (
+                <div style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 6 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--cyan)" }}>TRUST PATHS</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 2 }}>
+                    <Badge tone="green">{`${trustPaths.rooted_count} rooted`}</Badge>
+                    {trustPaths.broken_count > 0 && <Badge tone="red">{`${trustPaths.broken_count} broken`}</Badge>}
+                    {trustPaths.unjudged_count > 0 && (
+                      <Badge tone="slate">{`${trustPaths.unjudged_count} unjudged`}</Badge>
+                    )}
+                  </div>
+                  {trustPaths.chains.slice(0, 5).map((chain) => (
+                    <div key={chain.asset_id} style={{ fontSize: 10, marginTop: 3 }}>
+                      <Badge tone={chain.status === "ROOTED" ? "green" : chain.status === "BROKEN" ? "red" : "slate"}>
+                        {chain.status}
+                      </Badge>{" "}
+                      {chain.chain.map((step) => step.asset_name ?? step.asset_id ?? "?").join(" → ")}
+                      {chain.status !== "ROOTED" && (
+                        <div className="faint" style={{ fontSize: 9.5 }}>{chain.reason}</div>
+                      )}
+                    </div>
+                  ))}
+                  <div className="faint" style={{ fontSize: 9.5 }}>
+                    no signature is verified and no expiry is checked — this is where the evidence stops
+                  </div>
                 </div>
               )}
 
