@@ -223,3 +223,4 @@ from db.models.assurance import AssuranceRevision, AssuranceBlob, CollectionPhas
 
 from db.models.estate_schedule import EstateSchedule, EstateScheduleRun  # noqa: E402,F401
 from db.models.estate_daemon import EstateDaemon  # noqa: E402,F401
+from db.models.estate_twin_snapshot import EstateTwinSnapshot  # noqa: E402,F401

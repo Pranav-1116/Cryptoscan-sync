@@ -744,6 +744,32 @@ class EstateGraph:
             algorithm = facts.get("algorithm")
             role = facts.get("role")
             if not algorithm and not facts.get("protocol"):
+                # A capability list ("this library supports AES-128, AES-256, RSA")
+                # is cryptographic content too. It is expanded here so capability
+                # appears on its own plane instead of silently vanishing, and it is
+                # forced to SUPPORTED because a declared list can never be use.
+                for supported in _supported_algorithms(facts):
+                    artifacts.append(
+                        {
+                            "artifact_id": f"crypto-{hashlib.sha256((str(record['target']) + '|' + supported + '||' + str(record['layer'])).encode()).hexdigest()[:16]}",
+                            "asset_id": record["target"],
+                            "asset_name": (self._assets.get(record["target"]) or {}).get("name"),
+                            "asset_type": (self._assets.get(record["target"]) or {}).get("type"),
+                            "algorithm": supported,
+                            "role": "capability",
+                            "protocol": None,
+                            "key_size": None,
+                            "mode": None,
+                            "curve": None,
+                            "layer": record["layer"],
+                            "usage_state": "SUPPORTED",
+                            "evidence_type": record["evidence_type"],
+                            "confidence": record["confidence"],
+                            "evidence_ids": [record["evidence_id"]],
+                            "source": record["source"],
+                            "observed_at": record["observed_at"],
+                        }
+                    )
                 continue
             usage_state = _usage_state(record["evidence_type"], facts)
             artifacts.append(
@@ -1105,6 +1131,38 @@ class EstateGraph:
                 )
                 for record in self._evidence.values()
             ),
+            # Coverage is part of the snapshot's identity. Without it, a run where a
+            # plane failed to collect fingerprint identical to a run where it
+            # succeeded over the same (smaller) set of facts — so "we stopped
+            # looking" would be indistinguishable from "nothing changed", which is
+            # the single most dangerous comparison this product can get wrong.
+            "coverage_collectors": sorted(
+                json.dumps(
+                    {
+                        "plane": collector.get("plane"),
+                        "status": collector.get("status"),
+                        "expected": collector.get("expected"),
+                        "collected": collector.get("collected"),
+                        "reason": collector.get("reason"),
+                    },
+                    sort_keys=True,
+                    default=str,
+                )
+                for collector in self._collectors
+            ),
+            "coverage_rows": sorted(
+                json.dumps(
+                    {
+                        "target": row.get("target") or row.get("target_class"),
+                        "expected": row.get("expected"),
+                        "collected": row.get("collected"),
+                        "status": row.get("status"),
+                    },
+                    sort_keys=True,
+                    default=str,
+                )
+                for row in self._coverage_rows
+            ),
             "version": IDENTITY_VERSION,
         }
         return hashlib.sha256(json.dumps(material, sort_keys=True).encode("utf-8")).hexdigest()[:32]
@@ -1187,6 +1245,22 @@ def _usage_state(evidence_type: str, facts: Mapping[str, Any]) -> str:
     if evidence_type == "CONFIGURED":
         return "CONFIGURED"
     return "SUPPORTED"
+
+
+def _supported_algorithms(facts: Mapping[str, Any]) -> list[str]:
+    """Every algorithm a record declares as *available* (never as *used*)."""
+    out: list[str] = []
+    for field in ("supported_algorithms", "capabilities", "algorithms"):
+        declared = facts.get(field)
+        if not declared:
+            continue
+        if isinstance(declared, str):
+            declared = [declared]
+        for item in declared:
+            text = str(item or "").strip()
+            if text and text not in out:
+                out.append(text)
+    return out
 
 
 def _merge_artifacts(artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:

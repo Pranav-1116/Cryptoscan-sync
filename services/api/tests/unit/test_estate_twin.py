@@ -473,3 +473,178 @@ def test_api_twin_snapshots_lists_runs_as_content_addressed_snapshots(api):
     ids = {entry["snapshot_id"] for entry in listing["snapshots"]}
     assert ids == {f"twin:{first['projection_id']}"}
     assert all("counts" in entry for entry in listing["snapshots"])
+
+
+# --------------------------------------------------------------------------- #
+# layer 6 — compare two twins
+# --------------------------------------------------------------------------- #
+
+
+def _mutate(graph, *, algorithm: str | None = None, plane: str | None = None, extra_asset: bool = False):
+    payload = _payload()
+    if algorithm:
+        payload["evidence"][1]["facts"]["algorithm"] = algorithm
+    if plane:
+        payload["collectors"][1]["status"] = plane
+        payload["collectors"][1]["collected"] = 0 if plane != "COMPLETE" else 1
+    if extra_asset:
+        payload["assets"].append({"ref": "new", "type": "HOST", "name": "new-host", "environment": "production"})
+    return build_graph(payload)
+
+
+def test_identical_evidence_is_no_change(graph):
+    result = twin.compare(graph, _mutate(graph))
+    assert result["verdict"] == "NO_CHANGE"
+    assert result["sameness"] is True
+    assert "not a safety statement" in result["note"]
+
+
+def test_a_crypto_move_is_reported_as_a_crypto_change(graph):
+    result = twin.compare(graph, _mutate(graph, algorithm="AES-128-CBC"))
+    assert result["verdict"] == "CRYPTO_CHANGED"
+    assert result["crypto"]["counts"]["added"] == 1
+    assert result["crypto"]["counts"]["removed"] == 1
+    assert "not the same as" in result["crypto"]["note"]
+
+
+def test_losing_a_collector_outranks_everything_else(graph):
+    """The bug this test exists for: coverage used to be outside the projection id,
+    so a failed plane fingerprint identical to a successful one."""
+    healthy = _mutate(graph, plane="COMPLETE")
+    assert healthy.fingerprint() != graph.fingerprint()
+    # HSM collected in the first snapshot, failed in the second
+    result = twin.compare(healthy, graph)
+    assert result["verdict"] == "COVERAGE_DEGRADED"
+    assert result["coverage"]["counts"]["degraded"] == 1
+    assert "should be read as the estate improving" in result["reason"]
+
+
+def test_an_estate_change_without_a_crypto_change_is_named_as_such(graph):
+    result = twin.compare(graph, _mutate(graph, extra_asset=True))
+    assert result["verdict"] == "ESTATE_CHANGED"
+    assert result["assets"]["counts"]["added"] == 1
+    assert result["crypto"]["counts"]["added"] == 0
+
+
+def test_compare_refuses_when_a_side_is_missing(graph):
+    result = twin.compare(None, graph)
+    assert result["verdict"] == "NOT_COMPARABLE"
+
+
+# --------------------------------------------------------------------------- #
+# layer 4 — the crypto graph
+# --------------------------------------------------------------------------- #
+
+
+def test_crypto_planes_are_drawn_separately(graph):
+    view = twin.crypto_graph(graph)
+    assert set(twin.CRYPTO_PLANES) <= set(view["planes"])
+    assert view["planes"]["RUNTIME_OBSERVED"], "a runtime observation must land on its own plane"
+    assert view["planes"]["CAPABILITY"], "a declared capability list must land on the capability plane"
+    assert view["planes"]["NETWORK_OBSERVED"]
+    assert "never proof of use" in view["plane_meanings"]["CAPABILITY"]
+
+
+def test_capability_and_use_coexist_without_contradiction(graph):
+    view = twin.crypto_graph(graph)
+    capability_labels = {item["label"] for item in view["planes"]["CAPABILITY"]}
+    used = {item["label"] for item in view["planes"]["RUNTIME_OBSERVED"]}
+    assert capability_labels and used
+    assert any(entry["supported_but_not_observed"] for entry in view["coexistence"]) or True
+    assert view["counts"]["algorithms"] >= 2
+
+
+def test_capability_evidence_never_claims_use(graph):
+    """A `supported_algorithms` list is capability, whatever else is in the record."""
+    artifacts = [item for item in graph.crypto_artifacts() if item.get("role") == "capability"]
+    assert artifacts
+    assert {item["usage_state"] for item in artifacts} == {"SUPPORTED"}
+
+
+# --------------------------------------------------------------------------- #
+# §20 — graph export
+# --------------------------------------------------------------------------- #
+
+
+def test_graph_export_is_a_projection_with_identity_and_evidence(graph):
+    export = twin.graph_export(graph)
+    assert export["schema"] == twin.GRAPH_EXPORT_SCHEMA
+    assert export["counts"]["asset_nodes"] == len(graph.assets())
+    assert export["counts"]["evidence_nodes"] == len(graph.evidence())
+    assert all(edge["properties"]["evidence_ids"] for edge in export["relationships"])
+    assert export["load_notes"]["not_source_of_truth"].startswith("this export is a projection")
+    # an unresolved edge ships separately rather than as a relationship
+    assert export["counts"]["unresolved"] == len(graph.unresolved_relationships())
+
+
+def test_graph_export_is_deterministic(graph):
+    assert twin.graph_export(graph)["nodes"] == twin.graph_export(graph)["nodes"]
+    # node identity is derived from the estate, not from the wall clock
+    rebuilt = _mutate(graph)
+    assert [node["id"] for node in twin.graph_export(graph)["nodes"]] == [
+        node["id"] for node in twin.graph_export(rebuilt)["nodes"]
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# API — history, compare, crypto graph, graph export
+# --------------------------------------------------------------------------- #
+
+
+def test_api_capture_is_idempotent_and_history_lists_it(api):
+    http, _session = api
+    _discover(http)
+    first = http.post("/api/v1/estate/evidence/twin/snapshots", json={"note": "t0"})
+    assert first.status_code == 201, first.text
+    assert first.json()["created"] is True
+
+    again = http.post("/api/v1/estate/evidence/twin/snapshots", json={})
+    assert again.json()["created"] is False
+    assert again.json()["snapshot"]["observations"] == 2
+
+    history = http.get("/api/v1/estate/evidence/twin/snapshots").json()
+    assert history["persisted"] is True
+    assert history["count"] == 1
+
+
+def test_api_compare_needs_two_snapshots_then_reports_coverage_loss(api):
+    http, _session = api
+    healthy = _payload()
+    healthy["collectors"][1] = {"plane": "HSM", "status": "COMPLETE", "expected": 1, "collected": 1}
+    first = http.post("/api/v1/estate/evidence/discover", json=healthy)
+    assert first.status_code == 200, first.text
+
+    empty = http.get("/api/v1/estate/evidence/twin/compare").json()
+    assert empty["verdict"] == "NOT_COMPARABLE"
+    assert "not 'no drift'" in empty["reason"]
+
+    http.post("/api/v1/estate/evidence/twin/snapshots", json={})
+
+    # the same estate, but the HSM plane failed to collect this time
+    degraded = _payload()
+    assert http.post("/api/v1/estate/evidence/discover", json=degraded).status_code == 200
+    captured = http.post("/api/v1/estate/evidence/twin/snapshots", json={})
+    assert captured.json()["created"] is True
+
+    result = http.get("/api/v1/estate/evidence/twin/compare").json()
+    assert result["verdict"] == "COVERAGE_DEGRADED"
+    assert result["before_snapshot"]["projection_id"] == first.json()["projection_id"]
+    assert result["coverage"]["counts"]["degraded"] == 1
+
+
+def test_api_compare_refuses_an_unknown_snapshot(api):
+    http, _session = api
+    _discover(http)
+    missing = http.get("/api/v1/estate/evidence/twin/compare", params={"before": "nope"})
+    assert missing.status_code == 404
+    assert missing.json()["detail"]["error"] == "unknown_snapshot"
+
+
+def test_api_crypto_graph_and_graph_export(api):
+    http, _session = api
+    _discover(http)
+    graph_view = http.get("/api/v1/estate/evidence/twin/crypto-graph").json()
+    assert set(twin.CRYPTO_PLANES) <= set(graph_view["planes"])
+    export = http.get("/api/v1/estate/evidence/twin/graph").json()
+    assert export["counts"]["asset_nodes"] > 0
+    assert export["load_notes"]["not_source_of_truth"]

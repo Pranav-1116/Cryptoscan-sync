@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api import estate_discovery, estate_drift, estate_schedule
+from api import estate_discovery, estate_drift, estate_schedule, estate_twin_store
 from api.dependencies import get_current_user, get_db_session
 from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
@@ -807,10 +807,24 @@ def estate_twin_snapshots(
 ):
     """Twin snapshots, newest first — the history a drift comparison runs over.
 
-    A snapshot is content-addressed: two runs of the same evidence share a
-    ``snapshot_id``, which is the honest answer to "did anything actually change
-    between Tuesday and Thursday".
+    Persisted snapshots win, because a snapshot is content-addressed and survives
+    the scan runs it came from. When nothing has been captured yet the stored runs
+    are listed instead, with ``persisted: false`` — the two are not the same object
+    and the response says which one you are looking at.
     """
+    rows = estate_twin_store.list_snapshots(db, tenant_id=current_tenant(), limit=limit)
+    if rows:
+        return {
+            "model": "cryptoscan.estate-twin-snapshots/1",
+            "persisted": True,
+            "snapshots": [estate_twin_store.public(row) for row in rows],
+            "count": len(rows),
+            "note": (
+                "a snapshot is identified by its projection id, so identical evidence appears once with "
+                "an observation count. Compare any two with GET /twin/compare"
+            ),
+        }
+
     runs = ScanRunRepository(db).list_runs(limit=limit, target_kind=RUN_KIND, owner=current_tenant())
     entries: list[dict[str, Any]] = []
     for run in runs:
@@ -833,11 +847,12 @@ def estate_twin_snapshots(
         )
     return {
         "model": "cryptoscan.estate-twin-snapshots/1",
+        "persisted": False,
         "snapshots": entries,
         "count": len(entries),
         "note": (
-            "compare any two of these with GET /estate/evidence/drift, which diffs components, "
-            "coverage and collector outcomes rather than timestamps"
+            "these are derived from stored estate-discovery runs, not captured snapshots. POST "
+            "/twin/snapshots to persist one, which is what makes it comparable years later"
         ),
     }
 
@@ -938,3 +953,125 @@ def estate_twin_simulate(
     }
     result = estate_twin.simulate(graph, scenario)
     return {"run_id": run.id, **result}
+
+
+# -- twin history, compare, crypto graph, graph export ----------------------- #
+
+
+class TwinCaptureRequest(BaseModel):
+    """Capture the current evidence as a twin snapshot."""
+
+    note: str | None = Field(default=None, max_length=400)
+
+
+@router.post("/twin/snapshots", status_code=201)
+def estate_twin_capture(
+    body: TwinCaptureRequest | None = None,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Persist the current twin as a content-addressed snapshot.
+
+    Capturing the same evidence twice returns the same snapshot with a higher
+    ``observations`` count — ``created`` says which happened, because "we re-observed
+    the same estate" and "the estate moved" are different operational facts.
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    row, created = estate_twin_store.record_snapshot(
+        db,
+        graph,
+        tenant_id=current_tenant(),
+        captured_by=user,
+        source_run_id=str(getattr(run, "id", "") or "") or None,
+        note=(body.note if body else None),
+    )
+    return {
+        "created": created,
+        "snapshot": estate_twin_store.public(row),
+        "note": (
+            "this evidence was already captured; the observation counter advanced and nothing was "
+            "duplicated"
+            if not created
+            else "new snapshot: this evidence state had not been seen before"
+        ),
+    }
+
+
+@router.get("/twin/compare")
+def estate_twin_compare(
+    before: str | None = Query(default=None, description="snapshot id, projection id or row id"),
+    after: str | None = Query(default=None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Diff two twins: assets, relationships, crypto usage state, coverage, evidence.
+
+    With no arguments this compares the two most recent **distinct** snapshots.
+    A coverage loss outranks a crypto change in the verdict: once a plane stopped
+    collecting, everything below it is unreliable.
+    """
+    tenant = current_tenant()
+    if before or after:
+        before_row = estate_twin_store.get_snapshot(db, before or "", tenant_id=tenant) if before else None
+        after_row = estate_twin_store.get_snapshot(db, after or "", tenant_id=tenant) if after else None
+        if (before and before_row is None) or (after and after_row is None):
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "unknown_snapshot",
+                    "reason": (
+                        "one of the requested snapshots does not exist for this tenant. Capture history "
+                        "with POST /twin/snapshots first — an absent snapshot is not 'no change'"
+                    ),
+                },
+            )
+    else:
+        recent = estate_twin_store.list_snapshots(db, tenant_id=tenant, limit=2)
+        before_row = recent[1] if len(recent) > 1 else None
+        after_row = recent[0] if recent else None
+
+    if before_row is None or after_row is None:
+        return {
+            "model": "cryptoscan.estate-twin-compare/1",
+            "verdict": "NOT_COMPARABLE",
+            "reason": (
+                "fewer than two persisted snapshots exist for this tenant, so there is no baseline. "
+                "This is not 'no drift'"
+            ),
+            "snapshots": len([row for row in (before_row, after_row) if row is not None]),
+        }
+
+    result = estate_twin.compare(
+        estate_twin_store.graph_from_row(before_row),
+        estate_twin_store.graph_from_row(after_row),
+    )
+    return {
+        "before_snapshot": estate_twin_store.public(before_row),
+        "after_snapshot": estate_twin_store.public(after_row),
+        **result,
+    }
+
+
+@router.get("/twin/crypto-graph")
+def estate_twin_crypto_graph(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Capability, configuration, runtime and wire observations on separate planes."""
+    run = _latest_run(db)
+    return {"run_id": run.id, **estate_twin.crypto_graph(_graph_from_run(run))}
+
+
+@router.get("/twin/graph")
+def estate_twin_graph_export(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Typed nodes and edges for a graph-database projection (spec 94 §20).
+
+    The export is a projection of the canonical evidence records: if a graph store
+    and this export disagree, the evidence wins and the store is rebuilt.
+    """
+    run = _latest_run(db)
+    return {"run_id": run.id, **estate_twin.graph_export(_graph_from_run(run))}

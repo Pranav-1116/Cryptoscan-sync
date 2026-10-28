@@ -1413,6 +1413,638 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+
+# --------------------------------------------------------------------------- #
+# layer 6 — comparing two twins (§13, §14, §24 "Compare")
+# --------------------------------------------------------------------------- #
+
+COMPARE_SCHEMA = "cryptoscan.estate-twin-compare/1"
+
+#: verdict order, worst first. A coverage loss outranks a crypto change on purpose:
+#: "we stopped looking" makes every downstream comparison unreliable, and a reader
+#: who sees only "crypto changed" will miss that the estate got darker.
+COMPARE_VERDICTS: tuple[str, ...] = (
+    "COVERAGE_DEGRADED",
+    "CRYPTO_CHANGED",
+    "ESTATE_CHANGED",
+    "NO_CHANGE",
+    "NOT_COMPARABLE",
+)
+
+
+def _asset_view(asset: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "name": asset.get("name"),
+        "type": asset.get("type"),
+        "environment": asset.get("environment"),
+        "owner": asset.get("owner"),
+        "location": asset.get("location"),
+        "attributes": asset.get("attributes") or {},
+        "identity": asset.get("identity") or {},
+    }
+
+
+def _artifact_key(item: Mapping[str, Any]) -> str:
+    return "|".join(
+        str(item.get(field) or "")
+        for field in ("asset_id", "algorithm", "role", "protocol", "key_size", "layer")
+    )
+
+
+def compare(before: EstateGraph, after: EstateGraph, *, depth: int = 3) -> dict[str, Any]:
+    """Diff two twins — before ("T0") and after ("T1").
+
+    This is not a BOM diff. A BOM diff answers "did a document change"; this
+    answers "did the estate change, or did we just stop looking at it":
+
+    * **assets** added / removed / changed, with the fields that moved;
+    * **relationships** established / lost, keyed by predicate + basis so a
+      re-stated edge with weaker evidence shows up;
+    * **crypto** movement by ``usage_state`` — a ``SUPPORTED`` → ``OBSERVED``
+      transition is a promotion the bank cares about, and ``OBSERVED`` →
+      ``SUPPORTED`` is a loss of proof that must not read as "no change";
+    * **coverage** per plane, because a plane that stopped running makes the rest
+      of the comparison meaningless and outranks everything else in the verdict;
+    * **unknowns** gained and lost.
+
+    Refusals: one side missing is ``NOT_COMPARABLE``; identical projections are
+    ``NO_CHANGE`` and say explicitly that this is not a safety statement.
+    """
+    if before is None or after is None:
+        return {
+            "schema": COMPARE_SCHEMA,
+            "verdict": "NOT_COMPARABLE",
+            "reason": "one of the two snapshots is missing — there is nothing to compare against",
+        }
+
+    before_id, after_id = before.fingerprint(), after.fingerprint()
+
+    # -- assets ------------------------------------------------------------ #
+    before_assets = {asset["asset_id"]: asset for asset in before.assets()}
+    after_assets = {asset["asset_id"]: asset for asset in after.assets()}
+    added_assets = sorted(set(after_assets) - set(before_assets))
+    removed_assets = sorted(set(before_assets) - set(after_assets))
+    changed_assets: list[dict[str, Any]] = []
+    for asset_id in sorted(set(before_assets) & set(after_assets)):
+        old, new = _asset_view(before_assets[asset_id]), _asset_view(after_assets[asset_id])
+        fields = [field for field in old if old.get(field) != new.get(field)]
+        if fields:
+            changed_assets.append(
+                {
+                    "asset_id": asset_id,
+                    "name": new.get("name"),
+                    "type": new.get("type"),
+                    "changed_fields": fields,
+                    "before": {field: old.get(field) for field in fields},
+                    "after": {field: new.get(field) for field in fields},
+                }
+            )
+
+    def _card(asset_id_value: str, source: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+        asset = source.get(asset_id_value) or {}
+        return {
+            "asset_id": asset_id_value,
+            "name": asset.get("name"),
+            "type": asset.get("type"),
+            "environment": asset.get("environment"),
+        }
+
+    # -- relationships ------------------------------------------------------ #
+    def _edges(graph: EstateGraph) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for edge in graph.relationships():
+            key = f"{edge['subject']}|{edge['predicate']}|{edge['object']}|{edge.get('basis')}"
+            out[key] = edge
+        return out
+
+    before_edges, after_edges = _edges(before), _edges(after)
+    added_edges = sorted(set(after_edges) - set(before_edges))
+    removed_edges = sorted(set(before_edges) - set(after_edges))
+
+    def _edge_card(key: str, graph: EstateGraph) -> dict[str, Any]:
+        edge = (after_edges if graph is after else before_edges).get(key) or {}
+        return {
+            "subject": edge.get("subject"),
+            "subject_name": (graph.asset(str(edge.get("subject"))) or {}).get("name"),
+            "predicate": edge.get("predicate"),
+            "object": edge.get("object"),
+            "object_name": (graph.asset(str(edge.get("object"))) or {}).get("name"),
+            "basis": edge.get("basis"),
+            "confidence": edge.get("confidence"),
+        }
+
+    # -- crypto ------------------------------------------------------------- #
+    before_artifacts = {_artifact_key(item): item for item in before.crypto_artifacts()}
+    after_artifacts = {_artifact_key(item): item for item in after.crypto_artifacts()}
+    usage_states = ("SUPPORTED", "CONFIGURED", "NEGOTIATED", "OBSERVED")
+
+    def _rank(state: str) -> int:
+        return usage_states.index(state) if state in usage_states else -1
+
+    promoted: list[dict[str, Any]] = []
+    demoted: list[dict[str, Any]] = []
+    for key in sorted(set(before_artifacts) & set(after_artifacts)):
+        old, new = before_artifacts[key], after_artifacts[key]
+        if old["usage_state"] == new["usage_state"]:
+            continue
+        entry = {
+            "asset_id": new["asset_id"],
+            "asset_name": new.get("asset_name"),
+            "algorithm": new.get("algorithm"),
+            "protocol": new.get("protocol"),
+            "layer": new.get("layer"),
+            "before": old["usage_state"],
+            "after": new["usage_state"],
+        }
+        (promoted if _rank(new["usage_state"]) > _rank(old["usage_state"]) else demoted).append(entry)
+
+    crypto_added = [after_artifacts[key] for key in sorted(set(after_artifacts) - set(before_artifacts))]
+    crypto_removed = [before_artifacts[key] for key in sorted(set(before_artifacts) - set(after_artifacts))]
+
+    # -- coverage ----------------------------------------------------------- #
+    def _planes(graph: EstateGraph) -> dict[str, dict[str, Any]]:
+        return {
+            str(row.get("target")): row for row in (graph.coverage().get("targets") or [])
+        }
+
+    before_planes, after_planes = _planes(before), _planes(after)
+    degraded_planes: list[dict[str, Any]] = []
+    improved_planes: list[dict[str, Any]] = []
+    rank = {"COMPLETE": 4, "PARTIAL": 3, "UNKNOWN": 2, "NOT_OBSERVED": 1, "NOT_ATTEMPTED": 0, "FAILED": 0}
+    for name in sorted(set(before_planes) | set(after_planes)):
+        old = before_planes.get(name) or {}
+        new = after_planes.get(name) or {}
+        old_state = str(old.get("status") or "UNKNOWN")
+        new_state = str(new.get("status") or "UNKNOWN")
+        if old_state == new_state and (old.get("collected") or 0) == (new.get("collected") or 0):
+            continue
+        entry = {
+            "plane": name,
+            "before": old_state,
+            "after": new_state,
+            "before_collected": old.get("collected"),
+            "after_collected": new.get("collected"),
+            "reason": new.get("reason") or old.get("reason"),
+        }
+        (degraded_planes if rank.get(new_state, 2) < rank.get(old_state, 2) else improved_planes).append(entry)
+
+    # -- evidence and unknowns ---------------------------------------------- #
+    def _evidence_types(graph: EstateGraph) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for record in graph.evidence():
+            key = str(record["evidence_type"])
+            out[key] = out.get(key, 0) + 1
+        return out
+
+    before_evidence, after_evidence = _evidence_types(before), _evidence_types(after)
+    weak = {"IMPORTED", "VENDOR_DECLARED", "INFERRED", "UNKNOWN"}
+    strong_gained = sum(
+        max(0, after_evidence.get(state, 0) - before_evidence.get(state, 0))
+        for state in after_evidence if state not in weak
+    )
+    strong_lost = sum(
+        max(0, before_evidence.get(state, 0) - after_evidence.get(state, 0))
+        for state in before_evidence if state not in weak
+    )
+    before_unknown = before.unknown_inventory()
+    after_unknown = after.unknown_inventory()
+
+    # -- verdict ------------------------------------------------------------ #
+    if before_id == after_id:
+        verdict = "NO_CHANGE"
+        reason = "the two snapshots have the same projection id — the evidence is identical"
+    elif degraded_planes or strong_lost > strong_gained:
+        verdict = "COVERAGE_DEGRADED"
+        reason = (
+            "a plane stopped being observed, or stronger evidence was lost. Nothing below should be "
+            "read as the estate improving until collection is restored"
+        )
+    elif crypto_added or crypto_removed or promoted or demoted:
+        verdict = "CRYPTO_CHANGED"
+        reason = "cryptographic artefacts or their usage state moved between the two snapshots"
+    elif added_assets or removed_assets or changed_assets or added_edges or removed_edges:
+        verdict = "ESTATE_CHANGED"
+        reason = "the estate changed, but no cryptographic artefact or usage state did"
+    else:
+        verdict = "ESTATE_CHANGED"
+        reason = (
+            "the projection ids differ but no compared surface did — most often a metadata-only "
+            "difference such as a timestamp; treat it as unexplained rather than as clean"
+        )
+
+    return {
+        "schema": COMPARE_SCHEMA,
+        "verdict": verdict,
+        "reason": reason,
+        "before": {
+            "projection_id": before_id,
+            "snapshot_id": f"twin:{before_id}",
+            "assets": len(before_assets),
+            "relationships": len(before_edges),
+            "crypto_artifacts": len(before_artifacts),
+            "completeness_percent": completeness(before)["overall_percent"],
+        },
+        "after": {
+            "projection_id": after_id,
+            "snapshot_id": f"twin:{after_id}",
+            "assets": len(after_assets),
+            "relationships": len(after_edges),
+            "crypto_artifacts": len(after_artifacts),
+            "completeness_percent": completeness(after)["overall_percent"],
+        },
+        "sameness": before_id == after_id,
+        "assets": {
+            "added": [_card(asset_id, after_assets) for asset_id in added_assets[:MAX_LISTED]],
+            "removed": [_card(asset_id, before_assets) for asset_id in removed_assets[:MAX_LISTED]],
+            "changed": changed_assets[:MAX_LISTED],
+            "counts": {
+                "added": len(added_assets),
+                "removed": len(removed_assets),
+                "changed": len(changed_assets),
+                "unchanged": len(set(before_assets) & set(after_assets)) - len(changed_assets),
+            },
+        },
+        "relationships": {
+            "established": [_edge_card(key, after) for key in added_edges[:MAX_LISTED]],
+            "lost": [_edge_card(key, before) for key in removed_edges[:MAX_LISTED]],
+            "counts": {"established": len(added_edges), "lost": len(removed_edges),
+                       "unchanged": len(set(before_edges) & set(after_edges))},
+        },
+        "crypto": {
+            "added": crypto_added[:MAX_LISTED],
+            "removed": crypto_removed[:MAX_LISTED],
+            "promoted": promoted[:MAX_LISTED],
+            "demoted": demoted[:MAX_LISTED],
+            "counts": {
+                "added": len(crypto_added),
+                "removed": len(crypto_removed),
+                "promoted": len(promoted),
+                "demoted": len(demoted),
+            },
+            "note": (
+                "promoted = the same artefact now has stronger evidence (SUPPORTED -> CONFIGURED -> "
+                "NEGOTIATED -> OBSERVED); demoted = proof was lost, which is not the same as the "
+                "cryptography being removed"
+            ),
+        },
+        "coverage": {
+            "degraded": degraded_planes[:MAX_LISTED],
+            "improved": improved_planes[:MAX_LISTED],
+            "counts": {"degraded": len(degraded_planes), "improved": len(improved_planes)},
+        },
+        "evidence": {
+            "before": before_evidence,
+            "after": after_evidence,
+            "stronger_gained": strong_gained,
+            "stronger_lost": strong_lost,
+            "note": "IMPORTED / VENDOR_DECLARED / INFERRED are excluded from stronger/weaker on purpose",
+        },
+        "unknown": {
+            "before": before_unknown["unknown_count"],
+            "after": after_unknown["unknown_count"],
+            "delta": after_unknown["unknown_count"] - before_unknown["unknown_count"],
+            "unresolved_gained": len(after.unresolved_relationships()) - len(before.unresolved_relationships()),
+        },
+        "moves": {
+            "assets": added_assets or removed_assets or changed_assets,
+            "confirmed": any(
+                [added_assets, removed_assets, changed_assets, added_edges, removed_edges,
+                 crypto_added, crypto_removed, promoted, demoted, degraded_planes, improved_planes]
+            ),
+        },
+        "note": (
+            "NO_CHANGE is not a safety statement: it means the evidence is identical, including the "
+            "evidence that says nothing is observed"
+        ),
+    }
+
+
+
+# --------------------------------------------------------------------------- #
+# layer 4 — the crypto graph (§9, §10)
+# --------------------------------------------------------------------------- #
+
+CRYPTO_GRAPH_SCHEMA = "cryptoscan.estate-crypto-graph/1"
+
+#: The four planes a cryptographic fact can live on. They are drawn separately
+#: because merging them is exactly the CBOM bug this product exists to fix:
+#: "the library supports AES-128" and "the API used AES-256-GCM" are both true.
+CRYPTO_PLANES: tuple[str, ...] = ("CAPABILITY", "CONFIGURED", "RUNTIME_OBSERVED", "NETWORK_OBSERVED")
+
+
+def _crypto_plane(item: Mapping[str, Any]) -> str:
+    state = str(item.get("usage_state") or "")
+    evidence = str(item.get("evidence_type") or "")
+    if evidence.startswith("NETWORK"):
+        return "NETWORK_OBSERVED"
+    if state == "SUPPORTED":
+        return "CAPABILITY"
+    if state == "OBSERVED":
+        return "RUNTIME_OBSERVED"
+    if state == "NEGOTIATED":
+        return "NETWORK_OBSERVED"
+    return "CONFIGURED"
+
+
+def _algo_label(item: Mapping[str, Any]) -> str:
+    for field in ("algorithm", "protocol"):
+        value = item.get(field)
+        if value:
+            size = item.get("key_size")
+            return f"{value}-{size}" if field == "algorithm" and size else str(value)
+    return "UNKNOWN"
+
+
+def crypto_graph(graph: EstateGraph) -> dict[str, Any]:
+    """The crypto graph, with capability and use kept on separate planes (§9, §10).
+
+    The spec's example is the whole point of this view::
+
+        OpenSSL     CAPABILITY        {AES-128, AES-256, RSA}
+        Payment API RUNTIME_OBSERVED  {AES-256-GCM}
+        LB-07       NETWORK_OBSERVED  {TLSv1.3, AES-256-GCM, X25519}
+
+    A scanner that merges those into one list produces a contradiction. The twin
+    keeps the three facts, and this method states *why* they can co-exist. When the
+    same artefact genuinely disagrees across two sources of the *same* plane, that
+    is reported as a conflict with the evidence on both sides — not resolved.
+    """
+    artifacts = graph.crypto_artifacts()
+    planes: dict[str, list[dict[str, Any]]] = {plane: [] for plane in CRYPTO_PLANES}
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, Any]] = []
+
+    for item in artifacts:
+        plane = _crypto_plane(item)
+        asset_id = str(item.get("asset_id"))
+        node = nodes.setdefault(
+            asset_id,
+            {
+                "node_id": asset_id,
+                "kind": "ASSET",
+                "name": item.get("asset_name"),
+                "type": item.get("asset_type"),
+                "planes": {candidate: [] for candidate in CRYPTO_PLANES},
+            },
+        )
+        entry = {
+            "label": _algo_label(item),
+            "algorithm": item.get("algorithm"),
+            "protocol": item.get("protocol"),
+            "key_size": item.get("key_size"),
+            "mode": item.get("mode"),
+            "curve": item.get("curve"),
+            "layer": item.get("layer"),
+            "usage_state": item.get("usage_state"),
+            "evidence_type": item.get("evidence_type"),
+            "confidence": item.get("confidence"),
+            "evidence_ids": item.get("evidence_ids"),
+            "asset_id": asset_id,
+            "asset_name": item.get("asset_name"),
+            "asset_type": item.get("asset_type"),
+        }
+        planes[plane].append(entry)
+        node["planes"][plane].append(entry["label"])
+        edges.append(
+            {
+                "from": asset_id,
+                "to": f"algo:{entry['label']}",
+                "predicate": {
+                    "CAPABILITY": "supports",
+                    "CONFIGURED": "configured_with",
+                    "RUNTIME_OBSERVED": "used_at_runtime",
+                    "NETWORK_OBSERVED": "observed_on_wire",
+                }[plane],
+                "plane": plane,
+                "layer": entry["layer"],
+                "evidence_ids": entry["evidence_ids"],
+            }
+        )
+        nodes.setdefault(
+            f"algo:{entry['label']}",
+            {"node_id": f"algo:{entry['label']}", "kind": "ALGORITHM", "name": entry["label"], "planes": {}},
+        )
+
+    # §10 — the capability-vs-use pair, stated as a non-contradiction
+    coexistence: list[dict[str, Any]] = []
+    for asset_id, node in nodes.items():
+        if node["kind"] != "ASSET":
+            continue
+        capability = set(node["planes"].get("CAPABILITY") or [])
+        used = set(node["planes"].get("RUNTIME_OBSERVED") or []) | set(node["planes"].get("NETWORK_OBSERVED") or [])
+        if not capability or not used:
+            continue
+        unused = sorted(capability - used)
+        coexistence.append(
+            {
+                "asset_id": asset_id,
+                "asset_name": node["name"],
+                "capability": sorted(capability),
+                "in_use": sorted(used),
+                "supported_but_not_observed": unused,
+                "explanation": (
+                    "this asset can do more than it was seen doing. That is not a contradiction: the "
+                    "capability list is what it supports, the observed list is what ran"
+                ),
+                "next_action": (
+                    "if any of the unused algorithms matters (legacy RSA, AES-128), it is a candidate for "
+                    "removal; the twin will not assume it is unused elsewhere"
+                ),
+            }
+        )
+
+    # conflicts, split into "same plane disagreement" (real) and "cross plane" (explainable)
+    real_conflicts: list[dict[str, Any]] = []
+    explained: list[dict[str, Any]] = []
+    for conflict in graph.conflicts():
+        values = conflict.get("values") or []
+        plane_of = {
+            str(item.get("evidence_type")): _crypto_plane(
+                {"evidence_type": item.get("evidence_type"), "usage_state": "CONFIGURED"}
+            )
+            for item in values
+        }
+        if conflict.get("field") in {"algorithm", "key_size", "mode", "digest", "public_key_algorithm"}:
+            per_plane: dict[str, set[str]] = {}
+            for item, plane in zip(values, [plane_of.get(str(item.get("evidence_type")), "CONFIGURED") for item in values]):
+                per_plane.setdefault(plane, set()).add(str(item.get("value")))
+            if any(len(found) > 1 for found in per_plane.values()):
+                real_conflicts.append(conflict)
+            else:
+                explained.append(
+                    {
+                        **conflict,
+                        "explanation": (
+                            "the values disagree across *different* planes (capability vs configured vs "
+                            "observed). Both can be true at once; this is the case spec 94 §10 describes, "
+                            "not a data-quality defect"
+                        ),
+                    }
+                )
+        else:
+            real_conflicts.append(conflict)
+
+    return {
+        "schema": CRYPTO_GRAPH_SCHEMA,
+        "estate": graph.estate,
+        "projection_id": graph.fingerprint(),
+        "planes": planes,
+        "plane_meanings": {
+            "CAPABILITY": "what the artefact can do (declared/compiled in) — never proof of use",
+            "CONFIGURED": "what configuration says it should do — not proof it ran",
+            "RUNTIME_OBSERVED": "what a runtime collector saw it do",
+            "NETWORK_OBSERVED": "what a peer saw on the wire — transport only",
+        },
+        "nodes": sorted(nodes.values(), key=lambda node: (node["kind"], str(node["name"]))),
+        "edges": edges,
+        "counts": {
+            plane: len(items) for plane, items in planes.items()
+        } | {
+            "nodes": len(nodes),
+            "assets": sum(1 for node in nodes.values() if node["kind"] == "ASSET"),
+            "algorithms": sum(1 for node in nodes.values() if node["kind"] == "ALGORITHM"),
+        },
+        "coexistence": coexistence[:MAX_LISTED],
+        "conflicts": real_conflicts[:MAX_LISTED],
+        "explained_disagreements": explained[:MAX_LISTED],
+        "conflict_counts": {"real": len(real_conflicts), "explained": len(explained)},
+        "note": (
+            "capability, configuration, runtime and wire observations are drawn on separate planes. "
+            "Two of them disagreeing is information; two sources on the SAME plane disagreeing is a "
+            "conflict and is never auto-resolved"
+        ),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# §20 — graph projection for a graph database
+# --------------------------------------------------------------------------- #
+
+GRAPH_EXPORT_SCHEMA = "cryptoscan.estate-graph-export/1"
+
+
+def graph_export(graph: EstateGraph) -> dict[str, Any]:
+    """Typed nodes and edges for loading into a graph database.
+
+    The spec (§20–§21) is explicit that a graph store is a *projection* of the
+    canonical records, never the source of truth. This export is the boundary
+    where that stays true: it is deterministic, it carries the evidence ids on
+    every edge, and re-importing it cannot mint a fact that the evidence does not
+    already support.
+    """
+    nodes = []
+    for asset in graph.assets():
+        nodes.append(
+            {
+                "id": asset["asset_id"],
+                "labels": ["Asset", asset["type"]],
+                "properties": {
+                    "asset_id": asset["asset_id"],
+                    "type": asset["type"],
+                    "name": asset["name"],
+                    "environment": asset.get("environment"),
+                    "owner": asset.get("owner"),
+                    "location": asset.get("location"),
+                    "status": asset.get("status"),
+                    "identity": asset.get("identity") or {},
+                    "attributes": asset.get("attributes") or {},
+                    "evidence_count": len(asset.get("evidence_refs") or []),
+                },
+            }
+        )
+
+    relationships = []
+    for edge in graph.relationships():
+        relationships.append(
+            {
+                "type": edge["predicate"].upper(),
+                "from": edge["subject"],
+                "to": edge["object"],
+                "properties": {
+                    "basis": edge.get("basis"),
+                    "confidence": edge.get("confidence"),
+                    "evidence_ids": list(edge.get("evidence_ids") or []),
+                    "attributes": edge.get("attributes") or {},
+                },
+            }
+        )
+
+    unresolved = []
+    for edge in graph.unresolved_relationships():
+        unresolved.append(
+            {
+                "type": "UNRESOLVED",
+                "from": edge.get("subject"),
+                "to": edge.get("object"),
+                "properties": {
+                    "attempted_predicate": edge.get("predicate"),
+                    "basis": edge.get("basis"),
+                    "reason": edge.get("reason"),
+                },
+            }
+        )
+
+    evidence = [
+        {
+            "id": record["evidence_id"],
+            "labels": ["Evidence", record["evidence_type"]],
+            "properties": {
+                "target": record["target"],
+                "evidence_type": record["evidence_type"],
+                "confidence": record["confidence"],
+                "layer": record["layer"],
+                "source": record.get("source"),
+                "collector": record.get("collector"),
+                "observed_at": record.get("observed_at"),
+                "facts": record.get("facts") or {},
+            },
+        }
+        for record in graph.evidence()
+    ]
+    supports = [
+        {
+            "type": "SUPPORTS",
+            "from": record["evidence_id"],
+            "to": record["target"],
+            # every edge cites the evidence behind it, including this one — an
+            # export where some edges lack provenance invites a graph store that
+            # cannot answer "why is this here"
+            "properties": {
+                "evidence_type": record["evidence_type"],
+                "evidence_ids": [record["evidence_id"]],
+            },
+        }
+        for record in graph.evidence()
+    ]
+
+    return {
+        "schema": GRAPH_EXPORT_SCHEMA,
+        "estate": graph.estate,
+        "projection_id": graph.fingerprint(),
+        "generated_at": _now(),
+        "nodes": nodes + evidence,
+        "relationships": relationships + supports,
+        "unresolved": unresolved,
+        "counts": {
+            "nodes": len(nodes) + len(evidence),
+            "asset_nodes": len(nodes),
+            "evidence_nodes": len(evidence),
+            "relationships": len(relationships),
+            "supports": len(supports),
+            "unresolved": len(unresolved),
+        },
+        "load_notes": {
+            "node_identity": "asset nodes are keyed by the deterministic asset_id; evidence nodes by evidence_id",
+            "edge_identity": "an edge is (type, from, to) plus its basis — never a bare foreign key",
+            "unresolved_edges_ship_separately": True,
+            "not_source_of_truth": (
+                "this export is a projection of the canonical evidence records. If a graph store and "
+                "this export disagree, the evidence wins and the store is rebuilt"
+            ),
+        },
+    }
+
+
 def overview(graph: EstateGraph) -> dict[str, Any]:
     """§24 — the estate screen: what the twin holds, in one read."""
     placement = placement_model(graph)
@@ -1438,6 +2070,11 @@ def overview(graph: EstateGraph) -> dict[str, Any]:
 
 
 __all__ = [
+    "COMPARE_SCHEMA",
+    "CRYPTO_GRAPH_SCHEMA",
+    "CRYPTO_PLANES",
+    "GRAPH_EXPORT_SCHEMA",
+    "COMPARE_VERDICTS",
     "COMPLETENESS_SCHEMA",
     "ESTATE_LEVELS",
     "IMPACT_SCHEMA",
@@ -1446,7 +2083,10 @@ __all__ = [
     "SNAPSHOT_SCHEMA",
     "STRENGTH_ORDER",
     "TWIN_SCHEMA",
+    "compare",
     "completeness",
+    "crypto_graph",
+    "graph_export",
     "graph_from_snapshot",
     "impact",
     "investigate",
