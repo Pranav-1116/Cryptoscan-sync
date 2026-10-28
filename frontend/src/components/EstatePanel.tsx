@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table } from "./ui.jsx";
+import DigitalTwinPanel from "./DigitalTwinPanel.jsx";
 import { usePollingApi, useEstateEvents } from "../lib/apiUi.jsx";
 import {
   apiEstatePlan, apiEstateScan, EstatePlan, EstateScanReport, EstateCoverageRow, EstateBom,
@@ -194,6 +195,7 @@ export default function EstatePanel() {
   const unknownCount = report ? Number((report.unknown as Record<string, unknown>).unknown_count ?? 0) : 0;
 
   return (
+    <>
     <Panel
       title="Unified estate — one discovery, six BOM projections"
       sub="one job reads every plane's stored evidence and joins it into one graph; a failed plane is UNKNOWN with an impact, never an empty estate"
@@ -316,5 +318,7 @@ export default function EstatePanel() {
         </>
       )}
     </Panel>
+    <DigitalTwinPanel />
+    </>
   );
 }

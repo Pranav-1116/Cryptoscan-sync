@@ -609,20 +609,50 @@ bank.
 
 | Spec area | State | Where |
 |---|---|---|
-| §1 evidence-first pipeline | **shipped** (spec 93) | `estate_discovery`, `shared_models/estate_graph.py` |
-| Layer 2 assets + stable identity | **shipped**; type list extended here | `estate_graph.ASSET_TYPES`, `IDENTITY_KEYS` |
+| §1 evidence-first pipeline | **shipped** (spec 93) | `api/estate_discovery.py`, `shared_models/estate_graph.py` |
+| Layer 2 assets + stable identity | **shipped**; type list extended to §5 (VM, FIREWALL, VPN, PRODUCT, CRYPTO_ASSET, KEY_METADATA) | `estate_graph.ASSET_TYPES` |
 | Layer 3 relationships with basis + evidence | **shipped** | `EstateGraph.assert_relationship` |
-| Layer 3 vocabulary | **shipped**; extended here to the §7 list | `RELATIONSHIP_PREDICATES` |
-| Layer 4 crypto graph, capability ≠ usage | **shipped** | `crypto_artifacts`, `USAGE_STATES` |
+| Layer 3 vocabulary | **shipped at full §7 width** (32 predicates); every `uses*`/`encrypts_with`/`signs_with` edge needs a usage basis | `estate_graph.RELATIONSHIP_PREDICATES`, `USE_PREDICATES` |
+| Layer 4 crypto graph, capability ≠ usage | **shipped** | `estate_graph.crypto_artifacts`, `USAGE_STATES` |
 | Layer 5 evidence strength + provenance | **shipped** | `EVIDENCE_TYPES`, `EVIDENCE_CONFIDENCE` |
-| Conflict detection | **shipped** | `EstateGraph.conflicts()` |
-| Layer 6 drift between snapshots | **shipped** (spec 93 §18) | `estate_drift` |
-| Layer 1 estate placement | **this build** | `estate_twin.placement_model()` |
-| Twin completeness (§29) | **this build** | `estate_twin.completeness()` |
-| Asset investigation (§25) | **this build** | `estate_twin.investigate()` |
-| "Why?" (§28) | **this build** | `estate_twin.why()` |
-| Search (§26) | **this build** | `estate_twin.search()` |
-| Blast radius (§27) | **this build** | `estate_twin.impact()` |
-| Layer 7 simulation (§15–17) | **this build** | `estate_twin.simulate()` |
-| Twin snapshots as a first-class object | **this build** | `estate_twin.snapshot()` / `graph_from_snapshot()` |
-| API surface | **this build** | `/estate/evidence/twin/*` |
+| Conflict detection (§23) | **shipped** | `EstateGraph.conflicts()` |
+| Layer 6 drift between stored runs | **shipped** (spec 93 §18) | `api/estate_drift.py` |
+| Layer 1 estate placement | **shipped** | `estate_twin.placement_model()` |
+| Twin completeness (§29) | **shipped** — description quality, never a posture score | `estate_twin.completeness()` |
+| Asset investigation (§25) | **shipped** | `estate_twin.investigate()` |
+| "Why?" (§28) | **shipped** — answers with collector/source/time/hash, refuses for a non-edge | `estate_twin.why()` |
+| Search (§26) | **shipped** | `estate_twin.search()` |
+| Blast radius (§27) | **shipped** — established edges only, blind spots listed | `estate_twin.impact()` |
+| Layer 7 simulation (§15–§17) | **shipped** — runs on a snapshot copy, live projection id checked unchanged | `estate_twin.simulate()` |
+| Twin snapshots as a first-class object (§14) | **shipped** — content-addressed by projection id | `estate_twin.snapshot()` / `graph_from_snapshot()` |
+| API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/search,/assets/{ref},/why}`, `POST /twin/impact`, `POST /twin/simulate` |
+| UI (§24, §25) | **shipped as a twin panel** (placement, completeness, search, blast radius, simulation) | `frontend/src/components/DigitalTwinPanel.tsx` |
+| Historical snapshot list / compare screen (§24 "Compare") | *not built* — one stored snapshot is readable now; a first-class snapshot list needs a snapshot table | — |
+| Graph-database projection (§20) | *not built* | Neo4j is present for other product surfaces; the twin's traversal is in-process over the canonical graph |
+
+### What "simulation" means here, precisely
+
+`POST /estate/evidence/twin/simulate` applies the scenario to the **snapshot
+payload** (the evidence records), rebuilds a graph from it, re-projects all six
+BOMs from that copy, and diffs them component-by-component against the live
+projection. It reports:
+
+* `matched_evidence` — how many observations actually changed (0 ⇒ `NO_MATCH`,
+  never "no impact");
+* `bom_diff` — added/removed/changed per BOM, so the consequence is expressible in
+  the same artefacts the bank already exports;
+* `blockers` — `CAPABILITY_NOT_EVIDENCED` where a component in the radius declares
+  supported algorithms that do not include the new one, and
+  `UNRESOLVED_RELATIONSHIP` where an assumed edge could hide a larger radius;
+* `live_projection_unchanged` — computed by fingerprinting the live graph before
+  and after, so "production was not touched" is a check rather than a promise.
+
+### What the twin still cannot say
+
+* A capability declaration never becomes usage: `supported_algorithms` on a
+  library produces capability blockers, not an observed cipher.
+* Completeness cannot exceed collector coverage. A `FAILED` plane appears in
+  `why_not_100`, and the dimension it fed stays `n/a`.
+* Simulation changes *evidence facts in a copy*, not a real configuration. It can
+  tell you that a BOM would change; it cannot tell you that a vendor's firmware
+  would accept it — that stays a human finding.

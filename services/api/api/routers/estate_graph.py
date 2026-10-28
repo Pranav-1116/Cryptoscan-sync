@@ -36,6 +36,7 @@ from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
 from api.security import anchor_export
 from api.security.estate_bom_anchor import AnchorError, create_anchor, list_anchors, verify_anchor
+from shared_models import estate_twin
 from shared_models.estate_graph import BOM_KINDS, SCHEMA, build_graph
 
 router = APIRouter(prefix="/estate/evidence", tags=["estate-evidence"])
@@ -727,3 +728,170 @@ def estate_boms(
         "counts": projections["counts"],
         "consistency": projections["consistency"],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Digital Twin (spec 94)
+# --------------------------------------------------------------------------- #
+
+
+class TwinImpactRequest(BaseModel):
+    """A blast-radius selector: an algorithm, protocol, key size, version or asset."""
+
+    algorithm: str | None = Field(default=None, max_length=120)
+    protocol: str | None = Field(default=None, max_length=120)
+    mode: str | None = Field(default=None, max_length=120)
+    curve: str | None = Field(default=None, max_length=120)
+    key_size: int | str | None = Field(default=None, max_length=20)
+    version: str | None = Field(default=None, max_length=80)
+    asset: str | None = Field(default=None, max_length=200)
+    depth: int = Field(default=3, ge=1, le=6)
+
+
+class TwinSimulationRequest(BaseModel):
+    """A scenario applied to a *copy* of the twin — never to the live estate."""
+
+    kind: str = Field(description="REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT")
+    from_: str | None = Field(default=None, alias="from", max_length=160)
+    to: str | None = Field(default=None, max_length=160)
+    key_size: int | None = Field(default=None, ge=1, le=100000)
+    targets: list[str] | None = Field(default=None, max_length=200)
+    label: str | None = Field(default=None, max_length=160)
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/twin")
+def estate_twin_overview(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The Digital Twin: placement, summary and completeness for one snapshot."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    return {"run_id": run.id, "captured_at": str(getattr(run, "created_at", "") or ""),
+            **estate_twin.overview(graph)}
+
+
+@router.get("/twin/completeness")
+def estate_twin_completeness(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """How completely the twin describes the estate — explicitly not a posture score."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    return {"run_id": run.id, **estate_twin.completeness(graph)}
+
+
+@router.get("/twin/snapshot")
+def estate_twin_snapshot(
+    include_payload: bool = Query(default=False, description="include the full evidence payload"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The current twin snapshot (content-addressed by the projection id)."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    snap = estate_twin.snapshot(graph)
+    if not include_payload:
+        snap = {key: value for key, value in snap.items() if key != "payload"}
+    return {"run_id": run.id, **snap}
+
+
+@router.get("/twin/search")
+def estate_twin_search(
+    q: str = Query(min_length=1, max_length=200, description="algorithm, key size, protocol, name, type or owner"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Search the twin — by algorithm, key size, protocol, name, type or owner."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    return {"run_id": run.id, **estate_twin.search(graph, q)}
+
+
+@router.get("/twin/assets/{ref}")
+def estate_twin_asset(
+    ref: str,
+    depth: int = Query(default=3, ge=1, le=6),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Asset investigation: crypto, dependencies, neighbourhood, evidence strength."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    view = estate_twin.investigate(graph, ref, depth=depth)
+    if view is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_asset",
+                "reason": (
+                    f"no asset matches {ref!r}. This is not 'the asset has no crypto' — the twin has "
+                    "no evidence describing it at all"
+                ),
+            },
+        )
+    return {"run_id": run.id, **view}
+
+
+@router.get("/twin/why")
+def estate_twin_why(
+    subject: str | None = Query(default=None, max_length=200),
+    predicate: str | None = Query(default=None, max_length=60),
+    object: str | None = Query(default=None, max_length=200),
+    evidence_id: str | None = Query(default=None, max_length=120),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Why is this relationship present? Collector, source, timestamp and hash — or a refusal."""
+    if not any((subject, predicate, object, evidence_id)):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "empty_query", "reason": "ask about a subject, predicate, object or evidence id"},
+        )
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    return {"run_id": run.id, **estate_twin.why(
+        graph, subject=subject, predicate=predicate, obj=object, evidence_id=evidence_id
+    )}
+
+
+@router.post("/twin/impact")
+def estate_twin_impact(
+    body: TwinImpactRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Blast radius for an algorithm, protocol, key size or asset, with its blind spots."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    selector = {key: value for key, value in body.model_dump().items() if key != "depth" and value not in (None, "")}
+    return {"run_id": run.id, **estate_twin.impact(graph, selector, depth=body.depth)}
+
+
+@router.post("/twin/simulate")
+def estate_twin_simulate(
+    body: TwinSimulationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Simulate a cryptographic change on a copy of the twin.
+
+    The live graph is read-only here: the scenario is applied to a snapshot
+    payload, the six BOMs are re-projected from the copy, and the response states
+    whether the live projection id changed (it must not).
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    scenario = {
+        "kind": body.kind,
+        "from": body.from_,
+        "to": body.to,
+        "key_size": body.key_size,
+        "targets": body.targets or [],
+        "label": body.label,
+    }
+    result = estate_twin.simulate(graph, scenario)
+    return {"run_id": run.id, **result}

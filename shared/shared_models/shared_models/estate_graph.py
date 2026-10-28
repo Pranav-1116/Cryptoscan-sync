@@ -53,6 +53,7 @@ ASSET_TYPES: tuple[str, ...] = (
     "PROCESS",
     "CONTAINER",
     "IMAGE",
+    "VM",
     "POD",
     "NAMESPACE",
     "CLUSTER",
@@ -61,6 +62,8 @@ ASSET_TYPES: tuple[str, ...] = (
     "NETWORK_ENDPOINT",
     "LOAD_BALANCER",
     "API_GATEWAY",
+    "FIREWALL",
+    "VPN",
     "DATABASE",
     "MESSAGE_BROKER",
     "HSM",
@@ -71,6 +74,9 @@ ASSET_TYPES: tuple[str, ...] = (
     "HARDWARE",
     "FIRMWARE",
     "CLOUD_RESOURCE",
+    "PRODUCT",
+    "CRYPTO_ASSET",
+    "KEY_METADATA",
     "UNKNOWN",
 )
 
@@ -129,16 +135,51 @@ USAGE_STATES: tuple[str, ...] = ("SUPPORTED", "CONFIGURED", "NEGOTIATED", "OBSER
 #: relationship vocabulary (§7)
 RELATIONSHIP_PREDICATES: tuple[str, ...] = (
     "contains",
+    "part_of",
     "runs_on",
+    "deployed_as",
+    "built_from",
     "uses",
+    "uses_hsm",
+    "uses_kms",
+    "uses_key",
+    "uses_certificate",
+    "uses_crypto_library",
+    "uses_algorithm",
+    "encrypts_with",
+    "signs_with",
+    "authenticates_with",
     "connects_to",
+    "routes_to",
+    "exposes",
+    "protected_by",
     "terminates_tls_for",
+    "re_encrypts",
+    "passthrough",
     "depends_on",
     "signed_by",
+    "issued_by",
+    "verified_by",
     "hosted_on",
     "owned_by",
+    "managed_by",
+    "provided_by",
     "manages",
     "backs_with",
+)
+
+#: predicates that assert *use*, and therefore need a usage basis (spec 94 §8)
+USE_PREDICATES: frozenset[str] = frozenset(
+    {
+        "uses",
+        "uses_hsm",
+        "uses_kms",
+        "uses_key",
+        "uses_crypto_library",
+        "uses_algorithm",
+        "encrypts_with",
+        "signs_with",
+    }
 )
 
 #: bases that can establish an edge (§11). Co-location and inference are absent on
@@ -593,7 +634,7 @@ class EstateGraph:
             )
         if not entry.get("evidence_ids"):
             return "no evidence attached — a relationship without evidence is an assumption"
-        if entry["predicate"] == "uses" and basis not in USAGE_BASES:
+        if entry["predicate"] in USE_PREDICATES and basis not in USAGE_BASES:
             return (
                 f"basis {basis} cannot establish *use*: without configuration, a PKCS#11/KMS "
                 "reference, a runtime observation or an approved mapping the edge stays UNKNOWN"
@@ -609,6 +650,14 @@ class EstateGraph:
         record = dict(row)
         self._coverage_rows.append(record)
         return record
+
+    def coverage_rows(self) -> list[dict[str, Any]]:
+        """The rows as supplied, before collector outcomes are folded in.
+
+        A snapshot needs these verbatim: ``coverage()`` synthesises the extra rows,
+        and re-ingesting those would double-count every plane.
+        """
+        return [dict(row) for row in self._coverage_rows]
 
     # -- reads ------------------------------------------------------------- #
 
@@ -1554,6 +1603,7 @@ __all__ = [
     "UNKNOWN_SCHEMA",
     "USAGE_BASES",
     "USAGE_STATES",
+    "USE_PREDICATES",
     "EstateGraph",
     "asset_id",
     "build_graph",

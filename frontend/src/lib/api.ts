@@ -5929,3 +5929,96 @@ export const apiProposeHostAssociation = (approval: string, body: { input_id: st
 export const apiDecideHostAssociation = (approval: string, id: string, action: "review" | "retract", revision: number, evidenceRef: string, reason: string) =>
   _rsPost<{ subject_id: string; revision: number }>(`${hostGraphPath(approval)}/associations/${encodeURIComponent(id)}/${action}`, { expected_revision: revision, evidence_ref: evidenceRef, reason });
 export const apiHostEstateGraph = (approval: string) => _rsGet<HostEstateGraph>(`${hostGraphPath(approval)}/graph`);
+
+/* ── Digital Twin (spec 94) ────────────────────────────────────────────────
+   The twin is the correlated model the six BOMs are projected from. These calls
+   read the latest stored snapshot: placement, completeness, one asset's
+   investigation, search, blast radius, and simulation.
+
+   Two contract details the UI must respect:
+   * `completeness` measures how completely the estate is DESCRIBED — never
+     crypto readiness — and an unmeasured dimension arrives with percent: null;
+   * `impact`/`simulate` answer NO_MATCH rather than an empty result, because
+     "nothing matched" and "nothing is affected" are different claims. */
+
+export interface EstateTwinDimension {
+  dimension: string; numerator: number; denominator: number;
+  percent: number | null; state: string; meaning: string; reason?: string | null;
+}
+
+export interface EstateTwinCompleteness {
+  schema: string; projection_id: string;
+  dimensions: EstateTwinDimension[];
+  visibility: EstateTwinDimension[];
+  measured: number;
+  unmeasured: Array<{ dimension: string; state: string; reason?: string | null }>;
+  overall_percent: number | null; overall_state: string; overall_label: string;
+  is_posture_score: boolean; meaning: string;
+  why_not_100: Array<{ reason: string; count: number; next_action: string }>;
+}
+
+export interface EstateTwinPlacement {
+  environments: Array<{
+    name: string; assets: number; by_type: Record<string, number>;
+    business_systems: string[]; locations: Array<{ name: string; assets: number }>;
+  }>;
+  unplaced_count: number;
+  business_systems: string[];
+}
+
+export interface EstateTwinOverview {
+  model: string; projection_id: string; estate: string | null;
+  summary: Record<string, unknown>;
+  placement: EstateTwinPlacement;
+  completeness: EstateTwinCompleteness;
+  note: string;
+}
+
+export interface EstateTwinSearchResult {
+  query: string; status: string;
+  assets: Array<{ asset_id: string; name: string; type: string; environment?: string | null; owner?: string | null }>;
+  artifacts: Array<Record<string, unknown>>;
+  by_asset_type: Record<string, number>;
+  by_usage_state: Record<string, number>;
+  counts: { assets: number; artifacts: number };
+  truncated: boolean;
+  note: string;
+}
+
+export interface EstateTwinImpact {
+  status: string; selector: Record<string, unknown>; detail?: string;
+  counts?: { seed?: number; direct?: number; transitive?: number; total?: number; business_systems?: number };
+  by_type?: Record<string, number>;
+  direct?: Array<Record<string, unknown>>;
+  transitive?: Array<Record<string, unknown>>;
+  paths?: Array<{ asset_id: string; path: Array<{ asset_id: string; name: string; type: string; via: unknown }> }>;
+  blockers?: Array<Record<string, unknown>>;
+  unknown?: Record<string, unknown>;
+  note?: string;
+}
+
+export interface EstateTwinSimulation {
+  status: string; kind?: string; detail?: string;
+  simulation_id?: string; base_projection_id?: string; simulated_projection_id?: string;
+  live_state_modified?: boolean; live_projection_unchanged?: boolean;
+  matched_evidence?: number;
+  affected_assets?: Array<{ asset_id: string; name: string; type: string }>;
+  impact?: { counts?: Record<string, number>; by_type?: Record<string, number> };
+  bom_diff?: Record<string, { counts: Record<string, number> }>;
+  bom_changes?: boolean;
+  blockers?: Array<Record<string, unknown>>;
+  unknown?: Record<string, unknown>;
+  note?: string;
+}
+
+export const apiEstateTwin = (): Promise<ApiResult<EstateTwinOverview>> =>
+  _rsGet<EstateTwinOverview>("/api/v1/estate/evidence/twin");
+
+export const apiEstateTwinSearch = (q: string): Promise<ApiResult<EstateTwinSearchResult>> =>
+  _rsGet<EstateTwinSearchResult>(`/api/v1/estate/evidence/twin/search?q=${encodeURIComponent(q)}`);
+
+export const apiEstateTwinImpact = (selector: Record<string, unknown>): Promise<ApiResult<EstateTwinImpact>> =>
+  _rsPost<EstateTwinImpact>("/api/v1/estate/evidence/twin/impact", selector);
+
+export const apiEstateTwinSimulate = (scenario: Record<string, unknown>): Promise<ApiResult<EstateTwinSimulation>> =>
+  _rsPost<EstateTwinSimulation>("/api/v1/estate/evidence/twin/simulate", scenario);
