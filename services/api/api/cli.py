@@ -39,6 +39,15 @@ EXIT_REFUSED = 3
 DEFAULT_PLANES = None  # every plane
 
 
+REMOTE_SCAN_FLAGS = ("server", "system", "target", "dry_run", "manifest", "wait",
+                     "remote_static", "remote_runtime", "remote_network")
+
+
+def _remote_scan_requested(args: argparse.Namespace) -> bool:
+    """Remote mode is explicit: any control-plane switch selects it, silence does not."""
+    return any(getattr(args, flag, None) for flag in REMOTE_SCAN_FLAGS)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cryptoscan",
@@ -70,6 +79,32 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="exit 0 even when coverage is incomplete (the incompleteness is still printed and stored)",
     )
+    # Remote mode: the CLI becomes a control-plane client and collects nothing itself.
+    # Any of these switches selects it, so an operator cannot believe they scanned
+    # locally when they actually submitted work to the control plane (or vice versa).
+    scan.add_argument("--server", default=None,
+                      help="control-plane base URL; selects remote mode")
+    scan.add_argument("--system", default=None, help="remote: trigger a scan for one system")
+    scan.add_argument("--target", default=None, help="remote: submit a collection job for a target")
+    scan.add_argument("--target-revision", dest="target_revision", type=int, default=None,
+                      help="remote: the target revision the operator read (required with --target)")
+    scan.add_argument("--static", dest="remote_static", action="store_true",
+                      help="remote: only the static plane (recorded in the request, not assumed)")
+    scan.add_argument("--runtime", dest="remote_runtime", action="store_true",
+                      help="remote: only the runtime plane")
+    scan.add_argument("--network", dest="remote_network", action="store_true",
+                      help="remote: only the network plane")
+    scan.add_argument("--dry-run", dest="dry_run", action="store_true",
+                      help="remote: print the platform's collection plan and collect nothing")
+    scan.add_argument("--manifest", default=None,
+                      help="remote: read the scan definition (scope, planes) from a JSON/YAML manifest")
+    scan.add_argument("--wait", action="store_true", help="remote: follow the job until it finishes")
+    scan.add_argument("--token", default=None, help="remote: session token (default: stored)")
+    scan.add_argument("--api-key", dest="api_key", default=None, help="remote: machine credential")
+    scan.add_argument("--ca", default=None, help="remote: CA bundle")
+    scan.add_argument("--client-cert", dest="client_cert", default=None, help="remote: mTLS certificate")
+    scan.add_argument("--client-key", dest="client_key", default=None, help="remote: mTLS key")
+    scan.add_argument("--insecure", action="store_true", help="remote: skip TLS verification (lab only)")
 
     collect = sub.add_parser(
         "collect",
@@ -332,6 +367,8 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_sims.add_argument("--limit", type=int, default=20)
     twin_sims.add_argument("--json", action="store_true")
 
+    _register_remote_commands(sub, twin_sub)
+
     boms = sub.add_parser("boms", help="print the six BOMs of the latest stored run")
     boms.add_argument("--tenant", default=None)
     boms.add_argument("--bom", default=None, help="print one BOM (SBOM|CBOM|HBOM|NBOM|VBOM|TECHBOM)")
@@ -426,6 +463,10 @@ def _print_verdict(report: dict[str, Any], allow_partial: bool) -> int:
 
 
 def _cmd_scan(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
+    if _remote_scan_requested(args):
+        from api import cli_remote
+
+        return cli_remote.scan_remote(args, session_factory)
     from api import estate_discovery
     from db.tenancy import tenant_scope
 
@@ -792,6 +833,10 @@ def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | No
 
 def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
     """Graph-store load, simulation and simulation history (spec 94 §17, §20)."""
+    if getattr(args, "twin_command", None) in REMOTE_TWIN_COMMANDS:
+        from api import cli_remote
+
+        return cli_remote.twin_remote(args, session_factory)
     from api import (
         estate_catalog,
         estate_change_feed,
@@ -1520,6 +1565,13 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
             close()
 
 
+def _register_remote_commands(sub, twin_sub) -> None:
+    """Attach the control-plane commands (``api/cli_remote.py``) to this parser."""
+    from api import cli_remote
+
+    cli_remote.register_remote_commands(sub, twin_sub)
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int]] = {
     "schedule": _cmd_schedule,
     "tick": _cmd_tick,
@@ -1530,6 +1582,16 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int
     "boms": _cmd_boms,
     "twin": _cmd_twin,
 }
+
+# The CLI is two tools in one entry point: an in-process operator (the database is local)
+# and a control-plane client (the database is the bank's). Keeping the handlers in separate
+# modules makes that boundary visible; merging them here keeps one command name for the
+# operator who does not care which mode they are in.
+from api import cli_remote as _cli_remote  # noqa: E402  (after COMMANDS, to avoid a cycle)
+
+COMMANDS.update(_cli_remote.COMMANDS)
+
+REMOTE_TWIN_COMMANDS = frozenset({"status", "snapshot", "diff"})
 
 
 def main(argv: Sequence[str] | None = None, session_factory: Callable[[], Any] | None = None) -> int:

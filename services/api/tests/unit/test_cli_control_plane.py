@@ -1,0 +1,524 @@
+"""``cryptoscan`` as a control-plane client — the CLI must not scan, guess or lie.
+
+Four properties are under test, and they are the product's, not the code's:
+
+* **the CLI never collects.** ``scan --dry-run`` fetches the platform's plan and issues no
+  other request; ``scan --target`` refuses before submitting when it cannot state the
+  target revision; every submission is a POST to a named endpoint, and the output says so;
+* **a missing capability is a refusal, not an invention.** ``evidence show``, ``evidence
+  verify``, ``scope diff`` and ``explain finding`` name the closest endpoints that exist
+  and exit 3, because inventing a route or an answer is the failure this product exists to
+  avoid;
+* **failure is not success.** A 401 exits 1 with the login hint, a 5xx exits 2 (incomplete)
+  and says not to read it as an empty estate;
+* **a probe with no verdict is NOT_OBSERVED.** ``doctor`` must not turn a 200 with no
+  ``status`` field into a green tick.
+"""
+
+from __future__ import annotations
+
+import json
+import urllib.parse
+from pathlib import Path
+
+import pytest
+
+from api import cli_remote
+from api.cli import main
+
+BASE = "https://control-plane.bank.internal"
+
+
+class FakeControlPlane:
+    """A transport that answers from a path→payload map and records every request."""
+
+    def __init__(self, routes: dict[tuple[str, str], tuple[int, object]] | None = None) -> None:
+        self.routes = routes or {}
+        self.calls: list[tuple[str, str, dict[str, str], bytes | None]] = []
+
+    def __call__(self, method, url, headers, body, context, timeout):  # noqa: ANN001
+        parsed = urllib.parse.urlparse(url)
+        path = parsed.path
+        self.calls.append((method, path + (f"?{parsed.query}" if parsed.query else ""), dict(headers), body))
+        for (want_method, want_path), (status, payload) in self.routes.items():
+            if method == want_method and path == want_path:
+                data = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+                return cli_remote.Response(status, {"content-type": "application/json"}, data)
+        return cli_remote.Response(404, {}, json.dumps({"detail": "no such route in this fake"}).encode())
+
+    @property
+    def paths(self) -> list[str]:
+        return [call[1] for call in self.calls]
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    """An isolated config file and server, so no test can touch ~/.config or a socket."""
+    config = tmp_path / "config.json"
+    monkeypatch.setattr(cli_remote, "DEFAULT_CONFIG_PATH", config)
+    monkeypatch.setenv("CRYPTOSCAN_SERVER", BASE)
+    monkeypatch.setenv("CRYPTOSCAN_TOKEN", "session-token")
+    monkeypatch.delenv("CRYPTOSCAN_API_KEY", raising=False)
+    monkeypatch.delenv("CRYPTOSCAN_PASSWORD", raising=False)
+    return {"config": config, "tmp": tmp_path}
+
+
+def run(monkeypatch, transport: FakeControlPlane, *argv: str) -> int:
+    monkeypatch.setattr(cli_remote, "TRANSPORT", transport)
+    return main(list(argv))
+
+
+# --- refusals before any request -------------------------------------------------------
+
+
+def test_an_unconfigured_client_refuses_before_opening_a_connection(capsys, monkeypatch, env):
+    monkeypatch.delenv("CRYPTOSCAN_SERVER")
+    monkeypatch.delenv("CRYPTOSCAN_TOKEN")
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "status") == 3
+    assert transport.calls == [], "the CLI probed a server it had no address for"
+    err = capsys.readouterr().err
+    assert "REFUSED" in err and "no server configured" in err
+    assert "cryptoscan login" in err
+
+
+def test_status_without_credentials_names_the_credential_problem(capsys, monkeypatch, env):
+    monkeypatch.delenv("CRYPTOSCAN_TOKEN")
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "status") == 3
+    assert transport.calls == []
+    assert "no credential configured" in capsys.readouterr().err
+
+
+# --- status / doctor -------------------------------------------------------------------
+
+
+def test_status_reads_three_named_endpoints_and_prints_identity(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/healthz"): (200, {"status": "ok"}),
+        ("GET", "/api/v1/readiness/summary"): (200, {"status": "READY"}),
+        ("GET", "/api/v1/auth/me"): (200, {"username": "ops.bank", "roles": ["auditor"], "tenant_id": "a"}),
+    })
+    assert run(monkeypatch, transport, "status") == 0
+    out = capsys.readouterr().out
+    assert "ops.bank" in out and "auditor" in out
+    assert "source: GET /api/v1/healthz, /readiness/summary, /auth/me" in out
+    assert transport.paths == ["/api/v1/healthz", "/api/v1/readiness/summary", "/api/v1/auth/me"]
+
+
+def test_doctor_is_ready_only_when_every_probe_answers(capsys, monkeypatch, env):
+    routes = {("GET", path): (200, {"status": "ok"}) for _, path in cli_remote.CHECKS}
+    routes[("GET", "/api/v1/auth/me")] = (200, {"username": "ops.bank"})
+    assert run(monkeypatch, FakeControlPlane(routes), "doctor") == 0
+    out = capsys.readouterr().out
+    assert "Result: READY" in out
+    assert "does not mean a scan has run" in out
+
+
+def test_doctor_calls_a_silent_probe_not_observed_instead_of_a_pass(capsys, monkeypatch, env):
+    routes = {("GET", path): (200, {"status": "ok"}) for _, path in cli_remote.CHECKS}
+    routes[("GET", "/api/v1/auth/me")] = (200, {"username": "ops.bank"})
+    routes[("GET", "/api/v1/graph/health")] = (200, {"detail": "no verdict here"})
+    assert run(monkeypatch, FakeControlPlane(routes), "doctor") == 0
+    out = capsys.readouterr().out
+    assert "NOT_OBSERVED" in out
+    assert "Result: READY WITH WARNINGS" in out
+
+
+def test_doctor_is_not_ready_when_a_dependency_fails(capsys, monkeypatch, env):
+    routes = {("GET", path): (200, {"status": "ok"}) for _, path in cli_remote.CHECKS}
+    routes[("GET", "/api/v1/auth/me")] = (200, {"username": "ops.bank"})
+    routes[("GET", "/api/v1/healthz/dependencies")] = (503, {"detail": "database unreachable"})
+    assert run(monkeypatch, FakeControlPlane(routes), "doctor") == 2
+    out = capsys.readouterr().out
+    assert "Result: NOT READY" in out
+
+
+def test_doctor_refuses_when_there_is_no_client(capsys, monkeypatch, env):
+    monkeypatch.delenv("CRYPTOSCAN_SERVER")
+    assert run(monkeypatch, FakeControlPlane(), "doctor") == 3
+    assert "client configuration" in capsys.readouterr().out
+
+
+# --- login / logout --------------------------------------------------------------------
+
+
+def test_login_stores_a_private_session_and_never_prints_it(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/auth/login"): (200, {
+            "message": "ok", "username": "ops.bank", "roles": ["auditor"],
+            "token": "session-abc", "session_expires_at": "2026-10-28T12:00:00Z",
+        }),
+    })
+    code = run(monkeypatch, transport, "login", "--username", "ops.bank",
+               "--password", "correct-horse")
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "session-abc" not in out, "the CLI echoed the session token"
+    saved = json.loads(Path(env["config"]).read_text())
+    assert saved["token"] == "session-abc"
+    assert (Path(env["config"]).stat().st_mode & 0o777) == 0o600
+    assert "session token, not a permanent key" in out
+    assert json.loads(transport.calls[0][3]) == {"username": "ops.bank", "password": "correct-horse"}
+
+
+def test_login_without_the_second_factor_stops_instead_of_saving_a_challenge(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/auth/login"): (200, {
+            "message": "mfa required", "username": "ops.bank", "roles": [],
+            "token": "", "session_expires_at": "2026-10-28T12:00:00Z",
+            "mfa_required": True, "mfa_token": "challenge-1",
+        }),
+    })
+    code = run(monkeypatch, transport, "login", "--username", "ops.bank", "--password", "pw")
+    assert code == 3
+    assert "--mfa-code" in capsys.readouterr().err
+    assert not Path(env["config"]).exists(), "a challenge token was stored as if it were a session"
+
+
+def test_login_with_the_second_factor_completes_the_session(monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/auth/login"): (200, {
+            "message": "mfa required", "username": "ops.bank", "roles": [],
+            "token": "", "session_expires_at": "2026-10-28T12:00:00Z",
+            "mfa_required": True, "mfa_token": "challenge-1",
+        }),
+        ("POST", "/api/v1/auth/login/mfa"): (200, {
+            "message": "ok", "username": "ops.bank", "roles": ["auditor"],
+            "token": "session-abc", "session_expires_at": "2026-10-28T12:00:00Z",
+        }),
+    })
+    assert run(monkeypatch, transport, "login", "--username", "ops.bank", "--password", "pw",
+               "--mfa-code", "123456") == 0
+    assert json.loads(Path(env["config"]).read_text())["token"] == "session-abc"
+
+
+def test_logout_revokes_then_clears_the_stored_token(capsys, monkeypatch, env):
+    cli_remote.save_config(cli_remote.Config(server=BASE, token="session-abc"))
+    transport = FakeControlPlane({("POST", "/api/v1/auth/logout"): (200, {"message": "bye"})})
+    assert run(monkeypatch, transport, "logout") == 0
+    assert cli_remote.load_config().token is None
+    assert "revoked_by_server" in capsys.readouterr().out
+
+
+# --- targets ---------------------------------------------------------------------------
+
+
+def test_target_register_refuses_without_the_fields_that_are_an_authorisation(capsys, monkeypatch, env):
+    transport = FakeControlPlane()
+    code = run(monkeypatch, transport, "target", "register", "--target-key", "t1",
+               "--system-id", "payments")
+    assert code == 3
+    err = capsys.readouterr().err
+    assert "explicit fields" in err
+    assert "no default for these" in err
+    assert transport.calls == [], "an incomplete authorisation still reached the control plane"
+
+
+def test_target_register_posts_exactly_the_authorisation_the_operator_wrote(monkeypatch, env):
+    transport = FakeControlPlane({("POST", "/api/v1/collection/targets"): (201, {"target_key": "pay-01"})})
+    code = run(monkeypatch, transport, "target", "register",
+               "--target-key", "pay-01", "--system-id", "payments", "--owner", "crypto-team",
+               "--environment", "production", "--collection-method", "ssh-readonly",
+               "--address", "10.0.0.5", "--not-before", "2026-10-28T00:00:00Z",
+               "--allowed-operation", "READ_PACKAGES", "--allowed-operation", "READ_TLS_CONFIG")
+    assert code == 0
+    body = json.loads(transport.calls[0][3])
+    assert body["allowed_operations"] == ["READ_PACKAGES", "READ_TLS_CONFIG"]
+    assert body["not_before"] == "2026-10-28T00:00:00Z"
+    assert "credential_ref" not in body
+    assert transport.paths == ["/api/v1/collection/targets"]
+
+
+def test_target_list_renders_the_listing_wrapper_it_was_given(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/collection/targets"): (200, {"items": [
+            {"target_key": "pay-01", "system_id": "payments", "environment": "production",
+             "collection_method": "ssh-readonly", "read_only": True, "status": "AUTHORIZED"},
+        ]}),
+    })
+    assert run(monkeypatch, transport, "target", "list") == 0
+    out = capsys.readouterr().out
+    assert "pay-01" in out and "AUTHORIZED" in out and "YES" in out
+
+
+# --- scan: the CLI must not collect ----------------------------------------------------
+
+
+def test_dry_run_reads_the_plan_and_issues_nothing_else(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/plan"): (200, {
+            "estate": "default",
+            "planes": [{"plane": "STATIC", "status": "READY"}, {"plane": "HSM", "status": "NOT_CONFIGURED"}],
+        }),
+    })
+    assert run(monkeypatch, transport, "scan", "--dry-run") == 0
+    out = capsys.readouterr().out
+    assert transport.calls[0][0] == "GET"
+    assert all(method == "GET" for method, *_ in transport.calls), "a dry run issued a write"
+    assert "DRY RUN — nothing was collected" in out
+    assert "HSM" in out
+
+
+def test_scan_target_without_a_revision_refuses_before_submitting(capsys, monkeypatch, env):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "scan", "--target", "pay-01") == 3
+    assert transport.calls == []
+    assert "expected target revision" in capsys.readouterr().err
+
+
+def test_scan_system_submits_one_job_and_names_the_endpoint(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/systems/payments/scan"): (202, {"scan_id": "scan-77", "status": "QUEUED"}),
+    })
+    assert run(monkeypatch, transport, "scan", "--system", "payments") == 0
+    out = capsys.readouterr().out
+    assert "scan-77" in out
+    assert "source: POST /api/v1/systems/payments/scan" in out
+    assert "collectors run inside the bank" in out
+
+
+def test_scan_manifest_reports_fields_the_api_cannot_honour(capsys, monkeypatch, env):
+    manifest = Path(env["tmp"]) / "payments.json"
+    manifest.write_text(json.dumps({
+        "scope": {"name": "payments-production"},
+        "collectors": {"static": True, "runtime": True},
+        "policy": {"profile": "banking"},
+    }))
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/estate/evidence/scan"): (202, {"job_id": "job-1"}),
+    })
+    assert run(monkeypatch, transport, "scan", "--manifest", str(manifest)) == 0
+    err = capsys.readouterr().err
+    assert "policy" in err and "NOT sent" in err
+    body = json.loads(transport.calls[0][3])
+    assert body["scope"] == "payments-production"
+    assert body["planes"] == ["STATIC", "RUNTIME"]
+
+
+def test_scan_remote_mode_is_selected_by_flags_not_by_silence(monkeypatch, env):
+    """Without a control-plane flag the command keeps its in-process behaviour."""
+    from api import cli
+
+    args = cli._build_parser().parse_args(["scan"])
+    assert cli._remote_scan_requested(args) is False
+    args = cli._build_parser().parse_args(["scan", "--dry-run"])
+    assert cli._remote_scan_requested(args) is True
+
+
+# --- evidence / bom / pqc / scope / explain --------------------------------------------
+
+
+@pytest.mark.parametrize("argv,reason", [
+    (("evidence", "show", "ev-1"), "no per-evidence read endpoint"),
+    (("evidence", "verify", "ev-1"), "no per-evidence verification endpoint"),
+    (("scope", "diff"), "no scope-diff endpoint"),
+    (("explain", "finding", "FIND-1"), "cannot be explained by id"),
+])
+def test_capabilities_that_do_not_exist_are_refused_with_the_closest_route(
+        capsys, monkeypatch, env, argv, reason):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, *argv) == 3
+    err = capsys.readouterr().err
+    assert reason in err
+    assert "closest existing endpoint" in err
+    assert transport.calls == [], "a refused command still called the control plane"
+
+
+def test_bom_rejects_an_unknown_projection_before_asking(monkeypatch, env):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "bom", "XBOM") == 3
+    assert transport.calls == []
+
+
+def test_bom_reads_one_projection_and_states_what_empty_means(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/boms"): (200, {"run_id": 12, "CBOM": {"schema": "x", "items": []}}),
+    })
+    assert run(monkeypatch, transport, "bom", "cbom") == 0
+    out = capsys.readouterr().out
+    assert "GET /api/v1/estate/evidence/boms?bom=CBOM" in out.replace("source: ", "")
+    assert "nothing was observed" in out
+
+
+def test_explain_asset_asks_with_the_fact_type_the_route_requires(monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/why/payments-api"): (200, {
+            "subject": "payments-api", "evidence": ["EVID-1"], "reason": "TLS 1.2 observed",
+            "policy": "BANK-TLS-003", "confidence": "HIGH",
+        }),
+    })
+    assert run(monkeypatch, transport, "explain", "asset", "payments-api",
+               "--fact-type", "CRYPTO_ALGORITHM") == 0
+    path = transport.paths[0]
+    assert path.startswith("/api/v1/estate/evidence/why/payments-api")
+    assert "fact_type=CRYPTO_ALGORITHM" in path
+
+
+def test_pqc_blockers_reports_the_missing_field_instead_of_failing_silently(capsys, monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/pqc"): (200, {"run_id": 3, "layers": {"TLS": {"classical": 2}}}),
+    })
+    assert run(monkeypatch, transport, "pqc", "blockers") == 2
+    out = capsys.readouterr()
+    assert "no `blockers` field" in out.err
+    assert "TLS" in out.out
+
+
+# --- jobs ------------------------------------------------------------------------------
+
+
+def test_jobs_cancel_uses_the_collection_cancel_endpoint(monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/collection/jobs/job-9/cancel"): (200, {"status": "CANCELLED"}),
+    })
+    assert run(monkeypatch, transport, "jobs", "cancel", "job-9") == 0
+    assert transport.paths == ["/api/v1/collection/jobs/job-9/cancel"]
+
+
+def test_jobs_watch_stops_at_a_terminal_state_and_reports_success(capsys, monkeypatch, env):
+    transport = FakeControlPlane({("GET", "/api/v1/jobs/job-9"): (200, {"status": "COMPLETED"})})
+    monkeypatch.setattr(cli_remote.time, "sleep", lambda _s: None)
+    assert run(monkeypatch, transport, "jobs", "watch", "job-9", "--interval", "0") == 0
+    assert "COMPLETED" in capsys.readouterr().out
+
+
+def test_jobs_watch_does_not_call_a_timeout_a_success(capsys, monkeypatch, env):
+    transport = FakeControlPlane({("GET", "/api/v1/jobs/job-9"): (200, {"status": "RUNNING"})})
+    monkeypatch.setattr(cli_remote.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(cli_remote.time, "monotonic", _monotonic_after(0.0, 5.0))
+    assert run(monkeypatch, transport, "jobs", "watch", "job-9", "--timeout", "1") == 2
+    assert "not treating that as success" in capsys.readouterr().err
+
+
+def _monotonic_after(*values: float):
+    """A monotonic clock that advances through ``values`` then holds the last one."""
+    state = {"i": 0}
+
+    def clock() -> float:
+        index = min(state["i"], len(values) - 1)
+        state["i"] += 1
+        return values[index]
+
+    return clock
+
+
+# --- failure is not success ------------------------------------------------------------
+
+
+def test_a_401_exits_nonzero_with_the_login_hint(capsys, monkeypatch, env):
+    transport = FakeControlPlane({("GET", "/api/v1/jobs"): (401, {"detail": "Invalid token"})})
+    assert run(monkeypatch, transport, "jobs", "list") == 1
+    err = capsys.readouterr().err
+    assert "HTTP 401" in err and "cryptoscan login" in err
+
+
+def test_a_500_is_incomplete_not_an_empty_estate(capsys, monkeypatch, env):
+    transport = FakeControlPlane({("GET", "/api/v1/estate/evidence/pqc"): (500, {"detail": "boom"})})
+    assert run(monkeypatch, transport, "pqc", "status") == 2
+    err = capsys.readouterr().err
+    assert "do not treat it as an empty result" in err
+
+
+# --- report and installation integrity --------------------------------------------------
+
+
+def test_report_streams_the_body_to_disk_and_reports_its_hash(capsys, monkeypatch, env):
+    pdf = b"%PDF-1.4 fake"
+    transport = FakeControlPlane({("GET", "/api/v1/scans/scan-77/report.pdf"): (200, pdf)})
+    out_path = Path(env["tmp"]) / "report.pdf"
+    assert run(monkeypatch, transport, "report", "generate", "--scan", "scan-77",
+               "--format", "pdf", "--output", str(out_path)) == 0
+    assert out_path.read_bytes() == pdf
+    out = capsys.readouterr().out
+    assert "sha256" in out
+    assert "does not check report contents" in out
+
+
+def test_verify_installation_reports_mismatch_and_unsigned_manifest(capsys, monkeypatch, env):
+    root = Path(env["tmp"]) / "install"
+    root.mkdir()
+    (root / "cli.py").write_text("print('hi')\n")
+    manifest = Path(env["tmp"]) / "manifest.json"
+    manifest.write_text(json.dumps({"files": {"cli.py": "0" * 64}}))
+    assert run(monkeypatch, FakeControlPlane(), "verify-installation",
+               "--manifest", str(manifest), "--root", str(root)) == 2
+    out = capsys.readouterr().out
+    assert "mismatch" in out
+    assert "MANIFEST_UNSIGNED" in out
+    assert "It does not verify that the manifest itself is authentic" in out
+
+
+def test_verify_installation_matches_when_the_hashes_do(capsys, monkeypatch, env):
+    import hashlib
+
+    root = Path(env["tmp"]) / "install2"
+    root.mkdir()
+    payload = b"print('hi')\n"
+    (root / "cli.py").write_bytes(payload)
+    manifest = Path(env["tmp"]) / "manifest2.json"
+    manifest.write_text(json.dumps({"files": {"cli.py": hashlib.sha256(payload).hexdigest()}}))
+    assert run(monkeypatch, FakeControlPlane(), "verify-installation",
+               "--manifest", str(manifest), "--root", str(root)) == 0
+    assert "MATCH" in capsys.readouterr().out
+
+
+def test_verify_installation_without_a_manifest_refuses(monkeypatch, env):
+    assert run(monkeypatch, FakeControlPlane(), "verify-installation",
+               "--manifest", str(Path(env["tmp"]) / "absent.json")) == 3
+
+
+# --- config hygiene --------------------------------------------------------------------
+
+
+def test_config_permissions_are_checked_not_assumed(monkeypatch, env):
+    path = cli_remote.save_config(cli_remote.Config(server=BASE, token="t"))
+    assert cli_remote.config_permissions(path) == "PRIVATE"
+    path.chmod(0o644)
+    assert cli_remote.config_permissions(path).startswith("TOO_OPEN")
+
+
+def test_both_credentials_are_sent_when_both_are_configured(monkeypatch, env):
+    monkeypatch.delenv("CRYPTOSCAN_TOKEN")
+    cli_remote.save_config(cli_remote.Config(server=BASE, token="session", api_key="key-1"))
+    transport = FakeControlPlane({("GET", "/api/v1/jobs"): (200, {"items": []})})
+    assert run(monkeypatch, transport, "jobs", "list") == 0
+    headers = transport.calls[0][2]
+    assert headers["Authorization"] == "Bearer session"
+    assert headers["x-api-key"] == "key-1"
+
+
+# --- wiring: one entry point, two modes ------------------------------------------------
+
+
+def test_the_entry_point_dispatches_remote_commands(capsys, monkeypatch, env):
+    transport = FakeControlPlane({("GET", "/health"): (200, {"version": "3.4.1", "status": "ok"})})
+    assert run(monkeypatch, transport, "version") == 0
+    out = capsys.readouterr().out
+    assert "3.4.1" in out
+
+
+def test_twin_status_is_remote_and_never_opens_the_local_database(monkeypatch, env):
+    """``twin status`` must not silently fall back to whatever database this host has."""
+    transport = FakeControlPlane({("GET", "/api/v1/estate/evidence/twin"): (200, {"assets": 3})})
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("the remote twin command opened a local database session")
+
+    monkeypatch.setattr(cli_remote, "TRANSPORT", transport)
+    from api import cli
+
+    monkeypatch.setattr(cli, "_session", forbidden)
+    assert cli.main(["twin", "status"]) == 0
+    assert transport.paths == ["/api/v1/estate/evidence/twin"]
+
+
+def test_every_remote_command_is_registered_once(monkeypatch):
+    from api import cli
+
+    for name in ("version", "status", "doctor", "login", "logout", "target", "jobs",
+                 "evidence", "bom", "pqc", "scope", "explain", "report", "verify-installation"):
+        assert name in cli.COMMANDS, f"{name} is not wired into the entry point"
+    # the in-process commands survive the merge
+    for name in ("scan", "collect", "coverage", "boms", "twin", "schedule", "tick", "serve"):
+        assert name in cli.COMMANDS
