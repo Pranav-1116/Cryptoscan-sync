@@ -86,6 +86,35 @@ queue or rate-limit consumer. Review each consumer before starting. Follow the
 including resubmission of unpinned legacy work. Postgres/Redis/Neo4j are not
 published on the host by the production overlay.
 
+## Running the estate continuously (24/7)
+
+A schedule row is not a scheduler: without something calling it, the estate is
+last week's coverage with no error anywhere. Start the loop and check it:
+
+```bash
+cryptoscan schedule add nightly --every 6h        # what to re-scan, and how often
+cryptoscan serve                                  # the daemon (SIGTERM = clean stop)
+cryptoscan serve --once                           # one cycle, for cron/systemd-timer installs
+curl -s localhost:8000/api/v1/estate/evidence/realtime | jq '{verdict, daemon: .daemon.liveness}'
+```
+
+`cryptoscan serve` claims due schedules with a database lease (so several
+replicas, or a daemon plus a manual `tick`, never double-run), publishes
+`estate.run.*` / `estate.change.detected` on the SSE stream, and compares every
+run with the previous one. Down-time produces one catch-up run, not a queue; a
+failed run is recorded and does not stop the loop.
+
+Two deployment options are checked in: the `estate-daemon` Compose service, and
+`k8s/app/31-estate-daemon-deployment.yaml` (two replicas, liveness probe reading
+the heartbeat). For a single process, `ESTATE_REALTIME=1` runs the same loop
+inside the API.
+
+The realtime endpoint is the answer to "is it running, and is anything being
+scanned": `LIVE`/`STALE`/`STOPPED`/`NEVER_STARTED` for the daemon, plus
+`IDLE_NO_SCHEDULES` (alive, nothing scheduled — nothing is being re-scanned) kept
+distinct from `WAITING` and `NOT_RUNNING`. A live API process is never treated as
+proof of coverage.
+
 ## Development credentials
 
 | Item | Value |
