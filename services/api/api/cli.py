@@ -609,17 +609,20 @@ def _collect_boundary_notice() -> None:
 
 
 def _cmd_collect(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
-    if getattr(args, "submit", False):
-        from api import cli_remote
-
-        return cli_remote.collect_remote(args, session_factory)
-    _collect_boundary_notice()
     """Collect evidence (bounded by the approved scope), then project the estate.
 
     Both halves run in one process against one database, which is the point: an
     operator does not have to remember that observation and projection are two
     steps, and the estate job reads the evidence this run just stored.
+
+    ``--submit`` is the bank-deployment shape: the control plane collects, this process
+    only asks. Whichever path runs, the boundary is printed rather than assumed.
     """
+    if getattr(args, "submit", False):
+        from api import cli_remote
+
+        return cli_remote.collect_remote(args, session_factory)
+    _collect_boundary_notice()
     from api import estate_discovery
     from api.network_collect import CollectRefused, collect_network
     from db.tenancy import tenant_scope

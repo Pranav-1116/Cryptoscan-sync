@@ -311,7 +311,6 @@ def test_scan_remote_mode_is_selected_by_flags_not_by_silence(monkeypatch, env):
 
 @pytest.mark.parametrize("argv,reason", [
     (("scope", "diff"), "no scope-diff endpoint"),
-    (("explain", "finding", "FIND-1"), "cannot be explained by id"),
 ])
 def test_capabilities_that_do_not_exist_are_refused_with_the_closest_route(
         capsys, monkeypatch, env, argv, reason):
@@ -946,3 +945,103 @@ def test_a_bundle_signed_with_another_key_is_a_mismatch(tmp_path, monkeypatch, e
     assert run(monkeypatch, transport, "bundle", "verify", str(out),
                "--public-key", other["public_key"]) == 1
     assert "SIGNATURE_KEY_MISMATCH" in capsys.readouterr().out
+
+
+# --- explain finding: two surfaces, and the gap between them ----------------------------
+
+
+def _finding_payload():
+    return {
+        "evidence_id": "9d1f-finding", "scan_id": "scan-4",
+        "algorithm": "RSA", "key_size": 2048, "mode": "CBC", "padding": "PKCS1",
+        "confidence": "HIGH", "is_hardcoded_key": False,
+        "file_path": "src/payments/Crypto.java", "line_number": 88,
+        "compliance_status": "NON_COMPLIANT",
+        "content_hash": "a" * 64, "chain_hash": "b" * 64,
+    }
+
+
+def test_explain_finding_reads_the_record_and_its_chain_check(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/findings/9d1f-finding"): (200, _finding_payload()),
+        ("GET", "/api/v1/findings/9d1f-finding/verify"): (200, {"verdict": "INTACT"}),
+    })
+
+    assert run(monkeypatch, transport, "explain", "finding", "9d1f-finding") == 0
+
+    out = capsys.readouterr().out
+    assert "src/payments/Crypto.java:88" in out
+    assert "chain check   INTACT" in out
+    assert "NOT_JOINABLE" in out, "a finding has no asset id; the twin cannot be joined by guessing"
+    assert "source: GET /api/v1/findings/9d1f-finding" in out
+
+
+def test_explain_finding_says_so_when_the_chain_check_is_unavailable(monkeypatch, env, capsys):
+    """A 403 on /verify is not a pass, and not a crash either."""
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/findings/9d1f-finding"): (200, _finding_payload()),
+        ("GET", "/api/v1/findings/9d1f-finding/verify"): (403, {"detail": "auditor role required"}),
+    })
+
+    assert run(monkeypatch, transport, "explain", "finding", "9d1f-finding") == 0
+
+    out = capsys.readouterr().out
+    assert "chain check   UNAVAILABLE" in out
+    assert "auditor role required" in out
+
+
+def test_explain_finding_states_what_a_chain_check_does_not_prove(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/findings/9d1f-finding"): (200, _finding_payload()),
+        ("GET", "/api/v1/findings/9d1f-finding/verify"): (200, {"verdict": "INTACT"}),
+    })
+
+    run(monkeypatch, transport, "explain", "finding", "9d1f-finding")
+
+    out = capsys.readouterr().out
+    assert "not that the detection was correct" in out
+
+
+# --- ci scan: a source tree the control plane can see -----------------------------------
+
+
+def test_ci_scan_posts_the_path_and_says_where_it_was_resolved(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/devsecops/sbom/scan"): (201, {
+            "artifact_id": "sbom-7", "format": "cyclonedx",
+            "summary": {"components": 41, "crypto_relevant": 6},
+            "components": [{"name": "openssl"}]}),
+    })
+
+    assert run(monkeypatch, transport, "ci", "scan", "--path", "/srv/src/payments") == 0
+
+    body = json.loads(transport.calls[0][3])
+    assert body["kind"] == "source"
+    assert body["target"] == "/srv/src/payments"
+    assert body["format"] == "cyclonedx"
+    out = capsys.readouterr().out
+    assert "resolved on the control plane" in out
+    assert "sbom-7" in out
+    assert "not the directory you are standing in" in out
+
+
+def test_ci_scan_gate_flag_is_incomplete_rather_than_a_silent_pass(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/devsecops/sbom/scan"): (201, {"artifact_id": "sbom-7"}),
+    })
+
+    assert run(monkeypatch, transport, "ci", "scan", "--path", "/srv/src", "--gate") == 2
+    assert "needs a scan id" in capsys.readouterr().err
+
+
+def test_ci_scan_lockfile_flags_reach_the_request(monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/devsecops/sbom/scan"): (201, {"artifact_id": "sbom-7"}),
+    })
+
+    run(monkeypatch, transport, "ci", "scan", "--path", "/srv/src",
+        "--include-vendored", "--no-lockfiles")
+
+    body = json.loads(transport.calls[0][3])
+    assert body["include_vendored"] is True
+    assert body["use_lockfiles"] is False

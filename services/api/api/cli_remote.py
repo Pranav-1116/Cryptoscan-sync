@@ -1225,6 +1225,77 @@ def _cmd_scope(args: argparse.Namespace, _session: Any = None) -> int:
     return _emit(args, payload, source=client.source("GET", SCOPES[0]), render=render)
 
 
+def _explain_finding(args: argparse.Namespace, client: Client) -> int:
+    """Explain a scan finding, and say where the explanation has to stop.
+
+    A finding is a scan record: what was detected, in which file, at which line, with what
+    confidence and chain hash. Two things it is **not**:
+
+    * it is not an estate asset. The twin explains assets, and a finding carries a file
+      path, not an asset id — joining them by guessing would explain a different object, so
+      this command reports ``NOT_JOINABLE`` and names the asset route instead;
+    * it is not a verified observation. ``/findings/{id}/verify`` recomputes the record's
+      own chain commitment, which proves the row has not been altered — not that the
+      detector was right.
+
+    Both halves are read from the platform, and each prints its own source line.
+    """
+    finding_id = urllib.parse.quote(str(args.identifier))
+    finding_path = f"/api/v1/findings/{finding_id}"
+    try:
+        finding = client.get(finding_path)
+    except (Refused, ApiError) as exc:
+        return _fail("explain finding", exc)
+
+    verify: Any = None
+    verify_error: str | None = None
+    try:
+        verify = client.get(f"{finding_path}/verify")
+    except (Refused, ApiError) as exc:
+        verify_error = _reason(exc)
+
+    result = {
+        "finding": finding,
+        "chain_verification": verify,
+        "chain_verification_error": verify_error,
+        "estate_join": "NOT_JOINABLE",
+        "estate_join_reason": (
+            "a finding is a scan record (file path, line, algorithm); the twin explains "
+            "assets, and nothing in the finding names the asset id an estate answer would "
+            "need — see `cryptoscan explain asset <id> --fact-type crypto:algorithm`"
+        ),
+        "limits": [
+            "this explains the finding record and its chain commitment; it does not explain "
+            "why the estate holds the algorithm, because the two are keyed differently",
+            "a verified chain commitment proves the stored row was not altered, not that the "
+            "detection was correct",
+        ],
+    }
+
+    def render() -> None:
+        print(f"finding       {_field(finding, 'evidence_id', default=args.identifier)}")
+        print(f"scan          {_field(finding, 'scan_id', default='—')}")
+        print(f"algorithm     {_field(finding, 'algorithm', default='—')}"
+              f" {_field(finding, 'key_size', default='')}"
+              f" {_field(finding, 'mode', default='')}".rstrip())
+        print(f"location      {_field(finding, 'file_path', default='—')}"
+              f":{_field(finding, 'line_number', default='—')}")
+        print(f"confidence    {_field(finding, 'confidence', default='—')}")
+        print(f"compliance    {_field(finding, 'compliance_status', default='—')}")
+        print(f"content hash  {_field(finding, 'content_hash', default='—')}")
+        print(f"chain hash    {_field(finding, 'chain_hash', default='—')}")
+        if verify is not None:
+            print(f"chain check   {_field(verify, 'verdict', default=_field(verify, 'status', default='—'))}")
+        else:
+            print(f"chain check   UNAVAILABLE — {verify_error}")
+        print("\nestate join   NOT_JOINABLE")
+        print(f"  {result['estate_join_reason']}")
+        for limit in result["limits"]:
+            print(f"limit: {limit}")
+
+    return _emit(args, result, source=client.source("GET", finding_path), render=render)
+
+
 def _cmd_explain(args: argparse.Namespace, _session: Any = None) -> int:
     """Why did the platform say that? Every answer names the endpoint that answered."""
     client = _client(args)
@@ -1240,15 +1311,17 @@ def _cmd_explain(args: argparse.Namespace, _session: Any = None) -> int:
         elif kind == "node":
             payload = client.get("/api/v1/graph/explain", node_id=args.identifier)
             source = client.source("GET", "/api/v1/graph/explain")
+        elif kind == "finding":
+            return _explain_finding(args, client)
         else:
             return _refuse("explain", Refused(
-                "findings cannot be explained by id in this build",
-                detail="the explain routes are per asset, per system and per graph node; a finding "
-                       "id has no route — using one of them would explain a different object",
+                f"unknown subject {kind!r}",
+                detail="explain answers for an asset, a system, a graph node or a finding",
                 closest=(
                     "GET /api/v1/estate/evidence/why/{identifier}?fact_type=...",
                     "GET /api/v1/risk/systems/{system_id}/explain",
                     "GET /api/v1/graph/explain?node_id=...",
+                    "GET /api/v1/findings/{evidence_id}",
                 ),
             ))
     except (Refused, ApiError) as exc:
@@ -1313,6 +1386,53 @@ def _sha256(data: bytes) -> str:
 
 GATE = "/api/v1/scans/{scan}/gate"
 CI_GATE = "/api/v1/ci/gate"
+SBOM_SCAN = "/api/v1/devsecops/sbom/scan"
+
+
+def _ci_scan(args: argparse.Namespace, client: Client) -> int:
+    """Scan a source tree, on the control plane, and hand the result to the gate.
+
+    The honest constraint first: ``--path`` is resolved **on the control plane**, not on the
+    operator's machine. A CLI cannot ship a checkout to the server in this build, so the
+    path must be one the platform can already see — a mounted volume, a build agent's
+    workspace. Naming that here costs one line and prevents the most likely
+    misunderstanding, which is that this scanned your laptop.
+    """
+    body = {
+        "kind": "source",
+        "target": args.path,
+        "format": args.format,
+        "include_vendored": bool(getattr(args, "include_vendored", False)),
+        "use_lockfiles": not bool(getattr(args, "no_lockfiles", False)),
+    }
+    try:
+        payload = client.post(SBOM_SCAN, body)
+    except (Refused, ApiError) as exc:
+        return _fail("ci scan", exc)
+
+    def render() -> None:
+        artifact = _field(payload, "artifact_id") or _field(payload, "id")
+        print(f"path          {args.path} (resolved on the control plane)")
+        print(f"format        {_field(payload, 'format', default=args.format)}")
+        print(f"artifact      {artifact or '— (the response named no artifact)'}")
+        summary = _field(payload, "summary") or {}
+        if isinstance(summary, Mapping) and summary:
+            for key, value in sorted(summary.items()):
+                if isinstance(value, (int, float, str)):
+                    print(f"  {key:<18} {value}")
+        components = _field(payload, "components") or payload.get("packages") or []
+        if isinstance(components, list):
+            print(f"components    {len(components)}")
+        print("\nthis scanned a path the control plane can see, not the directory you are "
+              "standing in; the SBOM it produced is the artefact to keep.")
+
+    _emit(args, payload, source=client.source("POST", SBOM_SCAN, 201), render=render)
+
+    if getattr(args, "gate", False):
+        print("ci scan: --gate needs a scan id, and an SBOM scan does not produce one here; "
+              "run `cryptoscan ci gate --scan <id>` against a stored scan", file=sys.stderr)
+        return EXIT_INCOMPLETE
+    return EXIT_OK
 
 
 def _cmd_ci(args: argparse.Namespace, _session: Any = None) -> int:
@@ -1325,6 +1445,8 @@ def _cmd_ci(args: argparse.Namespace, _session: Any = None) -> int:
     """
     client = _client(args)
     action = args.ci_command
+    if action == "scan":
+        return _ci_scan(args, client)
     if action != "gate":
         return _refuse("ci", Refused(
             f"unknown ci action {action!r}",
@@ -2135,7 +2257,8 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     explain_node = explain_sub.add_parser("node", help="graph explanation for a node")
     explain_node.add_argument("identifier")
     _add_common(explain_node)
-    explain_finding = explain_sub.add_parser("finding", help="explain a finding (refuses: no such route)")
+    explain_finding = explain_sub.add_parser(
+        "finding", help="the finding record, its chain check, and where the explanation stops")
     explain_finding.add_argument("identifier")
     _add_common(explain_finding)
 
@@ -2149,6 +2272,17 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
 
     ci = sub.add_parser("ci", help="build gate: PASS / WARN / FAIL for a completed scan")
     ci_sub = ci.add_subparsers(dest="ci_command", required=True)
+    ci_scan = ci_sub.add_parser("scan", help="scan a source tree the control plane can see")
+    ci_scan.add_argument("--path", required=True,
+                         help="source tree path, resolved on the control plane (not this host)")
+    ci_scan.add_argument("--format", default="cyclonedx", choices=["cyclonedx", "spdx"])
+    ci_scan.add_argument("--include-vendored", dest="include_vendored", action="store_true")
+    ci_scan.add_argument("--no-lockfiles", dest="no_lockfiles", action="store_true",
+                         help="ignore resolved lockfiles; manifests only")
+    ci_scan.add_argument("--gate", action="store_true",
+                         help="also try to evaluate the policy gate (needs a scan id)")
+    _add_common(ci_scan)
+
     ci_gate = ci_sub.add_parser("gate", help="evaluate (and optionally record) the policy gate")
     ci_gate.add_argument("--scan", required=True)
     ci_gate.add_argument("--profile", default=None, help="standard | strict | lenient")

@@ -425,11 +425,11 @@ SBOM and reproducible-build provenance attached to the release remain roadmap.
 | `pqc impact` | **Implemented (as blast radius)** | `POST /estate/evidence/twin/impact`; refuses without a selector; exits 2 when the walk is truncated |
 | `scope show` | **Implemented** | `GET /platform/scope` |
 | `scope diff` | **Refused by design** | no scope-to-scope diff route |
-| `explain finding <id>` | **Refused by design** | explain is per asset / system / node |
+| `explain finding <id>` | **Implemented, with a stated gap** | `GET /findings/{id}` + `/verify`; the estate join is `NOT_JOINABLE` because a finding carries a file path, not an asset id |
 | `explain asset/system/node` | **Implemented** | every answer names its endpoint |
 | `verify-installation` | **Implemented** (hashes + Ed25519 signature) | `--public-key` decides whether the signature is checked at all; `MANIFEST_UNSIGNED` / `SIGNED_UNVERIFIED` / `VALID` / `INVALID` / `SIGNATURE_KEY_MISMATCH` |
 | `ci gate --scan <id>` | **Implemented** | `GET /scans/{id}/gate`, or `POST /ci/gate` with `--record`; exit 0 PASS / 2 WARN (`--fail-on warn`) / 1 FAIL; `--sarif` writes the report |
-| `ci scan` (source tree) | **Roadmap** | the gate evaluates a completed scan; there is no source-tree mode, and the CLI refuses rather than pretending `ci gate` is one |
+| `ci scan --path <dir>` | **Implemented, on the control plane** | `POST /devsecops/sbom/scan {kind: source}`; the path is resolved **on the server**, not on the operator's host, and `--gate` says a scan id is still needed |
 | `bundle export/verify/import` | **Implemented** | encrypted air-gap transfer; see §4 Component 7 |
 
 Exit codes: `0` ok · `1` error or 4xx · `2` incomplete (5xx, coverage incomplete, watch
@@ -624,10 +624,10 @@ The proposal's phases, against this repository:
 | Phase | Content | State |
 |---|---|---|
 | 1 | CLI foundation: auth, config, TLS/mTLS, API client, `doctor`, `status` | **Done** (`cli_remote.py`, commit `9031574f`) |
-| 2 | Target registry, scope, authorisation, revision, expiry, audit | **Partial** — registry/authorise/revoke and `not_before` exist; scope **revision diff** still has no route |
+| 2 | Target registry, scope, authorisation, revision, expiry, audit | **Partial** — registry/authorise/revoke and `not_before` exist; scope **revision diff** still has no route, and none is invented client-side |
 | 3 | Job engine: submit, queue, scheduler, worker, state, cancel, retry | **Partial** — submit/watch/cancel/**retry** and per-surface coverage are wired; queue inspection stays with the API |
 | 4 | Evidence engine: schema, provenance, hashing, validation, storage, coverage | **Done** (spec 93/94 work; migrations `0116`/`0117`) |
-| 5 | Collectors: Linux, Windows, network/TLS, certificates, containers, Kubernetes, SBOM, CBOM → HSM, KMS, database, cloud, PKI, runtime, vendor | **Partial** — Linux/network/TLS/Kubernetes/SBOM paths exist; the rest is roadmap |
+| 5 | Collectors: Linux, Windows, network/TLS, certificates, containers, Kubernetes, SBOM → HSM, KMS, database, cloud, PKI, runtime, vendor | **Partial** — Linux/network/TLS/Kubernetes/SBOM paths exist, and `ci scan` reaches the source-tree SBOM scan the platform already serves; Windows, database, PKI and vendor collectors are roadmap |
 | 6 | Correlation: identity resolution, relationships, crypto/dependency graph, conflicts | **Done** (`estate_graph.py`, `estate_conflicts.py`, `estate_catalog.py`) |
 | 7 | Digital Twin: canonical estate, snapshots, history, drift, blast radius | **Done** (spec 94; `/twin/*`, `cryptoscan twin`) |
 | 8 | BOMs: six projections | **Done** (`BOM_KINDS`, `/boms`) |
@@ -713,21 +713,35 @@ confidence  HIGH
 
 source: GET /api/v1/estate/evidence/why/payments-api?fact_type=CRYPTO_ALGORITHM (HTTP 200)
 
-$ cryptoscan explain finding FIND-9182
-explain finding: REFUSED — findings cannot be explained by id in this build
-  the explain routes are per asset, per system and per graph node; a finding id has no route —
-  using one of them would explain a different object
-  closest existing endpoint: GET /api/v1/estate/evidence/why/{identifier}?fact_type=...
-  closest existing endpoint: GET /api/v1/risk/systems/{system_id}/explain
-  closest existing endpoint: GET /api/v1/graph/explain?node_id=...
+$ cryptoscan explain finding 9d1f-finding
+finding       9d1f-finding
+scan          scan-4
+algorithm     RSA 2048 CBC
+location      src/payments/Crypto.java:88
+confidence    HIGH
+compliance    NON_COMPLIANT
+content hash  aaaa…
+chain hash    bbbb…
+chain check   INTACT
+
+estate join   NOT_JOINABLE
+  a finding is a scan record (file path, line, algorithm); the twin explains assets, and
+  nothing in the finding names the asset id an estate answer would need
+
+source: GET /api/v1/findings/9d1f-finding (HTTP 200)
 ```
 
-The proposal's `explain finding` output (asset, observed value, cipher, evidence, source,
-timestamp, collector+version, confidence, policy, reason, related objects, PQC relevance) is the
-right target. Two of its fields are already available (evidence, policy, confidence, reason);
-**collector + collector version** and **PQC relevance per finding** need a route that joins a
-finding to its evidence record and its PQC classification — roadmap, and the reason this
-command refuses today rather than assembling a partial answer that looks complete.
+`explain finding` now answers with what actually exists: the finding record
+(`GET /findings/{id}`) and its per-record chain verification
+(`GET /findings/{id}/verify`), which recomputes the row's own commitment. What it refuses to
+invent is the join: a finding carries a **file path**, the twin is keyed by **asset id**, and
+nothing in the record names one. So the command reports `NOT_JOINABLE` with the reason and the
+route that would answer an asset question, instead of guessing an asset from a path and
+presenting a plausible-but-wrong answer.
+
+Still roadmap, and still server work: **collector + collector version per finding**, **PQC
+relevance per finding**, and an asset link on the finding record itself. The proposal's full
+output needs those three, which is why this command stops where it does.
 
 ---
 

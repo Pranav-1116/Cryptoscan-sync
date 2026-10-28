@@ -61,6 +61,8 @@ something invented.
 | `bundle export / verify / import` | `GET` of nine evidence and projection routes | `--encrypt` (AES-256-GCM + scrypt), `verify` byte-checks the files against the manifest, `import` refuses a tar member escaping the target |
 | `collect --submit` | `POST /collection/jobs`, `/systems/{id}/scan`, `/estate/evidence/scan` | hands the work to the control plane; prints "no collection happened in this process" |
 | `scope show` | `GET /platform/scope` | |
+| `explain finding <id>` | `GET /findings/{id}`, `/verify` | reports `NOT_JOINABLE` for the estate half: a finding has a file path, not an asset id |
+| `ci scan --path <dir>` | `POST /devsecops/sbom/scan` | the path is resolved **on the control plane**, and `--gate` needs a scan id |
 | `explain asset / system / node` | `/estate/evidence/why/{id}?fact_type=`, `/risk/systems/{id}/explain`, `/graph/explain` | every answer names its source |
 | `report generate` | `/scans/{id}/report`, `.html`, `.pdf` | streamed to a file, sha256 printed |
 | `twin status / snapshot / diff` | `/estate/evidence/twin`, `/twin/snapshot`, `/twin/compare` | remote mode; never opens a local database |
@@ -78,9 +80,7 @@ A refusal exits `3` and names the closest endpoints that *do* exist:
 
 | command | why it refuses |
 | --- | --- |
-| `ci scan <dir>` | there is no source-tree scan route; `ci gate` evaluates a scan that already ran, and the refusal says so instead of implying otherwise |
 | `scope diff` | no scope-to-scope diff route exists; snapshot compare and coverage are the closest |
-| `explain finding <id>` | the explain routes are per asset, per system and per graph node — a finding id has no route |
 | `target register` without the authorisation fields | `not_before`, `allowed_operations`, owner and environment have no safe default; a target registered with "everything, already valid" is an authorisation nobody granted |
 | `scan --target` without `--target-revision` | the control plane refuses a job whose target changed since the operator read it |
 | `pqc blockers` when the payload has no `blockers` | the per-layer exposure is printed instead, and the exit code is 2 |
