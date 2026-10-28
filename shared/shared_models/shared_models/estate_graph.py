@@ -206,7 +206,9 @@ CONFLICT_FIELDS: tuple[str, ...] = (
     "digest",
 )
 
-COVERAGE_STATUSES: tuple[str, ...] = ("COMPLETE", "PARTIAL", "FAILED", "NOT_ATTEMPTED", "UNKNOWN")
+COVERAGE_STATUSES: tuple[str, ...] = (
+    "COMPLETE", "PARTIAL", "FAILED", "NOT_ATTEMPTED", "NOT_OBSERVED", "UNKNOWN"
+)
 
 _SEPARATOR = "\x1f"
 
@@ -392,13 +394,22 @@ def coverage_matrix(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                 status = "PARTIAL"
             else:
                 status = "NOT_ATTEMPTED" if not row.get("attempted", True) else "UNKNOWN"
+        reason = row.get("reason")
+        if status == "COMPLETE" and expected == 0:
+            # zero expected targets is not "100% covered". Nothing was asked, so
+            # nothing was verified: that is absence of an expectation, not a pass.
+            status = "NOT_OBSERVED"
+            reason = reason or (
+                "0 expected targets — nothing was asked of this source, which is not the same as "
+                "nothing being there"
+            )
         table.append(
             {
                 "target": target,
                 "expected": expected,
                 "collected": collected,
                 "status": status,
-                "reason": row.get("reason"),
+                "reason": reason,
                 "impact": row.get("impact"),
                 "note": row.get("note"),
             }
@@ -414,6 +425,8 @@ def coverage_matrix(rows: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             "expected": total_expected,
             "collected": total_collected,
             "coverage_percent": percent,
+            # None% is not "done": with no expected targets there is no measurement
+            "coverage_state": "MEASURED" if total_expected else "NOT_OBSERVED",
             "by_status": {
                 status: sum(1 for row in table if row["status"] == status) for status in COVERAGE_STATUSES
             },

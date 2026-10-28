@@ -768,7 +768,7 @@ def run(
             "targets, never 'percent of crypto discovered'; a FAILED plane is UNKNOWN, not empty"
         ),
         "limitations": sorted({detail["limitation"] for detail in PLANE_DETAIL.values()}) + [
-            "this job reads persisted evidence only: it does not observe, probe or scan anything itself",
+            "the persisted planes read stored evidence; only the live planes (CLOUD, KUBERNETES) query a system, and they read configuration, never a negotiated session",
             "planes that were not requested or that failed are NOT_OBSERVED — never 'no crypto found'",
             "policy evaluation and PQC scoring are separate endpoints; their absence here is not a pass",
         ],

@@ -114,8 +114,13 @@ def _session(session_factory: Callable[[], Any] | None = None) -> Any:
 def _print_coverage(report: dict[str, Any]) -> None:
     coverage = report.get("coverage") or {}
     summary = coverage.get("summary") or {}
-    print(f"coverage   {summary.get('coverage_percent')}% of {summary.get('expected')} expected targets "
-          f"({summary.get('collected')} attempted)")
+    expected = summary.get("expected") or 0
+    if not expected:
+        # printing "None%" invites reading an empty store as a finished scan
+        print("coverage   NOT_OBSERVED — 0 expected targets: an empty store is not an empty estate")
+    else:
+        print(f"coverage   {summary.get('coverage_percent')}% of {expected} expected targets "
+              f"({summary.get('collected')} attempted)")
     header = f"  {'plane':<12} {'expected':>8} {'collected':>9}  status"
     print(header)
     print("  " + "-" * (len(header) - 2))

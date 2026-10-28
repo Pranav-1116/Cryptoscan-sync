@@ -131,6 +131,14 @@ def test_a_failing_collector_is_failed_with_impact_not_an_empty_plane():
     assert report["boms"]["NBOM"]["projection_id"] == report["projection_id"]
 
 
+def matrix_reason_without_note() -> str:
+    """The engine's own reason for a 0-expected row that carries no note."""
+    from shared_models.estate_graph import coverage_matrix
+
+    row = coverage_matrix([{"target": "VENDOR", "expected": 0, "collected": 0, "status": "COMPLETE"}])
+    return row["targets"][0]["reason"]
+
+
 def test_an_empty_plane_says_empty_store_not_no_crypto():
     empty = {"plane": "RUNTIME", "expected": 0, "collected": 0, "assets": [], "evidence": [],
              "note": "no runtime crypto event is stored (NOT_OBSERVED, not 'no crypto')"}
@@ -140,7 +148,16 @@ def test_an_empty_plane_says_empty_store_not_no_crypto():
     assert "not 'no crypto'" in runtime["reason"]
     coverage = {row["target"]: row for row in report["coverage"]["targets"]}
     assert coverage["RUNTIME"]["expected"] == 0
-    assert coverage["RUNTIME"]["status"] == "COMPLETE"
+    # the collector ran fine (COMPLETE above), but the *coverage* row must not
+    # claim a pass out of zero expected targets: nothing was asked, nothing was
+    # verified. That is NOT_OBSERVED, and ``coverage_percent`` is None.
+    assert coverage["RUNTIME"]["status"] == "NOT_OBSERVED"
+    # the source's own note is kept as the reason; a source that gives none gets
+    # the standard "0 expected targets" explanation
+    assert coverage["RUNTIME"]["reason"]
+    assert matrix_reason_without_note() == "0 expected targets — nothing was asked of this source, which is not "        "the same as nothing being there"
+    assert report["coverage"]["summary"]["coverage_percent"] is None
+    assert report["coverage"]["summary"]["coverage_state"] == "NOT_OBSERVED"
 
 
 def test_partial_read_is_partial_with_a_reason_and_impact():
