@@ -727,7 +727,7 @@ the console.
 |---|---|---|
 | §1 evidence-first pipeline | **shipped** (spec 93) | `api/estate_discovery.py`, `shared_models/estate_graph.py` |
 | Layer 2 assets + stable identity | **shipped**; type list extended to §5 (VM, FIREWALL, VPN, PRODUCT, CRYPTO_ASSET, KEY_METADATA) | `estate_graph.ASSET_TYPES` |
-| Layer 3 relationships with basis + evidence | **shipped** | `EstateGraph.assert_relationship` |
+| Layer 3 relationships with basis + evidence | **shipped** — and §8's provenance is on the edge itself: `basis`, `confidence`, `evidence_type` (the *strongest* record behind the edge, so a config citation cannot downgrade a runtime observation) and `observed_at`, with `null` — never a guess — when the cited evidence is not reachable | `EstateGraph.assert_relationship`, `EstateRelationshipRecord.evidence_type` (migration 0115) |
 | Layer 3 vocabulary | **shipped at full §7 width** (32 predicates); every `uses*`/`encrypts_with`/`signs_with` edge needs a usage basis | `estate_graph.RELATIONSHIP_PREDICATES`, `USE_PREDICATES` |
 | Layer 4 crypto graph, capability ≠ usage | **shipped** | `estate_graph.crypto_artifacts`, `USAGE_STATES` |
 | Layer 5 evidence strength + provenance | **shipped** | `EVIDENCE_TYPES`, `EVIDENCE_CONFIDENCE` |

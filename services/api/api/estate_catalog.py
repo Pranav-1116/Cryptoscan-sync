@@ -80,9 +80,46 @@ def asset_entries(graph: Any) -> list[dict[str, Any]]:
     return sorted(entries, key=lambda entry: entry["asset_id"])
 
 
+#: strongest first: an edge established by a runtime observation is not downgraded to the
+#: weakest record that happens to cite it
+_EVIDENCE_RANK = {
+    "RUNTIME_OBSERVED": 0,
+    "NETWORK_ACTIVE_OBSERVED": 1,
+    "CERTIFICATE_OBSERVED": 2,
+    "AUDIT_OBSERVED": 3,
+    "NETWORK_PASSIVE_OBSERVED": 4,
+    "STATIC_OBSERVED": 5,
+    "CONFIGURED": 6,
+    "VENDOR_DECLARED": 7,
+    "IMPORTED": 8,
+    "INFERRED": 9,
+    "UNKNOWN": 10,
+}
+
+
+def _provenance(edge: Mapping[str, Any], evidence: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """§8 — what kind of evidence established this edge, and when was it observed.
+
+    A relationship is not a foreign key, so the answer to "how do you know?" belongs on the
+    edge. The type reported is the *strongest* of the records behind it, and the time is the
+    latest of those, because an edge keeps its strongest support and its most recent sighting
+    rather than the weakest and the oldest.
+    """
+    records = [evidence[item] for item in (edge.get("evidence_ids") or []) if item in evidence]
+    if not records:
+        return {"evidence_type": None, "observed_at": None}
+    best = min(records, key=lambda item: _EVIDENCE_RANK.get(str(item.get("evidence_type")), 99))
+    moments = [str(item["observed_at"]) for item in records if item.get("observed_at")]
+    return {
+        "evidence_type": best.get("evidence_type"),
+        "observed_at": max(moments) if moments else None,
+    }
+
+
 def relationship_entries(graph: Any) -> list[dict[str, Any]]:
     """Established edges, plus unresolved candidates as their own status."""
     names = {str(asset["asset_id"]): asset.get("name") for asset in graph.assets()}
+    evidence = {str(item["evidence_id"]): item for item in graph.evidence()}
     entries: list[dict[str, Any]] = []
     for edge in graph.relationships():
         subject, predicate, obj = str(edge["subject"]), str(edge["predicate"]), str(edge["object"])
@@ -96,6 +133,7 @@ def relationship_entries(graph: Any) -> list[dict[str, Any]]:
                 "object_name": names.get(obj),
                 "basis": edge.get("basis"),
                 "confidence": edge.get("confidence"),
+                **_provenance(edge, evidence),
                 "status": "ESTABLISHED",
                 "reason": None,
                 "evidence_ids": [str(item) for item in (edge.get("evidence_ids") or [])],
@@ -114,6 +152,7 @@ def relationship_entries(graph: Any) -> list[dict[str, Any]]:
                 "object_name": names.get(obj),
                 "basis": edge.get("basis"),
                 "confidence": None,
+                **_provenance(edge, evidence),
                 "status": "UNRESOLVED",
                 "reason": edge.get("reason"),
                 "evidence_ids": [str(item) for item in (edge.get("evidence_ids") or [])],
@@ -249,6 +288,8 @@ def sync(
         row.status = entry["status"]
         row.reason = entry["reason"]
         row.confidence = entry["confidence"]
+        row.evidence_type = entry.get("evidence_type")
+        row.observed_at = entry.get("observed_at")
         row.evidence_ids = entry["evidence_ids"]
         updated["relationships"] += 1
     for relationship_id, row in relationships.items():
@@ -346,6 +387,8 @@ def public_relationship(row: EstateRelationshipRecord) -> dict[str, Any]:
         "object_name": row.object_name,
         "basis": row.basis,
         "confidence": row.confidence,
+        "evidence_type": row.evidence_type,
+        "observed_at": row.observed_at,
         "status": row.status,
         "reason": row.reason,
         "evidence_ids": row.evidence_ids or [],
@@ -357,7 +400,10 @@ def public_relationship(row: EstateRelationshipRecord) -> dict[str, Any]:
             "an UNRESOLVED row is a candidate the graph refused to establish. It is stored so it can "
             "be chased, and it is never counted as a relationship"
             if row.status == "UNRESOLVED"
-            else "an established edge: basis and evidence were required before it existed"
+            else (
+                "an established edge: basis and evidence were required before it existed, and "
+                "its evidence_type says whether that was configuration or an observation"
+            )
         ),
     }
 

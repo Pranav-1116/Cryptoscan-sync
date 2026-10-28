@@ -1128,7 +1128,8 @@ export default function DigitalTwinPanel() {
                   <span className="mono" style={{ fontSize: 9.5, opacity: 0.75 }}>{edge.predicate}</span>{" "}
                   → {edge.object_name ?? edge.object_id}
                   <span className="faint" style={{ fontSize: 9.5 }}>
-                    {" "}(basis {edge.basis ?? "—"}, {edge.evidence_ids.length} evidence)
+                    {" "}(basis {edge.basis ?? "—"}, {edge.evidence_type ?? "type not stored"},{" "}
+                    {edge.evidence_ids.length} evidence)
                   </span>
                 </div>
               ))}

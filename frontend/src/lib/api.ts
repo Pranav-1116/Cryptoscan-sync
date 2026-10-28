@@ -6333,6 +6333,8 @@ export interface EstateCatalogRelationship {
   relationship_id: string; subject_id: string; subject_name?: string | null;
   predicate: string; object_id: string; object_name?: string | null;
   basis?: string | null; confidence?: string | null;
+  /* §8: what kind of evidence established the edge, and when it was observed */
+  evidence_type?: string | null; observed_at?: string | null;
   status: "ESTABLISHED" | "UNRESOLVED"; reason?: string | null;
   evidence_ids: string[]; lifecycle_state: "ACTIVE" | "STALE";
   observation_count: number; note: string;

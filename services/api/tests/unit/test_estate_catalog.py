@@ -102,6 +102,59 @@ def test_relationships_keep_basis_and_evidence():
     assert uses_hsm["object_name"] == "HSM-03"
 
 
+def test_an_edge_names_the_kind_of_evidence_that_established_it():
+    """§8: a relationship is not a foreign key — "how do you know?" belongs on the edge."""
+    rows = catalog.relationship_entries(_graph())
+    uses_hsm = next(row for row in rows if row["predicate"] == "uses_hsm" and row["status"] == "ESTABLISHED")
+
+    assert uses_hsm["evidence_type"] == "CONFIGURED"
+    assert uses_hsm["observed_at"]
+
+
+def test_the_strongest_evidence_behind_an_edge_is_the_one_reported():
+    """An edge cited by a config file and a runtime observation is a runtime observation."""
+    payload = {
+        "assets": [
+            {"ref": "api", "type": "APPLICATION", "name": "Payment API"},
+            {"ref": "hsm", "type": "HSM", "name": "HSM-03"},
+        ],
+        "evidence": [
+            {"evidence_id": "ev-config", "source": "/etc/pkcs11.conf", "collector": "linux-static",
+             "evidence_type": "CONFIGURED", "target": "api", "layer": "APPLICATION",
+             "observed_at": "2026-10-20T10:00:00+00:00", "facts": {"hsm_reference": "HSM-03"}},
+            {"evidence_id": "ev-runtime", "source": "pkcs11-trace", "collector": "runtime-probe",
+             "evidence_type": "RUNTIME_OBSERVED", "target": "api", "layer": "APPLICATION",
+             "observed_at": "2026-10-27T10:00:00+00:00", "facts": {"hsm_reference": "HSM-03"}},
+        ],
+        "relationships": [
+            {"subject": "api", "predicate": "uses_hsm", "object": "hsm",
+             "basis": "PKCS11_REFERENCE", "evidence_ids": ["ev-config", "ev-runtime"]},
+        ],
+    }
+
+    edge = catalog.relationship_entries(build_graph(payload))[0]
+
+    assert edge["evidence_type"] == "RUNTIME_OBSERVED"
+    assert edge["observed_at"] == "2026-10-27T10:00:00+00:00"
+
+
+def test_an_edge_with_no_reachable_evidence_reports_null_rather_than_a_guess():
+    payload = {
+        "assets": [{"ref": "api", "type": "APPLICATION", "name": "Payment API"},
+                   {"ref": "hsm", "type": "HSM", "name": "HSM-03"}],
+        "evidence": [{"evidence_id": "ev-1", "source": "x", "collector": "x",
+                      "evidence_type": "CONFIGURED", "target": "api", "layer": "APPLICATION",
+                      "facts": {"hsm_reference": "HSM-03"}}],
+        "relationships": [{"subject": "api", "predicate": "uses_hsm", "object": "hsm",
+                           "basis": "PKCS11_REFERENCE", "evidence_ids": ["ev-missing"]}],
+    }
+
+    edge = catalog.relationship_entries(build_graph(payload))[0]
+
+    assert edge["evidence_type"] is None
+    assert edge["observed_at"] is None
+
+
 def test_a_refused_edge_is_stored_as_unresolved_with_its_reason():
     rows = catalog.relationship_entries(_graph())
     unresolved = [row for row in rows if row["status"] == "UNRESOLVED"]

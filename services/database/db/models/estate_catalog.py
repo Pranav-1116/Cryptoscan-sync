@@ -89,6 +89,11 @@ class EstateRelationshipRecord(BaseModel, TenantScoped):
     object_name: Mapped[Optional[str]] = mapped_column(String(400))
     basis: Mapped[Optional[str]] = mapped_column(String(80))
     confidence: Mapped[Optional[str]] = mapped_column(String(20))
+    #: §8 — what kind of evidence established the edge, and when it was observed. A
+    #: relationship is not a foreign key: an operator asking "how do you know?" needs the
+    #: answer on the record, not only in the evidence table it points at
+    evidence_type: Mapped[Optional[str]] = mapped_column(String(40))
+    observed_at: Mapped[Optional[str]] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="ESTABLISHED", index=True)
     reason: Mapped[Optional[str]] = mapped_column(Text)
     evidence_ids: Mapped[Optional[list]] = mapped_column(JSON)
