@@ -77,6 +77,28 @@ def _graph(payload: dict | None = None):
     return build_graph(payload or _payload())
 
 
+def _payload_with_hsm_04() -> dict:
+    payload = _payload()
+    payload["assets"].append({"ref": "hsm2", "type": "HSM", "name": "HSM-04",
+                              "environment": "production"})
+    return payload
+
+
+def _payload_with_coverage(status: str) -> dict:
+    """A payload where the HSM plane answered, then stopped answering."""
+    payload = _payload()
+    collected = 3 if status == "COMPLETE" else 0
+    payload["collectors"] = [
+        {"plane": "HSM", "status": status, "expected": 3, "collected": collected,
+         "reason": None if status == "COMPLETE" else "pkcs11 provider did not answer"}
+    ]
+    payload["coverage"] = [
+        {"plane": "HSM", "target": "HSM appliances", "expected": 3, "collected": collected,
+         "status": status}
+    ]
+    return payload
+
+
 def _kinds(detection: dict) -> list[str]:
     return [change["kind"] for change in detection["changes"]]
 
@@ -381,3 +403,121 @@ def test_the_feed_says_what_a_quiet_feed_does_not_mean(api):
     assert body["count"] == 0
     assert "not that the estate is safe" in body["meaning"]
     assert any("scheduler that stopped running" in limit for limit in body["limits"])
+
+
+# -- announcing a change, so it is not just a row in a table ----------------- #
+
+
+def _session():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from db.connection.session import Base
+
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
+def _journal(session, event_type: str | None = None) -> list:
+    from db.models.monitor import MonitorEvent
+
+    query = session.query(MonitorEvent)
+    if event_type:
+        query = query.filter(MonitorEvent.event_type == event_type)
+    return query.all()
+
+
+def test_a_detected_change_is_announced_on_the_platform_journal():
+    before, after = _graph(), _graph(_payload_with_hsm_04())
+    session = _session()
+
+    detection = feed.observe(session, before, after, tenant_id=None, run_id="run-2")
+
+    assert detection["recorded"]["created"] is True
+    assert detection["announced"]["published"] is True
+    assert detection["announced"]["event_types"] == ["estate.change.detected"]
+    rows = _journal(session, "estate.change.detected")
+    assert len(rows) == 1, "an unannounced change only reaches the person who opens the console"
+    assert rows[0].payload["changes"], "the announcement says what moved, not merely that it moved"
+
+
+def test_losing_a_plane_is_announced_as_coverage_lost_not_as_a_change_to_read():
+    before = _graph(_payload_with_coverage("COMPLETE"))
+    after = _graph(_payload_with_coverage("FAILED"))
+    session = _session()
+
+    detection = feed.observe(session, before, after, tenant_id=None, run_id="run-2")
+
+    assert detection["severity"] == "CRITICAL"
+    types = detection["announced"]["event_types"]
+    assert "estate.change.detected" in types
+    assert "estate.coverage.lost" in types, "a dark plane is a measurement that stopped, not a change"
+    lost = _journal(session, "estate.coverage.lost")
+    assert lost, "a CRITICAL coverage loss must be announced on its own event type"
+    assert "HSM" in lost[0].payload["planes"]
+
+
+def test_a_quiet_observation_announces_nothing():
+    graph = _graph()
+    session = _session()
+
+    detection = feed.observe(session, graph, graph, tenant_id=None, run_id="run-2")
+
+    assert detection["recorded"]["created"] is False
+    assert "announced" not in detection
+    assert _journal(session) == []
+
+
+def test_a_broken_journal_never_fails_the_observation():
+    class _NoJournal:
+        def execute(self, *args, **kwargs):
+            raise RuntimeError("journal unavailable")
+
+        def rollback(self):
+            raise RuntimeError("rollback unavailable too")
+
+    before, after = _graph(), _graph(_payload_with_hsm_04())
+
+    # neither the storage failure nor the failing rollback may escape
+    detection = feed.observe(_NoJournal(), before, after, tenant_id=None, run_id="run-2")
+
+    assert detection["recorded"]["created"] is False
+    assert "journal unavailable" in detection["recorded"]["error"]
+    assert detection["changes"], "the detection itself is still returned to the caller"
+
+
+def test_the_change_classes_are_routable_and_mapped():
+    from control_plane.notification_routing import CATALOG, EVENT_CLASS_MAP
+
+    classes = {entry["id"]: entry for entry in CATALOG}
+    assert classes["estate_change"]["channels"]["inApp"] is True
+    assert classes["estate_coverage_lost"]["severity"] == "CRITICAL"
+    assert EVENT_CLASS_MAP["estate.change.detected"] == "estate_change"
+    assert EVENT_CLASS_MAP["estate.coverage.lost"] == "estate_coverage_lost"
+
+
+def test_an_announced_change_reaches_the_in_app_notification_feed(api):
+    """The loop closes: detect, journal, and the notification feed serves it when routed."""
+    from db.repositories.monitor_repository import MonitorRepository
+
+    client, session = api
+    shim = type("T", (), {"id": None, "name": "estate", "tenant_id": None})()
+    MonitorRepository(session).add_event(
+        target=shim,
+        event_type="estate.change.detected",
+        detail="1 change(s): 1x asset added",
+        payload={"changes": [{"kind": "ASSET_ADDED", "subject": "HSM-04"}]},
+    )
+    session.commit()
+
+    body = client.get("/api/v1/notifications/feed").json()
+
+    classes = {item["event_class"] for item in body["notifications"]}
+    assert "estate_change" in classes, (
+        "an estate change with no catalog mapping is invisible to the notification matrix"
+    )
+    assert "estate.change.detected" in body["mapped_event_types"]

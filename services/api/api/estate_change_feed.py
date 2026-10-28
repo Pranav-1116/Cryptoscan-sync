@@ -43,6 +43,7 @@ findings are immutable; only acknowledgement moves.
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
@@ -50,6 +51,8 @@ from sqlalchemy import select
 
 from db.models.estate_change_event import EstateChangeEvent
 from shared_models import estate_twin
+
+logger = logging.getLogger(__name__)
 
 SCHEMA = "cryptoscan.estate-change-event/1"
 FEED_SCHEMA = "cryptoscan.estate-change-feed/1"
@@ -536,6 +539,81 @@ def record(
     return row, True
 
 
+def announce(
+    db: Any,
+    detection: Mapping[str, Any],
+    *,
+    tenant_id: str | None,
+    recorded: bool,
+) -> dict[str, Any]:
+    """Put a detected change into the platform journal so routed channels see it.
+
+    Detection that only reaches the person who opens the console is a report, not
+    monitoring. The change is written to the same journal the notification feed and the
+    dispatch registry read, under two event types because they are two different things
+    to act on: ``estate.change.detected`` (something moved) and, when a plane went dark,
+    ``estate.coverage.lost`` (a measurement stopped happening).
+
+    Best-effort by construction: a journal or bus failure is reported and never raised.
+    The observation already happened, and losing the notification is not a reason to
+    lose the scan.
+    """
+    outcome: dict[str, Any] = {"published": False, "event_types": [], "error": None}
+    changes = list(detection.get("changes") or [])
+    severity = str(detection.get("severity") or "NONE")
+    try:
+        from api.events.platform_events import emit_platform_event
+
+        detail = str(detection.get("headline") or "estate change detected")
+        payload = {
+            "event_id": detection.get("event_id") or (detection.get("recorded") or {}).get("event_id"),
+            "severity": severity,
+            "verdict": detection.get("verdict"),
+            "counts": detection.get("counts"),
+            "baseline_projection_id": detection.get("baseline_projection_id"),
+            "current_projection_id": detection.get("current_projection_id"),
+            "next_action": detection.get("next_action"),
+            # the claims, bounded: a notification says what moved, not "drift detected"
+            "changes": [
+                {
+                    "kind": item.get("kind"),
+                    "severity": item.get("severity"),
+                    "subject": item.get("subject"),
+                    "detail": item.get("detail"),
+                }
+                for item in changes[:10]
+            ],
+        }
+        emit_platform_event(
+            "estate.change.detected",
+            detail,
+            payload=payload,
+            target_name="estate",
+            tenant_id=tenant_id,
+            session=db if hasattr(db, "execute") else None,
+        )
+        outcome["event_types"].append("estate.change.detected")
+
+        lost = [item for item in changes if item.get("kind") == "COVERAGE_DEGRADED"]
+        if lost:
+            emit_platform_event(
+                "estate.coverage.lost",
+                f"{len(lost)} estate plane(s) stopped answering: "
+                + ", ".join(str(item.get("subject")) for item in lost[:5]),
+                payload={**payload, "planes": [item.get("subject") for item in lost]},
+                target_name="estate",
+                tenant_id=tenant_id,
+                session=db if hasattr(db, "execute") else None,
+            )
+            outcome["event_types"].append("estate.coverage.lost")
+        outcome["published"] = True
+        outcome["recorded"] = recorded
+    except Exception as exc:  # noqa: BLE001 — a notification cannot fail an observation
+        outcome["error"] = f"{type(exc).__name__}: {exc}"
+        logger.warning("estate_change_announce_failed: %s", outcome["error"])
+    return outcome
+
+
 def observe(
     db: Any,
     before: Any | None,
@@ -616,6 +694,9 @@ def observe(
             else "this transition was already recorded; the observation counter advanced"
         ),
     }
+    # a change nobody is told about is a row in a table: publish it (best-effort) and
+    # report the outcome, including the failure, in the same payload as the detection
+    detection["announced"] = announce(db, detection, tenant_id=tenant_id, recorded=bool(created))
     return detection
 
 

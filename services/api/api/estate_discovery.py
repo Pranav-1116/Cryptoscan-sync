@@ -902,10 +902,13 @@ def run(
             trigger=trigger,
         )
         payload["change_detail"] = {
+            "verdict": detection["verdict"],
             "severity": detection["severity"],
             "headline": detection["headline"],
             "counts": detection["counts"],
             "event_id": (detection.get("recorded") or {}).get("event_id"),
+            "stored": bool((detection.get("recorded") or {}).get("created")),
+            "announced": (detection.get("announced") or {}).get("event_types"),
         }
     except Exception as exc:  # noqa: BLE001 — detection must never fail a scan
         detection_error = f"{type(exc).__name__}: {exc}"

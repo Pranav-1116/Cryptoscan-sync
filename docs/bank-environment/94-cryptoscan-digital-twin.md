@@ -471,6 +471,35 @@ CONFLICT DETECTED — investigate.
 Likely explanation: the container library is not the dynamically loaded host
 library. That is intelligence, not noise.
 
+### Who is told, and how
+
+A detected change that only appears when someone opens the console is a report someone
+has to remember to read. Every observation now **announces** what moved on the platform
+journal — the same rows the notification feed, the SIEM drain and the dispatch registry
+read — under two event types, because they are two different things to act on:
+
+| event type | notification class | raised when |
+|---|---|---|
+| `estate.change.detected` | `estate_change` (WARNING) | claims were detected: an asset appeared, a usage state moved, a relationship was lost, evidence weakened |
+| `estate.coverage.lost` | `estate_coverage_lost` (CRITICAL) | a plane stopped answering — everything under it is UNKNOWN, not absent |
+
+Both classes are in the routing catalog with every channel on by default, so a bank can
+route "coverage lost" to a SIEM and "asset added" to the in-app feed and nothing else.
+Three rules hold here:
+
+* **the announcement names the claims.** Its payload carries the first ten
+  `{kind, severity, subject, detail}` claims, not the phrase "drift detected" — a
+  notification an operator cannot act on is noise with a severity label;
+* **announcing is best-effort and reported.** A journal or bus failure is recorded in
+  `announced.error` and never raised: the observation already happened, and losing a
+  notification is not a reason to lose a scan;
+* **a quiet observation announces nothing.** Identical evidence produces no event and no
+  notification, because the run itself is the record that someone looked.
+
+`POST /changes/detect` and the collector path share one entry point
+(`estate_change_feed.observe`), so an operator triggering detection by hand and the
+scheduled run cannot drift into two different answers.
+
 ## UI
 
 One of the main CryptoScan screens. Not an AI-looking dashboard.
@@ -628,6 +657,7 @@ bank.
 | Graph projection (§20) | **shipped** — deterministic typed nodes/edges, evidence ids on every edge, unresolved edges shipped separately, `not_source_of_truth` in the payload | `estate_twin.graph_export()` |
 | Graph store load (§20–§21) | **shipped** — `POST /twin/graph/load` and `cryptoscan twin graph-load` plan by default and write only on an explicit ask; MERGE by deterministic id (a re-load converges), labels/types validated against the graph vocabulary before they reach Cypher, whole-export refusal, opt-in `prune_missing`, and **read-back verification** (`VERIFIED` / `MISMATCH` / `NOT_CONNECTED` rather than "loaded") | `api/estate_graph_loader.py` |
 | Simulation history (§17, §19) | **shipped, quarantined** — `estate_simulation_runs` (migration 0111). A stored simulation is a *question asked of a copy*: `quarantined=true`, `is_estate_state=false`, refused at write time unless the engine reports the live state untouched, incremented (not duplicated) when the same question is asked again, and marked `superseded` once the estate moves. Reachable as `POST /twin/simulate {persist:true}`, `GET /twin/simulations`, `cryptoscan twin simulate --save` | `api/estate_simulation_store.py` |
+| Change announcement (§17–§18, §23) | **shipped** — detected changes are stored *and* published to the platform journal as `estate.change.detected` / `estate.coverage.lost`, with the claims in the payload and both classes routable in the notification matrix | `estate_change_feed.announce()`, `notification_routing.CATALOG` |
 | Layer 5 evidence records + per-fact history (§11, §19, §28) | **shipped** — evidence stored as content-addressed records; every fact kept as a value *with a window*, and "why" answered from the evidence behind the asset | `estate_observations.py`, migration 0114, `GET /evidence/records`, `GET /history/summary`, `GET /history/assets/{id}`, `GET /why/{id}`, `cryptoscan twin history|why|evidence` |
 | Layer 1 estate placement (§4) | **shipped at all six levels** — `BANK → REGION → DATA_CENTER → CLOUD_ENVIRONMENT → ENVIRONMENT → BUSINESS_SYSTEM`. The upper three appear **only where a collector asserted them** (`attributes.region`, `attributes.data_center`, `attributes.provider/cloud_account`); an asset no evidence places is counted under `unassigned` with the reason, and a level with no data is named in `levels_unobserved` rather than drawn as an empty box | `estate_twin.placement_model()`, `GET /twin/placement`, `cryptoscan twin placement` |
 | Twin completeness (§29) | **shipped** — description quality, never a posture score | `estate_twin.completeness()` |

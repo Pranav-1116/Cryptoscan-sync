@@ -47,6 +47,14 @@ CATALOG: list[dict] = [
     # in-app feed (GET /notifications/feed) and can be routed outward.
     _ev("remediation_verification", "Remediation verification outcome", "HIGH",
         {"inApp": True, "email": True, "webhook": True, "siem": True}),
+    # spec 94 §17-§18: a detected estate change is a first-class routable class, so
+    # "Payment API AES-256-GCM: OBSERVED -> SUPPORTED" can reach a SIEM or a webhook
+    # instead of waiting for someone to open the console
+    _ev("estate_change", "Estate change detected", "WARNING",
+        {"inApp": True, "email": True, "webhook": True, "siem": True}),
+    # losing a plane is not a change to read: everything under it is UNKNOWN
+    _ev("estate_coverage_lost", "Estate coverage lost", "CRITICAL",
+        {"inApp": True, "email": True, "webhook": True, "siem": True}),
     _ev("remediation_task", "Remediation task lifecycle", "MEDIUM",
         {"inApp": True, "email": False, "webhook": False, "siem": False}),
 ]
@@ -62,6 +70,8 @@ EVENT_CLASS_MAP = {
     "remediation.task_completed": "remediation_task",
     "remediation.drift_tasks_created": "remediation_task",
     "evidence.chain_broken": "compliance_failure",
+    "estate.change.detected": "estate_change",
+    "estate.coverage.lost": "estate_coverage_lost",
 }
 
 

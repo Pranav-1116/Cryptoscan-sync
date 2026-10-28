@@ -1359,25 +1359,21 @@ def estate_changes_detect(
         )
     current = _graph_from_run(runs[0])
     previous = _graph_from_run(runs[1]) if len(runs) > 1 else None
-    detection = estate_change_feed.describe(
-        previous, current, run_id=runs[0].id, trigger="manual"
-    )
-    row, created = estate_change_feed.record(
-        db, detection, tenant_id=current_tenant(), detected_by=user
+    # the same entry point the collector path uses: one answer, one announcement,
+    # whether the detection came from a run or from an operator pressing "detect"
+    detection = estate_change_feed.observe(
+        db,
+        previous,
+        current,
+        tenant_id=current_tenant(),
+        run_id=runs[0].id,
+        trigger="manual",
+        detected_by=user,
     )
     return {
         **detection,
-        "stored": {
-            "created": bool(created),
-            "event_id": getattr(row, "event_id", None),
-            "note": (
-                "new change event appended"
-                if created
-                else "nothing to store: identical observations are not change events"
-                if row is None
-                else "this transition was already in the feed; its observation counter advanced"
-            ),
-        },
+        "stored": detection.get("recorded"),
+        "announced": detection.get("announced"),
     }
 
 
