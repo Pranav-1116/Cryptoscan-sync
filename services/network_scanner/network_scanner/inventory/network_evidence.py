@@ -172,12 +172,15 @@ def build_ipsec_evidence(
     scope_name: str | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """One §13/§24 evidence record from an IKEv2 SA_INIT observation.
+    """One §13/§24 evidence record from an IKE SA proposal observation.
 
-    ``IKE_AUTH`` is never attempted, so authentication method, peer identity and
-    the ESP transform set remain ``UNKNOWN``/``NOT_OBSERVED``. A responder that
-    refused the proposal is reported as a refusal with its notify reason — that
-    is still not evidence that the gateway has no crypto.
+    Both versions are covered: an IKEv2 SA_INIT reply and an IKEv1 Main Mode
+    reply carry the same readable phase-1 suite, and ``ike.version`` reports
+    which one answered. ``IKE_AUTH``/Quick Mode is never attempted, so the
+    authentication method, peer identity and the ESP transform set remain
+    ``UNKNOWN``/``NOT_OBSERVED``, each with the basis it rests on. A responder
+    that refused the proposal is reported as a refusal with its notify reason —
+    that is still not evidence that the gateway has no crypto.
     """
     status = str(probe.get("status") or "UNKNOWN").upper()
     ike = probe.get("ike") or None
@@ -212,22 +215,31 @@ def build_ipsec_evidence(
             "key_size_bits": None,
         },
         "ike": {
-            "version": "IKEv2" if probe.get("status") else None,
+            # the version the responder actually spoke, from its own header
+            "version": (probe.get("header") or {}).get("version") or probe.get("ike_version") or None,
             "encryption": (ike or {}).get("encryption"),
             "prf": (ike or {}).get("prf"),
             "integrity": (ike or {}).get("integrity"),
             "dh_group": (ike or {}).get("dh_group"),
             "esn": (ike or {}).get("esn"),
-            # Certificate vs PSK vs EAP is only visible in IKE_AUTH.
+            # Certificate vs PSK vs EAP is only visible in IKE_AUTH. IKEv1 does
+            # *offer* its method in the phase-1 proposal — recorded as offered.
             "authentication": "UNKNOWN",
+            "auth_methods_offered": (ike or {}).get("auth_methods_offered"),
         },
         "esp": {
             "status": esp.get("status") or "NOT_OBSERVED",
+            # what the ESP claim rests on: RESPONDER_OFFERED, CONFIGURATION or
+            # NOT_OBSERVED — never a bare assertion that ESP is "in use"
+            "basis": esp.get("basis") or "NOT_OBSERVED",
             "encryption": esp.get("encryption"),
             "integrity": esp.get("integrity"),
             "dh_group": esp.get("dh_group"),
-            # PFS applies to the CHILD_SA; without an ESP proposal this is unknown.
+            # PFS applies to the CHILD_SA. Without an ESP proposal (or a
+            # configured suite) it is UNKNOWN, and pfs_state says so once.
             "pfs": esp.get("pfs") or "UNKNOWN",
+            "pfs_state": esp.get("pfs_state") or "UNKNOWN",
+            "pfs_basis": esp.get("pfs_basis") or "NOT_OBSERVED",
             "reason": esp.get("reason"),
         },
         "ke": probe.get("ke"),

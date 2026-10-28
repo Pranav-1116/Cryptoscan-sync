@@ -297,3 +297,120 @@ def test_ipsec_observation_refused_when_protocol_not_approved(client):
     response = http.post("/api/v1/network/ipsec-observe", json={"endpoints": ["10.20.10.15:443"]})
     assert response.status_code == 409
     assert response.json()["detail"]["error"] == "protocol_not_allowed"
+
+
+# --------------------------------------------------------------------------- #
+# IPsec observation: IKEv1 reachable, ESP/PFS stated on a real basis (§13)
+# --------------------------------------------------------------------------- #
+def _ipsec_scope(http):
+    return put_scope(
+        http,
+        destinations=["10.20.10.20:500"],
+        protocols=["IPsec"],
+        allowed_operations=["IKE_PROBE"],
+    )
+
+
+def _ipsec_probe(host, **kwargs):
+    """A probe that answered over IKEv1, with the caller's declared ESP suite."""
+    import network_scanner.probing.ipsec_probe as probe_module
+
+    esp = (
+        probe_module.esp_from_config(kwargs["esp_config"])
+        if kwargs.get("esp_config")
+        else probe_module.summarize_proposals([], ike_version=1)["esp"]
+    )
+    return {
+        "endpoint": f"{host}:500",
+        "status": "OK",
+        "port": 500,
+        "transport": "UDP",
+        "ike_version": "IKEv1",
+        "header": {"version": "IKEv1.0", "major": 1, "exchange": "MAIN_MODE"},
+        "ike": {
+            "protocol": "IKE", "version": "IKEv1", "encryption": "AES-CBC-256", "prf": "HMAC-SHA1",
+            "integrity": None, "dh_group": "MODP-2048", "esn": False,
+            "auth_methods_offered": ["PRE-SHARED-KEY"],
+        },
+        "esp": esp,
+        "ke": None,
+        "notifies": [],
+        "proposals": [],
+        "issues": [],
+        "detail": None,
+        "attempts": [
+            {"version": "IKEv2", "port": 500, "status": "NO_RESPONSE"},
+            {"version": "IKEv1", "port": 500, "status": "OK"},
+        ],
+    }
+
+
+def test_ipsec_observe_accepts_an_ikev1_gateway_and_a_declared_esp_suite(client, monkeypatch):
+    http, _session, _calls = client
+    import network_scanner.probing.ipsec_probe as probe_module
+
+    assert _ipsec_scope(http).status_code == 200
+    seen: dict = {}
+
+    def fake_probe(host, **kwargs):
+        seen.update(kwargs)
+        return _ipsec_probe(host, **kwargs)
+
+    monkeypatch.setattr(probe_module, "probe_ike", fake_probe)
+    response = http.post(
+        "/api/v1/network/ipsec-observe",
+        json={
+            "endpoints": ["10.20.10.20:500"],
+            "timeout": 1.0,
+            "ike_versions": [2, 1],
+            "esp_suite": {
+                "encryption": "AES-CBC-256",
+                "integrity": "HMAC-SHA2-256",
+                "dh_group": "MODP-2048",
+                "pfs": "ON",
+                "reference": "cmdb:vpn-1",
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+
+    # the probe was actually asked to speak both versions and was handed the suite
+    assert seen["versions"] == (2, 1)
+    assert seen["esp_config"]["reference"] == "cmdb:vpn-1"
+
+    evidence = body["evidence"][0]
+    assert evidence["ike"]["version"] == "IKEv1.0", "the responder's real version, not a hardcoded IKEv2"
+    assert evidence["ike"]["auth_methods_offered"] == ["PRE-SHARED-KEY"]
+    # ESP was declared, not negotiated: CONFIGURED with its reference, PFS on that basis
+    assert evidence["esp"]["status"] == "CONFIGURED"
+    assert evidence["esp"]["basis"] == "CONFIGURATION"
+    assert evidence["esp"]["pfs_state"] == "ON"
+
+    # the observation payload is returned flat
+    assert body["esp_configured"] is True
+    assert body["esp_observed"] is False
+    assert body["ike_versions"] == ["IKEv1.0"]
+    assert "Quick Mode" in body["boundary"]
+    assert "CONFIGURATION" in body["boundary"]
+
+
+def test_ipsec_observe_without_a_declared_suite_leaves_esp_unobserved(client, monkeypatch):
+    http, _session, _calls = client
+    import network_scanner.probing.ipsec_probe as probe_module
+
+    assert _ipsec_scope(http).status_code == 200
+    monkeypatch.setattr(probe_module, "probe_ike", _ipsec_probe)
+    response = http.post(
+        "/api/v1/network/ipsec-observe",
+        json={"endpoints": ["10.20.10.20:500"], "timeout": 1.0},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    evidence = body["evidence"][0]
+    assert evidence["esp"]["status"] == "NOT_OBSERVED"
+    assert evidence["esp"]["basis"] == "NOT_OBSERVED"
+    assert evidence["esp"]["pfs_state"] == "UNKNOWN"
+    assert body["esp_configured"] is False
+    assert body["esp_observed"] is False
+    assert body["ike_versions"] == ["IKEv1.0"]

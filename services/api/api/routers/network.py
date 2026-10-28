@@ -1538,12 +1538,30 @@ def network_crypto_path(
     return attribute_path(evidence, hops)
 
 
+class EspSuiteDeclared(BaseModel):
+    """The ESP suite as *configured*, when an operator knows it (§13).
+
+    Supplying it does not make ESP observed: it is recorded with the
+    ``CONFIGURATION`` basis so "PFS is on" can be answered from configuration
+    while the negotiated SA stays NOT_OBSERVED.
+    """
+
+    encryption: str | None = Field(default=None, max_length=80)
+    integrity: str | None = Field(default=None, max_length=80)
+    dh_group: str | None = Field(default=None, max_length=80)
+    pfs: str | None = Field(default=None, max_length=16)
+    reference: str | None = Field(default=None, max_length=200)
+
+
 class IpsecObserveRequest(BaseModel):
-    """Scoped IKEv2 SA_INIT observation of an approved VPN gateway (§13)."""
+    """Scoped IKE SA proposal observation of an approved VPN gateway (§13)."""
 
     endpoints: list[str] = Field(default_factory=list, max_length=25)
     timeout: float = Field(default=3.0, gt=0, le=15, allow_inf_nan=False)
     inventory_id: str = Field(default="default", max_length=160)
+    #: IKEv2 first, then IKEv1 — a v1-only concentrator is part of the estate
+    ike_versions: list[int] = Field(default_factory=lambda: [2, 1], max_length=2)
+    esp_suite: EspSuiteDeclared | None = None
 
 
 @router.post("/network/ipsec-observe")
@@ -1553,13 +1571,17 @@ def ipsec_observe(
     db: Session = Depends(get_db_session),
     _ctx=Depends(network_context),
 ):
-    """Send one IKEv2 SA_INIT per approved gateway and record the accepted transforms.
+    """Send one IKE SA proposal per approved gateway and record the returned transforms.
 
-    Same fail-closed scope contract as TLS observation: the destinations,
-    protocol and ``IKE_PROBE`` operation must already be inside the approved
-    scope. No SA is established, no keys are exchanged, no tunnel is touched —
-    one UDP packet per endpoint, and ``NO_RESPONSE`` is reported as an
-    observation gap rather than "no crypto".
+    IKEv2 SA_INIT is tried first, then IKEv1 Main Mode, so a v1-only
+    concentrator is not silently missing from the inventory. Same fail-closed
+    scope contract as TLS observation: the destinations, protocol and
+    ``IKE_PROBE`` operation must already be inside the approved scope. No SA is
+    established, no keys are exchanged, no tunnel is touched — one UDP packet
+    per attempt, and ``NO_RESPONSE`` is reported as an observation gap rather
+    than "no crypto". ESP and the PFS in use stay ``NOT_OBSERVED``/``UNKNOWN``
+    unless the caller declares the configured suite, in which case they are
+    reported as ``CONFIGURED`` with that reference.
     """
     from api.security.network_scope import ScopeViolation, check_scope
     from network_scanner.inventory.network_evidence import build_ipsec_evidence, summarize
@@ -1586,7 +1608,13 @@ def ipsec_observe(
         host = host.strip("[]")
         ports = [int(port_text)] if port_text.isdigit() and int(port_text) not in (500, 4500) else [500, 4500]
         try:
-            probe = probe_ike(host, ports=ports, timeout=body.timeout)
+            probe = probe_ike(
+                host,
+                ports=ports,
+                timeout=body.timeout,
+                versions=tuple(version for version in body.ike_versions if version in (1, 2)) or (2,),
+                esp_config=body.esp_suite.model_dump() if body.esp_suite else None,
+            )
         except Exception as exc:  # probe failure is an observation gap, not a verdict
             probe = {"endpoint": endpoint, "status": "ERROR", "proposals": [], "issues": [], "detail": str(exc)}
         results.append(probe)
@@ -1613,13 +1641,17 @@ def ipsec_observe(
         "observed": len(observed),
         "not_observed": len(results) - len(observed),
         "evidence_type": "NETWORK_ACTIVE_OBSERVED" if observed else "UNKNOWN",
-        # §13/§29: an accepted IKE SA_INIT tells us the IKE suite; ESP lives in
-        # IKE_AUTH, which we never perform, so it stays NOT_OBSERVED.
+        # §13/§29: an accepted IKE SA proposal tells us the phase-1 suite; ESP
+        # lives in IKE_AUTH (v2) or Quick Mode (v1), neither of which we perform.
         "boundary": (
-            "IKE SA_INIT observation only — no IKE_AUTH, no SA established, no traffic. "
-            "ESP transforms, PFS in use and tunnel selectors remain NOT_OBSERVED/UNKNOWN"
+            "IKE SA proposal observation only (IKEv2 SA_INIT or IKEv1 Main Mode) — no IKE_AUTH, no "
+            "Quick Mode, no SA established, no traffic. ESP transforms and PFS in use remain "
+            "NOT_OBSERVED/UNKNOWN unless a configured suite was declared (basis CONFIGURATION)"
         ),
         "esp_observed": any((item.get("esp") or {}).get("status") == "DECLARED_IN_SA_INIT" for item in results),
+        "esp_configured": any((item.get("esp") or {}).get("status") == "CONFIGURED" for item in results),
+        "ike_versions": sorted({(item.get("header") or {}).get("version") or item.get("ike_version")
+                                for item in results if item.get("status") == "OK"} - {None}),
     }
     with network_run(
         db,
