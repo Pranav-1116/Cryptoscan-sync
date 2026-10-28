@@ -15,8 +15,8 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | Measure | Value | What it means | What it does **not** mean |
 |---|---|---|---|
 | API endpoints served | **1160** | routes in the generated OpenAPI document | — |
-| Endpoints reachable from the console | **507** (43.7%) | a URL for it exists in `frontend/src` | built. An endpoint with no screen is a capability an operator cannot use, not a broken one |
-| Endpoints referenced by a test | **692** (59.7%) | the path appears in a test file | tested well, or tested at all beyond a smoke call |
+| Endpoints reachable from the console | **546** (47.1%) | a URL for it exists in `frontend/src` | built. An endpoint with no screen is a capability an operator cannot use, not a broken one |
+| Endpoints referenced by a test | **735** (63.4%) | the path appears in a test file | tested well, or tested at all beyond a smoke call |
 | Self-declared limits | **65** in 50 files (8 abstract/gap raises, 19 TODO comments, 38 self-described stubs/approximations) | admissions found in comments and docstrings | that any of them is a defect. Most are honest labels; the list is here so they can be judged one by one |
 
 ## Where the surface is
@@ -24,51 +24,51 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | Area | Endpoints | With a UI caller | Referenced by a test |
 |---|---|---|---|
 | `network` | 66 | 42 | 62 |
-| `assurance` | 61 | 6 | 5 |
-| `collection` | 50 | 6 | 2 |
-| `cbom` | 42 | 29 | 31 |
+| `assurance` | 61 | 7 | 7 |
+| `collection` | 50 | 23 | 3 |
+| `cbom` | 42 | 30 | 32 |
 | `devsecops` | 42 | 33 | 27 |
 | `control` | 38 | 20 | 31 |
-| `graph` | 37 | 18 | 27 |
-| `auth` | 35 | 15 | 25 |
-| `estate` | 34 | 13 | 28 |
-| `scans` | 32 | 7 | 16 |
-| `banking` | 31 | 22 | 26 |
-| `technology-bom` | 30 | 20 | 27 |
-| `automation` | 22 | 14 | 7 |
+| `graph` | 37 | 18 | 30 |
+| `auth` | 35 | 17 | 29 |
+| `estate` | 34 | 15 | 30 |
+| `scans` | 32 | 8 | 16 |
+| `banking` | 31 | 22 | 27 |
+| `technology-bom` | 30 | 21 | 28 |
+| `automation` | 22 | 14 | 8 |
 | `enterprise` | 22 | 3 | 22 |
-| `telecom` | 20 | 11 | 12 |
-| `migrations` | 20 | 0 | 15 |
+| `telecom` | 20 | 14 | 15 |
+| `migrations` | 20 | 0 | 16 |
 | `security` | 19 | 14 | 11 |
-| `payment-crypto` | 19 | 8 | 13 |
-| `vendors` | 19 | 11 | 14 |
-| `systems` | 18 | 0 | 3 |
-| `saas` | 18 | 15 | 15 |
+| `payment-crypto` | 19 | 10 | 15 |
+| `vendors` | 19 | 11 | 16 |
+| `systems` | 18 | 0 | 5 |
+| `saas` | 18 | 15 | 16 |
 | `resilience` | 17 | 15 | 0 |
-| `hardware` | 16 | 0 | 13 |
-| `host-evidence` | 15 | 6 | 1 |
-| `onboarding` | 15 | 14 | 10 |
-| `certificates` | 14 | 10 | 9 |
+| `hardware` | 16 | 0 | 14 |
+| `host-evidence` | 15 | 6 | 2 |
+| `onboarding` | 15 | 14 | 13 |
+| `certificates` | 14 | 11 | 10 |
 | `execution-controls` | 11 | 0 | 1 |
 | `runtime` | 11 | 6 | 10 |
-| `remediation` | 11 | 5 | 8 |
-| `compliance` | 11 | 7 | 7 |
+| `remediation` | 11 | 6 | 10 |
+| `compliance` | 11 | 8 | 7 |
 | `platform` | 10 | 9 | 10 |
 | `findings` | 9 | 3 | 9 |
-| `crypto` | 9 | 1 | 7 |
+| `crypto` | 9 | 1 | 8 |
 | `digital-twin` | 9 | 6 | 8 |
 | `ot` | 9 | 5 | 2 |
-| `sectors` | 9 | 4 | 8 |
-| `marketplace` | 9 | 2 | 5 |
+| `sectors` | 9 | 5 | 9 |
+| `marketplace` | 9 | 2 | 6 |
 | `threat-intel` | 8 | 0 | 7 |
 | `drift` | 8 | 1 | 7 |
 | `container` | 8 | 0 | 2 |
 | `cloud` | 8 | 2 | 2 |
 | `live-scan` | 8 | 8 | 1 |
-| `exceptions` | 8 | 2 | 0 |
+| `exceptions` | 8 | 3 | 0 |
 | `webhooks` | 7 | 0 | 1 |
 | `inventory` | 7 | 4 | 5 |
-| `report-schedules` | 7 | 2 | 5 |
+| `report-schedules` | 7 | 4 | 7 |
 | `monitor` | 7 | 0 | 7 |
 | `notifications` | 7 | 6 | 7 |
 | `software-supply-chain` | 7 | 0 | 0 |
@@ -79,12 +79,12 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | `business` | 6 | 2 | 1 |
 | `analytics` | 6 | 0 | 6 |
 | `scim` | 6 | 6 | 0 |
-| `relationship-lifecycle` | 6 | 0 | 0 |
+| `relationship-lifecycle` | 6 | 0 | 1 |
 | `anomaly` | 6 | 2 | 4 |
 | `facts` | 5 | 1 | 5 |
 | `baselines` | 5 | 0 | 3 |
 | `hbom` | 5 | 5 | 4 |
-| `risk` | 5 | 3 | 3 |
+| `risk` | 5 | 4 | 4 |
 | `live` | 5 | 3 | 0 |
 | `container-scans` | 5 | 4 | 4 |
 | `policy` | 5 | 0 | 5 |
@@ -99,13 +99,13 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | `retirements` | 4 | 0 | 2 |
 | `business-context` | 4 | 0 | 0 |
 | `datalake` | 4 | 3 | 2 |
-| `evidence` | 3 | 0 | 2 |
+| `evidence` | 3 | 0 | 3 |
 | `healthz` | 3 | 0 | 2 |
 | `assets` | 3 | 2 | 3 |
 | `algorithms` | 3 | 1 | 0 |
 | `hsm-scans` | 3 | 2 | 2 |
 | `ct-scans` | 3 | 2 | 2 |
-| `report-snapshots` | 3 | 2 | 2 |
+| `report-snapshots` | 3 | 3 | 2 |
 | `events` | 3 | 2 | 3 |
 | `stream` | 3 | 1 | 3 |
 | `agility` | 3 | 1 | 3 |
@@ -186,7 +186,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | POST | `/api/v1/assurance/launch/pilots/{identifier}/accept` | Accept Pilot |
 | GET | `/api/v1/assurance/launch/pilots/{identifier}/status` | Pilot Status |
 | POST | `/api/v1/assurance/launch/pilots/{identifier}/technical-review` | Review Pilot |
-| GET | `/api/v1/assurance/records/{kind}/{identifier}` | History |
 | POST | `/api/v1/assurance/redis-measurements/{identifier}/review` | Review Redis Measurement |
 | POST | `/api/v1/assurance/redis-objectives` | Redis Objectives |
 | PUT | `/api/v1/assurance/redis-objectives/{identifier}` | Revise Redis Objectives |
@@ -237,8 +236,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | POST | `/api/v1/auth/saml/acs` | Saml Acs |
 | GET | `/api/v1/auth/saml/login` | Saml Login |
 | GET | `/api/v1/auth/saml/status` | Saml Status |
-| DELETE | `/api/v1/auth/users/{username}` | Delete User |
-| PATCH | `/api/v1/auth/users/{username}` | Update User |
 | POST | `/api/v1/auth/users/{username}/restore` | Restore User |
 | POST | `/api/v1/automation/blast-radius` | Blast Radius |
 | POST | `/api/v1/automation/cert-watch` | Cert Watch |
@@ -282,10 +279,8 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | GET | `/api/v1/cbom/stream/{system_id}` | Cbom Stream |
 | POST | `/api/v1/cbom/validate` | Cbom Validate |
 | POST | `/api/v1/cbom/verify` | Cbom Verify |
-| GET | `/api/v1/cbom/versions/{system_id}/{version_no}` | Cbom Version |
 | GET | `/api/v1/certificates/composite` | List Composite Certificates |
 | POST | `/api/v1/certificates/ct-entries` | Ingest Ct Log Entries |
-| GET | `/api/v1/certificates/{cert_id}` | Get Certificate |
 | PATCH | `/api/v1/certificates/{fingerprint}/renewal` | Update Certificate Renewal |
 | POST | `/api/v1/chatops/command` | Chatops Command |
 | POST | `/api/v1/ci/gate` | Ci Gate |
@@ -296,18 +291,8 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | POST | `/api/v1/cloud/orgs/discover` | Discover Org |
 | POST | `/api/v1/cloud/orgs/scan` | Scan Org Endpoint |
 | POST | `/api/v1/cloud/scan` | Scan Cloud |
-| GET | `/api/v1/collection/collectors` | Collectors |
-| POST | `/api/v1/collection/jobs` | Create Job |
-| GET | `/api/v1/collection/jobs` | Jobs |
-| GET | `/api/v1/collection/jobs/{identifier}` | Job |
 | POST | `/api/v1/collection/jobs/{identifier}/complete` | Complete |
-| GET | `/api/v1/collection/jobs/{identifier}/coverage` | Coverage |
-| GET | `/api/v1/collection/jobs/{identifier}/errors` | Errors |
-| GET | `/api/v1/collection/jobs/{identifier}/evidence` | Evidence |
 | POST | `/api/v1/collection/jobs/{identifier}/handoff` | Handoff |
-| GET | `/api/v1/collection/jobs/{identifier}/projections` | Projections |
-| POST | `/api/v1/collection/jobs/{job_id}/cancel` | Cancel Worker Job |
-| POST | `/api/v1/collection/jobs/{job_id}/enqueue` | Enqueue Job |
 | POST | `/api/v1/collection/oci/jobs` | Create Job |
 | GET | `/api/v1/collection/oci/jobs` | Jobs |
 | GET | `/api/v1/collection/oci/jobs/{identifier}` | Job |
@@ -326,7 +311,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | GET | `/api/v1/collection/oci/targets/{identifier}` | Target |
 | POST | `/api/v1/collection/oci/targets/{identifier}/authorize` | Authorize |
 | POST | `/api/v1/collection/oci/targets/{identifier}/revoke` | Revoke |
-| GET | `/api/v1/collection/qualification/campaigns/{identifier}` | Campaign |
 | POST | `/api/v1/collection/qualification/campaigns/{identifier}/artifacts` | Artifact |
 | GET | `/api/v1/collection/qualification/campaigns/{identifier}/artifacts/{digest}` | Original |
 | POST | `/api/v1/collection/qualification/campaigns/{identifier}/assignments` | Assignments |
@@ -334,16 +318,9 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | POST | `/api/v1/collection/qualification/campaigns/{identifier}/freeze` | Freeze |
 | POST | `/api/v1/collection/qualification/campaigns/{identifier}/reviews` | Reviews |
 | POST | `/api/v1/collection/qualification/campaigns/{identifier}/withdraw` | Withdraw |
-| POST | `/api/v1/collection/targets` | Register |
-| GET | `/api/v1/collection/targets` | Targets |
-| PUT | `/api/v1/collection/targets/{identifier}` | Update |
-| GET | `/api/v1/collection/targets/{identifier}` | Target |
-| POST | `/api/v1/collection/targets/{identifier}/authorize` | Authorize |
-| POST | `/api/v1/collection/targets/{identifier}/revoke` | Revoke |
 | POST | `/api/v1/compliance/attestations/verify` | Verify Attestation |
 | GET | `/api/v1/compliance/audit/evidence` | Audit Evidence |
 | GET | `/api/v1/compliance/audit/retention` | Audit Retention |
-| GET | `/api/v1/compliance/evidence/packs/{pack_id}` | Get Pack |
 | POST | `/api/v1/connectors/sdk/validate` | Validate Connector |
 | POST | `/api/v1/container-scans/scan` | Trigger Container Scan |
 | POST | `/api/v1/container/sbom` | Render Sbom |
@@ -431,8 +408,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | POST | `/api/v1/estate/evidence/discover` | Estate Discover |
 | GET | `/api/v1/estate/evidence/graph` | Estate Graph View |
 | GET | `/api/v1/estate/evidence/pqc` | Estate Pqc |
-| PATCH | `/api/v1/estate/evidence/schedules/{identifier}` | Estate Schedule Toggle |
-| DELETE | `/api/v1/estate/evidence/schedules/{identifier}` | Estate Schedule Delete |
 | GET | `/api/v1/estate/evidence/summary` | Estate Summary |
 | POST | `/api/v1/estate/evidence/tick` | Estate Tick |
 | GET | `/api/v1/estate/evidence/twin/completeness` | Estate Twin Completeness |
@@ -448,7 +423,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | GET | `/api/v1/evidence/disposition/inventory` | Disposition Inventory |
 | GET | `/api/v1/evidence/disposition/{scan_id}` | Scan Dispositions |
 | POST | `/api/v1/exceptions/expire-due` | Expire Due |
-| GET | `/api/v1/exceptions/{exception_id}` | Get Exception |
 | POST | `/api/v1/exceptions/{exception_id}/approve` | Approve Exception |
 | POST | `/api/v1/exceptions/{exception_id}/reject` | Reject Exception |
 | POST | `/api/v1/exceptions/{exception_id}/review` | Review Exception |
@@ -612,13 +586,11 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | GET | `/api/v1/ot/findings` | List Findings |
 | POST | `/api/v1/ot/metrics` | Render Ot Metrics |
 | POST | `/api/v1/ot/scan` | Scan Ot |
-| PATCH | `/api/v1/payment-crypto/ceremonies/{ceremony_id}` | Update Ceremony |
 | POST | `/api/v1/payment-crypto/emv/analyse` | Analyse Emv |
 | POST | `/api/v1/payment-crypto/evaluate` | Evaluate |
 | GET | `/api/v1/payment-crypto/findings` | List Findings |
 | POST | `/api/v1/payment-crypto/findings/{finding_id}/status` | Set Finding Status |
 | POST | `/api/v1/payment-crypto/iso8583/analyse` | Analyse Iso8583 |
-| DELETE | `/api/v1/payment-crypto/keys/{key_id}` | Delete Key |
 | POST | `/api/v1/payment-crypto/pin-blocks/analyse` | Analyse Pin Blocks |
 | POST | `/api/v1/payment-crypto/transactions` | Record Transactions |
 | POST | `/api/v1/payment-crypto/transactions/bulk` | Record Transactions Bulk |
@@ -650,16 +622,12 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | POST | `/api/v1/relationship-lifecycle/{kind}/{identifier}/state` | Change |
 | POST | `/api/v1/remediation/fix-branch` | Fix Branch |
 | GET | `/api/v1/remediation/scans/{scan_id}/suggestions` | Scan Suggestions |
-| GET | `/api/v1/remediation/tasks/{task_id}` | Get Task |
 | GET | `/api/v1/remediation/templates` | List Templates |
 | GET | `/api/v1/remediation/templates/{rule_id}` | Template Detail |
 | GET | `/api/v1/remediation/verifications` | List Verifications |
 | GET | `/api/v1/report-schedules/due` | Due Schedules |
 | POST | `/api/v1/report-schedules/run-due` | Run Due Schedules |
-| PATCH | `/api/v1/report-schedules/{schedule_id}` | Update Schedule |
-| DELETE | `/api/v1/report-schedules/{schedule_id}` | Delete Schedule |
 | POST | `/api/v1/report-schedules/{schedule_id}/run` | Run Schedule |
-| GET | `/api/v1/report-snapshots/{snapshot_id}` | Get Snapshot |
 | POST | `/api/v1/report/verify` | Verify Report Signature |
 | GET | `/api/v1/repos` | List Repos |
 | POST | `/api/v1/repos` | Create Repo |
@@ -669,7 +637,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | GET | `/api/v1/retirements` | List Retirements |
 | POST | `/api/v1/retirements/check/{scan_id}` | Check Scan |
 | POST | `/api/v1/retirements/{retirement_id}/lift` | Lift Retirement |
-| GET | `/api/v1/risk/systems/{system_id}` | System Unified Risk |
 | GET | `/api/v1/risk/systems/{system_id}/explain` | Explain System Unified Risk |
 | GET | `/api/v1/runtime/crypto-cbom` | Runtime Crypto Cbom |
 | POST | `/api/v1/runtime/crypto-drift` | Runtime Crypto Drift |
@@ -680,7 +647,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | GET | `/api/v1/saas/billing/status` | Billing Status |
 | POST | `/api/v1/saas/billing/webhook` | Stripe Webhook |
 | POST | `/api/v1/scans/import` | Import Scan Transfer |
-| GET | `/api/v1/scans/{scan_id}` | Get Scan |
 | GET | `/api/v1/scans/{scan_id}/agility` | Get Agility |
 | GET | `/api/v1/scans/{scan_id}/audit-pack` | Get Audit Pack |
 | GET | `/api/v1/scans/{scan_id}/cascade` | Get Scan Cascade |
@@ -709,7 +675,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | POST | `/api/v1/sectors/criticality` | Score Criticality |
 | GET | `/api/v1/sectors/quantum-risk` | Sector Quantum Risk |
 | GET | `/api/v1/sectors/scan-modes` | List Scan Modes |
-| GET | `/api/v1/sectors/{sector_id}` | Get Sector |
 | GET | `/api/v1/security/posture/history` | List Security Posture History |
 | GET | `/api/v1/security/secrets/status` | Secrets Status View |
 | GET | `/api/v1/security/tls/posture` | Tls Posture View |
@@ -745,7 +710,6 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | POST | `/api/v1/systems/{system_id}/scan` | Scan System |
 | GET | `/api/v1/technology-bom/admission` | Technology Bom Admission |
 | GET | `/api/v1/technology-bom/assurance` | Technology Bom Assurance |
-| GET | `/api/v1/technology-bom/cascade/runs/{run_id}` | Technology Bom Cascade Run |
 | POST | `/api/v1/technology-bom/cascade/watch` | Cascade Watch Create |
 | DELETE | `/api/v1/technology-bom/cascade/watch/{watch_id}` | Cascade Watch Delete |
 | GET | `/api/v1/technology-bom/cascade/watches` | Cascade Watches List |
@@ -755,13 +719,10 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | GET | `/api/v1/technology-bom/xbom` | Technology Bom Xbom |
 | POST | `/api/v1/telecom/air-interface/analyse` | Telecom Air Interface Analyse |
 | POST | `/api/v1/telecom/authentication/analyse` | Telecom Authentication Analyse |
-| DELETE | `/api/v1/telecom/carriers/{code}` | Telecom Carrier Delete |
 | POST | `/api/v1/telecom/ingest` | Telecom Ingest |
 | POST | `/api/v1/telecom/key-hierarchy/analyse` | Telecom Key Hierarchy Analyse |
 | POST | `/api/v1/telecom/n32/analyse` | Telecom N32 Analyse |
-| DELETE | `/api/v1/telecom/roaming-partners/{pid}` | Telecom Roaming Partner Delete |
 | POST | `/api/v1/telecom/suci/analyse` | Telecom Suci Analyse |
-| DELETE | `/api/v1/telecom/targets/{nf_id}` | Telecom Target Delete |
 | GET | `/api/v1/threat-intel/advisories` | List Advisories |
 | POST | `/api/v1/threat-intel/advisories/bundle` | Build Bundle |
 | POST | `/api/v1/threat-intel/advisories/import` | Import Advisories |

@@ -6056,3 +6056,80 @@ export const apiEstateTwinImpact = (selector: Record<string, unknown>): Promise<
 
 export const apiEstateTwinSimulate = (scenario: Record<string, unknown>): Promise<ApiResult<EstateTwinSimulation>> =>
   _rsPost<EstateTwinSimulation>("/api/v1/estate/evidence/twin/simulate", scenario);
+
+/* ── Collection: targets, jobs, worker control ─────────────────────────────
+   The collection surface was API-only: an operator could not see which targets
+   are authorised, which jobs exist, or what a job's coverage and errors are.
+   These calls are reads plus two reversible operations (enqueue / cancel); target
+   registration stays an API/CLI flow because a target is an authorisation
+   document, not a form field.
+
+   Honesty rule carried from the backend: an empty list is "nothing registered",
+   never "no crypto in the estate", and a collector that is not qualified for
+   production stands as such instead of reading like an available one. */
+
+export interface CollectionCollector {
+  id: string; method: string; state: string;
+  production_execution_qualified: boolean; server_execution: boolean;
+  capabilities: Record<string, string>;
+}
+
+export interface CollectionTarget {
+  id: string; kind?: string; revision?: number; created_at?: string;
+  [key: string]: unknown;
+}
+
+export interface CollectionJob {
+  id: string; kind?: string; revision?: number; state?: string;
+  created_at?: string; [key: string]: unknown;
+}
+
+export interface CollectionJobEvidence {
+  coverage?: Record<string, unknown>; errors?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+export const apiCollectionCollectors = (): Promise<ApiResult<{ collectors: CollectionCollector[] }>> =>
+  _rsGet<{ collectors: CollectionCollector[] }>("/api/v1/collection/collectors");
+
+export const apiCollectionTargets = (): Promise<ApiResult<{ items: CollectionTarget[]; has_more: boolean }>> =>
+  _rsGet<{ items: CollectionTarget[]; has_more: boolean }>("/api/v1/collection/targets");
+
+export const apiCollectionTargetHistory = (id: string): Promise<ApiResult<{ history: CollectionTarget[] }>> =>
+  _rsGet<{ history: CollectionTarget[] }>(`/api/v1/collection/targets/${encodeURIComponent(id)}`);
+
+export const apiCollectionAuthorize = (id: string, expected_revision: number, body?: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsPost<Record<string, unknown>>(`/api/v1/collection/targets/${encodeURIComponent(id)}/authorize`, {
+    expected_revision, ...(body ?? {}),
+  });
+
+export const apiCollectionRevoke = (id: string, expected_revision: number, reason: string): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsPost<Record<string, unknown>>(`/api/v1/collection/targets/${encodeURIComponent(id)}/revoke`, {
+    expected_revision, reason,
+  });
+
+export const apiCollectionJobs = (): Promise<ApiResult<{ items: CollectionJob[]; has_more: boolean }>> =>
+  _rsGet<{ items: CollectionJob[]; has_more: boolean }>("/api/v1/collection/jobs");
+
+export const apiCollectionJob = (id: string): Promise<ApiResult<CollectionJob>> =>
+  _rsGet<CollectionJob>(`/api/v1/collection/jobs/${encodeURIComponent(id)}`);
+
+export const apiCollectionJobCoverage = (id: string): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsGet<Record<string, unknown>>(`/api/v1/collection/jobs/${encodeURIComponent(id)}/coverage`);
+
+export const apiCollectionJobErrors = (id: string): Promise<ApiResult<{ errors: Array<Record<string, unknown>>; asset_absence_proven: boolean }>> =>
+  _rsGet<{ errors: Array<Record<string, unknown>>; asset_absence_proven: boolean }>(
+    `/api/v1/collection/jobs/${encodeURIComponent(id)}/errors`,
+  );
+
+export const apiCollectionJobEvidence = (id: string): Promise<ApiResult<CollectionJobEvidence>> =>
+  _rsGet<CollectionJobEvidence>(`/api/v1/collection/jobs/${encodeURIComponent(id)}/evidence`);
+
+export const apiCollectionJobProjections = (id: string): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsGet<Record<string, unknown>>(`/api/v1/collection/jobs/${encodeURIComponent(id)}/projections`);
+
+export const apiCollectionEnqueue = (id: string, expected_revision: number): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsPost<Record<string, unknown>>(`/api/v1/collection/jobs/${encodeURIComponent(id)}/enqueue`, { expected_revision });
+
+export const apiCollectionCancel = (id: string, expected_revision: number): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsPost<Record<string, unknown>>(`/api/v1/collection/jobs/${encodeURIComponent(id)}/cancel`, { expected_revision });

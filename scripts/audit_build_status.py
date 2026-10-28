@@ -261,12 +261,22 @@ def admissions() -> list[dict]:
 def _match(endpoint: dict, urls: set[str]) -> bool:
     """Exact path match after normalising variable segments.
 
-    Deliberately strict: a loose prefix match makes every nested route look
-    "covered" by one parent call and turns this report into the flattery it exists
-    to replace. A client that only calls a parent path genuinely does not reach the
-    child endpoint.
+    Strict, with one allowance that matters: a client usually composes
+    ``${BASE}/${id}``, so a *base path constant* legitimately covers routes whose
+    remaining segments are all dynamic. Everything else must match exactly — a
+    loose prefix match made every nested route look covered by one parent call and
+    produced 99.5%, which is the flattery this report exists to replace.
     """
-    return endpoint["normalised"] in urls
+    target = endpoint["normalised"]
+    if target in urls:
+        return True
+    for url in urls:
+        if not url or not target.startswith(url + "/"):
+            continue
+        rest = [segment for segment in target[len(url) + 1:].split("/") if segment]
+        if rest and all(segment == "{}" for segment in rest):
+            return True
+    return False
 
 
 def build_report() -> dict:

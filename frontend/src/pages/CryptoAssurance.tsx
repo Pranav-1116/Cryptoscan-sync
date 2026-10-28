@@ -7,6 +7,7 @@ import {
 } from "../lib/api.js";
 
 import HostQualification from "../components/HostQualification.js";
+import CollectionPanel from "../components/CollectionPanel.jsx";
 
 /* Crypto & key assurance — active TLS/cipher enumeration, certificate-
    transparency monitoring, key/cert expiry alerts + SLA, HSM/KMS key residence,
@@ -312,7 +313,7 @@ function CodePanel() {
 
 export default function CryptoAssurance() {
   const [tab, setTab] = useState(0);
-  const tabs = ["TLS audit", "CT monitoring", "Expiry & SLA", "HSM / KMS", "Trust store", "Hybrid-PQC", "Code rules", "Host qualification"];
+  const tabs = ["TLS audit", "CT monitoring", "Expiry & SLA", "HSM / KMS", "Trust store", "Hybrid-PQC", "Code rules", "Host qualification", "Collection"];
   return (
     <>
       <PageHead
@@ -330,6 +331,7 @@ export default function CryptoAssurance() {
       {tab === 5 && <PqcPanel />}
       {tab === 6 && <CodePanel />}
       {tab === 7 && <HostQualification />}
+      {tab === 8 && <CollectionPanel />}
     </>
   );
 }
