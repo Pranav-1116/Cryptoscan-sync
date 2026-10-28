@@ -48,7 +48,7 @@ SCHEMA_EVIDENCE = "cryptoscan.estate-evidence/1"
 
 #: §13 discovery planes this repository can actually read today.
 PLANES: tuple[str, ...] = (
-    "NETWORK", "CLOUD", "KUBERNETES", "CMDB", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR"
+    "NETWORK", "CLOUD", "KUBERNETES", "CMDB", "KMS", "HSM", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR"
 )
 
 PLANE_DETAIL: dict[str, dict[str, str]] = {
@@ -68,6 +68,18 @@ PLANE_DETAIL: dict[str, dict[str, str]] = {
         "boms": "SBOM (application inventory), TechBOM, VBOM (vendors the bank records)",
         "limitation": "CMDB records are declared (IMPORTED, LOW confidence): ownership and existence, never "
                       "cryptography in use",
+    },
+    "KMS": {
+        "source": "live KMS usage from the provider audit trail (CloudTrail)",
+        "boms": "CBOM (KMS layer, observed use), HBOM (key custody), TechBOM",
+        "limitation": "an audit trail only covers its retention window: a key last used before it is "
+                      "NOT_OBSERVED, never 'unused'",
+    },
+    "HSM": {
+        "source": "live KMIP read-only (Locate + GetAttributes on the appliance)",
+        "boms": "HBOM, CBOM (HSM layer)",
+        "limitation": "state and usage counters only: key material is never read, and a zero counter means "
+                      "'not counted', not 'unused'",
     },
     "KUBERNETES": {
         "source": "live cluster API (namespaces, ingresses, services, pods)",
@@ -485,6 +497,20 @@ def collect_vendor(db: Any, *, limit: int = 2000) -> dict[str, Any]:
     }
 
 
+def collect_kms_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
+    """Adapter for :mod:`api.estate_kms` (audit-trail usage, read-only)."""
+    from api.estate_kms import collect_kms_usage
+
+    return collect_kms_usage(db, **kwargs)
+
+
+def collect_hsm_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
+    """Adapter for :mod:`api.hsm_usage` (KMIP read-only)."""
+    from api.hsm_usage import collect_hsm_usage
+
+    return collect_hsm_usage(db, **kwargs)
+
+
 def collect_cmdb_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
     """Adapter for :mod:`api.estate_cmdb` (live, read-only ServiceNow Table API)."""
     from api.estate_cmdb import collect_cmdb
@@ -510,6 +536,8 @@ DEFAULT_COLLECTORS: dict[str, Callable[..., dict[str, Any]]] = {
     "NETWORK": collect_network,
     "CLOUD": collect_cloud_plane,
     "CMDB": collect_cmdb_plane,
+    "KMS": collect_kms_plane,
+    "HSM": collect_hsm_plane,
     "KUBERNETES": collect_kubernetes_plane,
     "RUNTIME": collect_runtime,
     "STATIC": collect_static,

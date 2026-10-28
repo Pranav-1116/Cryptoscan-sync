@@ -83,6 +83,7 @@ EVIDENCE_TYPES: tuple[str, ...] = (
     "NETWORK_PASSIVE_OBSERVED",
     "STATIC_OBSERVED",
     "CERTIFICATE_OBSERVED",
+    "AUDIT_OBSERVED",
     "CONFIGURED",
     "VENDOR_DECLARED",
     "IMPORTED",
@@ -100,6 +101,10 @@ EVIDENCE_CONFIDENCE: dict[str, str] = {
     "NETWORK_PASSIVE_OBSERVED": "MEDIUM",
     "STATIC_OBSERVED": "MEDIUM",
     "CERTIFICATE_OBSERVED": "HIGH",
+    # a provider's own audit record of an API call: this key *was* used, by this
+    # principal, at this time — the strongest evidence of use that exists short of
+    # instrumenting the process
+    "AUDIT_OBSERVED": "HIGH",
     "CONFIGURED": "MEDIUM",
     "VENDOR_DECLARED": "LOW",
     "IMPORTED": "LOW",

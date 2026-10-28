@@ -41,14 +41,13 @@ from __future__ import annotations
 
 import json
 import os
-import urllib.error
-import urllib.request
 import xml.etree.ElementTree as ElementTree
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
 
 from api.estate_planes import PlaneNotConfigured
-from api.security.aws_sigv4 import sigv4_headers
+from api.security.aws_http import AwsHttpError, default_transport as _default_transport
+from api.security.aws_http import send_signed
 from shared_models.estate_graph import make_evidence, normalize_asset
 
 SCHEMA = "cryptoscan.estate-cloud/1"
@@ -83,8 +82,8 @@ SSL_POLICY_FLOORS: dict[str, str] = {
 Transport = Callable[[str, str, Mapping[str, str], "bytes | None", float], tuple[int, bytes]]
 
 
-class CloudReadError(RuntimeError):
-    """The API answered, but not with data we can use."""
+#: the shared helper's error, re-exported so callers of this module keep one name
+CloudReadError = AwsHttpError
 
 
 # --------------------------------------------------------------------------- #
@@ -111,55 +110,9 @@ def cloud_config(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
     }
 
 
-def _default_transport(method: str, url: str, headers: Mapping[str, str], body: "bytes | None",
-                       timeout: float) -> tuple[int, bytes]:
-    request = urllib.request.Request(url, data=body, headers=dict(headers), method=method.upper())
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return int(response.status), response.read()
-    except urllib.error.HTTPError as exc:
-        return int(exc.code), exc.read() or b""
-
-
 # --------------------------------------------------------------------------- #
 # request plumbing (SigV4 + the AWS protocols)
 # --------------------------------------------------------------------------- #
-def _base_url(config: Mapping[str, Any], service: str) -> str:
-    if config.get("endpoint"):
-        return str(config["endpoint"])
-    return f"https://{service}.{config['region']}.amazonaws.com"
-
-
-def _send(config: Mapping[str, Any], service: str, *, method: str, path: str, query: str,
-          body: bytes | None, headers: Mapping[str, str], transport: Transport, timeout: float,
-          label: str) -> tuple[int, bytes]:
-    url = _base_url(config, service) + path + (f"?{query}" if query else "")
-    extras = dict(headers)
-    if body:
-        extras.setdefault("content-type", "application/x-www-form-urlencoded")
-    signed = sigv4_headers(
-        method=method,
-        url=url,
-        body=body or b"",
-        region=str(config["region"]),
-        access_key=str(config["access_key"]),
-        secret_key=str(config["secret_key"]),
-        session_token=config.get("session_token"),
-        extra_headers=extras,
-        service=service,
-    )
-    request_headers = dict(signed)
-    request_headers["Host"] = signed["host"]
-    for key, value in headers.items():
-        request_headers[key] = value
-    status, payload = transport(method, url, request_headers, body, timeout)
-    if status == 403:
-        raise PermissionError(label)
-    if status >= 300:
-        raise CloudReadError(f"{label}: HTTP {status} {payload[:200].decode('utf-8', 'replace')}")
-    return status, payload
-
-
 def _query_call(config: Mapping[str, Any], service: str, action: str, version: str,
                 params: Mapping[str, Any] | None, transport: Transport, timeout: float,
                 label: str | None = None) -> ElementTree.Element:
@@ -169,9 +122,9 @@ def _query_call(config: Mapping[str, Any], service: str, action: str, version: s
     items: list[tuple[str, str]] = [("Action", action), ("Version", version)]
     for key, value in (params or {}).items():
         items.append((str(key), str(value)))
-    _, payload = _send(config, service, method="GET", path="/", query=urlencode(items), body=None,
-                       headers={}, transport=transport, timeout=timeout,
-                       label=label or f"{service}:{action}")
+    payload = send_signed(config, service, method="GET", path="/", query=urlencode(items), body=None,
+                          headers={}, transport=transport, timeout=timeout,
+                          label=label or f"{service}:{action}")
     try:
         return ElementTree.fromstring(payload)
     except ElementTree.ParseError as exc:
@@ -183,8 +136,8 @@ def _json_call(config: Mapping[str, Any], service: str, target: str, payload: Ma
     """AWS JSON protocol (ACM, KMS): ``POST /`` with ``X-Amz-Target``."""
     body = json.dumps(dict(payload or {})).encode("utf-8")
     headers = {"content-type": "application/x-amz-json-1.1", "x-amz-target": target}
-    _, raw = _send(config, service, method="POST", path="/", query="", body=body, headers=headers,
-                   transport=transport, timeout=timeout, label=label or target)
+    raw = send_signed(config, service, method="POST", path="/", query="", body=body, headers=headers,
+                      transport=transport, timeout=timeout, label=label or target)
     try:
         return json.loads(raw or b"{}")
     except ValueError as exc:
@@ -194,8 +147,8 @@ def _json_call(config: Mapping[str, Any], service: str, target: str, payload: Ma
 def _rest_get(config: Mapping[str, Any], service: str, path: str, transport: Transport,
               timeout: float, label: str | None = None) -> dict[str, Any]:
     """AWS REST-JSON (API Gateway): plain ``GET`` returning JSON."""
-    _, raw = _send(config, service, method="GET", path=path, query="", body=None, headers={},
-                   transport=transport, timeout=timeout, label=label or f"{service}:{path}")
+    raw = send_signed(config, service, method="GET", path=path, query="", body=None, headers={},
+                      transport=transport, timeout=timeout, label=label or f"{service}:{path}")
     try:
         return json.loads(raw or b"{}")
     except ValueError as exc:
