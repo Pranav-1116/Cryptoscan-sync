@@ -402,6 +402,162 @@ def graph_from_snapshot(snapshot_doc: Mapping[str, Any]) -> EstateGraph:
 # --------------------------------------------------------------------------- #
 
 
+#: §4 — the attribute keys a collector may use to assert each level. Only these
+#: count: a level is present when evidence says so, never because a string looked
+#: like a region name.
+_PLACEMENT_KEYS: dict[str, tuple[str, ...]] = {
+    "REGION": ("region", "cloud_region", "aws_region", "azure_region", "gcp_region"),
+    "DATA_CENTER": ("data_center", "datacenter", "dc", "site", "facility"),
+    "CLOUD_ENVIRONMENT": ("cloud_account", "account_id", "subscription_id", "project_id"),
+}
+_CLOUD_PROVIDER_KEYS = ("provider", "cloud_provider", "cloud")
+
+
+def _attribute(asset: Mapping[str, Any], keys: Sequence[str]) -> str:
+    """The first asserted value for one placement level, from attributes only.
+
+    ``food for thought``: ``location`` is deliberately not consulted for region or data
+    centre. ``UAE DC1`` is a site we already place under its environment; deriving a
+    *region* from it would be inventing a level the evidence never asserted.
+    """
+    attributes = {str(key).lower(): value for key, value in (asset.get("attributes") or {}).items()}
+    for key in keys:
+        value = _text(attributes.get(key))
+        if value:
+            return value
+    return ""
+
+
+def _placement_hierarchy(graph: EstateGraph) -> dict[str, Any]:
+    """§4 — the levels above the environment, only where evidence puts something.
+
+    Returns the three upper levels, plus an explicit account of what nothing asserts.
+    An asset that no evidence places at a level is counted under ``unassigned`` with
+    the reason, so "we do not know the region" is visible rather than rendered as a
+    blank that a reader fills in mentally.
+    """
+    total = len(graph.assets())
+    regions: dict[str, dict[str, Any]] = {}
+    data_centers: dict[str, dict[str, Any]] = {}
+    clouds: dict[str, dict[str, Any]] = {}
+    assigned = {"REGION": 0, "DATA_CENTER": 0, "CLOUD_ENVIRONMENT": 0}
+
+    for asset in graph.assets():
+        region = _attribute(asset, _PLACEMENT_KEYS["REGION"])
+        data_center = _attribute(asset, _PLACEMENT_KEYS["DATA_CENTER"])
+        account = _attribute(asset, _PLACEMENT_KEYS["CLOUD_ENVIRONMENT"])
+        provider = _attribute(asset, _CLOUD_PROVIDER_KEYS).upper()
+
+        # a data centre whose value is a file path is provenance, not a site
+        if data_center and not _is_site(data_center):
+            data_center = ""
+
+        if region:
+            assigned["REGION"] += 1
+            bucket = regions.setdefault(region, {"name": region, "assets": 0, "environments": {}, "by_type": {}})
+            bucket["assets"] += 1
+            bucket["by_type"][asset["type"]] = bucket["by_type"].get(asset["type"], 0) + 1
+            environment = _text(asset.get("environment")) or "UNSPECIFIED_ENVIRONMENT"
+            bucket["environments"][environment] = bucket["environments"].get(environment, 0) + 1
+        if data_center:
+            assigned["DATA_CENTER"] += 1
+            bucket = data_centers.setdefault(
+                data_center, {"name": data_center, "assets": 0, "regions": {}, "environments": {}}
+            )
+            bucket["assets"] += 1
+            if region:
+                bucket["regions"][region] = bucket["regions"].get(region, 0) + 1
+            environment = _text(asset.get("environment")) or "UNSPECIFIED_ENVIRONMENT"
+            bucket["environments"][environment] = bucket["environments"].get(environment, 0) + 1
+        if provider or account:
+            assigned["CLOUD_ENVIRONMENT"] += 1
+            key = f"{provider or 'UNKNOWN_PROVIDER'}{':' + account if account else ''}"
+            bucket = clouds.setdefault(
+                key,
+                {"name": key, "provider": provider or None, "account": account or None,
+                 "assets": 0, "regions": {}, "by_type": {}},
+            )
+            bucket["assets"] += 1
+            bucket["by_type"][asset["type"]] = bucket["by_type"].get(asset["type"], 0) + 1
+            if region:
+                bucket["regions"][region] = bucket["regions"].get(region, 0) + 1
+
+    unassigned = [
+        {
+            "level": level,
+            "assets": total - assigned[level],
+            "reason": {
+                "REGION": (
+                    "no evidence asserts a region for these assets. A region is never derived from a "
+                    "'location' string: 'UAE DC1' is a site, and reading a cloud region out of it would "
+                    "be inventing the level the bank is trying to inventory"
+                ),
+                "DATA_CENTER": (
+                    "no evidence asserts a data centre or facility for these assets. A file path in "
+                    "'location' is provenance, not a building"
+                ),
+                "CLOUD_ENVIRONMENT": (
+                    "no evidence asserts a cloud provider or account for these assets. On-premise "
+                    "assets are not 'unassigned cloud' and are not counted as one"
+                ),
+            }[level],
+        }
+        for level in ("REGION", "DATA_CENTER", "CLOUD_ENVIRONMENT")
+        if total - assigned[level] > 0
+    ]
+
+    observed = [level for level in ESTATE_LEVELS if level in {"BANK", "ENVIRONMENT", "BUSINESS_SYSTEM"}]
+    for level, present in (
+        ("REGION", regions),
+        ("DATA_CENTER", data_centers),
+        ("CLOUD_ENVIRONMENT", clouds),
+    ):
+        if present:
+            observed.append(level)
+    ordered = [level for level in ESTATE_LEVELS if level in set(observed)]
+
+    return {
+        "regions": [
+            {
+                "name": bucket["name"],
+                "assets": bucket["assets"],
+                "by_type": bucket["by_type"],
+                "environments": [
+                    {"name": name, "assets": count}
+                    for name, count in sorted(bucket["environments"].items())
+                ],
+            }
+            for _, bucket in sorted(regions.items())
+        ],
+        "data_centers": [
+            {
+                "name": bucket["name"],
+                "assets": bucket["assets"],
+                "regions": [{"name": name, "assets": count}
+                            for name, count in sorted(bucket["regions"].items())],
+                "environments": [{"name": name, "assets": count}
+                                 for name, count in sorted(bucket["environments"].items())],
+            }
+            for _, bucket in sorted(data_centers.items())
+        ],
+        "cloud_environments": [
+            {
+                "name": bucket["name"],
+                "provider": bucket["provider"],
+                "account": bucket["account"],
+                "assets": bucket["assets"],
+                "by_type": bucket["by_type"],
+                "regions": [{"name": name, "assets": count}
+                            for name, count in sorted(bucket["regions"].items())],
+            }
+            for _, bucket in sorted(clouds.items())
+        ],
+        "unassigned": unassigned,
+        "levels_observed": ordered,
+        "levels_unobserved": [level for level in ESTATE_LEVELS if level not in set(ordered)],
+    }
+
+
 def placement_model(graph: EstateGraph) -> dict[str, Any]:
     """§4 — where everything belongs, with the unplaced called out.
 
@@ -466,20 +622,29 @@ def placement_model(graph: EstateGraph) -> dict[str, Any]:
             }
         )
 
+    hierarchy = _placement_hierarchy(graph)
+
     return {
         "schema": TWIN_SCHEMA,
-        "model": "cryptoscan.estate-placement/1",
+        "model": "cryptoscan.estate-placement/2",
         "levels": list(ESTATE_LEVELS),
+        "levels_observed": hierarchy["levels_observed"],
+        "levels_unobserved": hierarchy["levels_unobserved"],
         "bank": bank,
         "estate": bank,
         "environments": tree,
+        "regions": hierarchy["regions"],
+        "data_centers": hierarchy["data_centers"],
+        "cloud_environments": hierarchy["cloud_environments"],
+        "unassigned": hierarchy["unassigned"],
         "business_systems": sorted({name for names in systems.values() for name in names if name}),
         "unplaced": unplaced[:MAX_LISTED],
         "unplaced_count": len(unplaced),
         "placeable": len(graph.assets()) - len(unplaced),
         "note": (
             "placement is derived from evidence, never assumed: an asset without an environment or "
-            "location is UNPLACED rather than attached to the estate root"
+            "location is UNPLACED rather than attached to the estate root, and a level nothing asserts "
+            "is listed as unobserved instead of being filled in with a guess"
         ),
     }
 

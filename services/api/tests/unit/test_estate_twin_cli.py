@@ -303,3 +303,23 @@ def test_algorithms_keeps_capability_and_use_apart(cli_session, with_discovery, 
     assert "AES-256-GCM" in out
     assert "AES-128" in out
     assert "SUPPORTED" in out and "OBSERVED" in out
+
+
+def test_placement_prints_the_levels_and_what_nothing_asserts(cli_session, with_discovery, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "placement"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "estate     Synthetic Bank" in out
+    assert "not observed: REGION" in out
+    assert "no region" in out
+
+
+def test_placement_without_an_observation_refuses_to_invent_a_hierarchy(cli_session, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "placement"], session_factory=lambda: cli_session)
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_INCOMPLETE
+    assert "NOT_OBSERVED" in captured.err

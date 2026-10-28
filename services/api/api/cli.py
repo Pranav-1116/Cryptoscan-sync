@@ -199,6 +199,13 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_algorithms.add_argument("--tenant", default=None)
     twin_algorithms.add_argument("--json", action="store_true")
 
+    twin_placement = twin_sub.add_parser(
+        "placement",
+        help="where everything belongs: bank -> region -> data centre -> cloud -> environment",
+    )
+    twin_placement.add_argument("--tenant", default=None)
+    twin_placement.add_argument("--json", action="store_true")
+
     twin_changes = twin_sub.add_parser(
         "changes",
         help="what changed between observations (the live change feed)",
@@ -699,6 +706,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
     try:
         with tenant_scope(getattr(args, "tenant", None)):
 
+
             if args.twin_command == "assets":
                 rows = estate_catalog.list_assets(
                     session,
@@ -791,6 +799,31 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                 )
                 return EXIT_INCOMPLETE
 
+            if args.twin_command == "placement":
+                placement = estate_twin.placement_model(graph)
+                if args.json:
+                    print(json.dumps(placement, indent=2, default=str))
+                else:
+                    print(f"estate     {placement['bank']}")
+                    print(f"levels     observed: {', '.join(placement['levels_observed'])}")
+                    if placement["levels_unobserved"]:
+                        print(f"           not observed: {', '.join(placement['levels_unobserved'])}")
+                    for region in placement["regions"]:
+                        print(f"  region   {region['name']:<20} {region['assets']} asset(s)")
+                    for dc in placement["data_centers"]:
+                        print(f"  dc       {dc['name']:<20} {dc['assets']} asset(s)")
+                    for cloud in placement["cloud_environments"]:
+                        print(f"  cloud    {cloud['name']:<20} {cloud['assets']} asset(s)")
+                    for env in placement["environments"]:
+                        print(f"  env      {env['name']:<20} {env['assets']} asset(s)")
+                    if placement["unplaced_count"]:
+                        print(f"  unplaced {placement['unplaced_count']} asset(s) with no environment "
+                              "or site in any evidence")
+                    for row in placement["unassigned"]:
+                        print(f"  no {row['level'].lower():<17} {row['assets']} asset(s) — "
+                              f"{row['reason'].split('.')[0]}")
+                return EXIT_OK
+
             if args.twin_command == "graph-load":
                 export = estate_twin.graph_export(graph)
                 driver = None
@@ -863,6 +896,32 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                 return EXIT_OK if result.get("status") == "SIMULATED" else EXIT_INCOMPLETE
 
 
+
+
+            if args.twin_command == "placement":
+                placement = estate_twin.placement_model(graph)
+                if args.json:
+                    print(json.dumps(placement, indent=2, default=str))
+                else:
+                    print(f"estate     {placement['bank']}")
+                    print(f"levels     observed: {', '.join(placement['levels_observed'])}")
+                    if placement["levels_unobserved"]:
+                        print(f"           not observed: {', '.join(placement['levels_unobserved'])}")
+                    for region in placement["regions"]:
+                        print(f"  region   {region['name']:<20} {region['assets']} asset(s)")
+                    for dc in placement["data_centers"]:
+                        print(f"  dc       {dc['name']:<20} {dc['assets']} asset(s)")
+                    for cloud in placement["cloud_environments"]:
+                        print(f"  cloud    {cloud['name']:<20} {cloud['assets']} asset(s)")
+                    for env in placement["environments"]:
+                        print(f"  env      {env['name']:<20} {env['assets']} asset(s)")
+                    if placement["unplaced_count"]:
+                        print(f"  unplaced {placement['unplaced_count']} asset(s) with no environment "
+                              "or site in any evidence")
+                    for row in placement["unassigned"]:
+                        print(f"  no {row['level'].lower():<17} {row['assets']} asset(s) — "
+                              f"{row['reason'].split('.')[0]}")
+                return EXIT_OK
 
             if args.twin_command == "assets":
                 rows = estate_catalog.list_assets(

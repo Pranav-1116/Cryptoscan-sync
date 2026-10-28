@@ -847,6 +847,22 @@ def estate_twin_overview(
             **estate_twin.overview(graph)}
 
 
+@router.get("/twin/placement")
+def estate_twin_placement(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """§4 — where everything belongs, at every level the evidence supports.
+
+    The upper levels (region, data centre, cloud account) appear only when a collector
+    asserted them. What nothing asserts is listed under ``unassigned`` with the reason,
+    and levels with no data at all are named in ``levels_unobserved`` rather than drawn
+    as empty boxes — an empty box gets filled in by the reader's imagination.
+    """
+    run = _latest_run(db)
+    return estate_twin.placement_model(_graph_from_run(run))
+
+
 @router.get("/twin/completeness")
 def estate_twin_completeness(
     user: str = Depends(get_current_user),

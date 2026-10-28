@@ -7,11 +7,13 @@ import {
   apiEstateTwinGraphLoadPlan, apiEstateTwinSimulations,
   apiEstateChanges, apiEstateChangesDetect, apiEstateChangeAcknowledge,
   apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
+  apiEstateTwinPlacement,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
   EstateChangeFeed, EstateChangeEvent,
   EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
+  EstatePlacement,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -138,6 +140,7 @@ export default function DigitalTwinPanel() {
   const [catalogRecord, setCatalogRecord] = useState<EstateCatalogDetail | null>(null);
   const [registry, setRegistry] = useState<EstateCryptoRegistry | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [placement, setPlacement] = useState<EstatePlacement | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -210,6 +213,13 @@ export default function DigitalTwinPanel() {
   };
 
   /* The change feed: what moved between observations, and what that does not prove. */
+  /* The hierarchy above the environment, only where evidence puts something. */
+  const loadPlacement = async () => {
+    const result = await apiEstateTwinPlacement();
+    if (result.ok) setPlacement(result.data as EstatePlacement);
+    else setError("placement unavailable");
+  };
+
   const loadChanges = async () => {
     const result = await apiEstateChanges({ unacknowledgedOnly: false });
     if (result.ok) setChangeFeed(result.data as EstateChangeFeed);
@@ -252,6 +262,7 @@ export default function DigitalTwinPanel() {
     if (view === "graph" && exported === null) void loadExport();
     if (view === "changes" && changeFeed === null) void loadChanges();
     if (view === "catalog" && catalogAssets === null) void loadCatalog();
+    if (view === "live" && placement === null) void loadPlacement();
   }, [view]);
 
   const TABS: Array<{ id: typeof view; label: string }> = [
@@ -337,6 +348,41 @@ export default function DigitalTwinPanel() {
               {doc.placement.unplaced_count > 0 && (
                 <div className="dim" style={{ fontSize: 10.5, marginTop: 6, color: "var(--amber)" }}>
                   {doc.placement.unplaced_count} asset(s) carry no environment or location — reported UNPLACED rather than attached to the root
+                </div>
+              )}
+
+              {/* §4: the levels above the environment, present only where a collector
+                  asserted them. What nothing asserts is counted, not drawn empty. */}
+              {placement && (
+                <div style={{ marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 6 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--cyan)" }}>
+                    HIERARCHY · {placement.levels_observed.join(" → ")}
+                  </div>
+                  {placement.regions.map((region) => (
+                    <div key={region.name} className="dim" style={{ fontSize: 10 }}>
+                      region {region.name} · {region.assets} asset(s)
+                    </div>
+                  ))}
+                  {placement.data_centers.map((dc) => (
+                    <div key={dc.name} className="dim" style={{ fontSize: 10 }}>
+                      site {dc.name} · {dc.assets} asset(s)
+                    </div>
+                  ))}
+                  {placement.cloud_environments.map((cloud) => (
+                    <div key={cloud.name} className="dim" style={{ fontSize: 10 }}>
+                      cloud {cloud.name} · {cloud.assets} asset(s)
+                    </div>
+                  ))}
+                  {placement.unassigned.map((row) => (
+                    <div key={row.level} className="faint" style={{ fontSize: 9.5, color: "var(--amber)" }}>
+                      {row.assets} asset(s) with no {row.level.toLowerCase().replace(/_/g, " ")} in any evidence
+                    </div>
+                  ))}
+                  {placement.levels_unobserved.length > 0 && (
+                    <div className="faint" style={{ fontSize: 9.5 }}>
+                      not observed at all: {placement.levels_unobserved.join(", ")}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

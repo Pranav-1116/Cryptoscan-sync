@@ -6395,3 +6395,29 @@ export const apiEstateCryptoRegistry = (q?: string): Promise<ApiResult<EstateCry
   _rsGet<EstateCryptoRegistry>(
     `/api/v1/estate/evidence/catalog/crypto${q ? `?q=${encodeURIComponent(q)}` : ""}`,
   );
+
+/* §4 placement. The upper levels are present only where a collector asserted them;
+   `unassigned` says how many assets no evidence places at a level, so "we do not
+   know the region" is visible instead of being drawn as an empty box. */
+export interface EstatePlacementLevelRow { name: string; assets: number }
+
+export interface EstatePlacement {
+  schema: string; model: string; levels: string[];
+  levels_observed: string[]; levels_unobserved: string[];
+  bank: string | null;
+  environments: Array<{ name: string; assets: number; by_type: Record<string, number>;
+    business_systems: string[]; locations: Array<{ name: string; assets: number }> }>;
+  regions: Array<{ name: string; assets: number; by_type: Record<string, number>;
+    environments: EstatePlacementLevelRow[] }>;
+  data_centers: Array<{ name: string; assets: number; regions: EstatePlacementLevelRow[];
+    environments: EstatePlacementLevelRow[] }>;
+  cloud_environments: Array<{ name: string; provider?: string | null; account?: string | null;
+    assets: number; by_type: Record<string, number>; regions: EstatePlacementLevelRow[] }>;
+  unassigned: Array<{ level: string; assets: number; reason: string }>;
+  business_systems: string[];
+  unplaced: Array<Record<string, unknown>>; unplaced_count: number; placeable: number;
+  note: string;
+}
+
+export const apiEstateTwinPlacement = (): Promise<ApiResult<EstatePlacement>> =>
+  _rsGet<EstatePlacement>("/api/v1/estate/evidence/twin/placement");

@@ -648,3 +648,90 @@ def test_api_crypto_graph_and_graph_export(api):
     export = http.get("/api/v1/estate/evidence/twin/graph").json()
     assert export["counts"]["asset_nodes"] > 0
     assert export["load_notes"]["not_source_of_truth"]
+
+
+# -- §4: the levels above the environment ---------------------------------- #
+
+
+def _placed_payload() -> dict:
+    return {
+        "estate": "Synthetic Bank",
+        "assets": [
+            {"ref": "api", "type": "APPLICATION", "name": "Payment API", "environment": "production",
+             "location": "UAE DC1",
+             "attributes": {"region": "me-central-1", "data_center": "UAE DC1"}},
+            {"ref": "hsm", "type": "HSM", "name": "HSM-03", "environment": "production",
+             "attributes": {"region": "me-central-1", "data_center": "UAE DC1"}},
+            {"ref": "s3", "type": "CLOUD_RESOURCE", "name": "payments-bucket", "environment": "production",
+             "attributes": {"provider": "AWS", "cloud_account": "123456789012", "region": "eu-west-1"}},
+            {"ref": "legacy", "type": "APPLICATION", "name": "legacy-batch"},
+            {"ref": "scan", "type": "APPLICATION", "name": "scanned-app", "environment": "production",
+             "location": "/srv/app/Crypto.java"},
+        ],
+        "evidence": [],
+        "relationships": [],
+    }
+
+
+def test_the_four_upper_levels_are_built_only_where_evidence_asserts_them():
+    graph = build_graph(_placed_payload())
+    placement = twin.placement_model(graph)
+
+    assert placement["levels"] == list(twin.ESTATE_LEVELS)
+    assert [region["name"] for region in placement["regions"]] == ["eu-west-1", "me-central-1"]
+    me = next(region for region in placement["regions"] if region["name"] == "me-central-1")
+    assert me["assets"] == 2
+    assert me["environments"] == [{"name": "production", "assets": 2}]
+
+    assert [dc["name"] for dc in placement["data_centers"]] == ["UAE DC1"]
+    assert placement["data_centers"][0]["regions"] == [{"name": "me-central-1", "assets": 2}]
+
+    assert [cloud["name"] for cloud in placement["cloud_environments"]] == ["AWS:123456789012"]
+    assert placement["cloud_environments"][0]["provider"] == "AWS"
+    assert placement["cloud_environments"][0]["regions"] == [{"name": "eu-west-1", "assets": 1}]
+
+
+def test_a_level_nothing_asserts_is_reported_as_unobserved_not_invented():
+    graph = build_graph(_placed_payload())
+    placement = twin.placement_model(graph)
+    unassigned = {row["level"]: row for row in placement["unassigned"]}
+    # two assets assert no region; three assert no data centre
+    assert unassigned["REGION"]["assets"] == 2
+    assert unassigned["DATA_CENTER"]["assets"] == 3
+    assert "never derived from a 'location' string" in unassigned["REGION"]["reason"]
+    assert "provenance, not a building" in unassigned["DATA_CENTER"]["reason"]
+    assert "not 'unassigned cloud'" in unassigned["CLOUD_ENVIRONMENT"]["reason"]
+
+
+def test_a_file_path_never_becomes_a_data_centre_or_a_region():
+    graph = build_graph({
+        "estate": "B",
+        "assets": [{"ref": "x", "type": "LIBRARY", "name": "OpenSSL", "environment": "production",
+                    "location": "/srv/app/libcrypto.so",
+                    "attributes": {"data_center": "/mnt/host/etc/ssl"}}],
+        "evidence": [], "relationships": [],
+    })
+    placement = twin.placement_model(graph)
+    assert placement["data_centers"] == []
+    assert {row["level"]: row["assets"] for row in placement["unassigned"]}["DATA_CENTER"] == 1
+
+
+def test_an_estate_with_no_upper_level_facts_lists_them_as_unobserved():
+    graph = build_graph({
+        "estate": "B",
+        "assets": [{"ref": "h", "type": "HOST", "name": "app-01", "environment": "production"}],
+        "evidence": [], "relationships": [],
+    })
+    placement = twin.placement_model(graph)
+    assert placement["regions"] == []
+    assert placement["levels_observed"] == ["BANK", "ENVIRONMENT", "BUSINESS_SYSTEM"]
+    assert placement["levels_unobserved"] == ["REGION", "DATA_CENTER", "CLOUD_ENVIRONMENT"]
+
+
+def test_the_overview_carries_the_hierarchy():
+    graph = build_graph(_placed_payload())
+    body = twin.overview(graph)
+    # one asset has no environment at all; the scanned one has an environment but a
+    # file path for a location, so it is placed by environment and not by site
+    assert body["placement"]["unplaced_count"] == 1
+    assert body["levels"] == list(twin.ESTATE_LEVELS)

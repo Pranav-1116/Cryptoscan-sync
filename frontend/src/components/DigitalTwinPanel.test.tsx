@@ -20,6 +20,7 @@ const GRAPH_LOAD = `${TWIN}/graph/load`;
 const SIMULATIONS = `${TWIN}/simulations`;
 const CHANGES = "/api/v1/estate/evidence/changes";
 const CATALOG = "/api/v1/estate/evidence/catalog";
+const PLACEMENT = `${TWIN}/placement`;
 const SNAPSHOTS = `${TWIN}/snapshots`;
 
 function overview() {
@@ -296,4 +297,26 @@ it("shows stale catalogue rows instead of hiding what stopped being observed", a
   expect(screen.getByText(/1 active/)).toBeInTheDocument();
   expect(screen.getByText("AES-256-GCM")).toBeInTheDocument();
   expect(screen.getByText(/capability never counts as use/)).toBeInTheDocument();
+});
+
+it("draws the estate hierarchy only where evidence puts something", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [PLACEMENT]: {
+      schema: "x", model: "cryptoscan.estate-placement/2",
+      levels: ["BANK", "REGION", "DATA_CENTER", "CLOUD_ENVIRONMENT", "ENVIRONMENT", "BUSINESS_SYSTEM"],
+      levels_observed: ["BANK", "REGION", "ENVIRONMENT", "BUSINESS_SYSTEM"],
+      levels_unobserved: ["DATA_CENTER", "CLOUD_ENVIRONMENT"],
+      bank: "Synthetic Bank",
+      environments: [], regions: [{ name: "me-central-1", assets: 2, by_type: {}, environments: [] }],
+      data_centers: [], cloud_environments: [],
+      unassigned: [{ level: "REGION", assets: 4, reason: "no evidence asserts a region for these assets" }],
+      business_systems: [], unplaced: [], unplaced_count: 0, placeable: 2, note: "",
+    },
+  });
+  render(<DigitalTwinPanel />);
+  await waitFor(() => expect(screen.getByText(/HIERARCHY · BANK → REGION/)).toBeInTheDocument());
+  expect(screen.getByText(/region me-central-1 · 2 asset/)).toBeInTheDocument();
+  expect(screen.getByText(/4 asset\(s\) with no region in any evidence/)).toBeInTheDocument();
+  expect(screen.getByText(/not observed at all: DATA_CENTER, CLOUD_ENVIRONMENT/)).toBeInTheDocument();
 });
