@@ -3,7 +3,7 @@ import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, Tabs, Drawer, Bar, Ring } from "../components/ui.jsx";
 import KeyReconciliationPanel from "../components/KeyReconciliationPanel";
 import { usePollingApi, useApi, LiveBadge } from "../lib/apiUi.jsx";
-import { useRealtimeRefresh } from "../lib/realtime.js";
+import { useChannelRefresh } from "../lib/realtime.js";
 import { StatusMark } from "../components/icons";
 import { IconHardware, IconSecret, IconCrypto, IconSecurity, IconAccelerator, IconComponent, ICON_MD, IconTarget, type Icon } from "../components/icons";
 import {
@@ -25,16 +25,16 @@ const DEVICE_ICON: Record<string, Icon> = {
 };
 
 export default function Hardware() {
-  const inv = usePollingApi(apiLiveInventory, 8000);
+  const inv = usePollingApi(apiLiveInventory, 8000, [], { channels: ["inventory", "crypto"] });
   const data = (inv.data ?? null) as LiveInventory | null;
   const devices: LiveHardwareDevice[] = data?.hardware ?? [];
   const firmware = data?.firmware ?? [];
   const live = inv.source === "live";
 
-  const stat = usePollingApi(apiLiveScanStatus, 8000);
+  const stat = usePollingApi(apiLiveScanStatus, 8000, [], { channels: ["estate", "inventory"] });
   const hwSummary = (stat.data as { scanners?: { hardware?: { summary?: Record<string, unknown> } } } | null)
     ?.scanners?.hardware?.summary ?? {} as Record<string, any>;
-  useRealtimeRefresh(inv.run, stat.run);
+  useChannelRefresh(["inventory", "crypto", "estate"], [inv.run, stat.run]);
 
   const cat = useApi(() => apiHardwareCatalog(), []);
   const catalog: HardwareEntry[] = useMemo(() => cat.data?.devices ?? [], [cat.data]);

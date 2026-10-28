@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Any
 
 from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -432,6 +433,32 @@ class SoftDeleteRequest(BaseModel):
     reason: str = Field(..., min_length=3, description="Why this finding is being retracted")
 
 
+def _announce_findings_change(row: Any, change: str, user: str) -> None:
+    """Push a findings change onto the realtime contract.
+
+    Best-effort by design: the retraction is already committed and audited, and a broken
+    event bus must not turn a successful retraction into a 500. The screen that missed the
+    push refetches on its next connect — which is why the channel carries the resource path
+    and not just a name.
+    """
+    try:
+        from api import realtime
+
+        realtime.publish(
+            "findings",
+            "status_changed",
+            detail=f"Finding {row.id} {change} by {user}",
+            payload={
+                "evidence_id": str(row.id),
+                "scan_id": row.scan_id,
+                "status": change,
+                "by": user,
+            },
+        )
+    except Exception:  # noqa: BLE001 — an audit-grade failure would already have raised
+        logger.warning("findings_realtime_publish_failed", extra={"evidence_id": str(row.id)})
+
+
 @router.post("/findings/{evidence_id}/soft-delete", response_model=FindingResponse)
 def soft_delete_finding(
     evidence_id: str,
@@ -475,6 +502,10 @@ def soft_delete_finding(
         db.rollback()
         logger.exception("evidence_soft_delete_audit_failed", extra={"evidence_id": evidence_id})
         raise HTTPException(status_code=503, detail="Evidence retraction audit is unavailable")
+    # a retraction changes what every findings screen should show, so it is pushed rather
+    # than discovered on the next poll. Published after the commit: announcing a change the
+    # transaction then rolls back is how a live screen ends up showing something false
+    _announce_findings_change(row, "retracted", user)
     return _to_response(row, include_raw=True)
 
 
@@ -515,5 +546,6 @@ def restore_finding(
         db.rollback()
         logger.exception("evidence_restore_audit_failed", extra={"evidence_id": evidence_id})
         raise HTTPException(status_code=503, detail="Evidence restore audit is unavailable")
+    _announce_findings_change(row, "restored", user)
     return _to_response(row, include_raw=True)
 

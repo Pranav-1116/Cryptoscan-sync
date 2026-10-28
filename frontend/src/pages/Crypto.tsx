@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useApi, usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
-import { useRealtimeRefresh } from "../lib/realtime.js";
+import { useChannelRefresh } from "../lib/realtime.js";
 import {
   apiAlgorithmCatalog,
   apiProtocolCatalog,
@@ -30,8 +30,8 @@ function quantumBadge(a: AlgorithmEntry) {
 export default function Crypto() {
   const algo = useApi(() => apiAlgorithmCatalog(), []);
   const proto = useApi(() => apiProtocolCatalog(), []);
-  const inv = usePollingApi(apiLiveInventory, 9000);
-  useRealtimeRefresh(inv.run);
+  const inv = usePollingApi(apiLiveInventory, 9000, [], { channels: ["crypto", "estate"] });
+  useChannelRefresh(["crypto", "estate"], [inv.run]);
 
   const algorithms: AlgorithmEntry[] = useMemo(() => algo.data?.algorithms ?? [], [algo.data]);
   const protocols: ProtocolEntry[] = useMemo(() => proto.data?.protocols ?? [], [proto.data]);

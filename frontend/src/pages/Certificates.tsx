@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer, Code, Ring, Bar } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
-import { useRealtimeRefresh } from "../lib/realtime.js";
+import { useChannelRefresh } from "../lib/realtime.js";
 import { StatusMark, IconCertificate, IconClock, IconSecurity, IconCloud } from "../components/icons";
 import {
   apiLiveInventory,
@@ -266,8 +266,8 @@ const SLA_TIERS: { key: string; label: string; tone: "red" | "amber" | "cyan" | 
 ];
 
 function ExpiryCalendarPanel() {
-  const cal = usePollingApi(apiExpiryCalendar, 30000);
-  useRealtimeRefresh(cal.run);
+  const cal = usePollingApi(apiExpiryCalendar, 30000, [], { channels: ["crypto"] });
+  useChannelRefresh(["crypto"], [cal.run]);
   const data = (cal.data ?? null) as ExpiryCalendar | null;
   if (!data) {
     return (
@@ -316,8 +316,8 @@ function ExpiryCalendarPanel() {
 type Issued = { fingerprint: string; cn: string; not_after?: string; serial?: string; pem: string; status: string };
 
 function CertLifecyclePanel() {
-  const queue = usePollingApi(apiCertRenewalQueue, 20000);
-  useRealtimeRefresh(queue.run);
+  const queue = usePollingApi(apiCertRenewalQueue, 20000, [], { channels: ["crypto"] });
+  useChannelRefresh(["crypto"], [queue.run]);
   const [cn, setCn] = useState("");
   const [san, setSan] = useState("");
   const [days, setDays] = useState(365);
@@ -441,8 +441,8 @@ function CertLifecyclePanel() {
 
 export default function Certificates() {
   const [sel, setSel] = useState<number | null>(null);
-  const inv = usePollingApi(apiLiveInventory, 8000);
-  useRealtimeRefresh(inv.run);
+  const inv = usePollingApi(apiLiveInventory, 8000, [], { channels: ["crypto", "inventory"] });
+  useChannelRefresh(["crypto", "inventory"], [inv.run]);
   const live = inv.source === "live";
   const data = (inv.data ?? null) as LiveInventory | null;
   const certs: CertRow[] = (data?.certificates ?? []).map((c) => ({ ...c, sanCount: c.san === "—" ? 0 : c.san.split(",").length }));
@@ -452,7 +452,7 @@ export default function Certificates() {
   // the persisted estate (round 74) — the durable inventory, distinct
   // from the live observation run above
   const [estateSel, setEstateSel] = useState<number | null>(null);
-  const estate = usePollingApi(apiCertificateEstate, 15000);
+  const estate = usePollingApi(apiCertificateEstate, 15000, [], { channels: ["crypto"] });
   const estateRows = estate.data?.certificates ?? [];
   const unknownOwner = estateRows.filter((c) => !c.owner).length;
   const estateDetail = estateSel !== null ? (estateRows[estateSel] ?? null) : null;

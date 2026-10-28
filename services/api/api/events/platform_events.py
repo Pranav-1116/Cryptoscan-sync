@@ -110,6 +110,19 @@ def emit_platform_event(
     and a separate transaction per event for no benefit.
     """
     tenant_id = tenant_id or _active_tenant_id(payload)
+    # Every platform event is classified onto the product's realtime contract (channel +
+    # kind + per-channel sequence) before it is persisted or published, so the event that
+    # reaches a screen and the event in the audit row carry the same address. A routing
+    # failure must never cost an audit row: stamp() returns None and the event is published
+    # unclassified, where the catalogue counts it as unrouted.
+    try:
+        from api import realtime
+
+        stamped = realtime.stamp(event_type, payload)
+        if stamped is not None:
+            payload = stamped
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("realtime_classification_failed: %s", exc)
     row_id: str | None = None
     try:
         row_id = _persist(target_name=target_name, event_type=event_type,

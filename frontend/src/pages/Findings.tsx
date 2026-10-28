@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Table, PageHead, Kpi, Code, Drawer, Bar, Ring, Stat } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
-import { useRealtimeRefresh } from "../lib/realtime.js";
+import { ChannelLiveBadge, useChannelRefresh } from "../lib/realtime.js";
 import { RequireRole } from "../lib/auth.js";
 import { ICON_MD, ICON_SM, IconClose, IconRunning, StatusMark, IconSearch, IconCertificate, IconTrendUp, IconTrendDown } from "../components/icons";
 import {
@@ -39,6 +39,10 @@ function confidenceBadge(c: string) {
   return <Badge tone={t}>{up || "—"}</Badge>;
 }
 
+// Findings are produced by scans and retractions: the page refreshes when either of those
+// surfaces actually changes, instead of re-reading the same list every 8 seconds.
+const FINDINGS_CHANNELS = ["findings", "crypto", "estate"];
+
 export default function Findings() {
   const [algorithm, setAlgorithm] = useState("");
   const [status, setStatus] = useState("");
@@ -53,9 +57,10 @@ export default function Findings() {
     () => apiFindings({ page, page_size: 50, algorithm: algorithm || undefined, compliance_status: status || undefined }),
     15000,
     [page, algorithm, status],
+    { channels: FINDINGS_CHANNELS },
   );
-  const runtime = usePollingApi(() => apiRuntimeFindings(50), 8000, []);
-  useRealtimeRefresh(list.run, runtime.run);
+  const runtime = usePollingApi(() => apiRuntimeFindings(50), 8000, [], { channels: FINDINGS_CHANNELS });
+  useChannelRefresh(FINDINGS_CHANNELS, [list.run, runtime.run]);
 
   const [repoUrl, setRepoUrl] = useState("");
   const [scanBusy, setScanBusy] = useState(false);
@@ -140,6 +145,7 @@ export default function Findings() {
         right={
           <>
             <LiveBadge source={live ? "live" : "offline"} label={live ? "EVIDENCE CHAIN" : "BACKEND OFFLINE"} />
+            <ChannelLiveBadge channels={FINDINGS_CHANNELS} label="findings" />
             <Badge tone={live ? "cyan" : ""}><span className="dot" /> {total.toLocaleString()} FINDINGS</Badge>
           </>
         }

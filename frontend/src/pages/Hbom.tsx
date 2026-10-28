@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Bar, Ring } from "../components/ui";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
-import { useRealtimeRefresh } from "../lib/realtime.js";
+import { useChannelRefresh } from "../lib/realtime.js";
 import { apiLiveBom, LiveBomResponse, apiHbomEstate, apiHbomPin, apiHbomSnapshot, apiHbomSnapshots, apiHbomSnapshotDiff, HbomEstateDocument, HbomSnapshotMeta, HbomSnapshotDiff } from "../lib/api.js";
 import { IconCertificate, IconCrypto, IconHardware, IconTarget, IconClock, IconSecurity, IconInfo, IconWarn, IconSearch } from "../components/icons";
 
@@ -11,13 +11,13 @@ import { IconCertificate, IconCrypto, IconHardware, IconTarget, IconClock, IconS
    2. Unified estate HBOM — ONE document over every persisted hardware row, content-addressed and pinnable */
 
 export default function Hbom() {
-  const res = usePollingApi(apiLiveBom, 8000);
-  useRealtimeRefresh(res.run);
+  const res = usePollingApi(apiLiveBom, 8000, [], { channels: ["crypto", "estate"] });
+  useChannelRefresh(["crypto", "estate"], [res.run]);
   const live = res.source === "live";
   const bom = (res.data ?? null) as LiveBomResponse | null;
   const devices = bom?.hbom.components ?? [];
 
-  const estate = usePollingApi(apiHbomEstate, 8000);
+  const estate = usePollingApi(apiHbomEstate, 8000, [], { channels: ["estate", "crypto"] });
   const estateDoc = (estate.data ?? null) as HbomEstateDocument | null;
   const estateLive = estate.source === "live";
 

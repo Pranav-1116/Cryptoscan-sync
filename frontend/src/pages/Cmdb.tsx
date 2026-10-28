@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Stat, Tabs } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
-import { useRealtime, useRealtimeRefresh, RealtimeChip, severityOf, isSystemEvent, type RealtimeState } from "../lib/realtime.js";
+import { useRealtime, useChannelRefresh, RealtimeChip, severityOf, isSystemEvent, type RealtimeState } from "../lib/realtime.js";
 import { apiAssetRiskExplain, apiInventory, apiInventorySummary, apiUnifiedRisk, AssetRiskExplain, CmdbAsset, CmdbInventory, CmdbSummary, UnifiedRiskResponse } from "../lib/api.js";
 
 /* Unified Asset Inventory / CMDB — one authoritative, deduplicated view of the
@@ -161,10 +161,10 @@ function AssetExplainPanel({ data, onClose }: { data: AssetRiskExplain; onClose:
 
 export default function Cmdb() {
   const rt = useRealtime();
-  const assets = usePollingApi(apiInventory, 9000);
-  const summary = usePollingApi(apiInventorySummary, 12000);
-  const riskU = usePollingApi(apiUnifiedRisk, 15000);
-  useRealtimeRefresh(assets.run, summary.run, riskU.run);
+  const assets = usePollingApi(apiInventory, 9000, [], { channels: ["inventory"] });
+  const summary = usePollingApi(apiInventorySummary, 12000, [], { channels: ["inventory"] });
+  const riskU = usePollingApi(apiUnifiedRisk, 15000, [], { channels: ["inventory"] });
+  useChannelRefresh(["inventory"], [assets.run, summary.run, riskU.run]);
 
   const live = assets.source === "live";
   const data: CmdbInventory | null = assets.data ?? null;

@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import React, { useMemo, useState } from "react";
 import { Badge, PageHead, Table, Panel, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
-import { useRealtimeRefresh } from "../lib/realtime.js";
+import { useChannelRefresh } from "../lib/realtime.js";
 import { apiLiveAlerts, LiveAlert, LiveAlertsResponse } from "../lib/api.js";
 
 /* Alerts — deterministic, cross-scanner risk aggregation from the live scans
@@ -126,8 +126,8 @@ export default function Alerts() {
   const [filter, setFilter] = useState("all");
   const [acked, setAcked] = useState<Set<string>>(new Set());
   const [sel, setSel] = useState<AlertRow | null>(null);
-  const res = usePollingApi(apiLiveAlerts, 6000);
-  useRealtimeRefresh(res.run);
+  const res = usePollingApi(apiLiveAlerts, 6000, [], { channels: ["security", "notifications"] });
+  useChannelRefresh(["security", "notifications"], [res.run]);
   const live = res.source === "live";
   const data = (res.data ?? null) as LiveAlertsResponse | null;
   const counts = data?.counts ?? {};

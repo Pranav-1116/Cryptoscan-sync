@@ -18,7 +18,7 @@
    - the server's `retry:` hint sets the base reconnect delay. */
 
 import React, {
-  createContext, useCallback, useContext, useEffect, useRef, useState,
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from "react";
 import { getToken, isBackendLive, tenantFetch } from "./api.js";
 
@@ -132,32 +132,210 @@ export function RealtimeChip({ compact = false }: { compact?: boolean }) {
   );
 }
 
-/**
- * Live refresh: reload the given resources whenever a real (non-system) event
- * lands on the SSE stream, throttled so a burst never hammers the backend.
+/** Which product channel carried an event, or null when it carried none.
  *
- * Pages with fixed polling can pass their data hooks' `.run` functions here so
- * they update the moment the platform changes, instead of waiting out their
- * poll interval. When the SSE stream is down this is a no-op and the page keeps
- * its own polling fallback (honest offline state).
+ * The backend stamps `channel` + `kind` on every routable platform event (see
+ * `services/api/api/realtime.py`). An event without a channel still reaches the raw
+ * feed, but it cannot drive a channel subscription — a panel that refreshed for
+ * unclassified events would be guessing what changed.
+ */
+export function channelOf(event: StreamEvent | undefined | null): string | null {
+  const channel = event?.payload?.channel;
+  return typeof channel === "string" && channel ? channel : null;
+}
+
+/** The kind within the channel (`change_detected`, `task_verified`, …), if stamped. */
+export function kindOf(event: StreamEvent | undefined | null): string | null {
+  const kind = event?.payload?.kind;
+  return typeof kind === "string" && kind ? kind : null;
+}
+
+/** Sentinel meaning "every channel" — an explicit value, so a typo cannot match one. */
+export const CHANNELS_ALL = ["*"];
+
+export interface ChannelSignal {
+  /** true when this panel is currently being driven by the stream */
+  live: boolean;
+  /** epoch ms of the last event on these channels, or null if none has arrived */
+  lastAt: number | null;
+  lastKind: string | null;
+  lastType: string | null;
+  /** events seen on these channels since the page mounted (not a server total) */
+  seen: number;
+  /** the connection state, so a panel can distinguish "quiet" from "disconnected" */
+  conn: ConnState;
+}
+
+/**
+ * Subscribe one panel to one or more product channels.
+ *
+ * This is the primitive the console uses to stop polling: a panel names the channel
+ * it reads (`findings`, `estate`, `remediation`) and refetches when something on that
+ * channel actually changed, instead of on a timer. Three states are deliberately
+ * distinct, because collapsing them is how a screen lies:
+ *
+ * - `live && lastAt === null` — connected, nothing has happened yet. The data on
+ *   screen came from the initial fetch and is current as far as anyone knows;
+ * - `live && lastAt` — a change arrived at `lastAt`;
+ * - `!live` — no stream, so the panel must keep its own fallback (polling).
+ */
+export function useChannelSignal(
+  channels: string | string[],
+  options: { kinds?: string[] } = {},
+): ChannelSignal {
+  const rt = useRealtime();
+  const key = Array.isArray(channels) ? channels.join(",") : channels;
+  const kindKey = options.kinds ? options.kinds.join(",") : "";
+  const want = useMemo(() => new Set(key.split(",")), [key]);
+  const allowKinds = useMemo(() => (kindKey ? new Set(kindKey.split(",")) : null), [kindKey]);
+  const matches = useCallback(
+    (channel: string) => want.has(channel) || want.has("*"),
+    [want],
+  );
+  const [signal, setSignal] = useState<{ at: number | null; kind: string | null; type: string | null; seen: number; id: number | null }>(
+    { at: null, kind: null, type: null, seen: 0, id: null },
+  );
+
+  // Only look at the newest event: the store caps its list, and re-scanning it every
+  // render would turn a burst into a quadratic walk.
+  const newest = rt.events[0];
+  useEffect(() => {
+    if (!newest || !rt.connected) return;
+    const channel = channelOf(newest);
+    if (!channel || !matches(channel)) return;
+    const kind = kindOf(newest);
+    if (allowKinds && (!kind || !allowKinds.has(kind))) return;
+    setSignal((prev) => prev.id === newest.id ? prev : {
+      at: Date.now(), kind, type: newest.type, seen: prev.seen + 1, id: newest.id,
+    });
+  }, [newest, rt.connected, matches, allowKinds]);
+
+  // Losing the estate must not leave a stale "LIVE" claim on screen.
+  useEffect(() => {
+    if (rt.conn === "offline" && rt.source === "off") setSignal({ at: null, kind: null, type: null, seen: 0, id: null });
+  }, [rt.conn, rt.source]);
+
+  return {
+    live: rt.connected && rt.conn === "live",
+    lastAt: signal.at,
+    lastKind: signal.kind,
+    lastType: signal.type,
+    seen: signal.seen,
+    conn: rt.conn,
+  };
+}
+
+/**
+ * Per-panel channel indicator.
+ *
+ * The header chip answers "is the console connected". This answers a narrower and more
+ * useful question for one panel: "is *this* panel being kept current by an event, or by
+ * its timer?" Three states, because collapsing them would hide the interesting one:
+ *
+ * - `LIVE` — connected and at least one change has arrived on this channel;
+ * - `QUIET` — connected, nothing has happened on this channel yet. The data is fresh;
+ *   saying "live" before anything ever arrived would be a claim about the future;
+ * - `POLLING` — no stream, so the panel is on its timer and may be out of date.
+ */
+export function ChannelLiveBadge({ channels, label }: { channels: string[]; label?: string }) {
+  const signal = useChannelSignal(channels);
+  const age = useSecondsSince(signal.lastAt);
+
+  const state = signal.live ? (signal.lastAt === null ? "QUIET" : "LIVE") : "POLLING";
+  const tone = state === "LIVE" ? "green" : state === "QUIET" ? "slate" : "amber";
+  const name = label ?? channels.join("+");
+  const detail = signal.live && age !== null ? `${age}s ago` : undefined;
+
+  return (
+    <span
+      className="badge"
+      title={
+        state === "POLLING"
+          ? `No event stream: ${name} is refreshed on a timer and may be out of date.`
+          : state === "QUIET"
+            ? `Stream connected, no ${name} change has arrived yet.`
+            : `Refreshed by a ${name} event${detail ? ` ${detail}` : ""}.`
+      }
+      style={{ borderColor: `var(--${tone})`, color: `var(--${tone})`, display: "inline-flex", alignItems: "center", gap: 5 }}
+    >
+      <span className="dot" style={{ background: `var(--${tone})` }} />
+      {state}{name ? ` · ${name}` : ""}{detail ? ` · ${detail}` : ""}
+    </span>
+  );
+}
+
+/**
+ * Refetch on channel events, coalescing bursts.
+ *
+ * The previous version was a leading-edge throttle that *dropped* every event inside
+ * the window: a burst of five changes produced one refetch, and if that refetch landed
+ * mid-burst the screen could settle on pre-burst data with no later call to correct it
+ * (a genuine lost update, not a slow one). This schedules a trailing run instead, so the
+ * last event of a burst always produces exactly one refetch after it.
+ */
+export function useChannelRefresh(
+  channels: string | string[],
+  runs: Array<() => unknown>,
+  options: { kinds?: string[]; minIntervalMs?: number } = {},
+) {
+  const rt = useRealtime();
+  const signal = useChannelSignal(channels, { kinds: options.kinds });
+  const runsRef = useRef(runs);
+  runsRef.current = runs;
+  const minInterval = options.minIntervalMs ?? 1000;
+  const lastRunRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seenRef = useRef(0);
+
+  useEffect(() => {
+    if (!rt.connected || !signal.lastAt) return;
+    if (signal.seen === seenRef.current) return;
+    seenRef.current = signal.seen;
+    const fire = () => {
+      lastRunRef.current = Date.now();
+      for (const run of runsRef.current) {
+        try { void run(); } catch { /* a failed refresh is non-fatal */ }
+      }
+    };
+    const wait = Math.max(0, minInterval - (Date.now() - lastRunRef.current));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(fire, Math.max(wait, 120));
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [signal.seen, signal.lastAt, rt.connected, minInterval]);
+}
+
+/**
+ * Live refresh across the whole feed: reload the given resources whenever a real
+ * (non-system) event lands on the SSE stream, coalesced.
+ *
+ * Kept for panels that genuinely read more than one surface. Panels that read one
+ * surface should name it with `useChannelRefresh(["findings"], run)`, so an estate
+ * discovery does not refetch a certificate inventory.
  */
 export function useRealtimeRefresh(...runs: Array<() => unknown>) {
   const rt = useRealtime();
+  const runsRef = useRef(runs);
+  runsRef.current = runs;
   const lastRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seenIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     const last = rt.events[0];
     if (!last || !rt.connected) return;
     if (isSystemEvent(last.type)) return;
-    const now = Date.now();
-    if (now - lastRef.current < 4000) return; // throttle
-    lastRef.current = now;
-    const t = setTimeout(() => {
-      for (const run of runs) {
+    if (seenIdRef.current === last.id) return;
+    seenIdRef.current = last.id;
+    const fire = () => {
+      lastRef.current = Date.now();
+      for (const run of runsRef.current) {
         try { void run(); } catch { /* a failed refresh is non-fatal */ }
       }
-    }, 150);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    };
+    const wait = Math.max(0, 4000 - (Date.now() - lastRef.current));
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(fire, Math.max(wait, 120));
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [rt.events, rt.connected]);
 }
 

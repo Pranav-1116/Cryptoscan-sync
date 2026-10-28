@@ -68,7 +68,7 @@ function DimensionRow({ item }: { item: { dimension: string; percent: number | n
 }
 
 export default function DigitalTwinPanel() {
-  const twin = usePollingApi(apiEstateTwin, 60000);
+  const twin = usePollingApi(apiEstateTwin, 60000, [], { channels: ["twin"] });
   const doc = (twin.data ?? null) as EstateTwinOverview | null;
 
   const [query, setQuery] = useState("AES-256");

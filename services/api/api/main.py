@@ -37,6 +37,7 @@ from api.routers import (
     priority,
     saas,
     stream,
+    realtime as realtime_router,
     assets,
     inventory,
     inventory_cloud,
@@ -564,6 +565,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(telecom.router, prefix=prefix)
     app.include_router(audit_export.router, prefix=prefix)
     app.include_router(events.router, prefix=prefix)
+    app.include_router(realtime_router.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)
     app.include_router(live_scan.router, prefix=prefix)
     app.include_router(api_keys.router, prefix=prefix)
