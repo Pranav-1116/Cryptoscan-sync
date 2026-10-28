@@ -5,9 +5,11 @@ import {
   apiEstateTwin, apiEstateTwinSearch, apiEstateTwinImpact, apiEstateTwinSimulate, apiEstateTwinAsset,
   apiEstateTwinSnapshots, apiEstateTwinCapture, apiEstateTwinCompare, apiEstateTwinCryptoGraph, apiEstateTwinGraph,
   apiEstateTwinGraphLoadPlan, apiEstateTwinSimulations,
+  apiEstateChanges, apiEstateChangesDetect, apiEstateChangeAcknowledge,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
+  EstateChangeFeed, EstateChangeEvent,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -115,7 +117,7 @@ export default function DigitalTwinPanel() {
   /* Four views over one twin. "Live" is the current evidence; the other three are
      the parts spec 94 §24 lists that a BOM panel cannot answer: what moved, what is
      capability vs use, and what a graph store would receive. */
-  const [view, setView] = useState<"live" | "crypto" | "history" | "graph">("live");
+  const [view, setView] = useState<"live" | "crypto" | "changes" | "history" | "graph">("live");
   const [snapshots, setSnapshots] = useState<EstateTwinSnapshotList | null>(null);
   const [comparison, setComparison] = useState<EstateTwinCompare | null>(null);
   const [crypto, setCrypto] = useState<EstateTwinCryptoGraph | null>(null);
@@ -125,6 +127,9 @@ export default function DigitalTwinPanel() {
   /* its own error: the stored-simulation read failing must not overwrite the
      snapshot error, or one broken read would look like two */
   const [simError, setSimError] = useState<string | null>(null);
+  const [changeFeed, setChangeFeed] = useState<EstateChangeFeed | null>(null);
+  const [changeError, setChangeError] = useState<string | null>(null);
+  const [detected, setDetected] = useState<EstateChangeEvent | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -173,6 +178,32 @@ export default function DigitalTwinPanel() {
     else setSimError("stored simulations unavailable");
   };
 
+  /* The change feed: what moved between observations, and what that does not prove. */
+  const loadChanges = async () => {
+    const result = await apiEstateChanges({ unacknowledgedOnly: false });
+    if (result.ok) setChangeFeed(result.data as EstateChangeFeed);
+    else setChangeError("change feed unavailable — this is not 'nothing changed'");
+  };
+
+  const detectNow = async () => {
+    setBusy(true);
+    setChangeError(null);
+    const result = await apiEstateChangesDetect();
+    if (result.ok) {
+      setDetected(result.data as EstateChangeEvent);
+      await loadChanges();
+    } else setChangeError("change detection failed — the feed was not updated");
+    setBusy(false);
+  };
+
+  const acknowledge = async (eventId: string) => {
+    setBusy(true);
+    const result = await apiEstateChangeAcknowledge(eventId);
+    if (result.ok) await loadChanges();
+    else setChangeError("could not acknowledge: the change is still unacknowledged");
+    setBusy(false);
+  };
+
   /* Deliberately only the plan: writing to a graph store is a CLI/API action. */
   const planLoad = async () => {
     setBusy(true);
@@ -188,11 +219,13 @@ export default function DigitalTwinPanel() {
     if (view === "history" && simulations === null) void loadSimulationHistory();
     if (view === "crypto" && crypto === null) void loadCrypto();
     if (view === "graph" && exported === null) void loadExport();
+    if (view === "changes" && changeFeed === null) void loadChanges();
   }, [view]);
 
   const TABS: Array<{ id: typeof view; label: string }> = [
     { id: "live", label: "Live estate" },
     { id: "crypto", label: "Crypto graph" },
+    { id: "changes", label: "Changes" },
     { id: "history", label: "History & compare" },
     { id: "graph", label: "Graph export" },
   ];
@@ -722,6 +755,99 @@ export default function DigitalTwinPanel() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {view === "changes" && (
+        <div style={{ marginTop: 4 }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <button type="button" className="btn sm" onClick={() => void detectNow()} disabled={busy}>
+              Detect change now
+            </button>
+            {changeFeed && (
+              <>
+                <Badge tone="slate">{changeFeed.count} recorded</Badge>
+                {changeFeed.unacknowledged > 0 && (
+                  <Badge tone="amber">{changeFeed.unacknowledged} not acknowledged</Badge>
+                )}
+                {changeFeed.by_severity.CRITICAL ? (
+                  <Badge tone="red">{changeFeed.by_severity.CRITICAL} critical</Badge>
+                ) : null}
+              </>
+            )}
+            <span className="faint" style={{ fontSize: 9.5 }}>
+              every event compares two observations — it never re-collects to confirm a change
+            </span>
+          </div>
+
+          {detected && (
+            <div style={{ marginTop: 8, fontSize: 10.5 }}>
+              <Badge tone={detected.severity === "CRITICAL" ? "red" : detected.severity === "NONE" ? "slate" : "amber"}>
+                {detected.severity}
+              </Badge>{" "}
+              <span className="dim">{detected.headline}</span>
+            </div>
+          )}
+
+          {!changeFeed && (
+            <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>
+              {changeError ?? "loading the change feed…"}
+            </div>
+          )}
+          {changeFeed && changeFeed.count === 0 && (
+            <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>
+              {changeFeed.meaning}
+            </div>
+          )}
+
+          {changeFeed?.events.map((event) => (
+            <div key={event.event_id} style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge tone={event.severity === "CRITICAL" ? "red" : event.severity === "WARNING" ? "amber" : "slate"}>
+                  {event.severity}
+                </Badge>
+                <Badge tone="slate">{event.verdict}</Badge>
+                {event.observations > 1 && <Badge tone="slate">seen {event.observations}×</Badge>}
+                {event.acknowledged && <Badge tone="green">acknowledged</Badge>}
+                <span className="dim" style={{ fontSize: 10 }}>{event.first_detected_at ?? ""}</span>
+              </div>
+              <div style={{ fontSize: 11, marginTop: 2 }}>{event.headline}</div>
+              {event.changes.slice(0, 8).map((change, index) => (
+                <div key={index} style={{ marginTop: 3 }}>
+                  <div style={{ fontSize: 10.5 }}>
+                    <span className="mono" style={{ fontSize: 9.5, opacity: 0.75 }}>{change.kind}</span>{" "}
+                    {change.subject}
+                  </div>
+                  <div className="dim" style={{ fontSize: 10 }}>{change.detail}</div>
+                  {change.means && (
+                    <div className="faint" style={{ fontSize: 9.5 }}>{change.means}</div>
+                  )}
+                </div>
+              ))}
+              {event.next_action && (
+                <div className="dim" style={{ fontSize: 10, marginTop: 3 }}>
+                  next: {event.next_action}
+                </div>
+              )}
+              {!event.acknowledged && event.event_id && (
+                <button
+                  type="button"
+                  className="btn sm"
+                  style={{ marginTop: 4 }}
+                  onClick={() => void acknowledge(event.event_id)}
+                  disabled={busy}
+                >
+                  Acknowledge
+                </button>
+              )}
+            </div>
+          ))}
+
+          {changeFeed && changeFeed.limits.length > 0 && (
+            <div className="faint" style={{ fontSize: 9.5, marginTop: 10 }}>
+              {changeFeed.limits[1] ?? changeFeed.limits[0]}
+            </div>
+          )}
         </div>
       )}
 

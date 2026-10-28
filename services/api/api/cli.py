@@ -172,6 +172,30 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_sim.add_argument("--tenant", default=None)
     twin_sim.add_argument("--json", action="store_true")
 
+    twin_changes = twin_sub.add_parser(
+        "changes",
+        help="what changed between observations (the live change feed)",
+    )
+    twin_changes.add_argument("--severity", default=None, help="CRITICAL | WARNING | INFO | BASELINE")
+    twin_changes.add_argument("--kind", default=None, help="e.g. CRYPTO_DEMOTED, ASSET_ADDED")
+    twin_changes.add_argument("--unacknowledged", action="store_true", help="only entries nobody has seen")
+    twin_changes.add_argument("--limit", type=int, default=50)
+    twin_changes.add_argument("--tenant", default=None)
+    twin_changes.add_argument("--json", action="store_true")
+
+    twin_detect = twin_sub.add_parser(
+        "detect",
+        help="compare the two newest observations now and record what moved",
+    )
+    twin_detect.add_argument("--tenant", default=None)
+    twin_detect.add_argument("--json", action="store_true")
+
+    twin_ack = twin_sub.add_parser("ack", help="mark a detected change as seen")
+    twin_ack.add_argument("identifier", help="change event id")
+    twin_ack.add_argument("--note", default=None)
+    twin_ack.add_argument("--tenant", default=None)
+    twin_ack.add_argument("--json", action="store_true")
+
     twin_sims = twin_sub.add_parser("simulations", help="list stored simulations (quarantined)")
     twin_sims.add_argument("--tenant", default=None)
     twin_sims.add_argument("--limit", type=int, default=20)
@@ -637,16 +661,27 @@ def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | No
 
 def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
     """Graph-store load, simulation and simulation history (spec 94 §17, §20)."""
-    from api import estate_graph_loader, estate_simulation_store
+    from api import estate_change_feed, estate_graph_loader, estate_simulation_store
     from api.estate_twin_graph import latest_twin_graph
-    from db.tenancy import tenant_scope
+    from db.repositories.scan_run_repository import ScanRunRepository
+    from db.tenancy import current_tenant, tenant_scope
     from shared_models import estate_twin
+    from shared_models.estate_graph import build_graph
 
     session = _session(session_factory)
     try:
         with tenant_scope(getattr(args, "tenant", None)):
-            graph = latest_twin_graph(session, getattr(args, "tenant", None))
-            if graph is None:
+            if args.twin_command == "changes":
+                # the feed is a record of past observations: it is readable even when
+                # the current twin cannot be rebuilt, and saying otherwise would hide
+                # the history exactly when it matters
+                graph = None
+            elif args.twin_command == "ack":
+                graph = None
+            else:
+                graph = latest_twin_graph(session, getattr(args, "tenant", None))
+            if graph is None and args.twin_command not in {"changes", "ack", "detect"}:
+                
                 print(
                     "no stored estate discovery — the twin is NOT_OBSERVED, not empty. "
                     "Run `cryptoscan scan` or POST /estate/evidence/discover first.",
@@ -724,6 +759,98 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                     if args.save:
                         print("  stored     quarantined — never counted as estate state")
                 return EXIT_OK if result.get("status") == "SIMULATED" else EXIT_INCOMPLETE
+
+
+            if args.twin_command == "changes":
+                body = estate_change_feed.feed(
+                    session,
+                    tenant_id=args.tenant,
+                    severity=args.severity,
+                    kind=args.kind,
+                    include_acknowledged=not args.unacknowledged,
+                    limit=args.limit,
+                )
+                if args.json:
+                    print(json.dumps(body, indent=2, default=str))
+                elif not body["count"] and body.get("filtered"):
+                    print("no change events match this filter — the feed is not empty, the filter is narrow")
+                    print("  `cryptoscan twin changes` shows everything recorded")
+                elif not body["count"]:
+                    print("no changes recorded — nothing moved while the collectors were running.")
+                    print("  an empty feed is not a safe estate: check the run history and coverage")
+                else:
+                    print(f"{body['count']} change event(s), {body['unacknowledged']} unacknowledged")
+                    for event in body["events"]:
+                        mark = "" if event["acknowledged"] else " *"
+                        print(f"  {event['severity']:<8} {event['first_detected_at'] or '?':<26} "
+                              f"{event['headline']}{mark}")
+                        for change in (event["changes"] or [])[:6]:
+                            before = "" if change.get("before") is None else f" {change['before']} →"
+                            print(f"      {change['kind']:<24} {change['subject']}{before} "
+                                  f"{change.get('after') if change.get('after') is not None else ''}")
+                    if body["unacknowledged"]:
+                        print("  * = not acknowledged: `cryptoscan twin ack <event_id>`")
+                return EXIT_OK
+
+            if args.twin_command == "detect":
+                runs = ScanRunRepository(session).list_runs(
+                    limit=2, target_kind="estate-discovery", owner=args.tenant or current_tenant()
+                )
+                if not runs:
+                    print(
+                        "nothing has been observed yet, so there is nothing to compare — run "
+                        "`cryptoscan scan` first",
+                        file=sys.stderr,
+                    )
+                    return EXIT_INCOMPLETE
+                current = latest_twin_graph(session, args.tenant)
+                previous = None
+                if len(runs) > 1:
+                    payload = (runs[1].result or {}).get("estate_discovery") or {}
+                    previous = build_graph(payload)
+                detection = estate_change_feed.observe(
+                    session,
+                    previous,
+                    current,
+                    tenant_id=args.tenant,
+                    run_id=runs[0].id,
+                    trigger="cli",
+                    detected_by="cli",
+                )
+                recorded = detection.get("recorded") or {}
+                if args.json:
+                    print(json.dumps(detection, indent=2, default=str))
+                else:
+                    print(f"severity   {detection['severity']}")
+                    print(f"verdict    {detection['verdict']}")
+                    print(f"headline   {detection['headline']}")
+                    for change in (detection["changes"] or [])[:12]:
+                        print(f"  {change['kind']:<24} {change['detail']}")
+                    if detection.get("next_action"):
+                        print(f"  next: {detection['next_action']}")
+                    if recorded.get("created"):
+                        print(f"  recorded {recorded['event_id']}")
+                    elif recorded.get("event_id"):
+                        print(f"  already recorded as {recorded['event_id']}")
+                    else:
+                        print(f"  not recorded: {recorded.get('note') or recorded.get('error')}")
+                    if detection.get("baseline_error"):
+                        print(f"  baseline unknown: {detection['baseline_error']}")
+                return EXIT_OK
+
+            if args.twin_command == "ack":
+                row = estate_change_feed.acknowledge(
+                    session, args.identifier, tenant_id=args.tenant, user="cli", note=args.note
+                )
+                if row is None:
+                    print(f"no change event {args.identifier!r} for this tenant", file=sys.stderr)
+                    return EXIT_INCOMPLETE
+                if args.json:
+                    print(json.dumps(estate_change_feed.public_event(row), indent=2, default=str))
+                else:
+                    print(f"acknowledged {row.event_id} by {row.acknowledged_by} "
+                          f"at {row.acknowledged_at} — findings unchanged")
+                return EXIT_OK
 
             if args.twin_command == "simulations":
                 rows = estate_simulation_store.list_simulations(session, tenant_id=args.tenant, limit=args.limit)

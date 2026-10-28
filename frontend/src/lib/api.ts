@@ -6261,3 +6261,54 @@ export const apiEstateTwinGraphLoadPlan = (): Promise<ApiResult<EstateTwinGraphL
 
 export const apiEstateTwinSimulations = (): Promise<ApiResult<EstateTwinSimulationList>> =>
   _rsGet<EstateTwinSimulationList>("/api/v1/estate/evidence/twin/simulations");
+
+/* Live change detection, as a feed of what moved.
+
+   The distinction the type carries is the one that matters operationally: an event
+   is a set of named claims derived from two observations of the estate (`before` →
+   `after`, with `means` saying what the movement does *not* prove). Nothing here can
+   be a simulation — what-if runs live in `/twin/simulations` and are quarantined. */
+export interface EstateChange {
+  kind: string; severity: "CRITICAL" | "WARNING" | "INFO";
+  subject: string; before: unknown; after: unknown;
+  detail: string; means?: string | null; evidence_ids: string[];
+}
+
+export interface EstateChangeEvent {
+  schema: string; event_id: string;
+  verdict: string; severity: "CRITICAL" | "WARNING" | "INFO" | "BASELINE" | "NONE";
+  severity_meaning?: string | null; changed: boolean | null;
+  headline: string; reason?: string | null; next_action?: string | null;
+  changes: EstateChange[]; counts: Record<string, number>;
+  baseline_projection_id?: string | null; current_projection_id?: string | null;
+  run_id?: string | null; trigger: string; detected_by?: string | null;
+  observations: number; first_detected_at?: string | null; last_detected_at?: string | null;
+  acknowledged: boolean; acknowledged_at?: string | null; acknowledged_by?: string | null;
+  acknowledgement_note?: string | null; is_estate_state: true; note: string;
+}
+
+export interface EstateChangeFeed {
+  schema: string; count: number; unacknowledged: number; filtered?: boolean;
+  by_severity: Record<string, number>; by_kind: Record<string, number>;
+  events: EstateChangeEvent[]; meaning: string; limits: string[];
+}
+
+export const apiEstateChanges = (params?: { severity?: string; kind?: string; unacknowledgedOnly?: boolean }):
+Promise<ApiResult<EstateChangeFeed>> => {
+  const query = [
+    params?.severity ? `severity=${encodeURIComponent(params.severity)}` : "",
+    params?.kind ? `kind=${encodeURIComponent(params.kind)}` : "",
+    params?.unacknowledgedOnly ? "unacknowledged_only=true" : "",
+  ].filter(Boolean).join("&");
+  return _rsGet<EstateChangeFeed>(`/api/v1/estate/evidence/changes${query ? `?${query}` : ""}`);
+};
+
+export const apiEstateChangesDetect = (): Promise<ApiResult<EstateChangeEvent & { stored: Record<string, unknown> }>> =>
+  _rsPost<EstateChangeEvent & { stored: Record<string, unknown> }>("/api/v1/estate/evidence/changes/detect", {});
+
+export const apiEstateChangeAcknowledge = (eventId: string, note?: string):
+Promise<ApiResult<EstateChangeEvent>> =>
+  _rsPost<EstateChangeEvent>(
+    `/api/v1/estate/evidence/changes/${encodeURIComponent(eventId)}/acknowledge`,
+    { note: note ?? null },
+  );

@@ -630,9 +630,10 @@ bank.
 | Search (§26) | **shipped** | `estate_twin.search()` |
 | Blast radius (§27) | **shipped** — established edges only, blind spots listed | `estate_twin.impact()` |
 | Layer 7 simulation (§15–§17) | **shipped** — runs on a snapshot copy, live projection id checked unchanged | `estate_twin.simulate()` |
+| Live change detection (§17–§18, §23) | **shipped** — every stored observation is compared with the one before it and produces *named claims*, not a drift flag: `CRYPTO_DEMOTED Payment API AES-256-GCM: OBSERVED → SUPPORTED`, `COVERAGE_DEGRADED HSM: COMPLETE → FAILED`, `ASSET_ADDED HSM-04 (HSM, production)`. Append-only `estate_change_events` (migration 0112); identical observations store nothing; a replayed detection increments an observation counter; acknowledgement moves and nothing else does. `GET /estate/evidence/changes`, `POST /changes/detect`, `POST /changes/{id}/acknowledge`, `cryptoscan twin changes\|detect\|ack` | `api/estate_change_feed.py` |
 | Twin snapshots as a first-class object (§14) | **shipped** — content-addressed by projection id | `estate_twin.snapshot()` / `graph_from_snapshot()` |
-| API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/snapshots,/search,/assets/{ref},/why,/crypto-graph,/graph,/simulations}`, `POST /twin/impact`, `POST /twin/simulate`, `POST /twin/graph/load` |
-| UI (§24, §25) | **shipped as four views**: *Live estate* (placement, completeness with reasons, search with click-through to an asset view, blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge); *Crypto graph* (four planes with their meanings on screen); *History & compare* (capture, persisted-vs-derived, worst-first verdict, and stored simulations listed as **quarantined** with `CURRENT`/`STALE` and an "asked N×" counter); *Graph export* (counts, unresolved separate, not-source-of-truth, and a *plan the graph-store load* action that sends `dry_run: true` — the console can never write to a graph store) | `frontend/src/components/DigitalTwinPanel.tsx` |
+| API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/snapshots,/search,/assets/{ref},/why,/crypto-graph,/graph,/simulations}`, `POST /twin/impact`, `POST /twin/simulate`, `POST /twin/graph/load`, `GET /estate/evidence/changes{,/{id}}`, `POST /changes/detect`, `POST /changes/{id}/acknowledge` |
+| UI (§24, §25) | **shipped as five views**: *Live estate* (placement, completeness with reasons, search with click-through to an asset view, blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge); *Crypto graph* (four planes with their meanings on screen); *Changes* (the change feed — severity, the named claims with before → after and what each does *not* prove, a *detect now* action, and acknowledge); *History & compare* (capture, persisted-vs-derived, worst-first verdict, and stored simulations listed as **quarantined** with `CURRENT`/`STALE` and an "asked N×" counter); *Graph export* (counts, unresolved separate, not-source-of-truth, and a *plan the graph-store load* action that sends `dry_run: true` — the console can never write to a graph store) | `frontend/src/components/DigitalTwinPanel.tsx` |
 | Historical snapshots (§14) | **shipped** — persisted (`POST/GET /twin/snapshots`); falls back to run-derived snapshots with `persisted: false` and says so | `estate_twin_store.py` |
 | Traversal in a graph store | *not built* — the twin traverses **in-process** over the canonical graph. The store now receives a verified copy (§20–§21), but no query path reads traversals back from it: until BOM/drift/impact can be recomputed from the store and proven equal to the in-process answer, the store stays a copy for external consumers, never an authority | — |
 
@@ -661,6 +662,56 @@ with only facts in the hash, a run where a plane `FAILED` fingerprinted identica
 to one where it succeeded over the same (smaller) set of facts — so "we stopped
 looking" was indistinguishable from "nothing changed". That is the single most
 dangerous comparison this product can get wrong, and it is now a regression test.
+
+### What "change detected" means, precisely
+
+Change detection is **a consequence of observing**, not an endpoint an operator has to
+remember to call: the collector path (`/estate/evidence/scan`, the scheduler, the
+daemon) and the ingest path (`/estate/evidence/discover`) both compare the run with
+the observation before it, and both go through the same detector, so the two ways an
+observation enters the product cannot drift into different answers.
+
+The unit is a **claim**, not a flag. "WARNING: drift detected" is not an answer to
+"what changed"; each event carries a list of them:
+
+| kind | subject | what it says |
+|---|---|---|
+| `COVERAGE_DEGRADED` | plane | `HSM: COMPLETE → FAILED — API unavailable`, and that the estate under it is UNKNOWN, not absent |
+| `EVIDENCE_LOST` | estate | stronger evidence fell by N while N′ was gained — a weaker audit position even when nothing appears to move |
+| `CRYPTO_DEMOTED` / `_PROMOTED` | asset | `AES-256-GCM on Payment API: OBSERVED → CONFIGURED` — proof lost, not necessarily the cryptography |
+| `CRYPTO_ADDED` / `_REMOVED` | asset | a new artefact is evidenced, with its `usage_state` so `SUPPORTED` cannot be read as deployed |
+| `ASSET_ADDED` / `_REMOVED` / `_CHANGED` | asset | the asset and its type, and for a change, the fields that moved with before → after |
+| `RELATIONSHIP_ESTABLISHED` / `_LOST` | edge | `Payment API —uses_hsm→ HSM-03 (PKCS11_REFERENCE)` |
+| `UNKNOWN_GAINED` / `_REDUCED` | inventory | open work grew: those assets are uncharacterised, **not** crypto-free |
+| `UNRESOLVED_GAINED` | candidates | an edge nobody established; it widens where a real path could hide, and is never counted as an edge |
+
+Severity is a **consequence** order, not a confidence order:
+`CRITICAL` (a plane stopped answering, or stronger evidence was lost) outranks
+`WARNING` (crypto, assets or relationships moved) outranks `INFO` (metadata moved, or
+the digests differ with no compared surface changing — which is *unexplained*, not
+clean). One test exists only to hold that ordering: a run that loses a plane *and*
+changes a cipher must be `CRITICAL`, because the crypto movement may be an artefact of
+the plane going dark.
+
+What the feed refuses:
+
+* **No row for a quiet scan.** Identical evidence returns `NONE` and stores nothing.
+  The discovery run is already the record that someone looked; a row per quiet scan
+  would bury the afternoon something moved, and would let a scheduler's health be
+  inferred from a table that does not measure it.
+* **No duplicate for a replayed transition.** The event id is
+  `sha256(baseline|current|verdict)`, so a restart, a retry or a re-derivation appends
+  an observation counter instead of a second "the estate changed".
+* **No re-collection to confirm a change.** A claim is derived from two stored
+  observations; re-reading the estate would produce a *third* observation, not
+  evidence about the first two.
+* **No editing.** Only `acknowledged_at/by/note` are mutable. A feed whose findings can
+  be edited is not an audit trail.
+* **No simulations.** Nothing in the detector reads `estate_simulation_runs`; a test
+  stores a simulation and asserts the feed's contents are unchanged.
+* **No "the estate is fine".** `NONE` means the two observations match. An empty feed
+  means nothing moved while the collectors ran — it cannot tell a stable estate from a
+  scheduler that stopped running, and the response says that in `limits`.
 
 ### What a stored simulation is, precisely
 

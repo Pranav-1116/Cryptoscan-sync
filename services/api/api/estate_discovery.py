@@ -880,6 +880,45 @@ def run(
         db.commit()
         run_id = row.id
 
+    # -- live change detection ------------------------------------------------ #
+    # Change detection is a consequence of observing, not a button: the twin-level
+    # detector turns this run and the one before it into named claims ("Payment API
+    # AES-256-GCM: OBSERVED -> SUPPORTED"), ranks the consequence, and appends it to
+    # the feed. It never raises into the run — a broken feed must not cost a scan —
+    # and it stores nothing when the two observations are identical.
+    detection: dict[str, Any] | None = None
+    detection_error: str | None = None
+    try:
+        from api import estate_change_feed
+        from db.tenancy import current_tenant
+
+        before_graph = build_graph(previous) if previous else None
+        detection = estate_change_feed.observe(
+            db,
+            before_graph,
+            graph,
+            tenant_id=current_tenant(),
+            run_id=run_id,
+            trigger=trigger,
+        )
+        payload["change_detail"] = {
+            "severity": detection["severity"],
+            "headline": detection["headline"],
+            "counts": detection["counts"],
+            "event_id": (detection.get("recorded") or {}).get("event_id"),
+        }
+    except Exception as exc:  # noqa: BLE001 — detection must never fail a scan
+        detection_error = f"{type(exc).__name__}: {exc}"
+        rollback = getattr(db, "rollback", None)
+        if callable(rollback):
+            try:
+                rollback()
+            except Exception:  # noqa: BLE001 — a failed rollback cannot fail the scan either
+                pass
+
+    if detection_error:
+        payload["change_detail"] = {"error": detection_error}
+
     failed = [item["plane"] for item in outcomes if item["status"] == "FAILED"]
     partial = [item["plane"] for item in outcomes if item["status"] == "PARTIAL"]
     skipped = collection_plan["skipped"]
@@ -951,6 +990,7 @@ def run(
         "at": datetime.now(timezone.utc).isoformat(),
     })
     report["change"] = change
+    report["detection"] = detection or ({"error": detection_error} if detection_error else None)
     if change["severity"] in {"WARNING", "CRITICAL"}:
         emit("estate.change.detected", {
             "estate": estate,

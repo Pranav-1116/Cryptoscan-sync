@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api import (
+    estate_change_feed,
     estate_discovery,
     estate_drift,
     estate_graph_loader,
@@ -586,6 +587,13 @@ def estate_discover(
         "collectors": body.collectors,
         "coverage": body.coverage,
     }
+    # the observation before this one, read *before* this run is stored — comparing
+    # a run with itself would report "no change" forever
+    previous_run = None
+    if body.persist:
+        earlier = ScanRunRepository(db).list_runs(limit=1, target_kind=RUN_KIND, owner=current_tenant())
+        previous_run = earlier[0] if earlier else None
+
     run_id = None
     if body.persist:
         row = ScanRunRepository(db).create_run(
@@ -598,6 +606,30 @@ def estate_discover(
         )
         db.commit()
         run_id = row.id
+
+    # -- live change detection --------------------------------------------- #
+    # Ingesting an observation *is* observing the estate, so it goes through the same
+    # detector as the collector path. A previous observation that cannot be rebuilt is
+    # reported as an unknown baseline rather than silently compared against nothing.
+    detection: dict[str, Any] | None = None
+    if body.persist:
+        previous_error = None
+        previous_graph = None
+        if previous_run is not None:
+            try:
+                previous_graph = _graph_from_run(previous_run)
+            except Exception as exc:  # noqa: BLE001 — an unreadable baseline is stated, not guessed
+                previous_error = f"{type(exc).__name__}: {exc}"
+        detection = estate_change_feed.observe(
+            db,
+            previous_graph,
+            graph,
+            tenant_id=current_tenant(),
+            run_id=run_id,
+            trigger="ingest",
+            detected_by=user,
+            previous_error=previous_error,
+        )
 
     response: dict[str, Any] = {
         "schema": SCHEMA,
@@ -620,6 +652,17 @@ def estate_discover(
         response["boms"] = projections["boms"]
         response["bom_counts"] = projections["counts"]
         response["consistency"] = projections["consistency"]
+    if detection is not None:
+        response["detection"] = {
+            "verdict": detection["verdict"],
+            "severity": detection["severity"],
+            "headline": detection["headline"],
+            "changes": detection["changes"],
+            "counts": detection["counts"],
+            "next_action": detection["next_action"],
+            "recorded": detection.get("recorded"),
+            "note": detection["meaning"],
+        }
     return response
 
 
@@ -1234,3 +1277,119 @@ def estate_twin_graph_load(
         prune_missing=body.prune_missing,
     )
     return {"run_id": run.id, **result}
+
+
+# -- live change detection (spec 94 §17–§18) -------------------------------- #
+
+
+@router.get("/changes")
+def estate_changes(
+    severity: str | None = Query(default=None, description="CRITICAL | WARNING | INFO | BASELINE"),
+    kind: str | None = Query(default=None, description="e.g. CRYPTO_DEMOTED, COVERAGE_DEGRADED"),
+    unacknowledged_only: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=200),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """What changed between observations, newest first.
+
+    Every entry is a set of named claims (subject, before → after, what it means)
+    derived from two stored observations. An empty feed means nothing moved while
+    the collectors ran — not that the estate is safe, and not that anything was
+    recently looked at.
+    """
+    return estate_change_feed.feed(
+        db,
+        tenant_id=current_tenant(),
+        severity=severity,
+        kind=kind,
+        include_acknowledged=not unacknowledged_only,
+        limit=limit,
+    )
+
+
+@router.post("/changes/detect")
+def estate_changes_detect(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Detect change now, between the two newest observations.
+
+    The scheduled path already does this on every run; this exists for the case an
+    operator needs the answer without waiting for the next scan, and for re-deriving
+    the feed after a restore. It compares stored observations — it never re-collects
+    to confirm a change, because a re-collection would be a different observation.
+    """
+    runs = ScanRunRepository(db).list_runs(limit=2, target_kind=RUN_KIND, owner=current_tenant())
+    if not runs:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_estate_discovery",
+                "reason": "nothing has been observed yet, so there is nothing to compare",
+            },
+        )
+    current = _graph_from_run(runs[0])
+    previous = _graph_from_run(runs[1]) if len(runs) > 1 else None
+    detection = estate_change_feed.describe(
+        previous, current, run_id=runs[0].id, trigger="manual"
+    )
+    row, created = estate_change_feed.record(
+        db, detection, tenant_id=current_tenant(), detected_by=user
+    )
+    return {
+        **detection,
+        "stored": {
+            "created": bool(created),
+            "event_id": getattr(row, "event_id", None),
+            "note": (
+                "new change event appended"
+                if created
+                else "nothing to store: identical observations are not change events"
+                if row is None
+                else "this transition was already in the feed; its observation counter advanced"
+            ),
+        },
+    }
+
+
+@router.get("/changes/{identifier}")
+def estate_change(
+    identifier: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    row = estate_change_feed.get_event(db, identifier, tenant_id=current_tenant())
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "unknown_change", "reason": "no change event with that id for this tenant"},
+        )
+    return estate_change_feed.public_event(row)
+
+
+class ChangeAcknowledgement(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)
+
+
+@router.post("/changes/{identifier}/acknowledge")
+def estate_change_acknowledge(
+    identifier: str,
+    body: ChangeAcknowledgement,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Record that a human saw this change.
+
+    Only the acknowledgement moves. The findings are immutable: a feed whose
+    contents can be edited is not an audit trail.
+    """
+    row = estate_change_feed.acknowledge(
+        db, identifier, tenant_id=current_tenant(), user=user, note=body.note
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "unknown_change", "reason": "no change event with that id for this tenant"},
+        )
+    return estate_change_feed.public_event(row)

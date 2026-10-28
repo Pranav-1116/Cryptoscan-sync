@@ -18,6 +18,7 @@ const CRYPTO = `${TWIN}/crypto-graph`;
 const GRAPH = `${TWIN}/graph`;
 const GRAPH_LOAD = `${TWIN}/graph/load`;
 const SIMULATIONS = `${TWIN}/simulations`;
+const CHANGES = "/api/v1/estate/evidence/changes";
 const SNAPSHOTS = `${TWIN}/snapshots`;
 
 function overview() {
@@ -37,11 +38,11 @@ function overview() {
   };
 }
 
-it("renders the four twin views", async () => {
+it("renders the twin views", async () => {
   mockFetch({ [TWIN]: overview() });
   render(<DigitalTwinPanel />);
   expect(await screen.findByText(/twin completeness/)).toHaveTextContent("55.5%");
-  for (const label of ["Live estate", "Crypto graph", "History & compare", "Graph export"]) {
+  for (const label of ["Live estate", "Crypto graph", "Changes", "History & compare", "Graph export"]) {
     expect(screen.getByText(label)).toBeInTheDocument();
   }
 });
@@ -182,4 +183,65 @@ it("lists stored simulations as quarantined questions, with a stale one marked",
   expect(screen.getByText("STALE")).toBeInTheDocument();
   expect(screen.getByText(/re-run before quoting it/)).toBeInTheDocument();
   expect(screen.getByText("asked 2×")).toBeInTheDocument();
+});
+
+it("shows what changed, not merely that something changed", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [CHANGES]: {
+      schema: "cryptoscan.estate-change-feed/1",
+      count: 2, unacknowledged: 1, filtered: false,
+      by_severity: { CRITICAL: 1, WARNING: 1 },
+      by_kind: { COVERAGE_DEGRADED: 1, CRYPTO_DEMOTED: 1 },
+      meaning: "the feed records movement between observations",
+      limits: [
+        "detection compares observations; it never re-collects to confirm a change",
+        "a quiet feed cannot distinguish a stable estate from a scheduler that stopped running",
+      ],
+      events: [
+        {
+          schema: "cryptoscan.estate-change-event/1", event_id: "chg_1",
+          verdict: "COVERAGE_DEGRADED", severity: "CRITICAL",
+          severity_meaning: "a plane stopped answering",
+          changed: true,
+          headline: "coverage lost: HSM",
+          next_action: "restore the plane: check its credentials",
+          counts: { COVERAGE_DEGRADED: 1 },
+          changes: [{
+            kind: "COVERAGE_DEGRADED", severity: "CRITICAL", subject: "HSM",
+            before: "COMPLETE", after: "FAILED",
+            detail: "HSM went COMPLETE → FAILED — API unavailable",
+            means: "the estate under this plane is UNKNOWN now, not absent",
+          }],
+          trigger: "schedule", observations: 2, acknowledged: false,
+          is_estate_state: true as const,
+          note: "a change event is a statement about two observations",
+        },
+        {
+          schema: "cryptoscan.estate-change-event/1", event_id: "chg_2",
+          verdict: "CRYPTO_CHANGED", severity: "WARNING",
+          changed: true, headline: "1 change(s): 1× crypto demoted",
+          counts: { CRYPTO_DEMOTED: 1 },
+          changes: [{
+            kind: "CRYPTO_DEMOTED", severity: "WARNING", subject: "Payment API",
+            before: "OBSERVED", after: "CONFIGURED",
+            detail: "AES-256-GCM on Payment API: OBSERVED → CONFIGURED",
+            means: "proof was lost, not necessarily the cryptography",
+          }],
+          trigger: "ingest", observations: 1, acknowledged: true,
+          is_estate_state: true as const,
+          note: "a change event is a statement about two observations",
+        },
+      ],
+    },
+  });
+  render(<DigitalTwinPanel />);
+  (await screen.findByText("Changes")).click();
+  await waitFor(() => expect(screen.getByText("2 recorded")).toBeInTheDocument());
+  expect(screen.getByText("1 not acknowledged")).toBeInTheDocument();
+  expect(screen.getByText(/HSM went COMPLETE → FAILED/)).toBeInTheDocument();
+  expect(screen.getByText(/UNKNOWN now, not absent/)).toBeInTheDocument();
+  expect(screen.getByText(/proof was lost, not necessarily/)).toBeInTheDocument();
+  expect(screen.getByText("Acknowledge")).toBeInTheDocument();
+  expect(screen.getByText("acknowledged")).toBeInTheDocument();
 });

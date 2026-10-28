@@ -143,3 +143,91 @@ def test_a_twin_command_without_an_observation_refuses_to_invent_one(cli_session
     captured = capsys.readouterr()
     assert code == cli.EXIT_INCOMPLETE
     assert "NOT_OBSERVED" in captured.err
+
+
+# -- the change feed from a terminal --------------------------------------- #
+
+
+def test_changes_on_an_empty_feed_says_what_quiet_does_not_mean(cli_session, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "changes"], session_factory=lambda: cli_session)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "no changes recorded" in out
+    assert "an empty feed is not a safe estate" in out
+
+
+def test_detect_without_an_observation_refuses_to_compare_against_nothing(cli_session, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "detect"], session_factory=lambda: cli_session)
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_INCOMPLETE
+    assert "nothing has been observed yet" in captured.err
+
+
+def test_detect_records_a_change_and_changes_lists_it(cli_session, with_discovery, capsys):
+    from api import cli
+    from db.repositories.scan_run_repository import ScanRunRepository
+
+    changed = _payload()
+    changed["assets"].append({"ref": "hsm2", "type": "HSM", "name": "HSM-04"})
+    ScanRunRepository(with_discovery).create_run(
+        {"estate_discovery": changed}, target_kind="estate-discovery"
+    )
+    with_discovery.commit()
+    capsys.readouterr()
+
+    code = cli.main(["twin", "detect"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "HSM-04" in out
+    assert "recorded chg_" in out
+
+    code = cli.main(["twin", "changes"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "change event(s)" in out
+    assert "asset added" in out.lower()
+    assert "not acknowledged" in out
+
+
+def test_acknowledging_from_the_cli_leaves_the_findings_alone(cli_session, with_discovery, capsys):
+    from api import cli
+    from db.repositories.scan_run_repository import ScanRunRepository
+
+    changed = _payload()
+    changed["assets"].append({"ref": "hsm2", "type": "HSM", "name": "HSM-04"})
+    ScanRunRepository(with_discovery).create_run(
+        {"estate_discovery": changed}, target_kind="estate-discovery"
+    )
+    with_discovery.commit()
+    cli.main(["twin", "detect", "--json"], session_factory=lambda: with_discovery)
+    payload = json.loads(capsys.readouterr().out)
+    event_id = payload["recorded"]["event_id"]
+    assert event_id
+
+    code = cli.main(
+        ["twin", "ack", event_id, "--note", "ticket CR-1"],
+        session_factory=lambda: with_discovery,
+    )
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "findings unchanged" in out
+
+    code = cli.main(["twin", "changes", "--unacknowledged"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    # an empty *filtered* view is not an empty feed, and it must not read like a
+    # quiet estate
+    assert "no change events match this filter" in out
+
+
+def test_acknowledging_an_unknown_change_fails_loudly(cli_session, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "ack", "chg_missing"], session_factory=lambda: cli_session)
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_INCOMPLETE
+    assert "no change event" in captured.err
