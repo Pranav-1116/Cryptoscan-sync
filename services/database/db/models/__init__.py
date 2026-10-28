@@ -220,3 +220,5 @@ from db.models.execution_control import (  # noqa: E402,F401
     EstateExecutionPolicy, ScanApproval, ExecutionBudget, ExecutionAttempt, ExecutionOutbox, ExecutionControlEvent,
 )
 from db.models.assurance import AssuranceRevision, AssuranceBlob, CollectionPhaseReceipt  # noqa: E402,F401
+
+from db.models.estate_schedule import EstateSchedule, EstateScheduleRun  # noqa: E402,F401

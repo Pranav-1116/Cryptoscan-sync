@@ -88,6 +88,38 @@ def _build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--no-estate", action="store_true", help="collect only; do not run the estate job")
     collect.add_argument("--allow-partial", action="store_true")
 
+    schedule = sub.add_parser("schedule", help="save, list, enable or remove scheduled estate runs")
+    schedule_sub = schedule.add_subparsers(dest="schedule_command", required=True)
+    add = schedule_sub.add_parser("add", help="save a cadence for the estate job")
+    add.add_argument("name")
+    add.add_argument("--every", default=None, help="interval, e.g. 15m, 6h, 1d")
+    add.add_argument("--cron", default=None, help="five-field UTC cron, e.g. '0 2 * * *'")
+    add.add_argument("--scope", default="production")
+    add.add_argument("--estate", default="default")
+    add.add_argument("--plane", action="append", dest="planes", metavar="PLANE")
+    add.add_argument("--disabled", action="store_true", help="save it without scheduling it yet")
+    add.add_argument("--tenant", default=None)
+    add.add_argument("--json", action="store_true")
+    listing = schedule_sub.add_parser("list", help="show saved schedules and their last outcome")
+    listing.add_argument("--tenant", default=None)
+    listing.add_argument("--json", action="store_true")
+    remove = schedule_sub.add_parser("remove", help="delete a schedule by name or id")
+    remove.add_argument("identifier")
+    remove.add_argument("--tenant", default=None)
+    toggle_on = schedule_sub.add_parser("enable", help="re-enable a paused schedule")
+    toggle_on.add_argument("identifier")
+    toggle_on.add_argument("--tenant", default=None)
+    toggle_off = schedule_sub.add_parser("disable", help="pause a schedule without deleting it")
+    toggle_off.add_argument("identifier")
+    toggle_off.add_argument("--tenant", default=None)
+
+    tick = sub.add_parser("tick", help="run every schedule that is due (safe to run from cron or a sidecar)")
+    tick.add_argument("--worker", default="cryptoscan-tick", help="worker id recorded on the lease")
+    tick.add_argument("--lease-seconds", type=int, default=900)
+    tick.add_argument("--limit", type=int, default=20)
+    tick.add_argument("--tenant", default=None)
+    tick.add_argument("--json", action="store_true")
+
     coverage = sub.add_parser("coverage", help="print the coverage matrix of the latest stored run")
     coverage.add_argument("--tenant", default=None)
     coverage.add_argument("--json", action="store_true")
@@ -353,7 +385,115 @@ def _cmd_collect(args: argparse.Namespace, session_factory: Callable[[], Any] | 
             close()
 
 
+def _cmd_schedule(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
+    """Manage saved cadences. A schedule is a row, not an entry in someone's crontab."""
+    from api import estate_schedule
+    from db.tenancy import tenant_scope
+
+    session = _session(session_factory)
+    try:
+        with tenant_scope(args.tenant):
+            action = args.schedule_command
+            try:
+                if action == "add":
+                    row = estate_schedule.create_schedule(
+                        session,
+                        name=args.name,
+                        tenant_id=args.tenant,
+                        scope=args.scope,
+                        estate=args.estate,
+                        every=args.every,
+                        cron=args.cron,
+                        planes=args.planes,
+                        enabled=not args.disabled,
+                        user="cryptoscan-cli",
+                    )
+                    payload = estate_schedule.as_dict(row)
+                    if args.json:
+                        print(json.dumps(payload, indent=2, default=str))
+                    else:
+                        cadence = payload["cadence"]
+                        shown = (f"every {cadence['every']}" if "every" in cadence
+                                 else f"cron {cadence['cron']} (UTC)")
+                        print(f"saved      {payload['name']} — {shown}, "
+                              f"{'enabled' if payload['enabled'] else 'paused'}")
+                        print(f"next run   {payload['next_run_at']}")
+                    return EXIT_OK
+                if action == "list":
+                    rows = [estate_schedule.as_dict(row) for row in
+                            estate_schedule.list_schedules(session, tenant_id=args.tenant)]
+                    if args.json:
+                        print(json.dumps({"schedules": rows}, indent=2, default=str))
+                        return EXIT_OK
+                    if not rows:
+                        print("no schedules saved — add one: cryptoscan schedule add nightly --every 6h")
+                        return EXIT_OK
+                    print(f"  {'name':<20} {'state':<8} {'next run':<26} last verdict")
+                    print("  " + "-" * 78)
+                    for row in rows:
+                        state = "enabled" if row["enabled"] else "paused"
+                        last = row["last_run"]["verdict"] or "never run"
+                        print(f"  {row['name']:<20} {state:<8} {row['next_run_at'] or '-':<26} {last}")
+                    return EXIT_OK
+                if action == "remove":
+                    removed = estate_schedule.delete_schedule(session, args.identifier,
+                                                              tenant_id=args.tenant)
+                    print(f"removed    {args.identifier} ({removed})")
+                    return EXIT_OK
+                if action in {"enable", "disable"}:
+                    row = estate_schedule.set_enabled(session, args.identifier, action == "enable",
+                                                      tenant_id=args.tenant)
+                    payload = estate_schedule.as_dict(row)
+                    state = "enabled" if action == "enable" else "paused"
+                    print(f"{state:<10} {payload['name']} — next run {payload['next_run_at']}")
+                    return EXIT_OK
+            except estate_schedule.ScheduleError as exc:
+                print(f"refused    {exc.code}: {exc.reason}")
+                return EXIT_REFUSED
+            print(f"unknown schedule command {action!r}")
+            return EXIT_ERROR
+    finally:
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+
+
+def _cmd_tick(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
+    """Run what is due. Safe from cron(8) or a sidecar: the lease prevents doubles."""
+    from api import estate_schedule
+    from db.tenancy import tenant_scope
+
+    session = _session(session_factory)
+    try:
+        with tenant_scope(args.tenant):
+            result = estate_schedule.tick(
+                session,
+                worker=args.worker,
+                lease_seconds=args.lease_seconds,
+                limit=args.limit,
+            )
+            if args.json:
+                print(json.dumps(result, indent=2, default=str))
+            elif not result["ran"]:
+                print("idle       nothing was due (a schedule that another worker holds is not due here)")
+            else:
+                print(f"ran        {len(result['ran'])} schedule(s) as {result['worker']}")
+                for item in result["ran"]:
+                    if item["status"] == "OK":
+                        print(f"  {item['schedule']:<20} {item['verdict']:<18} "
+                              f"coverage {item.get('coverage_state')}  run {item.get('run_id')}")
+                    else:
+                        print(f"  {item['schedule']:<20} ERROR  {item.get('error')}")
+            return EXIT_OK if all(item["status"] == "OK" for item in result["ran"]) else EXIT_INCOMPLETE
+    finally:
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int]] = {
+    "schedule": _cmd_schedule,
+    "tick": _cmd_tick,
     "collect": _cmd_collect,
     "scan": _cmd_scan,
     "coverage": _cmd_coverage,

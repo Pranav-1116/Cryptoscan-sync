@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api import estate_discovery, estate_drift
+from api import estate_discovery, estate_drift, estate_schedule
 from api.dependencies import get_current_user, get_db_session
 from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
@@ -47,6 +47,28 @@ class EstateAnchorRequest(BaseModel):
     """Sign the current projected BOM set into an exportable receipt."""
 
     note: str | None = Field(default=None, max_length=400)
+
+
+class EstateScheduleRequest(BaseModel):
+    """A saved cadence for the estate job."""
+
+    name: str = Field(min_length=1, max_length=100)
+    every: str | None = Field(default=None, max_length=20, description="interval, e.g. 6h")
+    cron: str | None = Field(default=None, max_length=120, description="five-field UTC cron")
+    scope: str = Field(default="production", max_length=80)
+    estate: str = Field(default="default", max_length=120)
+    planes: list[str] | None = Field(default=None, max_length=12)
+    enabled: bool = True
+
+
+class EstateScheduleToggle(BaseModel):
+    enabled: bool
+
+
+class EstateTickRequest(BaseModel):
+    worker: str = Field(default="api-tick", max_length=120)
+    lease_seconds: int = Field(default=900, ge=30, le=86400)
+    limit: int = Field(default=20, ge=1, le=200)
 
 
 class EstateAnchorExportRequest(BaseModel):
@@ -287,6 +309,91 @@ def estate_boms_anchor_export(
             status_code=409 if exc.code in {"anchor_export_not_configured", "already_exported"} else 502,
             detail={"error": exc.code, "reason": exc.reason, **exc.detail},
         ) from exc
+
+
+@router.get("/schedules")
+def estate_schedules(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Saved estate cadences with the outcome of their last run."""
+    rows = _schedule_rows(db)
+    return {
+        "model": "cryptoscan.estate-schedules/1",
+        "schedules": rows,
+        "note": (
+            "a schedule is a database row, not a crontab line: it survives deploys, the console can see it, "
+            "and each run records its verdict so a nightly PARTIAL_COVERAGE estate cannot pass unnoticed"
+        ),
+    }
+
+
+def _schedule_rows(db: Session) -> list[dict[str, Any]]:
+    tenant = current_tenant()
+    return [estate_schedule.as_dict(row) for row in estate_schedule.list_schedules(db, tenant_id=tenant)]
+
+
+@router.post("/schedules", status_code=201)
+def estate_schedule_create(
+    body: EstateScheduleRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Save a cadence. ``every`` or ``cron`` — exactly one."""
+    try:
+        row = estate_schedule.create_schedule(
+            db,
+            name=body.name,
+            tenant_id=current_tenant(),
+            scope=body.scope,
+            estate=body.estate,
+            every=body.every,
+            cron=body.cron,
+            planes=body.planes,
+            enabled=body.enabled,
+            user=user,
+        )
+    except estate_schedule.ScheduleError as exc:
+        raise HTTPException(status_code=409 if exc.code == "schedule_exists" else 422,
+                            detail={"error": exc.code, "reason": exc.reason}) from exc
+    return estate_schedule.as_dict(row)
+
+
+@router.patch("/schedules/{identifier}")
+def estate_schedule_toggle(
+    identifier: str,
+    body: EstateScheduleToggle,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Pause or resume a schedule without deleting its history."""
+    try:
+        row = estate_schedule.set_enabled(db, identifier, body.enabled, tenant_id=current_tenant())
+    except estate_schedule.ScheduleError as exc:
+        raise HTTPException(status_code=404, detail={"error": exc.code, "reason": exc.reason}) from exc
+    return estate_schedule.as_dict(row)
+
+
+@router.delete("/schedules/{identifier}")
+def estate_schedule_delete(
+    identifier: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    try:
+        removed = estate_schedule.delete_schedule(db, identifier, tenant_id=current_tenant())
+    except estate_schedule.ScheduleError as exc:
+        raise HTTPException(status_code=404, detail={"error": exc.code, "reason": exc.reason}) from exc
+    return {"deleted": removed}
+
+
+@router.post("/tick")
+def estate_tick(
+    body: EstateTickRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Run what is due now. The lease makes a manual tick and a sidecar safe together."""
+    return estate_schedule.tick(
+        db, worker=body.worker, lease_seconds=body.lease_seconds, limit=body.limit
+    )
 
 
 @router.get("/plan")
