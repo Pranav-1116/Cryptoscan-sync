@@ -168,6 +168,9 @@ class EstateDaemon:
         """One cycle: claim what is due, run it, record it, decide when to wake."""
         started = self._clock()
         moment = _utc(self._now())
+        # why nothing ran is re-derived every cycle: a stale reason is worse than
+        # no reason, because it looks like an explanation
+        self.idle_reason = "no reason recorded for this cycle"
         session = None
         result: dict[str, Any] = {"worker": self.worker, "at": moment.isoformat(), "claimed": 0, "ran": []}
         try:
@@ -244,6 +247,9 @@ class EstateDaemon:
                 until = (due_at - self.last_cycle_at).total_seconds()
                 delay = min(MAX_SLEEP_SECONDS, max(MIN_SLEEP_SECONDS, until))
         except Exception as exc:  # noqa: BLE001 — an unreadable schedule list must not stop us
+            self.idle_reason = (
+                f"the schedule table could not be read ({type(exc).__name__}: {exc}): nothing is being run"
+            )
             result.setdefault("warnings", []).append(f"next wake undetermined: {exc}")
         finally:
             if session is not None:

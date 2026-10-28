@@ -5231,6 +5231,37 @@ export interface EstatePlan {
 export const apiEstatePlan = (): Promise<ApiResult<EstatePlan>> =>
   _rsGet<EstatePlan>("/api/v1/estate/evidence/plan");
 
+export interface EstateRealtime {
+  schema: string;
+  at: string;
+  verdict: "NOT_RUNNING" | "IDLE_NO_SCHEDULES" | "RUNNING" | "DEGRADED" | "WAITING";
+  reason: string;
+  next_action: string | null;
+  daemon: {
+    heartbeat: {
+      worker: string;
+      state: string;
+      last_cycle_at: string | null;
+      next_wake_at: string | null;
+      cycles: number;
+      runs: number;
+      failures: number;
+      last_error: string | null;
+      idle_reason: string | null;
+    } | null;
+    liveness: { state: "LIVE" | "STALE" | "STOPPED" | "NEVER_STARTED"; age_seconds: number | null; meaning: string; next_action: string | null };
+  };
+  schedules: { total: number; enabled: number; next_due_at: string | null; seconds_until_due: number | null; leases: Array<{ name: string; worker: string | null; until: string | null }> };
+  runs: { recent: Array<{ schedule_id: string; started_at: string | null; finished_at: string | null; status: string; verdict: string | null; coverage_state: string | null; run_id: string | null; detail: string | null }>; last_finished_at: string | null; last_run_age_seconds: number | null };
+  meaning: string;
+}
+
+export const apiEstateRealtime = (): Promise<ApiResult<EstateRealtime>> =>
+  _rsGet<EstateRealtime>("/api/v1/estate/evidence/realtime");
+
+export const apiEstateSchedules = (): Promise<ApiResult<{ schedules: Array<Record<string, unknown>>; count: number }>> =>
+  _rsGet<{ schedules: Array<Record<string, unknown>>; count: number }>("/api/v1/estate/evidence/schedules");
+
 export const apiEstateScan = (body: { estate?: string; scope?: string | null; planes?: string[]; include_boms?: boolean; persist?: boolean } = {}): Promise<ApiResult<EstateScanReport>> =>
   _rsPost<EstateScanReport>("/api/v1/estate/evidence/scan", body);
 

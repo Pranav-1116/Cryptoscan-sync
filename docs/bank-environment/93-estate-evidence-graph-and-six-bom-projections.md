@@ -567,6 +567,7 @@ Status legend: **done** = implemented and tested on `arena/bb4b80dd-cryproscan`;
 | Live CMDB plane (ServiceNow Table API) | done | `api/estate_cmdb.py` + plane `CMDB` — read-only `cmdb_ci_server/_service/_appl` reads (`sysparm_fields`, `sysparm_limit`) with basic/bearer auth over https only; `expected: 4` (servers, services, applications, relationships), ServiceNow `type` read as "Parent::Child" through `relationship_mapping` so dependent edges are *reversed* correctly and unmapped types are **counted**, never coerced; every fact is `IMPORTED`/`LOW` with `observed: false`, so a CMDB dependency can never establish crypto usage; 403 ⇒ `blocked[]` + `PARTIAL`, row cap/`X-Total-Count` discrepancy ⇒ truncation declared |
 | Live KMS **usage** plane (provider audit trail) | done | `api/estate_kms.py` + plane `KMS` — CloudTrail `LookupEvents` filtered to `kms.amazonaws.com`; only crypto calls count (Encrypt/Decrypt/ReEncrypt/GenerateDataKey\*/Sign/Verify/MAC/Derive — CreateKey/DescribeKey/PutKeyPolicy are administration, not use), and each key gets `AUDIT_OBSERVED` evidence at HIGH confidence with operation counts, principals, first/last observed call and a `uses` edge on the `RUNTIME_OBSERVATION` basis; the audit window and its retention limit are printed, the event cap is reported as truncation, and a denied read is `blocked[]` + `PARTIAL` + NOT_OBSERVED — never "no usage" |
 | Live HSM plane (KMIP read-only) | done | `api/hsm_usage.py` + plane `HSM` — KMIP 2.0 over TLS: `Locate` on symmetric keys, then `GetAttributes` for State, Algorithm, Cryptographic Usage Mask, Usage Limits and lifecycle dates; `Get` (key material) is never issued and nothing can create/rotate/revoke/destroy. `usage_state` is `OBSERVED` only when the appliance counter is above zero, else `CONFIGURED` (Active, counter zero), `SUPPORTED` (Pre-Active) or `NOT_OBSERVED` (Deactivated/Compromised/Destroyed) with the reason; unmapped usage-mask bits are reported; refused socket ⇒ `blocked[]` + `PARTIAL`, and an empty partition is named as such rather than as an empty HSM estate |
+| **24/7 operation** — daemon, run events, liveness, change on every run | done | `api/estate_daemon.py` (`cryptoscan serve`, `--once` for cron) + `estate_daemons` (migration 0109) + `GET /estate/evidence/realtime`; `api/estate_events.py` publishes `estate.run.started` / `estate.plane.finished` / `estate.phase.finished` / `estate.run.finished` / `estate.run.failed` / `estate.change.detected` on the platform SSE bus; `api/estate_watch.py` compares every run with the previous one (CRITICAL = coverage lost/reduced, WARNING = estate moved, NONE ≠ safe, NO_BASELINE ≠ unchanged). Opt-in in-process loop with `ESTATE_REALTIME=1`; compose service `estate-daemon`; k8s `31-estate-daemon-deployment.yaml` (2 replicas, heartbeat liveness probe) |
 | Scheduled estate runs | done | `db/models/estate_schedule.py` + migration `0108`, `api/estate_schedule.py`, `cryptoscan schedule add\|list\|remove\|enable\|disable` and `cryptoscan tick`, `GET/POST/PATCH/DELETE /estate/evidence/schedules` + `POST /estate/evidence/tick` — interval (`15m/6h/1d/1w`) or 5-field UTC cron, ambiguous cadence refused (`cadence_ambiguous`), lease taken by conditional UPDATE so two ticks cannot run the same schedule, every run stores its `verdict` *and* `coverage_state`, a failed run still advances `next_run_at` and makes `tick` exit `EXIT_INCOMPLETE` |
 | Console: coverage matrix + unknown inventory + BOM switch | done | `EstatePanel` (`frontend/src/components/EstatePanel.tsx`) mounted on `Network.tsx` |
 | Signed/anchored projected BOMs | done | `api/security/estate_bom_anchor.py` + `POST /estate/evidence/boms/anchor`, `GET …/boms/anchors`, `POST …/boms/anchor/verify` — HMAC-SHA256 over `{projection_id, per-BOM digests}` with `CRYPTOSCAN_ANCHOR_KEY` held outside the database; no key ⇒ `409 anchor_key_not_configured`, and the receipt says `external: false` until the operator exports it |
@@ -594,7 +595,20 @@ with a zero counter is `CONFIGURED`, not proven in use. Scheduled runs close the
 re-runs the same job on a cadence and stores a verdict *and* a coverage state per
 run, and a failed run still advances the schedule rather than silently stalling.
 
-Verified by eight files: `services/api/tests/unit/test_estate_graph.py` (27 tests:
+**Running continuously.** A schedule row is not a scheduler. `cryptoscan serve`
+is a daemon that claims due schedules (the same conditional-UPDATE lease, so N
+replicas or a daemon plus a manual tick never double-run), runs them, publishes
+per-plane progress on the SSE bus, compares each run with the previous one, and
+sleeps until the earliest due time (clamped 1–60 s, jittered). Down-time produces
+one catch-up run, not a queue of them; a failed run is recorded and does not stop
+the loop; repeated failures back off; SIGTERM finishes the run in flight and
+writes a `STOPPED` heartbeat. `GET /estate/evidence/realtime` answers the only
+question that matters about a 24/7 product — *is it running, and is anything
+being scanned* — with LIVE / STALE / STOPPED / NEVER_STARTED plus
+`IDLE_NO_SCHEDULES` (alive, nothing to do) kept distinct from `WAITING` and
+`NOT_RUNNING`. A live API process is never accepted as proof of coverage.
+
+Verified by nine files: `services/api/tests/unit/test_estate_graph.py` (27 tests:
 identity merges, layer separation, refusals, capability≠usage, conflicts, coverage
 semantics, API), `test_estate_discovery_job.py` (19 tests: fan-out, FAILED plane ⇒
 impact, partial read ⇒ `PARTIAL`, empty store ≠ empty estate, six BOMs on one
@@ -615,7 +629,14 @@ signed LookupEvents call, administration ≠ usage, principals + observed edge,
 window/retention honesty, pagination + cap, denied read ⇒ PARTIAL) and
 `test_estate_hsm_usage.py` (13 tests: real TTLV round-trip, `Get` never issued,
 state/counter ⇒ usage_state table, unmapped mask bit reported, refused socket ⇒
-PARTIAL, empty partition named). With the network and runtime
+PARTIAL, empty partition named) and `test_estate_realtime.py` (27 tests: a dead
+event feed cannot fail a scan, unknown event types refused, per-plane progress and
+verdict in the feed, quiet run identical, due schedule run + lease released, idle
+vs no-schedule reasons, cycle failure survival, backoff, one-run catch-up after
+downtime, heartbeat upsert, graceful stop, LIVE/STALE/STOPPED/NEVER_STARTED,
+CLI `serve --once`, the realtime endpoint's verdicts, and change detection: no
+baseline is not "no change", a lost plane is CRITICAL because it is UNKNOWN,
+a smaller read is coverage debt, a quiet run publishes nothing). With the network and runtime
 suites the eight-file API run is **221 passed**, including the unknown-workflow tests
 (vendor claims are open work, not answers; every asset is accounted for exactly once) and
 the per-layer PQC tests (an HSM's classical claim never contaminates the transport verdict,

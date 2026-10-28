@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table } from "./ui.jsx";
-import { usePollingApi } from "../lib/apiUi.jsx";
+import { usePollingApi, useEstateEvents } from "../lib/apiUi.jsx";
 import {
   apiEstatePlan, apiEstateScan, EstatePlan, EstateScanReport, EstateCoverageRow, EstateBom,
-  apiEstateBomAnchor, apiEstateBomAnchorVerify, apiEstateDrift,
-  EstateBomAnchor, EstateAnchorVerify, EstateDriftReport,
+  apiEstateBomAnchor, apiEstateBomAnchorVerify, apiEstateDrift, apiEstateRealtime,
+  EstateBomAnchor, EstateAnchorVerify, EstateDriftReport, EstateRealtime,
 } from "../lib/api.js";
 
 /* EstatePanel — spec 93, and the correction it exists to make visible.
@@ -97,9 +97,46 @@ function BomSwitch({ boms, counts }: { boms: Record<string, EstateBom>; counts: 
   );
 }
 
+const LIVENESS_TONE: Record<string, string> = {
+  LIVE: "green",
+  STALE: "red",
+  STOPPED: "amber",
+  NEVER_STARTED: "slate",
+};
+
+const VERDICT_TONE: Record<string, string> = {
+  RUNNING: "cyan",
+  WAITING: "green",
+  DEGRADED: "amber",
+  IDLE_NO_SCHEDULES: "amber",
+  NOT_RUNNING: "red",
+};
+
+function LiveStrip({ live, connected }: { live: EstateRealtime | null; connected: boolean }) {
+  if (!live) return <span className="faint" style={{ fontSize: 10.5 }}>realtime status unavailable</span>;
+  const liveness = live.daemon.liveness.state;
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+      <Badge tone={LIVENESS_TONE[liveness] ?? "slate"}>daemon {liveness}</Badge>
+      <Badge tone={VERDICT_TONE[live.verdict] ?? "slate"}>{live.verdict}</Badge>
+      <Badge tone={connected ? "green" : "slate"}>{connected ? "live events" : "events offline"}</Badge>
+      <span className="faint" style={{ fontSize: 10.5 }}>
+        {live.schedules.enabled} enabled ·{" "}
+        {live.schedules.next_due_at ? `next due ${new Date(live.schedules.next_due_at).toLocaleTimeString()}` : "nothing scheduled"}
+        {live.schedules.leases.length ? ` · ${live.schedules.leases.length} run(s) in flight` : ""}
+        {live.runs.last_run_age_seconds != null ? ` · last run ${Math.round(live.runs.last_run_age_seconds)}s ago` : ""}
+      </span>
+      <span className="dim" style={{ fontSize: 10.5 }}>{live.reason}</span>
+      {live.next_action && <span className="faint" style={{ fontSize: 10.5 }}>next: {live.next_action}</span>}
+    </div>
+  );
+}
+
 export default function EstatePanel() {
   const plan = usePollingApi(apiEstatePlan, 120000);
   const planDoc = (plan.data ?? null) as EstatePlan | null;
+  const live = usePollingApi(apiEstateRealtime, 15000);
+  const liveDoc = (live.data ?? null) as EstateRealtime | null;
 
   const [report, setReport] = useState<EstateScanReport | null>(null);
   const [anchor, setAnchor] = useState<EstateBomAnchor | null>(null);
@@ -112,6 +149,20 @@ export default function EstatePanel() {
   useEffect(() => {
     setReport(null);
   }, [estate]);
+
+  // Realtime: the stream tells us *when* to re-read the stored state; it is not
+  // itself the authority (a reconnecting client must not miss a run).
+  const [lastEvent, setLastEvent] = useState<{ type: string; at: string; severity?: string } | null>(null);
+  const { connected } = useEstateEvents((type, payload) => {
+    setLastEvent({
+      type,
+      at: String(payload.at ?? new Date().toISOString()),
+      severity: payload.severity ? String(payload.severity) : undefined,
+    });
+    if (type === "estate.run.finished" || type === "estate.change.detected" || type === "estate.run.failed") {
+      live.run();
+    }
+  });
 
   const run = async () => {
     setBusy(true);
@@ -171,6 +222,14 @@ export default function EstatePanel() {
           </Badge>
         )}
       </div>
+
+      <LiveStrip live={liveDoc} connected={connected} />
+      {lastEvent && (
+        <div className="faint" style={{ fontSize: 10.5, marginTop: 4 }}>
+          last event {lastEvent.type}
+          {lastEvent.severity ? ` (${lastEvent.severity})` : ""} at {new Date(lastEvent.at).toLocaleTimeString()}
+        </div>
+      )}
 
       {error && <div className="dim" style={{ fontSize: 11.5, marginTop: 8, color: "var(--red)" }}>{error}</div>}
       {!report && !error && (

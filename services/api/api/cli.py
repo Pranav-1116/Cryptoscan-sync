@@ -590,8 +590,13 @@ def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | No
               f"{result.get('failures')} failed cycle(s)")
         if result.get("last_error"):
             print(f"  last error: {result['last_error']}")
+    # a failed *run* is as incomplete as a failed cycle: exiting 0 here would tell
+    # a supervisor the cycle was fine while a schedule produced nothing
+    failed_runs = int(result.get("failed_runs") or 0) + sum(
+        1 for item in (result.get("ran") or []) if item.get("status") != "OK"
+    )
     failed_cycles = int(result.get("failures") or 0)
-    return EXIT_OK if failed_cycles == 0 else EXIT_INCOMPLETE
+    return EXIT_OK if (failed_cycles + failed_runs) == 0 else EXIT_INCOMPLETE
 
 
 COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int]] = {

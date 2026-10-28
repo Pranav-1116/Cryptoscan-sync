@@ -546,3 +546,61 @@ def test_the_scheduled_path_compares_against_the_previous_stored_run(session, fa
     assert result["claimed"] == 1
     assert ("schedule", previous) in seen, "the runner is handed the previous stored report"
     assert repo_module  # imported for parity with the real runner path
+
+
+def test_a_stored_run_payload_can_be_compared_with_the_next_one(session, factory):
+    """Regression: the stored payload's shape is not the API response's shape.
+
+    Stored runs keep ``coverage`` as a row list and a compact ``boms`` index; the
+    response keeps ``coverage`` as a matrix object. Comparing a stored run with
+    the response used to raise `'list' object has no attribute 'get'`, which took
+    the whole scheduled run down and silently disabled change detection.
+    """
+    from api import estate_discovery
+
+    stored = {
+        "estate": "bank-a",
+        "coverage": [
+            {"target": "STATIC", "expected": 5, "collected": 5, "status": "COMPLETE"},
+            {"target": "NETWORK", "expected": 4, "collected": 4, "status": "COMPLETE"},
+        ],
+        "boms": {"CBOM": {"components": [{"bom_ref": "a"}, {"bom_ref": "b"}]}},
+        "summary": {"assets": 2, "evidence": 2, "relationships": 0},
+        "projection_id": "p1",
+        "collectors": [{"plane": "STATIC", "status": "COMPLETE"},
+                       {"plane": "NETWORK", "status": "COMPLETE"}],
+    }
+    live = estate_discovery.run(
+        None, estate="bank-a", persist=False,
+        collectors={
+            "STATIC": lambda _db, **_k: {"expected": 5, "collected": 5},
+            "NETWORK": lambda _db, **_k: (_ for _ in ()).throw(RuntimeError("connector dropped")),
+        },
+        previous=stored,
+    )
+    assert live["change"]["severity"] == "CRITICAL"
+    assert any(item["kind"] == "COVERAGE_LOST" and item["plane"] == "NETWORK"
+               for item in live["change"]["findings"])
+
+
+def test_a_failed_run_makes_a_one_shot_cycle_exit_incomplete(session, factory, capsys):
+    estate_schedule.create_schedule(session, name="nightly", every="1m", now=NOW - timedelta(minutes=5))
+
+    import api.estate_daemon as daemon_module
+
+    original = daemon_module.EstateDaemon.run_cycle
+
+    def cycle_that_records_a_failure(self):  # noqa: ANN001
+        result = {"worker": self.worker, "at": NOW.isoformat(), "claimed": 1,
+                  "ran": [{"schedule": "nightly", "status": "ERROR", "error": "boom"}],
+                  "failed_runs": 1, "next_wake_at": NOW.isoformat()}
+        self.cycles += 1
+        return result
+
+    daemon_module.EstateDaemon.run_cycle = cycle_that_records_a_failure
+    try:
+        code = cli.main(["serve", "--once"], session_factory=factory)
+    finally:
+        daemon_module.EstateDaemon.run_cycle = original
+    assert code == cli.EXIT_INCOMPLETE
+    assert "ERROR" in capsys.readouterr().out

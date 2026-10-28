@@ -57,9 +57,19 @@ def _components(bom: Mapping[str, Any]) -> dict[str, str]:
 
 
 def snapshot_from_report(report: Mapping[str, Any]) -> dict[str, Any]:
-    """Reduce a discovery report (``/estate/evidence/scan`` or ``discover``) to a snapshot."""
+    """Reduce a discovery report (``/estate/evidence/scan`` or ``discover``) to a snapshot.
+
+    Two shapes reach this function and both are legitimate: the API response,
+    where ``coverage`` is a matrix object with ``targets``, and the *stored*
+    payload, where ``coverage`` is the row list itself. Accepting only one of
+    them is how a stored run failed to compare with itself ("'list' object has
+    no attribute 'get'"), which silently disabled drift and change detection on
+    the scheduled path.
+    """
     boms = report.get("boms") or {}
-    coverage = (report.get("coverage") or {}).get("targets") or []
+    coverage = report.get("coverage") or []
+    if isinstance(coverage, Mapping):
+        coverage = coverage.get("targets") or []
     collectors = {str(item.get("plane") or "UNKNOWN"): str(item.get("status") or "UNKNOWN")
                   for item in report.get("collectors") or []}
     return {

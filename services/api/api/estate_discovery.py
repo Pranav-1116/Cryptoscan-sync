@@ -45,6 +45,8 @@ from typing import Any, Callable, Iterable, Mapping
 from shared_models.estate_graph import build_graph, collector_outcome
 
 MODEL = "cryptoscan.estate-discovery-job/1"
+#: per-BOM component identities kept in a stored run (enough to diff, not a copy)
+MAX_STORED_BOM_COMPONENTS = 4000
 SCHEMA_EVIDENCE = "cryptoscan.estate-evidence/1"
 
 #: §13 discovery planes this repository can actually read today.
@@ -833,6 +835,34 @@ def run(
         "at": datetime.now(timezone.utc).isoformat(),
     })
 
+    change: dict[str, Any] | None = None
+    if projections:
+        # A stored run must be comparable with the next one. The full BOMs are a
+        # response object and would double the row size, so store the component
+        # identity (bom_ref) each projection produced: enough to diff the estate
+        # across runs, nothing more.
+        payload["boms"] = {
+            kind: {"components": [
+                {"bom_ref": component.get("bom_ref"), "name": component.get("name")}
+                for component in (bom.get("components") or [])[:MAX_STORED_BOM_COMPONENTS]
+            ]}
+            for kind, bom in projections["boms"].items()
+        }
+
+    from api import estate_watch
+
+    change = estate_watch.compare_reports(previous, {
+        "estate": estate,
+        "scope": scope,
+        "run_id": None,
+        "projection_id": graph.fingerprint(),
+        "summary": graph.summary(),
+        "coverage": coverage_rows,
+        "boms": payload.get("boms") or {},
+        "collectors": outcomes,
+    })
+    payload["change"] = change
+
     run_id = None
     if persist:
         from db.repositories.scan_run_repository import ScanRunRepository
@@ -890,7 +920,9 @@ def run(
             "targets, never 'percent of crypto discovered'; a FAILED plane is UNKNOWN, not empty"
         ),
         "limitations": sorted({detail["limitation"] for detail in PLANE_DETAIL.values()}) + [
-            "the persisted planes read stored evidence; only the live planes (CLOUD, KUBERNETES) query a system, and they read configuration, never a negotiated session",
+            "the persisted planes read stored evidence; the live planes (NETWORK, CLOUD, KUBERNETES, CMDB, KMS, "
+            "HSM) query a system — KMS/HSM report observed *use* from the provider's own audit/usage counters, "
+            "the rest read configuration or declarations, never a negotiated session",
             "planes that were not requested or that failed are NOT_OBSERVED — never 'no crypto found'",
             "policy evaluation and PQC scoring are separate endpoints; their absence here is not a pass",
         ],
@@ -918,9 +950,6 @@ def run(
         "duration_seconds": round((datetime.now(timezone.utc) - moment).total_seconds(), 3),
         "at": datetime.now(timezone.utc).isoformat(),
     })
-    from api import estate_watch
-
-    change = estate_watch.compare_reports(previous, report)
     report["change"] = change
     if change["severity"] in {"WARNING", "CRITICAL"}:
         emit("estate.change.detected", {

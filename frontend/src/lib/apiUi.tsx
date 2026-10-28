@@ -48,3 +48,38 @@ export function usePollingApi<T>(fn: () => Promise<ApiResult<T>>, intervalMs = 1
   }, [intervalMs, ...deps]);
   return r;
 }
+
+/**
+ * Live estate events. The SSE stream is the platform's realtime authority (the
+ * durable journal, replayable from `Last-Event-ID`); this hook is a thin
+ * subscriber that hands each `estate.*` frame to the caller. It never throws
+ * into React: a dead stream means "no live updates", not a broken page, and the
+ * panel's polling fallback keeps working.
+ */
+export function useEstateEvents(onEvent: (type: string, payload: Record<string, unknown>) => void, enabled = true) {
+  const [connected, setConnected] = useState(false);
+  useEffect(() => {
+    if (!enabled || typeof EventSource === "undefined") return undefined;
+    const base = (import.meta as unknown as { env?: Record<string, string> }).env?.VITE_API_BASE_URL ?? "";
+    const stream = new EventSource(`${base}/api/v1/events/stream`, { withCredentials: true });
+    const handler = (frame: MessageEvent) => {
+      try {
+        const body = JSON.parse(frame.data) as { payload?: Record<string, unknown> };
+        onEvent(frame.type, body.payload ?? {});
+      } catch {
+        /* a malformed frame is not a reason to break the page */
+      }
+    };
+    const types = ["estate.run.started", "estate.plane.finished", "estate.run.finished", "estate.run.failed", "estate.change.detected"];
+    types.forEach((type) => stream.addEventListener(type, handler as EventListener));
+    stream.onopen = () => setConnected(true);
+    stream.onerror = () => setConnected(false);
+    return () => {
+      types.forEach((type) => stream.removeEventListener(type, handler as EventListener));
+      stream.close();
+      setConnected(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
+  return { connected };
+}

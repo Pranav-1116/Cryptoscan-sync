@@ -204,6 +204,32 @@ services:
     networks: [cryptoscan-net]
     restart: unless-stopped
 
+  # The 24/7 estate loop. Without this service (or an external cron calling
+  # `cryptoscan tick`), schedule rows exist and nothing runs them — the estate
+  # console would show last week's coverage with no error anywhere.
+  estate-daemon:
+    build:
+      context: .
+      dockerfile: .docker/api/Dockerfile
+    container_name: cryptoscan-estate-daemon
+    command: ["python", "-m", "api.cli", "serve", "--poll", "${ESTATE_POLL_SECONDS:-30}"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:-cryptoscan_secret}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+      REDIS_URL: redis://redis:6379/0
+      DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks: [cryptoscan-net]
+    restart: unless-stopped
+
   notifications:
     profiles: [notifications]
     build:

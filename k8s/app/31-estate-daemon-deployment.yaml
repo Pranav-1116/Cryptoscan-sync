@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cryptoscan-estate-daemon
+  namespace: cryptoscan
+  labels:
+    app: cryptoscan-estate-daemon
+    component: estate
+spec:
+  # Two replicas are safe *by design*: every schedule is claimed with a
+  # conditional UPDATE, so the loser of the race sees zero due rows rather than
+  # running the same scan twice. Scale up for availability, not throughput.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cryptoscan-estate-daemon
+  template:
+    metadata:
+      labels:
+        app: cryptoscan-estate-daemon
+        component: estate
+      annotations:
+        # The daemon writes a heartbeat row every cycle; a stuck pod is visible
+        # in `GET /api/v1/estate/evidence/realtime` even if the process is alive.
+        prometheus.io/scrape: "false"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: estate-daemon
+          image: cryptoscan-api:v1.0.0
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "api.cli", "serve", "--worker", "k8s-estate", "--poll", "30"]
+          envFrom:
+            - configMapRef:
+                name: cryptoscan-config
+            - secretRef:
+                name: cryptoscan-secrets
+          env:
+            - name: ESTATE_POLL_SECONDS
+              value: "30"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          livenessProbe:
+            # Liveness is the heartbeat, not "the process exists": a daemon whose
+            # loops have stalled should be restarted, and a fresh process writes a
+            # fresh heartbeat immediately.
+            exec:
+              command:
+                - python
+                - -c
+                - |
+                  import sys, time
+                  from db.connection.session import SessionLocal
+                  from api.estate_daemon_store import latest
+                  with SessionLocal() as session:
+                      beat = latest(session)
+                  if not beat or not beat.get("last_cycle_at"):
+                      sys.exit(1)
+                  from datetime import datetime, timezone
+                  age = (datetime.now(timezone.utc) - datetime.fromisoformat(beat["last_cycle_at"])).total_seconds()
+                  sys.exit(0 if age < 600 else 1)
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 20
+            failureThreshold: 3
+      # A run in flight finishes before the pod goes away; the heartbeat records
+      # STOPPED so a clean restart is not mistaken for a crash.
+      terminationGracePeriodSeconds: 300
