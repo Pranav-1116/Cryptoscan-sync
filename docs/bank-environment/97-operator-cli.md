@@ -5,6 +5,10 @@ existing **in-process** operator (the database is on this host) and the new **co
 client** (the control plane and the collectors are inside the bank, the terminal is a jump
 host). Remote mode is selected by control-plane flags, never by silence.
 
+The long-form architecture and command reference — the eight components, what is implemented
+versus refused versus roadmap, and why — is
+[98 — the CLI architecture](98-cli-architecture.md). This document is the short version.
+
 ## 1. The boundary this draws
 
 ```
