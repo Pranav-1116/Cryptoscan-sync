@@ -4,8 +4,10 @@ import { usePollingApi } from "../lib/apiUi.jsx";
 import {
   apiEstateTwin, apiEstateTwinSearch, apiEstateTwinImpact, apiEstateTwinSimulate, apiEstateTwinAsset,
   apiEstateTwinSnapshots, apiEstateTwinCapture, apiEstateTwinCompare, apiEstateTwinCryptoGraph, apiEstateTwinGraph,
+  apiEstateTwinGraphLoadPlan, apiEstateTwinSimulations,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
+  EstateTwinGraphLoad, EstateTwinSimulationList,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -118,6 +120,11 @@ export default function DigitalTwinPanel() {
   const [comparison, setComparison] = useState<EstateTwinCompare | null>(null);
   const [crypto, setCrypto] = useState<EstateTwinCryptoGraph | null>(null);
   const [exported, setExported] = useState<EstateTwinGraphExport | null>(null);
+  const [loadPlan, setLoadPlan] = useState<EstateTwinGraphLoad | null>(null);
+  const [simulations, setSimulations] = useState<EstateTwinSimulationList | null>(null);
+  /* its own error: the stored-simulation read failing must not overwrite the
+     snapshot error, or one broken read would look like two */
+  const [simError, setSimError] = useState<string | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -158,8 +165,27 @@ export default function DigitalTwinPanel() {
     else setError("graph export unavailable");
   };
 
+  /* Readings of stored answers, never of the estate. The label on the section
+     carries the distinction so a screenshot cannot lose it. */
+  const loadSimulationHistory = async () => {
+    const result = await apiEstateTwinSimulations();
+    if (result.ok) setSimulations(result.data as EstateTwinSimulationList);
+    else setSimError("stored simulations unavailable");
+  };
+
+  /* Deliberately only the plan: writing to a graph store is a CLI/API action. */
+  const planLoad = async () => {
+    setBusy(true);
+    setError(null);
+    const result = await apiEstateTwinGraphLoadPlan();
+    if (result.ok) setLoadPlan(result.data as EstateTwinGraphLoad);
+    else setError("graph load plan unavailable");
+    setBusy(false);
+  };
+
   React.useEffect(() => {
     if (view === "history" && snapshots === null) void loadHistory();
+    if (view === "history" && simulations === null) void loadSimulationHistory();
     if (view === "crypto" && crypto === null) void loadCrypto();
     if (view === "graph" && exported === null) void loadExport();
   }, [view]);
@@ -660,6 +686,42 @@ export default function DigitalTwinPanel() {
               {comparison.note && <div className="faint" style={{ fontSize: 9.5, marginTop: 4 }}>{comparison.note}</div>}
             </div>
           )}
+
+          {/* Stored simulations, listed as questions asked — not as history of the
+              estate. Each row states that on screen, and a superseded answer says so
+              rather than showing an impact figure as if it were current. */}
+          <div style={{ marginTop: 14, borderTop: "1px solid var(--line)", paddingTop: 10 }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+              <Badge tone="slate">Simulations · quarantined</Badge>
+              {simulations && <Badge tone="slate">{simulations.count} stored</Badge>}
+              <span className="faint" style={{ fontSize: 9.5 }}>
+                a simulation is a question asked of a copy — never estate state
+              </span>
+            </div>
+            {!simulations && <div className="dim" style={{ fontSize: 11 }}>{simError ?? "loading stored simulations…"}</div>}
+            {simulations && simulations.count === 0 && (
+              <div className="dim" style={{ fontSize: 11 }}>
+                nothing has been asked of a copy yet — run a simulation in the live view
+              </div>
+            )}
+            {simulations?.simulations.slice(0, 6).map((entry) => (
+              <div key={entry.simulation_id} style={{ marginTop: 6 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <Badge tone="violet">{entry.kind}</Badge>
+                  <Badge tone={entry.superseded ? "amber" : "green"}>
+                    {entry.superseded ? "STALE" : "CURRENT"}
+                  </Badge>
+                  <Badge tone="slate">{entry.matched_evidence} evidence record(s)</Badge>
+                  <Badge tone="slate">{entry.affected_assets.length} asset(s)</Badge>
+                  {entry.observations > 1 && <Badge tone="slate">asked {entry.observations}×</Badge>}
+                  {entry.label && <span className="dim" style={{ fontSize: 10 }}>{entry.label}</span>}
+                </div>
+                <div className="faint" style={{ fontSize: 9.5, color: entry.superseded ? "var(--amber)" : undefined }}>
+                  {entry.freshness}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -689,6 +751,35 @@ export default function DigitalTwinPanel() {
               >
                 {JSON.stringify({ nodes: exported.nodes.slice(0, 2), relationships: exported.relationships.slice(0, 3) }, null, 1)}
               </pre>
+
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                <button type="button" className="btn sm" onClick={() => void planLoad()} disabled={busy}>
+                  Plan the graph-store load
+                </button>
+                <span className="faint" style={{ fontSize: 9.5 }}>
+                  planning only — writing is `cryptoscan twin graph-load --apply`
+                </span>
+              </div>
+              {loadPlan && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <Badge tone={loadPlan.dry_run ? "cyan" : "amber"}>
+                      {loadPlan.dry_run ? "DRY RUN — nothing written" : loadPlan.verification}
+                    </Badge>
+                    <Badge tone="slate">{loadPlan.statements} statement(s)</Badge>
+                    <Badge tone="slate">{loadPlan.expected.nodes} node(s)</Badge>
+                    <Badge tone="slate">
+                      {loadPlan.expected.relationships + loadPlan.expected.unresolved} relationship(s)
+                    </Badge>
+                    {loadPlan.expected.unresolved > 0 && (
+                      <Badge tone="amber">{loadPlan.expected.unresolved} unresolved candidate(s)</Badge>
+                    )}
+                  </div>
+                  <div className="dim" style={{ fontSize: 10, marginTop: 6 }}>
+                    {loadPlan.source_of_truth}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

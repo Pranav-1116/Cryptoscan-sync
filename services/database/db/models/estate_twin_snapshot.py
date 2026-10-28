@@ -33,9 +33,10 @@ from sqlalchemy import JSON, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class EstateTwinSnapshot(BaseModel):
+class EstateTwinSnapshot(BaseModel, TenantScoped):
     """One content-addressed view of the estate, with the evidence behind it."""
 
     __tablename__ = "estate_twin_snapshots"
@@ -44,7 +45,7 @@ class EstateTwinSnapshot(BaseModel):
         Index("ix_estate_twin_snapshots_last_seen", "last_seen_at"),
     )
 
-    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), index=True)
+    # the tenant_id column (and its ORM guard) come from TenantScoped
     estate: Mapped[Optional[str]] = mapped_column(String(160))
     scope: Mapped[Optional[str]] = mapped_column(String(160))
 

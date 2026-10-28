@@ -30,7 +30,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api import estate_discovery, estate_drift, estate_schedule, estate_twin_store
+from api import (
+    estate_discovery,
+    estate_drift,
+    estate_graph_loader,
+    estate_schedule,
+    estate_simulation_store,
+    estate_twin_store,
+)
 from api.dependencies import get_current_user, get_db_session
 from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
@@ -155,6 +162,12 @@ def _latest_run(db: Session) -> Any:
 
 
 def _graph_from_run(run) -> Any:
+    """Rebuild the twin from a stored run.
+
+    ``build_graph`` is the only constructor on purpose: an unknown predicate or a
+    dangling endpoint raises here rather than being quietly dropped, so a corrupt
+    stored run surfaces as an error instead of a smaller-looking estate.
+    """
     payload = (run.result or {}).get("estate_discovery") or {}
     return build_graph(payload)
 
@@ -757,6 +770,13 @@ class TwinSimulationRequest(BaseModel):
     key_size: int | None = Field(default=None, ge=1, le=100000)
     targets: list[str] | None = Field(default=None, max_length=200)
     label: str | None = Field(default=None, max_length=160)
+    persist: bool = Field(
+        default=False,
+        description=(
+            "store the result, quarantined: a stored simulation is never counted as estate state, and it "
+            "records which evidence state it was computed against"
+        ),
+    )
 
     model_config = {"populate_by_name": True}
 
@@ -952,7 +972,33 @@ def estate_twin_simulate(
         "label": body.label,
     }
     result = estate_twin.simulate(graph, scenario)
-    return {"run_id": run.id, **result}
+    response: dict[str, Any] = {"run_id": run.id, **result}
+    if body.persist:
+        if result.get("status") != "SIMULATED":
+            response["persisted"] = False
+            response["persist_refused_because"] = (
+                f"status {result.get('status')!r} is not a simulation result. Storing 'the scenario "
+                "matched nothing' as a run would make an empty answer look like a finding"
+            )
+        else:
+            row, created = estate_simulation_store.record_simulation(
+                db,
+                result,
+                tenant_id=current_tenant(),
+                created_by=user,
+                label=body.label,
+            )
+            response["persisted"] = True
+            response["simulation_record"] = estate_simulation_store.public_simulation(
+                row, current_projection_id=graph.fingerprint()
+            )
+            response["persist_note"] = (
+                "stored as a new quarantined run"
+                if created
+                else "this exact scenario against this exact evidence was already stored; the observation "
+                "counter advanced instead of creating a second result"
+            )
+    return response
 
 
 # -- twin history, compare, crypto graph, graph export ----------------------- #
@@ -1075,3 +1121,116 @@ def estate_twin_graph_export(
     """
     run = _latest_run(db)
     return {"run_id": run.id, **estate_twin.graph_export(_graph_from_run(run))}
+
+
+# -- simulation history (quarantined) --------------------------------------- #
+
+
+@router.get("/twin/simulations")
+def estate_twin_simulations(
+    limit: int = Query(default=20, ge=1, le=100),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Stored simulations — quarantined by construction.
+
+    Nothing on this route is estate state. Each row records the evidence state it
+    was computed against, so a stored answer about a different estate is marked
+    ``superseded`` instead of being presented as a current impact assessment.
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    projection_id = graph.fingerprint()
+    rows = estate_simulation_store.list_simulations(db, tenant_id=current_tenant(), limit=limit)
+    return {
+        "model": "cryptoscan.estate-simulations/1",
+        "simulations": [
+            estate_simulation_store.public_simulation(row, current_projection_id=projection_id)
+            for row in rows
+        ],
+        "count": len(rows),
+        **estate_simulation_store.QUARANTINE,
+        "note": (
+            "a simulation is a question asked of a copy. These rows are stored for the audit trail of "
+            "'what we considered', never as observations of the estate"
+        ),
+    }
+
+
+@router.get("/twin/simulations/{identifier}")
+def estate_twin_simulation(
+    identifier: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """One stored simulation, with its quarantine and freshness stated."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    row = estate_simulation_store.get_simulation(db, identifier, tenant_id=current_tenant())
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_simulation",
+                "reason": "no stored simulation with that id for this tenant",
+            },
+        )
+    return estate_simulation_store.public_simulation(row, current_projection_id=graph.fingerprint())
+
+
+# -- graph store load (spec 94 §20) ---------------------------------------- #
+
+
+class TwinGraphLoadRequest(BaseModel):
+    """Load the current twin graph export into a graph store."""
+
+    dry_run: bool = Field(default=True, description="plan the statements without writing anything")
+    database: str | None = Field(default=None, max_length=64)
+    batch_size: int = Field(default=500, ge=1, le=5000)
+    prune_missing: bool = Field(
+        default=False,
+        description=(
+            "after a successful load, delete nodes of this estate that the export no longer contains. "
+            "Destructive, so it is opt-in and only runs once the load verified"
+        ),
+    )
+
+
+@router.post("/twin/graph/load")
+def estate_twin_graph_load(
+    body: TwinGraphLoadRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Write the twin graph export into the configured graph store.
+
+    Defaults to ``dry_run``: the response is the plan — every statement, every row
+    count — so a bank can read what would be written before anything is. The loader
+    validates identifiers, refuses an unknown export schema, merges by deterministic
+    id (so a re-load converges), and then reads its own counts back; a mismatch is
+    reported as a failure rather than as "loaded".
+
+    The store is a projection. If it and ``GET /twin/graph`` disagree, the evidence
+    wins and the store is rebuilt.
+    """
+    run = _latest_run(db)
+    export = estate_twin.graph_export(_graph_from_run(run))
+
+    driver = None
+    if not body.dry_run:
+        try:
+            from graph_engine.connection.neo4j_driver import get_driver
+
+            driver = get_driver()
+        except Exception:  # pragma: no cover - optional dependency / misconfiguration
+            driver = None
+
+    result = estate_graph_loader.load(
+        export,
+        driver=driver,
+        database=body.database,
+        batch_size=body.batch_size,
+        dry_run=body.dry_run,
+        prune_missing=body.prune_missing,
+    )
+    return {"run_id": run.id, **result}

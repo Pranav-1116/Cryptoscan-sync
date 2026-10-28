@@ -9,11 +9,15 @@ import { mockFetch } from "../test/setup";
 * a coverage loss outranks a crypto change in the compare verdict, because once a
   plane stopped collecting everything under it is unreliable;
 * capability is never shown as use — the crypto graph keeps the planes apart;
-* "not comparable" is a state, not an empty diff. */
+* "not comparable" is a state, not an empty diff;
+* a graph-store load is only ever *planned* from the console, and a stored
+  simulation is shown as a question asked of a copy — never as estate state. */
 
 const TWIN = "/api/v1/estate/evidence/twin";
 const CRYPTO = `${TWIN}/crypto-graph`;
 const GRAPH = `${TWIN}/graph`;
+const GRAPH_LOAD = `${TWIN}/graph/load`;
+const SIMULATIONS = `${TWIN}/simulations`;
 const SNAPSHOTS = `${TWIN}/snapshots`;
 
 function overview() {
@@ -114,4 +118,68 @@ it("treats a missing snapshot set as an error rather than an empty history", asy
   await waitFor(() =>
     expect(screen.getByText(/snapshot history unavailable/)).toHaveTextContent("not 'no history'"),
   );
+});
+
+it("plans a graph-store load without writing anything", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [GRAPH]: {
+      schema: "cryptoscan.estate-graph-export/1", projection_id: "c".repeat(32), generated_at: null,
+      counts: { asset_nodes: 3, evidence_nodes: 4, relationships: 2, unresolved: 1 },
+      nodes: [], relationships: [], unresolved: [],
+      load_notes: { not_source_of_truth: "the store is a copy", edge_identity: "edges are (from,to,type)" },
+    },
+    [GRAPH_LOAD]: {
+      schema: "cryptoscan.estate-graph-load/1", projection_id: "c".repeat(32), estate: "Synthetic Bank",
+      dry_run: true, statements: 5,
+      expected: { nodes: 7, relationships: 2, unresolved: 1, projection_id: "c".repeat(32) },
+      written: {}, verification: "DRY_RUN",
+      source_of_truth: "the evidence wins and the store is rebuilt", note: "nothing written",
+    },
+  });
+  render(<DigitalTwinPanel />);
+  (await screen.findByText("Graph export")).click();
+  (await screen.findByText("Plan the graph-store load")).click();
+  await waitFor(() => expect(screen.getByText(/DRY RUN — nothing written/)).toBeInTheDocument());
+  expect(screen.getByText("5 statement(s)")).toBeInTheDocument();
+  expect(screen.getByText("1 unresolved candidate(s)")).toBeInTheDocument();
+  expect(screen.getByText(/the evidence wins and the store is rebuilt/)).toBeInTheDocument();
+});
+
+it("lists stored simulations as quarantined questions, with a stale one marked", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [SNAPSHOTS]: { model: "x", persisted: true, count: 0, note: "", snapshots: [] },
+    [SIMULATIONS]: {
+      model: "cryptoscan.estate-simulations/1", count: 2,
+      quarantined: true, is_estate_state: false,
+      counting_rule: "a simulation is never counted as an observation",
+      note: "stored for the audit trail",
+      simulations: [
+        {
+          simulation_id: "sim-current", kind: "REPLACE_ALGORITHM",
+          scenario: { from: "RSA", to: "ML-DSA" }, label: "pqc-2027",
+          superseded: false, freshness: "CURRENT — computed against the live projection id",
+          matched_evidence: 4, affected_assets: ["Payment API", "HSM-03"],
+          impact: {}, blockers: [], live_state_modified: false, observations: 1,
+          quarantined: true, is_estate_state: false,
+        },
+        {
+          simulation_id: "sim-old", kind: "DISABLE_PROTOCOL",
+          scenario: {}, label: null,
+          superseded: true, freshness: "STALE — the estate has moved since this was simulated; re-run before quoting it",
+          matched_evidence: 2, affected_assets: ["LB-07"],
+          impact: {}, blockers: [], live_state_modified: false, observations: 2,
+          quarantined: true, is_estate_state: false,
+        },
+      ],
+    },
+  });
+  render(<DigitalTwinPanel />);
+  (await screen.findByText("History & compare")).click();
+  await waitFor(() => expect(screen.getByText("2 stored")).toBeInTheDocument());
+  expect(screen.getByText(/never estate state/)).toBeInTheDocument();
+  expect(screen.getByText("STALE")).toBeInTheDocument();
+  expect(screen.getByText(/re-run before quoting it/)).toBeInTheDocument();
+  expect(screen.getByText("asked 2×")).toBeInTheDocument();
 });

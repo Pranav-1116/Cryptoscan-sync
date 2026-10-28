@@ -142,6 +142,41 @@ def _build_parser() -> argparse.ArgumentParser:
     coverage.add_argument("--tenant", default=None)
     coverage.add_argument("--json", action="store_true")
 
+    twin = sub.add_parser("twin", help="operate the Digital Twin (spec 94)")
+    twin_sub = twin.add_subparsers(dest="twin_command", required=True)
+    twin_graph = twin_sub.add_parser(
+        "graph-load",
+        help="load the twin graph export into the configured graph store (dry-run by default)",
+    )
+    twin_graph.add_argument("--tenant", default=None)
+    twin_graph.add_argument("--database", default=None, help="target Neo4j database (default: server default)")
+    twin_graph.add_argument("--batch-size", type=int, default=500)
+    twin_graph.add_argument("--apply", action="store_true",
+                            help="actually write; without it the command only prints the plan")
+    twin_graph.add_argument("--prune-missing", action="store_true",
+                            help="after a verified load, delete estate nodes the export no longer has")
+    twin_graph.add_argument("--json", action="store_true")
+
+    twin_sim = twin_sub.add_parser(
+        "simulate",
+        help="run a scenario on a copy of the twin (never on the estate)",
+    )
+    twin_sim.add_argument("--from", dest="source", required=True, help="algorithm, protocol or version to replace")
+    twin_sim.add_argument("--to", dest="target", default=None, help="replacement (required for REPLACE_ALGORITHM)")
+    twin_sim.add_argument("--kind", default="REPLACE_ALGORITHM",
+                          choices=["REPLACE_ALGORITHM", "RETIRE_ALGORITHM", "DISABLE_PROTOCOL", "UPGRADE_COMPONENT"])
+    twin_sim.add_argument("--key-size", type=int, default=None)
+    twin_sim.add_argument("--label", default=None)
+    twin_sim.add_argument("--save", action="store_true",
+                          help="store the result, quarantined: never counted as estate state")
+    twin_sim.add_argument("--tenant", default=None)
+    twin_sim.add_argument("--json", action="store_true")
+
+    twin_sims = twin_sub.add_parser("simulations", help="list stored simulations (quarantined)")
+    twin_sims.add_argument("--tenant", default=None)
+    twin_sims.add_argument("--limit", type=int, default=20)
+    twin_sims.add_argument("--json", action="store_true")
+
     boms = sub.add_parser("boms", help="print the six BOMs of the latest stored run")
     boms.add_argument("--tenant", default=None)
     boms.add_argument("--bom", default=None, help="print one BOM (SBOM|CBOM|HBOM|NBOM|VBOM|TECHBOM)")
@@ -599,6 +634,123 @@ def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | No
     return EXIT_OK if (failed_cycles + failed_runs) == 0 else EXIT_INCOMPLETE
 
 
+
+def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
+    """Graph-store load, simulation and simulation history (spec 94 §17, §20)."""
+    from api import estate_graph_loader, estate_simulation_store
+    from api.estate_twin_graph import latest_twin_graph
+    from db.tenancy import tenant_scope
+    from shared_models import estate_twin
+
+    session = _session(session_factory)
+    try:
+        with tenant_scope(getattr(args, "tenant", None)):
+            graph = latest_twin_graph(session, getattr(args, "tenant", None))
+            if graph is None:
+                print(
+                    "no stored estate discovery — the twin is NOT_OBSERVED, not empty. "
+                    "Run `cryptoscan scan` or POST /estate/evidence/discover first.",
+                    file=sys.stderr,
+                )
+                return EXIT_INCOMPLETE
+
+            if args.twin_command == "graph-load":
+                export = estate_twin.graph_export(graph)
+                driver = None
+                if args.apply:
+                    try:
+                        from graph_engine.connection.neo4j_driver import get_driver
+
+                        driver = get_driver()
+                    except Exception:  # pragma: no cover - optional dependency
+                        driver = None
+                result = estate_graph_loader.load(
+                    export,
+                    driver=driver,
+                    database=args.database,
+                    batch_size=args.batch_size,
+                    dry_run=not args.apply,
+                    prune_missing=args.prune_missing,
+                )
+                if args.json:
+                    print(json.dumps(result, indent=2, default=str))
+                else:
+                    print(f"export     {result['projection_id'][:16]} · estate {result['estate']}")
+                    print(f"expected   {result['expected']['nodes']} node(s), "
+                          f"{result['expected']['relationships']} relationship(s), "
+                          f"{result['expected']['unresolved']} unresolved candidate(s)")
+                    print(f"statements {result['statements']}")
+                    if result["dry_run"]:
+                        print("mode       DRY RUN — nothing was written (pass --apply to write)")
+                    else:
+                        print(f"verify     {result['verification']}"
+                              + (f" {result['verified']}" if result.get("verified") else ""))
+                        if result.get("error"):
+                            print(f"  {result['error']}", file=sys.stderr)
+                return EXIT_OK if result.get("ok", True) or result["dry_run"] else EXIT_INCOMPLETE
+
+            if args.twin_command == "simulate":
+                scenario = {
+                    "kind": args.kind,
+                    "from": args.source,
+                    "to": args.target,
+                    "key_size": args.key_size,
+                    "label": args.label,
+                }
+                result = estate_twin.simulate(graph, scenario)
+                if args.save and result.get("status") == "SIMULATED":
+                    row, created = estate_simulation_store.record_simulation(
+                        session, result, tenant_id=args.tenant, created_by="cli", label=args.label
+                    )
+                    result["simulation_record"] = estate_simulation_store.public_simulation(
+                        row, current_projection_id=graph.fingerprint()
+                    )
+                    result["persisted"] = created or "already stored (observation counter advanced)"
+                if args.json:
+                    print(json.dumps(result, indent=2, default=str))
+                elif result.get("status") != "SIMULATED":
+                    print(f"simulation {result.get('status')} — {result.get('detail')}")
+                else:
+                    print(f"simulation {result['simulation_id']} · {result['kind']}")
+                    print(f"  matched    {result['matched_evidence']} evidence record(s), "
+                          f"{len(result.get('affected_assets') or [])} asset(s)")
+                    print(f"  live twin  {'UNCHANGED' if result.get('live_projection_unchanged') else 'MODIFIED'}")
+                    for kind, counts in (result.get("bom_diff") or {}).items():
+                        if counts["counts"]["added"] or counts["counts"]["removed"] or counts["counts"]["changed"]:
+                            print(f"  {kind:<9} +{counts['counts']['added']} -{counts['counts']['removed']} "
+                                  f"~{counts['counts']['changed']}")
+                    for blocker in (result.get("blockers") or [])[:5]:
+                        print(f"  blocker    {blocker.get('kind')}: {blocker.get('detail')}")
+                    if args.save:
+                        print("  stored     quarantined — never counted as estate state")
+                return EXIT_OK if result.get("status") == "SIMULATED" else EXIT_INCOMPLETE
+
+            if args.twin_command == "simulations":
+                rows = estate_simulation_store.list_simulations(session, tenant_id=args.tenant, limit=args.limit)
+                payload = [
+                    estate_simulation_store.public_simulation(row, current_projection_id=graph.fingerprint())
+                    for row in rows
+                ]
+                if args.json:
+                    print(json.dumps(
+                        {"simulations": payload, "count": len(payload), **estate_simulation_store.QUARANTINE},
+                        indent=2, default=str))
+                elif not payload:
+                    print("no stored simulations — nothing has been asked of a copy yet")
+                else:
+                    for entry in payload:
+                        print(f"{entry['simulation_id']:<28} {entry['kind']:<20} "
+                              f"{entry['freshness'].split(' —')[0]:<8} "
+                              f"{len(entry['affected_assets'])} asset(s)  {entry['label'] or ''}")
+                return EXIT_OK
+
+        return EXIT_ERROR
+    finally:
+        close = getattr(session, "close", None)
+        if callable(close):
+            close()
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int]] = {
     "schedule": _cmd_schedule,
     "tick": _cmd_tick,
@@ -607,6 +759,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int
     "scan": _cmd_scan,
     "coverage": _cmd_coverage,
     "boms": _cmd_boms,
+    "twin": _cmd_twin,
 }
 
 

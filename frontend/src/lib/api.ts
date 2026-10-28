@@ -6220,3 +6220,44 @@ export const apiEstateTwinCryptoGraph = (): Promise<ApiResult<EstateTwinCryptoGr
 
 export const apiEstateTwinGraph = (): Promise<ApiResult<EstateTwinGraphExport>> =>
   _rsGet<EstateTwinGraphExport>("/api/v1/estate/evidence/twin/graph");
+
+/* A graph-store load is a side effect on a bank's graph, so the panel can only
+   ever ask for the *plan*: the request is sent with dry_run pinned to true, and the
+   response is the statements and counts that *would* run. Writing is a deliberate
+   CLI/API action (`cryptoscan twin graph-load --apply`), not a click.
+
+   The simulation list is the opposite case: it is a read of stored answers, and
+   every one of them says `is_estate_state: false` on the row, so a screenshot of
+   this list cannot be mistaken for a record of the estate. */
+export interface EstateTwinGraphLoad {
+  schema: string; projection_id: string; estate?: string | null;
+  dry_run: boolean; statements: number;
+  expected: { nodes: number; relationships: number; unresolved: number; projection_id: string; estate?: string | null };
+  written: Record<string, number>;
+  verification: "DRY_RUN" | "NOT_CONNECTED" | "VERIFIED" | "MISMATCH" | "NOT_RUN";
+  ok?: boolean; error?: string | null; source_of_truth: string; note?: string;
+}
+
+export interface EstateTwinSimulationRecord {
+  id?: number; simulation_id: string; kind: string;
+  scenario: Record<string, unknown>;
+  label?: string | null; base_projection_id?: string | null;
+  computed_against?: string | null; superseded_by?: string | null;
+  superseded: boolean; freshness: string;
+  matched_evidence: number; affected_assets: string[];
+  impact: Record<string, unknown>; blockers: Array<Record<string, unknown>>;
+  live_state_modified: boolean; observations: number;
+  first_run_at?: string | null; last_run_at?: string | null;
+  quarantined: boolean; is_estate_state: false;
+}
+
+export interface EstateTwinSimulationList {
+  model: string; count: number; quarantined: boolean; is_estate_state: false;
+  counting_rule: string; note: string; simulations: EstateTwinSimulationRecord[];
+}
+
+export const apiEstateTwinGraphLoadPlan = (): Promise<ApiResult<EstateTwinGraphLoad>> =>
+  _rsPost<EstateTwinGraphLoad>("/api/v1/estate/evidence/twin/graph/load", { dry_run: true });
+
+export const apiEstateTwinSimulations = (): Promise<ApiResult<EstateTwinSimulationList>> =>
+  _rsGet<EstateTwinSimulationList>("/api/v1/estate/evidence/twin/simulations");

@@ -620,7 +620,9 @@ bank.
 | Layer 4 crypto graph (§9, §10) | **shipped** — four planes (capability / configured / runtime / wire), provider→algorithm edges, capability-vs-use coexistence explained, conflicts split into *real* (same plane) and *explained* (across planes) | `estate_twin.crypto_graph()` |
 | Compare two twins (§13, §24 "Compare") | **shipped** — assets/relationships/crypto-usage/coverage/evidence/unknown delta, verdict worst-first (`COVERAGE_DEGRADED` > `CRYPTO_CHANGED` > `ESTATE_CHANGED` > `NO_CHANGE`) | `estate_twin.compare()` |
 | Snapshots as stored objects (§19) | **shipped** — `estate_twin_snapshots` (migration 0110), keyed by `(tenant, projection_id)`: identical evidence advances an observation counter instead of inventing a new snapshot | `api/estate_twin_store.py` |
-| Graph projection (§20) | **shipped as an export** — deterministic typed nodes/edges, evidence ids on every edge, unresolved edges shipped separately, `not_source_of_truth` in the payload. Loading it into Neo4j is an external step: no driver writes to a graph store from this repo | `estate_twin.graph_export()` |
+| Graph projection (§20) | **shipped** — deterministic typed nodes/edges, evidence ids on every edge, unresolved edges shipped separately, `not_source_of_truth` in the payload | `estate_twin.graph_export()` |
+| Graph store load (§20–§21) | **shipped** — `POST /twin/graph/load` and `cryptoscan twin graph-load` plan by default and write only on an explicit ask; MERGE by deterministic id (a re-load converges), labels/types validated against the graph vocabulary before they reach Cypher, whole-export refusal, opt-in `prune_missing`, and **read-back verification** (`VERIFIED` / `MISMATCH` / `NOT_CONNECTED` rather than "loaded") | `api/estate_graph_loader.py` |
+| Simulation history (§17, §19) | **shipped, quarantined** — `estate_simulation_runs` (migration 0111). A stored simulation is a *question asked of a copy*: `quarantined=true`, `is_estate_state=false`, refused at write time unless the engine reports the live state untouched, incremented (not duplicated) when the same question is asked again, and marked `superseded` once the estate moves. Reachable as `POST /twin/simulate {persist:true}`, `GET /twin/simulations`, `cryptoscan twin simulate --save` | `api/estate_simulation_store.py` |
 | Layer 1 estate placement | **shipped** | `estate_twin.placement_model()` |
 | Twin completeness (§29) | **shipped** — description quality, never a posture score | `estate_twin.completeness()` |
 | Asset investigation (§25) | **shipped** | `estate_twin.investigate()` |
@@ -629,10 +631,10 @@ bank.
 | Blast radius (§27) | **shipped** — established edges only, blind spots listed | `estate_twin.impact()` |
 | Layer 7 simulation (§15–§17) | **shipped** — runs on a snapshot copy, live projection id checked unchanged | `estate_twin.simulate()` |
 | Twin snapshots as a first-class object (§14) | **shipped** — content-addressed by projection id | `estate_twin.snapshot()` / `graph_from_snapshot()` |
-| API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/snapshots,/search,/assets/{ref},/why}`, `POST /twin/impact`, `POST /twin/simulate` |
-| UI (§24, §25) | **shipped as four views**: *Live estate* (placement, completeness with reasons, search with click-through to an asset view, blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge); *Crypto graph* (four planes with their meanings on screen); *History & compare* (capture, persisted-vs-derived, worst-first verdict); *Graph export* (counts, unresolved separate, not-source-of-truth) | `frontend/src/components/DigitalTwinPanel.tsx` |
+| API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/snapshots,/search,/assets/{ref},/why,/crypto-graph,/graph,/simulations}`, `POST /twin/impact`, `POST /twin/simulate`, `POST /twin/graph/load` |
+| UI (§24, §25) | **shipped as four views**: *Live estate* (placement, completeness with reasons, search with click-through to an asset view, blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge); *Crypto graph* (four planes with their meanings on screen); *History & compare* (capture, persisted-vs-derived, worst-first verdict, and stored simulations listed as **quarantined** with `CURRENT`/`STALE` and an "asked N×" counter); *Graph export* (counts, unresolved separate, not-source-of-truth, and a *plan the graph-store load* action that sends `dry_run: true` — the console can never write to a graph store) | `frontend/src/components/DigitalTwinPanel.tsx` |
 | Historical snapshots (§14) | **shipped** — persisted (`POST/GET /twin/snapshots`); falls back to run-derived snapshots with `persisted: false` and says so | `estate_twin_store.py` |
-| Traversal in a graph store | *not built* — the twin traverses in-process over the canonical graph; §20's graph store is a deployment step over the export | — |
+| Traversal in a graph store | *not built* — the twin traverses **in-process** over the canonical graph. The store now receives a verified copy (§20–§21), but no query path reads traversals back from it: until BOM/drift/impact can be recomputed from the store and proven equal to the in-process answer, the store stays a copy for external consumers, never an authority | — |
 
 ### What "simulation" means here, precisely
 
@@ -660,9 +662,51 @@ to one where it succeeded over the same (smaller) set of facts — so "we stoppe
 looking" was indistinguishable from "nothing changed". That is the single most
 dangerous comparison this product can get wrong, and it is now a regression test.
 
-Simulation runs are deliberately **not** persisted. A simulation asks a question of
-a copy; storing it beside observations would let a "what if" be read back later as
-something that happened.
+### What a stored simulation is, precisely
+
+Simulation runs **are** persisted (migration 0111), because the audit question "what
+did we consider before we migrated?" is real. What keeps that safe is not the
+docstring but the shape of the row:
+
+* the table stores the **answer** (scenario, base projection id, matched evidence,
+  impact, blockers, BOM diff) and no estate facts — nothing in it can be merged back
+  into an `EstateGraph`, a snapshot, a drift comparison or a BOM projection;
+* `live_state_modified` is asserted at write time: a result the engine says touched
+  the live graph is refused rather than stored;
+* a `NO_MATCH` scenario is refused at write time too, because "we found nothing to
+  simulate" stored as a run reads like a finding;
+* asking the same question against the same evidence increments `observations`
+  instead of inserting a second row, which would read like the estate had moved;
+* every API row carries `quarantined`, `is_estate_state`, `computed_against` and
+  `freshness`; once the live projection id differs the answer is `STALE` and names
+  `superseded_by`, because an impact figure computed against a different estate is
+  history, not a forecast.
+
+The tests close each route a simulation could take into the estate: the twin
+overview, its summary and completeness are byte-identical before and after a stored
+run; no snapshot id equals a simulation id; the graph export's counts and projection
+id are unchanged; and a stored answer goes `STALE` the moment discovery moves the
+estate.
+
+### What a graph-store load is, precisely
+
+`POST /twin/graph/load` (and `cryptoscan twin graph-load`) writes the export into the
+configured Neo4j store, `dry_run` **default**. Its honesty lives in four refusals:
+
+* an unknown `schema`, a missing `projection_id`, a duplicate node id, a dangling
+  endpoint, or an `UNRESOLVED_CANDIDATE` shipped as a relationship rejects the
+  **whole document** before a single statement is built — a partial import is worse
+  than none;
+* labels and relationship types are checked against the graph's own vocabulary
+  (`ASSET_TYPES`, `EVIDENCE_TYPES`, `RELATIONSHIP_PREDICATES`) *and* a plain-token
+  pattern, because Cypher cannot parameterise them — this is the one place an
+  unvalidated interpolation would be arbitrary Cypher;
+* every write is `MERGE` on the deterministic id, so loading the same snapshot twice
+  converges instead of doubling the store;
+* after writing, the loader reads the counts back. `MISMATCH` is a failure ("the copy
+  is not a copy"), and with no driver configured the answer is `NOT_CONNECTED` — not
+  "the graph is up to date". Pruning is opt-in, scoped to one estate, and runs only
+  once the load verified.
 
 ### What the twin still cannot say
 

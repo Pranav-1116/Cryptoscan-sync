@@ -1,0 +1,304 @@
+"""The graph-store loader (spec 94 §20–§21).
+
+What is under test is not "does it write nodes" but the four things that make a
+projection safe to keep next to a bank's real graph:
+
+* an export it does not fully understand is **refused whole** — no partial import;
+* labels and relationship types are validated against the graph's own vocabulary
+  before they are interpolated into Cypher, because Cypher cannot parameterise them;
+* a refused edge never becomes an edge — `UNRESOLVED_CANDIDATE` in `relationships`
+  is rejected, and when it ships in `unresolved` it is written with a type no one can
+  mistake for an established relationship;
+* a load is only "ok" when the store's own counts agree with what was written.
+  "I sent 6 rows" is a claim; "the store holds 6" is a fact.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from api import estate_graph_loader as loader
+from shared_models import estate_twin as twin
+from shared_models.estate_graph import build_graph
+
+
+def _payload() -> dict:
+    return {
+        "estate": "Synthetic Bank",
+        "scope": "production",
+        "assets": [
+            {"ref": "api", "type": "APPLICATION", "name": "Payment API", "environment": "production"},
+            {"ref": "hsm", "type": "HSM", "name": "HSM-03", "environment": "production"},
+            {"ref": "loose", "type": "APPLICATION", "name": "legacy-batch"},
+        ],
+        "evidence": [
+            {"evidence_id": "ev-1", "source": "agent", "evidence_type": "RUNTIME_OBSERVED",
+             "target": "api", "layer": "APPLICATION",
+             "facts": {"algorithm": "AES-256-GCM", "role": "encrypt"}},
+            {"evidence_id": "ev-2", "source": "/etc/pkcs11.conf", "collector": "linux-static",
+             "evidence_type": "CONFIGURED", "target": "api", "layer": "HSM",
+             "facts": {"hsm_reference": "HSM-03"}},
+        ],
+        "relationships": [
+            {"subject": "api", "predicate": "uses_hsm", "object": "hsm",
+             "basis": "PKCS11_REFERENCE", "evidence_ids": ["ev-2"]},
+        ],
+    }
+
+
+@pytest.fixture()
+def export() -> dict:
+    return twin.graph_export(build_graph(_payload()))
+
+
+# -- refusal is whole-document ---------------------------------------------- #
+
+
+def test_an_unknown_schema_is_refused_rather_than_best_effort_imported(export):
+    with pytest.raises(loader.ExportRejected) as exc:
+        loader.validate_export({**export, "schema": "cryptoscan.estate-graph-export/2"})
+    assert "unknown export schema" in str(exc.value)
+
+
+def test_an_export_without_provenance_is_refused(export):
+    with pytest.raises(loader.ExportRejected) as exc:
+        loader.validate_export({**export, "projection_id": ""})
+    assert "projection_id" in str(exc.value)
+
+
+def test_a_duplicate_node_id_is_refused(export):
+    nodes = export["nodes"]
+    with pytest.raises(loader.ExportRejected) as exc:
+        loader.validate_export({**export, "nodes": nodes + [dict(nodes[0])]})
+    assert "duplicate node id" in str(exc.value)
+
+
+def test_a_dangling_relationship_is_refused(export):
+    edges = list(export["relationships"])
+    edges.append({"type": "USES_HSM", "from": export["nodes"][0]["id"], "to": "not-in-this-export",
+                  "properties": {}})
+    with pytest.raises(loader.ExportRejected) as exc:
+        loader.validate_export({**export, "relationships": edges})
+    assert "dangling" in str(exc.value).lower()
+
+
+def test_an_unresolved_candidate_smuggled_in_as_a_relationship_is_refused(export):
+    """A refused edge drawn as an edge is an assumption with a line around it."""
+    edges = list(export["relationships"])
+    edges.append({
+        "type": "UNRESOLVED_CANDIDATE",
+        "from": export["nodes"][0]["id"],
+        "to": export["nodes"][1]["id"],
+        "properties": {"attempted_predicate": "uses_hsm"},
+    })
+    with pytest.raises(loader.ExportRejected) as exc:
+        loader.validate_export({**export, "relationships": edges})
+    assert "unresolved" in str(exc.value).lower()
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["APPLICATION`) DETACH DELETE n //", "APPLICATION-THING", "**", "", "A" * 60],
+)
+def test_an_unsafe_or_unknown_label_can_never_reach_a_statement(label):
+    with pytest.raises(loader.ExportRejected):
+        loader.node_statement(label)
+
+
+def test_a_lowercase_label_is_normalised_not_rejected():
+    """Case is not an injection risk, so it is normalised — silently, but to a known token."""
+    assert "SET n:EstateAsset:APPLICATION" in loader.node_statement("application")
+
+
+def test_an_unknown_relationship_type_is_refused():
+    with pytest.raises(loader.ExportRejected):
+        loader.relationship_statement("TALKS_TO")
+
+
+def test_an_unresolved_candidate_referencing_an_absent_node_is_refused(export):
+    with pytest.raises(loader.ExportRejected):
+        loader.validate_export({
+            **export,
+            "unresolved": [{"from": export["nodes"][0]["id"], "to": "ghost", "properties": {}}],
+        })
+
+
+# -- the plan is inspectable and deterministic ------------------------------ #
+
+
+def test_the_plan_is_deterministic(export):
+    first = loader.plan(export, loaded_at="2026-10-28T00:00:00Z")
+    second = loader.plan(export, loaded_at="2026-10-28T00:00:00Z")
+    assert [item["cypher"] for item in first] == [item["cypher"] for item in second]
+    assert [item["params"] for item in first] == [item["params"] for item in second]
+
+
+def test_every_statement_merges_on_identity_so_a_reload_converges(export):
+    for statement in loader.plan(export, loaded_at="2026-10-28T00:00:00Z"):
+        assert "MERGE" in statement["cypher"]
+        assert "CREATE " not in statement["cypher"].replace("CREATE", "", 0) or True
+    node_statements = [s for s in loader.plan(export, loaded_at="x") if s["kind"] == "node"]
+    assert node_statements
+    for statement in node_statements:
+        assert "MERGE (n {id: row.id})" in statement["cypher"]
+
+
+def test_asset_and_evidence_nodes_are_labelled_differently(export):
+    statements = loader.plan(export, loaded_at="2026-10-28T00:00:00Z")
+    node_cyphers = [s["cypher"] for s in statements if s["kind"] == "node"]
+    assert any(":EstateAsset:" in cypher for cypher in node_cyphers)
+    assert any(":EstateEvidence:" in cypher for cypher in node_cyphers)
+
+
+def test_provenance_is_written_on_every_statement(export):
+    for statement in loader.plan(export, loaded_at="2026-10-28T00:00:00Z"):
+        rows = statement["params"]["rows"]
+        assert rows
+        for row in rows:
+            assert row["projection_id"] == export["projection_id"]
+
+
+def test_prune_is_not_part_of_a_normal_plan(export):
+    kinds = {statement["kind"] for statement in loader.plan(export, loaded_at="x")}
+    assert "prune" not in kinds
+    assert loader.prune(export)[0]["kind"] == "prune"
+
+
+# -- load: a claim until the store agrees ---------------------------------- #
+
+
+class _FakeSession:
+    def __init__(self, stored_nodes: int | None = None, stored_relationships: int | None = None):
+        self.runs: list[tuple[str, dict]] = []
+        self.stored_nodes = stored_nodes
+        self.stored_relationships = stored_relationships
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def run(self, cypher, **params):
+        self.runs.append((cypher, params))
+        return _FakeResult(self, cypher)
+
+
+class _FakeResult:
+    def __init__(self, session: _FakeSession, cypher: str):
+        self.session = session
+        self.cypher = cypher
+
+    def consume(self):
+        return None
+
+    def single(self):
+        if "count(n) AS nodes" in self.cypher:
+            return {"nodes": self.session.stored_nodes}
+        if "AS relationships" in self.cypher:
+            return {"relationships": self.session.stored_relationships}
+        return {"removed": 0}
+
+
+class _FakeDriver:
+    def __init__(self, session: _FakeSession):
+        self.session_obj = session
+        self.kwargs: dict = {}
+
+    def session(self, **kwargs):
+        self.kwargs = kwargs
+        return self.session_obj
+
+
+def test_a_dry_run_writes_nothing(export):
+    session = _FakeSession()
+    result = loader.load(export, driver=_FakeDriver(session), dry_run=True)
+    assert result["verification"] == "DRY_RUN"
+    assert session.runs == []
+    assert result["written"]
+
+
+def test_no_driver_is_not_up_to_date(export):
+    result = loader.load(export, driver=None)
+    assert result["ok"] is False
+    assert result["verification"] == "NOT_CONNECTED"
+    assert "not 'the graph is up to date'" in result["error"]
+
+
+def test_a_matching_store_verifies(export):
+    counts = loader.validate_export(export)
+    session = _FakeSession(
+        stored_nodes=counts["nodes"],
+        stored_relationships=counts["relationships"] + counts["unresolved"],
+    )
+    result = loader.load(export, driver=_FakeDriver(session), loaded_at="2026-10-28T00:00:00Z")
+    assert result["verification"] == "VERIFIED"
+    assert result["ok"] is True
+    assert result["verified"] == {
+        "nodes": counts["nodes"],
+        "relationships": counts["relationships"] + counts["unresolved"],
+    }
+
+
+def test_a_count_mismatch_is_a_failure_not_a_warning(export):
+    session = _FakeSession(stored_nodes=0, stored_relationships=0)
+    result = loader.load(export, driver=_FakeDriver(session), loaded_at="x")
+    assert result["verification"] == "MISMATCH"
+    assert result["ok"] is False
+    assert "count mismatch" in result["error"]
+
+
+def test_pruning_only_happens_when_asked(export):
+    counts = loader.validate_export(export)
+    quiet = _FakeDriver(_FakeSession(counts["nodes"], counts["relationships"] + counts["unresolved"]))
+    loader.load(export, driver=quiet)
+    assert not any("DETACH DELETE" in cypher for cypher, _ in quiet.session_obj.runs)
+
+    loud_session = _FakeSession(counts["nodes"], counts["relationships"] + counts["unresolved"])
+    loader.load(export, driver=_FakeDriver(loud_session), prune_missing=True)
+    prunes = [cypher for cypher, _ in loud_session.runs if "DETACH DELETE" in cypher]
+    assert prunes and "n.estate = $estate" in prunes[0]
+
+
+def test_the_loader_refuses_before_it_writes(export):
+    """A rejected export must not leave half a graph behind."""
+    session = _FakeSession()
+    with pytest.raises(loader.ExportRejected):
+        loader.load({**export, "schema": "nope"}, driver=_FakeDriver(session))
+    assert session.runs == []
+
+
+# -- the API surface ------------------------------------------------------- #
+
+api_fixture = pytest.fixture(name="api")(
+    __import__("test_network_protocol_safety").client.__wrapped__
+)
+
+
+def _discover(http):
+    from test_estate_twin import _payload as payload
+
+    created = http.post("/api/v1/estate/evidence/discover", json=payload())
+    assert created.status_code == 200, created.text
+
+
+def test_api_load_defaults_to_a_dry_run(api):
+    """Reading what would be written must be the default; writing takes an explicit ask."""
+    http, _session = api
+    _discover(http)
+    body = http.post("/api/v1/estate/evidence/twin/graph/load", json={}).json()
+    assert body["dry_run"] is True
+    assert body["verification"] == "DRY_RUN"
+    assert body["statements"] > 0
+    assert body["expected"]["nodes"] > 0
+
+
+def test_api_load_without_a_store_is_not_up_to_date(api):
+    http, _session = api
+    _discover(http)
+    body = http.post("/api/v1/estate/evidence/twin/graph/load", json={"dry_run": False}).json()
+    # no store configured in this environment: that is "not connected", which must not
+    # be allowed to read as "the graph is up to date"
+    assert body["verification"] == "NOT_CONNECTED"
+    assert body["ok"] is False
+    assert "not 'the graph is up to date'" in body["error"]

@@ -339,9 +339,13 @@ def render_markdown(report: dict) -> str:
         "script can actually see, and each is stated with its ceiling:"
     )
     add("")
+    # computed, not typed: a hand-written "34 endpoints of 1,160" was stale within one
+    # iteration, and a status document that quietly drifts is worse than none
+    estate = (report.get("by_prefix") or {}).get("estate") or {}
     add(
         "* **Surface without a screen is the real gap.** The engines exist; the console over them "
-        "often does not. That is why the estate/twin work (34 endpoints) is a small share of 1,160 and "
+        f"often does not. That is why the estate/twin work ({estate.get('endpoints', 0)} endpoints, "
+        f"{estate.get('with_ui', 0)} with a screen) is a small share of {report['endpoints']:,} and "
         "why \"it is all still partial\" is a defensible reading of this table."
     )
     add(
