@@ -419,3 +419,14 @@ def test_api_twin_impact_and_simulate(api):
 def test_api_twin_needs_a_discovery_first(api):
     http, _session = api
     assert http.get("/api/v1/estate/evidence/twin").status_code == 404
+
+
+def test_api_twin_snapshots_lists_runs_as_content_addressed_snapshots(api):
+    http, _session = api
+    first = _discover(http)
+    _discover(http)  # identical evidence → identical snapshot id
+    listing = http.get("/api/v1/estate/evidence/twin/snapshots").json()
+    assert listing["count"] >= 2
+    ids = {entry["snapshot_id"] for entry in listing["snapshots"]}
+    assert ids == {f"twin:{first['projection_id']}"}
+    assert all("counts" in entry for entry in listing["snapshots"])

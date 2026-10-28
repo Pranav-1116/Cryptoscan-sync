@@ -799,6 +799,49 @@ def estate_twin_snapshot(
     return {"run_id": run.id, **snap}
 
 
+@router.get("/twin/snapshots")
+def estate_twin_snapshots(
+    limit: int = Query(default=10, ge=1, le=50),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Twin snapshots, newest first — the history a drift comparison runs over.
+
+    A snapshot is content-addressed: two runs of the same evidence share a
+    ``snapshot_id``, which is the honest answer to "did anything actually change
+    between Tuesday and Thursday".
+    """
+    runs = ScanRunRepository(db).list_runs(limit=limit, target_kind=RUN_KIND, owner=current_tenant())
+    entries: list[dict[str, Any]] = []
+    for run in runs:
+        graph = _graph_from_run(run)
+        entries.append(
+            {
+                "run_id": run.id,
+                "created_at": str(getattr(run, "created_at", "") or ""),
+                "snapshot_id": f"twin:{graph.fingerprint()}",
+                "projection_id": graph.fingerprint(),
+                "estate": graph.estate,
+                "counts": {
+                    "assets": len(graph.assets()),
+                    "evidence": len(graph.evidence()),
+                    "relationships": len(graph.relationships()),
+                    "unresolved_relationships": len(graph.unresolved_relationships()),
+                },
+                "completeness_percent": estate_twin.completeness(graph)["overall_percent"],
+            }
+        )
+    return {
+        "model": "cryptoscan.estate-twin-snapshots/1",
+        "snapshots": entries,
+        "count": len(entries),
+        "note": (
+            "compare any two of these with GET /estate/evidence/drift, which diffs components, "
+            "coverage and collector outcomes rather than timestamps"
+        ),
+    }
+
+
 @router.get("/twin/search")
 def estate_twin_search(
     q: str = Query(min_length=1, max_length=200, description="algorithm, key size, protocol, name, type or owner"),
