@@ -157,6 +157,14 @@ def _build_parser() -> argparse.ArgumentParser:
                             help="after a verified load, delete estate nodes the export no longer has")
     twin_graph.add_argument("--json", action="store_true")
 
+    twin_verify = twin_sub.add_parser(
+        "graph-verify",
+        help="ask the graph store whether it still equals this projection, id by id",
+    )
+    twin_verify.add_argument("--tenant", default=None)
+    twin_verify.add_argument("--database", default=None)
+    twin_verify.add_argument("--json", action="store_true")
+
     twin_sim = twin_sub.add_parser(
         "simulate",
         help="run a scenario on a copy of the twin (never on the estate)",
@@ -974,6 +982,42 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                         print(f"  no {row['level'].lower():<17} {row['assets']} asset(s) — "
                               f"{row['reason'].split('.')[0]}")
                 return EXIT_OK
+
+            if args.twin_command == "graph-verify":
+                export = estate_twin.graph_export(graph)
+                driver = None
+                try:
+                    from graph_engine.connection.neo4j_driver import get_driver
+
+                    driver = get_driver()
+                except Exception:  # pragma: no cover - optional dependency
+                    driver = None
+                result = estate_graph_loader.parity(
+                    export, driver=driver, database=args.database
+                )
+                if args.json:
+                    print(json.dumps(result, indent=2, default=str))
+                else:
+                    print(f"store      {result['status']}")
+                    print(f"expected   {result['expected']['nodes']} node(s), "
+                          f"{result['expected']['relationships']} relationship(s)")
+                    if result.get("store"):
+                        printed = ", ".join(f"{label} {count}"
+                                            for label, count in result["store"]["nodes"].items())
+                        print(f"stored     {printed}")
+                    for label, ids in result["missing"].items():
+                        print(f"missing    {label}: {', '.join(ids[:5])}")
+                    for label, ids in result["unexpected"].items():
+                        print(f"extra      {label}: {', '.join(ids[:5])}")
+                    for rel_type, diff in result["relationship_differences"].items():
+                        print(f"differs    {rel_type}: expected {diff['expected']}, "
+                              f"stored {diff['stored']}")
+                    print(f"traversal  {result['traversal_parity']} — {result['traversal_note']}")
+                    if result.get("note"):
+                        print(f"  {result['note']}")
+                    if result.get("error"):
+                        print(f"  {result['error']}", file=sys.stderr)
+                return EXIT_OK if result.get("ok") else EXIT_INCOMPLETE
 
             if args.twin_command == "graph-load":
                 export = estate_twin.graph_export(graph)

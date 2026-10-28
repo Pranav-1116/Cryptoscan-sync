@@ -420,3 +420,14 @@ def test_search_says_a_miss_is_a_gap_in_the_record(with_discovery, capsys):
     out = capsys.readouterr().out
     assert code == cli.EXIT_OK
     assert "not evidence the bank has none" in out
+
+
+def test_graph_verify_reports_not_connected_rather_than_parity(with_discovery, capsys):
+    """No store configured is not 'the store is in parity' — and the exit code says so."""
+    from api import cli
+
+    code = cli.main(["twin", "graph-verify"], session_factory=lambda: with_discovery)
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_INCOMPLETE
+    assert "NOT_CONNECTED" in captured.out
+    assert "not 'the store is in parity'" in captured.err

@@ -302,3 +302,117 @@ def test_api_load_without_a_store_is_not_up_to_date(api):
     assert body["verification"] == "NOT_CONNECTED"
     assert body["ok"] is False
     assert "not 'the graph is up to date'" in body["error"]
+
+
+# -- parity: counts are weak, ids are not (spec 94 §20–§21) ----------------- #
+
+
+class _ParitySession:
+    """A store that answers the parity questions from a fixed picture of itself."""
+
+    def __init__(self, ids_by_label: dict[str, list[str]], rel_counts: dict[str, int]):
+        self.ids_by_label = ids_by_label
+        self.rel_counts = rel_counts
+        self.queries: list[str] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def run(self, cypher, **params):
+        self.queries.append(cypher)
+        if "labels(n)" in cypher:
+            ids = self.ids_by_label.get(str(params["label"]), [])
+            return [{"id": value} for value in ids]
+        if "type(r) AS type" in cypher:
+            return [{"type": key, "count": value} for key, value in self.rel_counts.items()]
+        return []
+
+
+class _ParityDriver:
+    def __init__(self, session):
+        self.session_obj = session
+
+    def session(self, **kwargs):
+        return self.session_obj
+
+
+def _store_matching(export) -> _ParitySession:
+    by_label: dict[str, list[str]] = {}
+    for node in export["nodes"]:
+        label = next(label for label in node["labels"] if label.upper() not in {"ASSET", "EVIDENCE"})
+        by_label.setdefault(label, []).append(node["id"])
+    rels: dict[str, int] = {}
+    for edge in export["relationships"]:
+        rels[edge["type"]] = rels.get(edge["type"], 0) + 1
+    if export.get("unresolved"):
+        rels[loader.UNRESOLVED_TYPE] = len(export["unresolved"])
+    return _ParitySession(by_label, rels)
+
+
+def test_a_store_holding_exactly_the_projection_is_in_parity(export):
+    session = _store_matching(export)
+    result = loader.parity(export, driver=_ParityDriver(session))
+
+    assert result["status"] == "PARITY"
+    assert result["ok"] is True
+    assert result["missing"] == {} and result["unexpected"] == {}
+    assert result["relationship_differences"] == {}
+    # and it asked the store questions rather than trusting its own count
+    assert any("labels(n)" in cypher for cypher in session.queries)
+    assert result["traversal_parity"] == "NOT_CLAIMED"
+
+
+def test_a_missing_node_is_named_not_counted(export):
+    session = _store_matching(export)
+    victim = export["nodes"][0]
+    label = next(label for label in victim["labels"] if label.upper() not in {"ASSET", "EVIDENCE"})
+    session.ids_by_label[label].remove(victim["id"])
+
+    result = loader.parity(export, driver=_ParityDriver(session))
+
+    assert result["status"] == "MISMATCH"
+    assert result["missing"] == {label: [victim["id"]]}
+    assert "The evidence wins" in result["note"]
+
+
+def test_a_leftover_node_is_reported_as_a_stale_store_not_as_parity(export):
+    session = _store_matching(export)
+    label = next(iter(session.ids_by_label))
+    session.ids_by_label[label].append("application:gone-by-yesterday")
+
+    result = loader.parity(export, driver=_ParityDriver(session))
+
+    assert result["status"] == "STALE_ONLY"
+    assert result["ok"] is False
+    assert result["unexpected"] == {label: ["application:gone-by-yesterday"]}
+    assert "prune" in result["note"]
+
+
+def test_a_count_that_matches_can_still_hide_a_lost_edge_type(export):
+    """The whole point of parity: equal totals, different contents."""
+    session = _store_matching(export)
+    total = sum(session.rel_counts.values())
+    # one type vanished and another gained a row: every total still matches
+    removed = next(iter(session.rel_counts))
+    session.rel_counts[removed] = session.rel_counts[removed] - 1
+    session.rel_counts["SUPPORTS"] = session.rel_counts.get("SUPPORTS", 0) + 1
+    assert sum(session.rel_counts.values()) == total
+
+    result = loader.parity(export, driver=_ParityDriver(session))
+
+    assert result["status"] == "MISMATCH"
+    assert result["relationship_differences"][removed] == {
+        "expected": result["relationship_differences"][removed]["expected"],
+        "stored": session.rel_counts[removed],
+    }
+
+
+def test_no_driver_is_not_parity(export):
+    result = loader.parity(export, driver=None)
+
+    assert result["status"] == "NOT_CONNECTED"
+    assert result["ok"] is False
+    assert "not 'the store is in parity'" in result["error"]

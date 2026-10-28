@@ -1676,3 +1676,48 @@ def estate_search_query(
         return estate_search.search(db, q, tenant_id=current_tenant(), kinds=wanted, limit=limit)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"error": "bad_search", "reason": str(exc)}) from exc
+
+
+# -- store parity (spec 94 §20–§21) ----------------------------------------- #
+
+
+class TwinGraphVerifyRequest(BaseModel):
+    """Ask the graph store whether it still equals this projection."""
+
+    database: str | None = Field(default=None, max_length=64)
+
+
+@router.post("/twin/graph/verify")
+def estate_twin_graph_verify(
+    body: TwinGraphVerifyRequest | None = None,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Compare the graph store with the canonical records, id by id (§20–§21).
+
+    The loader already reads counts back after writing. Counts are a weak test — a store
+    that kept yesterday's nodes and gained today's has *more* than expected and passes a
+    ">=" check while holding a superseded estate. This compares the exact id set per
+    node kind and the relationship count per type, and names what differs.
+
+    ``STALE_ONLY`` is the honest middle state: the store holds everything the projection
+    has plus nodes it no longer contains. ``NOT_CONNECTED`` is not parity, and the
+    response says so rather than returning an empty difference list.
+    """
+    run = _latest_run(db)
+    export = estate_twin.graph_export(_graph_from_run(run))
+
+    driver = None
+    try:
+        from graph_engine.connection.neo4j_driver import get_driver
+
+        driver = get_driver()
+    except Exception:  # pragma: no cover - optional dependency / misconfiguration
+        driver = None
+
+    result = estate_graph_loader.parity(
+        export,
+        driver=driver,
+        database=(body.database if body else None),
+    )
+    return {"run_id": run.id, **result}

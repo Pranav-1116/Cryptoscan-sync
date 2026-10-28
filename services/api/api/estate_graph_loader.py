@@ -408,11 +408,187 @@ def load(
     return result
 
 
+
+#: readback queries the parity check runs. Each is a *question to the store*, not a
+#: write: an id list per node kind, relationship counts per type, and one bounded
+#: traversal whose answer can be compared with the in-process one.
+NODE_IDS_QUERY = (
+    "MATCH (n) WHERE n.estate = $estate AND $label IN labels(n) "
+    "RETURN n.id AS id ORDER BY n.id"
+)
+REL_COUNTS_QUERY = (
+    "MATCH (a)-[r]->() WHERE a.estate = $estate "
+    "RETURN type(r) AS type, count(r) AS count ORDER BY type"
+)
+
+
+def _expected_ids(export: Mapping[str, Any]) -> dict[str, set[str]]:
+    """The exact node ids the export says should be in the store, per kind label."""
+    by_label: dict[str, set[str]] = {}
+    for node in export.get("nodes") or []:
+        labels = [str(label) for label in (node.get("labels") or [])]
+        kind = next(
+            (label for label in labels if label.upper() not in {"ASSET", "EVIDENCE"}), "UNKNOWN"
+        )
+        by_label.setdefault(kind, set()).add(str(node["id"]))
+    return by_label
+
+
+def _expected_rel_counts(export: Mapping[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for edge in export.get("relationships") or []:
+        rel_type = str(edge.get("type") or "").upper()
+        counts[rel_type] = counts.get(rel_type, 0) + 1
+    unresolved = len(export.get("unresolved") or [])
+    if unresolved:
+        counts[UNRESOLVED_TYPE] = counts.get(UNRESOLVED_TYPE, 0) + unresolved
+    return counts
+
+
+def parity(
+    export: Mapping[str, Any],
+    *,
+    driver: Any,
+    database: str | None = None,
+    max_listed: int = 20,
+) -> dict[str, Any]:
+    """Do the store and the canonical records agree — exactly, and answerably?
+
+    The loader's own verification counts what it wrote. Counts are a weak test: a store
+    that kept yesterday's nodes and gained today's has *more* than expected and would
+    pass a ``>=`` check while holding a superseded estate. This asks the store two
+    questions that can only be answered with the projection in hand:
+
+    * **which ids does the store hold, per kind?** Compared as sets against the export,
+      so both a missing node and a leftover node are named rather than counted;
+    * **how many relationships of each type?** Compared exactly, per type, so a lost
+      edge type cannot hide inside an unchanged total.
+
+    The result is ``PARITY``, ``MISMATCH`` (with the differences named),
+    ``NOT_CONNECTED`` (no store, which is not "in parity") or ``STALE_ONLY`` (the store
+    holds everything the export has plus nodes the caller has not pruned — an
+    accumulated store, reported rather than smoothed over).
+
+    Traversal parity — running a blast radius in the store and getting the same answer —
+    is *not* claimed here. The store is written, and its contents are proven equal; no
+    query path yet recomputes a BOM or a radius from it, and this function says so
+    instead of implying more.
+    """
+    counts = validate_export(export)
+    estate = counts["estate"]
+    expected_ids = _expected_ids(export)
+    expected_rels = _expected_rel_counts(export)
+
+    result: dict[str, Any] = {
+        "schema": LOADER_SCHEMA,
+        "check": "parity",
+        "projection_id": counts["projection_id"],
+        "estate": estate,
+        "database": database,
+        "expected": {
+            "nodes": counts["nodes"],
+            "relationships": counts["relationships"],
+            "unresolved": counts["unresolved"],
+        },
+        "status": "NOT_RUN",
+        "store": None,
+        "missing": {},
+        "unexpected": {},
+        "relationship_differences": {},
+        "traversal_parity": "NOT_CLAIMED",
+        "traversal_note": (
+            "the store holds a proven copy of this projection; no query path recomputes a blast "
+            "radius or a BOM from it yet, so store-vs-twin traversal parity is not claimed"
+        ),
+    }
+
+    if driver is None:
+        result.update({
+            "status": "NOT_CONNECTED",
+            "ok": False,
+            "error": (
+                "no graph driver: the store is unreachable or not configured. That is not "
+                "'the store is in parity'"
+            ),
+        })
+        return result
+
+    stored_ids: dict[str, set[str]] = {}
+    session_kwargs = {"database": database} if database else {}
+    with driver.session(**session_kwargs) as session:
+        for label in sorted(expected_ids):
+            _check_token(label, allowed=set(ASSET_TYPES) | set(EVIDENCE_TYPES), what="node label")
+            rows = session.run(NODE_IDS_QUERY, estate=estate, label=label)
+            stored_ids[label] = {str(record["id"]) for record in rows}
+
+        rel_rows = session.run(REL_COUNTS_QUERY, estate=estate)
+        stored_rels = {str(record["type"]): int(record["count"]) for record in rel_rows}
+
+    missing = {
+        label: sorted(ids - stored_ids.get(label, set()))[:max_listed]
+        for label, ids in expected_ids.items()
+        if ids - stored_ids.get(label, set())
+    }
+    unexpected = {
+        label: sorted(stored_ids.get(label, set()) - ids)[:max_listed]
+        for label, ids in expected_ids.items()
+        if stored_ids.get(label, set()) - ids
+    }
+    # a kind the store holds entirely of leftovers is not in expected_ids at all
+    for label in sorted(set(stored_ids) - set(expected_ids)):
+        if stored_ids[label]:
+            unexpected[label] = sorted(stored_ids[label])[:max_listed]
+
+    relationship_differences = {
+        rel_type: {"expected": expected_rels.get(rel_type, 0), "stored": stored_rels.get(rel_type, 0)}
+        for rel_type in sorted(set(expected_rels) | set(stored_rels))
+        if expected_rels.get(rel_type, 0) != stored_rels.get(rel_type, 0)
+    }
+
+    result["store"] = {
+        "nodes": {label: len(ids) for label, ids in sorted(stored_ids.items())},
+        "relationships": dict(sorted(stored_rels.items())),
+    }
+    result["missing"] = missing
+    result["unexpected"] = unexpected
+    result["relationship_differences"] = relationship_differences
+
+    if missing or (unexpected and relationship_differences):
+        result["status"] = "MISMATCH"
+    elif unexpected:
+        result["status"] = "STALE_ONLY"
+    elif relationship_differences:
+        result["status"] = "MISMATCH"
+    else:
+        result["status"] = "PARITY"
+
+    result["ok"] = result["status"] == "PARITY"
+    if result["status"] == "PARITY":
+        result["note"] = (
+            "the store holds exactly this projection: same ids per kind, same relationship count "
+            "per type. It remains a copy — the evidence is still the truth"
+        )
+    elif result["status"] == "STALE_ONLY":
+        result["note"] = (
+            "the store holds everything this projection has, plus nodes it no longer contains. "
+            "That is an accumulated copy, not a wrong one: re-load with prune to converge, and do "
+            "not read the extra nodes as estate state"
+        )
+    else:
+        result["note"] = (
+            "the store and the evidence disagree. The evidence wins: treat the store as suspect and "
+            "reload it, rather than editing the store to match"
+        )
+    return result
+
+
+
 __all__ = [
     "EXPORT_SCHEMA",
     "LOADER_SCHEMA",
     "ExportRejected",
     "load",
+    "parity",
     "node_statement",
     "plan",
     "prune",
