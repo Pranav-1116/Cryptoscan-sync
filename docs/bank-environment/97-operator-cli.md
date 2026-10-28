@@ -69,7 +69,7 @@ something invented.
 | `scan --target <id>` | `POST /collection/jobs` | requires `--target-revision` |
 | `scan` (no target) | `POST /estate/evidence/scan` | estate discovery run |
 | `scan --manifest <file>` | as above | JSON or YAML (§5) |
-| `verify-installation` | *(local)* | hashes files against a release manifest (§6) |
+| `verify-installation` | *(local)* | hashes files against a release manifest and checks its Ed25519 signature (`--public-key`), §6 |
 | `collect` (no `--submit`) | *(local collection)* | the one in-process mode; it prints, on stderr, that this process is the collector |
 
 ## 3. What the CLI refuses, on purpose
@@ -109,14 +109,32 @@ PyYAML, and the command says so if it is missing.
 ## 6. Installation integrity, and what it can claim
 
 `scripts/release_manifest.py` emits the manifest (`sha256` per shipped file, excluding
-bytecode, with `"signature": null`). `cryptoscan verify-installation --manifest … --root …`
-compares the installed tree against it and reports `MATCH` / `MISMATCH`, plus
-`MANIFEST_UNSIGNED` whenever the manifest carries no signature.
+bytecode) and can sign it with an Ed25519 key:
 
-What that verifies: the files on disk are the files the manifest describes. What it does not
-verify: that the manifest is authentic. Signing is a release-key operation outside this
-repository, and printing "VERIFIED" from an unsigned manifest is exactly the over-claim this
-product exists to avoid — so the command states the limit and exits 2 on any mismatch.
+```bash
+$ python scripts/release_manifest.py --generate-key ./release-keys
+$ python scripts/release_manifest.py --root /opt/cryptoscan -o release.json \
+      --sign-key ./release-keys/cryptoscan-release.key
+wrote release.json (412 files, signed ed25519:4e7c7a44c7b8303e)
+
+$ cryptoscan verify-installation --manifest release.json --root /opt/cryptoscan \
+      --public-key ./release-keys/cryptoscan-release.pub
+signature  VALID
+verdict    MATCH
+```
+
+`cryptoscan verify-installation` answers two questions and keeps them apart. Do the files
+match the manifest (exit 0 match / 2 mismatch or missing)? And is the manifest authentic
+(`VALID` with a trusted key, `SIGNED_UNVERIFIED` without one, `SIGNATURE_KEY_MISMATCH` or
+`INVALID` — both exit 1 — when it does not check out). The signature covers every member
+except itself, as canonical JSON, so a rewritten hash list is detectable; the same verifier
+serves `bundle verify`, so the two cannot drift apart.
+
+What it does not do: prove the key belongs to the vendor. A signature verified against a
+public key that arrived in the same envelope as the manifest proves nothing, which is why
+`--public-key` is a separate argument and why a signed-but-unchecked manifest reads
+`SIGNED_UNVERIFIED` rather than `VALID`. No signing time, certificate chain or revocation is
+checked.
 
 ## 7. Authentication
 

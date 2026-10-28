@@ -53,6 +53,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
+from shared_models import release_signature
+
 EXIT_OK = 0
 EXIT_ERROR = 1
 EXIT_INCOMPLETE = 2
@@ -1396,8 +1398,9 @@ BUNDLE_SCHEMA = "cryptoscan.bundle/1"
 BUNDLE_LIMITS = [
     "the bundle carries stored evidence, projections and the twin snapshot — not the "
     "collectors, their raw output, or the database",
-    "the manifest hashes prove the files are unmodified relative to the manifest; they do "
-    "not prove who produced them: bundles are not signed",
+    "the manifest hashes prove the files are unmodified relative to the manifest; who "
+    "produced them is proven only if the bundle was signed and you check it against a key "
+    "you already trust",
     "encryption (if used) is confidentiality only: one shared passphrase, no forward secrecy, "
     "and no protection against someone who has the passphrase",
     "importing a bundle into another installation does not make its evidence yours; the "
@@ -1434,7 +1437,9 @@ def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _write_bundle(destination: Path, payload: dict[str, Any]) -> dict[str, Any]:
+def _write_bundle(
+    destination: Path, payload: dict[str, Any], *, signing_key: Any = None
+) -> dict[str, Any]:
     destination.mkdir(parents=True, exist_ok=True)
     files: dict[str, str] = {}
     for name, document in payload["documents"].items():
@@ -1453,6 +1458,9 @@ def _write_bundle(destination: Path, payload: dict[str, Any]) -> dict[str, Any]:
         "signature": None,
         "limits": BUNDLE_LIMITS,
     }
+    if signing_key is not None:
+        # the signature covers every other member, so a rewritten hash list is detectable
+        manifest["signature"] = release_signature.sign_document(manifest, signing_key)
     body = json.dumps(manifest, indent=2).encode()
     (destination / "bundle.json").write_bytes(body)
     files["bundle.json"] = _sha256_bytes(body)
@@ -1536,12 +1544,19 @@ def _cmd_bundle(args: argparse.Namespace, _session: Any = None) -> int:
         client = _client(args)
         payload = {**_bundle_sources(client), "server": client.config.server}
         destination = Path(args.out or f"cryptoscan-bundle-{time.strftime('%Y%m%dT%H%M%S')}")
-        manifest = _write_bundle(destination, payload)
+        signing_key = None
+        if getattr(args, "sign_key", None):
+            try:
+                signing_key = release_signature.load_private_key(args.sign_key)
+            except Exception as exc:  # noqa: BLE001 — an unreadable key is a refusal
+                return _fail("bundle export", Refused(f"cannot read signing key: {exc}"))
+        manifest = _write_bundle(destination, payload, signing_key=signing_key)
         written = {
             "bundle": str(destination),
             "files": len(manifest["files"]),
             "unavailable": manifest["unavailable"],
             "encrypted": None,
+            "signature": (manifest["signature"] or {}).get("key_id"),
         }
         if args.encrypt:
             encrypted = _encrypt_bundle(destination, _read_passphrase(args))
@@ -1554,6 +1569,7 @@ def _cmd_bundle(args: argparse.Namespace, _session: Any = None) -> int:
                 print(f"  unavailable {name}: {manifest['unavailable'][name]}")
             if written["encrypted"]:
                 print(f"encrypted   {written['encrypted']}")
+            print(f"signature   {written['signature'] or 'UNSIGNED'}")
             print("\nsource of each file is recorded in bundle.json under `sources`")
             print("limits (also in bundle.json):")
             for limit in BUNDLE_LIMITS:
@@ -1577,11 +1593,14 @@ def _cmd_bundle(args: argparse.Namespace, _session: Any = None) -> int:
                 missing.append(name)
             elif _sha256_bytes(candidate.read_bytes()) != str(expected):
                 mismatched.append(name)
+        signature = _check_manifest_signature(manifest, getattr(args, "public_key", None))
         result = {
             "bundle": str(directory),
             "files": len(manifest.get("files") or {}),
             "missing": missing,
             "mismatched": mismatched,
+            "signature": signature["status"],
+            "signature_detail": signature,
             "unsigned": manifest.get("signature") is None,
             "verdict": "INTACT" if not missing and not mismatched else "MODIFIED",
         }
@@ -1594,10 +1613,16 @@ def _cmd_bundle(args: argparse.Namespace, _session: Any = None) -> int:
                 print(f"  missing   {name}")
             for name in mismatched:
                 print(f"  modified  {name}")
-            print(f"signature   {'UNSIGNED' if result['unsigned'] else 'present, not checked'}")
+            print(f"signature   {result['signature']}")
+            if result["signature_detail"].get("key_id"):
+                print(f"  key       {result['signature_detail']['key_id']}")
             print(f"verdict     {result['verdict']}")
-            print("\nthis proves the files match the manifest. It does not prove who made the "
-                  "bundle: bundles are not signed.")
+            print("\nthe files match the manifest. Who made the bundle is proven only by a "
+                  "signature checked against a key you already trust — an embedded public key "
+                  "proves nothing on its own.")
+        if signature["status"] in {release_signature.INVALID, release_signature.KEY_MISMATCH,
+                                   release_signature.MALFORMED}:
+            return EXIT_ERROR
         return EXIT_OK if result["verdict"] == "INTACT" else EXIT_INCOMPLETE
 
     if action == "import":
@@ -1672,13 +1697,21 @@ def _cmd_verify_installation(args: argparse.Namespace, _session: Any = None) -> 
         if _sha256(candidate.read_bytes()) != str(expected):
             mismatched.append(relative)
 
+    # The signature is checked against a key the caller names. Without one the document's own
+    # public key is not evidence: whoever edited the manifest could have replaced it.
+    signature = _check_manifest_signature(manifest, getattr(args, "public_key", None))
+
     result = {
         "manifest": str(manifest_path),
         "root": str(root),
         "files": len(files),
         "mismatched": mismatched,
         "missing": missing,
-        "manifest_signature": "MANIFEST_UNSIGNED" if not manifest.get("signature") else "PRESENT_NOT_VERIFIED",
+        # the historical name for "no signature at all" is kept: documents and tests use it
+        "manifest_signature": ("MANIFEST_UNSIGNED"
+                               if signature["status"] == release_signature.UNSIGNED
+                               else signature["status"]),
+        "signature_detail": signature,
         "verdict": "MATCH" if not mismatched and not missing else "MISMATCH",
     }
     if args.json:
@@ -1692,13 +1725,40 @@ def _cmd_verify_installation(args: argparse.Namespace, _session: Any = None) -> 
         for name in mismatched:
             print(f"  mismatch   {name}")
         print(f"signature  {result['manifest_signature']}")
+        detail = result["signature_detail"]
+        if detail.get("key_id"):
+            print(f"  key      {detail['key_id']}")
+        if detail.get("reason"):
+            print(f"  reason   {detail['reason']}")
         print(f"verdict    {result['verdict']}")
-        print("\nthis verifies file contents against a manifest. It does not verify that the "
-              "manifest itself is authentic — that needs the release signature, which this "
-              "build does not check.")
+        print("\nfile contents are checked against the manifest. The manifest itself is "
+              "authentic only if the key you passed with --public-key is the one you meant to "
+              "trust — a signature proves who signed these bytes, not who they should be.")
+        if result["manifest_signature"] == release_signature.SIGNED_UNVERIFIED:
+            print("this manifest is signed, but no --public-key was given, so the signature "
+                  "was not checked against anything an attacker could not also have written.")
+    # Two questions, two answers. The exit code tracks the one this command is named for —
+    # do the files match the manifest — and a bad signature is always a hard failure. An
+    # unsigned (or unchecked) manifest is reported in the output and does not pretend the
+    # files were not verified, because they were.
+    if signature["status"] in {release_signature.INVALID, release_signature.KEY_MISMATCH,
+                              release_signature.MALFORMED}:
+        return EXIT_ERROR
     if mismatched or missing:
         return EXIT_INCOMPLETE
     return EXIT_OK
+
+
+def _check_manifest_signature(manifest: Mapping[str, Any], public_key_path: str | None) -> dict[str, Any]:
+    """Reuse one verifier for the manifest and the bundle, so they cannot disagree."""
+    trusted = None
+    if public_key_path:
+        try:
+            trusted = release_signature.load_public_key(public_key_path)
+        except Exception as exc:  # noqa: BLE001 — an unreadable key is a verdict, not a crash
+            return {"status": release_signature.MALFORMED,
+                    "reason": f"cannot read --public-key: {exc}"}
+    return release_signature.verify_document(manifest, trusted_key=trusted)
 
 
 # --------------------------------------------------------------------------------------
@@ -2107,19 +2167,27 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     bundle_export.add_argument("--encrypt", action="store_true",
                                help="also write an AES-256-GCM envelope (.cse) beside it")
     bundle_export.add_argument("--passphrase-stdin", dest="passphrase_stdin", action="store_true")
+    bundle_export.add_argument("--sign-key", dest="sign_key", default=None,
+                               help="Ed25519 private key (PEM) to sign the bundle manifest")
     _add_common(bundle_export)
     bundle_verify = bundle_sub.add_parser("verify", help="recompute a bundle's manifest hashes")
     bundle_verify.add_argument("bundle", help="bundle directory")
+    bundle_verify.add_argument("--public-key", dest="public_key", default=None,
+                               help="Ed25519 public key to check the bundle signature with")
     _add_common(bundle_verify, credential_flags=False)
     bundle_import = bundle_sub.add_parser("import", help="decrypt and extract a bundle envelope")
     bundle_import.add_argument("bundle", help="path to a .cse envelope (or a bundle directory)")
     bundle_import.add_argument("--into", default=None, help="destination directory")
     bundle_import.add_argument("--passphrase-stdin", dest="passphrase_stdin", action="store_true")
+    bundle_import.add_argument("--public-key", dest="public_key", default=None,
+                               help="Ed25519 public key to check the bundle signature with")
     _add_common(bundle_import, credential_flags=False)
 
     verify = sub.add_parser("verify-installation", help="hash installed files against a release manifest")
     verify.add_argument("--manifest", required=True, help="path to the release manifest (JSON)")
     verify.add_argument("--root", default=None, help="directory the manifest paths are relative to")
+    verify.add_argument("--public-key", dest="public_key", default=None,
+                        help="Ed25519 public key (PEM or base64 .pub) to check the signature with")
     _add_common(verify, credential_flags=False)
 
     twin_status = twin_sub.add_parser("status", help="the twin as the control plane serves it")

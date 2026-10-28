@@ -444,7 +444,7 @@ def test_verify_installation_reports_mismatch_and_unsigned_manifest(capsys, monk
     out = capsys.readouterr().out
     assert "mismatch" in out
     assert "MANIFEST_UNSIGNED" in out
-    assert "It does not verify that the manifest itself is authentic" in out
+    assert "authentic only if the key you passed" in out
 
 
 def test_verify_installation_matches_when_the_hashes_do(capsys, monkeypatch, env):
@@ -704,10 +704,10 @@ def test_bundle_export_writes_a_manifest_and_records_unavailable_projections(
     assert "evidence.json" in manifest["files"]
     assert "boms/SBOM.json" in manifest["unavailable"]
     assert manifest["signature"] is None
-    assert any("not signed" in limit for limit in manifest["limits"])
+    assert any("who produced them" in limit for limit in manifest["limits"])
     assert manifest["sources"]["evidence.json"].startswith("GET ")
     text = capsys.readouterr().out
-    assert "unavailable" in text and "not signed" in text
+    assert "unavailable" in text and "UNSIGNED" in text
 
 
 def test_bundle_verify_detects_a_modified_file(tmp_path, monkeypatch, env, capsys):
@@ -719,7 +719,8 @@ def test_bundle_verify_detects_a_modified_file(tmp_path, monkeypatch, env, capsy
     assert run(monkeypatch, transport, "bundle", "verify", str(out)) == 2
     text = capsys.readouterr().out
     assert "modified  pqc.json" in text
-    assert "bundles are not signed" in text
+    assert "signature   UNSIGNED" in text
+    assert "proves nothing on its own" in text
 
 
 def test_bundle_round_trips_through_encryption(tmp_path, monkeypatch, env, capsys):
@@ -892,3 +893,56 @@ def test_twin_reconcile_reports_a_closure_with_its_citation(monkeypatch, env, ca
     out = capsys.readouterr().out
     assert "closed by obs-9 (ev-c905aae30aab218a)" in out
     assert "NO PROOF" in out, "an unasserted fact must not be reported as a fix"
+
+
+# --- a bundle that can prove who made it ------------------------------------------------
+
+
+def test_a_signed_bundle_verifies_against_a_trusted_key(tmp_path, monkeypatch, env, capsys):
+    from shared_models import release_signature as signing
+
+    keys = signing.generate_keypair(tmp_path / "keys")
+    transport = FakeControlPlane(_bundle_routes())
+    out = tmp_path / "bundle"
+    run(monkeypatch, transport, "bundle", "export", "--out", str(out),
+        "--sign-key", keys["private_key"])
+
+    assert run(monkeypatch, transport, "bundle", "verify", str(out),
+               "--public-key", keys["public_key"]) == 0
+    text = capsys.readouterr().out
+    assert "signature   VALID" in text
+
+
+def test_a_rewritten_bundle_manifest_fails_its_signature(tmp_path, monkeypatch, env, capsys):
+    """The attack a hash list alone cannot stop: edit a file and fix its hash."""
+    from shared_models import release_signature as signing
+
+    keys = signing.generate_keypair(tmp_path / "keys")
+    transport = FakeControlPlane(_bundle_routes())
+    out = tmp_path / "bundle"
+    run(monkeypatch, transport, "bundle", "export", "--out", str(out),
+        "--sign-key", keys["private_key"])
+
+    (out / "pqc.json").write_text('{"layers": {"TLS": "changed"}}')
+    manifest = json.loads((out / "bundle.json").read_text())
+    manifest["files"]["pqc.json"] = cli_remote._sha256_bytes((out / "pqc.json").read_bytes())
+    (out / "bundle.json").write_text(json.dumps(manifest))
+
+    assert run(monkeypatch, transport, "bundle", "verify", str(out),
+               "--public-key", keys["public_key"]) == 1
+    assert "signature   INVALID" in capsys.readouterr().out
+
+
+def test_a_bundle_signed_with_another_key_is_a_mismatch(tmp_path, monkeypatch, env, capsys):
+    from shared_models import release_signature as signing
+
+    keys = signing.generate_keypair(tmp_path / "keys")
+    other = signing.generate_keypair(tmp_path / "other")
+    transport = FakeControlPlane(_bundle_routes())
+    out = tmp_path / "bundle"
+    run(monkeypatch, transport, "bundle", "export", "--out", str(out),
+        "--sign-key", keys["private_key"])
+
+    assert run(monkeypatch, transport, "bundle", "verify", str(out),
+               "--public-key", other["public_key"]) == 1
+    assert "SIGNATURE_KEY_MISMATCH" in capsys.readouterr().out

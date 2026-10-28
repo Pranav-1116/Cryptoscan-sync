@@ -370,7 +370,7 @@ bundles, a bundle that carries raw collector output, and offline licence/upgrade
 
 ### Component 8 — signed packages
 
-**Partially implemented — and the missing half is stated, not implied.**
+**Implemented for the manifest and the bundle; the trust root and build provenance are still yours.**
 
 ```bash
 $ python scripts/release_manifest.py --root /opt/cryptoscan -o release.json
@@ -384,10 +384,18 @@ signature  MANIFEST_UNSIGNED
 verdict    MATCH
 ```
 
-The manifest carries `version`, `sha256` per file, `generated_at`, `signature: null` and its
-own `limits`. A **signature, SBOM and build provenance attached to the release** are roadmap:
-they are release-key operations outside this repository, and until they exist
-`verify-installation` reports `MANIFEST_UNSIGNED` rather than printing a tick it cannot back.
+The manifest carries `version`, `sha256` per file, `generated_at` and its own `limits`.
+`--sign-key` adds an Ed25519 `signature` block over canonical JSON of every other member, and
+`verify-installation --public-key` reports `VALID`, `INVALID`, `SIGNATURE_KEY_MISMATCH`,
+`SIGNED_UNVERIFIED` (signed, no trusted key supplied) or `MANIFEST_UNSIGNED`. The same verifier
+checks a bundle (`bundle export --sign-key`, `bundle verify --public-key`), so a rewritten
+hash list in either artefact is detectable.
+
+What is still not built, and is said here rather than implied: **where the key comes from**.
+A signature is only as good as the trust you place in the key, and this build ships no PKI,
+no key ceremony and no revocation. `--generate-key` makes a local pair so a deployment can
+sign its own releases; a release key that matters belongs in an HSM or a signing service.
+SBOM and reproducible-build provenance attached to the release remain roadmap.
 
 ---
 
@@ -419,7 +427,7 @@ they are release-key operations outside this repository, and until they exist
 | `scope diff` | **Refused by design** | no scope-to-scope diff route |
 | `explain finding <id>` | **Refused by design** | explain is per asset / system / node |
 | `explain asset/system/node` | **Implemented** | every answer names its endpoint |
-| `verify-installation` | **Implemented** (hashes only) | `MANIFEST_UNSIGNED` until releases are signed |
+| `verify-installation` | **Implemented** (hashes + Ed25519 signature) | `--public-key` decides whether the signature is checked at all; `MANIFEST_UNSIGNED` / `SIGNED_UNVERIFIED` / `VALID` / `INVALID` / `SIGNATURE_KEY_MISMATCH` |
 | `ci gate --scan <id>` | **Implemented** | `GET /scans/{id}/gate`, or `POST /ci/gate` with `--record`; exit 0 PASS / 2 WARN (`--fail-on warn`) / 1 FAIL; `--sarif` writes the report |
 | `ci scan` (source tree) | **Roadmap** | the gate evaluates a completed scan; there is no source-tree mode, and the CLI refuses rather than pretending `ci gate` is one |
 | `bundle export/verify/import` | **Implemented** | encrypted air-gap transfer; see §4 Component 7 |
@@ -797,11 +805,13 @@ runbooks under `docs/runbooks/`.
 6. The collector list in §4 is the platform's, not the CLI's, and its qualification status is
    whatever the collector verdicts and `CURRENT-IMPLEMENTATION-STATUS.md` say — never this
    document.
-7. **Signed** bundles and **signed** releases, `scope diff`, `ci scan` over a source tree,
+7. **The trust root** for those signatures (a PKI, a key ceremony, revocation), release
+   build provenance, `scope diff`, `ci scan` over a source tree,
    per-collector progress percentages and console risk/compliance verdicts are **roadmap**,
-   listed as such in §5 and §12. The air-gap *bundle* and the CI *gate* exist, with the limits
-   printed above: the bundle is unsigned and encrypts under one shared passphrase; the gate
-   reports a decision the platform already made.
+   listed as such in §5 and §12. The air-gap *bundle*, the CI *gate* and Ed25519 *signing* of
+   both the manifest and the bundle exist, with the limits printed above: a signature proves
+   the holder of a key signed these bytes, not that the key is one you should trust, and
+   encryption is one shared passphrase with no forward secrecy.
 8. `evidence verify` recomputes a content address. A record whose id was assigned by the
    catalogue writer rather than derived from its content is reported as `ID_NOT_CONTENT_ADDRESSED`
    (exit 2), **not** as intact — and an intact hash says the record was not altered at rest, not
