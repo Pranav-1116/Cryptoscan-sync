@@ -49,6 +49,11 @@ MODEL = "cryptoscan.estate-discovery-job/1"
 MAX_STORED_BOM_COMPONENTS = 4000
 SCHEMA_EVIDENCE = "cryptoscan.estate-evidence/1"
 
+#: §11 — the generation of the estate collector suite. Stamped on every evidence record the
+#: discovery path produces, so a fact can be traced to the code that collected it. A
+#: collector that knows its own build passes ``collector_version`` and keeps it
+COLLECTORS_VERSION = "estate-collectors/1"
+
 #: §13 discovery planes this repository can actually read today.
 PLANES: tuple[str, ...] = (
     "NETWORK", "CLOUD", "KUBERNETES", "CMDB", "KMS", "HSM", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR"
@@ -768,6 +773,11 @@ def run(
         evidence.extend(result.get("evidence") or [])
         relationships.extend(result.get("relationships") or [])
 
+    # §11 — every record carries the collector suite that produced it, unless a collector
+    # named its own version. Provenance is not evidence content, so this changes no id
+    for record in evidence:
+        record.setdefault("collector_version", COLLECTORS_VERSION)
+
     coverage_rows = [
         {
             "target": outcome["plane"],
@@ -879,6 +889,9 @@ def run(
         )
         db.commit()
         run_id = row.id
+        # the raw collector output for every record in this run is stored with the run, so
+        # each evidence row can point at it rather than asking a reader to go looking
+        graph.annotate_raw_reference(f"run:{run_id}")
 
     # -- live change detection ------------------------------------------------ #
     # Change detection is a consequence of observing, not a button: the twin-level

@@ -305,3 +305,64 @@ def test_api_pqc_readiness_is_layer_scoped(api):
     body = response.json()
     assert body["single_score"] is None
     assert body["layers"]["APPLICATION"]["readiness"] == "CLASSICAL_ONLY"
+
+
+def _session():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from db.models.base import Base
+
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
+def test_every_record_carries_the_collector_version_and_points_at_its_raw_output():
+    """§11: a fact must be traceable to the code that collected it and to the output it came from."""
+    from api import estate_observations
+
+    session = _session()
+    try:
+        report = estate_discovery.run(
+            session, persist=True, collectors=_collectors(STATIC=_static_plane()))
+        records = estate_observations.evidence_for(session, tenant_id=None)["records"]
+        assert records
+        assert {item["collector_version"] for item in records} == {estate_discovery.COLLECTORS_VERSION}
+        assert {item["raw_reference"] for item in records} == {f"run:{report['run_id']}"}
+    finally:
+        session.close()
+
+
+def test_a_collector_that_knows_its_own_build_keeps_it():
+    from api import estate_observations
+
+    plane = _static_plane()
+    plane["evidence"][0]["collector_version"] = "1.4.0"
+    session = _session()
+    try:
+        estate_discovery.run(session, persist=True, collectors=_collectors(STATIC=plane))
+        records = estate_observations.evidence_for(session, tenant_id=None)["records"]
+        assert [item["collector_version"] for item in records] == ["1.4.0"]
+    finally:
+        session.close()
+
+
+def test_annotating_provenance_does_not_change_the_projection_id():
+    """Provenance is not evidence content: the same facts stay the same snapshot."""
+    from shared_models.estate_graph import build_graph
+
+    graph = build_graph({
+        "assets": [{"ref": "a", "type": "APPLICATION", "name": "Payment API"}],
+        "evidence": [{"evidence_id": "ev-1", "source": "agent", "collector": "probe",
+                      "evidence_type": "RUNTIME_OBSERVED", "target": "a", "layer": "APPLICATION",
+                      "facts": {"algorithm": "AES-256-GCM"}}],
+    })
+    before = graph.fingerprint()
+
+    assert graph.annotate_raw_reference("run:42") == 1
+
+    assert graph.fingerprint() == before
+    assert graph.evidence()[0]["raw_reference"] == "run:42"

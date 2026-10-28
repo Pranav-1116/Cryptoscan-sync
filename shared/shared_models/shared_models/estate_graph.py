@@ -589,6 +589,25 @@ class EstateGraph:
         self._assets[target]["evidence_refs"].append(evidence_id)
         return evidence_id
 
+    def annotate_raw_reference(self, reference: str) -> int:
+        """Point every evidence record at where its raw output lives (§11).
+
+        Called once the run that holds the raw collector output has an id. A record that
+        already names its own reference keeps it: a collector that knows where it put the
+        artefact is more precise than the run id, and overwriting that would be a downgrade.
+
+        This does not touch ``fingerprint()``: provenance is not evidence content, so
+        annotating a graph never changes its projection id.
+        """
+        if not reference:
+            return 0
+        touched = 0
+        for record in self._evidence.values():
+            if not record.get("raw_reference"):
+                record["raw_reference"] = reference
+                touched += 1
+        return touched
+
     def assert_relationship(
         self,
         subject: str,
