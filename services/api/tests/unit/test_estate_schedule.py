@@ -240,7 +240,13 @@ def test_tick_uses_the_real_estate_job_by_default(session, monkeypatch):
     estate_schedule.create_schedule(session, name="nightly", every="6h", scope="production",
                                     estate="bank-a", planes=["STATIC"], now=NOW - timedelta(hours=7))
     estate_schedule.tick(session, worker="w", now=NOW)
-    assert seen == [{"estate": "bank-a", "scope": "production", "planes": ["STATIC"]}]
+    assert len(seen) == 1
+    assert seen[0]["estate"] == "bank-a"
+    assert seen[0]["scope"] == "production"
+    assert seen[0]["planes"] == ["STATIC"]
+    # a scheduled run is labelled as such, and carries no event sink unless given one
+    assert seen[0]["trigger"] == "schedule"
+    assert seen[0]["on_event"] is None
 
 
 # --------------------------------------------------------------------------- #

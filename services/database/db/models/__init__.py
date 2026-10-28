@@ -222,3 +222,4 @@ from db.models.execution_control import (  # noqa: E402,F401
 from db.models.assurance import AssuranceRevision, AssuranceBlob, CollectionPhaseReceipt  # noqa: E402,F401
 
 from db.models.estate_schedule import EstateSchedule, EstateScheduleRun  # noqa: E402,F401
+from db.models.estate_daemon import EstateDaemon  # noqa: E402,F401

@@ -392,8 +392,15 @@ def tick(
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
     limit: int = 20,
     runner: Callable[..., Mapping[str, Any]] | None = None,
+    on_event: Callable[[str, Mapping[str, Any]], Any] | None = None,
 ) -> dict[str, Any]:
-    """Run every due schedule once, releasing each lease as it finishes."""
+    """Run every due schedule once, releasing each lease as it finishes.
+
+    ``on_event`` is forwarded to the estate job, so a scheduled run is observable
+    while it runs (``estate.run.started`` … ``estate.run.finished``) exactly like a
+    manual one. The daemon passes an :class:`api.estate_events.EventSink`; a
+    caller without one gets identical behaviour and no events.
+    """
     moment = _utc(now)
     claimed = claim_due(db, worker=worker, now=moment, lease_seconds=lease_seconds, limit=limit)
     if runner is None:
@@ -405,6 +412,8 @@ def tick(
                 estate=row.estate,
                 scope=row.scope,
                 planes=json.loads(row.planes) if row.planes else None,
+                on_event=on_event,
+                trigger="schedule",
             )
 
     ran: list[dict[str, Any]] = []

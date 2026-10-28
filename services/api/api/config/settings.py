@@ -168,6 +168,12 @@ class APISettings(BaseSettings):
     # 0 disables the tailer. In-process events (pipeline stages, auth, API
     # keys) are always pushed the instant they happen.
     EVENT_TAILER_SECONDS: float = 2.0
+    # The 24/7 estate loop. Off by default: a single-box install may prefer the
+    # `cryptoscan serve` process (or a cron tick). When on, the API process runs
+    # the estate scheduler in a background thread — safe on every replica,
+    # because each run is claimed with a lease in the database.
+    ESTATE_REALTIME: bool = False
+    ESTATE_REALTIME_POLL_SECONDS: float = 30.0
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "cryptoscan"
     ADMIN_PASSWORD_HASH: str = ""

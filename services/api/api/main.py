@@ -282,6 +282,42 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                 if settings.is_production:
                     raise RuntimeError("production realtime dependencies are unavailable") from exc
                 logger.debug("redis_event_federation_skipped", exc_info=True)
+        # 24/7 estate loop (spec 93 §18). Off unless ESTATE_REALTIME is set: the
+        # daemon is safe on every replica because each run is claimed with a
+        # database lease, but an operator should still opt in rather than find a
+        # scheduler they did not start. The thread is stopped in the shutdown
+        # half of this lifespan, after the run in flight finishes.
+        estate_daemon = None
+        estate_thread = None
+        if (
+            bool(getattr(settings, "ESTATE_REALTIME", False))
+            and settings.ENVIRONMENT.lower() not in {"test", "testing"}
+            and not _under_test()
+        ):
+            try:
+                import threading
+
+                from api.estate_daemon import EstateDaemon
+                from api.estate_events import bus_publisher
+                from db.connection.session import SessionLocal
+
+                estate_daemon = EstateDaemon(
+                    SessionLocal,
+                    worker=f"api-{settings.API_VERSION or '1.0'}",
+                    poll_seconds=float(getattr(settings, "ESTATE_REALTIME_POLL_SECONDS", 30.0) or 30.0),
+                    publisher=bus_publisher(),
+                )
+                estate_thread = threading.Thread(
+                    target=estate_daemon.run_forever, name="estate-daemon", daemon=True
+                )
+                estate_thread.start()
+                logger.info("estate_realtime_started",
+                            extra={"poll_seconds": estate_daemon.poll_seconds})
+            except Exception as exc:  # noqa: BLE001 — an unstartable loop is logged, not fatal
+                logger.error("estate_realtime_start_failed", extra={"error": str(exc)})
+                estate_daemon = None
+                estate_thread = None
+
         # Restore the latest live-scanner snapshot so consoles see the most
         # recent real scan immediately after a restart (best-effort; runs
         # independent of the event tailer).
@@ -297,6 +333,15 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             tailer_task.cancel()
         if telemetry_task is not None:
             telemetry_task.cancel()
+        if estate_daemon is not None:
+            estate_daemon.stop()
+            if estate_thread is not None:
+                estate_thread.join(timeout=30)
+                if estate_thread.is_alive():
+                    logger.warning("estate_realtime_stop_timeout",
+                                   extra={"detail": "a run was still in flight at shutdown"})
+                else:
+                    logger.info("estate_realtime_stopped")
         if redis_sync is not None:
             try:
                 redis_sync.stop()

@@ -396,6 +396,114 @@ def estate_tick(
     )
 
 
+@router.get("/realtime")
+def estate_realtime(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Is the estate actually running right now? (§18, 24/7)
+
+    Three facts, none of which the API's own liveness can fake:
+
+    * the daemon heartbeat (``LIVE`` / ``STALE`` / ``STOPPED`` / ``NEVER_STARTED``)
+      with its age and next wake;
+    * the schedules — how many are enabled, when the next one is due, and whether
+      any lease is held (a held lease means a run is in flight *somewhere*);
+    * the runs — the most recent scheduled runs and how long ago the last one
+      completed, so "the daemon is up" is never confused with "scans are happening".
+    """
+    from datetime import datetime, timezone
+
+    from db.models.estate_schedule import EstateScheduleRun
+
+    from api import estate_daemon_store
+    from api.estate_daemon import stale_state
+
+    now = datetime.now(timezone.utc)
+    beat = estate_daemon_store.latest(db)
+    liveness = stale_state(beat, now=now)
+
+    schedules = estate_schedule.list_schedules(db, tenant_id=current_tenant(), include_disabled=True)
+    enabled = [row for row in schedules if row.enabled]
+    next_due = min((estate_schedule._utc(row.next_run_at) for row in enabled), default=None)
+    leases = [
+        {"name": row.name, "worker": row.claimed_by,
+         "until": estate_schedule._iso(row.claimed_until) if row.claimed_until else None}
+        for row in enabled if row.claimed_until and estate_schedule._utc(row.claimed_until) > now
+    ]
+
+    recent = (
+        db.query(EstateScheduleRun)
+        .filter(EstateScheduleRun.tenant_id == current_tenant())
+        .order_by(EstateScheduleRun.started_at.desc())
+        .limit(10)
+        .all()
+    )
+    runs = [
+        {
+            "schedule_id": row.schedule_id,
+            "started_at": estate_schedule._iso(row.started_at),
+            "finished_at": estate_schedule._iso(row.finished_at),
+            "status": row.status,
+            "verdict": row.verdict,
+            "coverage_state": row.coverage_state,
+            "run_id": row.estate_run_id,
+            "detail": row.detail,
+        }
+        for row in recent
+    ]
+    last_finished = next((row.finished_at for row in recent if row.finished_at), None)
+    last_run_age = round((now - estate_schedule._utc(last_finished)).total_seconds(), 3) if last_finished else None
+
+    if liveness["state"] != "LIVE":
+        verdict = "NOT_RUNNING"
+        reason = liveness["meaning"]
+        next_action = liveness["next_action"]
+    elif not enabled:
+        verdict = "IDLE_NO_SCHEDULES"
+        reason = "the daemon is alive but no schedule is enabled: nothing is being re-scanned"
+        next_action = "create one — `cryptoscan schedule add nightly --every 6h`"
+    elif leases:
+        verdict = "RUNNING"
+        reason = f"{len(leases)} schedule(s) are leased right now: a run is in flight"
+        next_action = None
+    elif last_run_age is not None and last_run_age > 3600:
+        verdict = "DEGRADED"
+        reason = (
+            f"the daemon is alive but the last scheduled run finished {round(last_run_age)}s ago"
+        )
+        next_action = "check the schedule cadence and the daemon log for skipped cycles"
+    else:
+        verdict = "WAITING"
+        reason = "the daemon is alive and the next run is not yet due"
+        next_action = None
+
+    return {
+        "schema": "cryptoscan.estate-realtime/1",
+        "at": now.isoformat(),
+        "verdict": verdict,
+        "reason": reason,
+        "next_action": next_action,
+        "daemon": {"heartbeat": beat, "liveness": liveness},
+        "schedules": {
+            "total": len(schedules),
+            "enabled": len(enabled),
+            "next_due_at": estate_schedule._iso(next_due) if next_due else None,
+            "seconds_until_due": round((next_due - now).total_seconds(), 3) if next_due else None,
+            "leases": leases,
+        },
+        "runs": {
+            "recent": runs,
+            "last_finished_at": estate_schedule._iso(last_finished) if last_finished else None,
+            "last_run_age_seconds": last_run_age,
+        },
+        "meaning": (
+            "a live daemon is not proof of coverage: read the run verdict and the coverage state, and treat "
+            "STALE/NEVER_STARTED as 'nothing is being scanned'"
+        ),
+    }
+
+
 @router.get("/plan")
 def estate_plan(user: str = Depends(get_current_user)):
     """The collector plan: which planes run, from which source, and what each cannot see."""

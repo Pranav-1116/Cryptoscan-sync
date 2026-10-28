@@ -120,6 +120,24 @@ def _build_parser() -> argparse.ArgumentParser:
     tick.add_argument("--tenant", default=None)
     tick.add_argument("--json", action="store_true")
 
+    serve = sub.add_parser(
+        "serve",
+        help="run the estate loop continuously (the 24/7 scheduler; SIGTERM stops it cleanly)",
+    )
+    serve.add_argument("--worker", default="cryptoscan-daemon", help="daemon identity recorded on every lease")
+    serve.add_argument("--poll", type=float, default=30.0,
+                       help="longest wait between cycles, in seconds (a due schedule wakes it sooner)")
+    serve.add_argument("--lease-seconds", type=int, default=900)
+    serve.add_argument("--limit", type=int, default=20)
+    serve.add_argument("--tenant", default=None,
+                       help="tenant to scope the daemon to (default: platform-wide, as the schedules are)")
+    serve.add_argument("--once", action="store_true", help="run exactly one cycle and exit (cron compatibility)")
+    serve.add_argument("--max-cycles", type=int, default=None, help="stop after N cycles (tests and drills)")
+    serve.add_argument("--events", action="store_true",
+                       help="publish run/plane events to the realtime bus (default: on unless --no-events)")
+    serve.add_argument("--no-events", action="store_true", help="do not publish realtime events")
+    serve.add_argument("--json", action="store_true")
+
     coverage = sub.add_parser("coverage", help="print the coverage matrix of the latest stored run")
     coverage.add_argument("--tenant", default=None)
     coverage.add_argument("--json", action="store_true")
@@ -491,9 +509,78 @@ def _cmd_tick(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
             close()
 
 
+def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
+    """Run the estate loop until stopped — the difference between a demo and a service."""
+    import signal
+
+    from api.estate_daemon import EstateDaemon
+    from api.estate_events import bus_publisher
+    from db.tenancy import tenant_scope
+
+    def factory() -> Any:
+        return _session(session_factory)
+
+    publisher = None if args.no_events else bus_publisher(tenant_id=args.tenant)
+    daemon = EstateDaemon(
+        factory,
+        worker=args.worker,
+        poll_seconds=args.poll,
+        lease_seconds=args.lease_seconds,
+        limit=args.limit,
+        publisher=publisher,
+    )
+
+    previous = {}
+    for name in ("SIGTERM", "SIGINT"):
+        signum = getattr(signal, name, None)
+        if signum is None:  # pragma: no cover - Windows
+            continue
+        try:
+            previous[signum] = signal.getsignal(signum)
+            signal.signal(signum, daemon.stop)
+        except (ValueError, OSError):  # pragma: no cover - not the main thread
+            pass
+
+    cycles = 1 if args.once else args.max_cycles
+    try:
+        with tenant_scope(args.tenant):
+            if args.once:
+                # a single cycle still writes the heartbeat, so a cron-driven
+                # deployment is visible to the same liveness probe as the daemon
+                cycle = daemon.run_cycle()
+                result = {"model": "cryptoscan.estate-daemon/1", "mode": "once", **cycle,
+                          "heartbeat": daemon.heartbeat(state="STOPPED")}
+            else:
+                result = daemon.run_forever(max_cycles=cycles)
+    finally:
+        for signum, handler in previous.items():
+            try:
+                signal.signal(signum, handler)
+            except (ValueError, OSError):  # pragma: no cover
+                pass
+
+    if args.json:
+        print(json.dumps(result, indent=2, default=str))
+    elif args.once:
+        print(f"cycle      claimed {result.get('claimed', 0)} schedule(s); "
+              f"next wake {result.get('next_wake_at') or 'unscheduled'}")
+        for item in result.get("ran") or []:
+            print(f"  {item['schedule']:<20} {item['status']:<6} {item.get('verdict') or item.get('error')}")
+        if not result.get("ran"):
+            print(f"  idle — {daemon.idle_reason}")
+    else:
+        print(f"stopped    {result.get('cycles')} cycle(s), {result.get('runs')} run(s), "
+              f"{result.get('failures')} failed cycle(s)")
+        if result.get("last_error"):
+            print(f"  last error: {result['last_error']}")
+    failed_cycles = int(result.get("failures") or 0)
+    return EXIT_OK if failed_cycles == 0 else EXIT_INCOMPLETE
+
+
 COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int]] = {
     "schedule": _cmd_schedule,
     "tick": _cmd_tick,
+    "serve": _cmd_serve,
     "collect": _cmd_collect,
     "scan": _cmd_scan,
     "coverage": _cmd_coverage,

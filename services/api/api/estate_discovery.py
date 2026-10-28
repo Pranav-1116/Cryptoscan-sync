@@ -39,6 +39,7 @@ phases actually ran, in the spec's order (§18), so a reader can see that
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Callable, Iterable, Mapping
 
 from shared_models.estate_graph import build_graph, collector_outcome
@@ -655,6 +656,8 @@ def run(
     collectors: Mapping[str, Callable[..., dict[str, Any]]] | None = None,
     persist: bool = True,
     include_boms: bool = True,
+    on_event: Callable[[str, Mapping[str, Any]], Any] | None = None,
+    trigger: str = "manual",
 ) -> dict[str, Any]:
     """Discover the estate once and project every BOM from the same snapshot.
 
@@ -663,9 +666,32 @@ def run(
     adapter is reported ``NOT_ATTEMPTED`` rather than silently skipped, so a
     deployment that overrides the registry cannot accidentally claim coverage it
     never had.
+
+    ``on_event(event_type, payload)`` makes the run observable while it runs —
+    the daemon and the API pass an :class:`api.estate_events.EventSink`. It is
+    optional on purpose: a scan must behave identically with no subscriber, and
+    the sink never raises into the run (a dead feed cannot fail a scan).
+    ``trigger`` records what started the run (``manual``, ``schedule``).
     """
+    emitted: list[tuple[str, dict[str, Any]]] = []
+
+    def emit(event_type: str, payload: Mapping[str, Any]) -> None:
+        body = dict(payload)
+        emitted.append((event_type, body))
+        if on_event is not None:
+            on_event(event_type, body)
+
+    moment = datetime.now(timezone.utc)
     collection_plan = plan(planes=planes)
     enabled = collection_plan["enabled"]
+    emit("estate.run.started", {
+        "estate": estate,
+        "scope": scope,
+        "planes": list(enabled),
+        "skipped_planes": list(collection_plan["skipped"]),
+        "trigger": trigger,
+        "started_at": moment.isoformat(),
+    })
     registry = dict(collectors) if collectors is not None else dict(DEFAULT_COLLECTORS)
     lifecycle: list[dict[str, Any]] = [
         {"phase": "SCOPE_RESOLVED", "status": "COMPLETE",
@@ -683,6 +709,16 @@ def run(
                 impact=f"no adapter is registered for {plane}: its estate is NOT_OBSERVED"))
             lifecycle.append({"phase": f"COLLECT:{plane}", "status": "NOT_ATTEMPTED",
                               "detail": "no adapter registered"})
+            emit("estate.plane.finished", {
+                "estate": estate,
+                "plane": plane,
+                "status": "NOT_ATTEMPTED",
+                "expected": 0,
+                "collected": 0,
+                "reason": "no adapter registered",
+                "impact": f"no adapter is registered for {plane}: its estate is NOT_OBSERVED",
+                "at": datetime.now(timezone.utc).isoformat(),
+            })
             continue
         outcome = _collect(plane, collector, db)
         plane_results[plane] = outcome
@@ -698,6 +734,16 @@ def run(
             "phase": f"COLLECT:{plane}",
             "status": outcome["status"],
             "detail": outcome.get("reason") or outcome.get("note") or "collected",
+        })
+        emit("estate.plane.finished", {
+            "estate": estate,
+            "plane": plane,
+            "status": outcome["status"],
+            "expected": outcome.get("expected"),
+            "collected": outcome.get("collected"),
+            "reason": outcome.get("reason"),
+            "impact": outcome.get("impact"),
+            "at": datetime.now(timezone.utc).isoformat(),
         })
     for plane in collection_plan["skipped"]:
         outcomes.append(collector_outcome(
@@ -734,7 +780,22 @@ def run(
         "collectors": outcomes,
         "coverage": coverage_rows,
     }
-    graph = build_graph(payload)
+    try:
+        graph = build_graph(payload)
+    except Exception as exc:  # noqa: BLE001 — announce the failure, then let it propagate
+        emit("estate.run.failed", {
+            "estate": estate,
+            "scope": scope,
+            "stage": "GRAPH",
+            "error": f"{type(exc).__name__}: {exc}",
+            "planes_read": [outcome["plane"] for outcome in outcomes],
+            "at": datetime.now(timezone.utc).isoformat(),
+        })
+        raise
+    emit("estate.phase.finished", {
+        "estate": estate, "phase": "EVIDENCE_COLLECTED", "status": "COMPLETE",
+        "detail": {"assets": len(assets), "evidence": len(evidence), "relationships": len(relationships)},
+    })
     lifecycle.extend([
         {"phase": "EVIDENCE_COLLECTED", "status": "COMPLETE",
          "detail": {"assets": len(assets), "evidence": len(evidence), "relationships": len(relationships)}},
@@ -754,6 +815,15 @@ def run(
     if include_boms:
         lifecycle.append({"phase": "BOMS_PROJECTED", "status": "COMPLETE",
                           "detail": projections["counts"] if projections else None})
+    emit("estate.phase.finished", {
+        "estate": estate,
+        "phase": "BOMS_PROJECTED" if include_boms else "CORRELATED",
+        "status": "COMPLETE",
+        "projection_id": graph.fingerprint(),
+        "bom_counts": (projections or {}).get("counts"),
+        "coverage": graph.coverage()["summary"],
+        "at": datetime.now(timezone.utc).isoformat(),
+    })
 
     run_id = None
     if persist:
@@ -821,4 +891,27 @@ def run(
         report["boms"] = projections["boms"]
         report["bom_counts"] = projections["counts"]
         report["consistency"] = projections["consistency"]
+    emit("estate.run.finished", {
+        "estate": estate,
+        "scope": scope,
+        "trigger": trigger,
+        "run_id": report["run_id"],
+        "projection_id": report["projection_id"],
+        "verdict": report["verdict"],
+        "verdict_detail": report["verdict_detail"],
+        "coverage_state": report["coverage"]["summary"].get("coverage_state"),
+        "attempted": report["coverage"]["summary"].get("attempted"),
+        "collected": report["coverage"]["summary"].get("collected"),
+        "failed_planes": failed,
+        "partial_planes": partial,
+        "not_attempted_planes": not_attempted,
+        "summary": report["summary"],
+        "bom_counts": report.get("bom_counts"),
+        "duration_seconds": round((datetime.now(timezone.utc) - moment).total_seconds(), 3),
+        "at": datetime.now(timezone.utc).isoformat(),
+    })
+    if on_event is not None:
+        # only reported when someone was actually subscribed: a run with no
+        # consumer makes no claim about a feed it never published to
+        report["events"] = {"emitted": len(emitted), "types": sorted({item[0] for item in emitted})}
     return report
