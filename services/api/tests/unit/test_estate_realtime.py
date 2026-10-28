@@ -422,3 +422,127 @@ def test_realtime_endpoint_reports_a_live_daemon_and_an_idle_estate(api, session
 def test_realtime_endpoint_never_confuses_api_liveness_with_coverage(api):
     body = api.get("/api/v1/estate/evidence/realtime").json()
     assert "not proof of coverage" in body["meaning"]
+
+
+# --------------------------------------------------------------------------- #
+# continuous change detection — every run compares itself with the one before
+# --------------------------------------------------------------------------- #
+def _report(*, planes: dict, estate: str = "bank-a", projection: str = "p1", boms: bool = True) -> dict:
+    from api import estate_discovery
+
+    def make(outcomes):
+        def collector(name):
+            def _collect(_db, **_kwargs):
+                spec = outcomes[name]
+                if isinstance(spec, Exception):
+                    raise spec
+                return {"expected": spec.get("expected", 0), "collected": spec.get("collected", 0),
+                        "assets": spec.get("assets", []), "evidence": [], "relationships": [],
+                        "note": spec.get("note")}
+            return _collect
+        return {name: collector(name) for name in outcomes}
+
+    return estate_discovery.run(None, estate=estate, collectors=make(planes), persist=False,
+                                include_boms=boms)
+
+
+def test_the_first_run_has_no_baseline_and_says_so():
+    from api import estate_watch
+
+    report = _report(planes={"STATIC": {"expected": 1, "collected": 1}})
+    change = estate_watch.compare_reports(None, report)
+    assert change["severity"] == "NO_BASELINE"
+    assert change["changed"] is None, "an unknown is not 'no change'"
+    assert "not 'no change'" in change["meaning"]
+
+
+def test_a_lost_plane_is_critical_because_it_is_unknown_not_absent():
+    from api import estate_watch
+
+    before = _report(planes={"STATIC": {"expected": 4, "collected": 4},
+                             "NETWORK": {"expected": 3, "collected": 3}})
+    after = _report(planes={"STATIC": {"expected": 4, "collected": 4},
+                            "NETWORK": RuntimeError("connector refused")}, projection="p2")
+    change = estate_watch.compare_reports(before, after)
+    assert change["severity"] == "CRITICAL"
+    lost = [item for item in change["findings"] if item["kind"] == "COVERAGE_LOST"]
+    assert lost and lost[0]["plane"] == "NETWORK"
+    assert "UNKNOWN" in change["next_action"]
+
+
+def test_a_smaller_read_is_coverage_debt_not_a_smaller_estate():
+    from api import estate_watch
+
+    before = _report(planes={"STATIC": {"expected": 10, "collected": 10}})
+    after = _report(planes={"STATIC": {"expected": 10, "collected": 4}}, projection="p2")
+    change = estate_watch.compare_reports(before, after)
+    assert change["severity"] == "CRITICAL"
+    assert any(item["kind"] == "COVERAGE_REDUCED" for item in change["findings"])
+
+
+def test_a_new_estate_component_is_a_warning_with_a_next_action():
+    from api import estate_watch
+
+    before = _report(planes={"STATIC": {"expected": 1, "collected": 1}})
+    after = _report(planes={"STATIC": {"expected": 2, "collected": 2}}, projection="p2")
+    change = estate_watch.compare_reports(before, after)
+    assert change["severity"] in {"WARNING", "INFO"}
+    assert change["changed"] is True
+    assert change["next_action"]
+
+
+def test_no_change_is_reported_as_none_not_as_safety():
+    from api import estate_watch
+
+    before = _report(planes={"STATIC": {"expected": 2, "collected": 2}})
+    after = _report(planes={"STATIC": {"expected": 2, "collected": 2}}, projection="p2")
+    change = estate_watch.compare_reports(before, after)
+    assert change["severity"] in {"NONE", "INFO"}
+    assert "not a safety statement" in change["meaning"].replace("NONE is not", "not")
+
+
+def test_a_change_publishes_an_event_and_a_quiet_run_does_not():
+    from api import estate_discovery
+
+    before = _report(planes={"STATIC": {"expected": 4, "collected": 4}})
+    seen: list[str] = []
+
+    after = estate_discovery.run(
+        None, estate="bank-a", collectors={"STATIC": lambda _db, **_k: {"expected": 4, "collected": 1}},
+        persist=False, previous=before, on_event=lambda kind, _payload: seen.append(kind),
+    )
+    assert after["change"]["severity"] == "CRITICAL"
+    assert "estate.change.detected" in seen
+
+    seen.clear()
+    same = estate_discovery.run(
+        None, estate="bank-a", collectors={"STATIC": lambda _db, **_k: {"expected": 4, "collected": 4}},
+        persist=False, previous=_report(planes={"STATIC": {"expected": 4, "collected": 4}}),
+        on_event=lambda kind, _payload: seen.append(kind),
+    )
+    assert "estate.change.detected" not in seen
+    assert same["change"]["severity"] in {"NONE", "INFO"}
+
+
+def test_the_scheduled_path_compares_against_the_previous_stored_run(session, factory):
+    """A schedule must detect change by itself — not because someone called /drift."""
+    from api import estate_discovery
+
+    seen: list[tuple[str, dict]] = []
+    estate_schedule.create_schedule(session, name="nightly", every="1h", estate="bank-a",
+                                    planes=["STATIC"], now=NOW - timedelta(hours=2))
+    # a stored previous report is what the real runner would find
+    import db.repositories.scan_run_repository as repo_module
+    previous = _report(planes={"STATIC": {"expected": 5, "collected": 5}})
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        monkeypatch.setattr(estate_discovery, "previous_report", lambda *_a, **_k: previous)
+        monkeypatch.setattr(estate_discovery, "run", lambda _db, **kwargs: (
+            seen.append((kwargs.get("trigger"), kwargs.get("previous"))) or {
+                "verdict": "COMPLETE", "run_id": "r2", "coverage": {"summary": {}}}))
+        result = estate_schedule.tick(session, worker="w", now=NOW, on_event=lambda k, p: seen.append((k, p)))
+    finally:
+        monkeypatch.undo()
+    assert result["claimed"] == 1
+    assert ("schedule", previous) in seen, "the runner is handed the previous stored report"
+    assert repo_module  # imported for parity with the real runner path

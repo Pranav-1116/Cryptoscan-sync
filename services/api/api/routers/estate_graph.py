@@ -532,6 +532,11 @@ def estate_scan(
             planes=body.planes,
             persist=body.persist,
             include_boms=body.include_boms,
+            trigger="api",
+            # every run compares itself with the previous one, so a console (or
+            # an alert rule) learns about change without polling /drift
+            previous=(estate_discovery.previous_report(db, tenant_id=current_tenant())
+                      if body.persist else None),
         )
     except ValueError as exc:
         raise HTTPException(

@@ -181,6 +181,20 @@ def _print_coverage(report: dict[str, Any]) -> None:
             print(f"    └─ {detail}")
 
 
+def _print_change(report: dict[str, Any]) -> None:
+    """Say what moved since the previous run — or say that nothing did."""
+    change = report.get("change") or {}
+    severity = change.get("severity")
+    if not severity:
+        return
+    headline = change.get("headline") or ""
+    print(f"change     {severity}  {headline}")
+    if change.get("next_action"):
+        print(f"  next: {change['next_action']}")
+    if severity == "NO_BASELINE":
+        print("  (first stored run: this becomes the comparison baseline)")
+
+
 def _print_summary(report: dict[str, Any]) -> None:
     summary = report.get("summary") or {}
     print(f"estate     {report.get('estate')} (scope {report.get('scope')})")
@@ -235,6 +249,8 @@ def _cmd_scan(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                 planes=args.planes or DEFAULT_PLANES,
                 persist=not args.no_persist,
                 include_boms=not args.no_boms,
+                previous=(estate_discovery.previous_report(session, tenant_id=args.tenant)
+                          if not args.no_persist else None),
             )
     finally:
         close = getattr(session, "close", None)
@@ -247,6 +263,7 @@ def _cmd_scan(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
         return _verdict_exit_code(report, args.allow_partial, quiet=True)
     else:
         _print_summary(report)
+        _print_change(report)
         _print_coverage(report)
         for collector in report.get("collectors") or []:
             if collector["status"] in {"FAILED", "NOT_ATTEMPTED", "PARTIAL"}:

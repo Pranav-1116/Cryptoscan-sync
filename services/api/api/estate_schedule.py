@@ -407,6 +407,9 @@ def tick(
         from api import estate_discovery
 
         def runner(row: EstateSchedule) -> Mapping[str, Any]:  # type: ignore[misc]
+            # compare against the previous stored run, so every scheduled run
+            # detects change instead of waiting for someone to call /drift
+            previous = estate_discovery.previous_report(db, tenant_id=row.tenant_id)
             return estate_discovery.run(
                 db,
                 estate=row.estate,
@@ -414,6 +417,7 @@ def tick(
                 planes=json.loads(row.planes) if row.planes else None,
                 on_event=on_event,
                 trigger="schedule",
+                previous=previous,
             )
 
     ran: list[dict[str, Any]] = []

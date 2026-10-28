@@ -658,6 +658,7 @@ def run(
     include_boms: bool = True,
     on_event: Callable[[str, Mapping[str, Any]], Any] | None = None,
     trigger: str = "manual",
+    previous: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Discover the estate once and project every BOM from the same snapshot.
 
@@ -672,6 +673,13 @@ def run(
     optional on purpose: a scan must behave identically with no subscriber, and
     the sink never raises into the run (a dead feed cannot fail a scan).
     ``trigger`` records what started the run (``manual``, ``schedule``).
+
+    ``previous`` is the previous discovery report; when given, this run is
+    compared with it (``api.estate_watch``) and a ``CRITICAL``/``WARNING`` change
+    is published as ``estate.change.detected``. A 24/7 product detects change on
+    every run — asking an operator to open a drift endpoint is not monitoring.
+    Without ``previous`` the report says ``NO_BASELINE`` rather than claiming
+    nothing moved.
     """
     emitted: list[tuple[str, dict[str, Any]]] = []
 
@@ -910,8 +918,40 @@ def run(
         "duration_seconds": round((datetime.now(timezone.utc) - moment).total_seconds(), 3),
         "at": datetime.now(timezone.utc).isoformat(),
     })
-    if on_event is not None:
+    from api import estate_watch
+
+    change = estate_watch.compare_reports(previous, report)
+    report["change"] = change
+    if change["severity"] in {"WARNING", "CRITICAL"}:
+        emit("estate.change.detected", {
+            "estate": estate,
+            "run_id": report["run_id"],
+            "projection_id": report["projection_id"],
+            "severity": change["severity"],
+            "headline": change["headline"],
+            "findings": change["findings"],
+            "next_action": change["next_action"],
+            "baseline_projection_id": change["baseline_projection_id"],
+            "at": datetime.now(timezone.utc).isoformat(),
+        })
+        if on_event is not None:
+            report["events"] = {"emitted": len(emitted), "types": sorted({item[0] for item in emitted})}
+
+    if on_event is not None and "events" not in report:
         # only reported when someone was actually subscribed: a run with no
         # consumer makes no claim about a feed it never published to
         report["events"] = {"emitted": len(emitted), "types": sorted({item[0] for item in emitted})}
     return report
+
+
+def previous_report(db: Any, *, tenant_id: str | None = None) -> dict[str, Any] | None:
+    """The payload of the most recent stored estate run, for change comparison."""
+    try:
+        from db.repositories.scan_run_repository import ScanRunRepository
+
+        runs = ScanRunRepository(db).list_runs(limit=1, target_kind="estate-discovery", owner=tenant_id)
+        if not runs:
+            return None
+        return (runs[0].result or {}).get("estate_discovery") or None
+    except Exception:  # noqa: BLE001 — a missing baseline must not fail a scan
+        return None
