@@ -248,11 +248,21 @@ secrets.
 Support is not use: "RSA-2048 is actively used" is only ever stated with runtime or
 network evidence.
 
+Live read (shipped): KMIP 2.0 `Locate` + `GetAttributes` (`api/hsm_usage.py`) — state,
+algorithm, usage mask, usage counters and lifecycle dates, with `Get` (key material)
+never issued. `OBSERVED` requires the appliance's own counter to be above zero;
+`CONFIGURED`/`SUPPORTED`/`NOT_OBSERVED` cover the rest, each with a reason.
+
 ### Plane 8 — KMS
 
 Provider, key id, key type, algorithm, key size, state, usage, rotation, HSM-backed,
 certificate relationship, application relationship. `KMS supports AES-256` ≠
 `application used AES-256`.
+
+Live read (shipped): CloudTrail `LookupEvents` filtered to `kms.amazonaws.com`
+(`api/estate_kms.py`) — which key, which principal, how many crypto calls, over a
+stated window, as `AUDIT_OBSERVED` evidence plus an observed `uses` edge. Key policy
+is not read as usage, and a key absent from the window is `NOT_OBSERVED_IN_WINDOW`.
 
 ### Plane 9 — Database
 
@@ -549,11 +559,15 @@ Status legend: **done** = implemented and tested on `arena/bb4b80dd-cryproscan`;
 | Six BOM projections from one snapshot | done | `project_all` — SBOM, CBOM, HBOM, NBOM, VBOM, TechBOM share one `projection_id` |
 | SUPPORTED ≠ CONFIGURED ≠ NEGOTIATED ≠ OBSERVED | done | `usage_state` on every CBOM artefact; vendor/imported evidence can never establish in-use usage |
 | API: discovery payload, scan, graph, coverage, BOMs | done | `POST /api/v1/estate/evidence/discover`, `POST …/scan`, `GET …/plan`, `GET …/{summary,graph,coverage,boms}` (`routers/estate_graph.py`; the pre-existing `/estate` campaign router is untouched) |
-| Live collector fan-out (one job calling every plane) | done | `api/estate_discovery.py` — seven adapters (NETWORK, KUBERNETES, RUNTIME, STATIC, PKI, HARDWARE, VENDOR) joined into one graph, with a collector plan, lifecycle phases and per-plane coverage; six read *persisted* evidence, KUBERNETES is live |
+| Live collector fan-out (one job calling every plane) | done | `api/estate_discovery.py` — eleven adapters (NETWORK, CLOUD, KUBERNETES, CMDB, KMS, HSM, RUNTIME, STATIC, PKI, HARDWARE, VENDOR) joined into one graph, with a collector plan, lifecycle phases and per-plane coverage; five read *persisted* evidence, six are live (KUBERNETES, CLOUD, CMDB, KMS, HSM, and the active network plane via `network_collect`) |
 | Live Kubernetes plane (cluster API, not caller-supplied manifests) | done | `api/estate_kubernetes.py` + plane `KUBERNETES` — lists `namespaces/services/pods/ingresses` read-only; credentials from `KUBERNETES_API_URL`+`TOKEN`, an in-cluster service account, or a JSON `KUBECONFIG`; no credentials ⇒ `NOT_ATTEMPTED` (nothing asked), RBAC 403/404 ⇒ `blocked[]` + `PARTIAL` with "NOT_OBSERVED, not empty"; `secrets` is never requested (`tls_secret_ref` only); every fact is `CONFIGURED` with `observed: false`, and sidecar TLS is labelled platform crypto |
 | Operator entry point (same job, same database) | done | `api/cli.py` → `cryptoscan scan|collect|coverage|boms`, registered in `pyproject.toml`; `--json` emits a single parseable document, `--allow-partial` prints the decision it records, exit `0` complete / `2` incomplete / `3` refused / `1` error. `collect` runs the bounded observation and then the estate job in one process |
 | One rulebook for active collection | done | `api/network_collect.py` — the STOP switch, approved scope, budget, admission, audit run and persistence live in one function used by both `POST /network/crypto-observe` and `cryptoscan collect`; a refusal is a `CollectRefused` code (409/422/429 over HTTP, exit 3 in the CLI) |
 | Live cloud plane (AWS control plane, not caller-supplied metadata) | done | `api/estate_cloud.py` + plane `CLOUD` — SigV4-signed read-only ELBv2/ACM/RDS/KMS/API Gateway calls; everything reported is `CONFIGURED`, KMS is `SUPPORTED` (capability, never application use); 403 ⇒ `blocked[]` + `PARTIAL`, no credentials ⇒ `NOT_ATTEMPTED` |
+| Live CMDB plane (ServiceNow Table API) | done | `api/estate_cmdb.py` + plane `CMDB` — read-only `cmdb_ci_server/_service/_appl` reads (`sysparm_fields`, `sysparm_limit`) with basic/bearer auth over https only; `expected: 4` (servers, services, applications, relationships), ServiceNow `type` read as "Parent::Child" through `relationship_mapping` so dependent edges are *reversed* correctly and unmapped types are **counted**, never coerced; every fact is `IMPORTED`/`LOW` with `observed: false`, so a CMDB dependency can never establish crypto usage; 403 ⇒ `blocked[]` + `PARTIAL`, row cap/`X-Total-Count` discrepancy ⇒ truncation declared |
+| Live KMS **usage** plane (provider audit trail) | done | `api/estate_kms.py` + plane `KMS` — CloudTrail `LookupEvents` filtered to `kms.amazonaws.com`; only crypto calls count (Encrypt/Decrypt/ReEncrypt/GenerateDataKey\*/Sign/Verify/MAC/Derive — CreateKey/DescribeKey/PutKeyPolicy are administration, not use), and each key gets `AUDIT_OBSERVED` evidence at HIGH confidence with operation counts, principals, first/last observed call and a `uses` edge on the `RUNTIME_OBSERVATION` basis; the audit window and its retention limit are printed, the event cap is reported as truncation, and a denied read is `blocked[]` + `PARTIAL` + NOT_OBSERVED — never "no usage" |
+| Live HSM plane (KMIP read-only) | done | `api/hsm_usage.py` + plane `HSM` — KMIP 2.0 over TLS: `Locate` on symmetric keys, then `GetAttributes` for State, Algorithm, Cryptographic Usage Mask, Usage Limits and lifecycle dates; `Get` (key material) is never issued and nothing can create/rotate/revoke/destroy. `usage_state` is `OBSERVED` only when the appliance counter is above zero, else `CONFIGURED` (Active, counter zero), `SUPPORTED` (Pre-Active) or `NOT_OBSERVED` (Deactivated/Compromised/Destroyed) with the reason; unmapped usage-mask bits are reported; refused socket ⇒ `blocked[]` + `PARTIAL`, and an empty partition is named as such rather than as an empty HSM estate |
+| Scheduled estate runs | done | `db/models/estate_schedule.py` + migration `0108`, `api/estate_schedule.py`, `cryptoscan schedule add\|list\|remove\|enable\|disable` and `cryptoscan tick`, `GET/POST/PATCH/DELETE /estate/evidence/schedules` + `POST /estate/evidence/tick` — interval (`15m/6h/1d/1w`) or 5-field UTC cron, ambiguous cadence refused (`cadence_ambiguous`), lease taken by conditional UPDATE so two ticks cannot run the same schedule, every run stores its `verdict` *and* `coverage_state`, a failed run still advances `next_run_at` and makes `tick` exit `EXIT_INCOMPLETE` |
 | Console: coverage matrix + unknown inventory + BOM switch | done | `EstatePanel` (`frontend/src/components/EstatePanel.tsx`) mounted on `Network.tsx` |
 | Signed/anchored projected BOMs | done | `api/security/estate_bom_anchor.py` + `POST /estate/evidence/boms/anchor`, `GET …/boms/anchors`, `POST …/boms/anchor/verify` — HMAC-SHA256 over `{projection_id, per-BOM digests}` with `CRYPTOSCAN_ANCHOR_KEY` held outside the database; no key ⇒ `409 anchor_key_not_configured`, and the receipt says `external: false` until the operator exports it |
 | External anchor export (storage we do not control) | done | `api/security/anchor_export.py` + `POST /estate/evidence/boms/anchor/export`, `GET …/export/status` — three real sinks: append-only directory (`O_CREAT\|O_EXCL`, so a second export cannot overwrite), S3 with SigV4 (verified against the published AWS test vector) + `If-None-Match: *` + Object-Lock retention, and an HMAC-signed webhook; `external: true` only after the sink confirms, unconfigured ⇒ `409`, duplicate ⇒ `409 already_exported` |
@@ -569,11 +583,18 @@ talks to a live system, and it reads configuration (`CONFIGURED`, `observed: fal
 an Ingress TLS block is a declaration that a controller terminates TLS, not a captured
 handshake. Active collection keeps its own approved scope (`/network/crypto-observe`,
 `/runtime/crypto-events`), which is what keeps re-running the estate job free of
-packets. Live collectors today: Kubernetes and AWS (`CONFIGURED` control-plane
-metadata). Still open: live HSM/KMS *usage* observation (vendors expose that only
-through audited partitions), a CMDB connector, and scheduled estate runs.
+packets. Live collectors today: Kubernetes, AWS (`CONFIGURED` control-plane
+metadata), ServiceNow CMDB (`IMPORTED`, declaration only), CloudTrail for KMS
+*usage* (`AUDIT_OBSERVED` — the provider's own record of the call) and KMIP for
+HSM state and usage counters (read-only, no key material). What remains open is
+not a missing connector but an unfilled observation: a key that never appears in
+the audit window is `NOT_OBSERVED_IN_WINDOW`, not unused, and an HSM partition
+with a zero counter is `CONFIGURED`, not proven in use. Scheduled runs close the
+"someone remembers to run it" gap: `cryptoscan tick` (or the `schedules` API)
+re-runs the same job on a cadence and stores a verdict *and* a coverage state per
+run, and a failed run still advances the schedule rather than silently stalling.
 
-Verified by five files: `services/api/tests/unit/test_estate_graph.py` (27 tests:
+Verified by eight files: `services/api/tests/unit/test_estate_graph.py` (27 tests:
 identity merges, layer separation, refusals, capability≠usage, conflicts, coverage
 semantics, API), `test_estate_discovery_job.py` (19 tests: fan-out, FAILED plane ⇒
 impact, partial read ⇒ `PARTIAL`, empty store ≠ empty estate, six BOMs on one
@@ -587,7 +608,14 @@ termination claim, sidecar ⇒ platform crypto, `secrets` never requested, missi
 credentials ⇒ `NOT_ATTEMPTED`, kubeconfig resolution; CLI exit codes, `--json`,
 persisted read-back) and `test_anchor_export.py` (9 tests: SigV4 against the AWS
 vector, no secret in status, write-once directory, `412` ⇒ `already_exported`,
-`500`/`401` ⇒ failed and never `external`). With the network and runtime
+`500`/`401` ⇒ failed and never `external`), `test_estate_cmdb.py` (14 tests:
+ServiceNow GET shape, https-only, reversal of "Used by"/"Contained by", unmapped
+type counted, 403 ⇒ PARTIAL, truncation), `test_estate_kms_usage.py` (9 tests:
+signed LookupEvents call, administration ≠ usage, principals + observed edge,
+window/retention honesty, pagination + cap, denied read ⇒ PARTIAL) and
+`test_estate_hsm_usage.py` (13 tests: real TTLV round-trip, `Get` never issued,
+state/counter ⇒ usage_state table, unmapped mask bit reported, refused socket ⇒
+PARTIAL, empty partition named). With the network and runtime
 suites the eight-file API run is **221 passed**, including the unknown-workflow tests
 (vendor claims are open work, not answers; every asset is accounted for exactly once) and
 the per-layer PQC tests (an HSM's classical claim never contaminates the transport verdict,
