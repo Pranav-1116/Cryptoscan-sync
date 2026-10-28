@@ -44,12 +44,15 @@ something invented.
 | `logout` | `POST /auth/logout` | revokes, then clears the stored token |
 | `target list / show` | `GET /collection/targets`, `/{id}` | |
 | `target register` | `POST /collection/targets` | no defaults invented (§3) |
+| `target update <id>` | `PUT /collection/targets/{id}` | sends only the fields you named; with none it refuses rather than PUTting an empty revision |
 | `target authorize / revoke` | `POST /collection/targets/{id}/authorize`, `/revoke` | |
 | `jobs list / show / logs` | `GET /jobs`, `/{id}`, `/{id}/logs` | |
 | `jobs cancel` | `POST /collection/jobs/{id}/cancel` | collection jobs own cancellation; the generic job API has no cancel |
 | `jobs watch` | `GET /jobs/{id}` | terminal states only; a timeout is exit 2, not success |
 | `jobs watch --coverage` | `GET /collection/jobs/{id}/coverage` | printed when the job settles: `surfaces`, `basis`, `limits`; no percentage |
 | `jobs retry <id>` | `POST /jobs/{id}/retry` | a 409 is shown with the server's reason, not retried blindly |
+| `jobs evidence / errors / projections <job>` | `GET /collection/jobs/{id}/evidence`, `/errors`, `/projections` | an empty list is printed as empty, with the reminder that it is not proof the estate is empty |
+| `collector list / show <id>` | `GET /collection/collectors` | prints how many collectors are production-execution qualified; `show` says the filter happened client-side (it is a catalog, not a per-collector route) |
 | `evidence list` | `GET /estate/evidence/evidence/records` | `--target`, `--evidence-type`, `--limit` |
 | `evidence show <id>` | `GET /estate/evidence/evidence/records/{id}` | 404 is `evidence_not_in_this_estate`, never an empty record |
 | `evidence verify <id>` | `GET …/records/{id}/verify` | recomputes the content address: exit 0 intact, 2 not content-addressed, 1 mismatch |

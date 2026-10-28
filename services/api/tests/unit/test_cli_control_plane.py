@@ -1045,3 +1045,90 @@ def test_ci_scan_lockfile_flags_reach_the_request(monkeypatch, env):
     body = json.loads(transport.calls[0][3])
     assert body["include_vendored"] is True
     assert body["use_lockfiles"] is False
+
+
+# -- target update / collection-job artefacts / collector catalog ---------------------
+
+
+def test_target_update_puts_only_the_fields_you_named(monkeypatch, env):
+    transport = FakeControlPlane({
+        ("PUT", "/api/v1/collection/targets/legacy-api-02"): (200, {"identifier": "legacy-api-02"}),
+    })
+
+    assert run(monkeypatch, transport, "target", "update", "legacy-api-02",
+               "--owner", "payments-platform", "--allowed-operation", "READ") == 0
+
+    body = json.loads(transport.calls[0][3])
+    assert body == {"owner": "payments-platform", "allowed_operations": ["READ"]}
+
+
+def test_target_update_with_nothing_to_change_refuses(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+
+    assert run(monkeypatch, transport, "target", "update", "legacy-api-02") == 3
+    assert transport.calls == []
+    assert "nothing to change" in capsys.readouterr().err
+
+
+def test_jobs_evidence_reads_the_collection_job_route(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/collection/jobs/job-9/evidence"): (200, {"items": [
+            {"evidence_id": "ev-abc", "evidence_type": "TLS_CONFIG", "target": "hsm-prod-03"}]}),
+    })
+
+    assert run(monkeypatch, transport, "jobs", "evidence", "job-9") == 0
+
+    assert transport.calls[0][1] == "/api/v1/collection/jobs/job-9/evidence"
+    out = capsys.readouterr().out
+    assert "ev-abc" in out
+    assert "not proof the estate is empty" in out
+
+
+def test_jobs_errors_with_no_rows_says_so_without_inventing_a_cause(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/collection/jobs/job-9/errors"): (200, {"items": []}),
+    })
+
+    assert run(monkeypatch, transport, "jobs", "errors", "job-9") == 0
+    assert "no collector error was recorded" in capsys.readouterr().out
+
+
+def test_collector_list_counts_qualified_collectors_rather_than_listing_capabilities(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/collection/collectors"): (200, {"collectors": [
+            {"id": "offline-linux/v1", "method": "offline_host",
+             "state": "DEVELOPMENT_OFFLINE_ONLY", "production_execution_qualified": False},
+            {"id": "approved-tls-session/candidate-v1", "method": "network",
+             "state": "OPERATOR_ACTIVE_CANDIDATE_NOT_ADMITTED", "production_execution_qualified": True},
+        ]}),
+    })
+
+    assert run(monkeypatch, transport, "collector", "list") == 0
+    out = capsys.readouterr().out
+    assert "1 of 2 collectors are production-execution qualified" in out
+    assert "still collects nothing" in out
+
+
+def test_collector_show_says_the_filter_happened_client_side(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/collection/collectors"): (200, {"collectors": [
+            {"id": "offline-linux/v1", "method": "offline_host",
+             "state": "DEVELOPMENT_OFFLINE_ONLY", "production_execution_qualified": False},
+        ]}),
+    })
+
+    assert run(monkeypatch, transport, "collector", "show", "offline-linux/v1") == 0
+    assert "filtered from the catalog listing client-side" in capsys.readouterr().out
+
+
+def test_collector_show_for_an_absent_id_refuses_with_the_real_route(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/collection/collectors"): (200, {"collectors": [
+            {"id": "offline-linux/v1", "production_execution_qualified": False},
+        ]}),
+    })
+
+    assert run(monkeypatch, transport, "collector", "show", "windows-agent/v1") == 3
+    err = capsys.readouterr().err
+    assert "no collector 'windows-agent/v1' in the catalog" in err
+    assert "GET /api/v1/collection/collectors" in err

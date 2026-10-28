@@ -429,6 +429,7 @@ SBOM and reproducible-build provenance attached to the release remain roadmap.
 | `explain asset/system/node` | **Implemented** | every answer names its endpoint |
 | `verify-installation` | **Implemented** (hashes + Ed25519 signature) | `--public-key` decides whether the signature is checked at all; `MANIFEST_UNSIGNED` / `SIGNED_UNVERIFIED` / `VALID` / `INVALID` / `SIGNATURE_KEY_MISMATCH` |
 | `ci gate --scan <id>` | **Implemented** | `GET /scans/{id}/gate`, or `POST /ci/gate` with `--record`; exit 0 PASS / 2 WARN (`--fail-on warn`) / 1 FAIL; `--sarif` writes the report |
+| `collector list / show` | **Implemented** | `GET /collection/collectors`; the catalog is the build's own declaration, and most entries are *not* production-qualified |
 | `ci scan --path <dir>` | **Implemented, on the control plane** | `POST /devsecops/sbom/scan {kind: source}`; the path is resolved **on the server**, not on the operator's host, and `--gate` says a scan id is still needed |
 | `bundle export/verify/import` | **Implemented** | encrypted air-gap transfer; see §4 Component 7 |
 

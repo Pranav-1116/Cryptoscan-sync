@@ -322,6 +322,9 @@ class Client:
     def post(self, path: str, body: Any = None) -> Any:
         return self.request("POST", path, body=body).json()
 
+    def put(self, path: str, body: Any = None) -> Any:
+        return self.request("PUT", path, body=body).json()
+
     def source(self, method: str, path: str, status: int = 200, **query: Any) -> str:
         suffix = ""
         if query:
@@ -652,6 +655,7 @@ def _doctor_render(rows: Sequence[tuple[str, str, str]], blocking: int, warnings
 # --------------------------------------------------------------------------------------
 
 TARGETS = "/api/v1/collection/targets"
+COLLECTORS = "/api/v1/collection/collectors"
 
 
 def _cmd_target(args: argparse.Namespace, _session: Any = None) -> int:
@@ -682,6 +686,28 @@ def _cmd_target(args: argparse.Namespace, _session: Any = None) -> int:
             body = _target_body(args)
             payload = client.post(TARGETS, body)
             return _emit(args, payload, source=client.source("POST", TARGETS, 201))
+
+        if action == "update":
+            # A revision, not a new registration: the control plane keeps the history and
+            # rejects a change that would widen authorisation without an explicit new body.
+            body = {key: value for key, value in {
+                "address": args.address,
+                "owner": args.owner,
+                "environment": args.environment,
+                "collection_method": args.collection_method,
+                "allowed_operations": list(args.allowed_operations or []) or None,
+                "not_before": args.not_before,
+            }.items() if value is not None}
+            if not body:
+                return _refuse("target update", Refused(
+                    "nothing to change",
+                    detail="pass at least one of --address, --owner, --environment, "
+                           "--collection-method, --allowed-operation, --not-before; a PUT with an "
+                           "empty body would be a revision nobody asked for",
+                ))
+            path = f"{TARGETS}/{urllib.parse.quote(args.identifier)}"
+            payload = client.put(path, body)
+            return _emit(args, payload, source=client.source("PUT", path))
 
         if action in {"authorize", "revoke"}:
             path = f"{TARGETS}/{urllib.parse.quote(args.identifier)}/{action}"
@@ -725,13 +751,14 @@ def _target_body(args: argparse.Namespace) -> dict[str, Any]:
     return body
 
 
-def _items(payload: Any) -> list[dict[str, Any]]:
+def _items(payload: Any, key: str | None = None) -> list[dict[str, Any]]:
     """The list inside a listing response, whatever wrapper the endpoint chose."""
     if isinstance(payload, list):
         return [row for row in payload if isinstance(row, dict)]
     if isinstance(payload, Mapping):
-        for key in ("items", "targets", "jobs", "records", "rows", "data", "results"):
-            value = payload.get(key)
+        keys = ("items", "targets", "jobs", "records", "rows", "data", "results")
+        for name in ((key,) if key else ()) + keys:
+            value = payload.get(name)
             if isinstance(value, list):
                 return [row for row in value if isinstance(row, dict)]
     return []
@@ -783,6 +810,36 @@ def _cmd_jobs(args: argparse.Namespace, _session: Any = None) -> int:
                   "and for synchronous network collections, which must go back through their "
                   "original admitted route")
             return _emit(args, payload, source=client.source("POST", path))
+
+        if action in {"evidence", "errors", "projections"}:  # collection-job artefacts
+            # These read a *collection* job's artefacts. They are separate subcommands
+            # because an empty evidence list and a failed job look identical if you only
+            # read `status`, and only one of them means "nothing was collected".
+            path = f"/api/v1/collection/jobs/{urllib.parse.quote(args.job_id)}/{action}"
+            payload = client.get(path)
+
+            def render_artefact() -> None:
+                rows = _items(payload)
+                print(f"job           {args.job_id}")
+                print(f"{action:<13} {len(rows) if rows else 0}")
+                if action == "errors":
+                    for item in (rows or [])[:20]:
+                        print(f"  {_short(_field(item, 'code') or _field(item, 'stage'), 24):<24} "
+                              f"{_short(_field(item, 'message') or _field(item, 'detail'), 90)}")
+                    if not rows:
+                        print("  — no collector error was recorded for this job")
+                elif action == "evidence":
+                    for item in (rows or [])[:20]:
+                        print(f"  {_short(_field(item, 'evidence_id') or _field(item, 'id'), 28):<28} "
+                              f"{_short(_field(item, 'evidence_type') or _field(item, 'type'), 24):<24} "
+                              f"{_short(_field(item, 'target'), 40)}")
+                else:
+                    for item in (rows or [])[:20]:
+                        print(f"  {_short(_field(item, 'kind') or _field(item, 'bom'), 20):<20} "
+                              f"{_short(_field(item, 'count') or _field(item, 'components'), 12)}")
+                print("\nthis is what the job stored; an empty list is not proof the estate is "
+                      "empty — read `cryptoscan jobs show` for its coverage state.")
+            return _emit(args, payload, source=client.source("GET", path), render=render_artefact)
 
         if action == "watch":
             return _watch(client, args)
@@ -868,6 +925,55 @@ def _watch(client: Client, args: argparse.Namespace) -> int:
 # --------------------------------------------------------------------------------------
 
 RECORDS = "/api/v1/estate/evidence/evidence/records"
+
+
+def _cmd_collector(args: argparse.Namespace, _session: Any = None) -> int:
+    """The collector catalog, exactly as the control plane declares it.
+
+    The interesting column is `production_execution_qualified`: most entries are
+    DEVELOPMENT/OFFLINE candidates, and a bank that reads only the id would think it can
+    collect Windows, cloud, HSM and vendor estates today. It cannot, and the catalog says so.
+    """
+    client = _client(args)
+    action = args.collector_command
+    try:
+        payload = client.get(COLLECTORS)
+        rows = _items(payload, key="collectors")
+        if action == "show":
+            rows = [row for row in rows if row.get("id") == args.collector_id]
+            if not rows:
+                return _refuse("collector show", Refused(
+                    f"no collector {args.collector_id!r} in the catalog",
+                    detail="the catalog is a fixed declaration served with the build; it is "
+                           "not a per-collector route, so this list was filtered client-side",
+                    closest=[f"GET {COLLECTORS}"],
+                ))
+
+        def render() -> None:
+            if not rows:
+                print("the control plane returned an empty collector catalog — that is a "
+                      "server-side defect, not a clean estate")
+                return
+            _table([[str(row.get("id") or row.get("method") or "—"),
+                     row.get("method", "—"),
+                     row.get("state", "—"),
+                     "YES" if row.get("production_execution_qualified") else "NO",
+                     "YES" if row.get("server_execution") else "NO"]
+                    for row in rows],
+                   ["collector", "method", "state", "prod-qualified", "runs-on-server"])
+            qualified = sum(1 for row in rows if row.get("production_execution_qualified"))
+            print(f"\n{qualified} of {len(rows)} collectors are production-execution qualified. "
+                  "A method that is not qualified still collects nothing, whatever its BOM "
+                  "capability strings suggest.")
+            if action == "show":
+                print("\nfiltered from the catalog listing client-side; "
+                      f"source of every field: GET {COLLECTORS}")
+
+        return _emit(args, {"collectors": rows} if action == "show" else payload,
+                     source=client.source("GET", COLLECTORS), render=render)
+    except (Refused, ApiError) as exc:
+        return _fail(f"collector {action}", exc)
+    raise Refused(f"unknown collector action {action!r}")
 
 
 def _cmd_evidence(args: argparse.Namespace, _session: Any = None) -> int:
@@ -2150,6 +2256,17 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     target_show = target_sub.add_parser("show", help="one target, exactly as the control plane holds it")
     target_show.add_argument("identifier")
     _add_common(target_show)
+    target_update = target_sub.add_parser("update", help="revise a registered target")
+    target_update.add_argument("identifier")
+    target_update.add_argument("--address", default=None)
+    target_update.add_argument("--owner", default=None)
+    target_update.add_argument("--environment", default=None)
+    target_update.add_argument("--collection-method", dest="collection_method", default=None)
+    target_update.add_argument("--allowed-operation", dest="allowed_operations", action="append",
+                               default=[], help="repeatable; replaces the allowlist when given")
+    target_update.add_argument("--not-before", dest="not_before", default=None)
+    _add_common(target_update)
+
     target_register = target_sub.add_parser("register", help="register a target (no defaults are invented)")
     for flag, help_text in (
         ("--target-key", "stable key for this target"),
@@ -2194,6 +2311,14 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     jobs_retry = jobs_sub.add_parser("retry", help="re-run a failed job through its own route")
     jobs_retry.add_argument("job_id")
     _add_common(jobs_retry)
+    for name, help_text in (
+        ("evidence", "evidence records a collection job stored"),
+        ("errors", "collector errors recorded for a collection job"),
+        ("projections", "BOM projections produced by a collection job"),
+    ):
+        parser = jobs_sub.add_parser(name, help=help_text)
+        parser.add_argument("job_id")
+        _add_common(parser)
     jobs_watch = jobs_sub.add_parser("watch", help="follow a job until it reaches a terminal state")
     jobs_watch.add_argument("job_id")
     jobs_watch.add_argument("--coverage", action="store_true",
@@ -2201,6 +2326,14 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     jobs_watch.add_argument("--timeout", type=float, default=1800.0)
     jobs_watch.add_argument("--interval", type=float, default=5.0)
     _add_common(jobs_watch)
+
+    collector = sub.add_parser("collector", help="what this build can actually collect")
+    collector_sub = collector.add_subparsers(dest="collector_command", required=True)
+    collector_list = collector_sub.add_parser("list", help="the collector catalog served with the build")
+    _add_common(collector_list)
+    collector_show = collector_sub.add_parser("show", help="one catalog entry, with its capability limits")
+    collector_show.add_argument("collector_id")
+    _add_common(collector_show)
 
     evidence = sub.add_parser("evidence", help="read collected evidence")
     evidence_sub = evidence.add_subparsers(dest="evidence_command", required=True)
@@ -2376,6 +2509,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Any], int]] = {
         ("logout", _cmd_logout),
         ("target", _cmd_target),
         ("jobs", _cmd_jobs),
+        ("collector", _cmd_collector),
         ("evidence", _cmd_evidence),
         ("bom", _cmd_bom),
         ("pqc", _cmd_pqc),
