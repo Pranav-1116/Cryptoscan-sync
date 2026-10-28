@@ -6520,3 +6520,20 @@ export interface EstateConflictSurvey {
 
 export const apiEstateConflicts = (): Promise<ApiResult<EstateConflictSurvey>> =>
   _rsGet<EstateConflictSurvey>("/api/v1/estate/evidence/twin/conflicts");
+
+/* §2: the loop, phase by phase. NOT_STARTED means nothing has run yet — not that the
+   phase is wired — and REMEDIATE reports NOT_CONNECTED because the twin opens no work. */
+export interface EstateLifecyclePhase {
+  phase: string; status: "CONNECTED" | "PARTIAL" | "NOT_CONNECTED" | "NOT_STARTED";
+  question: string; detail: string; backed_by: string;
+  observed: Record<string, unknown>; gap?: string | null;
+}
+
+export interface EstateLifecycle {
+  schema: string; phases: EstateLifecyclePhase[];
+  by_status: Record<string, number>; loop_closed: boolean; first_break: string | null;
+  phase_order: string[]; meaning: string; limits: string[];
+}
+
+export const apiEstateLifecycle = (): Promise<ApiResult<EstateLifecycle>> =>
+  _rsGet<EstateLifecycle>("/api/v1/estate/evidence/twin/lifecycle");

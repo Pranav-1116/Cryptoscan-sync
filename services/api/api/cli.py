@@ -243,6 +243,13 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_conflicts.add_argument("--tenant", default=None)
     twin_conflicts.add_argument("--json", action="store_true")
 
+    twin_lifecycle = twin_sub.add_parser(
+        "lifecycle",
+        help="which phases of the twin's loop are running, and where it breaks",
+    )
+    twin_lifecycle.add_argument("--tenant", default=None)
+    twin_lifecycle.add_argument("--json", action="store_true")
+
     twin_search = twin_sub.add_parser(
         "search",
         help="search assets, artefacts, edges, evidence, facts and changes in one call",
@@ -754,6 +761,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
         estate_catalog,
         estate_change_feed,
         estate_conflicts,
+        estate_lifecycle,
         estate_graph_loader,
         estate_observations,
         estate_search,
@@ -864,6 +872,25 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                             print(f"      {value['value']!r} from {value['source']} "
                                   f"({value['evidence_type']}, {value['layer']})")
                         print(f"      {item['reason']}")
+                return EXIT_OK
+
+            if args.twin_command == "lifecycle":
+                body = estate_lifecycle.survey(
+                    session, latest_twin_graph(session, args.tenant), tenant_id=args.tenant
+                )
+                if args.json:
+                    print(json.dumps(body, indent=2, default=str))
+                else:
+                    for phase in body["phases"]:
+                        print(f"  {phase['phase']:<12} {phase['status']:<14} {phase['question']}")
+                        if phase["status"] != "CONNECTED":
+                            print(f"      {phase['detail']}")
+                    print()
+                    if body["loop_closed"]:
+                        print(body["meaning"])
+                    else:
+                        print(f"the loop does not close: it breaks first at "
+                              f"{body['first_break']}. {body['meaning']}")
                 return EXIT_OK
 
             if args.twin_command == "search":
@@ -980,7 +1007,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                 graph = latest_twin_graph(session, getattr(args, "tenant", None))
             if graph is None and args.twin_command not in {
                 "changes", "ack", "detect", "assets", "asset", "algorithms",
-                "history", "why", "evidence", "search", "conflicts",
+                "history", "why", "evidence", "search", "conflicts", "lifecycle",
             }:
                 
                 print(

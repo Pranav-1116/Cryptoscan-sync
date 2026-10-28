@@ -501,3 +501,43 @@ it("shows a held conflict with its evidence and refuses to resolve it", async ()
   expect(screen.getByText(/can both be true at once/)).toBeInTheDocument();
   expect(screen.getByText(/nothing here is resolved for you/)).toBeInTheDocument();
 });
+
+it("draws the loop with its break named rather than every box the same colour", async () => {
+  const phases = [
+    ["DISCOVER", "CONNECTED", "has anything looked at the estate?"],
+    ["IDENTIFY", "CONNECTED", "does an asset keep its identity?"],
+    ["MODEL", "CONNECTED", "is there one canonical model?"],
+    ["MONITOR", "NOT_CONNECTED", "does discovery re-run without a human?"],
+    ["REMEDIATE", "NOT_CONNECTED", "does the twin open work?"],
+    ["RE_DISCOVER", "PARTIAL", "does a new observation prove the fix?"],
+  ].map(([phase, status, question]) => ({
+    phase, status, question,
+    detail: `${phase} detail`,
+    backed_by: "somewhere.ts",
+    observed: {},
+    gap: status === "CONNECTED" ? null : `${phase} gap is named`,
+  }));
+
+  mockFetch({
+    [TWIN]: overview(),
+    "/api/v1/estate/evidence/twin/lifecycle": {
+      schema: "cryptoscan.estate-lifecycle/1", phases,
+      by_status: { CONNECTED: 3, PARTIAL: 1, NOT_CONNECTED: 2, NOT_STARTED: 0 },
+      loop_closed: false, first_break: "MONITOR",
+      phase_order: phases.map((entry) => entry.phase),
+      meaning: "the loop is reported as closed only when every phase is CONNECTED",
+      limits: ["NOT_STARTED is not a defect"],
+    },
+  });
+  render(<DigitalTwinPanel />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Loop" }));
+
+  await waitFor(() => expect(screen.getByText("BREAKS AT MONITOR")).toBeInTheDocument());
+  expect(screen.getByText("3 connected")).toBeInTheDocument();
+  expect(screen.getByText("1 partial")).toBeInTheDocument();
+  expect(screen.getByText("2 not connected")).toBeInTheDocument();
+  expect(screen.getAllByText("NOT_CONNECTED").length).toBe(2);
+  expect(screen.getByText(/REMEDIATE gap is named/)).toBeInTheDocument();
+  expect(screen.getByText(/only when every phase is CONNECTED/)).toBeInTheDocument();
+});

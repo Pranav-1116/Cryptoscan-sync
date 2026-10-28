@@ -9,13 +9,14 @@ import {
   apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
   apiEstateTwinPlacement,
   apiEstateAssetHistory, apiEstateHistorySummary, apiEstateSearch, apiEstateConflicts,
+  apiEstateLifecycle,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
   EstateChangeFeed, EstateChangeEvent,
   EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
   EstatePlacement, EstateAssetHistory, EstateHistorySummary, EstateSearchResult,
-  EstateConflictSurvey,
+  EstateConflictSurvey, EstateLifecycle,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -123,7 +124,9 @@ export default function DigitalTwinPanel() {
   /* Four views over one twin. "Live" is the current evidence; the other three are
      the parts spec 94 §24 lists that a BOM panel cannot answer: what moved, what is
      capability vs use, and what a graph store would receive. */
-  const [view, setView] = useState<"live" | "crypto" | "catalog" | "changes" | "history" | "graph">("live");
+  const [view, setView] = useState<
+    "live" | "crypto" | "catalog" | "changes" | "history" | "graph" | "loop"
+  >("live");
   const [snapshots, setSnapshots] = useState<EstateTwinSnapshotList | null>(null);
   const [comparison, setComparison] = useState<EstateTwinCompare | null>(null);
   const [crypto, setCrypto] = useState<EstateTwinCryptoGraph | null>(null);
@@ -152,6 +155,8 @@ export default function DigitalTwinPanel() {
   const [recordError, setRecordError] = useState<string | null>(null);
   /* §23: what the twin is holding, classified — and never resolved for you */
   const [conflictsHeld, setConflictsHeld] = useState<EstateConflictSurvey | null>(null);
+  /* §2: the loop, and the first phase that does not reach the next one */
+  const [loop, setLoop] = useState<EstateLifecycle | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -247,6 +252,12 @@ export default function DigitalTwinPanel() {
     else setConflictsHeld(null);
   };
 
+  const loadLoop = async () => {
+    const result = await apiEstateLifecycle();
+    if (result.ok) setLoop(result.data as EstateLifecycle);
+    else setLoop(null);
+  };
+
   const loadHistorySummary = async () => {
     const result = await apiEstateHistorySummary();
     if (result.ok) setHistorySummary(result.data as EstateHistorySummary);
@@ -306,6 +317,7 @@ export default function DigitalTwinPanel() {
     if (view === "catalog" && historySummary === null) void loadHistorySummary();
     if (view === "live" && conflictsHeld === null) void loadConflicts();
     if (view === "live" && placement === null) void loadPlacement();
+    if (view === "loop" && loop === null) void loadLoop();
   }, [view]);
 
   const TABS: Array<{ id: typeof view; label: string }> = [
@@ -315,6 +327,7 @@ export default function DigitalTwinPanel() {
     { id: "changes", label: "Changes" },
     { id: "history", label: "History & compare" },
     { id: "graph", label: "Graph export" },
+    { id: "loop", label: "Loop" },
   ];
 
   return (
@@ -1252,6 +1265,62 @@ export default function DigitalTwinPanel() {
             <div className="faint" style={{ fontSize: 9.5, marginTop: 10 }}>
               {changeFeed.limits[1] ?? changeFeed.limits[0]}
             </div>
+          )}
+        </div>
+      )}
+
+      {view === "loop" && (
+        <div style={{ marginTop: 4 }}>
+          {!loop && <div className="dim" style={{ fontSize: 11 }}>{error ?? "loading the lifecycle…"}</div>}
+          {loop && (
+            <>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge tone={loop.loop_closed ? "green" : "amber"}>
+                  {loop.loop_closed ? "LOOP CLOSED" : `BREAKS AT ${loop.first_break}`}
+                </Badge>
+                <Badge tone="slate">{loop.by_status.CONNECTED} connected</Badge>
+                {loop.by_status.PARTIAL > 0 && <Badge tone="amber">{loop.by_status.PARTIAL} partial</Badge>}
+                {loop.by_status.NOT_CONNECTED > 0 && (
+                  <Badge tone="red">{loop.by_status.NOT_CONNECTED} not connected</Badge>
+                )}
+                {loop.by_status.NOT_STARTED > 0 && (
+                  <Badge tone="slate">{loop.by_status.NOT_STARTED} not started</Badge>
+                )}
+              </div>
+              {loop.phases.map((phase) => (
+                <div
+                  key={phase.phase}
+                  style={{ marginTop: 6, borderTop: "1px solid var(--line)", paddingTop: 4 }}
+                >
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                    <Badge
+                      tone={
+                        phase.status === "CONNECTED"
+                          ? "green"
+                          : phase.status === "PARTIAL"
+                            ? "amber"
+                            : phase.status === "NOT_CONNECTED"
+                              ? "red"
+                              : "slate"
+                      }
+                    >
+                      {phase.status}
+                    </Badge>
+                    <span className="mono" style={{ fontSize: 10.5 }}>{phase.phase}</span>
+                    <span className="dim" style={{ fontSize: 10 }}>{phase.question}</span>
+                  </div>
+                  <div className="faint" style={{ fontSize: 9.5, marginTop: 2 }}>
+                    {phase.detail}
+                  </div>
+                  {phase.gap && (
+                    <div className="faint" style={{ fontSize: 9.5, marginTop: 1 }}>
+                      gap: {phase.gap}
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div className="faint" style={{ fontSize: 9.5, marginTop: 8 }}>{loop.meaning}</div>
+            </>
           )}
         </div>
       )}

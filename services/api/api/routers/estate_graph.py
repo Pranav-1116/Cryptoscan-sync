@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from api import (
     estate_catalog,
     estate_conflicts,
+    estate_lifecycle,
     estate_observations,
     estate_search,
     estate_change_feed,
@@ -1758,3 +1759,19 @@ def estate_twin_conflicts(
     """
     graph = _latest_twin_graph_or_none(db)
     return estate_conflicts.survey(db, graph, tenant_id=current_tenant())
+
+
+@router.get("/twin/lifecycle")
+def estate_twin_lifecycle(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Which phases of the twin's loop are actually running, and where it breaks (§2).
+
+    Every phase reports CONNECTED / PARTIAL / NOT_CONNECTED / NOT_STARTED from the table it
+    writes, so "nothing has observed the estate yet" cannot look like "the loop is wired",
+    and ``REMEDIATE`` says plainly that the twin opens no work item. ``loop_closed`` is
+    computed from the phases, and ``first_break`` names the phase worth building next.
+    """
+    graph = _latest_twin_graph_or_none(db)
+    return estate_lifecycle.survey(db, graph, tenant_id=current_tenant())

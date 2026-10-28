@@ -456,3 +456,24 @@ def test_conflicts_are_listed_with_their_evidence_and_never_resolved(with_discov
     assert entry["status"] == "CONFLICT"
     assert entry["classification"] in {"REAL", "EXPLAINED", "UNKNOWN"}
     assert "next_action" in entry
+
+
+def test_lifecycle_names_the_break_instead_of_colouring_every_box(with_discovery, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "lifecycle", "--json"],
+                    session_factory=lambda: with_discovery)
+    body = json.loads(capsys.readouterr().out)
+
+    assert code == cli.EXIT_OK
+    phases = {entry["phase"]: entry for entry in body["phases"]}
+    assert phases["REMEDIATE"]["status"] == "NOT_CONNECTED"
+    assert body["loop_closed"] is False
+    assert body["first_break"]
+
+    code = cli.main(["twin", "lifecycle"], session_factory=lambda: with_discovery)
+    printed = capsys.readouterr().out
+
+    assert code == cli.EXIT_OK
+    assert f"it breaks first at {body['first_break']}" in printed
+    assert "REMEDIATE" in printed
