@@ -121,6 +121,11 @@ export default function DigitalTwinPanel() {
             {doc.placement.unplaced_count > 0 && (
               <Badge tone="amber">{doc.placement.unplaced_count} unplaced</Badge>
             )}
+            {completeness?.weakest_dimension && (
+              <Badge tone="amber">
+                weakest {completeness.weakest_dimension.dimension} {completeness.weakest_dimension.percent}%
+              </Badge>
+            )}
             {completeness && <span className="faint" style={{ fontSize: 10 }}>{completeness.meaning}</span>}
           </div>
 

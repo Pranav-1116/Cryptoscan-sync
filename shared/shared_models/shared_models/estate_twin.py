@@ -153,6 +153,23 @@ def _record_hash(record: Mapping[str, Any]) -> str:
     )
 
 
+def _is_site(value: Any) -> bool:
+    """Is this a place an asset runs, or just where a file was found?
+
+    ``/srv/app/Crypto.java`` and ``s3://bucket/key`` are provenance; ``UAE DC1``
+    and ``aws:eu-west-1`` are placement. The twin refuses to promote the first
+    kind into the second.
+    """
+    text = _text(value)
+    if not text:
+        return False
+    if text.startswith("/") or "\\" in text or text.startswith("./") or text.startswith("~"):
+        return False
+    if "://" in text:
+        return False
+    return True
+
+
 def _asset_card(asset: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "asset_id": asset["asset_id"],
@@ -400,9 +417,19 @@ def placement_model(graph: EstateGraph) -> dict[str, Any]:
     for asset in graph.assets():
         environment = _text(asset.get("environment"))
         location = _text(asset.get("location"))
-        if not environment and not location:
-            unplaced.append({**_asset_card(asset), "reason": "no environment and no location in any evidence"})
+        if not environment:
+            # A file path in `location` is provenance, not a site: a static-scan hit
+            # says where the code lives, not which data centre runs it. Calling that
+            # "placement" would put an asset in a building it has never been in.
+            reason = (
+                "no environment in any evidence"
+                if location and not _is_site(location)
+                else "no environment and no site location in any evidence"
+            )
+            unplaced.append({**_asset_card(asset), "reason": reason})
             continue
+        if location and not _is_site(location):
+            location = ""
         key = environment or "UNSPECIFIED_ENVIRONMENT"
         bucket = environments.setdefault(
             key,
@@ -516,6 +543,22 @@ def completeness(graph: EstateGraph) -> dict[str, Any]:
     ]
 
     summary = coverage["summary"]
+    rows = coverage.get("targets") or []
+    attempted_planes = [
+        row for row in rows if str(row.get("status") or "") not in {"NOT_ATTEMPTED", "UNKNOWN"}
+    ]
+    dimensions.append(
+        _dimension(
+            "PLANE_COVERAGE",
+            len(attempted_planes),
+            len(rows),
+            meaning=(
+                "collector planes that ran at all versus expected. 100% target coverage inside one "
+                "plane still leaves every other plane of this estate NOT_OBSERVED"
+            ),
+            state="MEASURED" if rows else "NOT_OBSERVED",
+        )
+    )
     dimensions.append(
         _dimension(
             "TARGET_COVERAGE",
@@ -545,6 +588,7 @@ def completeness(graph: EstateGraph) -> dict[str, Any]:
         if item["percent"] is None
     ]
     overall = round(sum(item["percent"] for item in measured) / len(measured), 1) if measured else None
+    weakest = min(measured, key=lambda item: item["percent"]) if measured else None
 
     unknown = graph.unknown_inventory()
     conflicts = graph.conflicts()
@@ -610,6 +654,20 @@ def completeness(graph: EstateGraph) -> dict[str, Any]:
         "overall_percent": overall,
         "overall_state": "MEASURED" if overall is not None else "NOT_OBSERVED",
         "overall_label": "twin completeness",
+        "weakest_dimension": (
+            {
+                "dimension": weakest["dimension"],
+                "percent": weakest["percent"],
+                "reason": weakest.get("reason") or weakest["meaning"],
+            }
+            if weakest
+            else None
+        ),
+        "overall_note": (
+            "an average hides its worst term: read weakest_dimension before quoting overall_percent"
+            if weakest
+            else "no dimension was measurable, so there is no overall figure to quote"
+        ),
         "is_posture_score": False,
         "meaning": (
             "this measures how completely the twin describes the estate. It is not crypto readiness: "

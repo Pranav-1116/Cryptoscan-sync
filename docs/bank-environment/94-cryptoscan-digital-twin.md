@@ -652,8 +652,14 @@ projection. It reports:
 
 * A capability declaration never becomes usage: `supported_algorithms` on a
   library produces capability blockers, not an observed cipher.
-* Completeness cannot exceed collector coverage. A `FAILED` plane appears in
-  `why_not_100`, and the dimension it fed stays `n/a`.
+* Completeness cannot exceed collector coverage. `PLANE_COVERAGE` counts planes
+  that ran at all against planes expected, so 100% target coverage inside one
+  plane cannot read as a complete twin; a `FAILED` plane appears in `why_not_100`
+  and the dimension it fed stays `n/a`. `weakest_dimension` ships beside
+  `overall_percent`, because an average hides its worst term.
+* A file path is not a site. `location` on a static-scan hit is provenance
+  (`/srv/app/Crypto.java`), so such an asset is `UNPLACED` rather than assigned to
+  a data centre that it may never have run in.
 * Simulation changes *evidence facts in a copy*, not a real configuration. It can
   tell you that a BOM would change; it cannot tell you that a vendor's firmware
   would accept it — that stays a human finding.

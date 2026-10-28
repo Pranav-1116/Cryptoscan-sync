@@ -151,7 +151,7 @@ def test_an_asset_with_no_environment_is_unplaced_not_rooted(graph):
     view = twin.placement_model(graph)
     assert view["unplaced_count"] == 1
     assert view["unplaced"][0]["name"] == "legacy-batch"
-    assert "no environment and no location" in view["unplaced"][0]["reason"]
+    assert "no environment and no site location" in view["unplaced"][0]["reason"]
 
 
 # --------------------------------------------------------------------------- #
@@ -192,6 +192,49 @@ def test_an_unmeasured_dimension_is_neither_zero_nor_hundred():
     assert target["percent"] is None
     assert target["state"] == "NOT_OBSERVED"
     assert any(item["dimension"] == "TARGET_COVERAGE" for item in view["unmeasured"])
+
+
+def test_average_completeness_carries_its_weakest_dimension(graph):
+    view = twin.completeness(graph)
+    measured = [item["percent"] for item in view["dimensions"] + view["visibility"] if item["percent"] is not None]
+    assert view["weakest_dimension"]["percent"] == min(measured)
+    assert "hides its worst term" in view["overall_note"]
+
+
+def test_a_plane_that_never_ran_is_visible_in_plane_coverage():
+    graph = build_graph(
+        {
+            "estate": "partial",
+            "assets": [{"ref": "a", "type": "HOST", "name": "h1"}],
+            "evidence": [],
+            "collectors": [
+                {"plane": "STATIC", "status": "COMPLETE", "expected": 1, "collected": 1},
+                {"plane": "NETWORK", "status": "NOT_ATTEMPTED", "expected": 0, "collected": 0},
+                {"plane": "HSM", "status": "NOT_ATTEMPTED", "expected": 0, "collected": 0},
+            ],
+        }
+    )
+    view = twin.completeness(graph)
+    planes = next(item for item in view["dimensions"] if item["dimension"] == "PLANE_COVERAGE")
+    assert planes["percent"] == 33.3
+    assert "NOT_OBSERVED" in planes["meaning"]
+
+
+def test_a_file_path_is_not_a_site():
+    graph = build_graph(
+        {
+            "estate": "static-only",
+            "assets": [
+                {"ref": "a", "type": "APPLICATION", "name": "a", "location": "/srv/app/Crypto.java"},
+                {"ref": "b", "type": "HOST", "name": "b", "environment": "production", "location": "UAE DC1"},
+            ],
+            "evidence": [],
+        }
+    )
+    view = twin.placement_model(graph)
+    assert view["unplaced_count"] == 1
+    assert "provenance" in view["unplaced"][0]["reason"] or "no environment" in view["unplaced"][0]["reason"]
+    assert [env["name"] for env in view["environments"]] == ["production"]
 
 
 def test_a_failed_plane_is_named_in_the_completeness_gaps(graph):

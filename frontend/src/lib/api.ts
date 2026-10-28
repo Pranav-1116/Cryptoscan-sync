@@ -5953,6 +5953,8 @@ export interface EstateTwinCompleteness {
   measured: number;
   unmeasured: Array<{ dimension: string; state: string; reason?: string | null }>;
   overall_percent: number | null; overall_state: string; overall_label: string;
+  weakest_dimension?: { dimension: string; percent: number | null; reason: string } | null;
+  overall_note?: string;
   is_posture_score: boolean; meaning: string;
   why_not_100: Array<{ reason: string; count: number; next_action: string }>;
 }
