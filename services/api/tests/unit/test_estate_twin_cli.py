@@ -431,3 +431,28 @@ def test_graph_verify_reports_not_connected_rather_than_parity(with_discovery, c
     assert code == cli.EXIT_INCOMPLETE
     assert "NOT_CONNECTED" in captured.out
     assert "not 'the store is in parity'" in captured.err
+
+
+def test_conflicts_are_listed_with_their_evidence_and_never_resolved(with_discovery, capsys):
+    from api import cli
+    from api import estate_observations
+    from shared_models.estate_graph import build_graph
+
+    payload = _payload()
+    target = next(item for item in payload["assets"] if item["name"] == "Payment API")
+    payload["evidence"].append({
+        "evidence_id": "ev-conflict", "source": "sbom", "collector": "sbom-parser",
+        "evidence_type": "STATIC_OBSERVED", "target": target.get("ref") or target["name"],
+        "layer": "PLATFORM", "facts": {"algorithm": "AES-128"},
+    })
+    estate_observations.sync_all(with_discovery, build_graph(payload), tenant_id=None)
+
+    code = cli.main(["twin", "conflicts", "--json"],
+                    session_factory=lambda: with_discovery)
+    body = json.loads(capsys.readouterr().out)
+    assert code == cli.EXIT_OK
+    assert body["count"] >= 1
+    entry = body["conflicts"][0]
+    assert entry["status"] == "CONFLICT"
+    assert entry["classification"] in {"REAL", "EXPLAINED", "UNKNOWN"}
+    assert "next_action" in entry

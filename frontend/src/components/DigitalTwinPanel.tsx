@@ -8,13 +8,14 @@ import {
   apiEstateChanges, apiEstateChangesDetect, apiEstateChangeAcknowledge,
   apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
   apiEstateTwinPlacement,
-  apiEstateAssetHistory, apiEstateHistorySummary, apiEstateSearch,
+  apiEstateAssetHistory, apiEstateHistorySummary, apiEstateSearch, apiEstateConflicts,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
   EstateChangeFeed, EstateChangeEvent,
   EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
   EstatePlacement, EstateAssetHistory, EstateHistorySummary, EstateSearchResult,
+  EstateConflictSurvey,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -149,6 +150,8 @@ export default function DigitalTwinPanel() {
   /* §26: the durable record, searched across kinds — not just the latest run */
   const [record, setRecord] = useState<EstateSearchResult | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  /* §23: what the twin is holding, classified — and never resolved for you */
+  const [conflictsHeld, setConflictsHeld] = useState<EstateConflictSurvey | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -238,6 +241,12 @@ export default function DigitalTwinPanel() {
     else setRecordError("search unavailable — an empty answer here means the record could not be read");
   };
 
+  const loadConflicts = async () => {
+    const result = await apiEstateConflicts();
+    if (result.ok) setConflictsHeld(result.data as EstateConflictSurvey);
+    else setConflictsHeld(null);
+  };
+
   const loadHistorySummary = async () => {
     const result = await apiEstateHistorySummary();
     if (result.ok) setHistorySummary(result.data as EstateHistorySummary);
@@ -295,6 +304,7 @@ export default function DigitalTwinPanel() {
     if (view === "changes" && changeFeed === null) void loadChanges();
     if (view === "catalog" && catalogAssets === null) void loadCatalog();
     if (view === "catalog" && historySummary === null) void loadHistorySummary();
+    if (view === "live" && conflictsHeld === null) void loadConflicts();
     if (view === "live" && placement === null) void loadPlacement();
   }, [view]);
 
@@ -422,7 +432,29 @@ export default function DigitalTwinPanel() {
 
             <div>
               <div className="mono" style={{ fontSize: 10.5, color: "var(--cyan)" }}>COMPLETENESS</div>
-              {completeness?.dimensions.map((item) => <DimensionRow key={item.dimension} item={item} />)}
+              {conflictsHeld && conflictsHeld.count > 0 && (
+              <div style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 6 }}>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--cyan)" }}>
+                  {`CONFLICTS · ${conflictsHeld.real_count} real, ${conflictsHeld.explained_count} explained`}
+                </div>
+                {conflictsHeld.conflicts.slice(0, 5).map((entry) => (
+                  <div key={`${entry.asset_id}:${entry.field}`} style={{ fontSize: 10, marginTop: 3 }}>
+                    <Badge tone={entry.classification === "REAL" ? "amber" : "slate"}>
+                      {entry.classification}
+                    </Badge>{" "}
+                    {entry.asset_name ?? entry.asset_id} · {entry.field}
+                    <div className="faint" style={{ fontSize: 9.5 }}>
+                      {entry.values.map((value) => String(value.value)).join(" vs ")} — {entry.reason}
+                    </div>
+                  </div>
+                ))}
+                <div className="faint" style={{ fontSize: 9.5 }}>
+                  nothing here is resolved for you: closing a conflict needs a corrected source and a
+                  re-collection
+                </div>
+              </div>
+            )}
+            {completeness?.dimensions.map((item) => <DimensionRow key={item.dimension} item={item} />)}
               {completeness?.why_not_100.slice(0, 4).map((item) => (
                 <div key={item.reason} className="faint" style={{ fontSize: 10, marginTop: 4 }}>
                   <span className="mono" style={{ color: "var(--amber)" }}>{item.count}</span> · {item.reason} — {item.next_action}

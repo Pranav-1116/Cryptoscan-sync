@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from api import (
     estate_catalog,
+    estate_conflicts,
     estate_observations,
     estate_search,
     estate_change_feed,
@@ -163,6 +164,22 @@ def _latest_run(db: Session) -> Any:
             },
         )
     return runs[0]
+
+
+def _latest_twin_graph_or_none(db: Session) -> Any | None:
+    """The newest twin, or ``None`` when nothing has been observed yet.
+
+    Conflicts do not need a live run to be answerable — the durable per-fact record holds
+    disputes on its own — so this returns None rather than raising, and the caller
+    reports the history half instead of a 404.
+    """
+    runs = ScanRunRepository(db).list_runs(limit=1, target_kind=RUN_KIND, owner=current_tenant())
+    if not runs:
+        return None
+    try:
+        return _graph_from_run(runs[0])
+    except Exception:  # noqa: BLE001 — a corrupt run must not hide the recorded disputes
+        return None
 
 
 def _graph_from_run(run) -> Any:
@@ -1721,3 +1738,23 @@ def estate_twin_graph_verify(
         database=(body.database if body else None),
     )
     return {"run_id": run.id, **result}
+
+
+# -- conflicts, kept as conflicts (spec 94 §23) ----------------------------- #
+
+
+@router.get("/twin/conflicts")
+def estate_twin_conflicts(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every disagreement the twin is holding, classified and never resolved (§23).
+
+    ``REAL`` conflicts are two sources on one plane disagreeing — one of them is wrong and
+    a human has to find out which. ``EXPLAINED`` ones come from different planes and can
+    both be true (capability vs use). Reporting the second kind as the first is how an
+    operator learns to ignore conflicts, so the two are counted separately and every
+    entry carries the evidence behind each value.
+    """
+    graph = _latest_twin_graph_or_none(db)
+    return estate_conflicts.survey(db, graph, tenant_id=current_tenant())

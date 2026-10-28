@@ -455,3 +455,49 @@ it("says a record search that found nothing is a gap in observation, not a denia
   await waitFor(() => expect(screen.getByText("record · Kyber-1024")).toBeInTheDocument());
   expect(screen.getByText(/not proof the bank has none of it/)).toBeInTheDocument();
 });
+
+it("shows a held conflict with its evidence and refuses to resolve it", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    "/api/v1/estate/evidence/twin/conflicts": {
+      schema: "cryptoscan.estate-conflicts/1",
+      count: 2, real_count: 1, explained_count: 1, assets_affected: 1,
+      by_classification: { REAL: 1, EXPLAINED: 1, UNKNOWN: 0 },
+      meaning: "a conflict is reported, never resolved",
+      limits: ["an empty list is not 'no conflicts in the bank'"],
+      conflicts: [
+        {
+          asset_id: "application:api", asset_name: "Payment API", field: "engine",
+          values: [
+            { value: "OpenSSL 3.0.13", source: "sbom", layer: "PLATFORM" },
+            { value: "OpenSSL 3.0.11", source: "container", layer: "PLATFORM" },
+          ],
+          classification: "REAL" as const,
+          reason: "two observations on the same plane (PLATFORM) disagree; one of them is wrong",
+          status: "CONFLICT", source_of_conflict: "observation",
+          next_action: "decide which observation is correct", seen_by: ["observation"],
+        },
+        {
+          asset_id: "application:api", asset_name: "Payment API", field: "algorithm",
+          values: [
+            { value: "AES-128", layer: "PLATFORM" },
+            { value: "AES-256-GCM", layer: "APPLICATION" },
+          ],
+          classification: "EXPLAINED" as const,
+          reason: "the values come from different planes (APPLICATION, PLATFORM) and can both be true at once",
+          status: "CONFLICT", source_of_conflict: "observation",
+          next_action: "nothing needs fixing", seen_by: ["observation"],
+        },
+      ],
+    },
+  });
+  render(<DigitalTwinPanel />);
+
+  await waitFor(() => expect(screen.getByText("CONFLICTS · 1 real, 1 explained")).toBeInTheDocument());
+  expect(screen.getByText("REAL")).toBeInTheDocument();
+  expect(screen.getByText(/OpenSSL 3.0.13 vs OpenSSL 3.0.11/)).toBeInTheDocument();
+  expect(screen.getByText(/one of them is wrong/)).toBeInTheDocument();
+  expect(screen.getByText("EXPLAINED")).toBeInTheDocument();
+  expect(screen.getByText(/can both be true at once/)).toBeInTheDocument();
+  expect(screen.getByText(/nothing here is resolved for you/)).toBeInTheDocument();
+});

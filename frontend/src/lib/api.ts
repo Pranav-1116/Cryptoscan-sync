@@ -6496,3 +6496,27 @@ export const apiEstateSearch = (
   if (kinds && kinds.length) params.set("kinds", kinds.join(","));
   return _rsGet<EstateSearchResult>(`/api/v1/estate/evidence/search?${params.toString()}`);
 };
+
+/* §23: conflicts are reported, never resolved. REAL means two sources on one plane
+   disagree; EXPLAINED means the values come from different planes and can both be true. */
+export interface EstateConflictValue {
+  value: unknown; source?: string | null; evidence_type?: string | null;
+  layer?: string | null; evidence_scope?: string; evidence_id?: string | null;
+  observed_at?: string | null;
+}
+
+export interface EstateConflict {
+  asset_id: string; asset_name?: string | null; field: string; fact_type?: string;
+  values: EstateConflictValue[]; classification: "REAL" | "EXPLAINED" | "UNKNOWN";
+  reason: string; status: string; source_of_conflict: string; next_action: string;
+  seen_by: string[];
+}
+
+export interface EstateConflictSurvey {
+  schema: string; conflicts: EstateConflict[]; count: number;
+  by_classification: Record<string, number>; real_count: number; explained_count: number;
+  assets_affected: number; meaning: string; limits: string[];
+}
+
+export const apiEstateConflicts = (): Promise<ApiResult<EstateConflictSurvey>> =>
+  _rsGet<EstateConflictSurvey>("/api/v1/estate/evidence/twin/conflicts");

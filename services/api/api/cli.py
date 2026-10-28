@@ -236,6 +236,13 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_evidence.add_argument("--tenant", default=None)
     twin_evidence.add_argument("--json", action="store_true")
 
+    twin_conflicts = twin_sub.add_parser(
+        "conflicts",
+        help="every disagreement the twin is holding, classified and never resolved",
+    )
+    twin_conflicts.add_argument("--tenant", default=None)
+    twin_conflicts.add_argument("--json", action="store_true")
+
     twin_search = twin_sub.add_parser(
         "search",
         help="search assets, artefacts, edges, evidence, facts and changes in one call",
@@ -746,6 +753,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
     from api import (
         estate_catalog,
         estate_change_feed,
+        estate_conflicts,
         estate_graph_loader,
         estate_observations,
         estate_search,
@@ -832,6 +840,30 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                         for item in entry["assets"][:4]:
                             print(f"      {item['asset_type']:<14} {item['asset_name']}  ({item['usage_state']})")
                     print(f"\n{body['meaning']}")
+                return EXIT_OK
+
+            if args.twin_command == "conflicts":
+                graph_for_conflicts = latest_twin_graph(session, args.tenant)
+                body = estate_conflicts.survey(
+                    session, graph_for_conflicts, tenant_id=args.tenant
+                )
+                if args.json:
+                    print(json.dumps(body, indent=2, default=str))
+                elif not body["count"]:
+                    print("no conflict in what has been observed — which is not a statement that "
+                          "the bank's sources agree")
+                else:
+                    print(f"{body['count']} conflict(s): {body['real_count']} real, "
+                          f"{body['explained_count']} explained, "
+                          f"{body['by_classification']['UNKNOWN']} unclassified")
+                    for item in body["conflicts"][:20]:
+                        name = item.get("asset_name") or item["asset_id"]
+                        print(f"  {'!' if item['classification'] == 'REAL' else ' '} "
+                              f"{name} · {item['field']} · {item['classification']}")
+                        for value in item["values"][:4]:
+                            print(f"      {value['value']!r} from {value['source']} "
+                                  f"({value['evidence_type']}, {value['layer']})")
+                        print(f"      {item['reason']}")
                 return EXIT_OK
 
             if args.twin_command == "search":
@@ -948,7 +980,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                 graph = latest_twin_graph(session, getattr(args, "tenant", None))
             if graph is None and args.twin_command not in {
                 "changes", "ack", "detect", "assets", "asset", "algorithms",
-                "history", "why", "evidence", "search",
+                "history", "why", "evidence", "search", "conflicts",
             }:
                 
                 print(

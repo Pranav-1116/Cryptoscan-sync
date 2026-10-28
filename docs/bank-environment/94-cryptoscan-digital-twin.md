@@ -471,6 +471,37 @@ CONFLICT DETECTED — investigate.
 Likely explanation: the container library is not the dynamically loaded host
 library. That is intelligence, not noise.
 
+### What a conflict is, now that it has a list
+
+`GET /twin/conflicts` (and `cryptoscan twin conflicts`) gathers every disagreement the
+twin is holding — from the current observation *and* from the durable fact record — and
+classifies it, because "two values disagree" is not one thing:
+
+| classification | meaning | what it means to do |
+|---|---|---|
+| `REAL` | two sources on the **same plane** disagree | one is wrong; fix the source and re-collect |
+| `EXPLAINED` | the values come from **different planes** | both can be true (capability vs use); nothing needs fixing |
+| `UNKNOWN` | no plane was recorded | treat it as real until a collector states its plane |
+
+Three rules, and the third is the one that keeps the list read:
+
+* **nothing is resolved.** There is no merge, no "newest wins", no way to choose in the
+  API. A conflict closes when a human corrects the source and a new observation proves it;
+* **a disagreement seen twice is one problem.** The same fact can be disputed by the
+  current observation and by the recorded history, so entries merge on
+  `(asset, field)` and name both sources in `seen_by`;
+* **an unstated plane is not a different plane.** Counting a missing attribution as a
+  second plane would turn every record with an attribution gap into an "explained"
+  conflict, and a conflict list that explains everything stops being read. The recorded
+  fact history cites the evidence behind its *asset*, not per value, so it reports those
+  disputes as `UNKNOWN` and lets an observation upgrade the classification — that limit
+  is why the two sides are merged rather than ranked.
+
+Only the fields the twin treats as conflict-bearing (`algorithm`, `key_size`, `protocol`,
+`version`, `firmware`, …) are compared. Two artefacts of one asset with different
+`usage_state` is normal and is **not** a conflict — treating it as one is how a list fills
+with noise.
+
 ### Who is told, and how
 
 A detected change that only appears when someone opens the console is a report someone
@@ -685,6 +716,7 @@ bank.
 | Graph projection (§20) | **shipped** — deterministic typed nodes/edges, evidence ids on every edge, unresolved edges shipped separately, `not_source_of_truth` in the payload | `estate_twin.graph_export()` |
 | Graph store load (§20–§21) | **shipped** — `POST /twin/graph/load` and `cryptoscan twin graph-load` plan by default and write only on an explicit ask; MERGE by deterministic id (a re-load converges), labels/types validated against the graph vocabulary before they reach Cypher, whole-export refusal, opt-in `prune_missing`, and **read-back verification** (`VERIFIED` / `MISMATCH` / `NOT_CONNECTED` rather than "loaded") | `api/estate_graph_loader.py` |
 | Simulation history (§17, §19) | **shipped, quarantined** — `estate_simulation_runs` (migration 0111). A stored simulation is a *question asked of a copy*: `quarantined=true`, `is_estate_state=false`, refused at write time unless the engine reports the live state untouched, incremented (not duplicated) when the same question is asked again, and marked `superseded` once the estate moves. Reachable as `POST /twin/simulate {persist:true}`, `GET /twin/simulations`, `cryptoscan twin simulate --save` | `api/estate_simulation_store.py` |
+| Conflicts surfaced (§23) | **shipped** — `GET /twin/conflicts`, `cryptoscan twin conflicts`, and a conflicts block in the live twin view. Every disagreement is classified `REAL` / `EXPLAINED` / `UNKNOWN` from the planes behind its values, merged across the observation and the fact record, and carries `next_action`. Nothing in the module can resolve one | `estate_conflicts.py` |
 | Estate search (§26) | **shipped** — one query across assets, artefacts, relationships (including refused candidates), evidence, recorded facts and detected changes; grouped by kind, bounded per kind with truncation stated, and `usage_states` kept apart so capability cannot be read as use | `estate_search.py`, `GET /search`, `cryptoscan twin search`, search panel in the twin view |
 | Change announcement (§17–§18, §23) | **shipped** — detected changes are stored *and* published to the platform journal as `estate.change.detected` / `estate.coverage.lost`, with the claims in the payload and both classes routable in the notification matrix | `estate_change_feed.announce()`, `notification_routing.CATALOG` |
 | Layer 5 evidence records + per-fact history (§11, §19, §28) | **shipped** — evidence stored as content-addressed records; every fact kept as a value *with a window*, and "why" answered from the evidence behind the asset | `estate_observations.py`, migration 0114, `GET /evidence/records`, `GET /history/summary`, `GET /history/assets/{id}`, `GET /why/{id}`, `cryptoscan twin history|why|evidence` |
