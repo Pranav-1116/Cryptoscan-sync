@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import uuid
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -356,6 +355,26 @@ def _content_evidence_id(
     return "ev-" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
+def _evidence_material(record: Mapping[str, Any]) -> str:
+    """The part of a record that a content address covers.
+
+    ``raw_reference``, ``collector_version`` and ``observed_at`` are provenance: a run id
+    annotated later, or the same probe rebuilt, must not change the identity of a fact.
+    """
+    return json.dumps(
+        {
+            "evidence_type": record.get("evidence_type"),
+            "target": record.get("target"),
+            "layer": record.get("layer"),
+            "source": record.get("source"),
+            "collector": record.get("collector"),
+            "facts": record.get("facts") or {},
+        },
+        sort_keys=True,
+        default=str,
+    )
+
+
 def content_evidence_id(
     evidence_type: str,
     target: str,
@@ -400,14 +419,19 @@ def make_evidence(
     layer_name = str(layer or "UNKNOWN").upper()
     if layer_name not in CRYPTO_LAYERS:
         raise ValueError(f"unknown layer {layer!r}; expected one of {', '.join(CRYPTO_LAYERS)}")
+    # The collector default has to be resolved *before* the address is computed. Filing the
+    # record under `collector or source` while hashing `collector` meant a record created
+    # without an explicit collector could never verify: the verifier reads the stored
+    # `agent` and the writer hashed `None`.
+    collector_name = collector or source
     return {
         # content-addressed unless the caller supplies an id: the same fact seen
         # twice is ONE evidence record, and a snapshot id does not change just
         # because the graph was rebuilt from the same stored payload.
-        "evidence_id": evidence_id or _content_evidence_id(kind, target, facts, layer_name, source, collector),
+        "evidence_id": evidence_id or _content_evidence_id(kind, target, facts, layer_name, source, collector_name),
         "schema": "cryptoscan.estate-evidence/1",
         "source": source,
-        "collector": collector or source,
+        "collector": collector_name,
         "collector_version": collector_version,
         "raw_reference": raw_reference,
         "evidence_type": kind,
@@ -597,9 +621,32 @@ class EstateGraph:
                 "(a fact without an asset is not an estate fact)"
             )
         evidence = dict(record)
-        evidence.setdefault("evidence_id", f"ev-{uuid.uuid4().hex[:16]}")
+        # §11 — identity is what was observed, not when it was observed or which process
+        # wrote it. A random id would make every record unverifiable: recomputing it from
+        # the stored row could never agree, so `evidence verify` would have to answer
+        # "cannot check" for records this class itself created.
+        evidence.setdefault(
+            "evidence_id",
+            _content_evidence_id(
+                str(evidence.get("evidence_type") or "UNKNOWN").upper(),
+                target,
+                evidence.get("facts"),
+                str(evidence.get("layer") or "").upper(),
+                evidence.get("source"),
+                evidence.get("collector"),
+            ),
+        )
         evidence_id = str(evidence["evidence_id"])
-        if evidence_id in self._evidence:
+        existing = self._evidence.get(evidence_id)
+        if existing is not None:
+            # Two planes that observed the same fact produced the same record. That is one
+            # sighting, not a collision — unless the *content* differs, in which case an
+            # explicitly supplied id is naming two different things and is refused.
+            if _evidence_material(existing) == _evidence_material(evidence):
+                refs = self._assets[target]["evidence_refs"]
+                if evidence_id not in refs:
+                    refs.append(evidence_id)
+                return evidence_id
             raise ValueError(f"duplicate evidence id {evidence_id!r}")
         self._evidence[evidence_id] = evidence
         self._assets[target]["evidence_refs"].append(evidence_id)

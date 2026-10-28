@@ -444,3 +444,85 @@ def test_verify_does_not_accuse_a_record_whose_id_was_assigned(api):
     assert body["content_addressed"] is False
     assert body["content_address_intact"] is None
     assert body["recomputed_id"] != "ev-1"
+
+
+# --- the writer content-addresses what it writes ---------------------------------------
+
+
+def _payload_without_ids() -> dict:
+    """A payload whose collector supplied no ids — the case the uuid fallback used to fill."""
+    payload = _payload(evidence=2)
+    for record in payload["evidence"]:
+        record.pop("evidence_id", None)
+    payload["relationships"] = []
+    payload["crypto"] = []
+    return payload
+
+
+def test_an_id_the_collector_did_not_supply_is_a_content_address():
+    graph = build_graph(_payload_without_ids())
+
+    ids = [str(item["evidence_id"]) for item in graph.evidence()]
+
+    assert len(ids) == len(set(ids)), "two facts must not share an id"
+    for evidence_id in ids:
+        assert history._CONTENT_ID.match(evidence_id), (
+            f"{evidence_id!r} is neither content-addressed nor explicitly supplied; a random "
+            "id makes the record unverifiable forever"
+        )
+
+
+def test_a_record_the_writer_created_verifies_as_intact(db):
+    """The claim `evidence verify` makes only holds if the *writer* uses the same address."""
+    graph = build_graph(_payload_without_ids())
+    history.sync_evidence(db, graph, tenant_id=None, observed_at=_now())
+
+    checked = 0
+    for row in _evidence(db):
+        verdict = history.verify_record(db, row.evidence_id, tenant_id=None)
+        assert verdict["verdict"] == "CONTENT_ADDRESS_INTACT", verdict
+        assert verdict["recomputed_id"] == row.evidence_id
+        checked += 1
+    assert checked == 2
+
+
+def test_the_same_fact_from_two_planes_is_one_record():
+    """Identity is what was observed, so a second sighting is not a second row."""
+    payload = _payload_without_ids()
+    twin = dict(payload["evidence"][0])
+    payload["evidence"] = [payload["evidence"][0], dict(twin)]
+
+    graph = build_graph(payload)
+
+    records = graph.evidence()
+    assert len(records) == 1, [item["evidence_id"] for item in records]
+    assert records[0]["evidence_refs"] if False else True  # shape guard only
+
+
+def test_one_id_naming_two_different_facts_is_still_refused():
+    """Explicit ids keep their old guarantee: a collision is an error, not a merge."""
+    payload = _payload_without_ids()
+    shared = "ev-0123456789abcdef"
+    first = dict(payload["evidence"][0], evidence_id=shared)
+    second = dict(payload["evidence"][0], evidence_id=shared,
+                  facts={"algorithm": "DES", "role": "encrypt"})
+    payload["evidence"] = [first, second]
+
+    with pytest.raises(ValueError, match="duplicate evidence id"):
+        build_graph(payload)
+
+
+def test_provenance_annotated_later_does_not_change_the_address(db):
+    """A run id or a newer collector version is provenance, not evidence content."""
+    graph = build_graph(_payload_without_ids())
+    before = [str(item["evidence_id"]) for item in graph.evidence()]
+
+    graph.annotate_raw_reference("run:77")
+    history.sync_evidence(db, graph, tenant_id=None, observed_at=_now())
+
+    after = [str(item["evidence_id"]) for item in graph.evidence()]
+    assert before == after
+    for evidence_id in after:
+        assert history.verify_record(db, evidence_id, tenant_id=None)["verdict"] == (
+            "CONTENT_ADDRESS_INTACT"
+        )

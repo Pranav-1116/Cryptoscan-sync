@@ -803,6 +803,21 @@ whose `observation_count` is forty — a quiet estate must not look busy — wit
 `first_seen_at` held from the first sighting and `last_seen_at` advanced each time. A
 record a collector stops producing becomes `STALE`; it is never deleted.
 
+**The address is now the *writer's* rule, not just the importer's.** Two defects made
+"content-addressed" true only by convention, and both are closed: `add_evidence` fell
+back to `ev-<uuid>` for any record whose collector supplied no id, and `make_evidence`
+hashed the *unresolved* collector (`None`) while filing the record under
+`collector or source` — so a record created without an explicit collector could never
+verify, because the verifier reads `agent` and the writer had hashed nothing. The
+collector default is now resolved before the address is computed, the fallback is the
+content address, and two planes that observe the same fact land on one record instead of
+colliding. `GET /evidence/records/{id}/verify` recomputes the address from the stored
+row and reports `CONTENT_ADDRESS_INTACT`, `CONTENT_ADDRESS_MISMATCH`, or
+`ID_NOT_CONTENT_ADDRESSED` — the last for rows an importer filed under an assigned id,
+which are unverifiable rather than suspect. Provenance (`collector_version`,
+`raw_reference`, `observed_at`, the run id annotated later) is deliberately outside the
+address: upgrading a probe does not change the fact it observed.
+
 **Observations (`estate_observations`).** One row per `(asset, fact_type, value)` with
 the window in which that value was the observed truth. `fact_type` names the fact
 plainly: `environment`, `owner`, `attribute:region`, `crypto:algorithm`,
