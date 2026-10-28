@@ -25,6 +25,11 @@ const Cbom = lazy(() => import("./pages/Cbom"));
 const Certificates = lazy(() => import("./pages/Certificates"));
 const Cloud = lazy(() => import("./pages/Cloud"));
 const Cmdb = lazy(() => import("./pages/Cmdb"));
+const AssuranceCoverage = lazy(() => import("./pages/AssuranceCoverage"));
+const AssuranceQualification = lazy(() => import("./pages/AssuranceQualification"));
+const AssuranceRecords = lazy(() => import("./pages/AssuranceRecords"));
+const AssuranceSampling = lazy(() => import("./pages/AssuranceSampling"));
+const AssuranceTrace = lazy(() => import("./pages/AssuranceTrace"));
 const LaunchReadiness = lazy(() => import("./pages/LaunchReadiness"));
 const OperatorDecisions = lazy(() => import("./pages/OperatorDecisions"));
 const CommandCenter = lazy(() => import("./pages/CommandCenter"));
@@ -166,6 +171,11 @@ function RoutedPages() {
       <Route path="/cmdb" element={<Cmdb />} />
       <Route path="/launch-readiness" element={<LaunchReadiness />} />
       <Route path="/operator-decisions" element={<OperatorDecisions />} />
+      <Route path="/assurance-records" element={<AssuranceRecords />} />
+      <Route path="/assurance-coverage" element={<AssuranceCoverage />} />
+      <Route path="/assurance-trace" element={<AssuranceTrace />} />
+      <Route path="/assurance-sampling" element={<AssuranceSampling />} />
+      <Route path="/assurance-qualification" element={<AssuranceQualification />} />
       <Route path="/command-center" element={<CommandCenter />} />
       <Route path="/compliance" element={<Compliance />} />
       <Route path="/crypto" element={<Crypto />} />

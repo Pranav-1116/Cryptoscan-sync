@@ -6620,3 +6620,117 @@ export interface EstateTrustPaths {
 
 export const apiEstateTrustPaths = (): Promise<ApiResult<EstateTrustPaths>> =>
   _rsGet<EstateTrustPaths>("/api/v1/estate/evidence/twin/trust-paths");
+
+/* ---------------------------------------------------------------------------
+ * Evidence assurance (the `/api/v1/assurance` workflows).
+ *
+ * These are the *read* routes of the seven assurance workflows. Each one returns
+ * the server's own payload; nothing here computes a percentage, and no caller
+ * substitutes a cached success. The mutating routes of the same workflows are
+ * driven by the pages that already exist (/operator-decisions, /launch-readiness)
+ * because a POST needs a reason, an actor and a receipt, not a table view.
+ * ------------------------------------------------------------------------- */
+
+export interface AssuranceRecord {
+  id: string;
+  kind: string;
+  subject_id: string;
+  revision: number;
+  payload: Record<string, unknown>;
+  payload_sha256: string;
+  previous_sha256: string | null;
+  created_by?: string;
+  created_at?: string | null;
+}
+export interface AssuranceRecords {
+  records: AssuranceRecord[];
+  has_more: boolean;
+  next_offset: number | null;
+  includes_all_revisions: boolean;
+}
+export const apiAssuranceKinds: string[] = [
+  "estate_register", "coverage_observation", "bom_relationship", "accuracy_sample",
+  "accuracy_review", "accuracy_repeat", "evidence_blob", "supplier_evidence",
+  "adapter_manifest", "adapter_qualification", "redis_objectives", "redis_measurement",
+  "finding_assessment", "signer", "remediation_change", "remediation_task", "operator_decision",
+];
+export const apiAssuranceRecords = (kind: string, offset = 0, limit = 100): Promise<ApiResult<AssuranceRecords>> =>
+  _rsGet<AssuranceRecords>(
+    `/api/v1/assurance/records?kind=${encodeURIComponent(kind)}&offset=${offset}&limit=${limit}`);
+export const apiAssuranceHistory = (kind: string, identifier: string, after = 0): Promise<ApiResult<{ revisions: AssuranceRecord[]; has_more: boolean }>> =>
+  _rsGet<{ revisions: AssuranceRecord[]; has_more: boolean }>(
+    `/api/v1/assurance/records/${encodeURIComponent(kind)}/${encodeURIComponent(identifier)}?after_revision=${after}`);
+
+export interface CoverageCounts { OBSERVED: number; STALE: number; BLOCKED: number; UNSUPPORTED: number; NOT_ATTEMPTED: number }
+export interface CoverageTarget {
+  target_id: string; target_ref: string; kind: string; method: string;
+  state: keyof CoverageCounts; freshness_seconds: number;
+  expires_at: string | null; last_attempted_at: string | null; last_successful_at: string | null;
+}
+export interface AssuranceCoverage {
+  register_id: string; revision: number; registered_targets: number;
+  register_completeness: string; scope_description: string; completeness_evidence_ref: string;
+  whole_bank_verified: false; denominator_basis: string; completeness_basis: string;
+  counts: CoverageCounts; by_kind: Record<string, Record<string, number>>;
+  targets: CoverageTarget[]; as_of: string;
+}
+export const apiAssuranceCoverage = (registerId: string): Promise<ApiResult<AssuranceCoverage>> =>
+  _rsGet<AssuranceCoverage>(`/api/v1/assurance/registers/${encodeURIComponent(registerId)}/coverage`);
+
+export interface TracePath {
+  application_id: string; deployment_id: string; deployment_basis: string; deployment_evidence_ref: string;
+  artifact_id: string; artifact_digest: string; artifact_identity_source: string;
+  sbom_binding_id: string; sbom_sha256: string; package_identity: string | null;
+  crypto_evidence_id: string | null; algorithm: string | null; purpose: string | null;
+  location: { file: string | null; line: number | null } | null;
+  relationship_id: string; relationship_sha256: string; evidence_ids: string[]; trust: unknown;
+  deployed_verified: false; invocation_verified: false;
+}
+export interface TraceUnresolved { reason: string; deployment_id?: string; sbom_binding_id?: string; artifact_id?: string; package_identity?: string | null; bom_ref?: string }
+export interface AssuranceTrace {
+  application_id: string; paths: TracePath[]; unresolved: TraceUnresolved[];
+  complete: false; runtime_verified: false; note: string;
+}
+export const apiAssuranceTrace = (applicationId: string): Promise<ApiResult<AssuranceTrace>> =>
+  _rsGet<AssuranceTrace>(`/api/v1/assurance/applications/${encodeURIComponent(applicationId)}/trace`);
+
+export interface SampleUnit {
+  unit_id: string; split: string; prediction?: unknown; package_identity?: string | null;
+  truth_label?: string; explanation?: string | null;
+}
+export interface AssuranceWorkbook {
+  sample_id: string; sample_sha256: string; phase: "FIRST_PASS" | "HOLDOUT";
+  domain_owner: string; scope: string; units: SampleUnit[];
+  truth_labels: string[]; note: string;
+}
+export const apiAssuranceWorkbook = (sampleId: string, phase: "FIRST_PASS" | "HOLDOUT" = "FIRST_PASS"): Promise<ApiResult<AssuranceWorkbook>> =>
+  _rsGet<AssuranceWorkbook>(
+    `/api/v1/assurance/samples/${encodeURIComponent(sampleId)}/workbook?phase=${phase}`);
+
+export interface AdapterStatus {
+  manifest: AssuranceRecord; qualification: AssuranceRecord | null;
+  offline_profile_exercised: boolean; live_vendor_supported: false;
+  support_status: "OFFLINE_PROFILE_EXERCISED" | "NOT_QUALIFIED";
+}
+export const apiAssuranceAdapter = (adapterId: string): Promise<ApiResult<AdapterStatus>> =>
+  _rsGet<AdapterStatus>(`/api/v1/assurance/adapters/${encodeURIComponent(adapterId)}`);
+export interface SupplierObservations {
+  source_evidence_id: string; source_sha256: string; artifact_id: string; build_digest: string;
+  qualification_id: string; automatic_identity_joins: false; live_vendor_supported: false;
+  independent_truth_verified: false; facts?: unknown[];
+}
+export const apiAssuranceSupplierObservations = (adapterId: string, evidenceId: string): Promise<ApiResult<SupplierObservations>> =>
+  _rsGet<SupplierObservations>(
+    `/api/v1/assurance/adapters/${encodeURIComponent(adapterId)}/supplier-evidence/${encodeURIComponent(evidenceId)}/observations`);
+
+export interface RedisQualification {
+  objectives: AssuranceRecord;
+  matrix: { role: string; scenario: string; measurement_id: string | null; accepted: boolean; state: string }[];
+  unqualified_roles: string[];
+  deployment_evidence_meets_objectives: boolean;
+  whole_infrastructure_qualified: boolean;
+  qualification_basis: string;
+  local_sentinel_promotion_is_deployment_qualification: false;
+}
+export const apiAssuranceRedisQualification = (objectivesId: string): Promise<ApiResult<RedisQualification>> =>
+  _rsGet<RedisQualification>(`/api/v1/assurance/redis-objectives/${encodeURIComponent(objectivesId)}/qualification`);

@@ -52,12 +52,12 @@ describe("app shell", () => {
     expect(nav?.querySelectorAll(":scope > .nav-label")).toHaveLength(6);
     const links = Array.from(nav?.querySelectorAll("a.nav") || []);
     const hrefs = links.map((link) => link.getAttribute("href") || "");
-    // 42 links over 41 routes: the Audit Log / Security Center duplication in the sidebar
+    // 47 links over 46 routes: the Audit Log / Security Center duplication in the sidebar
     // is deliberate (see Layout.tsx), and the nav wraps them in one section each
-    expect(links).toHaveLength(42);
-    expect(new Set(hrefs).size).toBe(41);
+    expect(links).toHaveLength(47);
+    expect(new Set(hrefs).size).toBe(46);
     expect(hrefs.filter((href) => href === "/security-center")).toHaveLength(2);
-    for (const path of ["/launch-readiness", "/operator-decisions", "/crypto", "/cbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/remediation", "/priorities", "/migration", "/live-scanners"]) {
+    for (const path of ["/launch-readiness", "/operator-decisions", "/assurance-records", "/assurance-coverage", "/assurance-trace", "/assurance-sampling", "/assurance-qualification", "/crypto", "/cbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/remediation", "/priorities", "/migration", "/live-scanners"]) {
       expect(hrefs).toContain(path);
     }
     expect(hrefs).not.toContain("/vendor-due-diligence");
