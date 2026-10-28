@@ -228,6 +228,17 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_evidence.add_argument("--tenant", default=None)
     twin_evidence.add_argument("--json", action="store_true")
 
+    twin_search = twin_sub.add_parser(
+        "search",
+        help="search assets, artefacts, edges, evidence, facts and changes in one call",
+    )
+    twin_search.add_argument("query", help="asset, algorithm, collector, region, change…")
+    twin_search.add_argument("--kind", dest="kinds", action="append",
+                             help="ASSETS | CRYPTO | RELATIONSHIPS | EVIDENCE | FACTS | CHANGES (repeatable)")
+    twin_search.add_argument("--limit", type=int, default=10)
+    twin_search.add_argument("--tenant", default=None)
+    twin_search.add_argument("--json", action="store_true")
+
     twin_placement = twin_sub.add_parser(
         "placement",
         help="where everything belongs: bank -> region -> data centre -> cloud -> environment",
@@ -729,6 +740,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
         estate_change_feed,
         estate_graph_loader,
         estate_observations,
+        estate_search,
         estate_simulation_store,
     )
     from api.estate_twin_graph import latest_twin_graph
@@ -814,6 +826,37 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                     print(f"\n{body['meaning']}")
                 return EXIT_OK
 
+            if args.twin_command == "search":
+                try:
+                    result = estate_search.search(
+                        session,
+                        args.query,
+                        tenant_id=args.tenant,
+                        kinds=args.kinds,
+                        limit=args.limit,
+                    )
+                except ValueError as exc:
+                    print(f"search refused: {exc}", file=sys.stderr)
+                    return EXIT_INCOMPLETE
+                if args.json:
+                    print(json.dumps(result, indent=2, default=str))
+                else:
+                    print(f"{result['matched']} match(es) for {result['query']!r}")
+                    for name, group in result["groups"].items():
+                        if not group["count"]:
+                            continue
+                        print(f"\n{name} — {group['count']}"
+                              f"{' (truncated)' if group.get('truncated') else ''}")
+                        for hit in group["hits"][:args.limit]:
+                            print(f"  {hit['label'][:90]}")
+                            if hit.get("usage_states"):
+                                states = ", ".join(f"{state} {count}"
+                                                   for state, count in sorted(hit["usage_states"].items()))
+                                print(f"      {states}")
+                    if not result["matched"]:
+                        print("  nothing recorded matches — that is not evidence the bank has none")
+                return EXIT_OK
+
             if args.twin_command == "history":
                 detail = estate_observations.history(session, args.identifier, tenant_id=args.tenant)
                 if args.json:
@@ -885,7 +928,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                 return EXIT_OK if rows["count"] else EXIT_INCOMPLETE
 
             if args.twin_command in {
-                "changes", "assets", "asset", "algorithms", "history", "why", "evidence"
+                "changes", "assets", "asset", "algorithms", "history", "why", "evidence", "search"
             }:
                 # records of past observations: readable even when the current twin
                 # cannot be rebuilt, and saying otherwise would hide the history
@@ -897,7 +940,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                 graph = latest_twin_graph(session, getattr(args, "tenant", None))
             if graph is None and args.twin_command not in {
                 "changes", "ack", "detect", "assets", "asset", "algorithms",
-                "history", "why", "evidence",
+                "history", "why", "evidence", "search",
             }:
                 
                 print(

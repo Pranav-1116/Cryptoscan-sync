@@ -568,6 +568,34 @@ Search: AES-128
   └── 3 legacy systems
 ```
 
+"Where is RSA-2048?" is four questions in one sentence — which assets, which artefacts,
+which edges, and which evidence says so — and an operator who has to guess which of five
+endpoints to call is navigating, not searching. `GET /estate/evidence/search?q=…` (and
+`cryptoscan twin search`) answers across everything the twin has recorded, grouped by
+kind and never merged into one list:
+
+| group | what it reaches | why it is separate |
+|---|---|---|
+| `ASSETS` | name, id, owner, environment, type | a hit is an asset, not a claim about it |
+| `CRYPTO` | algorithm, protocol, curve, and the artefacts behind them | grouped per `usage_state`, so a `SUPPORTED` library row can never be read as a deployed cipher |
+| `RELATIONSHIPS` | subject, object, predicate — established **and** refused candidates | a candidate is labelled `UNRESOLVED` with its refusal reason |
+| `EVIDENCE` | collector, source, type, target, **and the recorded facts** | "who observed this" and "which record mentions this" are different searches |
+| `FACTS` | recorded fact values (`attribute:region = me-central-1`) | "what is in me-central-1" is a fact query, not an asset query |
+| `CHANGES` | detected change headlines and the claims inside them | a demotion nobody can find is a demotion nobody acts on |
+
+Three rules:
+
+* **search is not discovery.** It searches what has been observed and recorded, and the
+  response says so: an empty result means *nothing matching has been recorded*, never
+  that the bank has none of it. A search box that returns zero rows reads as a negative
+  finding to everyone who did not build it.
+* **capability is not use, in search too.** Algorithm hits carry `usage_states` and are
+  never summed into one "assets using" number.
+* **a result is a shortlist.** Each kind is capped (25 in the API, `--limit` in the CLI),
+  says when it was truncated, and carries ids a caller can act on. Matching is
+  case-insensitive substring and deliberately not fuzzy: a near-miss presented as a hit
+  is how a search becomes a rumour.
+
 ## Blast radius
 
 ```
@@ -657,6 +685,7 @@ bank.
 | Graph projection (§20) | **shipped** — deterministic typed nodes/edges, evidence ids on every edge, unresolved edges shipped separately, `not_source_of_truth` in the payload | `estate_twin.graph_export()` |
 | Graph store load (§20–§21) | **shipped** — `POST /twin/graph/load` and `cryptoscan twin graph-load` plan by default and write only on an explicit ask; MERGE by deterministic id (a re-load converges), labels/types validated against the graph vocabulary before they reach Cypher, whole-export refusal, opt-in `prune_missing`, and **read-back verification** (`VERIFIED` / `MISMATCH` / `NOT_CONNECTED` rather than "loaded") | `api/estate_graph_loader.py` |
 | Simulation history (§17, §19) | **shipped, quarantined** — `estate_simulation_runs` (migration 0111). A stored simulation is a *question asked of a copy*: `quarantined=true`, `is_estate_state=false`, refused at write time unless the engine reports the live state untouched, incremented (not duplicated) when the same question is asked again, and marked `superseded` once the estate moves. Reachable as `POST /twin/simulate {persist:true}`, `GET /twin/simulations`, `cryptoscan twin simulate --save` | `api/estate_simulation_store.py` |
+| Estate search (§26) | **shipped** — one query across assets, artefacts, relationships (including refused candidates), evidence, recorded facts and detected changes; grouped by kind, bounded per kind with truncation stated, and `usage_states` kept apart so capability cannot be read as use | `estate_search.py`, `GET /search`, `cryptoscan twin search`, search panel in the twin view |
 | Change announcement (§17–§18, §23) | **shipped** — detected changes are stored *and* published to the platform journal as `estate.change.detected` / `estate.coverage.lost`, with the claims in the payload and both classes routable in the notification matrix | `estate_change_feed.announce()`, `notification_routing.CATALOG` |
 | Layer 5 evidence records + per-fact history (§11, §19, §28) | **shipped** — evidence stored as content-addressed records; every fact kept as a value *with a window*, and "why" answered from the evidence behind the asset | `estate_observations.py`, migration 0114, `GET /evidence/records`, `GET /history/summary`, `GET /history/assets/{id}`, `GET /why/{id}`, `cryptoscan twin history|why|evidence` |
 | Layer 1 estate placement (§4) | **shipped at all six levels** — `BANK → REGION → DATA_CENTER → CLOUD_ENVIRONMENT → ENVIRONMENT → BUSINESS_SYSTEM`. The upper three appear **only where a collector asserted them** (`attributes.region`, `attributes.data_center`, `attributes.provider/cloud_account`); an asset no evidence places is counted under `unassigned` with the reason, and a level with no data is named in `levels_unobserved` rather than drawn as an empty box | `estate_twin.placement_model()`, `GET /twin/placement`, `cryptoscan twin placement` |

@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from api import (
     estate_catalog,
     estate_observations,
+    estate_search,
     estate_change_feed,
     estate_discovery,
     estate_drift,
@@ -1644,3 +1645,34 @@ def estate_why(
             },
         )
     return answer
+
+
+# -- one search over the recorded estate (spec 94 §26) ---------------------- #
+
+
+@router.get("/search")
+def estate_search_query(
+    q: str = Query(..., min_length=1, max_length=200, description="asset, algorithm, collector, region, change…"),
+    kinds: str | None = Query(
+        default=None,
+        description="comma-separated subset of ASSETS, CRYPTO, RELATIONSHIPS, EVIDENCE, FACTS, CHANGES",
+    ),
+    limit: int = Query(default=25, ge=1, le=25, description="per kind; results are a shortlist, not an export"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Search everything the twin has recorded, in one call (§26).
+
+    Four questions arrive together — which assets, which artefacts, which edges, and
+    which evidence says so — so they are answered together and grouped, never merged
+    into one list where a capability row and a runtime observation look alike.
+
+    An empty result means *nothing matching has been recorded*, which is not the same
+    as the bank having none of it; the response states that rather than leaving an
+    operator to read zero rows as a finding.
+    """
+    wanted = [item.strip() for item in (kinds or "").split(",") if item.strip()] or None
+    try:
+        return estate_search.search(db, q, tenant_id=current_tenant(), kinds=wanted, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": "bad_search", "reason": str(exc)}) from exc

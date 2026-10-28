@@ -8,13 +8,13 @@ import {
   apiEstateChanges, apiEstateChangesDetect, apiEstateChangeAcknowledge,
   apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
   apiEstateTwinPlacement,
-  apiEstateAssetHistory, apiEstateHistorySummary,
+  apiEstateAssetHistory, apiEstateHistorySummary, apiEstateSearch,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
   EstateChangeFeed, EstateChangeEvent,
   EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
-  EstatePlacement, EstateAssetHistory, EstateHistorySummary,
+  EstatePlacement, EstateAssetHistory, EstateHistorySummary, EstateSearchResult,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -146,6 +146,9 @@ export default function DigitalTwinPanel() {
   const [historySummary, setHistorySummary] = useState<EstateHistorySummary | null>(null);
   /* its own error again: a missing history must not erase the catalogue record */
   const [historyError, setHistoryError] = useState<string | null>(null);
+  /* §26: the durable record, searched across kinds — not just the latest run */
+  const [record, setRecord] = useState<EstateSearchResult | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -221,6 +224,18 @@ export default function DigitalTwinPanel() {
     if (history.ok) setAssetHistory(history.data as EstateAssetHistory);
     // 404 here means "no per-fact history", which is not the same as "no facts"
     else setHistoryError("no per-fact history for this asset — not the same as no properties");
+  };
+
+  /* The twin's own search answers "what does the latest observation say". This one
+     answers "what has the record ever said", across assets, artefacts, edges, evidence,
+     facts and detected changes. */
+  const searchRecord = async () => {
+    const text = query.trim();
+    if (!text) return;
+    setRecordError(null);
+    const result = await apiEstateSearch(text);
+    if (result.ok) setRecord(result.data as EstateSearchResult);
+    else setRecordError("search unavailable — an empty answer here means the record could not be read");
   };
 
   const loadHistorySummary = async () => {
@@ -426,6 +441,9 @@ export default function DigitalTwinPanel() {
               placeholder="algorithm, protocol, key size or name"
             />
             <button type="button" className="btn sm" onClick={() => void search()} disabled={busy}>Search twin</button>
+            <button type="button" className="btn sm" onClick={() => void searchRecord()} disabled={busy}>
+              Search the record
+            </button>
             <button type="button" className="btn sm" onClick={() => void blast()} disabled={busy}>Blast radius</button>
             {busy && <span className="faint" style={{ fontSize: 10.5 }}>working…</span>}
           </div>
@@ -461,6 +479,74 @@ export default function DigitalTwinPanel() {
                 </div>
               )}
               <div className="faint" style={{ fontSize: 10, marginTop: 4 }}>{found.note}</div>
+            </div>
+          )}
+
+          {recordError && (
+            <div className="dim" style={{ fontSize: 10.5, marginTop: 8, color: "var(--amber)" }}>{recordError}</div>
+          )}
+
+          {record && (
+            <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge tone="violet">record · {record.query}</Badge>
+                <span className="faint" style={{ fontSize: 9.5 }}>
+                  {record.matched} match(es) across {record.kinds.length} kind(s)
+                </span>
+                {Object.entries(record.by_kind)
+                  .filter(([, count]) => count > 0)
+                  .map(([kind, count]) => (
+                    <Badge key={kind} tone="slate">{count} {kind.toLowerCase()}</Badge>
+                  ))}
+              </div>
+              {Object.entries(record.groups).map(([kind, group]) => {
+                if (!group.count) return null;
+                return (
+                  <div key={kind} style={{ marginTop: 6 }}>
+                    <div className="mono" style={{ fontSize: 9.5, color: "var(--cyan)" }}>
+                      {kind}{group.truncated ? ` · first ${group.limit} of ${group.count}` : ""}
+                    </div>
+                    {group.usage_states && (
+                      <div className="faint" style={{ fontSize: 9.5 }}>
+                        {Object.entries(group.usage_states)
+                          .map(([state, count]) => `${state} ${count}`)
+                          .join(" · ")}{" "}
+                        — capability is not use
+                      </div>
+                    )}
+                    {group.hits.slice(0, 8).map((hit) => (
+                      <div key={`${kind}:${hit.id}`} style={{ fontSize: 10, marginTop: 2 }}>
+                        {hit.label}
+                        {hit.usage_states && (
+                          <span className="faint" style={{ fontSize: 9.5 }}>
+                            {" "}· {Object.entries(hit.usage_states).map(([state, count]) => `${state} ${count}`).join(", ")}
+                          </span>
+                        )}
+                        {hit.status === "UNRESOLVED" && <Badge tone="amber">candidate</Badge>}
+                        {hit.state === "HISTORICAL" && <Badge tone="slate">historical</Badge>}
+                        {hit.severity && <Badge tone={hit.severity === "CRITICAL" ? "red" : "amber"}>{hit.severity}</Badge>}
+                        {(hit.kind === "ASSET" || hit.asset_id) && (
+                          <button
+                            type="button"
+                            className="btn sm"
+                            style={{ marginLeft: 6, fontSize: 9.5 }}
+                            onClick={() => void investigate((hit.asset_id ?? hit.id) as string)}
+                          >
+                            open
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+              {record.matched === 0 && (
+                <div className="dim" style={{ fontSize: 10.5, marginTop: 4 }}>
+                  nothing in the record matches — that is a gap in what has been observed, not proof the
+                  bank has none of it
+                </div>
+              )}
+              <div className="faint" style={{ fontSize: 9.5, marginTop: 4 }}>{record.meaning}</div>
             </div>
           )}
 

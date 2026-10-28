@@ -6458,3 +6458,41 @@ export const apiEstateAssetHistory = (identifier: string): Promise<ApiResult<Est
 
 export const apiEstateHistorySummary = (): Promise<ApiResult<EstateHistorySummary>> =>
   _rsGet<EstateHistorySummary>("/api/v1/estate/evidence/history/summary");
+
+/* §26: one search across everything recorded. Results come back grouped by kind and
+   are never merged into one list, because a capability row and a runtime observation
+   are different claims about the same algorithm. */
+export interface EstateSearchHit {
+  kind: string; id: string; label: string;
+  asset_type?: string | null; environment?: string | null; owner?: string | null;
+  lifecycle_state?: string | null; observation_count?: number;
+  usage_states?: Record<string, number>; status?: string | null; basis?: string | null;
+  confidence?: string | null; evidence_ids?: string[]; reason?: string | null;
+  target?: string | null; layer?: string | null; observed_at?: string | null;
+  asset_id?: string | null; state?: string | null; evidence_id?: string | null;
+  severity?: string | null; verdict?: string | null; first_detected_at?: string | null;
+  acknowledged?: boolean; detail?: string | null;
+}
+
+export interface EstateSearchGroup {
+  count: number; hits: EstateSearchHit[]; truncated?: boolean; limit?: number;
+  usage_states?: Record<string, number>; asset_types?: Record<string, number>;
+  algorithms?: Record<string, number>; note?: string;
+}
+
+export interface EstateSearchResult {
+  schema: string; query: string; kinds: string[]; matched: number;
+  groups: Record<string, EstateSearchGroup>; by_kind: Record<string, number>;
+  meaning: string; limits: string[];
+}
+
+export type EstateSearchKind = "ASSETS" | "CRYPTO" | "RELATIONSHIPS" | "EVIDENCE" | "FACTS" | "CHANGES";
+
+export const apiEstateSearch = (
+  query: string,
+  kinds?: EstateSearchKind[],
+): Promise<ApiResult<EstateSearchResult>> => {
+  const params = new URLSearchParams({ q: query });
+  if (kinds && kinds.length) params.set("kinds", kinds.join(","));
+  return _rsGet<EstateSearchResult>(`/api/v1/estate/evidence/search?${params.toString()}`);
+};

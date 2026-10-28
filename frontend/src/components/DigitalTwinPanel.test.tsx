@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it } from "vitest";
 import DigitalTwinPanel from "./DigitalTwinPanel";
 import { mockFetch } from "../test/setup";
@@ -22,6 +22,9 @@ const CHANGES = "/api/v1/estate/evidence/changes";
 const CATALOG = "/api/v1/estate/evidence/catalog";
 const PLACEMENT = `${TWIN}/placement`;
 const HISTORY = "/api/v1/estate/evidence/history";
+const SEARCH = "/api/v1/estate/evidence/search";
+// mockFetch matches on the path without a query string
+const SEARCH_KEY = SEARCH;
 const SNAPSHOTS = `${TWIN}/snapshots`;
 
 function overview() {
@@ -396,4 +399,59 @@ it("draws the estate hierarchy only where evidence puts something", async () => 
   expect(screen.getByText(/region me-central-1 · 2 asset/)).toBeInTheDocument();
   expect(screen.getByText(/4 asset\(s\) with no region in any evidence/)).toBeInTheDocument();
   expect(screen.getByText(/not observed at all: DATA_CENTER, CLOUD_ENVIRONMENT/)).toBeInTheDocument();
+});
+
+it("searches the durable record and keeps capability away from use", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [SEARCH_KEY]: {
+      schema: "cryptoscan.estate-search/1", query: "RSA-2048",
+      kinds: ["ASSETS", "CRYPTO", "RELATIONSHIPS", "EVIDENCE", "FACTS", "CHANGES"],
+      matched: 3,
+      by_kind: { ASSETS: 1, CRYPTO: 2, RELATIONSHIPS: 0, EVIDENCE: 0, FACTS: 0, CHANGES: 0 },
+      groups: {
+        ASSETS: { count: 1, hits: [{ kind: "ASSET", id: "application:api", label: "Payment API (APPLICATION)" }] },
+        CRYPTO: {
+          count: 2, hits: [], usage_states: { OBSERVED: 1, SUPPORTED: 1 },
+          note: "grouped per usage_state: SUPPORTED is capability, OBSERVED is a runtime operation. They are not added together, because capability is not use",
+        },
+        RELATIONSHIPS: { count: 0, hits: [] },
+        EVIDENCE: { count: 0, hits: [] },
+        FACTS: { count: 0, hits: [] },
+        CHANGES: { count: 0, hits: [] },
+      },
+      meaning: "one search across the recorded estate",
+      limits: ["search reads the durable catalogue"],
+    },
+  });
+  render(<DigitalTwinPanel />);
+  const box = await screen.findByLabelText("search the twin");
+  fireEvent.change(box, { target: { value: "RSA-2048" } });
+  fireEvent.click(screen.getByText("Search the record"));
+
+  await waitFor(() => expect(screen.getByText("record · RSA-2048")).toBeInTheDocument());
+  expect(screen.getByText("3 match(es) across 6 kind(s)")).toBeInTheDocument();
+  expect(screen.getByText("1 assets")).toBeInTheDocument();
+  expect(screen.getByText("2 crypto")).toBeInTheDocument();
+  expect(screen.getByText(/OBSERVED 1 · SUPPORTED 1/)).toBeInTheDocument();
+  expect(screen.getByText(/capability is not use/)).toBeInTheDocument();
+  expect(screen.getByText("Payment API (APPLICATION)")).toBeInTheDocument();
+});
+
+it("says a record search that found nothing is a gap in observation, not a denial", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [SEARCH_KEY]: {
+      schema: "cryptoscan.estate-search/1", query: "Kyber-1024",
+      kinds: ["ASSETS", "CRYPTO"], matched: 0, by_kind: { ASSETS: 0, CRYPTO: 0 },
+      groups: { ASSETS: { count: 0, hits: [] }, CRYPTO: { count: 0, hits: [] } },
+      meaning: "one search across the recorded estate", limits: [],
+    },
+  });
+  render(<DigitalTwinPanel />);
+  fireEvent.change(await screen.findByLabelText("search the twin"), { target: { value: "Kyber-1024" } });
+  fireEvent.click(screen.getByText("Search the record"));
+
+  await waitFor(() => expect(screen.getByText("record · Kyber-1024")).toBeInTheDocument());
+  expect(screen.getByText(/not proof the bank has none of it/)).toBeInTheDocument();
 });

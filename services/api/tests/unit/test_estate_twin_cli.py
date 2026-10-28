@@ -396,3 +396,27 @@ def test_evidence_lists_stored_records(with_discovery, capsys):
     assert code == cli.EXIT_OK
     assert body["count"] >= 1
     assert body["records"][0]["evidence_id"]
+
+
+def test_search_finds_across_kinds_from_a_terminal(with_discovery, capsys):
+    from api import cli
+    from api import estate_catalog
+    from shared_models.estate_graph import build_graph
+
+    estate_catalog.sync(with_discovery, build_graph(_payload()), tenant_id=None)
+    code = cli.main(["twin", "search", "HSM"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "match(es) for" in out
+
+
+def test_search_says_a_miss_is_a_gap_in_the_record(with_discovery, capsys):
+    from api import cli
+    from api import estate_catalog
+    from shared_models.estate_graph import build_graph
+
+    estate_catalog.sync(with_discovery, build_graph(_payload()), tenant_id=None)
+    code = cli.main(["twin", "search", "Kyber-1024"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "not evidence the bank has none" in out
