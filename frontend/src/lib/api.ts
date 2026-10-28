@@ -6537,3 +6537,61 @@ export interface EstateLifecycle {
 
 export const apiEstateLifecycle = (): Promise<ApiResult<EstateLifecycle>> =>
   _rsGet<EstateLifecycle>("/api/v1/estate/evidence/twin/lifecycle");
+
+/* §12/§24: capability is counted apart from use, and a verdict names its source. */
+export interface EstateCryptoFinding {
+  asset_id: string; asset_name?: string | null; asset_type?: string | null;
+  algorithm: string; canonical?: string | null; status: string; layer?: string | null;
+  usage_state: string; in_use: boolean; evidence_type?: string | null;
+  quantum_impact?: string | null; quantum_vulnerable?: boolean;
+  verdict_source?: string; reading?: string; note?: string; notes?: string | null;
+  evidence_ids?: string[];
+}
+
+export interface EstateCryptoIntel {
+  schema: string;
+  artifacts_examined: number;
+  weak: {
+    count: number; in_use_count: number; capability_only_count: number;
+    by_status: Record<string, number>; by_asset_type: Record<string, number>;
+    assets: Array<{ asset_id: string; asset_name?: string | null; asset_type?: string | null;
+      algorithms: string[]; in_use: boolean; vendor_bound: boolean }>;
+    capability_only: Array<{ asset_id: string; asset_name?: string | null; algorithm: string;
+      status: string; note: string }>;
+    entries: EstateCryptoFinding[]; meaning: string;
+  };
+  unknown: {
+    count: number; unrecognised_count: number; mislabelled_count: number;
+    assets: Array<{ asset_id: string; asset_name?: string | null; algorithms: string[] }>;
+    entries: EstateCryptoFinding[]; meaning: string;
+  };
+  pqc: {
+    vulnerable_artifacts: number; vulnerable_in_use: number;
+    by_algorithm: Record<string, number>; by_asset_type: Record<string, number>;
+    affected_assets: Array<{ asset_id: string; asset_name?: string | null;
+      asset_type?: string | null; algorithms: string[] }>;
+    vendor_bound_blockers: Array<{ asset_id: string; asset_name?: string | null;
+      asset_type?: string | null; algorithms: string[] }>;
+    vendor_bound_blocker_count: number; pqc_algorithms_present: string[];
+    pending_migration_count: number; meaning: string;
+  };
+  next_action: string; limits: string[];
+}
+
+export interface EstateAlgorithmView {
+  schema: string; query: string; algorithm: string; family?: string | null;
+  status: string; quantum_impact?: string | null; quantum_vulnerable: boolean;
+  recognized: boolean; found: boolean; artifacts: number; in_use: number;
+  capability_only: number; by_asset_type: Record<string, number>;
+  by_asset_type_in_use: Record<string, number>; by_usage_state: Record<string, number>;
+  by_layer: Record<string, number>;
+  assets: Array<{ asset_id: string; asset_name?: string | null; asset_type?: string | null;
+    algorithms: string[]; in_use: boolean }>;
+  next_action?: string; limits: string[];
+}
+
+export const apiEstateIntel = (): Promise<ApiResult<EstateCryptoIntel>> =>
+  _rsGet<EstateCryptoIntel>("/api/v1/estate/evidence/twin/intel");
+
+export const apiEstateAlgorithm = (name: string): Promise<ApiResult<EstateAlgorithmView>> =>
+  _rsGet<EstateAlgorithmView>(`/api/v1/estate/evidence/twin/algorithm/${encodeURIComponent(name)}`);

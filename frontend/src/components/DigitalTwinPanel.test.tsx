@@ -541,3 +541,66 @@ it("draws the loop with its break named rather than every box the same colour", 
   expect(screen.getByText(/REMEDIATE gap is named/)).toBeInTheDocument();
   expect(screen.getByText(/only when every phase is CONNECTED/)).toBeInTheDocument();
 });
+
+it("keeps weak capability apart from weak use, and an invented algorithm apart from a real one", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    "/api/v1/estate/evidence/twin/intel": {
+      schema: "cryptoscan.estate-crypto-intel/1",
+      artifacts_examined: 9,
+      weak: {
+        count: 3, in_use_count: 2, capability_only_count: 1,
+        by_status: { DISALLOWED: 2, DEPRECATED: 1 },
+        by_asset_type: { APPLICATION: 1, LOAD_BALANCER: 1 },
+        assets: [],
+        capability_only: [
+          { asset_id: "library:ossl", asset_name: "OpenSSL", algorithm: "DES",
+            status: "DISALLOWED", note: "Capability is not use" },
+        ],
+        entries: [
+          { asset_id: "application:legacy", asset_name: "Legacy Ledger", algorithm: "DES",
+            status: "DISALLOWED", layer: "APPLICATION", usage_state: "OBSERVED",
+            in_use: true, verdict_source: "algorithm_registry" },
+          { asset_id: "library:ossl", asset_name: "OpenSSL", algorithm: "DES",
+            status: "DISALLOWED", layer: "APPLICATION", usage_state: "SUPPORTED",
+            in_use: false, verdict_source: "algorithm_registry" },
+        ],
+        meaning: "counted separately by whether the estate is recorded as doing it",
+      },
+      unknown: {
+        count: 2, unrecognised_count: 1, mislabelled_count: 1, assets: [],
+        entries: [
+          { asset_id: "application:api", asset_name: "Payment API", algorithm: "OpenSSL 3.0.13",
+            status: "UNKNOWN", usage_state: "SUPPORTED", in_use: false, reading: "NOT_AN_ALGORITHM" },
+          { asset_id: "application:legacy", asset_name: "Legacy Ledger", algorithm: "cryptomodule-v2",
+            status: "UNKNOWN", usage_state: "OBSERVED", in_use: true, reading: "UNRECOGNIZED" },
+        ],
+        meaning: "unknown, never compliant",
+      },
+      pqc: {
+        vulnerable_artifacts: 2, vulnerable_in_use: 1,
+        by_algorithm: { RSA: 1, ECDSA: 1 }, by_asset_type: { HSM: 1, APPLICATION: 1 },
+        affected_assets: [],
+        vendor_bound_blockers: [{ asset_id: "hsm:04", asset_name: "HSM-04", asset_type: "HSM",
+          algorithms: ["RSA-2048"], in_use: true }],
+        vendor_bound_blocker_count: 1, pqc_algorithms_present: [],
+        pending_migration_count: 1,
+        meaning: "not a readiness score: readiness is which of these need the vendor to ship a version",
+      },
+      next_action: "start with the in-use weak algorithms",
+      limits: ["a verdict comes from this product's algorithm registry"],
+    },
+  });
+  render(<DigitalTwinPanel />);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Intelligence" }));
+
+  await waitFor(() => expect(screen.getByText("2 weak in use")).toBeInTheDocument());
+  expect(screen.getByText("1 capability only")).toBeInTheDocument();
+  expect(screen.getByText("IN USE")).toBeInTheDocument();
+  expect(screen.getByText("CAPABILITY")).toBeInTheDocument();
+  expect(screen.getByText(/a version string, not an algorithm/)).toBeInTheDocument();
+  expect(screen.getByText(/unrecognised/)).toBeInTheDocument();
+  expect(screen.getByText(/blocker: HSM-04/)).toBeInTheDocument();
+  expect(screen.getByText(/start with the in-use weak algorithms/)).toBeInTheDocument();
+});

@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 from api import (
     estate_catalog,
     estate_conflicts,
+    estate_crypto_intel,
     estate_lifecycle,
     estate_observations,
     estate_search,
@@ -1775,3 +1776,53 @@ def estate_twin_lifecycle(
     """
     graph = _latest_twin_graph_or_none(db)
     return estate_lifecycle.survey(db, graph, tenant_id=current_tenant())
+
+
+@router.get("/twin/intel")
+def estate_twin_intel(
+    limit: int = Query(200, ge=1, le=2000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Weak, unidentified and post-quantum cryptography across the estate (§12, §24).
+
+    Capability is counted apart from use — a library that supports DES has not used DES —
+    and a verdict is labelled as coming from this product's algorithm registry rather than
+    from the bank's own policy. An unrecognised value is reported as unknown, never as
+    compliant.
+    """
+    graph = _latest_twin_graph_or_none(db)
+    if graph is None:
+        return {
+            "schema": estate_crypto_intel.SCHEMA,
+            "status": "NOT_OBSERVED",
+            "detail": (
+                "there is no stored estate observation, so there is no cryptography to read. "
+                "This is not an empty answer and not a clean one"
+            ),
+            "artifacts_examined": 0,
+        }
+    return estate_crypto_intel.survey(graph, limit=limit)
+
+
+@router.get("/twin/algorithm/{name}")
+def estate_twin_algorithm(
+    name: str,
+    limit: int = Query(200, ge=1, le=2000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Everything the estate holds about one algorithm — who uses it, who merely supports it."""
+    graph = _latest_twin_graph_or_none(db)
+    if graph is None:
+        return {
+            "schema": estate_crypto_intel.ALGORITHM_SCHEMA,
+            "query": name,
+            "status": "NOT_OBSERVED",
+            "detail": (
+                "there is no stored estate observation, so no answer about this algorithm can "
+                "be given. That is different from 'nothing uses it'"
+            ),
+            "found": False,
+        }
+    return estate_crypto_intel.algorithm(graph, name, limit=limit)

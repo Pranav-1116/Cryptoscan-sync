@@ -9,14 +9,14 @@ import {
   apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
   apiEstateTwinPlacement,
   apiEstateAssetHistory, apiEstateHistorySummary, apiEstateSearch, apiEstateConflicts,
-  apiEstateLifecycle,
+  apiEstateLifecycle, apiEstateIntel, apiEstateAlgorithm,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
   EstateChangeFeed, EstateChangeEvent,
   EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
   EstatePlacement, EstateAssetHistory, EstateHistorySummary, EstateSearchResult,
-  EstateConflictSurvey, EstateLifecycle,
+  EstateConflictSurvey, EstateLifecycle, EstateCryptoIntel, EstateAlgorithmView,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -125,7 +125,7 @@ export default function DigitalTwinPanel() {
      the parts spec 94 §24 lists that a BOM panel cannot answer: what moved, what is
      capability vs use, and what a graph store would receive. */
   const [view, setView] = useState<
-    "live" | "crypto" | "catalog" | "changes" | "history" | "graph" | "loop"
+    "live" | "crypto" | "catalog" | "changes" | "history" | "graph" | "loop" | "intel"
   >("live");
   const [snapshots, setSnapshots] = useState<EstateTwinSnapshotList | null>(null);
   const [comparison, setComparison] = useState<EstateTwinCompare | null>(null);
@@ -157,6 +157,10 @@ export default function DigitalTwinPanel() {
   const [conflictsHeld, setConflictsHeld] = useState<EstateConflictSurvey | null>(null);
   /* §2: the loop, and the first phase that does not reach the next one */
   const [loop, setLoop] = useState<EstateLifecycle | null>(null);
+  /* §12/§24: weak, unidentified and post-quantum, with capability held apart from use */
+  const [intelView, setIntelView] = useState<EstateCryptoIntel | null>(null);
+  const [algorithmName, setAlgorithmName] = useState("");
+  const [algorithmView, setAlgorithmView] = useState<EstateAlgorithmView | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -258,6 +262,19 @@ export default function DigitalTwinPanel() {
     else setLoop(null);
   };
 
+  const loadIntel = async () => {
+    const result = await apiEstateIntel();
+    if (result.ok) setIntelView(result.data as EstateCryptoIntel);
+    else setIntelView(null);
+  };
+
+  const loadAlgorithm = async (name: string) => {
+    const text = name.trim();
+    if (!text) return;
+    const result = await apiEstateAlgorithm(text);
+    setAlgorithmView(result.ok ? (result.data as EstateAlgorithmView) : null);
+  };
+
   const loadHistorySummary = async () => {
     const result = await apiEstateHistorySummary();
     if (result.ok) setHistorySummary(result.data as EstateHistorySummary);
@@ -318,6 +335,7 @@ export default function DigitalTwinPanel() {
     if (view === "live" && conflictsHeld === null) void loadConflicts();
     if (view === "live" && placement === null) void loadPlacement();
     if (view === "loop" && loop === null) void loadLoop();
+    if (view === "intel" && intelView === null) void loadIntel();
   }, [view]);
 
   const TABS: Array<{ id: typeof view; label: string }> = [
@@ -328,6 +346,7 @@ export default function DigitalTwinPanel() {
     { id: "history", label: "History & compare" },
     { id: "graph", label: "Graph export" },
     { id: "loop", label: "Loop" },
+    { id: "intel", label: "Intelligence" },
   ];
 
   return (
@@ -1265,6 +1284,105 @@ export default function DigitalTwinPanel() {
             <div className="faint" style={{ fontSize: 9.5, marginTop: 10 }}>
               {changeFeed.limits[1] ?? changeFeed.limits[0]}
             </div>
+          )}
+        </div>
+      )}
+
+      {view === "intel" && (
+        <div style={{ marginTop: 4 }}>
+          {!intelView && <div className="dim" style={{ fontSize: 11 }}>{error ?? "reading the estate's cryptography…"}</div>}
+          {intelView && (
+            <>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge tone={intelView.weak.in_use_count > 0 ? "red" : "slate"}>
+                  {`${intelView.weak.in_use_count} weak in use`}
+                </Badge>
+                <Badge tone="amber">{`${intelView.weak.capability_only_count} capability only`}</Badge>
+                <Badge tone="amber">{`${intelView.unknown.count} unidentified`}</Badge>
+                <Badge tone="violet">{`${intelView.pqc.vulnerable_artifacts} Shor-vulnerable`}</Badge>
+                <Badge tone="slate">{`${intelView.pqc.vendor_bound_blocker_count} vendor-bound`}</Badge>
+              </div>
+
+              {intelView.weak.entries.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--red)" }}>WEAK</div>
+                  {intelView.weak.entries.slice(0, 6).map((entry) => (
+                    <div key={`${entry.asset_id}:${entry.algorithm}:${entry.layer}`} style={{ fontSize: 10 }}>
+                      <Badge tone={entry.in_use ? "red" : "slate"}>{entry.in_use ? "IN USE" : "CAPABILITY"}</Badge>{" "}
+                      {entry.asset_name ?? entry.asset_id} · {entry.algorithm} · {entry.status} · {entry.usage_state} · {entry.layer}
+                      {entry.in_use && (
+                        <div className="faint" style={{ fontSize: 9.5 }}>
+                          verdict from {entry.verdict_source}; the evidence behind the value is in the asset record
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {intelView.unknown.entries.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--amber)" }}>UNIDENTIFIED</div>
+                  {intelView.unknown.entries.slice(0, 6).map((entry) => (
+                    <div key={`${entry.asset_id}:${entry.algorithm}`} style={{ fontSize: 10 }}>
+                      {entry.asset_name ?? entry.asset_id} · {entry.algorithm} ·{" "}
+                      {entry.reading === "NOT_AN_ALGORITHM" ? "a version string, not an algorithm" : "unrecognised"}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ marginTop: 8 }}>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--violet)" }}>POST-QUANTUM</div>
+                <div className="dim" style={{ fontSize: 10 }}>{intelView.pqc.meaning}</div>
+                {intelView.pqc.vendor_bound_blockers.slice(0, 4).map((asset) => (
+                  <div key={asset.asset_id} className="faint" style={{ fontSize: 9.5 }}>
+                    blocker: {asset.asset_name ?? asset.asset_id} ({asset.asset_type}) · {asset.algorithms.join(", ")}
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                <input
+                  className="input"
+                  style={{ fontSize: 11, maxWidth: 220 }}
+                  placeholder="algorithm — e.g. RSA-2048"
+                  value={algorithmName}
+                  onChange={(event) => setAlgorithmName(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="btn sm"
+                  onClick={() => void loadAlgorithm(algorithmName)}
+                  disabled={!algorithmName.trim()}
+                >
+                  Who depends on it
+                </button>
+              </div>
+              {algorithmView && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                    <Badge tone="slate">{algorithmView.algorithm}</Badge>
+                    <Badge tone="cyan">{`${algorithmView.artifacts} artefact(s)`}</Badge>
+                    <Badge tone="amber">{`${algorithmView.in_use} in use`}</Badge>
+                    <Badge tone="slate">{`${algorithmView.capability_only} capability only`}</Badge>
+                    {algorithmView.quantum_vulnerable && <Badge tone="violet">Shor-vulnerable</Badge>}
+                  </div>
+                  {!algorithmView.found && (
+                    <div className="faint" style={{ fontSize: 9.5 }}>
+                      no observation asserts it — not a statement that the estate does not use it
+                    </div>
+                  )}
+                  {Object.entries(algorithmView.by_asset_type_in_use).map(([type, count]) => (
+                    <div key={type} style={{ fontSize: 10 }}>
+                      {type}: {count} using it
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="faint" style={{ fontSize: 9.5, marginTop: 8 }}>{intelView.next_action}</div>
+            </>
           )}
         </div>
       )}

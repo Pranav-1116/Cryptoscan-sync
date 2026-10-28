@@ -477,3 +477,29 @@ def test_lifecycle_names_the_break_instead_of_colouring_every_box(with_discovery
     assert code == cli.EXIT_OK
     assert f"it breaks first at {body['first_break']}" in printed
     assert "REMEDIATE" in printed
+
+
+def test_intel_cli_separates_weak_use_from_weak_capability(with_discovery, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "intel", "--json"], session_factory=lambda: with_discovery)
+    body = json.loads(capsys.readouterr().out)
+
+    assert code == cli.EXIT_OK
+    assert body["artifacts_examined"] > 0
+    assert body["weak"]["in_use_count"] + body["weak"]["capability_only_count"] == body["weak"]["count"]
+
+
+def test_algorithm_cli_answers_with_counts_and_says_when_it_found_nothing(with_discovery, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "algorithm", "AES-256-GCM", "--json"],
+                    session_factory=lambda: with_discovery)
+    found = json.loads(capsys.readouterr().out)
+    assert code == cli.EXIT_OK
+    assert found["query"] == "AES-256-GCM"
+
+    code = cli.main(["twin", "algorithm", "MD5"], session_factory=lambda: with_discovery)
+    printed = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "not a statement that the estate does not use it" in printed

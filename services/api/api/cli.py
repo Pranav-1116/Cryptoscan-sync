@@ -250,6 +250,23 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_lifecycle.add_argument("--tenant", default=None)
     twin_lifecycle.add_argument("--json", action="store_true")
 
+    twin_intel = twin_sub.add_parser(
+        "intel",
+        help="weak, unidentified and post-quantum cryptography across the estate",
+    )
+    twin_intel.add_argument("--tenant", default=None)
+    twin_intel.add_argument("--limit", type=int, default=50)
+    twin_intel.add_argument("--json", action="store_true")
+
+    twin_algorithm = twin_sub.add_parser(
+        "algorithm",
+        help="everything the estate holds about one algorithm, in use and capability apart",
+    )
+    twin_algorithm.add_argument("name")
+    twin_algorithm.add_argument("--tenant", default=None)
+    twin_algorithm.add_argument("--limit", type=int, default=50)
+    twin_algorithm.add_argument("--json", action="store_true")
+
     twin_search = twin_sub.add_parser(
         "search",
         help="search assets, artefacts, edges, evidence, facts and changes in one call",
@@ -761,6 +778,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
         estate_catalog,
         estate_change_feed,
         estate_conflicts,
+        estate_crypto_intel,
         estate_lifecycle,
         estate_graph_loader,
         estate_observations,
@@ -872,6 +890,65 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                             print(f"      {value['value']!r} from {value['source']} "
                                   f"({value['evidence_type']}, {value['layer']})")
                         print(f"      {item['reason']}")
+                return EXIT_OK
+
+            if args.twin_command == "intel":
+                current = latest_twin_graph(session, args.tenant)
+                if current is None:
+                    print("no stored estate discovery — the twin is NOT_OBSERVED, so there is "
+                          "no cryptography to read. That is not a clean answer.", file=sys.stderr)
+                    return EXIT_INCOMPLETE
+                body = estate_crypto_intel.survey(current, limit=args.limit)
+                if args.json:
+                    print(json.dumps(body, indent=2, default=str))
+                else:
+                    weak = body["weak"]
+                    unknown = body["unknown"]
+                    pqc = body["pqc"]
+                    print(f"{body['artifacts_examined']} crypto artefact(s) examined")
+                    print(f"  weak      {weak['count']} ({weak['in_use_count']} in use, "
+                          f"{weak['capability_only_count']} capability only)")
+                    for item in weak["entries"][:10]:
+                        mark = "!" if item["in_use"] else " "
+                        name = item.get("asset_name") or item["asset_id"]
+                        print(f"  {mark} {name} · {item['algorithm']} · {item['status']} · "
+                              f"{item['usage_state']} · {item['layer']}")
+                    print(f"  unknown   {unknown['count']} "
+                          f"({unknown['unrecognised_count']} unrecognised, "
+                          f"{unknown['mislabelled_count']} version strings in an algorithm fact)")
+                    print(f"  post-quantum {pqc['vulnerable_artifacts']} artefact(s) on Shor-broken "
+                          f"algorithms, {pqc['pending_migration_count']} in use, "
+                          f"{pqc['vendor_bound_blocker_count']} vendor-bound blocker(s)")
+                    print()
+                    print(body["next_action"])
+                return EXIT_OK
+
+            if args.twin_command == "algorithm":
+                current = latest_twin_graph(session, args.tenant)
+                if current is None:
+                    print("no stored estate discovery — nothing can be said about this "
+                          "algorithm, which is not the same as 'nothing uses it'.",
+                          file=sys.stderr)
+                    return EXIT_INCOMPLETE
+                body = estate_crypto_intel.algorithm(current, args.name, limit=args.limit)
+                if args.json:
+                    print(json.dumps(body, indent=2, default=str))
+                else:
+                    if not body["found"]:
+                        print(f"no observation asserts {body['query']!r} — not a statement that "
+                              "the estate does not use it")
+                    else:
+                        print(f"{body['algorithm']} · {body['status']} · "
+                              f"{body['artifacts']} artefact(s): {body['in_use']} in use, "
+                              f"{body['capability_only']} capability only")
+                        for asset_type, count in body["by_asset_type"].items():
+                            print(f"  {asset_type:<18} {count}")
+                        for asset in body["assets"][:10]:
+                            print(f"    {asset['asset_name'] or asset['asset_id']}: "
+                                  f"{', '.join(asset['algorithms'])}")
+                    if body.get("next_action"):
+                        print()
+                        print(body["next_action"])
                 return EXIT_OK
 
             if args.twin_command == "lifecycle":
@@ -1008,6 +1085,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
             if graph is None and args.twin_command not in {
                 "changes", "ack", "detect", "assets", "asset", "algorithms",
                 "history", "why", "evidence", "search", "conflicts", "lifecycle",
+                "intel", "algorithm",
             }:
                 
                 print(
