@@ -617,6 +617,10 @@ bank.
 | Layer 5 evidence strength + provenance | **shipped** | `EVIDENCE_TYPES`, `EVIDENCE_CONFIDENCE` |
 | Conflict detection (§23) | **shipped** | `EstateGraph.conflicts()` |
 | Layer 6 drift between stored runs | **shipped** (spec 93 §18) | `api/estate_drift.py` |
+| Layer 4 crypto graph (§9, §10) | **shipped** — four planes (capability / configured / runtime / wire), provider→algorithm edges, capability-vs-use coexistence explained, conflicts split into *real* (same plane) and *explained* (across planes) | `estate_twin.crypto_graph()` |
+| Compare two twins (§13, §24 "Compare") | **shipped** — assets/relationships/crypto-usage/coverage/evidence/unknown delta, verdict worst-first (`COVERAGE_DEGRADED` > `CRYPTO_CHANGED` > `ESTATE_CHANGED` > `NO_CHANGE`) | `estate_twin.compare()` |
+| Snapshots as stored objects (§19) | **shipped** — `estate_twin_snapshots` (migration 0110), keyed by `(tenant, projection_id)`: identical evidence advances an observation counter instead of inventing a new snapshot | `api/estate_twin_store.py` |
+| Graph projection (§20) | **shipped as an export** — deterministic typed nodes/edges, evidence ids on every edge, unresolved edges shipped separately, `not_source_of_truth` in the payload. Loading it into Neo4j is an external step: no driver writes to a graph store from this repo | `estate_twin.graph_export()` |
 | Layer 1 estate placement | **shipped** | `estate_twin.placement_model()` |
 | Twin completeness (§29) | **shipped** — description quality, never a posture score | `estate_twin.completeness()` |
 | Asset investigation (§25) | **shipped** | `estate_twin.investigate()` |
@@ -626,10 +630,9 @@ bank.
 | Layer 7 simulation (§15–§17) | **shipped** — runs on a snapshot copy, live projection id checked unchanged | `estate_twin.simulate()` |
 | Twin snapshots as a first-class object (§14) | **shipped** — content-addressed by projection id | `estate_twin.snapshot()` / `graph_from_snapshot()` |
 | API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/snapshots,/search,/assets/{ref},/why}`, `POST /twin/impact`, `POST /twin/simulate` |
-| UI (§24, §25) | **shipped as a twin panel**: placement, completeness with reasons, twin search with click-through to an asset view (crypto by usage state, established relationships with basis+confidence, evidence by strength, refused edges), blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge | `frontend/src/components/DigitalTwinPanel.tsx` |
-| Historical snapshots (§14) | **shipped** — `GET /twin/snapshots` lists recent runs as content-addressed snapshots (`snapshot_id` == `twin:<projection_id>`), so two identical runs are one snapshot | `estate_twin.snapshot()`, `routers/estate_graph.py` |
-| Compare screen (§24 "Compare") | **partially built** — comparison runs through `GET /estate/evidence/drift` (components, coverage, collectors); there is no side-by-side twin-compare UI yet | — |
-| Graph-database projection (§20) | *not built* | Neo4j is present for other product surfaces; the twin's traversal is in-process over the canonical graph |
+| UI (§24, §25) | **shipped as four views**: *Live estate* (placement, completeness with reasons, search with click-through to an asset view, blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge); *Crypto graph* (four planes with their meanings on screen); *History & compare* (capture, persisted-vs-derived, worst-first verdict); *Graph export* (counts, unresolved separate, not-source-of-truth) | `frontend/src/components/DigitalTwinPanel.tsx` |
+| Historical snapshots (§14) | **shipped** — persisted (`POST/GET /twin/snapshots`); falls back to run-derived snapshots with `persisted: false` and says so | `estate_twin_store.py` |
+| Traversal in a graph store | *not built* — the twin traverses in-process over the canonical graph; §20's graph store is a deployment step over the export | — |
 
 ### What "simulation" means here, precisely
 
@@ -647,6 +650,19 @@ projection. It reports:
   `UNRESOLVED_RELATIONSHIP` where an assumed edge could hide a larger radius;
 * `live_projection_unchanged` — computed by fingerprinting the live graph before
   and after, so "production was not touched" is a check rather than a promise.
+
+### What a snapshot identifies, precisely
+
+The snapshot id covers assets, relationships, evidence **content** and collector
+outcomes. Coverage was added after a defect was found by writing the compare test:
+with only facts in the hash, a run where a plane `FAILED` fingerprinted identically
+to one where it succeeded over the same (smaller) set of facts — so "we stopped
+looking" was indistinguishable from "nothing changed". That is the single most
+dangerous comparison this product can get wrong, and it is now a regression test.
+
+Simulation runs are deliberately **not** persisted. A simulation asks a question of
+a copy; storing it beside observations would let a "what if" be read back later as
+something that happened.
 
 ### What the twin still cannot say
 

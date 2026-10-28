@@ -14,9 +14,9 @@ A status report that says "90% complete" is a feeling. These are the only four t
 
 | Measure | Value | What it means | What it does **not** mean |
 |---|---|---|---|
-| API endpoints served | **1160** | routes in the generated OpenAPI document | — |
-| Endpoints reachable from the console | **546** (47.1%) | a URL for it exists in `frontend/src` | built. An endpoint with no screen is a capability an operator cannot use, not a broken one |
-| Endpoints referenced by a test | **735** (63.4%) | the path appears in a test file | tested well, or tested at all beyond a smoke call |
+| API endpoints served | **1164** | routes in the generated OpenAPI document | — |
+| Endpoints reachable from the console | **550** (47.3%) | a URL for it exists in `frontend/src` | built. An endpoint with no screen is a capability an operator cannot use, not a broken one |
+| Endpoints referenced by a test | **739** (63.5%) | the path appears in a test file | tested well, or tested at all beyond a smoke call |
 | Self-declared limits | **65** in 50 files (8 abstract/gap raises, 19 TODO comments, 38 self-described stubs/approximations) | admissions found in comments and docstrings | that any of them is a defect. Most are honest labels; the list is here so they can be judged one by one |
 
 ## Where the surface is
@@ -28,10 +28,10 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | `collection` | 50 | 23 | 3 |
 | `cbom` | 42 | 30 | 32 |
 | `devsecops` | 42 | 33 | 27 |
+| `estate` | 38 | 19 | 34 |
 | `control` | 38 | 20 | 31 |
 | `graph` | 37 | 18 | 30 |
 | `auth` | 35 | 17 | 29 |
-| `estate` | 34 | 15 | 30 |
 | `scans` | 32 | 8 | 16 |
 | `banking` | 31 | 22 | 27 |
 | `technology-bom` | 30 | 21 | 28 |
@@ -410,9 +410,9 @@ A status report that says "90% complete" is a feeling. These are the only four t
 | GET | `/api/v1/estate/evidence/pqc` | Estate Pqc |
 | GET | `/api/v1/estate/evidence/summary` | Estate Summary |
 | POST | `/api/v1/estate/evidence/tick` | Estate Tick |
+| GET | `/api/v1/estate/evidence/twin/compare` | Estate Twin Compare |
 | GET | `/api/v1/estate/evidence/twin/completeness` | Estate Twin Completeness |
 | GET | `/api/v1/estate/evidence/twin/snapshot` | Estate Twin Snapshot |
-| GET | `/api/v1/estate/evidence/twin/snapshots` | Estate Twin Snapshots |
 | GET | `/api/v1/estate/evidence/twin/why` | Estate Twin Why |
 | GET | `/api/v1/estate/evidence/unknown` | Estate Unknown Workflow |
 | GET | `/api/v1/estate/scans/due` | Preview Due Scans |
