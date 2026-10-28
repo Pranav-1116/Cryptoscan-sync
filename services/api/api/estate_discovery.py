@@ -47,7 +47,9 @@ MODEL = "cryptoscan.estate-discovery-job/1"
 SCHEMA_EVIDENCE = "cryptoscan.estate-evidence/1"
 
 #: §13 discovery planes this repository can actually read today.
-PLANES: tuple[str, ...] = ("NETWORK", "CLOUD", "KUBERNETES", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR")
+PLANES: tuple[str, ...] = (
+    "NETWORK", "CLOUD", "KUBERNETES", "CMDB", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR"
+)
 
 PLANE_DETAIL: dict[str, dict[str, str]] = {
     "NETWORK": {
@@ -60,6 +62,12 @@ PLANE_DETAIL: dict[str, dict[str, str]] = {
         "boms": "NBOM, CBOM (transport and storage configuration), VBOM (managed services)",
         "limitation": "control-plane configuration only: a listener policy or key spec is what the service "
                       "allows, not what a client negotiated, and KMS only shows capability",
+    },
+    "CMDB": {
+        "source": "live ServiceNow Table API (servers, business services, applications, relationships)",
+        "boms": "SBOM (application inventory), TechBOM, VBOM (vendors the bank records)",
+        "limitation": "CMDB records are declared (IMPORTED, LOW confidence): ownership and existence, never "
+                      "cryptography in use",
     },
     "KUBERNETES": {
         "source": "live cluster API (namespaces, ingresses, services, pods)",
@@ -477,6 +485,13 @@ def collect_vendor(db: Any, *, limit: int = 2000) -> dict[str, Any]:
     }
 
 
+def collect_cmdb_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
+    """Adapter for :mod:`api.estate_cmdb` (live, read-only ServiceNow Table API)."""
+    from api.estate_cmdb import collect_cmdb
+
+    return collect_cmdb(db, **kwargs)
+
+
 def collect_cloud_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
     """Adapter for :mod:`api.estate_cloud` (live, read-only cloud control plane)."""
     from api.estate_cloud import collect_cloud
@@ -494,6 +509,7 @@ def collect_kubernetes_plane(db: Any, **kwargs: Any) -> dict[str, Any]:
 DEFAULT_COLLECTORS: dict[str, Callable[..., dict[str, Any]]] = {
     "NETWORK": collect_network,
     "CLOUD": collect_cloud_plane,
+    "CMDB": collect_cmdb_plane,
     "KUBERNETES": collect_kubernetes_plane,
     "RUNTIME": collect_runtime,
     "STATIC": collect_static,
