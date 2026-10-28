@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { Panel, Badge } from "./ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import {
-  apiEstateTwin, apiEstateTwinSearch, apiEstateTwinImpact, apiEstateTwinSimulate,
-  EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation,
+  apiEstateTwin, apiEstateTwinSearch, apiEstateTwinImpact, apiEstateTwinSimulate, apiEstateTwinAsset,
+  EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -61,6 +61,7 @@ export default function DigitalTwinPanel() {
   const [found, setFound] = useState<EstateTwinSearchResult | null>(null);
   const [impact, setImpact] = useState<EstateTwinImpact | null>(null);
   const [simulation, setSimulation] = useState<EstateTwinSimulation | null>(null);
+  const [asset, setAsset] = useState<EstateTwinAssetView | null>(null);
   const [scenario, setScenario] = useState({ kind: "REPLACE_ALGORITHM", from: "RSA", to: "ML-DSA" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +73,17 @@ export default function DigitalTwinPanel() {
     const result = await apiEstateTwinSearch(query.trim());
     if (result.ok) setFound(result.data as EstateTwinSearchResult);
     else setError("search failed — the API is unavailable, which is not an empty twin");
+    setBusy(false);
+  };
+
+  /* §25 — the asset screen is the one people actually use: click a result and see
+     what the twin knows, how strongly it knows it, and what it does not know. */
+  const investigate = async (ref: string) => {
+    setBusy(true);
+    setError(null);
+    const result = await apiEstateTwinAsset(ref);
+    if (result.ok) setAsset(result.data as EstateTwinAssetView);
+    else setError("asset view failed — an unreachable API is not an asset with no crypto");
     setBusy(false);
   };
 
@@ -190,6 +202,21 @@ export default function DigitalTwinPanel() {
                   <Badge key={type} tone="slate">{type} {count}</Badge>
                 ))}
               </div>
+              {found.assets.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                  {found.assets.slice(0, 12).map((item) => (
+                    <button
+                      key={item.asset_id}
+                      type="button"
+                      className="btn sm"
+                      style={{ fontSize: 10.5 }}
+                      onClick={() => void investigate(item.asset_id)}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                </div>
+              )}
               {found.status === "NO_MATCH" && (
                 <div className="dim" style={{ fontSize: 10.5, marginTop: 4 }}>
                   nothing matches {found.query} — that is not "the bank does not use it", it means no collected evidence describes it
@@ -228,6 +255,77 @@ export default function DigitalTwinPanel() {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {asset && (
+            <div style={{ marginTop: 14, borderTop: "1px solid rgba(255,255,255,0.07)", paddingTop: 10 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="mono" style={{ fontSize: 12, color: "var(--cyan)" }}>{asset.asset.name.toUpperCase()}</span>
+                <Badge tone="slate">{asset.asset.type}</Badge>
+                <Badge tone={asset.placement.placed ? "green" : "amber"}>
+                  {asset.placement.placed ? (asset.placement.environment ?? "placed") : "UNPLACED"}
+                </Badge>
+                {asset.asset.owner && <Badge tone="violet">{asset.asset.owner}</Badge>}
+                <Badge tone="cyan">evidence: {asset.evidence.strongest}</Badge>
+                <Badge tone="slate">{asset.evidence.count} records</Badge>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 8 }}>
+                <div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--cyan)" }}>CRYPTOGRAPHY</div>
+                  {asset.crypto.artifacts.length === 0 && (
+                    <div className="dim" style={{ fontSize: 10.5, marginTop: 3 }}>
+                      no cryptographic artefact is evidenced for this asset — that is NOT "it uses no crypto"
+                    </div>
+                  )}
+                  {asset.crypto.artifacts.map((item, index) => (
+                    <div key={index} className="faint" style={{ fontSize: 10.5, marginTop: 3 }}>
+                      <span className="mono" style={{ color: "var(--fg)" }}>
+                        {String(item.algorithm ?? item.protocol ?? "unknown")}
+                        {item.key_size ? `-${String(item.key_size)}` : ""}
+                      </span>{" "}
+                      · {String(item.usage_state)} · {String(item.layer)} · {String(item.evidence_type)}
+                    </div>
+                  ))}
+                  <div className="faint" style={{ fontSize: 9.5, marginTop: 4 }}>{asset.crypto.note}</div>
+                </div>
+
+                <div>
+                  <div className="mono" style={{ fontSize: 10, color: "var(--cyan)" }}>RELATIONSHIPS</div>
+                  {asset.relationships.count === 0 && (
+                    <div className="dim" style={{ fontSize: 10.5, marginTop: 3 }}>
+                      no established relationship — the twin does not draw edges it cannot evidence
+                    </div>
+                  )}
+                  {[...asset.relationships.outgoing, ...asset.relationships.incoming].slice(0, 8).map((item, index) => (
+                    <div key={index} className="faint" style={{ fontSize: 10.5, marginTop: 3 }}>
+                      <span className="mono" style={{ color: "var(--cyan)" }}>{item.predicate}</span>{" "}
+                      {item.name ?? item.asset_id}{" "}
+                      <span className="mono" style={{ fontSize: 9.5 }}>
+                        ({item.basis ?? "no basis"} · {item.confidence ?? "UNKNOWN"})
+                      </span>
+                    </div>
+                  ))}
+                  <div className="mono" style={{ fontSize: 10, color: "var(--cyan)", marginTop: 8 }}>EVIDENCE</div>
+                  {asset.evidence.records.slice(0, 4).map((record) => (
+                    <div key={record.evidence_id} className="faint" style={{ fontSize: 9.5, marginTop: 2 }}>
+                      {record.evidence_type} · {record.collector ?? "unknown collector"} ·{" "}
+                      <span className="mono">{record.source}</span> · {record.hash.slice(0, 16)}…
+                    </div>
+                  ))}
+                  {asset.unknown.no_evidence && (
+                    <div className="dim" style={{ fontSize: 10, marginTop: 4, color: "var(--amber)" }}>
+                      no evidence at all — the twin describes this asset not at all
+                    </div>
+                  )}
+                  {asset.unknown.unresolved_relationships.length > 0 && (
+                    <div className="dim" style={{ fontSize: 10, marginTop: 4, color: "var(--amber)" }}>
+                      {asset.unknown.unresolved_relationships.length} refused relationship(s) touch this asset
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 

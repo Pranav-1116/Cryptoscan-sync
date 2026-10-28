@@ -626,7 +626,7 @@ bank.
 | Layer 7 simulation (§15–§17) | **shipped** — runs on a snapshot copy, live projection id checked unchanged | `estate_twin.simulate()` |
 | Twin snapshots as a first-class object (§14) | **shipped** — content-addressed by projection id | `estate_twin.snapshot()` / `graph_from_snapshot()` |
 | API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/snapshots,/search,/assets/{ref},/why}`, `POST /twin/impact`, `POST /twin/simulate` |
-| UI (§24, §25) | **shipped as a twin panel** (placement, completeness, search, blast radius, simulation) | `frontend/src/components/DigitalTwinPanel.tsx` |
+| UI (§24, §25) | **shipped as a twin panel**: placement, completeness with reasons, twin search with click-through to an asset view (crypto by usage state, established relationships with basis+confidence, evidence by strength, refused edges), blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge | `frontend/src/components/DigitalTwinPanel.tsx` |
 | Historical snapshots (§14) | **shipped** — `GET /twin/snapshots` lists recent runs as content-addressed snapshots (`snapshot_id` == `twin:<projection_id>`), so two identical runs are one snapshot | `estate_twin.snapshot()`, `routers/estate_graph.py` |
 | Compare screen (§24 "Compare") | **partially built** — comparison runs through `GET /estate/evidence/drift` (components, coverage, collectors); there is no side-by-side twin-compare UI yet | — |
 | Graph-database projection (§20) | *not built* | Neo4j is present for other product surfaces; the twin's traversal is in-process over the canonical graph |

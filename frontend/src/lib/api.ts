@@ -6016,6 +6016,38 @@ export interface EstateTwinSimulation {
 export const apiEstateTwin = (): Promise<ApiResult<EstateTwinOverview>> =>
   _rsGet<EstateTwinOverview>("/api/v1/estate/evidence/twin");
 
+export interface EstateTwinAssetView {
+  asset: { asset_id: string; name: string; type: string; environment?: string | null; owner?: string | null; location?: string | null };
+  placement: { environment?: string | null; location?: string | null; owner?: string | null; placed: boolean };
+  attributes: Record<string, unknown>;
+  crypto: {
+    artifacts: Array<Record<string, unknown>>;
+    by_usage_state: Record<string, number>;
+    observed: Array<Record<string, unknown>>;
+    capability_only: Array<Record<string, unknown>>;
+    note: string;
+  };
+  relationships: {
+    outgoing: Array<{ predicate: string; asset_id: string; name?: string; type?: string; basis?: string; confidence?: string }>;
+    incoming: Array<{ predicate: string; asset_id: string; name?: string; type?: string; basis?: string; confidence?: string }>;
+    dependencies: Array<{ predicate: string; name?: string; type?: string; basis?: string }>;
+    count: number;
+  };
+  evidence: {
+    count: number; by_type: Record<string, number>; strongest: string;
+    records: Array<{ evidence_id: string; evidence_type: string; collector?: string | null; source?: string | null; observed_at?: string | null; confidence?: string; hash: string; facts: Record<string, unknown> }>;
+  };
+  unknown: {
+    unresolved_relationships: Array<Record<string, unknown>>;
+    conflicts: Array<Record<string, unknown>>;
+    no_evidence: boolean;
+  };
+  neighbourhood: { depth: number; reached: number; assets: Array<{ asset_id: string; name?: string; type?: string; hops: number }>; truncated: boolean };
+}
+
+export const apiEstateTwinAsset = (ref: string): Promise<ApiResult<EstateTwinAssetView>> =>
+  _rsGet<EstateTwinAssetView>(`/api/v1/estate/evidence/twin/assets/${encodeURIComponent(ref)}`);
+
 export const apiEstateTwinSearch = (q: string): Promise<ApiResult<EstateTwinSearchResult>> =>
   _rsGet<EstateTwinSearchResult>(`/api/v1/estate/evidence/twin/search?q=${encodeURIComponent(q)}`);
 
