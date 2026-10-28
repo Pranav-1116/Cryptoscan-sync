@@ -201,6 +201,8 @@ def sync_evidence(
                 schema_version=item.get("schema"),
                 source=item.get("source"),
                 collector=item.get("collector"),
+                collector_version=item.get("collector_version"),
+                raw_reference=item.get("raw_reference"),
                 evidence_type=str(item.get("evidence_type") or "UNKNOWN"),
                 confidence=item.get("confidence"),
                 target_id=str(item.get("target") or ""),
@@ -216,6 +218,12 @@ def sync_evidence(
         row.observation_count = int(row.observation_count or 0) + 1
         if item.get("observed_at"):
             row.observed_at = item.get("observed_at")
+        # an upgraded collector re-observing the same fact keeps ONE row and corrects its
+        # provenance; a second row would say the estate was seen twice
+        if item.get("collector_version"):
+            row.collector_version = item.get("collector_version")
+        if item.get("raw_reference"):
+            row.raw_reference = item.get("raw_reference")
         refreshed += 1
     for evidence_id, row in existing.items():
         if evidence_id not in seen and row.lifecycle_state != "STALE":
@@ -539,6 +547,8 @@ def why(
             {
                 "evidence_id": row.evidence_id,
                 "collector": row.collector,
+                "collector_version": row.collector_version,
+                "raw_reference": row.raw_reference,
                 "source": row.source,
                 "evidence_type": row.evidence_type,
                 "confidence": row.confidence,
@@ -607,6 +617,8 @@ def evidence_for(
             {
                 "evidence_id": row.evidence_id,
                 "collector": row.collector,
+                "collector_version": row.collector_version,
+                "raw_reference": row.raw_reference,
                 "source": row.source,
                 "evidence_type": row.evidence_type,
                 "confidence": row.confidence,

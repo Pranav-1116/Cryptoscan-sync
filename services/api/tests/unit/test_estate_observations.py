@@ -316,3 +316,52 @@ def test_history_survives_a_real_session_round_trip(api):
     records = client.get(f"{BASE}/evidence/records", params={"target": asset_id})
     assert records.status_code == 200
     assert records.json()["count"] >= 1
+
+
+def test_an_evidence_record_keeps_the_collector_version_and_where_its_output_lives(db):
+    """§11: "linux-static" does not identify a build, and a path alone cannot be re-read."""
+    from shared_models.estate_graph import build_graph
+
+    payload = _payload()
+    payload["evidence"][1]["collector_version"] = "1.4.0"
+    payload["evidence"][1]["raw_reference"] = "artifact://runs/42/pkcs11.conf"
+    history.sync_evidence(db, build_graph(payload), tenant_id=None)
+
+    records = history.evidence_for(db, target=None, tenant_id=None)["records"]
+    configured = next(item for item in records if item["evidence_id"] == "ev-2")
+
+    assert configured["collector"] == "linux-static"
+    assert configured["collector_version"] == "1.4.0"
+    assert configured["raw_reference"] == "artifact://runs/42/pkcs11.conf"
+
+
+def test_a_collector_upgrade_corrects_the_provenance_and_does_not_add_a_record(db):
+    """The fact did not change; the probe did. One row, newer provenance."""
+    from shared_models.estate_graph import build_graph
+
+    first = _payload()
+    first["evidence"][1]["collector_version"] = "1.4.0"
+    history.sync_evidence(db, build_graph(first), tenant_id=None)
+
+    second = _payload()
+    second["evidence"][1]["collector_version"] = "1.5.0"
+    second["evidence"][1]["raw_reference"] = "artifact://runs/43/pkcs11.conf"
+    history.sync_evidence(db, build_graph(second), tenant_id=None)
+
+    records = history.evidence_for(db, target=None, tenant_id=None)["records"]
+    rows = [item for item in records if item["evidence_id"] == "ev-2"]
+
+    assert len(rows) == 1
+    assert rows[0]["collector_version"] == "1.5.0"
+    assert rows[0]["observation_count"] == 2
+    assert rows[0]["raw_reference"] == "artifact://runs/43/pkcs11.conf"
+
+
+def test_a_record_without_a_version_does_not_claim_one(db):
+    from shared_models.estate_graph import build_graph
+
+    history.sync_evidence(db, build_graph(_payload()), tenant_id=None)
+
+    records = history.evidence_for(db, target=None, tenant_id=None)["records"]
+
+    assert all(item["collector_version"] is None for item in records)

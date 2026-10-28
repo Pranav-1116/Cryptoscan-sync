@@ -165,6 +165,16 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_verify.add_argument("--database", default=None)
     twin_verify.add_argument("--json", action="store_true")
 
+    twin_traversal = twin_sub.add_parser(
+        "graph-traversal",
+        help="ask the graph store the twin's own blast-radius question and compare the answers",
+    )
+    twin_traversal.add_argument("asset", help="asset id or name to start from")
+    twin_traversal.add_argument("--depth", type=int, default=3)
+    twin_traversal.add_argument("--tenant", default=None)
+    twin_traversal.add_argument("--database", default=None)
+    twin_traversal.add_argument("--json", action="store_true")
+
     twin_sim = twin_sub.add_parser(
         "simulate",
         help="run a scenario on a copy of the twin (never on the estate)",
@@ -1121,7 +1131,7 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
             if graph is None and args.twin_command not in {
                 "changes", "ack", "detect", "assets", "asset", "algorithms",
                 "history", "why", "evidence", "search", "conflicts", "lifecycle",
-                "intel", "algorithm", "trust-paths",
+                "intel", "algorithm", "trust-paths", "graph-traversal",
             }:
                 
                 print(
@@ -1190,6 +1200,36 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                         print(f"  {result['note']}")
                     if result.get("error"):
                         print(f"  {result['error']}", file=sys.stderr)
+                return EXIT_OK if result.get("ok") else EXIT_INCOMPLETE
+
+            if args.twin_command == "graph-traversal":
+                export = estate_twin.graph_export(graph)
+                impact_result = estate_twin.impact(
+                    graph, {"asset": args.asset}, depth=args.depth
+                )
+                driver = None
+                try:
+                    from graph_engine.connection.neo4j_driver import get_driver
+
+                    driver = get_driver()
+                except Exception:  # pragma: no cover - optional dependency
+                    driver = None
+                result = estate_graph_loader.traversal_parity(
+                    export, impact_result, driver=driver, database=args.database
+                )
+                if args.json:
+                    print(json.dumps(result, indent=2, default=str))
+                else:
+                    print(f"traversal  {result['status']} at depth {result['depth']}")
+                    print(f"twin       {result['in_process']['count']} asset(s) reachable")
+                    if result.get("store"):
+                        print(f"store      {result['store']['count']} asset(s) reachable")
+                    if result["only_in_twin"]:
+                        print(f"only twin  {', '.join(result['only_in_twin'][:5])}")
+                    if result["only_in_store"]:
+                        print(f"only store {', '.join(result['only_in_store'][:5])}")
+                    if result.get("note"):
+                        print(f"  {result['note']}")
                 return EXIT_OK if result.get("ok") else EXIT_INCOMPLETE
 
             if args.twin_command == "graph-load":

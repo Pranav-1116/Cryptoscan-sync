@@ -6146,6 +6146,8 @@ export interface EstateTwinSnapshotSummary {
   assets: number; evidence: number; relationships: number; unresolved_relationships: number;
   completeness_percent: number | null; observations: number;
   first_seen_at: string | null; last_seen_at: string | null;
+  /* §19: which build of the rules read this evidence, and which collector builds made it */
+  policy_version?: string | null; collector_versions?: string[];
   captured_by: string | null; note: string | null; source_run_id?: string | null;
 }
 

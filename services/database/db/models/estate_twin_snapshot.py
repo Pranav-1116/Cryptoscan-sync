@@ -56,7 +56,13 @@ class EstateTwinSnapshot(BaseModel, TenantScoped):
     #: the whole snapshot payload: assets, evidence, relationships, collectors
     payload: Mapped[dict] = mapped_column(JSON, nullable=False)
     counts: Mapped[Optional[dict]] = mapped_column(JSON)
+    #: ``collector@version`` for every collector behind the evidence, so a probe upgrade is
+    #: distinguishable from an estate change
     collector_versions: Mapped[Optional[list]] = mapped_column(JSON)
+    #: §19 — which version of the rules (confidence table, identity keys, conflict fields)
+    #: read this evidence. Two snapshots with the same projection id and different policy
+    #: versions describe the same evidence judged differently
+    policy_version: Mapped[Optional[str]] = mapped_column(String(80))
 
     assets: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     evidence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

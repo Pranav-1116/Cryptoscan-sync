@@ -903,6 +903,15 @@ export default function DigitalTwinPanel() {
                     completeness {snapshot.completeness_percent == null ? "n/a" : `${snapshot.completeness_percent}%`}
                   </Badge>
                   {snapshot.observations > 1 && <Badge tone="cyan">seen {snapshot.observations}×</Badge>}
+                  {/* §19: same evidence, different rules, is a policy change — not drift */}
+                  <Badge tone={snapshot.policy_version ? "slate" : "amber"}>
+                    {snapshot.policy_version ?? "policy not recorded"}
+                  </Badge>
+                  {(snapshot.collector_versions ?? []).length > 0 && (
+                    <span className="faint" style={{ fontSize: 9.5 }}>
+                      {(snapshot.collector_versions ?? []).slice(0, 3).join(", ")}
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="btn sm"

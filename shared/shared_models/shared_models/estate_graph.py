@@ -44,6 +44,12 @@ COVERAGE_SCHEMA = "cryptoscan.estate-coverage/1"
 UNKNOWN_SCHEMA = "cryptoscan.estate-unknown-inventory/1"
 IDENTITY_VERSION = "estate:v1"
 
+#: §19 — the version of the *rules* this build applies to evidence: the confidence table,
+#: the identity keys, the conflict fields and the usage-state mapping. A snapshot records it
+#: so that "the same evidence, read by a newer policy" is distinguishable from "the estate
+#: changed" — the projection id identifies the evidence, this identifies the reading of it.
+POLICY_VERSION = "estate-policy:v1"
+
 #: entity kinds the estate graph understands (the canonical asset model, §6)
 ASSET_TYPES: tuple[str, ...] = (
     "SYSTEM",
@@ -360,8 +366,18 @@ def make_evidence(
     observed_at: str | None = None,
     collector: str | None = None,
     evidence_id: str | None = None,
+    collector_version: str | None = None,
+    raw_reference: str | None = None,
 ) -> dict[str, Any]:
-    """One normalized evidence record (§1 evidence layer)."""
+    """One normalized evidence record (§1 evidence layer).
+
+    ``collector_version`` and ``raw_reference`` are kept because a provenance question an
+    auditor actually asks is "which build of the probe said this, and where is the output it
+    came from?" — a collector name alone cannot be reproduced, and a source path alone
+    cannot be re-read once the file moves. Neither is part of the content-addressed id:
+    upgrading a collector does not change the fact it observed, and re-observing the same
+    fact under a newer probe updates these two fields rather than inventing a second record.
+    """
     kind = str(evidence_type or "UNKNOWN").upper()
     if kind not in EVIDENCE_TYPES:
         raise ValueError(f"unknown evidence type {evidence_type!r}; expected one of {', '.join(EVIDENCE_TYPES)}")
@@ -376,6 +392,8 @@ def make_evidence(
         "schema": "cryptoscan.estate-evidence/1",
         "source": source,
         "collector": collector or source,
+        "collector_version": collector_version,
+        "raw_reference": raw_reference,
         "evidence_type": kind,
         "confidence": EVIDENCE_CONFIDENCE[kind],
         "target": target,
@@ -1627,6 +1645,8 @@ def build_graph(payload: Mapping[str, Any]) -> EstateGraph:
                 observed_at=record.get("observed_at"),
                 collector=record.get("collector"),
                 evidence_id=record.get("evidence_id"),
+                collector_version=record.get("collector_version"),
+                raw_reference=record.get("raw_reference"),
             )
         )
 
@@ -1670,6 +1690,7 @@ __all__ = [
     "EVIDENCE_TYPES",
     "IDENTITY_KEYS",
     "IDENTITY_VERSION",
+    "POLICY_VERSION",
     "PROJECTION_SCHEMA",
     "RELATIONSHIP_BASES",
     "RELATIONSHIP_PREDICATES",

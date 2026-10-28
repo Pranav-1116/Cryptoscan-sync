@@ -422,6 +422,18 @@ REL_COUNTS_QUERY = (
 )
 
 
+#: one bounded traversal, answered by the store rather than by the twin. The relationship
+#: types are passed as a parameter so no token from an export is interpolated into Cypher,
+#: and the walk is undirected for the same reason the twin's blast radius is: a dependency
+#: points the other way from an impact.
+TRAVERSAL_QUERY = (
+    "MATCH (start:" + ASSET_LABEL + ") WHERE start.estate = $estate AND start.id IN $seeds "
+    "MATCH path = (start)-[rels*1..{depth}]-(n) "
+    "WHERE all(r IN rels WHERE type(r) IN $types) "
+    "RETURN DISTINCT n.id AS id ORDER BY n.id"
+)
+
+
 def _expected_ids(export: Mapping[str, Any]) -> dict[str, set[str]]:
     """The exact node ids the export says should be in the store, per kind label."""
     by_label: dict[str, set[str]] = {}
@@ -469,10 +481,10 @@ def parity(
     holds everything the export has plus nodes the caller has not pruned — an
     accumulated store, reported rather than smoothed over).
 
-    Traversal parity — running a blast radius in the store and getting the same answer —
-    is *not* claimed here. The store is written, and its contents are proven equal; no
-    query path yet recomputes a BOM or a radius from it, and this function says so
-    instead of implying more.
+    Contents equality is not traversal equality: the store can hold exactly this projection
+    and still answer a traversal differently if it walks different relationship types or a
+    different depth. :func:`traversal_parity` runs that comparison for one asset and one
+    depth; this function reports ``traversal_parity: NOT_CLAIMED`` because it has not run it.
     """
     counts = validate_export(export)
     estate = counts["estate"]
@@ -497,8 +509,9 @@ def parity(
         "relationship_differences": {},
         "traversal_parity": "NOT_CLAIMED",
         "traversal_note": (
-            "the store holds a proven copy of this projection; no query path recomputes a blast "
-            "radius or a BOM from it yet, so store-vs-twin traversal parity is not claimed"
+            "contents parity is not traversal parity. The store holds a proven copy of this "
+            "projection; whether a blast radius computed there reaches the same assets is "
+            "answered by traversal_parity() (GET /twin/graph/traversal), not here"
         ),
     }
 
@@ -583,6 +596,140 @@ def parity(
 
 
 
+def traversal_parity(
+    export: Mapping[str, Any],
+    impact: Mapping[str, Any],
+    *,
+    driver: Any,
+    database: str | None = None,
+    max_listed: int = 20,
+) -> dict[str, Any]:
+    """Run the same blast radius in the store and compare it with the twin's (§20–§21).
+
+    ``parity`` proves the store holds this projection. It cannot prove that a *question*
+    asked of the store gets the twin's answer, and until that is shown the store stays a
+    copy for external consumers — which is why ``parity`` reports
+    ``traversal_parity: NOT_CLAIMED``. This is that check, for one asset and one depth:
+
+    * the twin's reachable set comes from ``estate_twin.impact`` and is untruncated;
+    * the store's comes from one bounded Cypher walk over the same relationship types,
+      passed as a parameter so nothing from an export is interpolated;
+    * both are compared as **sets**, so an id only the store reaches is named as loudly as
+      an id only the twin reaches.
+
+    A difference does not mean the store is wrong or the twin is wrong — it means one of
+    them is answering a different question, and the honest response is to find out which
+    before letting anything read the store as authority. ``NOT_CONNECTED`` is not parity.
+    """
+    counts = validate_export(export)
+    estate = counts["estate"]
+    reachable = [str(item) for item in (impact.get("reachable_ids") or [])]
+    depth = int(impact.get("depth") or 0)
+
+    result: dict[str, Any] = {
+        "schema": LOADER_SCHEMA,
+        "check": "traversal",
+        "projection_id": counts["projection_id"],
+        "estate": estate,
+        "database": database,
+        "selector": impact.get("selector"),
+        "depth": depth,
+        "status": "NOT_RUN",
+        "in_process": {"count": len(reachable), "ids": reachable[:max_listed]},
+        "store": None,
+        "only_in_twin": [],
+        "only_in_store": [],
+        "ok": False,
+    }
+
+    if impact.get("status") != "MATCHED":
+        result.update({
+            "status": "NO_MATCH",
+            "note": (
+                f"the twin answered {impact.get('status')!r} for this selector, so there is no "
+                "reachable set to compare. That is not parity and it is not an empty result"
+            ),
+        })
+        return result
+
+    if driver is None:
+        result.update({
+            "status": "NOT_CONNECTED",
+            "note": (
+                "no graph store: the traversal parity check needs a store to walk. This is not "
+                "'the store agrees with the twin'"
+            ),
+        })
+        return result
+
+    types = sorted({
+        _check_token(str(edge.get("type") or ""), allowed=_ALLOWED_REL_TYPES, what="relationship type")
+        for edge in export.get("relationships") or []
+        if str(edge.get("type") or "").upper() != UNRESOLVED_TYPE
+    })
+    seeds = [str(item) for item in (impact.get("seed_ids") or [])]
+    if not seeds:
+        result.update({
+            "status": "NO_MATCH",
+            "note": "the impact had no seed assets, so there is nothing to walk from",
+        })
+        return result
+    if not types:
+        result.update({
+            "status": "NO_TRAVERSABLE_TYPES",
+            "note": (
+                "this projection has no established relationships, so any traversal is the seed "
+                "set alone. That is a fact about the estate, not a parity result"
+            ),
+        })
+        return result
+
+    query = TRAVERSAL_QUERY.format(depth=max(1, min(depth, 10)))
+    session_kwargs = {"database": database} if database else {}
+    with driver.session(**session_kwargs) as session:
+        rows = session.run(query, estate=estate, seeds=seeds, types=types)
+        stored = {str(record["id"]) for record in rows}
+
+    # the twin's own set includes the seeds (distance 0); so must the store's
+    stored |= {seed for seed in seeds if seed}
+    twin_set = set(reachable)
+
+    only_in_twin = sorted(twin_set - stored)
+    only_in_store = sorted(stored - twin_set)
+    result["store"] = {
+        "count": len(stored),
+        "ids": sorted(stored)[:max_listed],
+        "types_walked": types,
+        "seeds": seeds,
+    }
+    result["only_in_twin"] = only_in_twin[:max_listed]
+    result["only_in_store"] = only_in_store[:max_listed]
+
+    if only_in_twin or only_in_store:
+        result.update({
+            "status": "TRAVERSAL_MISMATCH",
+            "ok": False,
+            "note": (
+                "the store and the twin do not reach the same assets for this question. One of "
+                "them is answering a different question: check that the store holds this "
+                "projection (parity), that the relationship types walked are the ones the twin "
+                "uses, and that depth is the same on both sides. Until that is settled neither "
+                "answer should be read as authority"
+            ),
+        })
+    else:
+        result.update({
+            "status": "TRAVERSAL_PARITY",
+            "ok": True,
+            "note": (
+                "a blast radius computed in the graph store reaches exactly the assets the twin "
+                "reaches, at the same depth, over the same relationship types. The store is a "
+                "verified copy for this question — the evidence remains the truth"
+            ),
+        })
+    return result
+
+
 __all__ = [
     "EXPORT_SCHEMA",
     "LOADER_SCHEMA",
@@ -593,5 +740,6 @@ __all__ = [
     "plan",
     "prune",
     "relationship_statement",
+    "traversal_parity",
     "validate_export",
 ]

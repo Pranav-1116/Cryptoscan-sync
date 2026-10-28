@@ -1311,6 +1311,20 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   letter-spacing: .22em;
   font-family: var(--mono);
 }
+/* the estate tree inside a section: quieter than a section label, indented like a heading
+   over the routes beneath it. Collapsed, the sidebar shows icons only and these disappear
+   with the rest of the text, which is why they are marked aria-hidden in the markup */
+.sidebar .nav-sublabel {
+  margin-top: 12px;
+  padding-inline: 12px;
+  color: var(--faint);
+  font-size: 9px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  opacity: .85;
+}
+.shell.collapsed .sidebar .nav-sublabel { display: none; }
 .sidebar a.nav {
   border-left: 0;
   border-radius: 9px;

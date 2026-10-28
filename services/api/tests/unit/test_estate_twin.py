@@ -126,6 +126,41 @@ def test_a_changed_fact_changes_the_snapshot(graph):
     assert build_graph(payload).fingerprint() != graph.fingerprint()
 
 
+def test_a_snapshot_records_the_policy_that_read_the_evidence():
+    """§19 — the projection id identifies the evidence; this identifies the reading of it."""
+    from shared_models.estate_graph import POLICY_VERSION
+
+    snap = twin.snapshot(build_graph(_payload()))
+
+    assert snap["policy_version"] == POLICY_VERSION
+    assert snap["note"]
+
+
+def test_a_snapshot_records_collector_versions_not_just_collector_names():
+    """A probe upgrade must be visible: "linux-static" alone cannot be reproduced."""
+    graph = build_graph({
+        "assets": [{"ref": "api", "type": "APPLICATION", "name": "Payment API"}],
+        "evidence": [{
+            "evidence_id": "ev-1", "source": "/etc/pkcs11.conf", "collector": "linux-static",
+            "collector_version": "1.4.0", "evidence_type": "CONFIGURED",
+            "target": "api", "layer": "APPLICATION", "facts": {"algorithm": "AES-256-GCM"},
+        }],
+    })
+
+    snap = twin.snapshot(graph)
+
+    assert snap["collector_versions"] == ["linux-static@1.4.0"]
+
+
+def test_a_collector_with_no_version_is_named_rather_than_dropped():
+    payload = _payload()
+    payload["evidence"][0]["collector"] = "cmdb-import"
+
+    snap = twin.snapshot(build_graph(payload))
+
+    assert "cmdb-import" in snap["collector_versions"]
+
+
 def test_a_snapshot_without_a_payload_is_refused(graph):
     with pytest.raises(ValueError):
         twin.graph_from_snapshot({"snapshot_id": "twin:x"})

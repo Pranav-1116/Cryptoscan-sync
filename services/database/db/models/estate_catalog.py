@@ -168,6 +168,12 @@ class EstateEvidenceRecord(BaseModel, TenantScoped):
     schema_version: Mapped[Optional[str]] = mapped_column(String(80))
     source: Mapped[Optional[str]] = mapped_column(String(400))
     collector: Mapped[Optional[str]] = mapped_column(String(400), index=True)
+    #: §11 — which build of the collector produced this, and where the raw output lives.
+    #: A collector name alone cannot be reproduced; a source path alone cannot be re-read
+    #: once the file moves. Re-observing the same fact under a newer probe updates these,
+    #: because the fact did not change and the provenance did
+    collector_version: Mapped[Optional[str]] = mapped_column(String(80))
+    raw_reference: Mapped[Optional[str]] = mapped_column(String(600))
     evidence_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     confidence: Mapped[Optional[str]] = mapped_column(String(20))
     target_id: Mapped[str] = mapped_column(String(120), nullable=False)

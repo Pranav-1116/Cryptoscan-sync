@@ -1854,3 +1854,40 @@ def estate_twin_trust_paths(
             "count": 0,
         }
     return estate_trust.survey(graph, limit=limit)
+
+
+@router.get("/twin/graph/traversal")
+def estate_twin_graph_traversal(
+    asset: str = Query(..., min_length=1, max_length=200),
+    depth: int = Query(3, ge=1, le=10),
+    database: str | None = Query(None, max_length=64),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Ask the graph store the twin's own blast-radius question (§20–§21).
+
+    ``/twin/graph/verify`` proves the store holds this projection; this proves whether a
+    *question* asked of the store gets the twin's answer. Both sets are compared as sets, so
+    an asset only the store reaches is named as loudly as one only the twin reaches.
+
+    ``TRAVERSAL_PARITY`` is a statement about one asset at one depth, not a general claim;
+    ``TRAVERSAL_MISMATCH`` is not "the store is wrong" — it means one side is answering a
+    different question, and the note says which three things to check.
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    impact = estate_twin.impact(graph, {"asset": asset}, depth=depth)
+    export = estate_twin.graph_export(graph)
+
+    driver = None
+    try:
+        from graph_engine.connection.neo4j_driver import get_driver
+
+        driver = get_driver()
+    except Exception:  # pragma: no cover - optional dependency / misconfiguration
+        driver = None
+
+    result = estate_graph_loader.traversal_parity(
+        export, impact, driver=driver, database=database
+    )
+    return {"run_id": run.id, **result}

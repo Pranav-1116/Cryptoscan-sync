@@ -21,6 +21,10 @@ from api import estate_graph_loader as loader
 from shared_models import estate_twin as twin
 from shared_models.estate_graph import build_graph
 
+import test_network_protocol_safety as shared_api
+
+api_fixture = pytest.fixture(name="api")(shared_api.client.__wrapped__)
+
 
 def _payload() -> dict:
     return {
@@ -416,3 +420,134 @@ def test_no_driver_is_not_parity(export):
     assert result["status"] == "NOT_CONNECTED"
     assert result["ok"] is False
     assert "not 'the store is in parity'" in result["error"]
+
+
+# -- traversal parity: contents equality is not traversal equality (§20–§21) -- #
+
+
+class _TraversalSession:
+    """A store that answers one bounded walk from a fixed picture of itself."""
+
+    def __init__(self, reachable: list[str]):
+        self.reachable = reachable
+        self.queries: list[tuple[str, dict]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def run(self, cypher, **params):
+        self.queries.append((cypher, params))
+        return [{"id": value} for value in self.reachable]
+
+
+class _TraversalDriver:
+    def __init__(self, session):
+        self.session_obj = session
+
+    def session(self, **kwargs):
+        return self.session_obj
+
+
+def _impact(graph, asset: str, depth: int = 3) -> dict:
+    return twin.impact(graph, {"asset": asset}, depth=depth)
+
+
+def test_a_store_that_answers_the_same_traversal_is_in_parity(export):
+    graph = build_graph(_payload())
+    impact = _impact(graph, "Payment API")
+    reachable = list(impact["reachable_ids"])
+    session = _TraversalSession(reachable)
+
+    result = loader.traversal_parity(export, impact, driver=_TraversalDriver(session))
+
+    assert result["status"] == "TRAVERSAL_PARITY"
+    assert result["ok"] is True
+    assert result["in_process"]["count"] == result["store"]["count"]
+    assert "exactly the assets the twin reaches" in result["note"]
+
+
+def test_the_walk_is_scoped_to_the_estate_and_parameterised(export):
+    graph = build_graph(_payload())
+    impact = _impact(graph, "Payment API")
+    session = _TraversalSession(list(impact["reachable_ids"]))
+
+    loader.traversal_parity(export, impact, driver=_TraversalDriver(session))
+
+    cypher, params = session.queries[0]
+    assert "start.estate = $estate" in cypher
+    assert "$types" in cypher and params["types"]
+    assert "UNRESOLVED_CANDIDATE" not in params["types"]
+    assert params["estate"] == "Synthetic Bank"
+    # depth is interpolated only after being clamped to a number, never from user text
+    assert f"*1..{impact['depth']}]" in cypher
+
+
+def test_an_asset_only_the_store_reaches_is_named(export):
+    graph = build_graph(_payload())
+    impact = _impact(graph, "Payment API")
+    session = _TraversalSession(list(impact["reachable_ids"]) + ["asset:ghost:1"])
+
+    result = loader.traversal_parity(export, impact, driver=_TraversalDriver(session))
+
+    assert result["status"] == "TRAVERSAL_MISMATCH"
+    assert result["ok"] is False
+    assert result["only_in_store"] == ["asset:ghost:1"]
+    assert "one of them is answering a different question" in result["note"].lower()
+
+
+def test_an_asset_only_the_twin_reaches_is_named(export):
+    graph = build_graph(_payload())
+    impact = _impact(graph, "Payment API")
+    session = _TraversalSession(list(impact["reachable_ids"])[:-1])
+
+    result = loader.traversal_parity(export, impact, driver=_TraversalDriver(session))
+
+    assert result["status"] == "TRAVERSAL_MISMATCH"
+    assert result["only_in_twin"]
+
+
+def test_no_store_is_not_parity(export):
+    graph = build_graph(_payload())
+    impact = _impact(graph, "Payment API")
+
+    result = loader.traversal_parity(export, impact, driver=None)
+
+    assert result["status"] == "NOT_CONNECTED"
+    assert result["ok"] is False
+    assert "not 'the store agrees with the twin'" in result["note"]
+
+
+def test_an_unmatched_selector_is_not_an_empty_parity(export):
+    graph = build_graph(_payload())
+    impact = twin.impact(graph, {"asset": "nothing-like-this"})
+
+    result = loader.traversal_parity(export, impact, driver=_TraversalDriver(_TraversalSession([])))
+
+    assert result["status"] == "NO_MATCH"
+    assert result["ok"] is False
+    assert "not an empty result" in result["note"]
+
+
+def test_contents_parity_still_refuses_to_claim_traversal_parity(export):
+    """/verify keeps saying NOT_CLAIMED: it did not run the walk, and saying otherwise lies."""
+    session = _ParitySession(ids_by_label={}, rel_counts={})
+
+    result = loader.parity(export, driver=_ParityDriver(session))
+
+    assert result["traversal_parity"] == "NOT_CLAIMED"
+    assert "traversal_parity()" in result["traversal_note"]
+
+
+def test_the_traversal_endpoint_refuses_without_an_observation(api):
+    """/twin/graph/traversal needs a projection; without one it says so, not 'parity'."""
+    client, session = api
+
+    response = client.get(
+        "/api/v1/estate/evidence/twin/graph/traversal", params={"asset": "Payment API"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["error"] == "no_estate_discovery"

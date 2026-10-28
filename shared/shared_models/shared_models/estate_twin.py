@@ -47,6 +47,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from shared_models.estate_graph import (
     ASSET_TYPES,
     BOM_KINDS,
+    POLICY_VERSION,
     EstateGraph,
     build_graph,
 )
@@ -378,9 +379,21 @@ def snapshot(graph: EstateGraph, *, scope: str | None = None) -> dict[str, Any]:
             "collectors": len(payload["collectors"]),
             "coverage_rows": len(payload["coverage"]),
         },
+        # §19: what read this evidence, and — separately — which build of each collector
+        # produced it. The previous version listed collector NAMES here, which made a
+        # collector upgrade invisible: the estate changed nothing and the list changed
+        # nothing either. A name without a version cannot be reproduced, so both are kept,
+        # and an unknown version says so rather than being dropped
         "collector_versions": sorted(
-            {str(record.get("collector")) for record in payload["evidence"] if record.get("collector")}
+            {
+                f"{record.get('collector')}@{record['collector_version']}"
+                if record.get("collector_version")
+                else str(record.get("collector"))
+                for record in payload["evidence"]
+                if record.get("collector")
+            }
         ),
+        "policy_version": POLICY_VERSION,
         "payload": payload,
         "note": (
             "the snapshot id is the projection id: two snapshots are comparable when the evidence "
@@ -1254,6 +1267,11 @@ def impact(
             "total": len(reached),
             "business_systems": by_type.get("SYSTEM", 0),
         },
+        # the full reachable set, untruncated: a caller comparing this against a graph
+        # store's own answer needs every id, and a truncated list would make a store look
+        # wrong (or right) for reasons that have nothing to do with the store
+        "reachable_ids": reached,
+        "seed_ids": sorted(seed_assets),
         "by_type": by_type,
         "direct": _cards(direct)[:MAX_LISTED],
         "transitive": _cards(transitive)[:MAX_LISTED],

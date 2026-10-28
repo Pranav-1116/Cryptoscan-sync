@@ -23,15 +23,24 @@ import { RequireRole } from "../lib/auth.js";
 
 // Core categories per UX Prompt:
 // Overview, Discovery, Intelligence, Governance, Output, Administration
-type NavItem = { to: string; label: string; icon: Icon };
+type NavItem = {
+  to: string;
+  label: string;
+  icon: Icon;
+  /** a sub-heading inside the section, so the sidebar reads as the estate tree
+   *  (Estate / Cryptography / Network / Supply Chain / BOM / Intelligence / Digital
+   *  Twin) rather than one flat list of unrelated screens */
+  group?: string;
+};
 type NavSection = { title: string; items: NavItem[] };
+export type { NavItem, NavSection };
 
 // The navigation is deliberately data-driven: the same contract feeds the
 // sidebar, maturity labels, search affordances and route-coverage tests. The
 // duplicate Security Center placement is intentional: audit is a governance
 // workflow, while the same server-verified surface is also an administration
 // control. It remains one route and one source of truth.
-const PRIMARY_SECTIONS: NavSection[] = [
+export const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Overview",
     items: [
@@ -43,34 +52,39 @@ const PRIMARY_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: "Discovery",
+    title: "Collection",
     items: [
       { to: "/scanners", label: "Scan", icon: Scan },
       { to: "/live-scanners", label: "Live Scanners", icon: Pulse },
-      { to: "/assets", label: "Assets", icon: Cube },
-      { to: "/network", label: "Network", icon: GlobeHemisphereWest },
-      { to: "/cloud", label: "Cloud", icon: Cloud },
-      { to: "/dev-sec-ops", label: "Applications", icon: Code },
-      { to: "/hardware", label: "Hardware", icon: Cpu },
-      { to: "/certificates", label: "Certificates", icon: Certificate },
-      { to: "/vendor", label: "Vendors", icon: Buildings },
     ],
   },
+  // The estate tree, in the order a bank reads it (§24): what exists, what it is made of,
+  // how it connects, who supplies it, what cryptography is in it, what the twin knows about
+  // it, and what needs attention. Every route already existed; grouping is the change, so a
+  // reader can find "Certificates" under Cryptography instead of in a list of fourteen.
   {
-    title: "Intelligence",
+    title: "Estate",
     items: [
-      { to: "/crypto", label: "Cryptography", icon: Key },
-      { to: "/cbom", label: "Crypto Inventory (CBOM)", icon: Atom },
-      { to: "/crypto-assets", label: "Algorithm Catalog", icon: Key },
-      { to: "/live-asset-intelligence", label: "Technology BOM", icon: Stack },
-      { to: "/hbom", label: "HBOM", icon: HardDrives },
-      { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest },
-      { to: "/dependency-graph", label: "Dependencies", icon: Graph },
-      { to: "/graph", label: "Graph Explorer", icon: Graph },
-      { to: "/findings", label: "Findings", icon: ListChecks },
-      { to: "/pqc", label: "PQC Readiness", icon: ShieldCheck },
-      { to: "/agility", label: "Crypto Agility", icon: SlidersHorizontal },
-      { to: "/drift", label: "Crypto Drift", icon: Pulse },
+      { to: "/assets", label: "Assets", icon: Cube, group: "Estate" },
+      { to: "/dev-sec-ops", label: "Applications", icon: Code, group: "Estate" },
+      { to: "/cloud", label: "Cloud", icon: Cloud, group: "Estate" },
+      { to: "/hardware", label: "Hardware", icon: Cpu, group: "Estate" },
+      { to: "/network", label: "Network", icon: GlobeHemisphereWest, group: "Network" },
+      { to: "/certificates", label: "Certificates", icon: Certificate, group: "Network" },
+      { to: "/vendor", label: "Vendors", icon: Buildings, group: "Supply chain" },
+      { to: "/dependency-graph", label: "Dependencies", icon: Graph, group: "Supply chain" },
+      { to: "/crypto", label: "Cryptography", icon: Key, group: "Cryptography" },
+      { to: "/crypto-assets", label: "Algorithm Catalog", icon: Key, group: "Cryptography" },
+      { to: "/cbom", label: "Crypto Inventory (CBOM)", icon: Atom, group: "Cryptography" },
+      { to: "/hbom", label: "HBOM", icon: HardDrives, group: "BOM" },
+      { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest, group: "BOM" },
+      { to: "/live-asset-intelligence", label: "Technology BOM", icon: Stack, group: "BOM" },
+      { to: "/digital-twin", label: "Digital Twin", icon: Stack, group: "Digital twin" },
+      { to: "/graph", label: "Graph Explorer", icon: Graph, group: "Digital twin" },
+      { to: "/findings", label: "Findings", icon: ListChecks, group: "Intelligence" },
+      { to: "/pqc", label: "PQC Readiness", icon: ShieldCheck, group: "Intelligence" },
+      { to: "/agility", label: "Crypto Agility", icon: SlidersHorizontal, group: "Intelligence" },
+      { to: "/drift", label: "Crypto Drift", icon: Pulse, group: "Intelligence" },
     ],
   },
   {
@@ -91,7 +105,6 @@ const PRIMARY_SECTIONS: NavSection[] = [
     items: [
       { to: "/reports", label: "Reports", icon: FileText },
       { to: "/what-if", label: "What-If Analysis", icon: MagnifyingGlass },
-      { to: "/digital-twin", label: "Digital Twin", icon: Stack },
     ],
   },
   {
@@ -331,11 +344,14 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
           {PRIMARY_SECTIONS.map((group) => (
           <React.Fragment key={group.title}>
             <div className="nav-label">{group.title}</div>
-            {group.items.map((item) => {
+            {group.items.map((item, index) => {
+              const previous = index > 0 ? group.items[index - 1].group : undefined;
+              const startsGroup = Boolean(item.group) && item.group !== previous;
               const active = route === item.to || (item.to === "/command-center" && (route === "/" || route === ""));
               return (
+                <React.Fragment key={item.to}>
+                {startsGroup && <div className="nav-sublabel">{item.group}</div>}
                 <Link
-                  key={item.to}
                   to={item.to}
                   className={`nav ${active ? "active" : ""}`}
                   title={isCollapsed ? item.label : undefined}
@@ -348,6 +364,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
                   <span className="nav-text">{item.label}</span>
                   <TierPill tier={tierOf(item.to)} compact />
                 </Link>
+                </React.Fragment>
               );
             })}
           </React.Fragment>

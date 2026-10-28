@@ -72,6 +72,7 @@ def record_snapshot(
         payload=snapshot["payload"],
         counts=counts,
         collector_versions=snapshot.get("collector_versions") or [],
+        policy_version=snapshot.get("policy_version"),
         assets=len(graph.assets()),
         evidence=len(graph.evidence()),
         relationships=len(graph.relationships()),
@@ -130,6 +131,8 @@ def public(row: EstateTwinSnapshot, *, include_payload: bool = False) -> dict[st
         "estate": row.estate,
         "scope": row.scope,
         "counts": row.counts or {},
+        "collector_versions": row.collector_versions or [],
+        "policy_version": row.policy_version,
         "assets": row.assets,
         "evidence": row.evidence,
         "relationships": row.relationships,
@@ -140,7 +143,14 @@ def public(row: EstateTwinSnapshot, *, include_payload: bool = False) -> dict[st
         "last_seen_at": _iso(row.last_seen_at),
         "source_run_id": row.source_run_id,
         "captured_by": row.captured_by,
-        "note": row.note,
+        "note": (
+            f"{row.note}"
+            if row.policy_version
+            else (
+                f"{row.note}. This snapshot predates policy_version, so which rules read its "
+                "evidence is not recorded"
+            )
+        ),
     }
     if include_payload:
         data["payload"] = row.payload

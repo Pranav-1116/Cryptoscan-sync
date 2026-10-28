@@ -519,3 +519,16 @@ def test_trust_paths_cli_says_where_a_chain_stops(with_discovery, capsys):
     printed = capsys.readouterr().out
     assert code == cli.EXIT_OK
     assert "certificate chain(s)" in printed
+
+
+def test_graph_traversal_cli_reports_no_store_as_incomplete(with_discovery, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "graph-traversal", "Payment API", "--json"],
+                    session_factory=lambda: with_discovery)
+    body = json.loads(capsys.readouterr().out)
+
+    # no store in this environment: that is NOT_CONNECTED, and it must not exit 0
+    assert body["check"] == "traversal"
+    assert body["status"] == "NOT_CONNECTED"
+    assert code == cli.EXIT_INCOMPLETE
