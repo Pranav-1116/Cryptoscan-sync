@@ -19,6 +19,7 @@ const GRAPH = `${TWIN}/graph`;
 const GRAPH_LOAD = `${TWIN}/graph/load`;
 const SIMULATIONS = `${TWIN}/simulations`;
 const CHANGES = "/api/v1/estate/evidence/changes";
+const CATALOG = "/api/v1/estate/evidence/catalog";
 const SNAPSHOTS = `${TWIN}/snapshots`;
 
 function overview() {
@@ -42,7 +43,7 @@ it("renders the twin views", async () => {
   mockFetch({ [TWIN]: overview() });
   render(<DigitalTwinPanel />);
   expect(await screen.findByText(/twin completeness/)).toHaveTextContent("55.5%");
-  for (const label of ["Live estate", "Crypto graph", "Changes", "History & compare", "Graph export"]) {
+  for (const label of ["Live estate", "Crypto graph", "Catalogue", "Changes", "History & compare", "Graph export"]) {
     expect(screen.getByText(label)).toBeInTheDocument();
   }
 });
@@ -244,4 +245,55 @@ it("shows what changed, not merely that something changed", async () => {
   expect(screen.getByText(/proof was lost, not necessarily/)).toBeInTheDocument();
   expect(screen.getByText("Acknowledge")).toBeInTheDocument();
   expect(screen.getByText("acknowledged")).toBeInTheDocument();
+});
+
+it("shows stale catalogue rows instead of hiding what stopped being observed", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [CATALOG]: {
+      schema: "cryptoscan.estate-catalog/1", assets: 2,
+      assets_by_type: { HSM: 2 }, assets_by_lifecycle: { ACTIVE: 1, STALE: 1 },
+      note: "the catalogue is what has been observed",
+    },
+    [`${CATALOG}/assets`]: {
+      count: 2,
+      note: "empty means nothing matching has been observed",
+      assets: [
+        {
+          asset_id: "asset:hsm:1", asset_type: "HSM", name: "HSM-03",
+          environment: "production", owner: null, location: null, source: null,
+          identity: {}, attributes: {}, evidence_ids: ["ev-2"], evidence_count: 1,
+          lifecycle_state: "ACTIVE" as const, first_seen_at: "2026-10-20T00:00:00Z",
+          last_seen_at: "2026-10-27T00:00:00Z", observation_count: 4,
+          is_estate_state: true as const,
+        },
+        {
+          asset_id: "asset:hsm:2", asset_type: "HSM", name: "HSM-04",
+          environment: "production", owner: null, location: null, source: null,
+          identity: {}, attributes: {}, evidence_ids: [], evidence_count: 3,
+          lifecycle_state: "STALE" as const, first_seen_at: "2026-09-01T00:00:00Z",
+          last_seen_at: "2026-10-20T00:00:00Z", observation_count: 2,
+          is_estate_state: true as const,
+        },
+      ],
+    },
+    [`${CATALOG}/crypto`]: {
+      schema: "cryptoscan.estate-crypto-registry/1", algorithm_count: 1, record_count: 2,
+      algorithms: [{
+        algorithm: "AES-256-GCM", asset_count: 2, evidence: 2, stale: 0,
+        usage_states: { OBSERVED: 1, NEGOTIATED: 1 }, asset_types: { APPLICATION: 1, LOAD_BALANCER: 1 },
+        assets: [],
+      }],
+      meaning: "per usage state: capability is not use",
+      limits: ["counts come from the catalogue"],
+    },
+  });
+  render(<DigitalTwinPanel />);
+  (await screen.findByText("Catalogue")).click();
+  await waitFor(() => expect(screen.getByText("2 asset record(s)")).toBeInTheDocument());
+  expect(screen.getByText("STALE")).toBeInTheDocument();
+  expect(screen.getByText(/never deleted/)).toBeInTheDocument();
+  expect(screen.getByText(/1 active/)).toBeInTheDocument();
+  expect(screen.getByText("AES-256-GCM")).toBeInTheDocument();
+  expect(screen.getByText(/capability never counts as use/)).toBeInTheDocument();
 });

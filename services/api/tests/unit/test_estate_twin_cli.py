@@ -231,3 +231,75 @@ def test_acknowledging_an_unknown_change_fails_loudly(cli_session, capsys):
     captured = capsys.readouterr()
     assert code == cli.EXIT_INCOMPLETE
     assert "no change event" in captured.err
+
+
+# -- the durable catalogue from a terminal --------------------------------- #
+
+
+def test_assets_lists_catalogue_records_with_their_lifecycle(cli_session, with_discovery, capsys):
+    from api import cli, estate_catalog
+    from shared_models.estate_graph import build_graph
+
+    estate_catalog.sync(with_discovery, build_graph(_payload()), tenant_id=None, run_id="run-1")
+    capsys.readouterr()
+
+    code = cli.main(["twin", "assets"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "Payment API" in out
+    assert "ACTIVE" in out
+    assert "seen 1×" in out
+
+
+def test_an_empty_catalogue_says_it_is_about_collection(cli_session, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "assets"], session_factory=lambda: cli_session)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "not 'the bank has no assets'" in out
+
+
+def test_asset_detail_prints_crypto_edges_and_refused_candidates(cli_session, with_discovery, capsys):
+    from api import cli, estate_catalog
+    from shared_models.estate_graph import build_graph
+
+    estate_catalog.sync(with_discovery, build_graph(_payload()), tenant_id=None, run_id="run-1")
+    capsys.readouterr()
+
+    code = cli.main(["twin", "asset", "Payment API"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "Payment API" in out
+    assert "lifecycle" in out
+    assert "AES-256-GCM" in out
+
+
+def test_an_unknown_asset_fails_without_claiming_it_does_not_exist(cli_session, capsys):
+    from api import cli
+
+    code = cli.main(["twin", "asset", "nothing"], session_factory=lambda: cli_session)
+    captured = capsys.readouterr()
+    assert code == cli.EXIT_INCOMPLETE
+    assert "never have been observed" in captured.err
+
+
+def test_algorithms_keeps_capability_and_use_apart(cli_session, with_discovery, capsys):
+    from api import cli, estate_catalog
+    from shared_models.estate_graph import build_graph
+
+    payload = _payload()
+    payload["assets"].append({"ref": "ossl", "type": "LIBRARY", "name": "OpenSSL"})
+    payload["evidence"].append({
+        "evidence_id": "ev-9", "source": "linux-static", "evidence_type": "STATIC_OBSERVED",
+        "target": "ossl", "layer": "APPLICATION", "facts": {"supported_algorithms": ["AES-128"]},
+    })
+    estate_catalog.sync(with_discovery, build_graph(payload), tenant_id=None, run_id="run-1")
+    capsys.readouterr()
+
+    code = cli.main(["twin", "algorithms"], session_factory=lambda: with_discovery)
+    out = capsys.readouterr().out
+    assert code == cli.EXIT_OK
+    assert "AES-256-GCM" in out
+    assert "AES-128" in out
+    assert "SUPPORTED" in out and "OBSERVED" in out

@@ -6312,3 +6312,86 @@ Promise<ApiResult<EstateChangeEvent>> =>
     `/api/v1/estate/evidence/changes/${encodeURIComponent(eventId)}/acknowledge`,
     { note: note ?? null },
   );
+
+/* The durable catalogue — the twin's memory across observations.
+
+   `lifecycle_state` is the load-bearing field: STALE means "observed before, absent
+   from the latest observation", which is not the same as decommissioned and is
+   certainly not the same as never having existed. The UI must show it rather than
+   filter it away. */
+export interface EstateCatalogAsset {
+  asset_id: string; asset_type: string; name: string;
+  environment?: string | null; owner?: string | null; location?: string | null;
+  source?: string | null; identity: Record<string, unknown>; attributes: Record<string, unknown>;
+  evidence_ids: string[]; evidence_count: number;
+  lifecycle_state: "ACTIVE" | "STALE";
+  first_seen_at?: string | null; last_seen_at?: string | null;
+  observation_count: number; is_estate_state: true;
+}
+
+export interface EstateCatalogRelationship {
+  relationship_id: string; subject_id: string; subject_name?: string | null;
+  predicate: string; object_id: string; object_name?: string | null;
+  basis?: string | null; confidence?: string | null;
+  status: "ESTABLISHED" | "UNRESOLVED"; reason?: string | null;
+  evidence_ids: string[]; lifecycle_state: "ACTIVE" | "STALE";
+  observation_count: number; note: string;
+}
+
+export interface EstateCatalogCryptoRow {
+  artifact_id: string; asset_id: string; asset_name?: string | null; asset_type?: string | null;
+  algorithm?: string | null; protocol?: string | null; curve?: string | null;
+  key_size?: number | null; mode?: string | null; role?: string | null; layer?: string | null;
+  usage_state: string; evidence_type?: string | null; confidence?: string | null;
+  evidence_ids: string[]; source?: string | null;
+  lifecycle_state: "ACTIVE" | "STALE"; observation_count: number; note?: string | null;
+}
+
+export interface EstateCatalogDetail {
+  schema: string; asset: EstateCatalogAsset; crypto: EstateCatalogCryptoRow[];
+  crypto_by_usage_state: Record<string, number>;
+  relationships: EstateCatalogRelationship[];
+  unresolved_candidates: EstateCatalogRelationship[];
+  counts: { crypto: number; relationships: number; unresolved: number; evidence: number };
+  note: string;
+}
+
+export interface EstateCatalogSummary {
+  schema: string; assets: number;
+  assets_by_type: Record<string, number>; assets_by_lifecycle: Record<string, number>;
+  note: string;
+}
+
+export interface EstateCryptoRegistry {
+  schema: string; query?: string | null; algorithm_count: number; record_count: number;
+  algorithms: Array<{
+    algorithm: string; asset_count: number; evidence: number; stale: number;
+    usage_states: Record<string, number>; asset_types: Record<string, number>;
+    assets: Array<{ asset_id: string; asset_name?: string | null; asset_type?: string | null;
+      usage_state: string; layer?: string | null; lifecycle_state: string; evidence_ids: string[] }>;
+  }>;
+  meaning: string; limits: string[];
+}
+
+export const apiEstateCatalog = (): Promise<ApiResult<EstateCatalogSummary>> =>
+  _rsGet<EstateCatalogSummary>("/api/v1/estate/evidence/catalog");
+
+export const apiEstateCatalogAssets = (params?: { assetType?: string; lifecycle?: string; q?: string }):
+Promise<ApiResult<{ count: number; assets: EstateCatalogAsset[]; note: string }>> => {
+  const query = [
+    params?.assetType ? `asset_type=${encodeURIComponent(params.assetType)}` : "",
+    params?.lifecycle ? `lifecycle=${encodeURIComponent(params.lifecycle)}` : "",
+    params?.q ? `q=${encodeURIComponent(params.q)}` : "",
+  ].filter(Boolean).join("&");
+  return _rsGet<{ count: number; assets: EstateCatalogAsset[]; note: string }>(
+    `/api/v1/estate/evidence/catalog/assets${query ? `?${query}` : ""}`,
+  );
+};
+
+export const apiEstateCatalogAsset = (identifier: string): Promise<ApiResult<EstateCatalogDetail>> =>
+  _rsGet<EstateCatalogDetail>(`/api/v1/estate/evidence/catalog/assets/${encodeURIComponent(identifier)}`);
+
+export const apiEstateCryptoRegistry = (q?: string): Promise<ApiResult<EstateCryptoRegistry>> =>
+  _rsGet<EstateCryptoRegistry>(
+    `/api/v1/estate/evidence/catalog/crypto${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+  );

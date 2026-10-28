@@ -619,6 +619,7 @@ bank.
 | Layer 6 drift between stored runs | **shipped** (spec 93 §18) | `api/estate_drift.py` |
 | Layer 4 crypto graph (§9, §10) | **shipped** — four planes (capability / configured / runtime / wire), provider→algorithm edges, capability-vs-use coexistence explained, conflicts split into *real* (same plane) and *explained* (across planes) | `estate_twin.crypto_graph()` |
 | Compare two twins (§13, §24 "Compare") | **shipped** — assets/relationships/crypto-usage/coverage/evidence/unknown delta, verdict worst-first (`COVERAGE_DEGRADED` > `CRYPTO_CHANGED` > `ESTATE_CHANGED` > `NO_CHANGE`) | `estate_twin.compare()` |
+| Durable catalogue (§19, §22 "canonical estate model") | **shipped** — `estate_assets`, `estate_relationships`, `estate_crypto_assets` (migration 0113). Materialised from every observation, kept across them: `first_seen_at` / `last_seen_at` / `observation_count`, evidence ids on every row, and a lifecycle of `ACTIVE` → `STALE` (absent from the latest observation) with **no delete path**. Unresolved candidates stored as `UNRESOLVED` with their refusal reason. `GET /estate/evidence/catalog{,/assets,/assets/{id},/relationships,/crypto}`, `cryptoscan twin assets\|asset\|algorithms` | `api/estate_catalog.py` |
 | Snapshots as stored objects (§19) | **shipped** — `estate_twin_snapshots` (migration 0110), keyed by `(tenant, projection_id)`: identical evidence advances an observation counter instead of inventing a new snapshot | `api/estate_twin_store.py` |
 | Graph projection (§20) | **shipped** — deterministic typed nodes/edges, evidence ids on every edge, unresolved edges shipped separately, `not_source_of_truth` in the payload | `estate_twin.graph_export()` |
 | Graph store load (§20–§21) | **shipped** — `POST /twin/graph/load` and `cryptoscan twin graph-load` plan by default and write only on an explicit ask; MERGE by deterministic id (a re-load converges), labels/types validated against the graph vocabulary before they reach Cypher, whole-export refusal, opt-in `prune_missing`, and **read-back verification** (`VERIFIED` / `MISMATCH` / `NOT_CONNECTED` rather than "loaded") | `api/estate_graph_loader.py` |
@@ -633,7 +634,7 @@ bank.
 | Live change detection (§17–§18, §23) | **shipped** — every stored observation is compared with the one before it and produces *named claims*, not a drift flag: `CRYPTO_DEMOTED Payment API AES-256-GCM: OBSERVED → SUPPORTED`, `COVERAGE_DEGRADED HSM: COMPLETE → FAILED`, `ASSET_ADDED HSM-04 (HSM, production)`. Append-only `estate_change_events` (migration 0112); identical observations store nothing; a replayed detection increments an observation counter; acknowledgement moves and nothing else does. `GET /estate/evidence/changes`, `POST /changes/detect`, `POST /changes/{id}/acknowledge`, `cryptoscan twin changes\|detect\|ack` | `api/estate_change_feed.py` |
 | Twin snapshots as a first-class object (§14) | **shipped** — content-addressed by projection id | `estate_twin.snapshot()` / `graph_from_snapshot()` |
 | API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/snapshots,/search,/assets/{ref},/why,/crypto-graph,/graph,/simulations}`, `POST /twin/impact`, `POST /twin/simulate`, `POST /twin/graph/load`, `GET /estate/evidence/changes{,/{id}}`, `POST /changes/detect`, `POST /changes/{id}/acknowledge` |
-| UI (§24, §25) | **shipped as five views**: *Live estate* (placement, completeness with reasons, search with click-through to an asset view, blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge); *Crypto graph* (four planes with their meanings on screen); *Changes* (the change feed — severity, the named claims with before → after and what each does *not* prove, a *detect now* action, and acknowledge); *History & compare* (capture, persisted-vs-derived, worst-first verdict, and stored simulations listed as **quarantined** with `CURRENT`/`STALE` and an "asked N×" counter); *Graph export* (counts, unresolved separate, not-source-of-truth, and a *plan the graph-store load* action that sends `dry_run: true` — the console can never write to a graph store) | `frontend/src/components/DigitalTwinPanel.tsx` |
+| UI (§24, §25) | **shipped as six views**: *Live estate* (placement, completeness with reasons, search with click-through to an asset view, blast radius with paths and blind spots, simulation with BOM diff and a "live twin unchanged" badge); *Crypto graph* (four planes with their meanings on screen); *Catalogue* (asset records with lifecycle, a type filter, per-asset crypto + edges + refused candidates, and the algorithm registry); *Changes* (the change feed — severity, the named claims with before → after and what each does *not* prove, a *detect now* action, and acknowledge); *History & compare* (capture, persisted-vs-derived, worst-first verdict, and stored simulations listed as **quarantined** with `CURRENT`/`STALE` and an "asked N×" counter); *Graph export* (counts, unresolved separate, not-source-of-truth, and a *plan the graph-store load* action that sends `dry_run: true` — the console can never write to a graph store) | `frontend/src/components/DigitalTwinPanel.tsx` |
 | Historical snapshots (§14) | **shipped** — persisted (`POST/GET /twin/snapshots`); falls back to run-derived snapshots with `persisted: false` and says so | `estate_twin_store.py` |
 | Traversal in a graph store | *not built* — the twin traverses **in-process** over the canonical graph. The store now receives a verified copy (§20–§21), but no query path reads traversals back from it: until BOM/drift/impact can be recomputed from the store and proven equal to the in-process answer, the store stays a copy for external consumers, never an authority | — |
 
@@ -662,6 +663,60 @@ with only facts in the hash, a run where a plane `FAILED` fingerprinted identica
 to one where it succeeded over the same (smaller) set of facts — so "we stopped
 looking" was indistinguishable from "nothing changed". That is the single most
 dangerous comparison this product can get wrong, and it is now a regression test.
+
+### What the catalogue remembers, precisely
+
+The twin used to be **reconstructed**: every request re-read the newest stored
+discovery payload and rebuilt a graph from it. That answers "what is there now" and
+cannot answer the questions a twin exists for — when did this appear, is it missing or
+retired, which evidence establishes this edge, and who actually *uses* RSA-2048 as
+opposed to merely supporting it. Migration 0113 adds the memory:
+
+| record | keyed by | what it carries |
+|---|---|---|
+| `estate_assets` | the graph's stable `asset_id` | type, name, environment, owner, location, identity, attributes, evidence ids, `first_seen_at`, `last_seen_at`, `observation_count`, lifecycle |
+| `estate_relationships` | `sha256(subject\|predicate\|object\|basis)` | basis, confidence, evidence ids, and `status` ∈ `ESTABLISHED` / `UNRESOLVED` with the refusal reason |
+| `estate_crypto_assets` | the graph's `artifact_id` | algorithm / protocol / curve / key size / mode / layer, `usage_state`, evidence type + ids, lifecycle |
+
+Four rules, each with a test behind it:
+
+* **Derived, never typed.** Every row is materialised from a graph that came from
+  evidence; every row keeps the evidence ids. There is no "create asset" function, and
+  a test asserts one is not exported.
+* **Absence is not deletion.** A row absent from the latest observation becomes
+  `STALE` with `last_seen_at` intact. A host that stopped answering, a plane that
+  failed and a decommissioned server are indistinguishable in a diff — so the catalogue
+  refuses to turn that ambiguity into a deletion, and re-observation returns the row to
+  `ACTIVE`. Nothing removes rows automatically.
+* **Capability and use never merge.** Crypto rows are keyed per artefact *per plane*,
+  so `SUPPORTED AES-128` on a library and `OBSERVED AES-256-GCM` on an application are
+  two rows. The registry reports each algorithm *per* `usage_state`, and
+  `OBSERVED` / `NEGOTIATED` / `CONFIGURED` / `SUPPORTED` are never summed into one
+  "uses" number. A test stores a `SUPPORTED` and an `OBSERVED` artefact and asserts the
+  counts stay apart.
+* **An unresolved candidate is stored, and is not a relationship.** The graph refused
+  to establish it for want of a basis or evidence; the catalogue keeps it with
+  `status='UNRESOLVED'` and the reason (it is what a bank most wants to chase), and
+  every read path that answers "what depends on what" filters on `ESTABLISHED`.
+
+Evidence itself is not duplicated here. It remains the record of facts, the catalogue
+stores references to it, and `?why=` still resolves a claim back to collector, source,
+time and hash.
+
+### What the catalogue still cannot say
+
+* **No region / cloud-account hierarchy.** The twin knows environment, location and
+  business system (spec §4's last three levels) but not a region → data-centre →
+  cloud-subscription tree: nothing in the evidence asserts one, and inferring a region
+  from a free-text `location` would be a guess dressed as structure.
+* **No per-fact observation history.** `observation_count` says how often a row was
+  seen; it does not keep every value that fact ever took. The evidence records in the
+  run history hold that, and change events name the transitions — the catalogue keeps
+  the current value, not a time series.
+* **A stale row cannot distinguish "gone" from "not looked at".** That distinction
+  lives in the coverage rows of the same run: a `STALE` asset on a `FAILED` plane is a
+  collection gap, not a decommission, and the twin reports them side by side rather
+  than merging them.
 
 ### What "change detected" means, precisely
 

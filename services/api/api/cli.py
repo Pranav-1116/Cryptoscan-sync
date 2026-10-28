@@ -172,6 +172,33 @@ def _build_parser() -> argparse.ArgumentParser:
     twin_sim.add_argument("--tenant", default=None)
     twin_sim.add_argument("--json", action="store_true")
 
+    twin_assets = twin_sub.add_parser(
+        "assets",
+        help="browse the durable asset catalogue (across observations, including stale rows)",
+    )
+    twin_assets.add_argument("--type", dest="asset_type", default=None)
+    twin_assets.add_argument("--environment", default=None)
+    twin_assets.add_argument("--owner", default=None)
+    twin_assets.add_argument("--lifecycle", default=None, help="ACTIVE | STALE")
+    twin_assets.add_argument("--q", default=None)
+    twin_assets.add_argument("--limit", type=int, default=50)
+    twin_assets.add_argument("--tenant", default=None)
+    twin_assets.add_argument("--json", action="store_true")
+
+    twin_asset = twin_sub.add_parser("asset", help="everything the catalogue knows about one asset")
+    twin_asset.add_argument("identifier")
+    twin_asset.add_argument("--tenant", default=None)
+    twin_asset.add_argument("--json", action="store_true")
+
+    twin_algorithms = twin_sub.add_parser(
+        "algorithms",
+        help="who uses which algorithm, per usage state (capability is not use)",
+    )
+    twin_algorithms.add_argument("--q", default=None, help="algorithm, protocol, curve or asset name")
+    twin_algorithms.add_argument("--type", dest="asset_type", default=None)
+    twin_algorithms.add_argument("--tenant", default=None)
+    twin_algorithms.add_argument("--json", action="store_true")
+
     twin_changes = twin_sub.add_parser(
         "changes",
         help="what changed between observations (the live change feed)",
@@ -661,7 +688,7 @@ def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | No
 
 def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
     """Graph-store load, simulation and simulation history (spec 94 §17, §20)."""
-    from api import estate_change_feed, estate_graph_loader, estate_simulation_store
+    from api import estate_catalog, estate_change_feed, estate_graph_loader, estate_simulation_store
     from api.estate_twin_graph import latest_twin_graph
     from db.repositories.scan_run_repository import ScanRunRepository
     from db.tenancy import current_tenant, tenant_scope
@@ -671,16 +698,91 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
     session = _session(session_factory)
     try:
         with tenant_scope(getattr(args, "tenant", None)):
-            if args.twin_command == "changes":
-                # the feed is a record of past observations: it is readable even when
-                # the current twin cannot be rebuilt, and saying otherwise would hide
-                # the history exactly when it matters
+
+            if args.twin_command == "assets":
+                rows = estate_catalog.list_assets(
+                    session,
+                    tenant_id=args.tenant,
+                    asset_type=args.asset_type,
+                    environment=args.environment,
+                    owner=args.owner,
+                    lifecycle=args.lifecycle,
+                    q=args.q,
+                    limit=args.limit,
+                )
+                if args.json:
+                    print(json.dumps(
+                        {"count": len(rows), "assets": [estate_catalog.public_asset(r) for r in rows]},
+                        indent=2, default=str))
+                elif not rows:
+                    print("no catalogue records match — that is not 'the bank has no assets'.")
+                    print("  the catalogue holds what has been observed; run `cryptoscan scan` first")
+                else:
+                    for row in rows:
+                        print(f"  {row.asset_type:<16} {row.name:<32} {row.lifecycle_state:<6} "
+                              f"seen {row.observation_count}×  {row.environment or ''}")
+                        print(f"    {row.asset_id}  ev={row.evidence_count}  owner={row.owner or '—'}")
+                return EXIT_OK
+
+            if args.twin_command == "asset":
+                detail = estate_catalog.asset_detail(session, args.identifier, tenant_id=args.tenant)
+                if detail is None:
+                    print(
+                        f"no catalogue record for {args.identifier!r} — it may simply never have been "
+                        "observed",
+                        file=sys.stderr,
+                    )
+                    return EXIT_INCOMPLETE
+                if args.json:
+                    print(json.dumps(detail, indent=2, default=str))
+                else:
+                    asset = detail["asset"]
+                    print(f"{asset['name']}  ({asset['asset_type']})")
+                    print(f"  id          {asset['asset_id']}")
+                    print(f"  lifecycle   {asset['lifecycle_state']} — seen {asset['observation_count']}×, "
+                          f"first {asset['first_seen_at']}, last {asset['last_seen_at']}")
+                    print(f"  owner       {asset['owner'] or '—'}")
+                    print(f"  evidence    {asset['evidence_count']} record(s)")
+                    for item in detail["crypto"]:
+                        label = item["algorithm"] or item["protocol"] or item["curve"] or "?"
+                        print(f"  crypto      {label:<20} {item['usage_state']:<12} {item['layer'] or ''}")
+                    for edge in detail["relationships"]:
+                        print(f"  edge        {edge['predicate']:<16} → {edge['object_name'] or edge['object_id']}"
+                              f"  (basis {edge['basis']})")
+                    for edge in detail["unresolved_candidates"]:
+                        print(f"  candidate   {edge['predicate']:<16} → {edge['object_name'] or edge['object_id']}"
+                              f"  REFUSED: {edge['reason']}")
+                return EXIT_OK
+
+            if args.twin_command == "algorithms":
+                body = estate_catalog.registry(
+                    session, tenant_id=args.tenant, query=args.q, asset_type=args.asset_type
+                )
+                if args.json:
+                    print(json.dumps(body, indent=2, default=str))
+                elif not body["algorithms"]:
+                    print("no cryptographic artefacts recorded yet — nothing has been observed")
+                else:
+                    for entry in body["algorithms"][:30]:
+                        states = ", ".join(f"{state} {count}" for state, count in sorted(entry["usage_states"].items()))
+                        print(f"  {entry['algorithm']:<18} {entry['asset_count']:>3} asset(s)  [{states}]")
+                        for item in entry["assets"][:4]:
+                            print(f"      {item['asset_type']:<14} {item['asset_name']}  ({item['usage_state']})")
+                    print(f"\n{body['meaning']}")
+                return EXIT_OK
+
+            if args.twin_command in {"changes", "assets", "asset", "algorithms"}:
+                # records of past observations: readable even when the current twin
+                # cannot be rebuilt, and saying otherwise would hide the history
+                # exactly when it matters
                 graph = None
             elif args.twin_command == "ack":
                 graph = None
             else:
                 graph = latest_twin_graph(session, getattr(args, "tenant", None))
-            if graph is None and args.twin_command not in {"changes", "ack", "detect"}:
+            if graph is None and args.twin_command not in {
+                "changes", "ack", "detect", "assets", "asset", "algorithms"
+            }:
                 
                 print(
                     "no stored estate discovery — the twin is NOT_OBSERVED, not empty. "
@@ -760,6 +862,79 @@ def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                         print("  stored     quarantined — never counted as estate state")
                 return EXIT_OK if result.get("status") == "SIMULATED" else EXIT_INCOMPLETE
 
+
+
+            if args.twin_command == "assets":
+                rows = estate_catalog.list_assets(
+                    session,
+                    tenant_id=args.tenant,
+                    asset_type=args.asset_type,
+                    environment=args.environment,
+                    owner=args.owner,
+                    lifecycle=args.lifecycle,
+                    q=args.q,
+                    limit=args.limit,
+                )
+                if args.json:
+                    print(json.dumps(
+                        {"count": len(rows), "assets": [estate_catalog.public_asset(r) for r in rows]},
+                        indent=2, default=str))
+                elif not rows:
+                    print("no catalogue records match — that is not 'the bank has no assets'.")
+                    print("  the catalogue holds what has been observed; run `cryptoscan scan` first")
+                else:
+                    for row in rows:
+                        print(f"  {row.asset_type:<16} {row.name:<32} {row.lifecycle_state:<6} "
+                              f"seen {row.observation_count}×  {row.environment or ''}")
+                        print(f"    {row.asset_id}  ev={row.evidence_count}  owner={row.owner or '—'}")
+                return EXIT_OK
+
+            if args.twin_command == "asset":
+                detail = estate_catalog.asset_detail(session, args.identifier, tenant_id=args.tenant)
+                if detail is None:
+                    print(
+                        f"no catalogue record for {args.identifier!r} — it may simply never have been "
+                        "observed",
+                        file=sys.stderr,
+                    )
+                    return EXIT_INCOMPLETE
+                if args.json:
+                    print(json.dumps(detail, indent=2, default=str))
+                else:
+                    asset = detail["asset"]
+                    print(f"{asset['name']}  ({asset['asset_type']})")
+                    print(f"  id          {asset['asset_id']}")
+                    print(f"  lifecycle   {asset['lifecycle_state']} — seen {asset['observation_count']}×, "
+                          f"first {asset['first_seen_at']}, last {asset['last_seen_at']}")
+                    print(f"  owner       {asset['owner'] or '—'}")
+                    print(f"  evidence    {asset['evidence_count']} record(s)")
+                    for item in detail["crypto"]:
+                        label = item["algorithm"] or item["protocol"] or item["curve"] or "?"
+                        print(f"  crypto      {label:<20} {item['usage_state']:<12} {item['layer'] or ''}")
+                    for edge in detail["relationships"]:
+                        print(f"  edge        {edge['predicate']:<16} → {edge['object_name'] or edge['object_id']}"
+                              f"  (basis {edge['basis']})")
+                    for edge in detail["unresolved_candidates"]:
+                        print(f"  candidate   {edge['predicate']:<16} → {edge['object_name'] or edge['object_id']}"
+                              f"  REFUSED: {edge['reason']}")
+                return EXIT_OK
+
+            if args.twin_command == "algorithms":
+                body = estate_catalog.registry(
+                    session, tenant_id=args.tenant, query=args.q, asset_type=args.asset_type
+                )
+                if args.json:
+                    print(json.dumps(body, indent=2, default=str))
+                elif not body["algorithms"]:
+                    print("no cryptographic artefacts recorded yet — nothing has been observed")
+                else:
+                    for entry in body["algorithms"][:30]:
+                        states = ", ".join(f"{state} {count}" for state, count in sorted(entry["usage_states"].items()))
+                        print(f"  {entry['algorithm']:<18} {entry['asset_count']:>3} asset(s)  [{states}]")
+                        for item in entry["assets"][:4]:
+                            print(f"      {item['asset_type']:<14} {item['asset_name']}  ({item['usage_state']})")
+                    print(f"\n{body['meaning']}")
+                return EXIT_OK
 
             if args.twin_command == "changes":
                 body = estate_change_feed.feed(

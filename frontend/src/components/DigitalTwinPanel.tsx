@@ -6,10 +6,12 @@ import {
   apiEstateTwinSnapshots, apiEstateTwinCapture, apiEstateTwinCompare, apiEstateTwinCryptoGraph, apiEstateTwinGraph,
   apiEstateTwinGraphLoadPlan, apiEstateTwinSimulations,
   apiEstateChanges, apiEstateChangesDetect, apiEstateChangeAcknowledge,
+  apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
   EstateTwinSnapshotList, EstateTwinCompare, EstateTwinCryptoGraph, EstateTwinGraphExport,
   EstateTwinGraphLoad, EstateTwinSimulationList,
   EstateChangeFeed, EstateChangeEvent,
+  EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
 } from "../lib/api.js";
 
 /* DigitalTwinPanel — spec 94.
@@ -117,7 +119,7 @@ export default function DigitalTwinPanel() {
   /* Four views over one twin. "Live" is the current evidence; the other three are
      the parts spec 94 §24 lists that a BOM panel cannot answer: what moved, what is
      capability vs use, and what a graph store would receive. */
-  const [view, setView] = useState<"live" | "crypto" | "changes" | "history" | "graph">("live");
+  const [view, setView] = useState<"live" | "crypto" | "catalog" | "changes" | "history" | "graph">("live");
   const [snapshots, setSnapshots] = useState<EstateTwinSnapshotList | null>(null);
   const [comparison, setComparison] = useState<EstateTwinCompare | null>(null);
   const [crypto, setCrypto] = useState<EstateTwinCryptoGraph | null>(null);
@@ -130,6 +132,12 @@ export default function DigitalTwinPanel() {
   const [changeFeed, setChangeFeed] = useState<EstateChangeFeed | null>(null);
   const [changeError, setChangeError] = useState<string | null>(null);
   const [detected, setDetected] = useState<EstateChangeEvent | null>(null);
+  const [catalogSummary, setCatalogSummary] = useState<EstateCatalogSummary | null>(null);
+  const [catalogAssets, setCatalogAssets] = useState<EstateCatalogAsset[] | null>(null);
+  const [catalogFilter, setCatalogFilter] = useState<string>("");
+  const [catalogRecord, setCatalogRecord] = useState<EstateCatalogDetail | null>(null);
+  const [registry, setRegistry] = useState<EstateCryptoRegistry | null>(null);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -178,6 +186,29 @@ export default function DigitalTwinPanel() {
     else setSimError("stored simulations unavailable");
   };
 
+  /* The catalogue is the twin's memory: rows survive observations, so a STALE asset
+     is history rather than a deletion and the UI must not filter it away. */
+  const loadCatalog = async (filter?: string) => {
+    const summary = await apiEstateCatalog();
+    if (summary.ok) setCatalogSummary(summary.data as EstateCatalogSummary);
+    else setCatalogError("catalogue unavailable — this is not 'no assets'");
+    const assets = await apiEstateCatalogAssets(
+      filter ? { assetType: filter } : undefined,
+    );
+    if (assets.ok) {
+      setCatalogAssets((assets.data as { assets: EstateCatalogAsset[] }).assets);
+      setCatalogError(null);
+    } else setCatalogError("catalogue unavailable — this is not 'no assets'");
+    const crypto = await apiEstateCryptoRegistry();
+    if (crypto.ok) setRegistry(crypto.data as EstateCryptoRegistry);
+  };
+
+  const openCatalogAsset = async (identifier: string) => {
+    const detail = await apiEstateCatalogAsset(identifier);
+    if (detail.ok) setCatalogRecord(detail.data as EstateCatalogDetail);
+    else setCatalogError("asset not in the catalogue — it may never have been observed");
+  };
+
   /* The change feed: what moved between observations, and what that does not prove. */
   const loadChanges = async () => {
     const result = await apiEstateChanges({ unacknowledgedOnly: false });
@@ -220,11 +251,13 @@ export default function DigitalTwinPanel() {
     if (view === "crypto" && crypto === null) void loadCrypto();
     if (view === "graph" && exported === null) void loadExport();
     if (view === "changes" && changeFeed === null) void loadChanges();
+    if (view === "catalog" && catalogAssets === null) void loadCatalog();
   }, [view]);
 
   const TABS: Array<{ id: typeof view; label: string }> = [
     { id: "live", label: "Live estate" },
     { id: "crypto", label: "Crypto graph" },
+    { id: "catalog", label: "Catalogue" },
     { id: "changes", label: "Changes" },
     { id: "history", label: "History & compare" },
     { id: "graph", label: "Graph export" },
@@ -755,6 +788,145 @@ export default function DigitalTwinPanel() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {view === "catalog" && (
+        <div style={{ marginTop: 4 }}>
+          {catalogSummary && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+              <Badge tone="slate">{catalogSummary.assets} asset record(s)</Badge>
+              {Object.entries(catalogSummary.assets_by_lifecycle).map(([state, count]) => (
+                <Badge key={state} tone={state === "STALE" ? "amber" : "green"}>
+                  {count} {state.toLowerCase()}
+                </Badge>
+              ))}
+              <span className="faint" style={{ fontSize: 9.5 }}>
+                rows survive observations — stale means &ldquo;not in the latest run&rdquo;, never deleted
+              </span>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+            {["", "HSM", "CERTIFICATE", "APPLICATION", "LIBRARY", "LOAD_BALANCER"].map((kind) => (
+              <button
+                key={kind || "all"}
+                type="button"
+                className="btn sm"
+                onClick={() => {
+                  setCatalogFilter(kind);
+                  void loadCatalog(kind || undefined);
+                }}
+              >
+                {kind || "All types"}
+              </button>
+            ))}
+            {catalogFilter && <Badge tone="violet">filter: {catalogFilter}</Badge>}
+          </div>
+
+          {!catalogAssets && (
+            <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>
+              {catalogError ?? "loading the catalogue…"}
+            </div>
+          )}
+          {catalogAssets && catalogAssets.length === 0 && (
+            <div className="dim" style={{ fontSize: 11, marginTop: 6 }}>
+              no catalogue records for that filter — the catalogue holds what has been observed, so this
+              is a statement about collection, not about the bank
+            </div>
+          )}
+
+          {catalogAssets?.map((asset) => (
+            <button
+              key={asset.asset_id}
+              type="button"
+              className="btn sm"
+              style={{ display: "block", width: "100%", textAlign: "left", marginTop: 4 }}
+              onClick={() => void openCatalogAsset(asset.asset_id)}
+            >
+              <span className="mono" style={{ fontSize: 9.5, opacity: 0.7 }}>{asset.asset_type}</span>{" "}
+              {asset.name}{" "}
+              <Badge tone={asset.lifecycle_state === "STALE" ? "amber" : "green"}>{asset.lifecycle_state}</Badge>{" "}
+              <span className="faint" style={{ fontSize: 9.5 }}>
+                seen {asset.observation_count}× · {asset.evidence_count} evidence record(s)
+                {asset.environment ? ` · ${asset.environment}` : ""}
+              </span>
+            </button>
+          ))}
+
+          {catalogRecord && (
+            <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <Badge tone="violet">{catalogRecord.asset.asset_type}</Badge>
+                <strong>{catalogRecord.asset.name}</strong>
+                <Badge tone={catalogRecord.asset.lifecycle_state === "STALE" ? "amber" : "green"}>
+                  {catalogRecord.asset.lifecycle_state}
+                </Badge>
+                <Badge tone="slate">{catalogRecord.counts.evidence} evidence</Badge>
+                <Badge tone="slate">{catalogRecord.counts.relationships} edge(s)</Badge>
+                {catalogRecord.counts.unresolved > 0 && (
+                  <Badge tone="amber">{catalogRecord.counts.unresolved} unresolved candidate(s)</Badge>
+                )}
+              </div>
+              <div className="faint" style={{ fontSize: 9.5, marginTop: 3 }}>
+                first seen {catalogRecord.asset.first_seen_at ?? "—"} · last seen{" "}
+                {catalogRecord.asset.last_seen_at ?? "—"} · {catalogRecord.asset.observation_count} observation(s)
+              </div>
+
+              <div style={{ marginTop: 6 }}>
+                {catalogRecord.crypto.map((item) => (
+                  <div key={item.artifact_id} style={{ fontSize: 10.5 }}>
+                    <span className="mono" style={{ fontSize: 9.5, opacity: 0.75 }}>{item.usage_state}</span>{" "}
+                    {item.algorithm ?? item.protocol ?? item.curve ?? "unspecified primitive"}
+                    {item.layer ? ` · ${item.layer}` : ""}
+                    {item.lifecycle_state === "STALE" && <Badge tone="amber">stale</Badge>}
+                  </div>
+                ))}
+              </div>
+
+              {catalogRecord.relationships.map((edge) => (
+                <div key={edge.relationship_id} style={{ fontSize: 10.5, marginTop: 2 }}>
+                  <span className="mono" style={{ fontSize: 9.5, opacity: 0.75 }}>{edge.predicate}</span>{" "}
+                  → {edge.object_name ?? edge.object_id}
+                  <span className="faint" style={{ fontSize: 9.5 }}>
+                    {" "}(basis {edge.basis ?? "—"}, {edge.evidence_ids.length} evidence)
+                  </span>
+                </div>
+              ))}
+              {catalogRecord.unresolved_candidates.map((edge) => (
+                <div key={edge.relationship_id} style={{ fontSize: 10.5, marginTop: 2, color: "var(--amber)" }}>
+                  candidate {edge.predicate} → {edge.object_name ?? edge.object_id} — REFUSED:{" "}
+                  {edge.reason ?? "no basis"}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {registry && registry.algorithms.length > 0 && (
+            <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <Badge tone="slate">Algorithm registry</Badge>
+                <span className="faint" style={{ fontSize: 9.5 }}>
+                  per usage state — capability never counts as use
+                </span>
+              </div>
+              {registry.algorithms.slice(0, 10).map((entry) => (
+                <div key={entry.algorithm} style={{ marginTop: 4 }}>
+                  <div style={{ fontSize: 10.5 }}>
+                    <strong>{entry.algorithm}</strong>{" "}
+                    <span className="faint" style={{ fontSize: 9.5 }}>
+                      {entry.asset_count} asset(s) ·{" "}
+                      {Object.entries(entry.usage_states).map(([state, count]) => `${state} ${count}`).join(", ")}
+                      {entry.stale > 0 ? ` · ${entry.stale} stale` : ""}
+                    </span>
+                  </div>
+                  <div className="dim" style={{ fontSize: 9.5 }}>
+                    {entry.assets.slice(0, 4).map((item) => item.asset_name).filter(Boolean).join(", ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

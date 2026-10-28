@@ -919,6 +919,27 @@ def run(
     if detection_error:
         payload["change_detail"] = {"error": detection_error}
 
+    # -- durable catalogue ---------------------------------------------------- #
+    # The twin's memory: materialise this observation into the asset / relationship /
+    # crypto records so "when did we first see this" and "is this stale or gone" are
+    # answerable later. Best-effort for the same reason as detection: the observation
+    # already happened, and a catalogue failure must not erase it.
+    catalog: dict[str, Any] | None = None
+    catalog_error: str | None = None
+    try:
+        from api import estate_catalog
+        from db.tenancy import current_tenant
+
+        catalog = estate_catalog.sync(db, graph, tenant_id=current_tenant(), run_id=run_id)
+    except Exception as exc:  # noqa: BLE001 — a catalogue write cannot fail the scan
+        catalog_error = f"{type(exc).__name__}: {exc}"
+        rollback = getattr(db, "rollback", None)
+        if callable(rollback):
+            try:
+                rollback()
+            except Exception:  # noqa: BLE001
+                pass
+
     failed = [item["plane"] for item in outcomes if item["status"] == "FAILED"]
     partial = [item["plane"] for item in outcomes if item["status"] == "PARTIAL"]
     skipped = collection_plan["skipped"]
@@ -991,6 +1012,7 @@ def run(
     })
     report["change"] = change
     report["detection"] = detection or ({"error": detection_error} if detection_error else None)
+    report["catalog"] = catalog or ({"error": catalog_error} if catalog_error else None)
     if change["severity"] in {"WARNING", "CRITICAL"}:
         emit("estate.change.detected", {
             "estate": estate,

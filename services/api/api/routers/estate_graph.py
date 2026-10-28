@@ -31,6 +31,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api import (
+    estate_catalog,
     estate_change_feed,
     estate_discovery,
     estate_drift,
@@ -652,6 +653,16 @@ def estate_discover(
         response["boms"] = projections["boms"]
         response["bom_counts"] = projections["counts"]
         response["consistency"] = projections["consistency"]
+    # the catalogue is the twin's memory: an ingested observation is materialised the
+    # same way a collected one is, so history does not depend on how the run arrived
+    if body.persist:
+        try:
+            catalog = estate_catalog.sync(db, graph, tenant_id=current_tenant(), run_id=run_id)
+            response["catalog"] = catalog
+        except Exception as exc:  # noqa: BLE001 — the observation already happened
+            db.rollback()
+            response["catalog"] = {"error": f"{type(exc).__name__}: {exc}"}
+
     if detection is not None:
         response["detection"] = {
             "verdict": detection["verdict"],
@@ -1393,3 +1404,139 @@ def estate_change_acknowledge(
             detail={"error": "unknown_change", "reason": "no change event with that id for this tenant"},
         )
     return estate_change_feed.public_event(row)
+
+
+# -- the durable catalogue (spec 94 §19, §25, §26) -------------------------- #
+
+
+@router.get("/catalog")
+def estate_catalog_summary(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """What the twin remembers: how many assets, of which types, and how much is stale."""
+    return estate_catalog.summary(db, tenant_id=current_tenant())
+
+
+@router.get("/catalog/assets")
+def estate_catalog_assets(
+    asset_type: str | None = Query(default=None, description="e.g. HSM, APPLICATION, CERTIFICATE"),
+    environment: str | None = Query(default=None),
+    owner: str | None = Query(default=None),
+    lifecycle: str | None = Query(default=None, description="ACTIVE | STALE"),
+    q: str | None = Query(default=None, description="substring match on name, id, owner, environment"),
+    limit: int = Query(default=100, ge=1, le=200),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Browse the asset catalogue across observations.
+
+    ``STALE`` is shown, never hidden: an asset absent from the latest observation is
+    history worth keeping, and the response says how current each row is rather than
+    silently dropping what stopped answering.
+    """
+    rows = estate_catalog.list_assets(
+        db,
+        tenant_id=current_tenant(),
+        asset_type=asset_type,
+        environment=environment,
+        owner=owner,
+        lifecycle=lifecycle,
+        q=q,
+        limit=limit,
+    )
+    return {
+        "schema": estate_catalog.SCHEMA,
+        "count": len(rows),
+        "assets": [estate_catalog.public_asset(row) for row in rows],
+        "filters": {
+            "asset_type": asset_type,
+            "environment": environment,
+            "owner": owner,
+            "lifecycle": lifecycle,
+            "q": q,
+        },
+        "note": (
+            "the catalogue is derived from evidence and kept across observations; an empty result "
+            "means nothing matching has been observed, not that nothing exists"
+        ),
+    }
+
+
+@router.get("/catalog/assets/{identifier}")
+def estate_catalog_asset(
+    identifier: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """One asset as the catalogue knows it: crypto, relationships, evidence, lifecycle."""
+    detail = estate_catalog.asset_detail(db, identifier, tenant_id=current_tenant())
+    if detail is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_asset",
+                "reason": (
+                    "no catalogue record for that asset id or name in this tenant. That is not "
+                    "'the asset does not exist' — it may simply never have been observed"
+                ),
+            },
+        )
+    return detail
+
+
+@router.get("/catalog/relationships")
+def estate_catalog_relationships(
+    subject: str | None = Query(default=None, description="asset id or exact name"),
+    predicate: str | None = Query(default=None),
+    status: str | None = Query(default="ESTABLISHED", description="ESTABLISHED | UNRESOLVED | ALL"),
+    limit: int = Query(default=100, ge=1, le=200),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Established edges with their basis and evidence — and the refused candidates.
+
+    ``status=UNRESOLVED`` returns the edges the graph refused to establish, with the
+    reason. They are kept because they are what a bank most wants to chase, and they
+    are returned separately because none of them is a relationship.
+    """
+    rows = estate_catalog.list_relationships(
+        db,
+        tenant_id=current_tenant(),
+        subject=subject,
+        predicate=predicate,
+        status=status,
+        limit=limit,
+    )
+    return {
+        "schema": estate_catalog.SCHEMA,
+        "count": len(rows),
+        "relationships": [estate_catalog.public_relationship(row) for row in rows],
+        "status_filter": status,
+        "note": (
+            "an UNRESOLVED row is a candidate, not an edge: the graph required a basis and evidence "
+            "before it would establish anything, and this is the list of what failed that test"
+        ),
+    }
+
+
+@router.get("/catalog/crypto")
+def estate_catalog_crypto(
+    q: str | None = Query(default=None, description="algorithm, protocol, curve or asset name"),
+    asset_type: str | None = Query(default=None),
+    include_stale: bool = Query(default=True),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The algorithm registry: who uses what, per usage state (spec §26).
+
+    Answers "RSA-2048 → which assets, of which types" without merging capability into
+    use: each algorithm is reported per ``usage_state`` with the assets behind it.
+    """
+    return estate_catalog.registry(
+        db,
+        tenant_id=current_tenant(),
+        query=q,
+        asset_type=asset_type,
+        include_stale=include_stale,
+    )
