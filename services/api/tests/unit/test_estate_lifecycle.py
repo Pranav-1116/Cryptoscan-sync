@@ -7,9 +7,9 @@ alone would hide:
 
 * **an empty estate is not a broken loop** — nothing has observed anything, so the phases
   report ``NOT_STARTED`` with a zero count behind each, rather than an optimistic status;
-* **built is not wired** — ``REMEDIATE`` is ``NOT_CONNECTED`` even when the platform can
-  open remediation tasks somewhere else, because the twin carries nothing into one, and
-  the entry says so;
+* **an open queue is not a fix** — ``REMEDIATE`` is ``NOT_STARTED`` when the twin has
+  opened nothing, ``PARTIAL`` once work exists, and ``CONNECTED`` only when a cited
+  observation closed one;
 * **``loop_closed`` is computed** — every phase CONNECTED, no hand-maintained flag — and
   ``first_break`` names the earliest phase worth building next.
 
@@ -126,16 +126,17 @@ def test_an_observed_estate_walks_the_first_half_of_the_loop(db):
     assert phases["CORRELATE"]["status"] == "CONNECTED"
 
 
-def test_remediation_is_reported_as_not_connected_even_though_the_platform_can_open_tasks(db):
+def test_remediation_with_nothing_to_do_is_not_started_rather_than_broken(db):
+    """The hand-off exists; this estate simply has not asked it for anything yet."""
     graph = build_graph(_payload())
     history.sync(db, graph, tenant_id=None)
 
     phases = _by_phase(lifecycle.survey(db, graph, tenant_id=None))
 
-    assert phases["REMEDIATE"]["status"] == "NOT_CONNECTED"
-    assert phases["REMEDIATE"]["observed"]["remediation_tasks_opened_by_the_twin"] == 0
-    assert "opens nothing" in phases["REMEDIATE"]["detail"]
-    assert "opens no work item" in phases["REMEDIATE"]["gap"]
+    assert phases["REMEDIATE"]["status"] == "NOT_STARTED"
+    assert phases["REMEDIATE"]["observed"]["work_items"] == 0
+    assert "nothing has asked for any yet" in phases["REMEDIATE"]["detail"]
+    assert "closing a HUMAN-proof item is still an assertion" in phases["REMEDIATE"]["gap"]
 
 
 def test_monitoring_with_a_schedule_that_has_never_run_is_partial(db):

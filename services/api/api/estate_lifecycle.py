@@ -14,7 +14,8 @@ phase?* Three answers, and they are not interchangeable:
 * **PARTIAL** — it runs, but something about the hand-off is missing, and the gap is
   named rather than glossed;
 * **NOT_CONNECTED** — the capability exists somewhere in the platform but nothing carries
-  it into the twin's loop (this is what ``REMEDIATE`` currently is);
+  it into the twin's loop (``REMEDIATE`` was this until the twin began opening work
+  from its own findings);
 * **NOT_STARTED** — nothing has run yet. An empty estate is not a broken loop, and the
   module refuses to report it as one: "no observation has ever been recorded" and "the
   loop is wired" are different statements, and the last thing an operator needs is a
@@ -44,6 +45,8 @@ from db.models.estate_change_event import EstateChangeEvent
 from db.models.estate_schedule import EstateSchedule
 from db.models.estate_simulation_run import EstateSimulationRun
 from db.models.estate_twin_snapshot import EstateTwinSnapshot
+
+from api import estate_remediation
 
 SCHEMA = "cryptoscan.estate-lifecycle/1"
 
@@ -98,7 +101,7 @@ BACKED_BY = {
     "MONITOR": "estate_schedule.py / estate_daemon.py",
     "DRIFT": "estate_change_feed.py / estate_drift.py",
     "SIMULATE": "estate_simulation_store.py",
-    "REMEDIATE": "— (remediation_tasks exist for scan findings, not for the twin)",
+    "REMEDIATE": "estate_remediation.py",
     "RE_DISCOVER": "estate_observations.sync",
 }
 
@@ -108,9 +111,9 @@ GAPS = {
         "creates one for you, and a schedule whose last run failed is not monitoring"
     ),
     "REMEDIATE": (
-        "the twin can show a conflict, a change and a simulation blocker, but it opens no "
-        "work item from any of them, and no work item records which observation would prove "
-        "it fixed"
+        "work opens from a REAL conflict, a coverage loss and a simulation blocker, and the "
+        "proof is written down when it opens — but closing a HUMAN-proof item is still an "
+        "assertion by a person, and no item can execute a fix"
     ),
     "RE_DISCOVER": (
         "a new observation does walk the whole pipeline again and is compared with the one "
@@ -289,29 +292,71 @@ def survey(db: Any, graph: Any | None = None, *, tenant_id: str | None = None) -
             else "no simulated change has been stored"
         ),
     ))
-    phases.append(_phase(
-        "REMEDIATE",
-        NOT_CONNECTED,
-        observed={"remediation_tasks_opened_by_the_twin": 0},
-        detail=(
-            "the platform can open remediation tasks (drift of scan findings does), but the twin "
-            "does not: a REAL conflict, a coverage loss or a simulation blocker opens nothing, so "
-            "the loop stops at the finding"
-        ),
-    ))
-    phases.append(_phase(
-        "RE_DISCOVER",
-        PARTIAL if observations else NOT_STARTED,
-        observed={"recorded_facts": observations, "snapshots": snapshots,
-                  "latest_fact_seen_at": _iso(last_observation)},
-        detail=(
-            "a new observation walks the pipeline again and is compared with the previous one; "
-            "what is missing is the attribution — the change it reports cannot say which fix "
-            "caused it"
-            if observations
-            else "nothing has been re-discovered yet"
-        ),
-    ))
+    # the hand-off exists now, so the phase is computed like the rest: work opened is
+    # PARTIAL until a cited observation closes one — an open ticket is not a fix
+    work = estate_remediation.provenance(db, tenant_id=tenant_id)
+    if not work["items"]:
+        remediate = _phase(
+            "REMEDIATE",
+            NOT_STARTED,
+            observed={"work_items": 0},
+            detail=(
+                "the twin opens work from a REAL conflict, a coverage loss or a simulation "
+                "blocker, and nothing has asked for any yet"
+            ),
+        )
+    elif work["proven"]:
+        remediate = _phase(
+            "REMEDIATE",
+            CONNECTED,
+            observed=work,
+            detail=(
+                f"{work['proven']} of {work['items']} work item(s) were closed by a cited "
+                "observation; the rest are still open"
+            ),
+        )
+    else:
+        remediate = _phase(
+            "REMEDIATE",
+            PARTIAL,
+            observed=work,
+            detail=(
+                f"{work['open']} work item(s) are open and none has been closed by an "
+                "observation yet, so the hand-off exists but has not returned"
+            ),
+        )
+    phases.append(remediate)
+    # RE_DISCOVER is the phase that answers "does a new observation prove the fix". It is
+    # CONNECTED once a work item was actually closed by a cited observation, and PARTIAL
+    # while observations are being compared but nothing attributes the difference to a fix.
+    if work["proven"]:
+        rediscover = _phase(
+            "RE_DISCOVER",
+            CONNECTED,
+            observed={"recorded_facts": observations, "snapshots": snapshots,
+                      "work_proven_by_observation": work["proven"],
+                      "latest_fact_seen_at": _iso(last_observation)},
+            detail=(
+                "a new observation walks the pipeline again, is compared with the previous "
+                "one, and closes the work item that predicted it — the change is attributed "
+                "to a named fix rather than to nothing"
+            ),
+        )
+    else:
+        rediscover = _phase(
+            "RE_DISCOVER",
+            PARTIAL if observations else NOT_STARTED,
+            observed={"recorded_facts": observations, "snapshots": snapshots,
+                      "latest_fact_seen_at": _iso(last_observation)},
+            detail=(
+                "a new observation walks the pipeline again and is compared with the previous "
+                "one; what is missing is the attribution — no work item has been closed by an "
+                "observation yet, so a change cannot name the fix that caused it"
+                if observations
+                else "nothing has been re-discovered yet"
+            ),
+        )
+    phases.append(rediscover)
 
     by_status: dict[str, int] = {CONNECTED: 0, PARTIAL: 0, NOT_CONNECTED: 0, NOT_STARTED: 0}
     for entry in phases:

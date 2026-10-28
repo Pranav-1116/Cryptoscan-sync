@@ -1621,7 +1621,10 @@ from api import cli_remote as _cli_remote  # noqa: E402  (after COMMANDS, to avo
 
 COMMANDS.update(_cli_remote.COMMANDS)
 
-REMOTE_TWIN_COMMANDS = frozenset({"status", "snapshot", "diff"})
+#: remediation is a control-plane write, so it belongs here rather than in the in-process
+#: handler: proposing work against a local database would be a queue nobody can see
+REMOTE_TWIN_COMMANDS = frozenset({"status", "snapshot", "diff", "remediation", "remediate",
+                                  "reconcile"})
 
 
 def main(argv: Sequence[str] | None = None, session_factory: Callable[[], Any] | None = None) -> int:

@@ -795,3 +795,100 @@ def test_collect_submit_requires_a_target_revision(monkeypatch, env, capsys):
     assert run(monkeypatch, transport, "collect", "--submit", "--target", "pay-01") == 3
     assert transport.calls == []
     assert "expected target revision" in capsys.readouterr().err
+
+
+# --- twin remediation: the hand-off, from the terminal ---------------------------------
+
+
+def _remediation_payload(**overrides):
+    payload = {
+        "schema": "cryptoscan.estate-remediation/1",
+        "persisted": False,
+        "candidates": [{
+            "claim_key": "rem-abc123", "source": "CONFLICT", "status": "OPEN",
+            "title": "Resolve the algorithm conflict on Payment API",
+            "claim": "Payment API: algorithm has 2 currently-asserted values (AES-128, AES-256-GCM)",
+            "severity": "HIGH", "not_proven": ["which of the asserted values is correct"],
+            "proof": {"kind": "COVERAGE_DISPUTE", "expected": "ONE_CURRENT_VALUE",
+                      "note": "proven when the record holds one CURRENT value again"},
+        }],
+        "count": 1, "created": 1, "refreshed": 0,
+        "by_source": {"CONFLICT": 1}, "by_severity": {"HIGH": 1},
+        "meaning": "each item names the observation that would close it",
+        "limits": ["a work item is a record that someone must act on — this module cannot "
+                   "execute a fix"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_twin_remediate_proposes_without_persisting_by_default(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/estate/evidence/twin/remediate"): (200, _remediation_payload()),
+    })
+
+    assert run(monkeypatch, transport, "twin", "remediate") == 0
+
+    out = capsys.readouterr().out
+    assert "nothing was written" in out, "a proposal must not look like a queue entry"
+    assert "COVERAGE_DISPUTE" in out
+    assert "limit: a work item is a record" in out
+    assert json.loads(transport.calls[0][3]) == {"persist": False}
+
+
+def test_twin_remediate_persist_asks_the_server_to_open_the_work(monkeypatch, env):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/estate/evidence/twin/remediate"): (
+            200, _remediation_payload(persisted=True)),
+    })
+
+    assert run(monkeypatch, transport, "twin", "remediate", "--persist") == 0
+
+    assert json.loads(transport.calls[0][3]) == {"persist": True}
+
+
+def test_twin_remediation_lists_work_and_the_proof_it_needs(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/twin/remediation"): (200, {
+            "schema": "cryptoscan.estate-remediation/1",
+            "items": [{
+                "claim_key": "rem-abc123", "source": "CONFLICT", "status": "OPEN",
+                "severity": "HIGH", "title": "Resolve the algorithm conflict on Payment API",
+                "claim": "Payment API: 2 values",
+                "not_proven": ["which of the asserted values is correct"],
+                "proof": {"kind": "COVERAGE_DISPUTE", "note": "one CURRENT value again"},
+                "proof_evidence_id": None,
+            }],
+            "count": 1, "by_status": {"OPEN": 1}, "by_source": {"CONFLICT": 1},
+            "limits": ["..."], "meaning": "…",
+        }),
+    })
+
+    assert run(monkeypatch, transport, "twin", "remediation") == 0
+
+    out = capsys.readouterr().out
+    assert "work items    1" in out
+    assert "COVERAGE_DISPUTE" in out
+    assert "does not prove: which of the asserted values is correct" in out
+
+
+def test_twin_reconcile_reports_a_closure_with_its_citation(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/estate/evidence/twin/remediation/reconcile"): (200, {
+            "schema": "cryptoscan.estate-remediation/1",
+            "checked": 2,
+            "proven": [{"claim_key": "rem-abc123", "title": "Resolve the algorithm conflict",
+                        "proof_observation_id": "obs-9", "proof_evidence_id": "ev-c905aae30aab218a"}],
+            "still_open": [{"claim_key": "rem-def456", "reason": "2 values are still asserted"}],
+            "proof_unavailable": [{"claim_key": "rem-ghi789",
+                                   "reason": "the fact is no longer asserted at all"}],
+            "counts": {"PROVEN": 1, "STILL_OPEN": 1, "PROOF_UNAVAILABLE": 1},
+            "meaning": "…", "limits": ["..."],
+        }),
+    })
+
+    assert run(monkeypatch, transport, "twin", "reconcile") == 0
+
+    out = capsys.readouterr().out
+    assert "closed by obs-9 (ev-c905aae30aab218a)" in out
+    assert "NO PROOF" in out, "an unasserted fact must not be reported as a fix"

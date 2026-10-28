@@ -467,7 +467,8 @@ def test_lifecycle_names_the_break_instead_of_colouring_every_box(with_discovery
 
     assert code == cli.EXIT_OK
     phases = {entry["phase"]: entry for entry in body["phases"]}
-    assert phases["REMEDIATE"]["status"] == "NOT_CONNECTED"
+    # the hand-off is built, so a loop with nothing to remediate is NOT_STARTED, not broken
+    assert phases["REMEDIATE"]["status"] == "NOT_STARTED"
     assert body["loop_closed"] is False
     assert body["first_break"]
 

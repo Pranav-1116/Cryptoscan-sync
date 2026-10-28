@@ -37,6 +37,7 @@ from api import (
     estate_lifecycle,
     estate_trust,
     estate_observations,
+    estate_remediation,
     estate_search,
     estate_change_feed,
     estate_discovery,
@@ -1826,6 +1827,70 @@ def estate_twin_lifecycle(
     """
     graph = _latest_twin_graph_or_none(db)
     return estate_lifecycle.survey(db, graph, tenant_id=current_tenant())
+
+
+class TwinRemediationRequest(BaseModel):
+    """``persist`` is the whole difference between a proposal and a queue entry."""
+
+    persist: bool = False
+
+
+@router.get("/twin/remediation")
+def estate_twin_remediation(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every work item the twin has opened, with the proof each one needs (§23).
+
+    A ``PROVEN`` item names the observation that closed it; an ``ABANDONED`` one is kept so
+    the estate remembers work that was started and dropped. Nothing here executes a fix.
+    """
+    return estate_remediation.listing(db, tenant_id=current_tenant())
+
+
+@router.post("/twin/remediate")
+def estate_twin_remediate(
+    body: TwinRemediationRequest | None = None,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Ask the twin what work it would open. Writes only when ``persist`` is true.
+
+    Work comes from three places: a REAL or UNKNOWN conflict, a collector plane that did not
+    run to completion, and a simulation blocker. Each candidate carries the observation that
+    would close it. A dry run is the default because a queue nobody asked for is how a
+    remediation surface gets muted.
+    """
+    request = body or TwinRemediationRequest()
+    graph = _latest_twin_graph_or_none(db)
+    stored = estate_simulation_store.list_simulations(db, tenant_id=current_tenant(), limit=1)
+    simulation = (
+        estate_simulation_store.public_simulation(stored[0]) if stored else None
+    )
+    return estate_remediation.propose(
+        db,
+        graph=graph,
+        simulation=simulation,
+        tenant_id=current_tenant(),
+        persist=request.persist,
+        opened_by=user,
+        opened_from="api",
+    )
+
+
+@router.post("/twin/remediation/reconcile")
+def estate_twin_reconcile(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Close what was actually proven, and say why the rest was not (§23).
+
+    ``PROVEN`` cites the observation row and the evidence id. ``PROOF_UNAVAILABLE`` means
+    the fact is no longer asserted at all, which is not a fix, and a ``HUMAN`` item is never
+    auto-closed.
+    """
+    graph = _latest_twin_graph_or_none(db)
+    return estate_remediation.reconcile(db, graph=graph, tenant_id=current_tenant())
 
 
 @router.get("/twin/intel")

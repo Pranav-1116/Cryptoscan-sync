@@ -989,6 +989,8 @@ def twin_remote(args: argparse.Namespace, _session: Any = None) -> int:
     client = _client(args)
     action = args.twin_command
     try:
+        if action in {"remediation", "remediate", "reconcile"}:
+            return _twin_remediation(args, client, action)
         if action == "status":
             payload = client.get(TWIN)
             return _emit(args, payload, source=client.source("GET", TWIN))
@@ -1018,6 +1020,79 @@ def twin_remote(args: argparse.Namespace, _session: Any = None) -> int:
     except (Refused, ApiError) as exc:
         return _fail(f"twin {action}", exc)
     return EXIT_ERROR
+
+
+def _twin_remediation(args: argparse.Namespace, client: Any, action: str) -> int:
+    """Work the twin opened from its own findings, and what would close it.
+
+    ``remediate`` proposes and writes nothing unless ``--persist``; ``reconcile`` closes only
+    what a stored observation proves. Neither can resolve a conflict or edit an asset — the
+    command reads and files work, which is the whole point of the hand-off being small.
+    """
+    if action == "remediation":
+        path = f"{TWIN}/remediation"
+        payload = client.get(path)
+        source = client.source("GET", path)
+
+        def render() -> None:
+            items = _items(payload) or payload.get("items") or []
+            print(f"work items    {len(items)}")
+            for status, count in sorted((payload.get("by_status") or {}).items()):
+                print(f"  {status:<12} {count}")
+            for item in items:
+                proof = item.get("proof") or {}
+                print(f"\n{item.get('claim_key')}  {item.get('status')}  [{item.get('severity')}]")
+                print(f"  {item.get('title')}")
+                print(f"  claim     {item.get('claim')}")
+                print(f"  proof     {proof.get('kind')} — {proof.get('note') or ''}".rstrip())
+                if item.get("proof_evidence_id"):
+                    print(f"  closed by {item.get('proof_observation_id')} "
+                          f"({item.get('proof_evidence_id')})")
+                for line in item.get("not_proven") or []:
+                    print(f"  does not prove: {line}")
+        return _emit(args, payload, source=source, render=render)
+
+    if action == "remediate":
+        path = f"{TWIN}/remediate"
+        payload = client.post(path, {"persist": bool(getattr(args, "persist", False))})
+        source = client.source("POST", path, 200)
+
+        def render() -> None:
+            candidates = _items(payload) or payload.get("candidates") or []
+            print(f"candidates    {len(candidates)} ({payload.get('created')} new, "
+                  f"{payload.get('refreshed')} refreshed)")
+            for candidate in candidates:
+                proof = candidate.get("proof") or {}
+                print(f"\n{candidate.get('source')}  [{candidate.get('severity')}]")
+                print(f"  {candidate.get('title')}")
+                print(f"  claim     {candidate.get('claim')}")
+                print(f"  proof     {proof.get('kind')} — {proof.get('note') or ''}".rstrip())
+            if not payload.get("persisted"):
+                print("\nnothing was written: this was a proposal. Re-run with --persist to "
+                      "open the work.")
+            for line in payload.get("limits") or []:
+                print(f"limit: {line}")
+        return _emit(args, payload, source=source, render=render)
+
+    path = f"{TWIN}/remediation/reconcile"
+    payload = client.post(path)
+    source = client.source("POST", path, 200)
+
+    def render() -> None:
+        counts = payload.get("counts") or {}
+        print(f"checked       {payload.get('checked')}")
+        for name in ("PROVEN", "STILL_OPEN", "PROOF_UNAVAILABLE"):
+            print(f"  {name:<17} {counts.get(name, 0)}")
+        for item in payload.get("proven") or []:
+            print(f"\nPROVEN  {item.get('claim_key')}")
+            print(f"  {item.get('title')}")
+            print(f"  closed by {item.get('proof_observation_id')} "
+                  f"({item.get('proof_evidence_id')})")
+        for item in payload.get("still_open") or []:
+            print(f"STILL OPEN  {item.get('claim_key')}: {item.get('reason')}")
+        for item in payload.get("proof_unavailable") or []:
+            print(f"NO PROOF    {item.get('claim_key')}: {item.get('reason')}")
+    return _emit(args, payload, source=source, render=render)
 
 
 PQC = "/api/v1/estate/evidence/pqc"
@@ -2052,6 +2127,14 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     twin_snapshot = twin_sub.add_parser("snapshot", help="current twin snapshot")
     twin_snapshot.add_argument("--include-payload", action="store_true", dest="include_payload")
     _add_common(twin_snapshot)
+    twin_remediation = twin_sub.add_parser("remediation", help="work the twin has opened")
+    _add_common(twin_remediation)
+    twin_remediate = twin_sub.add_parser("remediate", help="propose work from what the twin holds")
+    twin_remediate.add_argument("--persist", action="store_true",
+                                help="open the work instead of only proposing it")
+    _add_common(twin_remediate)
+    twin_reconcile = twin_sub.add_parser("reconcile", help="close what an observation proved")
+    _add_common(twin_reconcile)
     twin_diff = twin_sub.add_parser("diff", help="compare two twin snapshots")
     twin_diff.add_argument("--from", dest="before", default=None)
     twin_diff.add_argument("--to", dest="after", default=None)

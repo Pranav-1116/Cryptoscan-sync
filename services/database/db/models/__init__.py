@@ -226,6 +226,7 @@ from db.models.estate_daemon import EstateDaemon  # noqa: E402,F401
 from db.models.estate_twin_snapshot import EstateTwinSnapshot  # noqa: E402,F401
 from db.models.estate_simulation_run import EstateSimulationRun  # noqa: E402,F401
 from db.models.estate_change_event import EstateChangeEvent  # noqa: E402,F401
+from db.models.estate_remediation_work import EstateRemediationWork  # noqa: E402,F401
 from db.models.estate_catalog import (  # noqa: E402,F401
     EstateAssetRecord,
     EstateCryptoRecord,
