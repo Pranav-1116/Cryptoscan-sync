@@ -30,7 +30,9 @@ make api     # frontend :3003 + API :8010
 # One command, no Docker: API + console on SQLite (development only)
 bash scripts/run_dev_stack.sh          # up; Ctrl-C stops both
 bash scripts/run_dev_stack.sh status   # what is listening, and is /ready 200
-bash scripts/run_dev_stack.sh down     # stop what it started
+bash scripts/run_dev_stack.sh down     # stop the stack AND free both ports
+bash scripts/run_dev_stack.sh down --force  # also take back a port a stray listener holds
+bash scripts/run_dev_stack.sh restart       # down --force, then up
 bash scripts/run_dev_stack.sh reset-admin   # set a known admin password (SQLite dev DB)
 ```
 
@@ -47,6 +49,11 @@ and no worker. Consequences, stated because they are easy to misread:
   `bash scripts/run_dev_stack.sh reset-admin` to set a known one (optionally
   `ADMIN_PASSWORD=... reset-admin`, or `reset-admin <username>`), or `RESET_DB=1`
   to start from an empty database;
+- `down` frees the *ports*, not just the launcher pids: `npm run dev` is
+  npm → sh → vite and uvicorn can outlive its parent, so the script resolves the
+  pid actually holding the socket, and only kills it when the command line shows
+  it is this stack. A stranger on :3003 is reported with its pid and left alone
+  unless you pass `--force`;
 - it is not a qualification deployment. The real local stack (Postgres + Redis
   + worker) is `scripts/run_local_stack.sh`, which needs Docker.
 

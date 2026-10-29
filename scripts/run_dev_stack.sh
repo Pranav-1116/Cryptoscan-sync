@@ -21,7 +21,9 @@
 #   bash scripts/run_dev_stack.sh api          # API only
 #   bash scripts/run_dev_stack.sh console      # console only
 #   bash scripts/run_dev_stack.sh status       # what is listening, and is it healthy
-#   bash scripts/run_dev_stack.sh down         # stop whatever this script started
+#   bash scripts/run_dev_stack.sh down         # stop the stack and free both ports
+#   bash scripts/run_dev_stack.sh down --force # also take back a port a stray listener holds
+#   bash scripts/run_dev_stack.sh restart      # down --force, then up
 #   bash scripts/run_dev_stack.sh reset-admin  # set a known password for the dev admin
 #
 # Environment (all optional)
@@ -66,6 +68,26 @@ log() { printf '[dev-stack] %s\n' "$*"; }
 die() { printf '[dev-stack] %s\n' "$*" >&2; exit 1; }
 
 listening() { ss -lntH "sport = :$1" 2>/dev/null | grep -q .; }
+
+#: pid currently holding a listening port. `ss` is what makes `down` honest:
+#: killing the recorded launcher is not the same as freeing the port, because
+#: npm→sh→vite and uvicorn can outlive it.
+port_pid() { ss -lptnH "sport = :$1" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1; }
+
+#: full command line of a pid, or nothing when the process is gone/unreadable.
+pid_cmd() { tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null || true; }
+
+#: True when the process holding the port is one this script would have started.
+looks_like_ours() { # pid port
+  local cmd; cmd="$(pid_cmd "$1")"
+  [ -n "$cmd" ] || return 1
+  case "$cmd" in
+    *uvicorn*"port $2"*) return 0 ;;
+    *vite*|*"npm run dev"*) return 0 ;;
+    *uvicorn*api.main*) return 0 ;;
+  esac
+  return 1
+}
 
 http_ok() { curl -sf --max-time 2 "http://127.0.0.1:$1$2" >/dev/null 2>&1; }
 
@@ -171,7 +193,11 @@ reset_db() {
 
 start_api() {
   if listening "$API_PORT"; then
-    log "port $API_PORT already listening — reusing it (not starting a second API)"
+    local holder; holder="$(port_pid "$API_PORT")"
+    log "port $API_PORT already listening (pid ${holder:-unknown}) — reusing it, not starting a second API"
+    # Record the real listener so a later `down` can stop it: a stack started
+    # before this shell existed must still be stoppable by this script.
+    [ -n "$holder" ] && printf '%s\n' "$holder" > "$RUN_DIR/api.pid"
     return 0
   fi
   api_env
@@ -197,7 +223,9 @@ start_api() {
 
 start_console() {
   if listening "$CONSOLE_PORT"; then
-    log "port $CONSOLE_PORT already listening — reusing it (not starting a second console)"
+    local holder; holder="$(port_pid "$CONSOLE_PORT")"
+    log "port $CONSOLE_PORT already listening (pid ${holder:-unknown}) — reusing it, not starting a second console"
+    [ -n "$holder" ] && printf '%s\n' "$holder" > "$RUN_DIR/console.pid"
     return 0
   fi
   export VITE_DEV_HOST="${VITE_DEV_HOST:-0.0.0.0}"
@@ -221,12 +249,43 @@ start_console() {
 
 # Terminate a process and everything it spawned. `npm run dev` is npm → sh →
 # vite → esbuild, and killing only the first pid leaves the port held.
+#
+# Children are collected *before* signalling the parent, because a parent that
+# dies first orphans them and `pgrep -P` then finds nothing to kill.
 kill_tree() {
-  local pid="$1" child
-  for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+  local pid="$1" child children
+  children="$(pgrep -P "$pid" 2>/dev/null || true)"
+  for child in $children; do
     kill_tree "$child"
   done
   kill -TERM "$pid" 2>/dev/null || true
+}
+
+# Free a port: TERM the tree, wait, then KILL. Reports what actually happened
+# rather than assuming the TERM worked.
+stop_port() { # port label [force]
+  local port="$1" label="$2" force="${3:-0}" pid i cmd
+  pid="$(port_pid "$port")"
+  if [ -z "$pid" ]; then return 0; fi
+  cmd="$(pid_cmd "$pid")"
+  if [ "$force" != "1" ] && ! looks_like_ours "$pid" "$port"; then
+    log "port $port is held by pid $pid ($(printf '%.90s' "${cmd:-unknown command}")) — not this stack; left alone"
+    log "  take it yourself with: kill $pid    (or: bash scripts/run_dev_stack.sh down --force)"
+    return 1
+  fi
+  log "stopping $label on port $port (pid $pid)"
+  kill_tree "$pid"
+  for i in $(seq 20); do listening "$port" || return 0; sleep 0.5; done
+  # Escaped again (a detached child, or a wrapper that re-execs): escalate.
+  pid="$(port_pid "$port")"
+  if [ -n "$pid" ]; then
+    log "pid $pid still holds port $port after SIGTERM — sending SIGKILL"
+    kill -KILL "$pid" 2>/dev/null || true
+    kill_tree "$pid"
+    for i in $(seq 10); do listening "$port" || return 0; sleep 0.5; done
+  fi
+  listening "$port" && { log "port $port is STILL held — inspect with: ss -lptn 'sport = :$port'"; return 1; }
+  return 0
 }
 
 down() {
@@ -234,29 +293,31 @@ down() {
   # *group*, which on a non-interactive shell is also this script's group, so the
   # trap re-fired on itself and printed "stopping" forever.
   trap - INT TERM
-  local stopped=0 name f pid port i
+  local force=0
+  [ "${1:-}" = "--force" ] && force=1
+  local failed=0 name f pid
+
   for name in console api; do
     f="$RUN_DIR/$name.pid"
     [ -f "$f" ] || continue
-    pid="$(cat "$f" 2>/dev/null || true)"
+    pid="$(head -1 "$f" 2>/dev/null || true)"
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
       kill_tree "$pid"
-      log "stopped $name (pid $pid)"
-      stopped=1
+      log "stopped $name launcher (pid $pid)"
     fi
     rm -f "$f"
   done
-  [ "$stopped" = "1" ] || log "nothing recorded as running by this script"
 
-  # Give them a moment, then confirm the ports actually came free, because a
-  # "stopped" line over a port that still answers is the kind of lie this
-  # repository is trying not to tell.
-  for port in "$CONSOLE_PORT" "$API_PORT"; do
-    for i in $(seq 10); do listening "$port" || break; sleep 0.5; done
-    if listening "$port"; then
-      log "port $port is still held by a process this script did not start — left alone"
-    fi
-  done
+  # The launcher dying is not the same as the port being free — that is what the
+  # earlier version got wrong: it printed "stopped" while vite/uvicorn still had
+  # the socket. Free the ports themselves, and record which ones could not be.
+  stop_port "$CONSOLE_PORT" "console" "$force" || failed=1
+  stop_port "$API_PORT" "api" "$force" || failed=1
+  if [ "$failed" = "1" ]; then
+    log "one or more ports are still in use — rerun with: bash scripts/run_dev_stack.sh down --force"
+    return 1
+  fi
+  log "console and api are stopped; ports $CONSOLE_PORT and $API_PORT are free"
   return 0
 }
 
@@ -265,7 +326,7 @@ down() {
 stop_owned() {
   trap - INT TERM
   local pid
-  for pid in "${OWNED_PIDS[@]:-}"; do
+  for pid in ${OWNED_PIDS[@]+"${OWNED_PIDS[@]}"}; do
     [ -n "$pid" ] || continue
     kill -0 "$pid" 2>/dev/null || continue
     kill_tree "$pid"
@@ -391,7 +452,11 @@ EOF
 }
 
 foreground() {
-  local pids=("${OWNED_PIDS[@]:-}")
+  # ${arr[@]:-} on an empty array yields one empty string, so the old length
+  # check fired immediately and `up` reported "both processes exited" whenever it
+  # had merely reused listeners someone else started.
+  local pids=()
+  if [ "${#OWNED_PIDS[@]}" -gt 0 ]; then pids=("${OWNED_PIDS[@]}"); fi
   banner
   log "following logs; press Ctrl-C to stop"
   # Tail both logs until interrupted, then stop what we started.
@@ -437,11 +502,22 @@ case "${1:-up}" in
     trap 'log "stopping console"; stop_owned; exit 0' INT TERM
     tail -f "$RUN_DIR/console.log"
     ;;
+  restart)
+    preflight
+    # `down --force`: a restart is the one place where stopping a stale listener
+    # on our own ports is the requested behaviour, not a surprise.
+    down --force || true
+    [ "${RESET_DB:-0}" = "1" ] && reset_db
+    ensure_password
+    start_api || exit 1
+    start_console || exit 1
+    foreground
+    ;;
   reset-admin|reset_admin|passwd) shift || true; reset_admin "${1:-}" ;;
   status) status ;;
-  down|stop) down ;;
+  down|stop) shift || true; down "${1:-}" ;;
   *)
-    echo "usage: bash scripts/run_dev_stack.sh [up|api|console|status|down|reset-admin [username]]" >&2
+    echo "usage: bash scripts/run_dev_stack.sh {up|api|console|status|down [--force]|restart|reset-admin [username]}" >&2
     exit 64
     ;;
 esac
