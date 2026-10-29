@@ -956,11 +956,13 @@ function MessageLayerPanel() {
       className="mt"
     >
       <div className="grid cols-4" style={{ marginBottom: 12 }}>
+        {/* No summary means the message-layer read did not return: four zeros
+            would read as "no listeners, nothing plaintext". */}
         {[
-          ["listeners", summary?.records ?? 0, undefined],
-          ["transport encrypted", summary?.transport_encrypted ?? 0, "var(--green)"],
-          ["transport plaintext", summary?.transport_plaintext ?? 0, (summary?.transport_plaintext ?? 0) ? "var(--red)" : undefined],
-          ["payload DECLARED / UNKNOWN", `${summary?.payload_encryption_states?.DECLARED ?? 0} / ${summary?.payload_encryption_states?.UNKNOWN ?? 0}`, "var(--amber)"],
+          ["listeners", summary == null ? "—" : summary.records ?? 0, undefined],
+          ["transport encrypted", summary == null ? "—" : summary.transport_encrypted ?? 0, "var(--green)"],
+          ["transport plaintext", summary == null ? "—" : summary.transport_plaintext ?? 0, (summary?.transport_plaintext ?? 0) ? "var(--red)" : undefined],
+          ["payload DECLARED / UNKNOWN", summary == null ? "—" : `${summary.payload_encryption_states?.DECLARED ?? 0} / ${summary.payload_encryption_states?.UNKNOWN ?? 0}`, "var(--amber)"],
         ].map(([k, v, color]) => (
           <div className="kpi" key={k as string}>
             <span className="k">{k}</span>
@@ -1163,14 +1165,14 @@ function NetworkCryptoIntelligencePanel() {
       <EvidenceIntegrityStrip />
       <div className="grid cols-4" style={{ marginBottom: 12 }}>
         {[
-          ["observed endpoints", summary?.observed ?? 0, "var(--green)"],
-          ["not observed (UNKNOWN)", summary?.not_observed ?? 0, (summary?.not_observed ?? 0) ? "var(--amber)" : undefined],
-          ["CBOM crypto assets", cb?.asset_count ?? 0, "var(--accent)"],
-          ["policy issues", Object.values(summary?.policy_issues ?? {}).reduce((a, b) => a + b, 0), undefined],
+          ["observed endpoints", summary == null ? "—" : summary.observed ?? 0, "var(--green)"],
+          ["not observed (UNKNOWN)", summary == null ? "—" : summary.not_observed ?? 0, (summary?.not_observed ?? 0) ? "var(--amber)" : undefined],
+          ["CBOM crypto assets", cb == null ? "—" : cb.asset_count ?? 0, "var(--accent)"],
+          ["policy issues", summary == null ? "—" : Object.values(summary.policy_issues ?? {}).reduce((a, b) => a + b, 0), undefined],
         ].map(([k, v, color]) => (
           <div className="kpi" key={k as string}>
             <span className="k">{k}</span>
-            <span className="v" style={{ color: color as string | undefined }}>{v as number}</span>
+            <span className="v" style={{ color: color as string | undefined }}>{v as number | string}</span>
           </div>
         ))}
       </div>
