@@ -6937,20 +6937,56 @@ export interface SimulationSelector {
   components: SimulationSelectorValue[]; targets: SimulationSelectorTarget[];
   truncated_to: number; note: string;
 }
+export type SimulationMode = "SCENARIO" | "CASCADE";
+
 export interface SimulationKind {
-  kind: string; name: string; question: string; inputs: string[];
+  kind: string; mode: SimulationMode; name: string; question: string; inputs: string[];
   optional: string[]; answers: string[]; does_not_answer: string[];
+}
+export interface SimulationModeInfo {
+  mode: SimulationMode; name: string; blurb: string;
+  changes_evidence: boolean; has_bom_diff: boolean;
+}
+export interface SimulationPreset {
+  id: string; label: string; mode: SimulationMode; kind: string;
+  scenario: SimulationScenario; why: string;
 }
 export interface SimulationCatalog {
   schema: string; run_id: string; base_projection_id: string | null;
   estate: { assets: number; evidence: number; relationships: number; coverage_state: string;
             attempted: number | null; collected: number | null };
-  kinds: SimulationKind[]; selector: SimulationSelector; note: string; limits: string[];
+  modes: SimulationModeInfo[]; kinds: SimulationKind[]; presets: SimulationPreset[];
+  selector: SimulationSelector; note: string; limits: string[];
 }
 
 export interface SimulationScenario {
   kind: string; from?: string; to?: string; key_size?: number | null;
-  targets?: string[]; label?: string | null;
+  targets?: string[]; depth?: number; label?: string | null;
+}
+
+/** One hop of a cascade: where it came from, over which predicate, and why that predicate
+ *  carries a failure at all. */
+export interface SimulationVia {
+  from_asset: string; from_name: string | null; predicate: string; meaning: string | null;
+  edge: { subject: string; predicate: string; object: string; basis: string | null;
+          confidence: string | null; evidence_ids: string[] | null };
+}
+export interface SimulationSeed {
+  asset_id: string; name: string; type: string; reason: string;
+}
+export interface SimulationWave {
+  depth: number; count: number; truncated: number;
+  assets: Array<{ asset_id: string; name: string; type: string; via: SimulationVia }>;
+}
+export interface SimulationRule {
+  predicate: string; direction: string; meaning: string;
+}
+export interface SimulationCascadePathHop {
+  asset_id: string; name: string | null; type: string | null;
+  via_predicate: string | null; via_asset: string | null;
+}
+export interface SimulationBusinessSystem {
+  asset_id: string; name: string; hops: number; path: SimulationCascadePathHop[];
 }
 
 export interface SimulationAffectedAsset {
@@ -6958,15 +6994,21 @@ export interface SimulationAffectedAsset {
 }
 export interface SimulationPreview {
   schema: string; status: "WOULD_MATCH" | "WOULD_NOT_MATCH"; kind: string;
+  mode?: SimulationMode; engine?: "CASCADE"; depth?: number;
   scenario: SimulationScenario; base_projection_id: string | null;
   live_state_modified: false; evidence_considered: number; matched_evidence: number;
-  affected_assets: SimulationAffectedAsset[]; affected_asset_count: number;
+  affected_assets: Array<SimulationAffectedAsset & { hops?: number; via_predicate?: string | null }>;
+  affected_asset_count: number;
   by_layer: Record<string, number>; unresolved_targets: string[];
   coverage: {
     target_classes: number; expected: number; collected: number;
     coverage_percent: number; coverage_state: string; by_status: Record<string, number>;
     failed_targets: string[];
   };
+  /* cascade previews carry these instead of a BOM projection */
+  seeds?: SimulationSeed[]; unresolved_seeds?: string[];
+  wave_counts?: Array<{ depth: number; count: number }>;
+  business_systems_reached?: number; rules?: SimulationRule[];
   note: string; limits: string[];
 }
 
@@ -6991,6 +7033,12 @@ export interface SimulationRecord {
 }
 export interface SimulationRun {
   status: string; run_id: string; schema: string; kind: string;
+  mode?: SimulationMode; engine?: "CASCADE"; depth?: number;
+  seeds?: SimulationSeed[]; unresolved_seeds?: string[];
+  waves?: SimulationWave[]; wave_count?: number;
+  rules?: SimulationRule[]; limits?: string[];
+  bom_diff_note?: string; estate_copy?: null;
+  detail?: string;
   scenario: SimulationScenario; base_snapshot: string | null;
   base_projection_id: string | null; simulated_projection_id: string | null;
   matched_evidence: number; evidence_considered?: number;

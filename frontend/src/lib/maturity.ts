@@ -416,7 +416,7 @@ export const CAPABILITY_LIMITS = {
   },
   "simulation": {
     "area": "Intelligence",
-    "limit": "What-if workspace over the estate twin: the estate's own algorithms, protocols, components and assets seed the scenario, a preview says whether the selector matches before the copy is made, the run re-projects the six BOMs from that copy and reports the live projection id unchanged, and a stored run is quarantined against the evidence state it was computed from; scenarios change evidence facts only \u2014 they do not model configuration, traffic, approvals or a deployment plan."
+    "limit": "What-if workspace over the estate twin with two families and ten questions: seven scenarios that edit an evidence fact on a copy (replace, retire, disable a protocol, upgrade, remove a component, resize a key, replace everything Shor-vulnerable) and three cascades that walk a failure outward from seeds (asset unavailable, crypto compromise, algorithm breaks everywhere), each previewed before it runs so nothing is read as a finding before it is known to reach something, each re-projecting or explicitly not re-projecting the six BOMs, each reporting the live projection id unchanged, and each stored quarantined against the evidence state it was computed from; scenarios change evidence facts and cascades travel established edges only \u2014 neither models configuration, traffic, redundancy, approvals or a deployment plan."
   },
   "supervision": {
     "area": "Governance",

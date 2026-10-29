@@ -1,17 +1,17 @@
 /* The simulation workspace.
  *
- * Everything on this page is a question asked of a *copy* of the twin. That shapes the
- * whole screen:
+ * Everything on this page is a question asked *of* the estate, never an action taken on
+ * it. Two families share the page because they share the two questions an operator has:
  *
- * - the scenario is built from this estate's own values (algorithms, protocols, components,
- *   targets), so a scenario is a choice rather than a guess at a string;
- * - the preview comes first, on its own request. "Would this match anything?" is cheap and
- *   the six BOM projections are not, and an operator needs to know a scenario matches
- *   nothing *before* reading a page of empty diffs;
- * - a run reports the engine's own `live_state_modified` and `live_projection_unchanged`
- *   fields rather than claiming read-only in prose;
- * - a stored run is labelled quarantined and carries the projection id it was measured
- *   against, because a simulation read a year later is a record of what was *asked*.
+ * - a **scenario** edits an evidence fact on a copy of the twin, re-projects the six BOMs
+ *   from that copy and reports the diff ("if AES-256 became ML-KEM…");
+ * - a **cascade** propagates a failure through the established dependency edges and
+ *   reports what is reached, wave by wave ("if PostgreSQL stopped…"). It changes no
+ *   evidence at all, which is why it has no BOM diff and says so instead of printing six
+ *   empty ones.
+ *
+ * Both are previewed before they run: "would this match, would this reach" is cheap, and
+ * the answer is what stops an operator from reading a page of nothing as good news.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -23,6 +23,7 @@ import {
 } from "../lib/api.js";
 import type {
   SimulationCatalog, SimulationPreview, SimulationRun, SimulationRuns, SimulationScenario,
+  SimulationPreset, SimulationWave,
 } from "../lib/api.js";
 
 const FIELD_LABEL: Record<string, string> = {
@@ -40,6 +41,14 @@ const labelStyle: React.CSSProperties = {
   display: "block", fontSize: 10.5, letterSpacing: ".06em", textTransform: "uppercase",
   color: "var(--faint)", marginBottom: 4,
 };
+
+const chipStyle = (active: boolean): React.CSSProperties => ({
+  padding: "4px 10px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
+  fontFamily: "var(--mono)", textAlign: "left",
+  background: active ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "var(--panel-2)",
+  border: `1px solid ${active ? "var(--accent)" : "var(--line)"}`,
+  color: "var(--text)",
+});
 
 /** The vocabulary, as chips. Clicking one fills the "before" side: that is the value the
  *  estate actually reported, which is the only value a scenario can match. */
@@ -107,12 +116,45 @@ function EffectRow({ effect }: { effect: SimulationRun["effects"][number] }) {
   );
 }
 
+/** One wave of a cascade: what arrived, and the edge it arrived by. */
+function WaveBlock({ wave }: { wave: SimulationWave }) {
+  return (
+    <div style={{ borderTop: "1px solid var(--line)" }}>
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "7px 16px", background: "var(--panel-2)", fontSize: 11,
+        letterSpacing: ".06em", textTransform: "uppercase", color: "var(--faint)",
+      }}>
+        <span>wave {wave.depth}</span>
+        <span>{wave.count} asset(s){wave.truncated ? ` · ${wave.truncated} more not listed` : ""}</span>
+      </div>
+      {wave.assets.map((asset) => (
+        <div key={asset.asset_id} style={{
+          display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap",
+          padding: "7px 16px", borderTop: "1px solid var(--line)", fontSize: 12,
+        }}>
+          <span>
+            <span style={{ fontWeight: 700 }}>{asset.name || asset.asset_id}</span>
+            <span style={{ color: "var(--faint)", fontSize: 11 }}> · {asset.type}</span>
+          </span>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)" }}
+                title={asset.via?.meaning ?? undefined}>
+            {asset.via?.predicate} ← {asset.via?.from_name || asset.via?.from_asset}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Simulation() {
   const [catalog, setCatalog] = useState<ApiResult<SimulationCatalog> | null>(null);
   const [kind, setKind] = useState<string>("");
   const [fields, setFields] = useState<Record<string, string>>({});
   const [targets, setTargets] = useState<string[]>([]);
+  const [depth, setDepth] = useState<number>(3);
   const [label, setLabel] = useState("");
+  const [preset, setPreset] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ key: string; data: SimulationPreview } | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [result, setResult] = useState<{ key: string; data: SimulationRun } | null>(null);
@@ -140,20 +182,28 @@ export default function Simulation() {
   useEffect(() => { void loadHistory(); }, [loadHistory]);
 
   const kinds = catalog?.data?.kinds ?? [];
+  const modes = catalog?.data?.modes ?? [];
   const entry = useMemo(
     () => kinds.find((item) => item.kind === kind) ?? kinds[0] ?? null,
     [kinds, kind],
   );
+  const isCascade = (entry?.mode ?? "SCENARIO") === "CASCADE";
+  const modeInfo = modes.find((item) => item.mode === (entry?.mode ?? "SCENARIO"));
 
   // The form is driven by the catalog, not by a hardcoded kind switch: a new kind on the
-  // server renders with its own inputs instead of silently sharing one.
-  const requiredFields = (entry?.inputs ?? []).filter((name) => name !== "targets");
-  const optionalFields = (entry?.optional ?? []).filter((name) => name !== "targets");
-  const knownFields = [...requiredFields, ...optionalFields];
+  // server renders with its own inputs instead of silently sharing one. `depth` and
+  // `targets` are rendered by their own controls.
+  const formFields = useMemo(
+    () => [...(entry?.inputs ?? []), ...(entry?.optional ?? [])].filter(
+      (name) => name !== "targets" && name !== "depth",
+    ),
+    [entry],
+  );
+  const requiredFields = (entry?.inputs ?? []).filter((name) => name !== "targets" && name !== "depth");
 
   const scenario: SimulationScenario = useMemo(() => {
     const built: SimulationScenario = { kind: entry?.kind ?? kind };
-    for (const name of knownFields) {
+    for (const name of formFields) {
       const value = (fields[name] ?? "").trim();
       if (!value) continue;
       if (name === "key_size") built.key_size = Number(value);
@@ -161,22 +211,42 @@ export default function Simulation() {
       else if (name === "to") built.to = value;
     }
     if (targets.length) built.targets = targets;
+    if (isCascade) built.depth = depth;
     if (label.trim()) built.label = label.trim();
     return built;
-  }, [entry, kind, knownFields, fields, targets, label]);
+  }, [entry, kind, formFields, fields, targets, depth, isCascade, label]);
 
   const scenarioKey = JSON.stringify(scenario);
   const previewIsCurrent = preview?.key === scenarioKey;
   const missing = requiredFields.filter((name) => !(fields[name] ?? "").trim());
+  const seedsMissing = isCascade && entry?.kind !== "CASCADE_ALGORITHM_BREAK" && targets.length === 0;
+
+  const resetOutputs = () => {
+    setPreview(null);
+    setPreviewError(null);
+    setResult(null);
+    setResultError(null);
+  };
 
   const selectKind = (next: string) => {
     setKind(next);
     setFields({});
     setTargets([]);
-    setPreview(null);
-    setPreviewError(null);
-    setResult(null);
-    setResultError(null);
+    setPreset(null);
+    resetOutputs();
+  };
+
+  const applyPreset = (item: SimulationPreset) => {
+    setKind(item.kind);
+    setPreset(item.id);
+    const next: Record<string, string> = {};
+    if (item.scenario.from) next.from = item.scenario.from;
+    if (item.scenario.to) next.to = item.scenario.to;
+    if (item.scenario.key_size) next.key_size = String(item.scenario.key_size);
+    setFields(next);
+    setTargets(item.scenario.targets ?? []);
+    if (item.scenario.depth) setDepth(item.scenario.depth);
+    resetOutputs();
   };
 
   const runPreview = async () => {
@@ -209,6 +279,16 @@ export default function Simulation() {
   const catalogProblem = catalog && !catalog.ok;
   const estate = catalog?.data?.estate;
   const selector = catalog?.data?.selector;
+  const canRun = previewIsCurrent && preview?.data.status === "WOULD_MATCH";
+  const previewNote = missing.length > 0
+    ? `Still needed: ${missing.join(", ")}`
+    : seedsMissing
+      ? "Pick at least one seed asset — a cascade with no starting point has nothing to propagate."
+      : previewIsCurrent
+        ? (isCascade
+          ? "Running walks the live topology from those seeds. Nothing is copied and no evidence changes."
+          : "Running re-projects the six BOMs from the copy; the live estate is not written to.")
+        : "Preview first — the run button unlocks once the question is known to reach something.";
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -228,10 +308,11 @@ export default function Simulation() {
             </span>
             Simulation workspace
           </h1>
-          <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 680 }}>
-            Ask the twin a question. Pick a scenario kind, choose from the values this estate
-            actually reports, preview what it would touch, then run it against a copy —{" "}
-            <b style={{ color: "var(--text)" }}>the live projection id must be identical before and after</b>.
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 700 }}>
+            Ask the twin a question. <b style={{ color: "var(--text)" }}>Change the estate</b> to see what a
+            cryptographic change would do to the six BOMs, or <b style={{ color: "var(--text)" }}>cascade a
+            failure</b> to see what a stopped asset reaches, wave by wave. Preview first; every run is
+            measured against one projection id and stored quarantined.
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -265,9 +346,9 @@ export default function Simulation() {
         <div>
           <div style={{ fontSize: 12, fontWeight: 800, color: "var(--violet)" }}>SIMULATION ONLY — NOTHING IS EXECUTED</div>
           <div style={{ fontSize: 11, color: "var(--dim)" }}>
-            A run applies the scenario to a snapshot of the twin and re-projects the six BOMs from that copy,
-            then reports whether it touched the live state. A stored run is quarantined: it is a record of a
-            question, never estate state.
+            A scenario is applied to a snapshot of the twin and the six BOMs are re-projected from that copy.
+            A cascade walks the live topology and changes nothing, so it reports no BOM diff at all. Both say
+            whether they touched the live state; neither is counted as estate state.
           </div>
         </div>
       </div>
@@ -287,30 +368,77 @@ export default function Simulation() {
 
       {!catalog && <Panel title="Reading the estate"><div style={{ fontSize: 12, color: "var(--dim)" }}>Loading the simulation catalog…</div></Panel>}
 
+      {(catalog?.data?.presets?.length ?? 0) > 0 && (
+        <Panel title="Start from a question this estate can already be asked"
+               sub="built from the values and the topology the twin actually holds — a starting point, still previewed before it runs">
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {catalog!.data!.presets.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => applyPreset(item)}
+                aria-pressed={preset === item.id}
+                title={item.why}
+                style={{
+                  padding: "6px 11px", borderRadius: "var(--r)", fontSize: 11.5, cursor: "pointer",
+                  textAlign: "left",
+                  background: preset === item.id ? "color-mix(in srgb, var(--violet) 16%, transparent)" : "var(--panel-2)",
+                  border: `1px solid ${preset === item.id ? "var(--violet)" : "var(--line)"}`,
+                  color: "var(--text)",
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>{item.label}</span>
+                <span style={{ display: "block", fontSize: 10, color: "var(--faint)" }}>
+                  {item.mode === "CASCADE" ? "cascade" : "scenario"} · {item.why}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
+
       {entry && (
         <Panel title="1 · Choose the question" sub="each kind answers a different question, and refuses the ones it cannot">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 8, marginBottom: 12 }}>
-            {kinds.map((item) => {
-              const selected = item.kind === entry.kind;
-              return (
-                <button
-                  key={item.kind}
-                  type="button"
-                  onClick={() => selectKind(item.kind)}
-                  aria-pressed={selected}
-                  style={{
-                    textAlign: "left", padding: "10px 12px", borderRadius: "var(--r)", cursor: "pointer",
-                    background: selected ? "color-mix(in srgb, var(--violet) 14%, transparent)" : "var(--panel-2)",
-                    border: `1px solid ${selected ? "var(--violet)" : "var(--line)"}`,
-                    color: "var(--text)",
-                  }}
-                >
-                  <div style={{ fontSize: 12.5, fontWeight: 800 }}>{item.name}</div>
-                  <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 3, lineHeight: 1.45 }}>{item.question}</div>
-                </button>
-              );
-            })}
-          </div>
+          {modes.map((mode) => {
+            const family = kinds.filter((item) => item.mode === mode.mode);
+            if (!family.length) return null;
+            return (
+              <div key={mode.mode} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", marginBottom: 6 }}>
+                  <span className="kicker" style={{ fontSize: 10, color: mode.mode === "CASCADE" ? "var(--amber)" : "var(--accent)" }}>
+                    {mode.name}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--faint)" }}>{mode.blurb}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 8 }}>
+                  {family.map((item) => {
+                    const selected = item.kind === entry.kind;
+                    return (
+                      <button
+                        key={item.kind}
+                        type="button"
+                        onClick={() => selectKind(item.kind)}
+                        aria-pressed={selected}
+                        style={{
+                          textAlign: "left", padding: "10px 12px", borderRadius: "var(--r)", cursor: "pointer",
+                          background: selected
+                            ? (mode.mode === "CASCADE"
+                              ? "color-mix(in srgb, var(--amber) 14%, transparent)"
+                              : "color-mix(in srgb, var(--violet) 14%, transparent)")
+                            : "var(--panel-2)",
+                          border: `1px solid ${selected ? (mode.mode === "CASCADE" ? "var(--amber)" : "var(--violet)") : "var(--line)"}`,
+                          color: "var(--text)",
+                        }}
+                      >
+                        <div style={{ fontSize: 12.5, fontWeight: 800 }}>{item.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 3, lineHeight: 1.45 }}>{item.question}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
             <div>
               <div className="kicker" style={{ fontSize: 9.5, color: "var(--green)" }}>THIS KIND ANSWERS</div>
@@ -329,64 +457,92 @@ export default function Simulation() {
       )}
 
       {entry && (
-        <Panel title="2 · Build the scenario" sub={selector?.note ?? "the values below are the ones this estate reported"}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
-            {knownFields.map((name) => {
-              const values = [...(selector?.algorithms ?? []), ...(selector?.protocols ?? []), ...(selector?.components ?? [])];
-              const listId = `sim-values-${name}`;
-              return (
-                <label key={name} style={{ display: "block" }}>
-                  <span style={labelStyle}>
-                    {FIELD_LABEL[name] ?? name}
-                    {requiredFields.includes(name) ? " *" : " (optional)"}
-                  </span>
-                  <input
-                    aria-label={FIELD_LABEL[name] ?? name}
-                    list={listId}
-                    value={fields[name] ?? ""}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setFields((current) => ({ ...current, [name]: value }));
-                      setPreview(null);
-                      setResult(null);
-                      setPreviewError(null);
-                      setResultError(null);
-                    }}
-                    placeholder={name === "key_size" ? "e.g. 256" : "value from this estate"}
-                    inputMode={name === "key_size" ? "numeric" : undefined}
-                    style={inputStyle}
-                  />
-                  <datalist id={listId}>
-                    {[...new Set(values.map((item) => item.value))].map((value) => (
-                      <option key={value} value={value} />
-                    ))}
-                  </datalist>
-                </label>
-              );
-            })}
-          </div>
+        <Panel
+          title="2 · Build the question"
+          sub={isCascade
+            ? "a cascade starts from seed assets and follows the declared rules below"
+            : (selector?.note ?? "the values below are the ones this estate reported")}
+        >
+          {formFields.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
+              {formFields.map((name) => {
+                const values = [...(selector?.algorithms ?? []), ...(selector?.protocols ?? []), ...(selector?.components ?? [])];
+                const listId = `sim-values-${name}`;
+                const label = isCascade && name === "from"
+                  ? "The algorithm that breaks (from)"
+                  : FIELD_LABEL[name] ?? name;
+                return (
+                  <label key={name} style={{ display: "block" }}>
+                    <span style={labelStyle}>
+                      {label}
+                      {requiredFields.includes(name) ? " *" : " (optional)"}
+                    </span>
+                    <input
+                      aria-label={label}
+                      list={listId}
+                      value={fields[name] ?? ""}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setFields((current) => ({ ...current, [name]: value }));
+                        setPreset(null);
+                        resetOutputs();
+                      }}
+                      placeholder={name === "key_size" ? "e.g. 256" : "value from this estate"}
+                      inputMode={name === "key_size" ? "numeric" : undefined}
+                      style={inputStyle}
+                    />
+                    <datalist id={listId}>
+                      {[...new Set(values.map((item) => item.value))].map((value) => (
+                        <option key={value} value={value} />
+                      ))}
+                    </datalist>
+                  </label>
+                );
+              })}
+            </div>
+          )}
 
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            <VocabularyChips
-              label="algorithms in this estate"
-              values={selector?.algorithms ?? []}
-              onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreview(null); setResult(null); }}
-            />
-            <VocabularyChips
-              label="protocols in this estate"
-              values={selector?.protocols ?? []}
-              onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreview(null); setResult(null); }}
-            />
-            <VocabularyChips
-              label="components in this estate"
-              values={selector?.components ?? []}
-              onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreview(null); setResult(null); }}
-            />
-          </div>
+          {!isCascade && (
+            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+              <VocabularyChips
+                label="algorithms in this estate"
+                values={selector?.algorithms ?? []}
+                onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreset(null); resetOutputs(); }}
+              />
+              <VocabularyChips
+                label="protocols in this estate"
+                values={selector?.protocols ?? []}
+                onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreset(null); resetOutputs(); }}
+              />
+              <VocabularyChips
+                label="components in this estate"
+                values={selector?.components ?? []}
+                onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreset(null); resetOutputs(); }}
+              />
+            </div>
+          )}
+
+          {isCascade && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                  Rules carried: {[...new Set((preview?.data.rules ?? []).map((rule) => rule.predicate))].join(", ") || "declared on the preview"}
+                </span>
+                <span style={{ fontSize: 11, color: "var(--faint)" }}>
+                  a predicate that is not listed does not carry this failure — so the radius below is a
+                  floor, and the blind spots say where it stops being one
+                </span>
+              </div>
+            </div>
+          )}
 
           <div style={{ marginTop: 14 }}>
             <span style={labelStyle}>
-              Narrow to specific assets — no selection means every asset the selector matches
+              {isCascade
+                ? (entry.kind === "CASCADE_ALGORITHM_BREAK"
+                  ? "Narrow the seeds to specific assets (optional — every use of the value above is a seed)"
+                  : "Where the failure starts — pick the seed assets *")
+                : "Narrow to specific assets — no selection means every asset the selector matches"}
             </span>
             {selector && selector.targets.length > 0 ? (
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -401,16 +557,10 @@ export default function Simulation() {
                         setTargets((current) => picked
                           ? current.filter((id) => id !== target.asset_id)
                           : [...current, target.asset_id]);
-                        setPreview(null);
-                        setResult(null);
+                        setPreset(null);
+                        resetOutputs();
                       }}
-                      style={{
-                        padding: "4px 10px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
-                        fontFamily: "var(--mono)",
-                        background: picked ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "var(--panel-2)",
-                        border: `1px solid ${picked ? "var(--accent)" : "var(--line)"}`,
-                        color: "var(--text)",
-                      }}
+                      style={chipStyle(picked)}
                     >
                       {target.name} <span style={{ color: "var(--faint)" }}>· {target.type}</span>
                     </button>
@@ -424,6 +574,25 @@ export default function Simulation() {
             )}
           </div>
 
+          {isCascade && (
+            <label style={{ display: "block", marginTop: 12, maxWidth: 220 }}>
+              <span style={labelStyle}>Hops to walk — {depth}</span>
+              <input
+                aria-label="Hops to walk"
+                type="range"
+                min={1}
+                max={8}
+                step={1}
+                value={depth}
+                onChange={(event) => { setDepth(Number(event.target.value)); setPreset(null); resetOutputs(); }}
+                style={{ width: "100%" }}
+              />
+              <span style={{ fontSize: 10.5, color: "var(--faint)" }}>
+                1 hop is direct dependents; 8 is the whole reachable estate
+              </span>
+            </label>
+          )}
+
           <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
             <label style={{ flex: "1 1 240px" }}>
               <span style={labelStyle}>Label this run (optional)</span>
@@ -431,57 +600,58 @@ export default function Simulation() {
                 aria-label="Label this run (optional)"
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
-                placeholder="e.g. PQC pilot — payments"
+                placeholder={isCascade ? "e.g. payments DB outage" : "e.g. PQC pilot — payments"}
                 style={inputStyle}
               />
             </label>
             <button
               type="button"
               onClick={() => void runPreview()}
-              disabled={busy !== null || missing.length > 0}
+              disabled={busy !== null || missing.length > 0 || seedsMissing}
               style={{
                 padding: "8px 14px", borderRadius: "var(--r)", fontWeight: 700, fontSize: 12,
-                cursor: busy !== null || missing.length ? "not-allowed" : "pointer",
+                cursor: busy !== null || missing.length || seedsMissing ? "not-allowed" : "pointer",
                 background: "var(--panel-2)", border: "1px solid var(--accent)", color: "var(--accent)",
-                opacity: busy !== null || missing.length ? 0.55 : 1,
+                opacity: busy !== null || missing.length || seedsMissing ? 0.55 : 1,
               }}
             >
-              {busy === "plan" ? "Previewing…" : "Preview match"}
+              {busy === "plan" ? "Previewing…" : (isCascade ? "Preview reach" : "Preview match")}
             </button>
             <button
               type="button"
               onClick={() => void runSimulation()}
-              disabled={busy !== null || !previewIsCurrent || preview?.data.status !== "WOULD_MATCH"}
-              title={previewIsCurrent ? undefined : "preview the scenario first — a run over a selector that matches nothing is not a finding"}
+              disabled={busy !== null || !canRun}
+              title={previewIsCurrent ? undefined : "preview first — a run over a question that reaches nothing is not a finding"}
               style={{
                 padding: "8px 14px", borderRadius: "var(--r)", fontWeight: 700, fontSize: 12,
-                cursor: busy !== null || !previewIsCurrent ? "not-allowed" : "pointer",
+                cursor: busy !== null || !canRun ? "not-allowed" : "pointer",
                 background: "var(--violet)", border: "1px solid var(--violet)", color: "#fff",
-                opacity: busy !== null || !previewIsCurrent || preview?.data.status !== "WOULD_MATCH" ? 0.55 : 1,
+                opacity: busy !== null || !canRun ? 0.55 : 1,
               }}
             >
-              {busy === "run" ? "Running on a copy…" : "Run simulation"}
+              {busy === "run" ? (isCascade ? "Walking the topology…" : "Running on a copy…") : (isCascade ? "Run cascade" : "Run simulation")}
             </button>
           </div>
-          <div style={{ marginTop: 8, fontSize: 11, color: "var(--faint)" }}>
-            {missing.length > 0
-              ? `Still needed: ${missing.join(", ")}`
-              : previewIsCurrent
-                ? "Running re-projects the six BOMs from the copy; the live estate is not written to."
-                : "Preview first — the run button unlocks once the scenario is known to match something."}
-          </div>
+          <div style={{ marginTop: 8, fontSize: 11, color: "var(--faint)" }}>{previewNote}</div>
+          {modeInfo && (
+            <div style={{ marginTop: 6, fontSize: 10.5, color: "var(--faint)" }}>
+              {modeInfo.changes_evidence
+                ? "this family edits evidence facts on a copy, so it has a BOM diff"
+                : "this family edits nothing, so it has no BOM diff — six empty diffs would read as 'nothing changes'"}
+            </div>
+          )}
         </Panel>
       )}
 
       {previewError && (
-        <Panel title="The scenario cannot be answered">
+        <Panel title="The question cannot be answered">
           <div style={{ fontSize: 12.5, color: "var(--red)" }}>{previewError}</div>
         </Panel>
       )}
 
       {preview?.data && previewIsCurrent && (
         <Panel
-          title="3 · Preview — what this would touch"
+          title={isCascade ? "3 · Preview — what this would reach" : "3 · Preview — what this would touch"}
           sub={`measured against ${preview.data.base_projection_id ?? "an unknown projection"}`}
           style={{ padding: 0, overflow: "hidden" } as React.CSSProperties}
         >
@@ -490,11 +660,35 @@ export default function Simulation() {
             <span style={{ fontSize: 12, color: "var(--dim)" }}>{preview.data.note}</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, padding: "0 16px 12px" }}>
-            <Stat label="matched evidence" value={preview.data.matched_evidence} />
-            <Stat label="assets affected" value={preview.data.affected_asset_count} />
-            <Stat label="evidence considered" value={preview.data.evidence_considered} />
-            <Stat label="coverage" value={`${preview.data.coverage?.coverage_percent ?? 0}%`} delta={preview.data.coverage?.coverage_state} />
+            {isCascade ? (
+              <>
+                <Stat label="seed assets" value={preview.data.seeds?.length ?? 0} />
+                <Stat label="assets reached" value={preview.data.affected_asset_count} />
+                <Stat label="waves" value={preview.data.wave_counts?.length ?? 0} />
+                <Stat label="business systems" value={preview.data.business_systems_reached ?? 0} />
+              </>
+            ) : (
+              <>
+                <Stat label="matched evidence" value={preview.data.matched_evidence} />
+                <Stat label="assets affected" value={preview.data.affected_asset_count} />
+                <Stat label="evidence considered" value={preview.data.evidence_considered} />
+                <Stat label="coverage" value={`${preview.data.coverage?.coverage_percent ?? 0}%`} delta={preview.data.coverage?.coverage_state} />
+              </>
+            )}
           </div>
+          {(preview.data.seeds?.length ?? 0) > 0 && (
+            <div style={{ borderTop: "1px solid var(--line)" }}>
+              {preview.data.seeds!.map((seed) => (
+                <div key={seed.asset_id} style={{
+                  display: "flex", gap: 8, justifyContent: "space-between", flexWrap: "wrap",
+                  padding: "7px 16px", borderBottom: "1px solid var(--line)", fontSize: 12,
+                }}>
+                  <span><b>{seed.name}</b><span style={{ color: "var(--faint)", fontSize: 11 }}> · {seed.type}</span></span>
+                  <span style={{ fontSize: 11, color: "var(--faint)" }}>{seed.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
           {preview.data.affected_assets.length > 0 && (
             <div style={{ borderTop: "1px solid var(--line)" }}>
               {preview.data.affected_assets.map((asset) => (
@@ -506,22 +700,48 @@ export default function Simulation() {
                     <span style={{ fontWeight: 700 }}>{asset.name}</span>
                     <span style={{ color: "var(--faint)", fontSize: 11 }}> · {asset.type}</span>
                   </span>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>{asset.evidence_matched} record(s)</span>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>
+                    {isCascade
+                      ? `hop ${asset.hops}${asset.via_predicate ? ` · ${asset.via_predicate}` : ""}`
+                      : `${asset.evidence_matched} record(s)`}
+                  </span>
                 </div>
               ))}
             </div>
           )}
           <div style={{ padding: "10px 16px", display: "grid", gap: 6 }}>
-            {Object.entries(preview.data.by_layer || {}).map(([layer, count]) => (
-              <div key={layer} style={{ fontSize: 11.5, color: "var(--dim)", fontFamily: "var(--mono)" }}>
-                {layer}: {count}
-              </div>
-            ))}
+            {isCascade
+              ? (preview.data.wave_counts ?? []).map((wave) => (
+                <div key={wave.depth} style={{ fontSize: 11.5, color: "var(--dim)", fontFamily: "var(--mono)" }}>
+                  wave {wave.depth}: {wave.count} asset(s)
+                </div>
+              ))
+              : Object.entries(preview.data.by_layer || {}).map(([layer, count]) => (
+                <div key={layer} style={{ fontSize: 11.5, color: "var(--dim)", fontFamily: "var(--mono)" }}>
+                  {layer}: {count}
+                </div>
+              ))}
             {preview.data.unresolved_targets.length > 0 && (
               <div style={{ fontSize: 11.5, color: "var(--amber)" }}>
-                Targets the twin does not hold: {preview.data.unresolved_targets.join(", ")} — they were not
+                Named but not held by the twin: {preview.data.unresolved_targets.join(", ")} — they were not
                 treated as "match everything".
               </div>
+            )}
+            {(preview.data.rules ?? []).length > 0 && (
+              <details style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                <summary style={{ cursor: "pointer", color: "var(--accent)" }}>
+                  the {preview.data.rules!.length} edge rules this cascade follows
+                </summary>
+                <div style={{ marginTop: 6, display: "grid", gap: 3 }}>
+                  {preview.data.rules!.map((rule) => (
+                    <div key={rule.predicate} style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                      <b style={{ color: "var(--text)" }}>{rule.predicate}</b>
+                      <span style={{ color: "var(--faint)" }}> · {rule.direction.replace(/_/g, " ")}</span>
+                      {" — "}{rule.meaning}
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
             {(preview.data.limits || []).map((line) => (
               <div key={line} style={{ fontSize: 11, color: "var(--faint)", lineHeight: 1.5 }}>· {line}</div>
@@ -537,7 +757,9 @@ export default function Simulation() {
       )}
 
       {result?.data && result.key === scenarioKey && (
-        <SimulationResult result={result.data} />
+        result.data.mode === "CASCADE"
+          ? <CascadeResult result={result.data} />
+          : <SimulationResult result={result.data} />
       )}
 
       <Panel
@@ -557,7 +779,9 @@ export default function Simulation() {
                 <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                   <Badge tone={row.superseded ? "amber" : "green"}>{row.superseded ? "SUPERSEDED" : "CURRENT"}</Badge>
                   <span style={{ fontSize: 11, color: "var(--faint)", fontFamily: "var(--mono)" }}>
-                    {row.matched_evidence} matched · {row.affected_assets?.length ?? 0} asset(s)
+                    {row.kind.startsWith("CASCADE")
+                      ? `${row.affected_assets?.length ?? 0} asset(s) reached`
+                      : `${row.matched_evidence} matched · ${row.affected_assets?.length ?? 0} asset(s)`}
                   </span>
                 </span>
               </div>
@@ -573,7 +797,7 @@ export default function Simulation() {
           ))
         ) : (
           <div style={{ padding: "12px 16px", fontSize: 12, color: "var(--dim)" }}>
-            No stored runs yet. A run is only stored when it matched something — "nothing to simulate"
+            No stored runs yet. A run is only stored when it reached something — "nothing to simulate"
             is not written down as a finding.
           </div>
         )}
@@ -701,6 +925,155 @@ function SimulationResult({ result }: { result: SimulationRun }) {
             The scenario matched no evidence record, so there is no copy to project and nothing to store.
             Widen the selector — the chips in step 2 are the values this estate actually reports — or
             run discovery if the asset you expected is missing from the twin.
+          </div>
+        </Panel>
+      )}
+    </>
+  );
+}
+
+/** A cascade result is a route map, not a diff: waves out from the seeds, and the edge each
+ *  asset was reached by. There is no BOM diff because no evidence changed. */
+function CascadeResult({ result }: { result: SimulationRun }) {
+  const counts = result.impact?.counts ?? {};
+  const systems = (result.impact?.business_systems as Array<{
+    asset_id: string; name: string; hops: number;
+    path: Array<{ asset_id: string; name: string | null; via_predicate: string | null }>;
+  }> | undefined) ?? [];
+  const unknown = result.unknown ?? {};
+  const refused = !result.persisted;
+
+  return (
+    <>
+      <Panel
+        title="4 · Result — what this reaches"
+        sub={`walked ${result.depth ?? "?"} hop(s) from ${result.seeds?.length ?? 0} seed(s) · measured against ${result.base_projection_id ?? "—"}`}
+        style={{ padding: 0, overflow: "hidden" } as React.CSSProperties}
+      >
+        <div style={{ padding: "12px 16px", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <Badge tone={result.status === "SIMULATED" ? "green" : result.status === "NO_MATCH" ? "amber" : "red"}>
+            {result.status.replace(/_/g, " ")}
+          </Badge>
+          <Badge tone={result.live_state_modified ? "red" : "green"}>
+            {result.live_state_modified ? "LIVE STATE MODIFIED" : "LIVE STATE UNTOUCHED"}
+          </Badge>
+          <Badge tone={result.live_projection_unchanged ? "green" : "red"}>
+            {result.live_projection_unchanged ? "PROJECTION ID UNCHANGED" : "PROJECTION ID MOVED"}
+          </Badge>
+          <Badge tone="amber">NO BOM DIFF — NOTHING CHANGED</Badge>
+          <span style={{ fontSize: 11.5, color: "var(--dim)" }}>{result.note}</span>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, padding: "0 16px 12px" }}>
+          <Stat label="seed assets" value={counts.seed ?? result.seeds?.length ?? 0} />
+          <Stat label="assets reached" value={counts.total ?? 0} delta={`${counts.direct ?? 0} at one hop`} />
+          <Stat label="waves" value={result.wave_count ?? result.waves?.length ?? 0} />
+          <Stat label="business systems" value={systems.length} />
+        </div>
+
+        <div style={{ padding: "0 16px 12px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="kicker" style={{ fontSize: 9.5 }}>STORAGE</span>
+          {result.persisted ? (
+            <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+              quarantined run <b style={{ fontFamily: "var(--mono)" }}>{result.simulation_id}</b> — {result.persist_note}
+            </span>
+          ) : (
+            <span style={{ fontSize: 11.5, color: "var(--amber)" }}>
+              not stored: {result.persist_refused_because || result.persist_note || "the result was not storable"}
+            </span>
+          )}
+        </div>
+
+        {(result.seeds?.length ?? 0) > 0 && (
+          <div style={{ borderTop: "1px solid var(--line)" }}>
+            <div style={{ padding: "8px 16px", fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--faint)" }}>
+              seeds — where the failure starts
+            </div>
+            {result.seeds!.map((seed) => (
+              <div key={seed.asset_id} style={{
+                display: "flex", gap: 8, justifyContent: "space-between", flexWrap: "wrap",
+                padding: "7px 16px", borderTop: "1px solid var(--line)", fontSize: 12,
+              }}>
+                <span><b>{seed.name}</b><span style={{ color: "var(--faint)", fontSize: 11 }}> · {seed.type}</span></span>
+                <span style={{ fontSize: 11, color: "var(--faint)" }}>{seed.reason}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {(result.waves ?? []).map((wave) => <WaveBlock key={wave.depth} wave={wave} />)}
+
+        {systems.length > 0 && (
+          <div style={{ borderTop: "1px solid var(--line)", padding: "10px 16px" }}>
+            <div style={{ fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--faint)", marginBottom: 6 }}>
+              business systems reached, with the route
+            </div>
+            {systems.map((system) => (
+              <div key={system.asset_id} style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--dim)", marginBottom: 4 }}>
+                <b style={{ color: "var(--text)" }}>{system.name}</b> · {system.hops} hop(s):{" "}
+                {system.path.map((hop, index) => (
+                  <span key={`${hop.asset_id}-${index}`}>
+                    {index > 0 ? ` → (${hop.via_predicate}) ` : ""}{hop.name}
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ borderTop: "1px solid var(--line)", padding: "10px 16px", display: "grid", gap: 6 }}>
+          <div style={{ fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--faint)" }}>
+            blind spots and limits
+          </div>
+          {(result.blockers || []).length === 0 ? (
+            <div style={{ fontSize: 11.5, color: "var(--dim)" }}>
+              No refused edge touches this radius. That does not make the radius complete: it means the
+              topology the collectors established had no contradiction inside it.
+            </div>
+          ) : (
+            result.blockers.map((blocker, index) => (
+              <div key={index} style={{ fontSize: 11.5, color: "var(--amber)", fontFamily: "var(--mono)" }}>
+                {Object.entries(blocker).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(" · ")}
+              </div>
+            ))
+          )}
+          {Object.entries(unknown).map(([key, value]) => (
+            <div key={key} style={{ fontSize: 11.5, color: "var(--faint)" }}>
+              <b style={{ color: "var(--text)" }}>{key.replace(/_/g, " ")}</b>: {typeof value === "string" ? value : JSON.stringify(value)}
+            </div>
+          ))}
+          {(result.limits ?? []).map((line) => (
+            <div key={line} style={{ fontSize: 11, color: "var(--faint)", lineHeight: 1.5 }}>· {line}</div>
+          ))}
+          {result.bom_diff_note && (
+            <div style={{ fontSize: 11, color: "var(--faint)", lineHeight: 1.5 }}>· {result.bom_diff_note}</div>
+          )}
+        </div>
+
+        {(result.rules ?? []).length > 0 && (
+          <details style={{ borderTop: "1px solid var(--line)", padding: "10px 16px", fontSize: 11.5, color: "var(--dim)" }}>
+            <summary style={{ cursor: "pointer", color: "var(--accent)" }}>
+              the {result.rules!.length} edge rules this cascade followed
+            </summary>
+            <div style={{ marginTop: 6, display: "grid", gap: 3 }}>
+              {result.rules!.map((rule) => (
+                <div key={rule.predicate} style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                  <b style={{ color: "var(--text)" }}>{rule.predicate}</b>
+                  <span style={{ color: "var(--faint)" }}> · {rule.direction.replace(/_/g, " ")}</span>
+                  {" — "}{rule.meaning}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+      </Panel>
+
+      {refused && result.status === "NO_MATCH" && (
+        <Panel title="Nothing reached">
+          <div style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.6 }}>
+            {result.detail || "The cascade reached nothing."} A seed that resolves and reaches nothing is
+            reported as such: it is not a clean bill of health, and it is not stored as one. Widen the
+            depth, pick a different seed, or run discovery if the dependency you expected is missing.
           </div>
         </Panel>
       )}

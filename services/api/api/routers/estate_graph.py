@@ -976,11 +976,18 @@ class TwinImpactRequest(BaseModel):
 class TwinSimulationRequest(BaseModel):
     """A scenario applied to a *copy* of the twin — never to the live estate."""
 
-    kind: str = Field(description="REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT")
+    kind: str = Field(
+        description=(
+            "a scenario (REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT | "
+            "REMOVE_COMPONENT | CHANGE_KEY_SIZE | MIGRATE_QUANTUM_VULNERABLE) or a cascade "
+            "(CASCADE_ASSET_UNAVAILABLE | CASCADE_CRYPTO_COMPROMISE | CASCADE_ALGORITHM_BREAK)"
+        )
+    )
     from_: str | None = Field(default=None, alias="from", max_length=160)
     to: str | None = Field(default=None, max_length=160)
     key_size: int | None = Field(default=None, ge=1, le=100000)
     targets: list[str] | None = Field(default=None, max_length=200)
+    depth: int = Field(default=3, ge=1, le=8, description="cascade hops to walk; ignored by a scenario")
     label: str | None = Field(default=None, max_length=160)
     persist: bool = Field(
         default=False,
@@ -1199,6 +1206,8 @@ def estate_twin_simulate(
         "targets": body.targets or [],
         "label": body.label,
     }
+    if estate_simulation.mode_of(body.kind) == "CASCADE":
+        scenario["depth"] = body.depth
     result = estate_twin.simulate(graph, scenario)
     response: dict[str, Any] = {"run_id": run.id, **result}
     if body.persist:
@@ -1359,13 +1368,26 @@ def estate_twin_graph_export(
 
 
 class SimulationRunRequest(BaseModel):
-    """One scenario for the workspace — same shape the twin endpoint accepts."""
+    """One scenario for the workspace — same shape the twin endpoint accepts.
 
-    kind: str = Field(description="REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT")
+    Two families share this shape because they share the two questions the workspace asks
+    (does it match, and what does it reach): a *scenario* edits an evidence fact on a copy,
+    a *cascade* walks the topology from a failure and edits nothing. ``depth`` is the only
+    field the scenario family ignores.
+    """
+
+    kind: str = Field(
+        description=(
+            "REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT | "
+            "REMOVE_COMPONENT | CHANGE_KEY_SIZE | MIGRATE_QUANTUM_VULNERABLE | "
+            "CASCADE_ASSET_UNAVAILABLE | CASCADE_CRYPTO_COMPROMISE | CASCADE_ALGORITHM_BREAK"
+        )
+    )
     from_: str | None = Field(default=None, alias="from", max_length=160)
     to: str | None = Field(default=None, max_length=160)
     key_size: int | None = Field(default=None, ge=1, le=100000)
     targets: list[str] | None = Field(default=None, max_length=200)
+    depth: int = Field(default=3, ge=1, le=8, description="cascade hops to walk; ignored by a scenario")
     label: str | None = Field(default=None, max_length=160)
     persist: bool = Field(
         default=True,
@@ -1379,7 +1401,13 @@ class SimulationRunRequest(BaseModel):
 
 
 def _scenario_payload(body: SimulationRunRequest) -> dict[str, Any]:
-    return {
+    """The scenario as the engine reads it.
+
+    ``depth`` is only carried for a cascade: a scenario that walked no hops would
+    otherwise hash a number it ignores into its own ``simulation_id``, so re-asking the
+    same question would look like a different question.
+    """
+    payload: dict[str, Any] = {
         "kind": body.kind,
         "from": body.from_,
         "to": body.to,
@@ -1387,6 +1415,9 @@ def _scenario_payload(body: SimulationRunRequest) -> dict[str, Any]:
         "targets": body.targets or [],
         "label": body.label,
     }
+    if estate_simulation.mode_of(body.kind) == "CASCADE":
+        payload["depth"] = body.depth
+    return payload
 
 
 @router.get("/simulation/catalog")

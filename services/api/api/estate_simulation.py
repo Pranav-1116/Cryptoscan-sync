@@ -95,7 +95,129 @@ KIND_CATALOG: dict[str, dict[str, Any]] = {
             "the contents of the new version — that is a scan of a different estate",
         ],
     },
+    "REMOVE_COMPONENT": {
+        "name": "Remove a component",
+        "question": "What is left behind if {from} is decommissioned rather than replaced?",
+        "inputs": ["from"],
+        "optional": ["targets"],
+        "answers": [
+            "every record that names that component or version",
+            "the SBOM/CBOM rows that disappear, and the assets that keep no component fact",
+        ],
+        "does_not_answer": [
+            "what runs in its place — nothing is put in its place here, by design",
+            "whether the workload still starts: that is runtime behaviour, not evidence",
+        ],
+    },
+    "CHANGE_KEY_SIZE": {
+        "name": "Change a key size",
+        "question": "If {from} moved to a {key_size}-bit key, what changes?",
+        "inputs": ["from", "key_size"],
+        "optional": ["targets"],
+        "answers": [
+            "which artefacts carry that algorithm or protocol, and what their key size becomes",
+            "the CBOM delta for the resized artefacts",
+        ],
+        "does_not_answer": [
+            "whether the library, HSM or peer accepts the larger size — that is a capability claim "
+            "nobody made",
+            "performance: a larger key has a cost the twin does not measure",
+        ],
+    },
+    "MIGRATE_QUANTUM_VULNERABLE": {
+        "name": "Replace everything Shor-vulnerable",
+        "question": "If every quantum-vulnerable algorithm became {to}, what does that touch?",
+        "inputs": ["to"],
+        "optional": ["key_size", "targets"],
+        "answers": [
+            "every artefact the algorithm registry classifies as Shor-vulnerable, all at once",
+            "the CBOM/TLS delta and the assets those artefacts sit on",
+        ],
+        "does_not_answer": [
+            "whether the estate can actually run the target — capability is a blocker, not a promise",
+            "anything about confidentiality of traffic already recorded; harvesting is not observable here",
+            "agility: replacing the algorithm in the evidence is not replacing it in a deployment",
+        ],
+    },
+    "CASCADE_ASSET_UNAVAILABLE": {
+        "mode": "CASCADE",
+        "name": "Asset goes down",
+        "question": "If {seeds} stopped serving, what breaks, wave by wave?",
+        "inputs": ["targets"],
+        "optional": ["depth"],
+        "answers": [
+            "each wave of reached assets and the edge that carried the failure to it",
+            "the business systems reached, with the route each one was reached by",
+            "the refused edges in the radius, which are exactly the places the answer is incomplete",
+        ],
+        "does_not_answer": [
+            "that service stops: redundancy, failover and load balancing are evidence the twin "
+            "does not hold",
+            "time: a wave is graph distance, not seconds and not an order of failure",
+            "the BOMs — a cascade changes no evidence fact, so there is no diff to read",
+        ],
+    },
+    "CASCADE_CRYPTO_COMPROMISE": {
+        "mode": "CASCADE",
+        "name": "Crypto on an asset is compromised",
+        "question": "If the cryptography on {seeds} is treated as broken, whose assurance follows?",
+        "inputs": ["targets"],
+        "optional": ["depth"],
+        "answers": [
+            "everything whose assurance rests on those keys, certificates, algorithms or libraries",
+            "the systems reached, and the edge each one inherits the compromise through",
+        ],
+        "does_not_answer": [
+            "that a compromise happened — this models inherited assurance, not an incident",
+            "what data was exposed: the twin records that crypto is used, not what it protected",
+            "repair: rotation and re-issuance are a remediation plan, not a traversal",
+        ],
+    },
+    "CASCADE_ALGORITHM_BREAK": {
+        "mode": "CASCADE",
+        "name": "An algorithm breaks everywhere",
+        "question": "If {from} became untrustworthy tonight, what is reached from every use of it?",
+        "inputs": ["from"],
+        "optional": ["depth", "targets"],
+        "answers": [
+            "every asset using it, as the seeds of one event rather than forty incidents",
+            "the waves outward through keys, certificates, libraries, endpoints and the systems "
+            "that contain them",
+        ],
+        "does_not_answer": [
+            "harvest-now-decrypt-later: traffic recorded before the break is not observable here",
+            "fallback: a peer may negotiate something else, which is a configuration claim nobody made",
+            "the BOMs — a cascade changes no evidence fact",
+        ],
+    },
 }
+
+#: The two families the workspace offers. A scenario edits a fact on a copy; a cascade
+#: propagates a failure through the topology and edits nothing. They share the preview and
+#: the quarantine because both are questions asked of the estate.
+MODES: dict[str, dict[str, Any]] = {
+    "SCENARIO": {
+        "name": "Change the estate",
+        "blurb": (
+            "apply a change to a copy of the twin, re-project the six BOMs from that copy, and "
+            "report the diff, the blast radius and the blockers"
+        ),
+        "changes_evidence": True,
+        "has_bom_diff": True,
+    },
+    "CASCADE": {
+        "name": "Cascade a failure",
+        "blurb": (
+            "propagate a failure through the established dependency edges and report what is "
+            "reached, wave by wave — no evidence changes, so there is no BOM diff"
+        ),
+        "changes_evidence": False,
+        "has_bom_diff": False,
+    },
+}
+
+for _kind, _detail in KIND_CATALOG.items():
+    _detail.setdefault("mode", "SCENARIO")
 
 LIMITS = [
     "a simulation is a question asked of a copy: it is quarantined, never counted as estate state, "
@@ -106,6 +228,9 @@ LIMITS = [
     "deployment plan",
     "a stored run is measured against the evidence state it was computed from and is marked "
     "superseded once the estate moves",
+    "a cascade propagates a failure over *established* edges only: a refused relationship is not "
+    "in the topology, so its blind spots are listed rather than assumed away — and a wave is graph "
+    "distance, not time",
 ]
 
 
@@ -174,10 +299,117 @@ def selector_vocabulary(graph: Any, *, limit: int = 40) -> dict[str, Any]:
     }
 
 
+#: Edges along which "what rests on this" is answerable. Used only to decide which assets
+#: are worth offering as a cascade seed — the walking itself is the engine's job.
+_RESTED_ON_PREDICATES = frozenset(
+    {
+        "runs_on",
+        "hosted_on",
+        "depends_on",
+        "connects_to",
+        "routes_to",
+        "protected_by",
+        "uses_hsm",
+        "uses_kms",
+        "signed_by",
+        "issued_by",
+    }
+)
+
+
+def presets(graph: Any, vocabulary: Mapping[str, Any] | None = None, *, limit: int = 12) -> list[dict[str, Any]]:
+    """Questions this estate can already be asked, built from its own vocabulary.
+
+    A workspace with an empty form asks the operator to invent a scenario, and the most
+    common invented scenario is one nothing matches. These are seeded from the values and
+    the topology the twin actually holds, so the first run is usually a real one. Each
+    preset is a *starting point*, not a finding: it carries the mode and the scenario, and
+    the console still previews before it runs.
+    """
+    vocabulary = vocabulary or selector_vocabulary(graph)
+    out: list[dict[str, Any]] = []
+
+    for item in list(vocabulary.get("algorithms") or [])[:3]:
+        value = item["value"]
+        out.append(
+            {
+                "id": f"retire:{value}",
+                "label": f"Retire {value}",
+                "mode": "SCENARIO",
+                "kind": "RETIRE_ALGORITHM",
+                "scenario": {"kind": "RETIRE_ALGORITHM", "from": value},
+                "why": f"{item['count']} artefact(s) in this estate use it",
+            }
+        )
+        out.append(
+            {
+                "id": f"break:{value}",
+                "label": f"If {value} broke tonight",
+                "mode": "CASCADE",
+                "kind": "CASCADE_ALGORITHM_BREAK",
+                "scenario": {"kind": "CASCADE_ALGORITHM_BREAK", "from": value},
+                "why": f"{item['count']} artefact(s) would be seeds at once",
+            }
+        )
+
+    for item in list(vocabulary.get("protocols") or [])[:2]:
+        out.append(
+            {
+                "id": f"disable:{item['value']}",
+                "label": f"Disable {item['value']}",
+                "mode": "SCENARIO",
+                "kind": "DISABLE_PROTOCOL",
+                "scenario": {"kind": "DISABLE_PROTOCOL", "from": item["value"]},
+                "why": f"negotiated on {item['count']} artefact(s)",
+            }
+        )
+
+    for item in list(vocabulary.get("components") or [])[:2]:
+        out.append(
+            {
+                "id": f"upgrade:{item['value']}",
+                "label": f"Upgrade {item['value']}",
+                "mode": "SCENARIO",
+                "kind": "UPGRADE_COMPONENT",
+                "scenario": {"kind": "UPGRADE_COMPONENT", "from": item["value"]},
+                "why": f"named on {item['count']} record(s) — add a target version to run it",
+            }
+        )
+
+    dependents: dict[str, int] = {}
+    try:
+        relationships = graph.relationships()
+    except Exception:  # noqa: BLE001 — a preset list is a convenience, never a gate
+        relationships = []
+    for edge in relationships:
+        predicate = str(edge.get("predicate") or "")
+        if predicate in _RESTED_ON_PREDICATES:
+            target = str(edge.get("object") or "")
+            if target:
+                dependents[target] = dependents.get(target, 0) + 1
+
+    for asset_id, count in sorted(dependents.items(), key=lambda item: (-item[1], item[0]))[:3]:
+        asset = (graph.asset(asset_id) if hasattr(graph, "asset") else None) or {}
+        name = asset.get("name") or asset_id
+        out.append(
+            {
+                "id": f"down:{asset_id}",
+                "label": f"If {name} goes down",
+                "mode": "CASCADE",
+                "kind": "CASCADE_ASSET_UNAVAILABLE",
+                "scenario": {"kind": "CASCADE_ASSET_UNAVAILABLE", "targets": [asset_id]},
+                "why": f"{count} established edge(s) rest on it",
+            }
+        )
+
+    return out[:limit]
+
+
 def catalog(graph: Any) -> dict[str, Any]:
     """Everything the workspace needs to render a form and its limits in one response."""
     summary = graph.summary()
     coverage = graph.coverage()["summary"]
+    vocabulary = selector_vocabulary(graph)
     return {
         "schema": SCHEMA,
         "base_projection_id": graph.fingerprint(),
@@ -189,22 +421,31 @@ def catalog(graph: Any) -> dict[str, Any]:
             "attempted": coverage.get("attempted"),
             "collected": coverage.get("collected"),
         },
+        "modes": [{"mode": mode, **detail} for mode, detail in MODES.items()],
         "kinds": [
             {"kind": kind, **detail} for kind, detail in KIND_CATALOG.items()
         ],
-        "selector": selector_vocabulary(graph),
+        "presets": presets(graph, vocabulary),
+        "selector": vocabulary,
         "note": (
             "a scenario is applied to a copy of this twin; the live projection id above is captured "
-            "before and after the run and must be identical"
+            "before and after the run and must be identical. A cascade is not applied to a copy — it "
+            "walks the live topology and changes nothing, which is why it has no BOM diff"
         ),
         "limits": LIMITS,
     }
 
 
+def mode_of(kind: str) -> str:
+    """Which family a kind belongs to. Unknown kinds are treated as scenarios so the
+    engine, not this module, produces the refusal."""
+    return str(KIND_CATALOG.get(str(kind or "").upper(), {}).get("mode") or "SCENARIO")
+
+
 def plan(graph: Any, scenario: Mapping[str, Any]) -> dict[str, Any]:
     """Would this selector match anything? Answered before the run, from the live twin."""
     result = estate_twin.preview(graph, scenario)
-    return {**result, "workspace": SCHEMA}
+    return {**result, "workspace": SCHEMA, "mode": mode_of(str(scenario.get("kind") or ""))}
 
 
 def run(graph: Any, scenario: Mapping[str, Any]) -> dict[str, Any]:
@@ -214,4 +455,4 @@ def run(graph: Any, scenario: Mapping[str, Any]) -> dict[str, Any]:
     before/after projection check, and this module must not grow a second opinion.
     """
     result = estate_twin.simulate(graph, scenario)
-    return {**result, "workspace": SCHEMA}
+    return {**result, "workspace": SCHEMA, "mode": mode_of(str(scenario.get("kind") or ""))}

@@ -51,6 +51,7 @@ from shared_models.estate_graph import (
     EstateGraph,
     build_graph,
 )
+from shared_models.quantum_classify import is_shor_vulnerable
 
 TWIN_SCHEMA = "cryptoscan.estate-twin/1"
 SNAPSHOT_SCHEMA = "cryptoscan.estate-twin-snapshot/1"
@@ -74,12 +75,28 @@ ESTATE_LEVELS: tuple[str, ...] = (
 )
 
 #: §15 — what a simulation is allowed to change
-SIMULATION_KINDS: tuple[str, ...] = (
+#: Scenarios that change an evidence fact on a copy of the twin. Each one answers a
+#: different question about the *contents* of the estate, and each needs the inputs
+#: listed in :data:`SCENARIO_INPUTS`.
+SCENARIO_KINDS: tuple[str, ...] = (
     "REPLACE_ALGORITHM",
     "RETIRE_ALGORITHM",
     "DISABLE_PROTOCOL",
     "UPGRADE_COMPONENT",
+    "REMOVE_COMPONENT",
+    "CHANGE_KEY_SIZE",
+    "MIGRATE_QUANTUM_VULNERABLE",
 )
+
+#: Scenarios that model a *failure* travelling through the topology. They change no
+#: evidence at all — which is why they have no BOM diff — and answer "what is reached".
+CASCADE_KINDS: tuple[str, ...] = (
+    "CASCADE_ASSET_UNAVAILABLE",
+    "CASCADE_CRYPTO_COMPROMISE",
+    "CASCADE_ALGORITHM_BREAK",
+)
+
+SIMULATION_KINDS: tuple[str, ...] = SCENARIO_KINDS + CASCADE_KINDS
 
 #: §12 — strongest evidence first. Used to answer "how well is this described".
 STRENGTH_ORDER: tuple[str, ...] = (
@@ -1447,24 +1464,56 @@ def _scenario_effect(
                     updates["version"] = target or value
                 hit = True
         return hit, updates
+    if kind == "REMOVE_COMPONENT":
+        # the component is gone rather than replaced, and it goes as a whole: a name that
+        # matched takes its version with it, because a version without a component is not
+        # an artefact the estate still has
+        matched = any(
+            facts.get(field) and source.lower() in str(facts[field]).lower()
+            for field in ("name", "component", "version")
+        )
+        if not matched:
+            return False, updates
+        # the whole component identity goes, not only the field that matched the selector,
+        # and the record of what was removed keeps all of it
+        removed = {field: facts[field] for field in ("name", "component", "version") if facts.get(field)}
+        updates["simulated_removed_component"] = removed
+        for field in removed:
+            updates[field] = None
+        return True, updates
+    if kind == "CHANGE_KEY_SIZE":
+        hit = _matches_selector(facts, {"algorithm": source}) or _matches_selector(facts, {"protocol": source})
+        if hit and scenario.get("key_size"):
+            updates["simulated_from_key_size"] = facts.get("key_size")
+            updates["key_size"] = scenario["key_size"]
+        return hit, updates
+    if kind == "MIGRATE_QUANTUM_VULNERABLE":
+        # the sweep an operator actually wants: every Shor-vulnerable algorithm at once,
+        # chosen by the registry rather than by a list typed into a form
+        algorithm = facts.get("algorithm")
+        if algorithm and is_shor_vulnerable(algorithm):
+            updates["simulated_from_algorithm"] = algorithm
+            updates["algorithm"] = target
+            if scenario.get("key_size"):
+                updates["key_size"] = scenario["key_size"]
+            return True, updates
+        return False, updates
     return False, updates
 
 
 def _scenario_refusal(kind: str, scenario: Mapping[str, Any]) -> dict[str, Any] | None:
     """The reason a scenario cannot be answered, or ``None`` when it is answerable."""
-    if kind not in SIMULATION_KINDS:
+    if kind in CASCADE_KINDS:
+        return _cascade_refusal(kind, scenario)
+    if kind not in SCENARIO_KINDS:
         return {
             "status": "INVALID_SCENARIO",
             "detail": f"expected one of {', '.join(SIMULATION_KINDS)}",
         }
-    source = _text(scenario.get("from"))
-    if not source and kind in {"REPLACE_ALGORITHM", "RETIRE_ALGORITHM", "DISABLE_PROTOCOL", "UPGRADE_COMPONENT"}:
-        return {
-            "status": "INVALID_SCENARIO",
-            "detail": "scenario needs 'from' — a change with no before-state has no measurable effect",
-        }
-    if kind == "REPLACE_ALGORITHM" and not _text(scenario.get("to")):
-        return {"status": "INVALID_SCENARIO", "detail": "REPLACE_ALGORITHM needs 'to'"}
+    for field in SCENARIO_INPUTS[kind]:
+        present = bool(scenario.get("key_size")) if field == "key_size" else bool(_text(scenario.get(field)))
+        if not present:
+            return {"status": "INVALID_SCENARIO", "detail": _INPUT_REFUSALS[field]}
     return None
 
 
@@ -1482,6 +1531,8 @@ def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     """
     scenario = dict(scenario or {})
     kind = _text(scenario.get("kind")).upper()
+    if kind in CASCADE_KINDS:
+        return cascade_preview(graph, scenario)
     refusal = _scenario_refusal(kind, scenario)
     base_projection = graph.fingerprint()
     if refusal:
@@ -1588,6 +1639,8 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     """
     scenario = dict(scenario or {})
     kind = _text(scenario.get("kind")).upper()
+    if kind in CASCADE_KINDS:
+        return cascade(graph, scenario)
     refusal = _scenario_refusal(kind, scenario)
     if refusal:
         return {
@@ -1614,6 +1667,10 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
             continue
         hit, updates = _scenario_effect(kind, facts, scenario, source=source, target=target)
         if hit:
+            # the "before" half has to be captured *before* the merge: facts is the same
+            # dict the record holds, so a later read would show the scenario's own edit and
+            # every effect would report "nothing changed"
+            before = copy.deepcopy(facts)
             facts.update(updates)
             matched += 1
             affected.add(str(record.get("target")))
@@ -1624,8 +1681,8 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
                     "asset_name": (graph.asset(str(record.get("target"))) or {}).get("name"),
                     "layer": record.get("layer"),
                     "evidence_type": record.get("evidence_type"),
-                    "before": record.get("facts") or {},
-                    "after": facts,
+                    "before": before,
+                    "after": copy.deepcopy(facts),
                 }
             )
 
@@ -1736,6 +1793,629 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
         ),
     }
 
+
+
+
+# --------------------------------------------------------------------------- #
+# cascade — how far a failure travels (§15–§17)
+# --------------------------------------------------------------------------- #
+#
+# A scenario changes a fact and asks what the BOMs become. A cascade asks a different
+# question: something *stops*, and the answer is what is reached from there, wave by
+# wave. It changes no evidence at all — which is why it has no BOM diff and says so
+# rather than printing six empty diffs that read like "nothing changes".
+#
+# The propagation rules are declared, not implied: only listed predicates carry a
+# failure, in a stated direction. An unlisted predicate is a place the failure does not
+# travel *in this model*, and the payload lists them, because "the estate holds no such
+# edge" and "the failure stops here" are different claims.
+
+CASCADE_SCHEMA = "cryptoscan.estate-twin-cascade/1"
+
+#: ``object_to_subject`` — the subject rests on the object (``api runs_on host``), so when
+#: the object stops, the subject is impacted. ``both`` — containment read in both
+#: directions: a workload of a stopped system stops with it, and a system holding a
+#: stopped workload is degraded.
+CASCADE_RULES: dict[str, dict[str, Any]] = {
+    "CASCADE_ASSET_UNAVAILABLE": {
+        "name": "Asset unavailable",
+        "seeds": "targets",
+        "carries": [
+            ("runs_on", "object_to_subject", "a workload on a stopped host stops with it"),
+            ("hosted_on", "object_to_subject", "anything placed on a stopped host stops"),
+            ("depends_on", "object_to_subject", "a declared dependency on a stopped service is unmet"),
+            ("connects_to", "object_to_subject", "a caller of a stopped service loses its connection"),
+            ("routes_to", "object_to_subject", "traffic routed to a stopped endpoint has nowhere to go"),
+            ("protected_by", "object_to_subject", "something that stopped no longer protects"),
+            ("uses_hsm", "object_to_subject", "key operations on a stopped HSM fail closed"),
+            ("uses_kms", "object_to_subject", "key operations on a stopped KMS fail closed"),
+            ("contains", "both", "a system holding a stopped component is degraded"),
+            ("part_of", "both", "the same containment, read from the other side"),
+        ],
+        "not_modelled": [
+            "redundancy: a second node, a failover pair or a load-balancer pool is evidence the twin "
+            "does not hold, so a wave says what *would be reached* — never that service stops",
+            "traffic and time: a wave number is graph distance. It is not seconds, not request loss, "
+            "and not an order of failure",
+            "retries, queues and circuit breakers absorb a failure in ways no collector reported",
+        ],
+    },
+    "CASCADE_CRYPTO_COMPROMISE": {
+        "name": "Crypto compromise",
+        "seeds": "targets",
+        "carries": [
+            ("signed_by", "object_to_subject", "a signature by a compromised signer is not assurance"),
+            ("issued_by", "object_to_subject", "a certificate from a compromised issuer is not trust"),
+            ("verified_by", "object_to_subject", "a checker that cannot be trusted verifies nothing"),
+            ("uses_certificate", "object_to_subject", "a certificate that is compromised compromises its user"),
+            ("uses_key", "object_to_subject", "a compromised key compromises what it protects"),
+            ("uses_algorithm", "object_to_subject", "a broken algorithm breaks what relies on it"),
+            ("encrypts_with", "object_to_subject", "ciphertext under compromised parameters is exposed"),
+            ("signs_with", "object_to_subject", "a signature under a compromised key is repudiable"),
+            ("authenticates_with", "object_to_subject", "authentication on compromised crypto is not authentication"),
+            ("protected_by", "object_to_subject", "protection that is compromised protects nothing"),
+            ("uses_crypto_library", "object_to_subject", "a library that is compromised compromises its callers"),
+            ("uses_hsm", "object_to_subject", "key operations on a compromised HSM carry no assurance"),
+            ("uses_kms", "object_to_subject", "key operations on a compromised KMS carry no assurance"),
+            ("terminates_tls_for", "object_to_subject", "TLS terminated on compromised crypto carries no assurance"),
+            ("depends_on", "object_to_subject", "a declared dependency inherits the assurance it rests on"),
+            ("connects_to", "object_to_subject", "a connection to a compromised peer is a compromised connection"),
+            ("contains", "both", "a system holding a compromised component is exposed"),
+            ("part_of", "both", "the same containment, read from the other side"),
+        ],
+        "not_modelled": [
+            "exploitability: that a compromise is *possible* is not that it happened. This models the "
+            "assurance a dependency inherits, not an incident",
+            "data exposure: the twin records that crypto is used, not what it protected",
+            "key rotation and re-issuance: a cascade says who is reached, not how to repair it",
+        ],
+    },
+    "CASCADE_ALGORITHM_BREAK": {
+        "name": "Algorithm breaks everywhere",
+        "seeds": "algorithm",
+        "carries": [
+            ("uses_algorithm", "object_to_subject", "an artefact using the broken algorithm is broken at once"),
+            ("encrypts_with", "object_to_subject", "ciphertext under the broken algorithm is exposed"),
+            ("signs_with", "object_to_subject", "signatures under the broken algorithm are worthless"),
+            ("authenticates_with", "object_to_subject", "authentication on the broken algorithm fails"),
+            ("signed_by", "object_to_subject", "anything relying on that signature is reached"),
+            ("issued_by", "object_to_subject", "anything relying on that issuer is reached"),
+            ("verified_by", "object_to_subject", "anything relying on that verifier is reached"),
+            ("uses_certificate", "object_to_subject", "certificates carrying it are reached"),
+            ("uses_key", "object_to_subject", "keys under it are reached"),
+            ("uses_crypto_library", "object_to_subject", "libraries that implement it are reached"),
+            ("protected_by", "object_to_subject", "protection resting on it is reached"),
+            ("terminates_tls_for", "object_to_subject", "termination resting on it is reached"),
+            ("depends_on", "object_to_subject", "a dependent inherits the breakage"),
+            ("connects_to", "object_to_subject", "a peer connection inherits the breakage"),
+            ("contains", "both", "a system holding a broken component is reached"),
+            ("part_of", "both", "the same containment, read from the other side"),
+        ],
+        "not_modelled": [
+            "harvest-now-decrypt-later: the twin cannot say whether traffic was recorded before the break",
+            "hybrid and fallback negotiation: a peer may use a second algorithm, which is a configuration "
+            "claim the collectors did not make",
+            "amortisation: one break reaching forty assets is one event, not forty incidents",
+        ],
+    },
+}
+
+#: Kinds whose effect is a fact edit on a copy, and the inputs each one needs.
+SCENARIO_INPUTS: dict[str, tuple[str, ...]] = {
+    "REPLACE_ALGORITHM": ("from", "to"),
+    "RETIRE_ALGORITHM": ("from",),
+    "DISABLE_PROTOCOL": ("from",),
+    "UPGRADE_COMPONENT": ("from",),
+    "REMOVE_COMPONENT": ("from",),
+    "CHANGE_KEY_SIZE": ("from", "key_size"),
+    "MIGRATE_QUANTUM_VULNERABLE": ("to",),
+}
+
+_INPUT_REFUSALS = {
+    "from": "scenario needs 'from' — a change with no before-state has no measurable effect",
+    "to": "scenario needs 'to' — a replacement with no target changes nothing",
+    "key_size": "scenario needs 'key_size' — a resize with no size has no measurable effect",
+}
+
+
+def _cascade_carriers(kind: str) -> dict[str, str]:
+    """predicate -> direction, for the edges that carry this kind of failure."""
+    return {predicate: direction for predicate, direction, _meaning in CASCADE_RULES[kind]["carries"]}
+
+
+def _cascade_meaning(kind: str, predicate: str) -> str | None:
+    for name, _direction, meaning in CASCADE_RULES[kind]["carries"]:
+        if name == predicate:
+            return meaning
+    return None
+
+
+def _cascade_seeds(
+    graph: EstateGraph,
+    kind: str,
+    scenario: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """The assets a cascade starts from, with the reason each one is a seed."""
+    seeds: list[dict[str, Any]] = []
+    unresolved: list[str] = []
+    seen: set[str] = set()
+
+    if CASCADE_RULES[kind]["seeds"] == "algorithm":
+        source = _text(scenario.get("from"))
+        by_asset: dict[str, int] = {}
+        for item in graph.crypto_artifacts():
+            if not _matches_selector(item, {"algorithm": source}) and not _matches_selector(
+                item, {"protocol": source}
+            ):
+                continue
+            by_asset[item["asset_id"]] = by_asset.get(item["asset_id"], 0) + 1
+        for asset_id, count in sorted(by_asset.items()):
+            asset = graph.asset(asset_id) or {}
+            seeds.append(
+                {
+                    "asset_id": asset_id,
+                    "name": asset.get("name"),
+                    "type": asset.get("type"),
+                    "reason": f"uses {source} in {count} artefact(s)",
+                }
+            )
+            seen.add(asset_id)
+        return seeds, unresolved
+
+    for ref in scenario.get("targets") or []:
+        resolved = _resolve(graph, ref)
+        if not resolved:
+            unresolved.append(str(ref))
+            continue
+        if resolved in seen:
+            continue
+        asset = graph.asset(resolved) or {}
+        seeds.append(
+            {
+                "asset_id": resolved,
+                "name": asset.get("name"),
+                "type": asset.get("type"),
+                "reason": "named by the scenario",
+            }
+        )
+        seen.add(resolved)
+    return seeds, unresolved
+
+
+def _cascade_reach(
+    graph: EstateGraph,
+    kind: str,
+    seed_ids: Iterable[str],
+    *,
+    depth: int,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], dict[str, int]]:
+    """Breadth-first over the edges this kind carries. Returns waves, via-map, distances."""
+    carriers = _cascade_carriers(kind)
+    outgoing: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for edge in graph.relationships():
+        direction = carriers.get(str(edge.get("predicate")))
+        if direction is None:
+            continue
+        if direction in {"object_to_subject", "both"}:
+            outgoing.setdefault(str(edge.get("object")), []).append((str(edge.get("subject")), edge))
+        if direction in {"subject_to_object", "both"}:
+            outgoing.setdefault(str(edge.get("subject")), []).append((str(edge.get("object")), edge))
+
+    distance: dict[str, int] = {seed: 0 for seed in seed_ids if seed}
+    via: dict[str, dict[str, Any]] = {}
+    waves: list[dict[str, Any]] = []
+    frontier = sorted(distance)
+    current = 0
+
+    while frontier and current < depth:
+        reached: list[dict[str, Any]] = []
+        next_frontier: list[str] = []
+        for node in frontier:
+            for other, edge in outgoing.get(node, []):
+                if other in distance:
+                    continue
+                distance[other] = current + 1
+                asset = graph.asset(other) or {}
+                predicate = str(edge.get("predicate"))
+                via[other] = {
+                    "from_asset": node,
+                    "from_name": (graph.asset(node) or {}).get("name"),
+                    "predicate": predicate,
+                    "meaning": _cascade_meaning(kind, predicate),
+                    "edge": {
+                        "subject": edge.get("subject"),
+                        "predicate": predicate,
+                        "object": edge.get("object"),
+                        "basis": edge.get("basis"),
+                        "confidence": edge.get("confidence"),
+                        "evidence_ids": edge.get("evidence_ids"),
+                    },
+                }
+                reached.append(
+                    {
+                        "asset_id": other,
+                        "name": asset.get("name"),
+                        "type": asset.get("type"),
+                        "via": via[other],
+                    }
+                )
+                next_frontier.append(other)
+        if not reached:
+            break
+        reached.sort(key=lambda item: str(item.get("name") or item["asset_id"]))
+        waves.append(
+            {
+                "depth": current + 1,
+                "count": len(reached),
+                "assets": reached[:MAX_LISTED],
+                "truncated": max(0, len(reached) - MAX_LISTED),
+            }
+        )
+        frontier = next_frontier
+        current += 1
+
+    return waves, via, distance
+
+
+def _cascade_path(via: Mapping[str, dict[str, Any]], asset_id: str, graph: EstateGraph) -> list[dict[str, Any]]:
+    """One hop-by-hop route from a seed to a reached asset, so a wave can be read as a route."""
+    hops: list[dict[str, Any]] = []
+    current = asset_id
+    guard = 0
+    while current in via and guard < 32:
+        step = via[current]
+        asset = graph.asset(current) or {}
+        hops.append(
+            {
+                "asset_id": current,
+                "name": asset.get("name"),
+                "type": asset.get("type"),
+                "via_predicate": step["predicate"],
+                "via_asset": step["from_asset"],
+            }
+        )
+        current = step["from_asset"]
+        guard += 1
+    seed = graph.asset(current) or {}
+    hops.append(
+        {"asset_id": current, "name": seed.get("name"), "type": seed.get("type"),
+         "via_predicate": None, "via_asset": None}
+    )
+    hops.reverse()
+    return hops
+
+
+def _cascade_refusal(kind: str, scenario: Mapping[str, Any]) -> dict[str, Any] | None:
+    rule = CASCADE_RULES[kind]
+    if rule["seeds"] == "targets" and not (scenario.get("targets") or []):
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": (
+                "a cascade needs at least one seed asset in 'targets' — a failure with no starting "
+                "point has nothing to propagate"
+            ),
+        }
+    if rule["seeds"] == "algorithm" and not _text(scenario.get("from")):
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": (
+                "CASCADE_ALGORITHM_BREAK needs 'from' — the algorithm, protocol or component whose "
+                "failure is being modelled"
+            ),
+        }
+    return None
+
+
+def _cascade_depth(scenario: Mapping[str, Any], *, default: int = 3) -> int:
+    try:
+        depth = int(scenario.get("depth") or default)
+    except (TypeError, ValueError):
+        depth = default
+    return max(1, min(depth, 8))
+
+
+def _cascade_rules_payload(kind: str) -> list[dict[str, Any]]:
+    return [
+        {"predicate": predicate, "direction": direction, "meaning": meaning}
+        for predicate, direction, meaning in CASCADE_RULES[kind]["carries"]
+    ]
+
+
+def _cascade_limits(kind: str) -> list[str]:
+    return [
+        "a cascade propagates over established edges only: a refused relationship is not in the "
+        "topology, and the blind spots are listed rather than assumed away",
+        *CASCADE_RULES[kind]["not_modelled"],
+        "a cascade changes no evidence fact, so it has no BOM diff and no simulated projection id — "
+        "it answers which assets are reached, not what the six BOMs become",
+    ]
+
+
+def cascade(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
+    """Model a failure travelling through the estate graph.
+
+    Nothing is copied and nothing is mutated: the answer is a traversal of the live
+    topology, and the live projection id is captured before and after so the claim that
+    it is a read is checked in the same way a scenario's is.
+    """
+    scenario = dict(scenario or {})
+    kind = _text(scenario.get("kind")).upper()
+    refusal = _cascade_refusal(kind, scenario)
+    if refusal:
+        return {"schema": CASCADE_SCHEMA, "kind": kind or None, **refusal}
+
+    depth = _cascade_depth(scenario)
+    live_projection_before = graph.fingerprint()
+    seeds, unresolved_seeds = _cascade_seeds(graph, kind, scenario)
+
+    if not seeds:
+        return {
+            "schema": CASCADE_SCHEMA,
+            "status": "NO_MATCH",
+            "kind": kind,
+            "scenario": scenario,
+            "base_projection_id": live_projection_before,
+            "live_state_modified": False,
+            "live_projection_unchanged": True,
+            "seeds": [],
+            "unresolved_seeds": unresolved_seeds,
+            "depth": depth,
+            "detail": (
+                "no asset in the twin matches this cascade's starting point, so nothing can be "
+                "propagated. This is not 'no impact': the asset may live in a source that was "
+                "never collected"
+                + (
+                    f" (named: {', '.join(unresolved_seeds)})" if unresolved_seeds else ""
+                )
+            ),
+            "coverage": graph.coverage()["summary"],
+            "rules": _cascade_rules_payload(kind),
+            "limits": _cascade_limits(kind),
+        }
+
+    seed_ids = [seed["asset_id"] for seed in seeds]
+    waves, via, distance = _cascade_reach(graph, kind, seed_ids, depth=depth)
+    reached = [node for node in distance if distance[node] > 0]
+
+    if not reached:
+        return {
+            "schema": CASCADE_SCHEMA,
+            "status": "NO_MATCH",
+            "kind": kind,
+            "scenario": scenario,
+            "base_projection_id": live_projection_before,
+            "live_state_modified": False,
+            "live_projection_unchanged": True,
+            "seeds": seeds,
+            "unresolved_seeds": unresolved_seeds,
+            "depth": depth,
+            "detail": (
+                f"{len(seeds)} seed asset(s) resolved, but no established edge carries this failure "
+                f"out of them within {depth} hop(s). The estate may hold the dependency without an "
+                "established edge, or may not have collected it — that is not 'nothing is affected'"
+            ),
+            "blind_spots": {
+                "unresolved_relationships_touching_seeds": sum(
+                    1
+                    for edge in graph.unresolved_relationships()
+                    if {edge.get("subject"), edge.get("object")} & set(seed_ids)
+                ),
+                "note": (
+                    "a refused edge touching a seed is exactly the edge that would have carried this "
+                    "failure further, so it is counted here instead of being traversed"
+                ),
+            },
+            "coverage": graph.coverage()["summary"],
+            "rules": _cascade_rules_payload(kind),
+            "limits": _cascade_limits(kind),
+        }
+
+    by_type: dict[str, int] = {}
+    for node in reached:
+        key = str((graph.asset(node) or {}).get("type") or "UNKNOWN")
+        by_type[key] = by_type.get(key, 0) + 1
+    by_seed: dict[str, int] = {}
+    for node in reached:
+        root = node
+        guard = 0
+        while root in via and guard < 32:
+            root = via[root]["from_asset"]
+            guard += 1
+        by_seed[root] = by_seed.get(root, 0) + 1
+
+    business_systems = [
+        {
+            "asset_id": node,
+            "name": (graph.asset(node) or {}).get("name"),
+            "hops": distance[node],
+            "path": _cascade_path(via, node, graph),
+        }
+        for node in sorted(
+            (node for node in reached if (graph.asset(node) or {}).get("type") == "SYSTEM"),
+            key=lambda node: (distance[node], str(node)),
+        )
+    ]
+    seed_evidence = sum(
+        len((graph.asset(node) or {}).get("evidence_refs") or []) for node in seed_ids
+    )
+    unresolved_touching = [
+        edge
+        for edge in graph.unresolved_relationships()
+        if {edge.get("subject"), edge.get("object")} & set(seed_ids) | set(reached)
+    ]
+    without_evidence = [
+        node for node in reached if not (graph.asset(node) or {}).get("evidence_refs")
+    ]
+    live_projection_after = graph.fingerprint()
+
+    return {
+        "schema": CASCADE_SCHEMA,
+        "status": "SIMULATED",
+        "simulation_id": f"sim:{_canonical({'projection': live_projection_before, 'scenario': scenario, 'engine': 'cascade'})[:24]}",
+        "engine": "CASCADE",
+        "kind": kind,
+        "scenario": scenario,
+        # the snapshot id is derived from the projection id, so no payload is built for a walk
+        "base_snapshot": f"twin:{live_projection_before}",
+        "base_projection_id": live_projection_before,
+        # a cascade reads the topology; it does not build a second estate to compare with
+        "simulated_projection_id": live_projection_before,
+        "estate_copy": None,
+        "live_state_modified": live_projection_before != live_projection_after,
+        "live_projection_unchanged": live_projection_before == live_projection_after,
+        "depth": depth,
+        "seeds": seeds,
+        "unresolved_seeds": unresolved_seeds,
+        "waves": waves,
+        "wave_count": len(waves),
+        "affected_assets": [
+            {
+                "asset_id": node,
+                "name": (graph.asset(node) or {}).get("name"),
+                "type": (graph.asset(node) or {}).get("type"),
+                "hops": distance[node],
+                "via_predicate": (via.get(node) or {}).get("predicate"),
+            }
+            for node in sorted(reached, key=lambda node: (distance[node], str(node)))
+        ],
+        "matched_evidence": seed_evidence,
+        "impact": {
+            "counts": {
+                "seed": len(seeds),
+                "direct": sum(1 for node in reached if distance[node] == 1),
+                "transitive": sum(1 for node in reached if distance[node] > 1),
+                "total": len(reached),
+            },
+            "by_type": dict(sorted(by_type.items())),
+            "by_seed": dict(sorted(by_seed.items())),
+            "business_systems": business_systems,
+        },
+        "bom_diff": {},
+        "bom_diff_note": (
+            "a cascade changes no evidence fact, so the six BOMs are identical before and after. "
+            "There is deliberately no diff here: six empty diffs would read as 'nothing changes'"
+        ),
+        "blockers": [
+            {
+                "kind": "UNRESOLVED_RELATIONSHIP",
+                "detail": "a refused edge touches an asset in this cascade, so its true radius is unknown",
+                "subject": edge.get("subject"),
+                "predicate": edge.get("predicate"),
+                "object": edge.get("object"),
+                "reason": edge.get("reason"),
+            }
+            for edge in unresolved_touching
+        ][:MAX_LISTED],
+        "unknown": {
+            "unresolved_relationships_in_radius": len(unresolved_touching),
+            "reached_assets_without_evidence": len(without_evidence),
+            "reached_assets_without_evidence_note": (
+                "these assets are reached but the twin holds no evidence for them, so their role in "
+                "the cascade is unknown rather than absent"
+            ),
+        },
+        "coverage": graph.coverage()["summary"],
+        "rules": _cascade_rules_payload(kind),
+        "limits": _cascade_limits(kind),
+        "note": (
+            "the cascade was computed over the live topology and read it only: no copy was made, no "
+            "evidence fact changed, and the live projection id is identical before and after"
+        ),
+    }
+
+
+def cascade_preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
+    """Would this cascade reach anything? Answered before the run, from the same rules."""
+    scenario = dict(scenario or {})
+    kind = _text(scenario.get("kind")).upper()
+    refusal = _cascade_refusal(kind, scenario)
+    if refusal:
+        return {"schema": SIMULATION_PREVIEW_SCHEMA, "kind": kind or None, **refusal}
+
+    depth = _cascade_depth(scenario)
+    seeds, unresolved_seeds = _cascade_seeds(graph, kind, scenario)
+    if not seeds:
+        return {
+            "schema": SIMULATION_PREVIEW_SCHEMA,
+            "status": "WOULD_NOT_MATCH",
+            "kind": kind,
+            "scenario": scenario,
+            "base_projection_id": graph.fingerprint(),
+            "live_state_modified": False,
+            "seeds": [],
+            "unresolved_seeds": unresolved_seeds,
+            "depth": depth,
+            "evidence_considered": 0,
+            "matched_evidence": 0,
+            "affected_assets": [],
+            "affected_asset_count": 0,
+            "by_layer": {},
+            "unresolved_targets": unresolved_seeds,
+            "coverage": graph.coverage()["summary"],
+            "rules": _cascade_rules_payload(kind),
+            "limits": _cascade_limits(kind),
+            "note": (
+                "no asset matches this cascade's starting point. That is not 'no impact' — the asset "
+                "may not have been collected"
+            ),
+        }
+
+    seed_ids = [seed["asset_id"] for seed in seeds]
+    waves, via, distance = _cascade_reach(graph, kind, seed_ids, depth=depth)
+    reached = [node for node in distance if distance[node] > 0]
+    by_type: dict[str, int] = {}
+    for node in reached:
+        key = str((graph.asset(node) or {}).get("type") or "UNKNOWN")
+        by_type[key] = by_type.get(key, 0) + 1
+    business = [node for node in reached if (graph.asset(node) or {}).get("type") == "SYSTEM"]
+
+    return {
+        "schema": SIMULATION_PREVIEW_SCHEMA,
+        "status": "WOULD_MATCH" if reached else "WOULD_NOT_MATCH",
+        "engine": "CASCADE",
+        "kind": kind,
+        "scenario": scenario,
+        "base_projection_id": graph.fingerprint(),
+        "live_state_modified": False,
+        "depth": depth,
+        "seeds": seeds,
+        "unresolved_seeds": unresolved_seeds,
+        "evidence_considered": sum(
+            len((graph.asset(node) or {}).get("evidence_refs") or []) for node in seed_ids
+        ),
+        "matched_evidence": sum(
+            len((graph.asset(node) or {}).get("evidence_refs") or []) for node in seed_ids
+        ),
+        "affected_assets": [
+            {
+                "asset_id": node,
+                "name": (graph.asset(node) or {}).get("name"),
+                "type": (graph.asset(node) or {}).get("type"),
+                "hops": distance[node],
+                "via_predicate": (via.get(node) or {}).get("predicate"),
+            }
+            for node in sorted(reached, key=lambda node: (distance[node], str(node)))
+        ][:MAX_LISTED],
+        "affected_asset_count": len(reached),
+        "by_layer": dict(sorted(by_type.items())),
+        "wave_counts": [
+            {"depth": wave["depth"], "count": wave["count"]} for wave in waves
+        ],
+        "business_systems_reached": len(business),
+        "unresolved_targets": unresolved_seeds,
+        "coverage": graph.coverage()["summary"],
+        "rules": _cascade_rules_payload(kind),
+        "limits": _cascade_limits(kind),
+        "note": (
+            f"{len(reached)} asset(s) would be reached from {len(seeds)} seed(s) within {depth} hop(s); "
+            "run the cascade to see each wave, the route each asset was reached by, and the blind spots"
+            if reached
+            else (
+                f"{len(seeds)} seed(s) resolved but no established edge carries this failure within "
+                f"{depth} hop(s) — that is 'nothing reached', not 'nothing affected'"
+            )
+        ),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -2402,11 +3082,18 @@ __all__ = [
     "COMPLETENESS_SCHEMA",
     "ESTATE_LEVELS",
     "IMPACT_SCHEMA",
+    "CASCADE_KINDS",
+    "CASCADE_RULES",
+    "CASCADE_SCHEMA",
+    "SCENARIO_INPUTS",
+    "SCENARIO_KINDS",
     "SIMULATION_KINDS",
     "SIMULATION_SCHEMA",
     "SNAPSHOT_SCHEMA",
     "STRENGTH_ORDER",
     "TWIN_SCHEMA",
+    "cascade",
+    "cascade_preview",
     "compare",
     "completeness",
     "crypto_graph",

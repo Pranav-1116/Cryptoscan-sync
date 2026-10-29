@@ -755,7 +755,7 @@ the console.
 | "Why?" (§28) | **shipped** — answers with collector/source/time/hash, refuses for a non-edge | `estate_twin.why()` |
 | Search (§26) | **shipped** | `estate_twin.search()` |
 | Blast radius (§27) | **shipped** — established edges only, blind spots listed | `estate_twin.impact()` |
-| Layer 7 simulation (§15–§17) | **shipped** — runs on a snapshot copy, live projection id checked unchanged. `estate_twin.preview()` answers *would this match* without projecting the six BOMs; the console's Simulation workspace is built from catalog → plan → run → history | `estate_twin.simulate()`, `estate_twin.preview()`, `api/estate_simulation.py` |
+| Layer 7 simulation (§15–§17) | **shipped** — ten questions in two families. Seven scenarios run on a snapshot copy with the live projection id checked unchanged; `estate_twin.preview()` answers *would this match* without projecting the six BOMs. Three cascades (`cascade()`, `cascade_preview()`) propagate a failure over declared predicates in declared directions, report wave-by-wave routes, count refused edges in the radius as blind spots, and carry no BOM diff because they change nothing. The console's Simulation workspace is built from catalog → plan → run → history, with presets derived from the estate's own values and topology | `estate_twin.simulate()`, `estate_twin.preview()`, `estate_twin.cascade()`, `estate_twin.cascade_preview()`, `estate_twin.CASCADE_RULES`, `api/estate_simulation.py` |
 | Live change detection (§17–§18, §23) | **shipped** — every stored observation is compared with the one before it and produces *named claims*, not a drift flag: `CRYPTO_DEMOTED Payment API AES-256-GCM: OBSERVED → SUPPORTED`, `COVERAGE_DEGRADED HSM: COMPLETE → FAILED`, `ASSET_ADDED HSM-04 (HSM, production)`. Append-only `estate_change_events` (migration 0112); identical observations store nothing; a replayed detection increments an observation counter; acknowledgement moves and nothing else does. `GET /estate/evidence/changes`, `POST /changes/detect`, `POST /changes/{id}/acknowledge`, `cryptoscan twin changes\|detect\|ack` | `api/estate_change_feed.py` |
 | Twin snapshots as a first-class object (§14) | **shipped** — content-addressed by projection id | `estate_twin.snapshot()` / `graph_from_snapshot()` |
 | API surface | **shipped** | `/estate/evidence/twin{,/completeness,/snapshot,/snapshots,/search,/assets/{ref},/why,/crypto-graph,/graph,/simulations}`, `POST /twin/impact`, `POST /twin/simulate`, `POST /twin/graph/load`, `GET /estate/evidence/changes{,/{id}}`, `POST /changes/detect`, `POST /changes/{id}/acknowledge` |
@@ -789,8 +789,8 @@ an operator needs three steps that are not the same request:
 
 | Step | Endpoint | What it answers |
 |---|---|---|
-| Catalog | `GET /simulation/catalog` | what this estate can be asked: the four scenario kinds with the question each answers and what it does *not* answer, plus the estate's own algorithms, protocols, components and assets with counts |
-| Plan | `POST /simulation/plan` | *would this selector match anything?* — `WOULD_MATCH` / `WOULD_NOT_MATCH`, the evidence records and assets it would touch, the unresolved targets, and the coverage it was measured against. It projects nothing, so it is cheap, and a `WOULD_NOT_MATCH` says "not 'no impact'" rather than being silent |
+| Catalog | `GET /simulation/catalog` | what this estate can be asked: both families and all ten kinds with the question each answers and what it does *not* answer, the estate's own algorithms, protocols, components and assets with counts, and a set of **presets** built from this estate's values and topology |
+| Plan | `POST /simulation/plan` | *would this match, would this reach?* — `WOULD_MATCH` / `WOULD_NOT_MATCH`, the evidence records and assets it would touch (or the seeds and waves it would reach), the unresolved targets, and the coverage it was measured against. It projects nothing, so it is cheap, and a `WOULD_NOT_MATCH` says "not 'no impact'" rather than being silent |
 | Run | `POST /simulation/run` | the engine's result above, plus the plan it was run under, the `500 simulation_modified_live_state` refusal if the engine ever reports a changed live projection, and the quarantine state of the stored row |
 | History | `GET /simulation/runs` | stored runs with `computed_against`, `superseded` / `superseded_by` and `observations` |
 
@@ -798,7 +798,44 @@ The values in the catalog are the ones the collectors reported. A value that is 
 the catalog is not forbidden — it is a value no collector reported, and a scenario using
 it will not match; the payload says so rather than presenting an empty list as a rule.
 The console's Simulation workspace (`/simulation`) renders those four steps in order and
-will not run a scenario that has not been previewed as matching.
+will not run a question that has not been previewed as reaching something.
+
+#### Two families, ten questions
+
+A **scenario** edits an evidence fact on a copy and re-projects the six BOMs from it:
+
+| Kind | Question | Inputs |
+|---|---|---|
+| `REPLACE_ALGORITHM` | every use of *from* became *to* | `from`, `to` (optional `key_size`, `targets`) |
+| `RETIRE_ALGORITHM` | *from* is withdrawn entirely | `from` |
+| `DISABLE_PROTOCOL` | *from* is switched off | `from` |
+| `UPGRADE_COMPONENT` | *from* moves to *to* | `from`, `to` |
+| `REMOVE_COMPONENT` | *from* is decommissioned, not replaced | `from` |
+| `CHANGE_KEY_SIZE` | *from* moves to a *key_size*-bit key | `from`, `key_size` |
+| `MIGRATE_QUANTUM_VULNERABLE` | every Shor-vulnerable algorithm became *to* | `to` (the registry decides which, not a typed list) |
+
+A **cascade** changes no evidence at all. It starts from seeds and propagates a failure
+over *declared* predicates, in a declared direction, and reports the waves:
+
+| Kind | Seeds | Question |
+|---|---|---|
+| `CASCADE_ASSET_UNAVAILABLE` | `targets` | the seed stopped serving — what breaks, wave by wave? |
+| `CASCADE_CRYPTO_COMPROMISE` | `targets` | the seed's keys/certificates/algorithm are treated as broken — whose assurance follows? |
+| `CASCADE_ALGORITHM_BREAK` | every use of `from` | *from* became untrustworthy tonight — what is reached from every use of it at once? |
+
+The rules are shipped with the answer (`rules`: predicate, direction, meaning) so an
+operator can see *why* something arrived in wave 2. Two directions exist:
+`object_to_subject` — the subject rests on the object (`api runs_on host`), so the object
+stopping reaches the subject — and `both`, for containment: a workload of a stopped
+system stops with it, and a system holding a stopped workload is degraded. A predicate
+that is not listed does not carry that failure, and the payload says so: the radius is a
+floor derived from the established topology, not a claim about the estate.
+
+Because a cascade changes nothing, it has **no BOM diff** — `bom_diff` is empty and
+`bom_diff_note` says why. Six empty diffs would read as "nothing changes", which is the
+opposite of what a cascade answers. `simulated_projection_id` is therefore the live
+projection id (no second estate exists), `estate_copy` is `null`, and the run still
+asserts `live_state_modified: false` by fingerprinting the graph before and after.
 
 ### What a snapshot identifies, precisely
 
