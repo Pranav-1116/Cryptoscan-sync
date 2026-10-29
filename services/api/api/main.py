@@ -67,6 +67,7 @@ from api.routers import (
     drift,
     estate,
     estate_graph,
+    ingestion,
     events,
     exposure,
     trust_model,
@@ -510,6 +511,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(runtime.router, prefix=prefix)
     app.include_router(runtime_crypto.router, prefix=prefix)
     app.include_router(estate_graph.router, prefix=prefix)
+    app.include_router(ingestion.router, prefix=prefix)
     app.include_router(scans.router, prefix=prefix)
     app.include_router(accuracy.router, prefix=prefix)
     app.include_router(findings.router, prefix=prefix)

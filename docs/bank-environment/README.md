@@ -350,3 +350,5 @@ not an SLA, and one bounded workflow is not whole-bank visibility.
 - [81. Actual hybrid TLS, signed operation correlation and software truth](81-actual-hybrid-operation-and-software-truth.md) — real owned TCP X25519MLKEM768, pinned signed-operation verification, exact package-record denominator and honest native/HSM/whole-host blockers.
 
 - [82. Native container execution and external proof paths](82-native-container-and-external-proof-paths.md) — actual rootless kernel namespace/container controls, RSA/ECDSA public operation verification and approved one-attempt AWS capture, exact asset×six-surface register; not customer/HSM/Windows/estate or production closure.
+
+- [100. The bank-side collector and the evidence bundle it hands over](100-bank-side-collector-and-evidence-bundle.md) — the CLI-to-platform seam: one signed evidence bundle (`cryptoscan.bundle/1`) verified before anything is normalised, so six BOM projections keep coming from one graph. Bundle format, verifier and `/ingestion/bundles/verify` gate built; bundle→graph adapter, chunked transfer and the CLI `bundle` group not built.
