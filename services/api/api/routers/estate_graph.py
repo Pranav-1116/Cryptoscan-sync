@@ -45,6 +45,7 @@ from api import (
     estate_drift,
     estate_graph_loader,
     estate_schedule,
+    estate_simulation,
     estate_simulation_store,
     estate_twin_store,
 )
@@ -1348,6 +1349,171 @@ def estate_twin_graph_export(
     """
     run = _latest_run(db)
     return {"run_id": run.id, **estate_twin.graph_export(_graph_from_run(run))}
+
+
+# -- the simulation workspace ---------------------------------------------- #
+# A scenario is a question about a copy. These three routes are the only place the
+# console asks one: the catalog says what can be asked and with which values, the plan
+# says whether a selector matches anything before the work, and the run applies the
+# scenario to a deep copy of the twin and projects the six BOMs from the copy.
+
+
+class SimulationRunRequest(BaseModel):
+    """One scenario for the workspace — same shape the twin endpoint accepts."""
+
+    kind: str = Field(description="REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT")
+    from_: str | None = Field(default=None, alias="from", max_length=160)
+    to: str | None = Field(default=None, max_length=160)
+    key_size: int | None = Field(default=None, ge=1, le=100000)
+    targets: list[str] | None = Field(default=None, max_length=200)
+    label: str | None = Field(default=None, max_length=160)
+    persist: bool = Field(
+        default=True,
+        description=(
+            "store the result, quarantined. A workspace you return to needs its history; set false "
+            "for a question you are only thinking about"
+        ),
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+def _scenario_payload(body: SimulationRunRequest) -> dict[str, Any]:
+    return {
+        "kind": body.kind,
+        "from": body.from_,
+        "to": body.to,
+        "key_size": body.key_size,
+        "targets": body.targets or [],
+        "label": body.label,
+    }
+
+
+@router.get("/simulation/catalog")
+def simulation_catalog(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """What this estate can be asked, and with which values.
+
+    The vocabulary comes from the twin, not from a constant: an operator who types an
+    algorithm the estate spells differently gets ``NO_MATCH`` and no idea why.
+    """
+    run = _latest_run(db)
+    return {"run_id": run.id, **estate_simulation.catalog(_graph_from_run(run))}
+
+
+@router.post("/simulation/plan")
+def simulation_plan(
+    body: SimulationRunRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Would this scenario match anything? Answered before the copy is made."""
+    run = _latest_run(db)
+    result = estate_simulation.plan(_graph_from_run(run), _scenario_payload(body))
+    if result.get("status") == "INVALID_SCENARIO":
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_scenario", "reason": result.get("detail"), **result},
+        )
+    return {"run_id": run.id, **result}
+
+
+@router.post("/simulation/run")
+def simulation_run(
+    body: SimulationRunRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Apply the scenario to a copy of the twin; the live estate is read-only.
+
+    The response carries the engine's own ``live_state_modified`` check. If it ever
+    reports true the result is refused rather than returned, because a simulation that
+    moved production is not a simulation.
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    scenario = _scenario_payload(body)
+    preview = estate_simulation.plan(graph, scenario)
+    if preview.get("status") == "INVALID_SCENARIO":
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_scenario", "reason": preview.get("detail"), **preview},
+        )
+    result = estate_simulation.run(graph, scenario)
+    if result.get("live_state_modified"):
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "simulation_modified_live_state",
+                "reason": (
+                    "the engine reported that running this scenario changed the live projection id. "
+                    "The result is withheld: a simulation that moves the estate is not a simulation"
+                ),
+                "live_projection_before": result.get("base_projection_id"),
+                "live_projection_after": graph.fingerprint(),
+            },
+        )
+    response: dict[str, Any] = {
+        "run_id": run.id,
+        "plan": preview,
+        **result,
+        "persisted": False,
+    }
+    if body.persist:
+        if result.get("status") != "SIMULATED":
+            response["persist_refused_because"] = (
+                f"status {result.get('status')!r} is not a simulation result. Storing 'the scenario "
+                "matched nothing' as a run would make an empty answer look like a finding"
+            )
+        else:
+            row, created = estate_simulation_store.record_simulation(
+                db,
+                result,
+                tenant_id=current_tenant(),
+                created_by=user,
+                label=body.label,
+            )
+            response["persisted"] = True
+            response["simulation_record"] = estate_simulation_store.public_simulation(
+                row, current_projection_id=graph.fingerprint()
+            )
+            response["persist_note"] = (
+                "stored as a new quarantined run"
+                if created
+                else "this exact scenario against this exact evidence was already stored; the "
+                "observation counter advanced instead of creating a second result"
+            )
+    return response
+
+
+@router.get("/simulation/runs")
+def simulation_runs(
+    limit: int = Query(default=20, ge=1, le=100),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Stored simulations for the workspace, each with the evidence state it was computed from."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    projection_id = graph.fingerprint()
+    rows = estate_simulation_store.list_simulations(db, tenant_id=current_tenant(), limit=limit)
+    return {
+        "model": estate_simulation.SCHEMA,
+        "run_id": run.id,
+        "current_projection_id": projection_id,
+        "simulations": [
+            estate_simulation_store.public_simulation(row, current_projection_id=projection_id)
+            for row in rows
+        ],
+        "count": len(rows),
+        **estate_simulation_store.QUARANTINE,
+        "note": (
+            "a simulation is a question asked of a copy. These rows are the trail of what was "
+            "considered, never observations of the estate"
+        ),
+    }
 
 
 # -- simulation history (quarantined) --------------------------------------- #

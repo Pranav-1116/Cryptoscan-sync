@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-22:
-**917 paths, 1008 operations** across 105 tagged groups.
+Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-29:
+**1120 paths, 1234 operations** across 114 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 Current [execution, SSH and replay contracts](execution-and-replay.md) describe
@@ -362,11 +362,16 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/cbom/diff` | Cbom Diff |
 | `GET` | `/api/v1/cbom/evidence/{content_hash}` | Cbom Components For Evidence Hash |
 | `POST` | `/api/v1/cbom/ingest` | Cbom Ingest |
+| `POST` | `/api/v1/cbom/legacy-assets/{asset_id}/assign` | Assign |
+| `GET` | `/api/v1/cbom/legacy-assets/{asset_id}/review` | Orphan Review |
+| `GET` | `/api/v1/cbom/legacy-imports` | List Legacy Imports |
+| `GET` | `/api/v1/cbom/legacy-imports/unassigned` | Unassigned |
 | `GET` | `/api/v1/cbom/nbom` | Nbom Live |
 | `POST` | `/api/v1/cbom/nbom` | Nbom Build |
 | `POST` | `/api/v1/cbom/nbom/cascade` | Nbom Cascade |
 | `GET` | `/api/v1/cbom/portfolio` | Cbom Portfolio |
 | `GET` | `/api/v1/cbom/query` | Cbom Query |
+| `GET` | `/api/v1/cbom/retained-histories` | Retained |
 | `POST` | `/api/v1/cbom/scan-uncovered` | Cbom Scan Uncovered |
 | `GET` | `/api/v1/cbom/scan/{scan_id}` | Cbom For Scan |
 | `POST` | `/api/v1/cbom/scan/{scan_id}/snapshot` | Create Scan Snapshot |
@@ -375,6 +380,12 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/cbom/snapshots/{snapshot_id}` | Get Cbom Snapshot |
 | `GET` | `/api/v1/cbom/snapshots/{snapshot_id}/diff` | Diff Cbom Snapshot |
 | `GET` | `/api/v1/cbom/system/{system_id}` | Cbom For System |
+| `GET` | `/api/v1/cbom/system/{system_id}/legacy-imports` | Get Legacy Imports |
+| `GET` | `/api/v1/cbom/system/{system_id}/mixed-review` | Case |
+| `POST` | `/api/v1/cbom/system/{system_id}/mixed-review` | Propose |
+| `POST` | `/api/v1/cbom/system/{system_id}/mixed-review/approve` | Approve |
+| `POST` | `/api/v1/cbom/system/{system_id}/reconcile-legacy` | Reconcile Legacy |
+| `GET` | `/api/v1/cbom/system/{system_id}/rescan-inspection` | Inspect |
 | `POST` | `/api/v1/cbom/validate` | Cbom Validate |
 | `POST` | `/api/v1/cbom/verify` | Cbom Verify |
 
@@ -417,6 +428,53 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/cloud-scans` | Trigger Cloud Scan |
 | `GET` | `/api/v1/cloud-scans/` | List Cloud Scans |
 | `POST` | `/api/v1/cloud-scans/` | Trigger Cloud Scan |
+
+## collection
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/collection/collectors` | Collectors |
+| `GET` | `/api/v1/collection/jobs` | Jobs |
+| `POST` | `/api/v1/collection/jobs` | Create Job |
+| `GET` | `/api/v1/collection/jobs/{identifier}` | Job |
+| `POST` | `/api/v1/collection/jobs/{identifier}/complete` | Complete |
+| `GET` | `/api/v1/collection/jobs/{identifier}/coverage` | Coverage |
+| `GET` | `/api/v1/collection/jobs/{identifier}/coverage/surfaces` | Surface Coverage |
+| `GET` | `/api/v1/collection/jobs/{identifier}/errors` | Errors |
+| `GET` | `/api/v1/collection/jobs/{identifier}/evidence` | Evidence |
+| `POST` | `/api/v1/collection/jobs/{identifier}/handoff` | Handoff |
+| `GET` | `/api/v1/collection/jobs/{identifier}/projections` | Projections |
+| `GET` | `/api/v1/collection/jobs/{identifier}/relationships/linux` | Linux Relationships |
+| `GET` | `/api/v1/collection/jobs/{identifier}/software/linux` | Linux Software |
+| `GET` | `/api/v1/collection/jobs/{identifier}/software/linux/cyclonedx-1.6` | Linux Sbom |
+| `POST` | `/api/v1/collection/jobs/{job_id}/cancel` | Cancel Worker Job |
+| `POST` | `/api/v1/collection/jobs/{job_id}/enqueue` | Enqueue Job |
+| `GET` | `/api/v1/collection/qualification/campaigns` | Campaigns |
+| `POST` | `/api/v1/collection/qualification/campaigns` | Create |
+| `GET` | `/api/v1/collection/qualification/campaigns/{identifier}` | Campaign |
+| `POST` | `/api/v1/collection/qualification/campaigns/{identifier}/artifacts` | Artifact |
+| `GET` | `/api/v1/collection/qualification/campaigns/{identifier}/artifacts/{digest}` | Original |
+| `POST` | `/api/v1/collection/qualification/campaigns/{identifier}/assignments` | Assignments |
+| `GET` | `/api/v1/collection/qualification/campaigns/{identifier}/export` | Export Campaign |
+| `POST` | `/api/v1/collection/qualification/campaigns/{identifier}/freeze` | Freeze |
+| `POST` | `/api/v1/collection/qualification/campaigns/{identifier}/reviews` | Reviews |
+| `POST` | `/api/v1/collection/qualification/campaigns/{identifier}/withdraw` | Withdraw |
+| `GET` | `/api/v1/collection/targets` | Targets |
+| `POST` | `/api/v1/collection/targets` | Register |
+| `GET` | `/api/v1/collection/targets/{identifier}` | Target |
+| `PUT` | `/api/v1/collection/targets/{identifier}` | Update |
+| `POST` | `/api/v1/collection/targets/{identifier}/authorize` | Authorize |
+| `POST` | `/api/v1/collection/targets/{identifier}/revoke` | Revoke |
+
+## collection-snapshots
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/collection/metadata-drift` | Create Drift |
+| `GET` | `/api/v1/collection/metadata-drift/{identifier}` | Drift |
+| `GET` | `/api/v1/collection/snapshots` | Snapshots |
+| `POST` | `/api/v1/collection/snapshots` | Create Snapshot |
+| `GET` | `/api/v1/collection/snapshots/{identifier}` | Snapshot |
 
 ## compliance
 
@@ -660,6 +718,82 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/estate/scans/due` | Preview Due Scans |
 | `POST` | `/api/v1/estate/scans/run-due` | Run Due Scans |
 
+## estate-evidence
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/estate/evidence/boms` | Estate Boms |
+| `POST` | `/api/v1/estate/evidence/boms/anchor` | Estate Boms Anchor |
+| `POST` | `/api/v1/estate/evidence/boms/anchor/export` | Estate Boms Anchor Export |
+| `GET` | `/api/v1/estate/evidence/boms/anchor/export/status` | Estate Boms Anchor Export Status |
+| `POST` | `/api/v1/estate/evidence/boms/anchor/verify` | Estate Boms Anchor Verify |
+| `GET` | `/api/v1/estate/evidence/boms/anchors` | Estate Boms Anchors |
+| `GET` | `/api/v1/estate/evidence/boms/export` | Export All Boms |
+| `GET` | `/api/v1/estate/evidence/boms/{kind}/export` | Export Bom |
+| `GET` | `/api/v1/estate/evidence/catalog` | Estate Catalog Summary |
+| `GET` | `/api/v1/estate/evidence/catalog/assets` | Estate Catalog Assets |
+| `GET` | `/api/v1/estate/evidence/catalog/assets/{identifier}` | Estate Catalog Asset |
+| `GET` | `/api/v1/estate/evidence/catalog/crypto` | Estate Catalog Crypto |
+| `GET` | `/api/v1/estate/evidence/catalog/relationships` | Estate Catalog Relationships |
+| `GET` | `/api/v1/estate/evidence/changes` | Estate Changes |
+| `POST` | `/api/v1/estate/evidence/changes/detect` | Estate Changes Detect |
+| `GET` | `/api/v1/estate/evidence/changes/{identifier}` | Estate Change |
+| `POST` | `/api/v1/estate/evidence/changes/{identifier}/acknowledge` | Estate Change Acknowledge |
+| `GET` | `/api/v1/estate/evidence/coverage` | Estate Coverage |
+| `POST` | `/api/v1/estate/evidence/discover` | Estate Discover |
+| `GET` | `/api/v1/estate/evidence/drift` | Estate Drift View |
+| `GET` | `/api/v1/estate/evidence/evidence/records` | Estate Evidence Records |
+| `GET` | `/api/v1/estate/evidence/evidence/records/{evidence_id}` | Estate Evidence Record |
+| `GET` | `/api/v1/estate/evidence/evidence/records/{evidence_id}/verify` | Estate Evidence Record Verify |
+| `GET` | `/api/v1/estate/evidence/graph` | Estate Graph View |
+| `GET` | `/api/v1/estate/evidence/history/assets/{identifier}` | Estate Asset History |
+| `GET` | `/api/v1/estate/evidence/history/summary` | Estate Observation Summary |
+| `GET` | `/api/v1/estate/evidence/plan` | Estate Plan |
+| `GET` | `/api/v1/estate/evidence/pqc` | Estate Pqc |
+| `GET` | `/api/v1/estate/evidence/realtime` | Estate Realtime |
+| `POST` | `/api/v1/estate/evidence/scan` | Estate Scan |
+| `GET` | `/api/v1/estate/evidence/schedules` | Estate Schedules |
+| `POST` | `/api/v1/estate/evidence/schedules` | Estate Schedule Create |
+| `PATCH` | `/api/v1/estate/evidence/schedules/{identifier}` | Estate Schedule Toggle |
+| `DELETE` | `/api/v1/estate/evidence/schedules/{identifier}` | Estate Schedule Delete |
+| `GET` | `/api/v1/estate/evidence/search` | Estate Search Query |
+| `GET` | `/api/v1/estate/evidence/simulation/catalog` | Simulation Catalog |
+| `POST` | `/api/v1/estate/evidence/simulation/plan` | Simulation Plan |
+| `POST` | `/api/v1/estate/evidence/simulation/run` | Simulation Run |
+| `GET` | `/api/v1/estate/evidence/simulation/runs` | Simulation Runs |
+| `GET` | `/api/v1/estate/evidence/summary` | Estate Summary |
+| `GET` | `/api/v1/estate/evidence/threat/patterns` | Estate Threat Patterns |
+| `POST` | `/api/v1/estate/evidence/tick` | Estate Tick |
+| `GET` | `/api/v1/estate/evidence/twin` | Estate Twin Overview |
+| `GET` | `/api/v1/estate/evidence/twin/algorithm/{name}` | Estate Twin Algorithm |
+| `GET` | `/api/v1/estate/evidence/twin/assets/{ref}` | Estate Twin Asset |
+| `GET` | `/api/v1/estate/evidence/twin/compare` | Estate Twin Compare |
+| `GET` | `/api/v1/estate/evidence/twin/completeness` | Estate Twin Completeness |
+| `GET` | `/api/v1/estate/evidence/twin/conflicts` | Estate Twin Conflicts |
+| `GET` | `/api/v1/estate/evidence/twin/crypto-graph` | Estate Twin Crypto Graph |
+| `GET` | `/api/v1/estate/evidence/twin/graph` | Estate Twin Graph Export |
+| `POST` | `/api/v1/estate/evidence/twin/graph/load` | Estate Twin Graph Load |
+| `GET` | `/api/v1/estate/evidence/twin/graph/traversal` | Estate Twin Graph Traversal |
+| `POST` | `/api/v1/estate/evidence/twin/graph/verify` | Estate Twin Graph Verify |
+| `POST` | `/api/v1/estate/evidence/twin/impact` | Estate Twin Impact |
+| `GET` | `/api/v1/estate/evidence/twin/intel` | Estate Twin Intel |
+| `GET` | `/api/v1/estate/evidence/twin/lifecycle` | Estate Twin Lifecycle |
+| `GET` | `/api/v1/estate/evidence/twin/placement` | Estate Twin Placement |
+| `POST` | `/api/v1/estate/evidence/twin/remediate` | Estate Twin Remediate |
+| `GET` | `/api/v1/estate/evidence/twin/remediation` | Estate Twin Remediation |
+| `POST` | `/api/v1/estate/evidence/twin/remediation/reconcile` | Estate Twin Reconcile |
+| `GET` | `/api/v1/estate/evidence/twin/search` | Estate Twin Search |
+| `POST` | `/api/v1/estate/evidence/twin/simulate` | Estate Twin Simulate |
+| `GET` | `/api/v1/estate/evidence/twin/simulations` | Estate Twin Simulations |
+| `GET` | `/api/v1/estate/evidence/twin/simulations/{identifier}` | Estate Twin Simulation |
+| `GET` | `/api/v1/estate/evidence/twin/snapshot` | Estate Twin Snapshot |
+| `GET` | `/api/v1/estate/evidence/twin/snapshots` | Estate Twin Snapshots |
+| `POST` | `/api/v1/estate/evidence/twin/snapshots` | Estate Twin Capture |
+| `GET` | `/api/v1/estate/evidence/twin/trust-paths` | Estate Twin Trust Paths |
+| `GET` | `/api/v1/estate/evidence/twin/why` | Estate Twin Why |
+| `GET` | `/api/v1/estate/evidence/unknown` | Estate Unknown Workflow |
+| `GET` | `/api/v1/estate/evidence/why/{identifier}` | Estate Why |
+
 ## events
 
 | Method | Path | Summary |
@@ -852,6 +986,26 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/meta` | Meta |
 | `GET` | `/api/v1/readyz` | Readyz |
 
+## host-evidence
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/host-evidence/approvals` | Approve |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}` | Approval |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/association-target` | Association Target |
+| `POST` | `/api/v1/host-evidence/approvals/{approval_id}/associations` | Propose Host Association |
+| `POST` | `/api/v1/host-evidence/approvals/{approval_id}/associations/{identifier}/retract` | Retract Host Association |
+| `POST` | `/api/v1/host-evidence/approvals/{approval_id}/associations/{identifier}/review` | Review Host Association |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/cbom` | Export Cbom |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/container/admission-readiness` | Inspect Container Readiness |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/container/cyclonedx-1.6` | Export Container Content |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/graph` | Host Estate Graph |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/graph/export` | Host Estate Graph Export |
+| `POST` | `/api/v1/host-evidence/approvals/{approval_id}/intake` | Intake |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/oci-image/cyclonedx-1.6` | Export Oci Image Sbom |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/snapshot` | Inspection |
+| `GET` | `/api/v1/host-evidence/approvals/{approval_id}/tls-session/cyclonedx-1.6` | Export Tls Session |
+
 ## hsm-scans
 
 | Method | Path | Summary |
@@ -859,6 +1013,15 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/hsm-scans` | Trigger Hsm Scan |
 | `POST` | `/api/v1/hsm-scans/` | Trigger Hsm Scan |
 | `POST` | `/api/v1/hsm-scans/scan` | Trigger Hsm Scan |
+
+## ingestion
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/ingestion/live/compact` | Compact Live History |
+| `GET` | `/api/v1/ingestion/live/status` | Live Status |
+| `GET` | `/api/v1/ingestion/observations` | List Observations |
+| `POST` | `/api/v1/ingestion/observations` | Push Observation |
 
 ## intelligence
 
@@ -977,6 +1140,37 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/certificates/{cert_id}/usages` | Certificate Usages |
 | `PATCH` | `/api/v1/certificates/{fingerprint}/renewal` | Update Certificate Renewal |
 | `POST` | `/api/v1/network/alerts/dispatch` | Dispatch Expiry Alerts |
+| `POST` | `/api/v1/network/cloud-correlate` | Network Cloud Correlate |
+| `GET` | `/api/v1/network/crypto-budget` | Network Crypto Budget |
+| `GET` | `/api/v1/network/crypto-cbom` | Network Crypto Cbom |
+| `POST` | `/api/v1/network/crypto-correlate` | Network Crypto Correlate |
+| `POST` | `/api/v1/network/crypto-estate-risk` | Network Crypto Estate Risk |
+| `GET` | `/api/v1/network/crypto-evidence` | Network Crypto Evidence |
+| `GET` | `/api/v1/network/crypto-evidence/anchor` | Network Crypto Evidence Anchor Status |
+| `POST` | `/api/v1/network/crypto-evidence/anchor` | Network Crypto Evidence Anchor |
+| `POST` | `/api/v1/network/crypto-evidence/anchor/verify` | Network Crypto Evidence Anchor Verify |
+| `GET` | `/api/v1/network/crypto-evidence/anchors` | Network Crypto Evidence Anchors |
+| `GET` | `/api/v1/network/crypto-evidence/chained` | Network Crypto Evidence Chained |
+| `GET` | `/api/v1/network/crypto-evidence/integrity` | Network Crypto Evidence Integrity |
+| `POST` | `/api/v1/network/crypto-nbom` | Network Crypto Nbom |
+| `POST` | `/api/v1/network/crypto-observe` | Crypto Observe |
+| `POST` | `/api/v1/network/crypto-passive` | Network Crypto Passive |
+| `POST` | `/api/v1/network/crypto-path` | Network Crypto Path |
+| `POST` | `/api/v1/network/crypto-probe` | Network Crypto Probe |
+| `POST` | `/api/v1/network/crypto-risk` | Network Crypto Risk |
+| `GET` | `/api/v1/network/crypto-safety` | Network Crypto Safety |
+| `GET` | `/api/v1/network/crypto-scope` | Get Network Crypto Scope |
+| `PUT` | `/api/v1/network/crypto-scope` | Put Network Crypto Scope |
+| `POST` | `/api/v1/network/crypto-scope/import` | Import Network Scope Candidates |
+| `POST` | `/api/v1/network/crypto-scope/validate` | Validate Network Crypto Scope |
+| `POST` | `/api/v1/network/crypto-stop` | Network Crypto Stop |
+| `GET` | `/api/v1/network/crypto-watch` | Network Crypto Watch Status |
+| `POST` | `/api/v1/network/crypto-watch` | Network Crypto Watch Start |
+| `DELETE` | `/api/v1/network/crypto-watch` | Network Crypto Watch Stop |
+| `GET` | `/api/v1/network/crypto-watch/lease` | Network Crypto Watch Lease Status |
+| `POST` | `/api/v1/network/crypto-watch/lease` | Network Crypto Watch Lease |
+| `POST` | `/api/v1/network/crypto-watch/tick` | Network Crypto Watch Tick |
+| `POST` | `/api/v1/network/device-inventory` | Network Device Inventory |
 | `POST` | `/api/v1/network/discover` | Discover Subnet Endpoints |
 | `GET` | `/api/v1/network/drift/latest` | Latest Scan Drift |
 | `GET` | `/api/v1/network/due` | List Due |
@@ -992,6 +1186,10 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/network/inventory/topology` | Get Network Inventory Topology |
 | `POST` | `/api/v1/network/inventory/topology/validate` | Validate Network Inventory Topology |
 | `POST` | `/api/v1/network/inventory/validate` | Validate Network Inventory |
+| `POST` | `/api/v1/network/ipsec-observe` | Ipsec Observe |
+| `POST` | `/api/v1/network/kubernetes-correlate` | Network Kubernetes Correlate |
+| `GET` | `/api/v1/network/message-layer-evidence` | Network Message Layer Evidence |
+| `POST` | `/api/v1/network/message-layer-observe` | Network Message Layer Observe |
 | `POST` | `/api/v1/network/metrics` | Render Metrics |
 | `GET` | `/api/v1/network/protocols` | List Protocols |
 | `POST` | `/api/v1/network/run-due` | Run Due |
@@ -1025,6 +1223,29 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/notifications/feed` | Notification Feed |
 | `GET` | `/api/v1/notifications/routing` | Get Routing |
 | `PUT` | `/api/v1/notifications/routing` | Put Routing |
+
+## offline-oci-evidence
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/collection/oci/jobs` | Jobs |
+| `POST` | `/api/v1/collection/oci/jobs` | Create Job |
+| `GET` | `/api/v1/collection/oci/jobs/{identifier}` | Job |
+| `POST` | `/api/v1/collection/oci/jobs/{identifier}/cancel` | Cancel |
+| `GET` | `/api/v1/collection/oci/jobs/{identifier}/evidence` | Evidence |
+| `POST` | `/api/v1/collection/oci/jobs/{identifier}/handoff` | Handoff |
+| `POST` | `/api/v1/collection/oci/jobs/{identifier}/intake` | Intake |
+| `GET` | `/api/v1/collection/oci/jobs/{identifier}/projections` | Projections |
+| `GET` | `/api/v1/collection/oci/jobs/{identifier}/truth` | Truth History |
+| `POST` | `/api/v1/collection/oci/jobs/{identifier}/truth` | Propose Truth |
+| `POST` | `/api/v1/collection/oci/jobs/{identifier}/truth/approve` | Approve Truth |
+| `GET` | `/api/v1/collection/oci/jobs/{identifier}/truth/reconciliation` | Truth Comparison |
+| `GET` | `/api/v1/collection/oci/targets` | Targets |
+| `POST` | `/api/v1/collection/oci/targets` | Register |
+| `GET` | `/api/v1/collection/oci/targets/{identifier}` | Target |
+| `PUT` | `/api/v1/collection/oci/targets/{identifier}` | Update |
+| `POST` | `/api/v1/collection/oci/targets/{identifier}/authorize` | Authorize |
+| `POST` | `/api/v1/collection/oci/targets/{identifier}/revoke` | Revoke |
 
 ## onboarding
 
@@ -1163,6 +1384,14 @@ This schema snapshot does not certify a deployed production topology or route av
 |---|---|---|
 | `GET` | `/api/v1/readiness/summary` | Readiness Summary |
 
+## realtime
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/realtime/catalog` | Realtime Catalog |
+| `GET` | `/api/v1/realtime/channels/{name}` | Realtime Channel |
+| `GET` | `/api/v1/realtime/stream` | Realtime Stream |
+
 ## relationship-lifecycle
 
 | Method | Path | Summary |
@@ -1235,6 +1464,22 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/resilience/ot/decode` | Ot Decode |
 | `POST` | `/api/v1/resilience/ot/ingest-pcap` | Ot Ingest Pcap |
 
+## resource-monitoring
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/resource-monitoring/captures` | Captures |
+| `POST` | `/api/v1/resource-monitoring/captures` | Intake |
+| `GET` | `/api/v1/resource-monitoring/captures/{identifier}` | Capture |
+| `GET` | `/api/v1/resource-monitoring/plans` | Plans |
+| `POST` | `/api/v1/resource-monitoring/plans` | Create Plan |
+| `GET` | `/api/v1/resource-monitoring/plans/{identifier}` | Plan |
+| `POST` | `/api/v1/resource-monitoring/plans/{identifier}/approve` | Approve |
+| `GET` | `/api/v1/resource-monitoring/plans/{identifier}/authorization` | Authorization |
+| `POST` | `/api/v1/resource-monitoring/plans/{identifier}/revoke` | Revoke |
+| `POST` | `/api/v1/resource-monitoring/traffic-proposals` | Propose |
+| `GET` | `/api/v1/resource-monitoring/traffic-proposals/{identifier}` | Proposal |
+
 ## retirement
 
 | Method | Path | Summary |
@@ -1258,6 +1503,17 @@ This schema snapshot does not certify a deployed production topology or route av
 
 | Method | Path | Summary |
 |---|---|---|
+| `GET` | `/api/v1/runtime/crypto-adapters` | Runtime Crypto Adapters |
+| `GET` | `/api/v1/runtime/crypto-cbom` | Runtime Crypto Cbom |
+| `POST` | `/api/v1/runtime/crypto-drift` | Runtime Crypto Drift |
+| `GET` | `/api/v1/runtime/crypto-events` | List Runtime Crypto Events |
+| `POST` | `/api/v1/runtime/crypto-events` | Ingest Runtime Crypto Events |
+| `GET` | `/api/v1/runtime/crypto-events/verify` | Verify Runtime Crypto Events |
+| `POST` | `/api/v1/runtime/crypto-risk` | Runtime Crypto Risk |
+| `GET` | `/api/v1/runtime/crypto-scope` | Get Runtime Crypto Scope |
+| `PUT` | `/api/v1/runtime/crypto-scope` | Put Runtime Crypto Scope |
+| `POST` | `/api/v1/runtime/crypto-scope/validate` | Validate Runtime Crypto Scope |
+| `POST` | `/api/v1/runtime/network-correlation` | Runtime Network Correlation |
 | `GET` | `/api/v1/scans/runtime-findings` | List Runtime Findings |
 | `POST` | `/api/v1/scans/runtime-findings` | Ingest Runtime Findings |
 
@@ -1509,10 +1765,25 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/network/topology` | Declare Topology |
 | `GET` | `/api/v1/network/topology/paths` | Topology Paths |
 
+## traffic-control
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/traffic-control/preflight-requests/{identifier}` | Preflight Request |
+| `POST` | `/api/v1/traffic-control/preflight-requests/{identifier}/captures` | Intake |
+| `GET` | `/api/v1/traffic-control/preflight-requests/{identifier}/specification` | Specification |
+| `GET` | `/api/v1/traffic-control/preflights/{identifier}` | Preflight |
+| `POST` | `/api/v1/traffic-control/proposals/{identifier}/preflight-requests` | Request Preflight |
+| `POST` | `/api/v1/traffic-control/validations` | Propose |
+| `GET` | `/api/v1/traffic-control/validations/{identifier}` | Validation |
+| `POST` | `/api/v1/traffic-control/validations/{identifier}/approve` | Approve |
+| `GET` | `/api/v1/traffic-control/validations/{identifier}/authorization` | Authorization |
+
 ## trigger
 
 | Method | Path | Summary |
 |---|---|---|
+| `POST` | `/api/v1/scans/preflight` | Preflight Local Source |
 | `POST` | `/api/v1/scans/trigger` | Trigger Manual Scan |
 
 ## trust-model

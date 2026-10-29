@@ -231,10 +231,10 @@ Unreachable services show as unreachable. This is a product rule
 (`platform_scope.py`), not a styling choice.
 
 **Labelled maturity.** `lib/maturity.ts` is generated from
-`shared_models/capability_maturity.py`. Beta and Preview badges appear in
-the sidebar and page header, so the 33 GA surfaces are not presented as
-equal to the 30 beta and 10 preview ones. 73 classified surfaces across 6
-sections, EN + AR, all smoke-tested to mount; authentication and deep-link
+`shared_models/capability_maturity.py`. The sidebar carries no badges: every
+one of the 87 classified surfaces is supported, and what used to be a beta or
+preview label is the stated limit shown on `/scope`. 87 classified surfaces
+across five sections, EN + AR, all smoke-tested to mount; authentication and deep-link
 routes are documented separately from classified primary surfaces.
 
 
@@ -250,8 +250,8 @@ from `shared_models/capability_maturity.py`) that puts a **Beta** or
 
 The sidebar has five sections — **Overview, Discovery, Intelligence, Governance
 and Administration** — and folds related pages into groups (the six BOMs, the
-assurance records, remediation, infrastructure, posture, dependencies, output,
-monitors, oversight). It exposes 27 rows over 49 links; every route is still one
+assurance records, remediation, infrastructure, posture, dependencies, simulation,
+monitors, oversight). It exposes 28 rows over 50 links; every route is still one
 click away, and only the section holding the current page is open on arrival.
 The remaining routed pages are reached from role workspaces, search, alerts,
 reports or deep links. The exact route map is maintained in the

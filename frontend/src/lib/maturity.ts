@@ -95,6 +95,7 @@ export const CAPABILITIES_JSON = {
   "security-intelligence": "ga",
   "security-policy": "ga",
   "settings": "ga",
+  "simulation": "ga",
   "supervision": "ga",
   "system-health": "ga",
   "telecom": "ga",
@@ -412,6 +413,10 @@ export const CAPABILITY_LIMITS = {
   "settings": {
     "area": "Administration",
     "limit": "App settings + org profile persisted in app_settings."
+  },
+  "simulation": {
+    "area": "Intelligence",
+    "limit": "What-if workspace over the estate twin: the estate's own algorithms, protocols, components and assets seed the scenario, a preview says whether the selector matches before the copy is made, the run re-projects the six BOMs from that copy and reports the live projection id unchanged, and a stored run is quarantined against the evidence state it was computed from; scenarios change evidence facts only \u2014 they do not model configuration, traffic, approvals or a deployment plan."
   },
   "supervision": {
     "area": "Governance",

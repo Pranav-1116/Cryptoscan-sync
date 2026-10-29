@@ -119,14 +119,17 @@ export const PRIMARY_SECTIONS: NavSection[] = [
       },
       { to: "/digital-twin", label: "Digital twin", icon: Stack },
       {
-        to: "/reports",
-        label: "Output",
-        icon: FileText,
+        // Simulation is its own row: it asks a question of a copy of the twin, which is a
+        // different job from reading a report of what the estate already is.
+        to: "/simulation",
+        label: "Simulation",
+        icon: MagnifyingGlass,
         children: [
-          { to: "/reports", label: "Reports", icon: FileText },
-          { to: "/what-if", label: "What-if analysis", icon: MagnifyingGlass },
+          { to: "/simulation", label: "What-if workspace", icon: MagnifyingGlass },
+          { to: "/what-if", label: "Migration what-if", icon: Key },
         ],
       },
+      { to: "/reports", label: "Reports", icon: FileText },
     ],
   },
   {

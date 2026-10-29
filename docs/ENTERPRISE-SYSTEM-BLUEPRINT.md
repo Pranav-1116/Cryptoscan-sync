@@ -174,7 +174,7 @@ The console has five primary sections and follows a command-to-proof workflow:
 4. **Governance** — Banking & SWIFT, Policies, Compliance, Evidence, Audit log; groups *Remediation* (Tasks, Priorities, Migration) and *Assurance* (Records, Coverage, Application trace, Accuracy sampling, Qualification).
 5. **Administration** — System Health, Settings & Org, Users & Teams, Integrations & API.
 
-The five sections contain 27 rows and 49 links. A row that names a group is a disclosure, not a page slot: the pages inside it are one click away and are only rendered when it opens, so an operator arrives on roughly six rows instead of fifty. Only the section holding the current page is open on arrival, and a route inside a closed group opens that group. `Security Center` is reached once, as **Audit log** under Governance; the header button of that name opens the admin drawer, which is not a navigation slot. Other authenticated pages may remain deep-link routes reached from cards, search and reports; a deep link is not implied to be a primary navigation slot.
+The five sections contain 28 rows and 50 links. A row that names a group is a disclosure, not a page slot: the pages inside it are one click away and are only rendered when it opens, so an operator arrives on roughly six rows instead of fifty. Only the section holding the current page is open on arrival, and a route inside a closed group opens that group. `Security Center` is reached once, as **Audit log** under Governance; the header button of that name opens the admin drawer, which is not a navigation slot. Other authenticated pages may remain deep-link routes reached from cards, search and reports; a deep link is not implied to be a primary navigation slot.
 
 ### 5.1 Navigation behavior
 

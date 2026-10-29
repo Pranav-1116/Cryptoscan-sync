@@ -6923,3 +6923,118 @@ export interface RedisQualification {
 }
 export const apiAssuranceRedisQualification = (objectivesId: string): Promise<ApiResult<RedisQualification>> =>
   _rsGet<RedisQualification>(`/api/v1/assurance/redis-objectives/${encodeURIComponent(objectivesId)}/qualification`);
+
+/* ── simulation workspace (contracts in api/routers/estate_graph.py) ──────────
+ * A scenario is a question asked of a *copy* of the twin. Two calls exist because the
+ * operator needs them separately: `plan` answers "would this match anything" before the
+ * copy is made and the six BOMs are projected, and `run` answers what actually changes.
+ * Both carry the projection id they were measured against, so a stale answer is visible. */
+
+export interface SimulationSelectorValue { value: string; count: number }
+export interface SimulationSelectorTarget { asset_id: string; name: string; type: string }
+export interface SimulationSelector {
+  algorithms: SimulationSelectorValue[]; protocols: SimulationSelectorValue[];
+  components: SimulationSelectorValue[]; targets: SimulationSelectorTarget[];
+  truncated_to: number; note: string;
+}
+export interface SimulationKind {
+  kind: string; name: string; question: string; inputs: string[];
+  optional: string[]; answers: string[]; does_not_answer: string[];
+}
+export interface SimulationCatalog {
+  schema: string; run_id: string; base_projection_id: string | null;
+  estate: { assets: number; evidence: number; relationships: number; coverage_state: string;
+            attempted: number | null; collected: number | null };
+  kinds: SimulationKind[]; selector: SimulationSelector; note: string; limits: string[];
+}
+
+export interface SimulationScenario {
+  kind: string; from?: string; to?: string; key_size?: number | null;
+  targets?: string[]; label?: string | null;
+}
+
+export interface SimulationAffectedAsset {
+  asset_id: string; name: string; type: string; evidence_matched: number;
+}
+export interface SimulationPreview {
+  schema: string; status: "WOULD_MATCH" | "WOULD_NOT_MATCH"; kind: string;
+  scenario: SimulationScenario; base_projection_id: string | null;
+  live_state_modified: false; evidence_considered: number; matched_evidence: number;
+  affected_assets: SimulationAffectedAsset[]; affected_asset_count: number;
+  by_layer: Record<string, number>; unresolved_targets: string[];
+  coverage: {
+    target_classes: number; expected: number; collected: number;
+    coverage_percent: number; coverage_state: string; by_status: Record<string, number>;
+    failed_targets: string[];
+  };
+  note: string; limits: string[];
+}
+
+export interface SimulationEffect {
+  evidence_id: string; asset_id: string; asset_name: string; layer: string;
+  evidence_type: string; before: Record<string, unknown>; after: Record<string, unknown>;
+}
+export interface SimulationBomDiff {
+  added: string[]; removed: string[]; changed: string[];
+  counts: { added: number; removed: number; changed: number; unchanged: number };
+}
+export interface SimulationRecord {
+  id: string; simulation_id: string; kind: string; scenario: SimulationScenario;
+  label: string | null; base_snapshot_id: string | null; base_projection_id: string | null;
+  simulated_projection_id: string | null; computed_against: string | null;
+  superseded_by: string | null; superseded: boolean; freshness: string;
+  matched_evidence: number; affected_assets: SimulationAffectedAsset[];
+  impact: Record<string, unknown>; bom_diff: Record<string, SimulationBomDiff>;
+  blockers: unknown[]; live_state_modified: boolean; observations: number;
+  first_run_at: string | null; last_run_at: string | null; quarantined?: boolean;
+  is_estate_state?: boolean;
+}
+export interface SimulationRun {
+  status: string; run_id: string; schema: string; kind: string;
+  scenario: SimulationScenario; base_snapshot: string | null;
+  base_projection_id: string | null; simulated_projection_id: string | null;
+  matched_evidence: number; evidence_considered?: number;
+  affected_assets: SimulationAffectedAsset[]; effects: SimulationEffect[];
+  bom_diff: Record<string, SimulationBomDiff>; bom_changes?: unknown;
+  impact: { counts?: Record<string, number>; by_type?: Record<string, number>;
+            blind_spots?: unknown[]; [key: string]: unknown };
+  blockers: Array<Record<string, unknown>>; unknown: Record<string, unknown>;
+  live_state_modified: boolean; live_projection_unchanged: boolean;
+  plan: SimulationPreview | null; simulation_id: string | null;
+  persisted: boolean; simulation_record: SimulationRecord | null;
+  persist_refused_because?: string | null; persist_note?: string | null;
+  note: string;
+}
+export interface SimulationRuns {
+  model: string; run_id: string; current_projection_id: string | null;
+  count: number; simulations: SimulationRecord[]; quarantined: boolean; note: string;
+}
+
+async function _simPost<T>(path: string, body: unknown, timeoutMs: number): Promise<ApiResult<T>> {
+  try {
+    const resp = await tenantFetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+      credentials: "include",
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
+}
+
+export const apiSimulationCatalog = (): Promise<ApiResult<SimulationCatalog>> =>
+  _rsGet<SimulationCatalog>("/api/v1/estate/evidence/simulation/catalog");
+
+/** "Would this scenario match?" — answered without projecting the six BOMs. */
+export const apiSimulationPlan = (scenario: SimulationScenario): Promise<ApiResult<SimulationPreview>> =>
+  _simPost<SimulationPreview>("/api/v1/estate/evidence/simulation/plan", scenario, 30000);
+
+/** Apply the scenario to a copy of the twin. Longer timeout: a run projects six BOMs. */
+export const apiSimulationRun = (scenario: SimulationScenario): Promise<ApiResult<SimulationRun>> =>
+  _simPost<SimulationRun>("/api/v1/estate/evidence/simulation/run", scenario, 90000);
+
+export const apiSimulationRuns = (): Promise<ApiResult<SimulationRuns>> =>
+  _rsGet<SimulationRuns>("/api/v1/estate/evidence/simulation/runs");

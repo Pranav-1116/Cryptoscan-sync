@@ -60,6 +60,8 @@ WHY_SCHEMA = "cryptoscan.estate-twin-why/1"
 SEARCH_SCHEMA = "cryptoscan.estate-twin-search/1"
 IMPACT_SCHEMA = "cryptoscan.estate-twin-impact/1"
 SIMULATION_SCHEMA = "cryptoscan.estate-twin-simulation/1"
+#: what a scenario *would* touch, before it is run against a copy
+SIMULATION_PREVIEW_SCHEMA = "cryptoscan.estate-twin-simulation-preview/1"
 
 #: §4 layer 1 — the placement levels the twin understands
 ESTATE_LEVELS: tuple[str, ...] = (
@@ -1388,6 +1390,194 @@ def _capability_blockers(
     return blockers
 
 
+#: §15 — what a scenario changes, once per evidence record. One implementation serves both
+#: "what would this touch" (a preview) and "apply it to a copy" (the simulation), so a
+#: preview can never disagree with the run it is previewing.
+def _scenario_effect(
+    kind: str,
+    facts: Mapping[str, Any],
+    scenario: Mapping[str, Any],
+    *,
+    source: str,
+    target: str,
+) -> tuple[bool, dict[str, Any]]:
+    """``(matched, updates)`` — the facts this record would carry after the scenario.
+
+    ``updates`` is empty when nothing matched, and is never applied to the caller's
+    mapping: a preview discards it, a simulation merges it into its own copy.
+    """
+    updates: dict[str, Any] = {}
+    if kind == "REPLACE_ALGORITHM":
+        hit = _matches_selector(facts, {"algorithm": source}) or _matches_selector(facts, {"protocol": source})
+        if hit:
+            if facts.get("algorithm"):
+                updates["simulated_from_algorithm"] = facts["algorithm"]
+                updates["algorithm"] = target
+            if facts.get("protocol"):
+                updates["simulated_from_protocol"] = facts["protocol"]
+                updates["protocol"] = target
+            if scenario.get("key_size"):
+                updates["key_size"] = scenario["key_size"]
+        return hit, updates
+    if kind == "RETIRE_ALGORITHM":
+        hit = _matches_selector(facts, {"algorithm": source}) or _matches_selector(facts, {"protocol": source})
+        if hit:
+            updates["simulated_retired"] = {
+                "algorithm": facts.get("algorithm"),
+                "protocol": facts.get("protocol"),
+                "key_size": facts.get("key_size"),
+            }
+            updates["algorithm"] = None
+            updates["protocol"] = None
+        return hit, updates
+    if kind == "DISABLE_PROTOCOL":
+        hit = _matches_selector(facts, {"protocol": source})
+        if hit:
+            updates["simulated_disabled_protocol"] = facts["protocol"]
+            updates["protocol"] = None
+        return hit, updates
+    if kind == "UPGRADE_COMPONENT":
+        hit = False
+        for field in ("version", "component", "name"):
+            value = facts.get(field)
+            if value and source.lower() in str(value).lower():
+                updates["simulated_from_version"] = value
+                updates[f"simulated_{field}"] = target or value
+                if field == "version":
+                    updates["version"] = target or value
+                hit = True
+        return hit, updates
+    return False, updates
+
+
+def _scenario_refusal(kind: str, scenario: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The reason a scenario cannot be answered, or ``None`` when it is answerable."""
+    if kind not in SIMULATION_KINDS:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": f"expected one of {', '.join(SIMULATION_KINDS)}",
+        }
+    source = _text(scenario.get("from"))
+    if not source and kind in {"REPLACE_ALGORITHM", "RETIRE_ALGORITHM", "DISABLE_PROTOCOL", "UPGRADE_COMPONENT"}:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": "scenario needs 'from' — a change with no before-state has no measurable effect",
+        }
+    if kind == "REPLACE_ALGORITHM" and not _text(scenario.get("to")):
+        return {"status": "INVALID_SCENARIO", "detail": "REPLACE_ALGORITHM needs 'to'"}
+    return None
+
+
+def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
+    """What a scenario *would* touch — cheaply, without building a copy.
+
+    The question this answers is the one that wastes an operator's time: "did I type
+    the algorithm name the estate actually uses?". ``NO_MATCH`` from a full
+    simulation is honest but arrives after the work; a preview says it up front and
+    lists the values the estate does hold, so the fix is a pick rather than a guess.
+
+    It reads the live graph and mutates nothing. It is not a cheaper simulation:
+    it says how many records matched, not what the six BOMs would become — that
+    requires applying the scenario to a copy, and the copy is what ``simulate`` does.
+    """
+    scenario = dict(scenario or {})
+    kind = _text(scenario.get("kind")).upper()
+    refusal = _scenario_refusal(kind, scenario)
+    base_projection = graph.fingerprint()
+    if refusal:
+        return {
+            "schema": SIMULATION_PREVIEW_SCHEMA,
+            "kind": kind or None,
+            "scenario": scenario,
+            "base_projection_id": base_projection,
+            **refusal,
+            "live_state_modified": False,
+        }
+
+    source = _text(scenario.get("from"))
+    target = _text(scenario.get("to"))
+    requested = [ref for ref in scenario.get("targets") or [] if _text(ref)]
+    target_refs = {_resolve(graph, ref) for ref in requested if _resolve(graph, ref)}
+    unresolved_targets = [
+        str(ref) for ref in requested if _resolve(graph, ref) is None
+    ]
+
+    payload = snapshot(graph)["payload"]
+    matched = 0
+    affected: dict[str, int] = {}
+    by_layer: dict[str, int] = {}
+    considered = 0
+    # a selector naming only assets the twin does not hold narrows to nothing. Treating that
+    # as "no filter" would answer about the whole estate, which is the opposite of the ask
+    narrowed_to_nothing = bool(requested) and not target_refs
+    for record in ([] if narrowed_to_nothing else payload["evidence"]):
+        if target_refs and str(record.get("target")) not in target_refs:
+            continue
+        considered += 1
+        hit, _updates = _scenario_effect(
+            kind, record.get("facts") or {}, scenario, source=source, target=target
+        )
+        if not hit:
+            continue
+        matched += 1
+        asset_id = str(record.get("target"))
+        affected[asset_id] = affected.get(asset_id, 0) + 1
+        layer = str(record.get("layer") or "UNKNOWN")
+        by_layer[layer] = by_layer.get(layer, 0) + 1
+
+    status = "WOULD_MATCH" if matched else "WOULD_NOT_MATCH"
+    assets = []
+    for asset_id, count in sorted(affected.items(), key=lambda item: (-item[1], item[0])):
+        record = graph.asset(asset_id) or {}
+        assets.append(
+            {
+                "asset_id": asset_id,
+                "name": record.get("name"),
+                "type": record.get("type"),
+                "evidence_matched": count,
+            }
+        )
+    if matched:
+        note = (
+            f"{matched} evidence record(s) on {len(affected)} asset(s) would change; run the scenario "
+            "to see what the six BOMs become and what the blast radius holds"
+        )
+    elif narrowed_to_nothing or (considered == 0 and requested):
+        note = (
+            "the scenario names targets the twin does not hold, so nothing was considered. That is "
+            "not 'no impact': the assets may never have been collected"
+        )
+    else:
+        note = (
+            f"no evidence matched '{source}'. That is not 'no impact': the estate may not describe the "
+            "artefact, or it may live in a source that was never collected"
+        )
+    return {
+        "schema": SIMULATION_PREVIEW_SCHEMA,
+        "status": status,
+        "kind": kind,
+        "scenario": scenario,
+        "base_projection_id": base_projection,
+        "live_state_modified": False,
+        "evidence_considered": considered,
+        "matched_evidence": matched,
+        "affected_assets": assets[:MAX_LISTED],
+        "affected_asset_count": len(affected),
+        "by_layer": dict(sorted(by_layer.items())),
+        "unresolved_targets": unresolved_targets,
+        "coverage": graph.coverage()["summary"],
+        "note": note,
+        "limits": [
+            "a preview counts the evidence records a scenario would touch; it does not project the six "
+            "BOMs, compute the blast radius or list capability blockers — those need the simulation",
+            "it reads the live graph and changes nothing; the live projection id is included so a "
+            "consumer can tell which estate the answer was measured against",
+            "matching is by fact fields, not by intent: an asset whose crypto is described loosely will "
+            "match loosely, and an asset described nowhere will never match",
+        ],
+    }
+
+
 def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     """§15–§17 — ask "what if" on a copy of the twin.
 
@@ -1398,12 +1588,12 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     """
     scenario = dict(scenario or {})
     kind = _text(scenario.get("kind")).upper()
-    if kind not in SIMULATION_KINDS:
+    refusal = _scenario_refusal(kind, scenario)
+    if refusal:
         return {
             "schema": SIMULATION_SCHEMA,
-            "status": "INVALID_SCENARIO",
             "kind": kind or None,
-            "detail": f"expected one of {', '.join(SIMULATION_KINDS)}",
+            **refusal,
         }
 
     live_projection_before = graph.fingerprint()
@@ -1413,20 +1603,6 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     source = _text(scenario.get("from"))
     target = _text(scenario.get("to"))
     target_refs = {_resolve(graph, ref) for ref in scenario.get("targets") or [] if _resolve(graph, ref)}
-    if not source and kind in {"REPLACE_ALGORITHM", "RETIRE_ALGORITHM", "DISABLE_PROTOCOL", "UPGRADE_COMPONENT"}:
-        return {
-            "schema": SIMULATION_SCHEMA,
-            "status": "INVALID_SCENARIO",
-            "kind": kind,
-            "detail": "scenario needs 'from' — a change with no before-state has no measurable effect",
-        }
-    if kind == "REPLACE_ALGORITHM" and not target:
-        return {
-            "schema": SIMULATION_SCHEMA,
-            "status": "INVALID_SCENARIO",
-            "kind": kind,
-            "detail": "REPLACE_ALGORITHM needs 'to'",
-        }
 
     matched = 0
     affected: set[str] = set()
@@ -1436,44 +1612,9 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
         facts = record.get("facts") or {}
         if target_refs and str(record.get("target")) not in target_refs:
             continue
-        hit = False
-        if kind == "REPLACE_ALGORITHM":
-            hit = _matches_selector(facts, {"algorithm": source}) or _matches_selector(facts, {"protocol": source})
-            if hit:
-                if facts.get("algorithm"):
-                    facts["simulated_from_algorithm"] = facts["algorithm"]
-                    facts["algorithm"] = target
-                if facts.get("protocol"):
-                    facts["simulated_from_protocol"] = facts["protocol"]
-                    facts["protocol"] = target
-                if scenario.get("key_size"):
-                    facts["key_size"] = scenario["key_size"]
-        elif kind == "RETIRE_ALGORITHM":
-            hit = _matches_selector(facts, {"algorithm": source}) or _matches_selector(facts, {"protocol": source})
-            if hit:
-                facts["simulated_retired"] = {
-                    "algorithm": facts.get("algorithm"),
-                    "protocol": facts.get("protocol"),
-                    "key_size": facts.get("key_size"),
-                }
-                facts["algorithm"] = None
-                facts["protocol"] = None
-        elif kind == "DISABLE_PROTOCOL":
-            hit = _matches_selector(facts, {"protocol": source})
-            if hit:
-                facts["simulated_disabled_protocol"] = facts["protocol"]
-                facts["protocol"] = None
-        elif kind == "UPGRADE_COMPONENT":
-            hit = False
-            for field in ("version", "component", "name"):
-                value = facts.get(field)
-                if value and source.lower() in str(value).lower():
-                    facts["simulated_from_version"] = value
-                    facts[f"simulated_{field}"] = target or value
-                    if field == "version":
-                        facts["version"] = target or value
-                    hit = True
+        hit, updates = _scenario_effect(kind, facts, scenario, source=source, target=target)
         if hit:
+            facts.update(updates)
             matched += 1
             affected.add(str(record.get("target")))
             effects.append(

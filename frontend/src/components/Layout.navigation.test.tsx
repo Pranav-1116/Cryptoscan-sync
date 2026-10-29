@@ -49,6 +49,11 @@ describe("classic sidebar navigation", () => {
       expect(groupOf(assurance)).toBe("Assurance");
     expect(groupOf("/remediation")).toBe("Remediation");
     expect(sectionOf("/digital-twin")).toBe("Intelligence");
+    // the simulation workspace is a page in its own right, and the older migration
+    // what-if sits beside it rather than disappearing from the tree
+    expect(sectionOf("/simulation")).toBe("Intelligence");
+    expect(groupOf("/simulation")).toBe("Simulation");
+    expect(groupOf("/what-if")).toBe("Simulation");
   });
 
   it("keeps every prior sidebar route reachable", () => {
@@ -57,7 +62,7 @@ describe("classic sidebar navigation", () => {
       "/vendor", "/dependency-graph", "/crypto", "/crypto-assets", "/cbom", "/hbom",
       "/nbom", "/sbom", "/vbom", "/live-asset-intelligence", "/digital-twin", "/graph",
       "/findings", "/pqc", "/agility", "/drift", "/scanners", "/live-scanners", "/reports",
-      "/what-if", "/assurance-records", "/assurance-coverage", "/assurance-trace",
+      "/simulation", "/what-if", "/assurance-records", "/assurance-coverage", "/assurance-trace",
       "/assurance-sampling", "/assurance-qualification", "/launch-readiness",
       "/operator-decisions", "/remediation", "/priorities", "/migration",
       "/system-health", "/settings", "/identity", "/integrations",

@@ -98,6 +98,7 @@ const Trust = lazy(() => import("./pages/Trust"));
 const Vendor = lazy(() => import("./pages/Vendor"));
 const VendorDueDiligence = lazy(() => import("./pages/VendorDueDiligence"));
 const WhatIf = lazy(() => import("./pages/WhatIf"));
+const Simulation = lazy(() => import("./pages/Simulation"));
 const DigitalTwin = lazy(() => import("./pages/DigitalTwin"));
 
 function PublicEntry({ children, resetKey }: { children: React.ReactNode; resetKey: string }) {
@@ -240,6 +241,7 @@ function RoutedPages() {
       <Route path="/sbom" element={<Sbom />} />
       <Route path="/vbom" element={<Vbom />} />
       <Route path="/what-if" element={<WhatIf />} />
+      <Route path="/simulation" element={<Simulation />} />
       <Route path="/digital-twin" element={<DigitalTwin />} />
       <Route path="*" element={<Navigate to="/command-center" replace />} />            </Routes>
           </Suspense>

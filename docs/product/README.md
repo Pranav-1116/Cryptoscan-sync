@@ -49,7 +49,7 @@ pages in `frontend/src/App.tsx`, and the server-verified role guard on the
 | 3 | [Architecture](03-architecture.md) | The layers, the runtime processes, the stores, the security model — with diagrams |
 | 4 | [Data flow](04-dataflow.md) | How a finding becomes evidence, inventory, BOM, export and a live event — with diagrams |
 | 5 | [A scan, step by step](05-scan-walkthrough.md) | One job traced through all fourteen pipeline stages, with the rows it writes and how to verify it afterwards |
-| 6 | [Scope, maturity and readiness](06-scope-and-readiness.md) | Which of the 77 classified surfaces are GA / beta / preview, how production-ready the whole thing is, and what is still open |
+| 6 | [Scope, maturity and readiness](06-scope-and-readiness.md) | Which of the 87 classified surfaces are supported, what each one does not do, how production-ready the whole thing is, and what is still open |
 | 7 | [Glossary](07-glossary.md) | CBOM, HBOM, VBOM, evidence chain, drift, baseline, gate, PQC, HNDL … |
 | 8 | [The engines behind the pages](08-platform-engines.md) | Scanner gate and orchestrator, privacy and data controls, normalisation/identity/dedup, PQC planning and agility, remediation/SLA/exceptions, KeyAssure, dependency graph and blast radius, tenancy/billing/marketplace/data lake/connectors/workload identity, sectors/anomaly/observability |
 | 9 | [End to end — one finding, every subsystem](09-end-to-end.md) | A hard-coded 3DES key followed through all fifteen steps from push to regulator, with the artefact each step leaves |
@@ -78,7 +78,7 @@ is fabricated: it is empty until a real scan produces evidence.
 | Area | Current reading | Boundary |
 |---|---|---|
 | REST | **917 paths / 1,008 operations / 105 tagged groups**, regenerated in-process. | Registered development schema, not all routes enabled in production. |
-| Console | **77 classified surfaces: 33 GA / 32 Beta / 12 Preview**; 6 sections, 41 placements / 40 unique primary routes. | See [current navigation](../NAVIGATION-FEATURE-REFERENCE.md); badges are not full-platform approval. |
+| Console | **87 classified surfaces, all supported**; five sections, 28 rows / 50 primary links. | See [current navigation](../NAVIGATION-FEATURE-REFERENCE.md); badges are not full-platform approval. |
 | Database | Alembic head **0105**; 0104 page indexes followed by 0105 event-type widening. | Guarded downgrade, backup and coordinated upgrade are required. |
 | Collection | Reviewed controlled profile is **local-source/v1**, with approved bounded input, retained authority and isolated parser. | Other described adapters/topologies are development or separately qualified examples, not activated bank collection. |
 | BOMs | **SBOM, CBOM, NBOM, TechBOM, HBOM and VBOM** remain distinct evidence views; vulnerability findings are additional. | Source receipt completeness, signatures and supplier assertions are not whole-estate/runtime truth. |

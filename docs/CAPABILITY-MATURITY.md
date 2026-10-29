@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**86 shipped surfaces, all supported.** The navigation carries no maturity
+**87 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -96,6 +96,7 @@ role-guarded actions.
 | `/risk` | Intelligence | Risk roll-up; weights documented but not yet regulator-validated. |
 | `/sbom` | Intelligence | A versioned software projection over available evidence; deployments and missing component versions remain unproven. |
 | `/security-intelligence` | Intelligence | Cross-scanner identity resolution + profiles; roadmap in SECURITY-INTELLIGENCE-ROADMAP.md. |
+| `/simulation` | Intelligence | What-if workspace over the estate twin: the estate's own algorithms, protocols, components and assets seed the scenario, a preview says whether the selector matches before the copy is made, the run re-projects the six BOMs from that copy and reports the live projection id unchanged, and a stored run is quarantined against the evidence state it was computed from; scenarios change evidence facts only — they do not model configuration, traffic, approvals or a deployment plan. |
 | `/vbom` | Intelligence | A supplier projection from retained evidence and declarations, not independent supplier validation. |
 | `/what-if` | Intelligence | Scenario simulation over the inventory; scenarios are fixed templates today. |
 | `/reports` | Output | JSON/HTML/PDF reports and schedules over the evidence chain. |

@@ -5,10 +5,10 @@
 > route changes, update this page in the same change. This is documentation of
 > the current repository, not a product promise or an external assurance claim.
 
-The console has **five primary sidebar sections**, **27 rows** and **49 links**.
+The console has **five primary sidebar sections**, **28 rows** and **50 links**.
 Pages that answer one question share a **group** — the six BOMs, the five
 assurance records, remediation, infrastructure, monitors, oversight, posture,
-dependencies and output — and a group is a disclosure: the pages inside it are
+dependencies and simulation — and a group is a disclosure: the pages inside it are
 one click away and only rendered when it is opened. Only the section holding the
 current page is open on arrival, so an operator reads about six rows, not fifty.
 The duplicate `Security Center` placement is gone: the route is reached once, as
@@ -73,9 +73,10 @@ Rows with a group render as a disclosure; the `—` rows are links.
 | Crypto agility | Posture | `/agility` | `Agility` | Deterministic replaceability and migration-planning signals. |
 | Crypto drift | Posture | `/drift` | `Drift` | Approved-baseline changes and drift events. |
 | Digital twin | — | `/digital-twin` | `DigitalTwin` | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
-| Output | Output | `/reports` | — | Reports and read-only analysis. |
-| Reports | Output | `/reports` | `Reports` | Reports, exports and report delivery status. |
-| What-if analysis | Output | `/what-if` | `WhatIf` | Read-only migration and scenario analysis. |
+| Simulation | Simulation | `/simulation` | — | Asking a question of a copy of the twin. |
+| What-if workspace | Simulation | `/simulation` | `Simulation` | Scenario kinds seeded from this estate's own algorithms, protocols, components and assets; a preview states whether the selector matches before the copy is made; a run re-projects the six BOMs from that copy, reports the live projection id unchanged, and stores the answer quarantined against the evidence state it was computed from. Scenarios change evidence facts only — not configuration, traffic, approvals or a deployment plan. |
+| Migration what-if | Simulation | `/what-if` | `WhatIf` | Read-only migration feasibility over the inventory; the scenarios are fixed templates. |
+| Reports | — | `/reports` | `Reports` | Reports, exports and report delivery status. |
 
 ### Governance
 
@@ -186,10 +187,10 @@ See [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md).
 |---|---|
 | Overview | Live events, scan status, summary metrics and the current Technology BOM state. |
 | Discovery | Authorized source, dependency, container, binary, firmware, network, cloud, hardware, certificate and vendor observations. |
-| Intelligence | SBOM/CBOM/HBOM/NBOM/VBOM correlations, vulnerability BOM findings, graph relationships, PQC and agility analysis. |
+| Intelligence | SBOM/CBOM/HBOM/NBOM/VBOM correlations, vulnerability BOM findings, graph relationships, PQC and agility analysis, and simulation: a scenario previewed against the twin's own selectors, then run on a copy with the six BOMs re-projected and the result stored quarantined. |
 | Governance | Deterministic policy, compliance mappings, approvals, audit history, assurance records, remediation and evidence verification. |
 | Administration | Health, organization, identity, security posture, integrations and API access. |
-| (folded into Intelligence) | Reports, signed/exportable artifacts and read-only what-if analysis now sit in the Intelligence **Output** group; the separate Output section existed only to hold three links. |
+| (folded into Intelligence) | Reports, signed/exportable artifacts and both what-if surfaces now sit under Intelligence — Simulation (the workspace and the older migration what-if) and Reports; the separate Output section existed only to hold three links. |
 
 ### Binary application workflow
 
