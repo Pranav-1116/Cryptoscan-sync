@@ -47,6 +47,8 @@ from api import (
     estate_schedule,
     estate_simulation,
     estate_simulation_store,
+    estate_surfaces,
+    estate_twin_chain,
     estate_twin_store,
 )
 from api.dependencies import get_current_user, get_db_session
@@ -826,6 +828,54 @@ def estate_coverage(
     return {"run_id": run.id, **_graph_from_run(run).coverage()}
 
 
+@router.get("/discovery/surfaces")
+def estate_discovery_surfaces(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """What this build can read, per crypto surface — and what the last run read.
+
+    Three axes that are never collapsed: ``kind`` (how the surface is read),
+    ``maturity`` (the ceiling of what the collector can establish, with the gaps
+    it declares) and ``configuration`` / ``observed`` (whether *this* deployment
+    could ask, and what came back). A surface with no detector resolves to
+    ``NOT_IMPLEMENTED`` on its own, so the matrix cannot claim more than the code.
+    """
+    runs = ScanRunRepository(db).list_runs(limit=1, target_kind=RUN_KIND, owner=current_tenant())
+    collectors = None
+    run_id = None
+    if runs:
+        run_id = runs[0].id
+        collectors = ((runs[0].result or {}).get("estate_discovery") or {}).get("collectors")
+    return {"run_id": run_id, **estate_surfaces.registry(collectors=collectors)}
+
+
+@router.get("/discovery/surfaces/{surface_id}")
+def estate_discovery_surface(
+    surface_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """One surface, same resolution rules, with its own refusal for an unknown id."""
+    runs = ScanRunRepository(db).list_runs(limit=1, target_kind=RUN_KIND, owner=current_tenant())
+    collectors = None
+    if runs:
+        collectors = ((runs[0].result or {}).get("estate_discovery") or {}).get("collectors")
+    try:
+        return estate_surfaces.surface(surface_id, collectors=collectors)
+    except estate_surfaces.UnknownSurface:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_surface",
+                "reason": (
+                    "no such discovery surface. Known surfaces: "
+                    + ", ".join(sorted(estate_surfaces.SURFACE_INDEX))
+                ),
+            },
+        ) from None
+
+
 @router.get("/pqc")
 def estate_pqc(
     user: str = Depends(get_current_user),
@@ -1010,6 +1060,50 @@ def estate_twin_overview(
     graph = _graph_from_run(run)
     return {"run_id": run.id, "captured_at": str(getattr(run, "created_at", "") or ""),
             **estate_twin.overview(graph)}
+
+
+@router.get("/twin/chain")
+def estate_twin_chain_read(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The twin's chain, link by link: what each stage holds *for this estate*.
+
+    Estate → Assets → Relationships → Crypto graph → Evidence graph → History →
+    Impact analysis → Simulation. The stage order is the dependency order, and
+    each row carries the endpoint that serves its full view.
+
+    History and stored simulations live in the database rather than in the graph,
+    so they are read here and their failures are reported as ``NOT_EVALUATED``
+    with the reason — a store we could not read is never drawn as empty.
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    history: dict | None = None
+    history_error: str | None = None
+    try:
+        history = estate_observations.summary(db, tenant_id=current_tenant())
+    except Exception as exc:  # a failed history read is a fact about the read
+        history_error = f"observation store unreadable: {exc}"[:240]
+    simulations: list | None = None
+    simulations_error: str | None = None
+    try:
+        simulations = estate_simulation_store.list_simulations(
+            db, tenant_id=current_tenant(), limit=100
+        )
+    except Exception as exc:
+        simulations_error = f"simulation store unreadable: {exc}"[:240]
+    return {
+        "run_id": run.id,
+        **estate_twin_chain.chain(
+            graph,
+            history=history,
+            history_error=history_error,
+            simulations=simulations,
+            simulations_error=simulations_error,
+            simulation_limit=100,
+        ),
+    }
 
 
 @router.get("/twin/placement")

@@ -4268,7 +4268,14 @@ export interface ScannerEngineHealth {
   status: "Healthy" | "Degraded" | "Offline" | "Paused" | "On demand";
   lastObservation: string;
   eventsProcessed: number;
-  assetsDiscovered: number;
+  /**
+   * No per-engine discovery counter is exposed by the platform, so this is
+   * `null` for every engine. It used to carry the estate's asset total on one
+   * arbitrary engine, which read as "this scanner discovered N assets".
+   */
+  assetsDiscovered: number | null;
+  /** The estate's measured asset total — one number, not an engine's result. */
+  estateAssets: number | null;
   errors: number;
   avgLatencyMs: number;
 }
@@ -4459,17 +4466,21 @@ export const apiScannerEnginesHealth = async (): Promise<ScannerEngineHealth[]> 
     apiReachable = false;
   }
 
-  let totalAssets = 0;
+  // The estate total is a single measurement, not any one engine's output. It is
+  // `null` when it could not be read — never 0, which would read as "the estate
+  // holds no assets".
+  let totalAssets: number | null = null;
   try {
     const token = getToken();
     if (token) {
       const aRes = await tenantFetch("/api/v1/assets?page_size=1", { headers: { Authorization: `Bearer ${token}` } });
       if (aRes.ok) {
         const body = await aRes.json();
-        totalAssets = body.total_count || 0;
+        const count = Number(body.total_count);
+        totalAssets = Number.isFinite(count) ? count : null;
       }
     }
-  } catch { /* estate count unavailable, stays 0 */ }
+  } catch { /* estate count unavailable, stays null */ }
 
   const status: ScannerEngineHealth["status"] = apiReachable ? "On demand" : "Offline";
   const lastObservation = apiReachable
@@ -4482,9 +4493,11 @@ export const apiScannerEnginesHealth = async (): Promise<ScannerEngineHealth[]> 
     ["cert", "Certificate Scanner (CT Log & TLS)"],
     ["hsm", "Hardware Scanner (FIPS 140-3 HSM)"],
   ];
-  return engines.map(([id, name], index) => ({
+  return engines.map(([id, name]) => ({
     id, name, status, lastObservation,
-    eventsProcessed: 0, assetsDiscovered: index === 0 ? totalAssets : 0,
+    eventsProcessed: 0,
+    assetsDiscovered: null,
+    estateAssets: totalAssets,
     errors: 0, avgLatencyMs: 0,
   }));
 };
@@ -5403,6 +5416,61 @@ export const apiEstateScan = (body: { estate?: string; scope?: string | null; pl
 export const apiEstateSummary = (): Promise<ApiResult<Record<string, unknown>>> =>
   _rsGet<Record<string, unknown>>("/api/v1/estate/evidence/summary");
 
+/* Discovery surface coverage (GET /estate/evidence/discovery/surfaces).
+ *
+ * The registry is compiled in the backend from detectors that actually resolve
+ * there, so this payload — not the console — is the source of any coverage claim.
+ * `kind`, `maturity` and `observed` are three separate axes on purpose.
+ */
+export interface DiscoverySurfaceDetector {
+  ref: string;
+  present: boolean;
+  reason: string | null;
+}
+export interface DiscoverySurface {
+  id: string;
+  label: string;
+  planes: string[];
+  kind: string;
+  kind_meaning: string;
+  maturity: string;
+  maturity_ceiling: string;
+  maturity_meaning: string;
+  declared_maturity: string;
+  reads: string;
+  cannot_claim: string;
+  gaps: string[];
+  detectors: DiscoverySurfaceDetector[];
+  configuration: { state: string; reason: string | null };
+  observed: {
+    state: string;
+    planes: string[];
+    statuses?: Record<string, string>;
+    collected?: number;
+    reason: string | null;
+  };
+  notes: string[];
+}
+export interface DiscoverySurfaces {
+  schema: string;
+  surfaces: DiscoverySurface[];
+  rollup: {
+    surfaces: number;
+    by_maturity: Record<string, number>;
+    by_kind: Record<string, number>;
+    credentials_resolved: number;
+    no_credentials_needed: number;
+    observed_in_last_run: number;
+  };
+  kinds: Record<string, string>;
+  maturities: Record<string, string>;
+  claim: string;
+  note: string;
+  run_id?: string | null;
+}
+export const apiDiscoverySurfaces = (): Promise<ApiResult<DiscoverySurfaces>> =>
+  _rsGet<DiscoverySurfaces>("/api/v1/estate/evidence/discovery/surfaces");
+
 export const apiEstateBoms = (bom?: string): Promise<ApiResult<Record<string, unknown>>> =>
   _rsGet<Record<string, unknown>>(`/api/v1/estate/evidence/boms${bom ? `?bom=${encodeURIComponent(bom)}` : ""}`);
 
@@ -6313,6 +6381,41 @@ export interface EstateTwinSimulation {
   unknown?: Record<string, unknown>;
   note?: string;
 }
+
+/* The twin's chain, link by link: Estate → Assets → Relationships → Crypto graph →
+   Evidence graph → History → Impact → Simulation. Each stage is computed by the
+   server from the stored snapshot; the console prints the status it was given and
+   never infers one. A stage the server could not read arrives as NOT_EVALUATED
+   with its reason — it is not rendered as empty. */
+export type TwinChainStatus = "POPULATED" | "EMPTY" | "NOT_EVALUATED" | "AWAITING_INPUT";
+
+export interface TwinChainStage {
+  index: number;
+  stage: string;
+  label: string;
+  question: string;
+  status: TwinChainStatus;
+  status_meaning: string;
+  detail: Record<string, unknown>;
+  reason: string | null;
+  endpoint: string;
+}
+
+export interface EstateTwinChain {
+  run_id?: string;
+  schema: string;
+  estate: string;
+  projection_id: string;
+  stages: TwinChainStage[];
+  order: string[];
+  status_meaning: Record<string, string>;
+  first_incomplete_stage: string | null;
+  claim: string;
+  note: string;
+}
+
+export const apiEstateTwinChain = (): Promise<ApiResult<EstateTwinChain>> =>
+  _rsGet<EstateTwinChain>("/api/v1/estate/evidence/twin/chain");
 
 export const apiEstateTwin = (): Promise<ApiResult<EstateTwinOverview>> =>
   _rsGet<EstateTwinOverview>("/api/v1/estate/evidence/twin");

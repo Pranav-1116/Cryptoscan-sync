@@ -94,7 +94,7 @@ export default function SystemHealthModal({
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor(e.status), flexShrink: 0 }} />
               <span style={{ fontWeight: 600, flex: 1 }}>{e.name}</span>
               <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)" }}>
-                {e.assetsDiscovered > 0 ? `${e.assetsDiscovered} assets` : "—"}
+                {e.estateAssets === null ? "—" : `${e.estateAssets} estate assets`}
               </span>
               <span style={{ fontSize: 11, color: statusColor(e.status), width: 72, textAlign: "right" }}>{e.status}</span>
             </div>

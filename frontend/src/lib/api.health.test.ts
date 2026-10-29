@@ -105,8 +105,11 @@ describe("apiScannerEnginesHealth — scanners are on-demand collectors", () => 
       expect(e.errors, e.id).toBe(0); // no counter exists; nothing claimed
       expect(e.avgLatencyMs, e.id).toBe(0);
     }
-    // the one measured number: the estate's real asset total
-    expect(engines.find((e) => e.id === "net")?.assetsDiscovered).toBe(42);
+    // No engine claims a discovery count of its own: the platform exposes none,
+    // and the estate total belongs to the estate, not to one scanner.
+    expect(engines.every((e) => e.assetsDiscovered === null)).toBe(true);
+    // The estate total is the one measured number, and every row carries it.
+    expect(engines.map((e) => e.estateAssets)).toEqual([42, 42, 42, 42, 42]);
   });
 
   it("reports Offline for every engine when the API is unreachable", async () => {

@@ -13,6 +13,11 @@ export default function SystemHealth() {
   const [connectors, setConnectors] = useState<ConnectorHealth[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastCheck, setLastCheck] = useState<string>("");
+  const [probeError, setProbeError] = useState<string | null>(null);
+
+  /* The estate asset total is one measurement shared by the whole page; the
+     probe returns it per engine only because the engines share one payload. */
+  const estateAssets = scanners.length ? scanners[0].estateAssets : null;
 
   const refreshHealth = async () => {
     setLoading(true);
@@ -25,7 +30,12 @@ export default function SystemHealth() {
       setServices(svc);
       setScanners(scn);
       setConnectors(con ? con.connectors : null);
+      setProbeError(null);
       setLastCheck(new Date().toLocaleTimeString());
+    } catch (err) {
+      // One failed probe must not leave the previous payload on screen as if it
+      // were current, and it must not vanish into an unhandled rejection.
+      setProbeError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -39,6 +49,12 @@ export default function SystemHealth() {
 
   return (
     <div className="page" style={{ maxWidth: "1100px", margin: "0 auto", padding: "10px 0 60px" }}>
+      {probeError && (
+        <div role="alert" style={{ marginBottom: 16, padding: "10px 14px", borderRadius: "var(--r)", border: "1px solid var(--amber)", background: "color-mix(in srgb, var(--amber) 8%, transparent)", fontSize: 12.5, color: "var(--amber)" }}>
+          Health probe failed — {probeError}. The rows below are from the last successful read
+          {lastCheck ? ` at ${lastCheck}` : ""} and are not current.
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
         <div>
           <span style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Platform Observability</span>
@@ -87,7 +103,13 @@ export default function SystemHealth() {
 
         {/* Scanner Engine Daemons */}
         <div className="panel" style={{ padding: "20px" }}>
-          <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 16px" }}>Continuous Ingest & Scanner Daemons</h2>
+          <h2 style={{ fontSize: "16px", fontWeight: 600, margin: "0 0 6px" }}>Continuous Ingest & Scanner Daemons</h2>
+          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
+            Every scanner here runs <b>on demand</b>; none is a probed daemon. The platform exposes no
+            per-engine discovery counter, so no engine claims one. Estate assets (measured):{" "}
+            <b>{estateAssets === null ? "not read" : estateAssets}</b> — one estate-wide number, not an
+            engine's result.
+          </p>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {scanners.map((scn) => (
               <div
@@ -105,9 +127,8 @@ export default function SystemHealth() {
                 <div>
                   <div style={{ fontWeight: 600, fontSize: "13px" }}>{scn.name}</div>
                   <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>
-                    State: {scn.lastObservation} · {scn.assetsDiscovered > 0
-                      ? `Estate assets measured: ${scn.assetsDiscovered}`
-                      : "Estate asset count not measured by this engine"}
+                    State: {scn.lastObservation} · Per-engine discovery count: not exposed by the
+                    platform
                   </div>
                 </div>
                 <Badge tone={scn.status === "Healthy" ? "green" : scn.status === "On demand" ? "neutral" : "red"}>{scn.status}</Badge>

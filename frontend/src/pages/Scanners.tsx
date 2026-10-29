@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { activeTenantId, getToken, tenantFetch } from "../lib/api";
 import { IconNetwork, IconCloud, IconCode, IconContainer, IconHardware, IconCertificate, IconEstate, IconPass, IconTarget, ICON_LG, type Icon } from "../components/icons";
 import { HBars, Meter, StateCell, VizEmpty } from "../components/viz";
+import SurfaceCoverage from "../components/SurfaceCoverage.jsx";
 
 type ScanTarget = "Network" | "Cloud" | "Source Repository" | "Container" | "Hardware" | "Certificate" | "Full Estate";
 type ScanStatus = "verifying" | "queued" | "running" | "completed" | "failed" | "cancelled" | "unknown";
@@ -714,6 +715,10 @@ export default function Scanners() {
           )}
         </div>
       )}
+
+      {/* What this build can read, per crypto surface — the registry is echoed,
+          never a coverage claim the console invents. */}
+      <SurfaceCoverage />
     </div>
   );
 }

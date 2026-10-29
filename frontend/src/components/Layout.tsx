@@ -117,7 +117,18 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/drift", label: "Crypto drift", icon: Pulse },
         ],
       },
-      { to: "/digital-twin", label: "Digital twin", icon: Stack },
+      {
+        // The chain is the twin's own working order, so it is a sibling of the
+        // replica view rather than a tab inside it: one screen shows what the
+        // twin holds, the other shows how far down the chain that holding reaches.
+        to: "/digital-twin",
+        label: "Digital twin",
+        icon: Stack,
+        children: [
+          { to: "/digital-twin", label: "Replica & scenarios", icon: Stack },
+          { to: "/estate-twin", label: "Twin chain", icon: Graph },
+        ],
+      },
       {
         // Simulation is its own row: it asks a question of a copy of the twin, which is a
         // different job from reading a report of what the estate already is.

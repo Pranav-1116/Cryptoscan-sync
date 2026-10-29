@@ -91,17 +91,19 @@ describe("SystemHealth worker-fleet probe", () => {
     expect(screen.queryByText("CONNECTED")).toBeNull();
   });
 
-  it("counts estate assets for the engine that measured them and says so for the rest", async () => {
+  it("attributes the estate asset total to the estate, never to one engine", async () => {
     localStorage.setItem("zelinx_token", "test-token");
     localStorage.setItem("cryptoscan_tenant", "test-tenant");
     mockBackend(fleetOperational);
     renderPage();
 
-    expect(await screen.findByText(/Estate assets measured: 4/)).toBeTruthy();
-    // The other four families are on-demand scanners with no estate count of
-    // their own: they must say so instead of printing a fabricated zero.
-    expect(screen.getAllByText(/Estate asset count not measured by this engine/).length).toBe(4);
+    // The measured number is estate-wide and is printed once, as itself.
+    expect(await screen.findByText("4")).toBeTruthy();
+    expect(screen.getByText(/Estate assets \(measured\):/)).toBeTruthy();
+    // No engine claims a discovery count of its own — the platform exposes none.
+    expect(screen.getAllByText(/Per-engine discovery count: not exposed/).length).toBe(5);
     expect(screen.queryByText(/Discovered: 0 assets/)).toBeNull();
+    expect(screen.queryByText(/Estate assets measured: 4/)).toBeNull();
   });
 
   it("surfaces stuck work as Degraded with the exact measured reason", async () => {

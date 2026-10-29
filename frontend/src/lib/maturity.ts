@@ -45,6 +45,7 @@ export const CAPABILITIES_JSON = {
   "dependency-graph": "ga",
   "dev-sec-ops": "ga",
   "digital-twin": "ga",
+  "estate-twin": "ga",
   "drift": "ga",
   "evidence": "ga",
   "executive": "ga",
@@ -213,6 +214,10 @@ export const CAPABILITY_LIMITS = {
   "digital-twin": {
     "area": "Intelligence",
     "limit": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations."
+  },
+  "estate-twin": {
+    "area": "Intelligence",
+    "limit": "Walks the twin's own chain over one stored snapshot: estate, assets, relationships, crypto graph, evidence graph, history, impact and simulation. Each link reports POPULATED, EMPTY, NOT_EVALUATED or AWAITING_INPUT as the server measured it, and a link the server could not read is never drawn as empty; it needs a stored discovery run and computes no score of its own."
   },
   "drift": {
     "area": "Intelligence",
