@@ -382,3 +382,71 @@ export function Meter({ value, label, tone = "", note }: { value: number; label:
     </div>
   );
 }
+
+/**
+ * A `.kpi` row with an inline measure bar.
+ *
+ * Kept as a `.kpi` (same markup contract as the primitive in ui.tsx) because
+ * several screens and tests locate a row by its label; the bar is the only
+ * addition. `ratio` is a fraction of the largest value in the same group, not a
+ * percentage of a target, and a null ratio renders no bar at all rather than a
+ * zero-length one.
+ */
+export function KpiMeter({
+  k,
+  v,
+  tone = "",
+  ratio,
+  note,
+}: {
+  k: string;
+  v: ReactNode;
+  tone?: string;
+  ratio?: number | null;
+  note?: string;
+}) {
+  const pct = typeof ratio === "number" && Number.isFinite(ratio) ? Math.max(0, Math.min(1, ratio)) * 100 : null;
+  return (
+    <div className="kpi" style={{ flexDirection: "column", alignItems: "stretch", gap: 5 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <span className="k">{k}</span>
+        <span className="v" style={tone ? { color: `var(--${tone})` } : undefined}>{v}</span>
+      </div>
+      {pct !== null && (
+        <span style={{ display: "block", height: 4, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 1 }}>
+          <span style={{ display: "block", width: `${pct}%`, height: "100%", background: toneColor(tone) }} />
+        </span>
+      )}
+      {note && <span style={{ fontSize: 10, color: "var(--faint)", lineHeight: 1.35 }}>{note}</span>}
+    </div>
+  );
+}
+
+/**
+ * A metric that was not measured, drawn as one.
+ *
+ * The alternative — an empty meter or a 0 — would leave the reader to guess
+ * whether the instrument read zero or never ran. This says which.
+ */
+export function GapBar({ label, reason }: { label: string; reason: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.08em", color: "var(--faint)", textTransform: "uppercase" }}>{label}</span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--slate)" }}>not measured</span>
+      </div>
+      <span
+        aria-hidden
+        style={{
+          display: "block",
+          height: 6,
+          borderRadius: 1,
+          border: "1px dashed var(--line-strong)",
+          backgroundImage:
+            "repeating-linear-gradient(135deg, transparent 0 4px, color-mix(in srgb, var(--slate) 28%, transparent) 4px 6px)",
+        }}
+      />
+      <span style={{ fontSize: 10, color: "var(--faint)", lineHeight: 1.35 }}>{reason}</span>
+    </div>
+  );
+}

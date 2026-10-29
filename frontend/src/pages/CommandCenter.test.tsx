@@ -135,3 +135,82 @@ describe("CommandCenter source truth", () => {
     expect(screen.queryByRole("button", { name: /Scan this host now/ })).not.toBeInTheDocument();
   });
 });
+
+/* The console's charts are only worth having if they refuse to draw what was
+ * not measured. These pin the difference between a measured zero, a missing
+ * field, and a metric the platform does not produce at all. */
+describe("CommandCenter measurement drawing", () => {
+  it("splits findings only from the counts the summary returned", async () => {
+    serve({
+      "/api/v1/stats/summary": { total_scans: 4, total_findings: 13, compliant: 6, non_compliant: 7, open_drift: {}, coverage: {} },
+    });
+    await mount();
+    expect(await screen.findByText(/Split of the 13 persisted findings/)).toBeInTheDocument();
+  });
+
+  it("says a split is unavailable rather than drawing an empty or zero bar", async () => {
+    serve({ "/api/v1/stats/summary": { total_scans: 4, total_findings: 13, open_drift: {}, coverage: {} } });
+    await mount();
+    expect(await screen.findByText("No PASS/FAIL verdict recorded")).toBeInTheDocument();
+    expect(screen.queryByText(/Split of the/)).toBeNull();
+  });
+
+  it("marks readiness metrics the platform does not produce as unmeasured", async () => {
+    serve();
+    await mount();
+    // Three readiness figures have no measurement behind them; each renders an
+    // explicitly unmeasured line, never a 0.
+    expect(screen.getByText("PQC readiness")).toBeInTheDocument();
+    expect(screen.getAllByText("not measured").length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText("0%")).toBeNull();
+  });
+
+  it("draws a scanner tile from its reported result and elapsed time", async () => {
+    serve({
+      "/api/v1/live-scan/status": { ...scan, last_run_at: "2026-10-12T11:00:00Z", ok_count: 1, failed_count: 1,
+        scanners: { hardware: { ok: true, elapsed_s: 2.5, summary: {} }, runtime: { ok: false, elapsed_s: 9, error: "collector denied" } } },
+    });
+    await mount();
+    expect(await screen.findByText("hardware")).toBeInTheDocument();
+    expect(screen.getByText("2.5s")).toBeInTheDocument();
+    expect(screen.getByText("9s")).toBeInTheDocument();
+    expect(screen.getByText("collector denied")).toBeInTheDocument();
+    expect(screen.getByText("failed")).toBeInTheDocument();
+  });
+
+  it("draws certificate posture from the certificate centre only", async () => {
+    serve({
+      "/api/v1/live-scan/inventory": { ...inventory, generated_at: "2026-10-12T11:00:00Z",
+        counts: { hardware_devices: 0, network_assets: 0, libraries: 0, certificates: 9, processes: 0 },
+        cert_center: { expired: 2, expiring30: 1, weak_algorithm: 0, unknown_owner: 4, total: 9 } },
+    });
+    await mount();
+    expect(await screen.findByText("expiring ≤30d")).toBeInTheDocument();
+    expect(screen.getByText(/of 9 certificate\(s\) read/)).toBeInTheDocument();
+  });
+
+  it("does not draw certificate columns when the snapshot carries no certificate centre", async () => {
+    serve({ "/api/v1/live-scan/inventory": { ...inventory, generated_at: "2026-10-12T11:00:00Z" } });
+    await mount();
+    expect(await screen.findByText("Certificate posture not observed")).toBeInTheDocument();
+    expect(screen.queryByText("expiring ≤30d")).toBeNull();
+  });
+
+  it("classifies CBOM components without calling the result PQC readiness", async () => {
+    serve({
+      "/api/v1/live-scan/bom": { ...bom, generated_at: "2026-10-12T11:00:00Z",
+        cbom: { counts: { total: 3, quantum_vulnerable: 2 }, components: [
+          { type: "algorithm", name: "RSA-2048", source: "runtime", quantum_status: "QUANTUM_VULNERABLE" },
+          { type: "algorithm", name: "RSA-4096", source: "runtime", quantum_status: "QUANTUM_VULNERABLE" },
+          { type: "algorithm", name: "aes-256-gcm", source: "runtime", quantum_status: "QUANTUM_SAFE" },
+        ] } },
+    });
+    await mount();
+    expect(await screen.findByText(/Classification of the components in the latest local CBOM/)).toBeInTheDocument();
+    expect(screen.getByText("quantum vulnerable")).toBeInTheDocument();
+    expect(screen.getByText("quantum safe")).toBeInTheDocument();
+    // The classification is not a readiness claim.
+    expect(screen.getByText("PQC READINESS: NOT MEASURED")).toBeInTheDocument();
+    expect(screen.queryByText(/PQC 100|PQC 66/)).toBeNull();
+  });
+});
