@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
+import { GapBar, StackedBar, StateCell } from "../components/viz.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import EstatePanel from "../components/EstatePanel.jsx";
@@ -171,18 +172,24 @@ function NetworkInventoryPanel() {
             <div className="kpi"><span className="k">missing sections</span><span className="v">{snapshot.completeness.missing.length}</span></div>
             <div className="kpi"><span className="k">evidence records</span><span className="v">{Array.isArray(snapshot.inventory.evidence) ? snapshot.inventory.evidence.length : 0}</span></div>
           </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8, marginBottom: 10 }}>
+            <StateCell label="section coverage" value={`${snapshot.completeness.missing.length ? snapshot.completeness.missing.length : 0} missing`} tone={snapshot.completeness.missing.length ? "amber" : "green"} note="sections registered but not filled" />
+            <StateCell label="graph nodes" value={topologyData ? topologyData.node_count : "—"} note={topologyData ? `${topologyData.edge_count} observed edges` : "topology not read"} />
+            <StateCell label="unknown endpoints" value={topologyData ? topologyData.unknown_endpoints.length : "—"} tone={topologyData?.unknown_endpoints.length ? "amber" : ""} note="drawn as unknown, never as absent" />
+            <StateCell label="drift" value={driftData ? driftData.status : "—"} tone={driftData?.status === "DRIFTED" ? "red" : driftData ? "green" : ""} note={driftData ? `${driftData.drifted_comparisons} drifted · ${driftData.unknown_comparisons} unknown comparisons` : "configuration not compared"} />
+          </div>
           {snapshot.completeness.next_actions.length > 0 && (
-            <div className="tree" style={{ marginBottom: 10 }}>
-              Next actions: {snapshot.completeness.next_actions.slice(0, 4).join(" · ")}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+              {snapshot.completeness.next_actions.slice(0, 6).map((a, i) => (
+                <span key={i} className="mono" style={{ fontSize: 10, padding: "2px 6px", border: "1px solid var(--line-strong)", borderRadius: 2, color: "var(--dim)" }}>{String(a)}</span>
+              ))}
             </div>
           )}
-          {riskData?.unknowns?.length ? <div className="dim">Unknowns: {riskData.unknowns.slice(0, 4).join(" · ")}</div> : null}
-          {topologyData && <div className="dim" style={{ marginTop: 8 }}>
-            Structured graph: {topologyData.node_count} nodes · {topologyData.edge_count} observed edges · {topologyData.unknown_endpoints.length} unknown endpoints
-          </div>}
-          {driftData && <div className="dim" style={{ marginTop: 4 }}>
-            Configuration: {driftData.status} · {driftData.drifted_comparisons} drifted comparisons · {driftData.unknown_comparisons} unknown comparisons
-          </div>}
+          {riskData?.unknowns?.length ? (
+            <div style={{ marginBottom: 10 }}>
+              <GapBar label="inventory risk unknowns" reason={riskData.unknowns.slice(0, 4).join(" · ")} />
+            </div>
+          ) : null}
           <div className="row" style={{ marginTop: 14 }}>
             <button className="btn" type="button" onClick={() => setEditorOpen((open) => !open)}>
               {editorOpen ? "Hide inventory editor" : "Edit structured inventory"}
@@ -1277,7 +1284,8 @@ export default function Network() {
   const subnets = new Set(assets.map((a) => subnetOf(a.ip || ""))).size;
   const hostIps = new Set(assets.map((a) => a.ip)).size;
   const nodeById = useMemo(() => new Map(topo.nodes.map((n) => [n.id, n])), [topo.nodes]);
-  const posturePct = tlsEndpoints.length ? Math.round((chainValid / tlsEndpoints.length) * 100) : 0;
+  const chainInvalid = tlsEndpoints.filter((n) => n.chain_valid === false).length;
+  const chainUnknown = tlsEndpoints.length - chainValid - chainInvalid;
 
   return (
     <>
@@ -1299,7 +1307,7 @@ export default function Network() {
         {[
           { k: "TLS endpoints", v: c.endpoints, icon: IconNetwork, tone: "cyan", sub: `${hostIps} hosts in ${subnets} subnets` },
           { k: "Policy issues", v: c.policyIssues, icon: IconSecurity, tone: c.policyIssues ? "red" : "green", sub: c.policyIssues ? "requires review" : "no open issues" },
-          { k: "Valid chains", v: c.chainValid, icon: IconHardware, tone: "green", sub: `${posturePct}% of endpoints` },
+          { k: "Valid chains", v: c.chainValid, icon: IconHardware, tone: "green", sub: `${c.chainValid} of ${c.endpoints} observed endpoints` },
           { k: "Discovered", v: c.discovered, icon: IconTarget, tone: "violet", sub: "open services" },
         ].map((item) => {
           const Ico = item.icon;
@@ -1318,17 +1326,15 @@ export default function Network() {
       {tlsEndpoints.length > 0 && <div className="panel" style={{ padding: "12px 16px", marginBottom: 14, display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", background: "var(--panel-2)" }}>
         <b style={{ fontSize: 12, fontFamily: "var(--mono)", letterSpacing: ".06em", textTransform: "uppercase", color: "var(--faint)" }}>Posture</b>
         <div style={{ flex: "1 1 300px", minWidth: 220 }}>
-          <div style={{ display: "flex", height: 8, borderRadius: 999, overflow: "hidden", background: "var(--bg-2)", border: "1px solid var(--line)" }}>
-            <i style={{ width: `${tlsEndpoints.length ? (chainValid / tlsEndpoints.length) * 100 : 0}%`, background: "var(--green)" }} />
-            <i style={{ width: `${tlsEndpoints.length ? (withIssues / tlsEndpoints.length) * 100 : 0}%`, background: "var(--red)" }} />
-            <i style={{ flex: 1, background: "var(--line)" }} />
-          </div>
-          <div style={{ display: "flex", gap: 12, marginTop: 6, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>
-            <span style={{ color: "var(--green)" }}>● {chainValid} valid chains</span>
-            <span style={{ color: "var(--red)" }}>● {withIssues} policy issues</span>
-            <span style={{ color: "var(--faint)" }}>● {tlsEndpoints.length - chainValid - withIssues} unknown</span>
-            <span style={{ marginLeft: "auto", color: "var(--dim)" }}>{posturePct}% healthy</span>
-          </div>
+          <StackedBar
+            height={8}
+            segments={[
+              { key: "valid", label: "chain valid", value: chainValid, tone: "green" },
+              { key: "invalid", label: "chain invalid", value: chainInvalid, tone: "red" },
+              { key: "unreported", label: "chain not reported", value: chainUnknown, tone: "slate" },
+            ]}
+            note="Composition of the observed TLS endpoints only. A share of observed endpoints is not a share of the network."
+          />
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           <Badge tone="green">LIVE SCAN</Badge>
@@ -1348,6 +1354,7 @@ export default function Network() {
       <EstatePanel />
       <ScopeImportPanel />
       <CryptoWatchPanel />
+      <NetworkInventoryPanel />
 
       {/* ── hero topology — visual first, not theory ── */}
       <div className="panel" style={{ padding: 0, overflow: "hidden", border: "1px solid var(--line)", background: "var(--panel)" }}>

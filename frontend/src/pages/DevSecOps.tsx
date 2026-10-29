@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Panel, Badge, Table, PageHead, Code, Tabs, Ring, Bar, ProgressBar } from "../components/ui.jsx";
+import { Panel, Badge, Table, PageHead, Code, Tabs, Bar, ProgressBar } from "../components/ui.jsx";
+import { StackedBar, StateCell, VizEmpty } from "../components/viz.jsx";
 import { IconCode, IconContainer, IconCloud, IconComponent, IconSecurity, IconNetwork, IconHardware, IconCertificate, IconTarget, IconTrendUp } from "../components/icons";
 import { ApiResult } from "../lib/api.js";
 import {
@@ -71,8 +72,24 @@ function EvidenceBoundaryStrip() {
 
 function sevTone(s: string) { return s === "CRITICAL" ? "red" : s === "HIGH" ? "red" : s === "MEDIUM" ? "amber" : "green"; }
 
+const SEV_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
+
+/* Severity counts as the gate actually returned them.
+   The bar is a composition of matched findings — never a "risk score", never a
+   fraction of a target, and never an arc whose sweep was invented. */
+function SeverityComposition({ counts, note }: { counts: Record<string, number>; note?: string }) {
+  const keys = [
+    ...SEV_ORDER.filter((s) => counts[s]),
+    ...Object.keys(counts).filter((s) => !SEV_ORDER.includes(s) && counts[s]),
+  ];
+  if (!keys.length) {
+    return <VizEmpty title="No finding in this input" note={note ?? "No rule matched the submitted input. That is not an unobserved clean estate."} height={54} />;
+  }
+  return <StackedBar segments={keys.map((s) => ({ key: s, label: s.toLowerCase(), value: Number(counts[s] ?? 0), tone: sevTone(s) }))} note={note} />;
+}
+
 function FindingTable({ rows, codeKey, sevKey }: { rows: any[]; codeKey: (r: any) => string; sevKey: (r: any) => string }) {
-  if (!rows?.length) return <p className="faint" style={{ fontSize: 12 }}>No findings — clean result.</p>;
+  if (!rows?.length) return <VizEmpty title="No finding in the observed input" note="No rule matched here. That is a bounded result, not an unobserved clean estate." height={54} />;
   return (
     <Table
       head={["severity", "rule", "location / target", "detail"]}
@@ -133,27 +150,14 @@ function ContainerPanel() {
         <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
         {d && (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 16, alignItems: "center", padding: "12px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 12 }}>
-              <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-                <Ring pct={Math.max(0, Math.min(1, 1 - (d.vulnerabilities / Math.max(1, d.vulnerabilities + 3))))} label={`${d.vulnerabilities}`} sub="CVEs" tone={d.worst_severity === "CRITICAL" ? "red" : d.vulnerabilities ? "amber" : "green"} />
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 13 }}>worst <span style={{ color: d.worst_severity === "CRITICAL" ? "var(--red)" : "var(--amber)" }}>{d.worst_severity}</span> · {d.vulnerabilities} CVEs</div>
-                  <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{d.fixable} fixable · {d.dockerfile_findings.length} Dockerfile issues</div>
-                  <div className="row" style={{ gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                    <Badge tone={d.worst_severity === "CRITICAL" ? "red" : "green"}>{d.vulnerabilities} CVEs · worst {d.worst_severity}</Badge>
-                    <Badge tone={d.fixable ? "amber" : "green"}>{d.fixable} fixable</Badge>
-                    <Badge tone={d.dockerfile_findings.length ? "amber" : "green"}>{d.dockerfile_findings.length} Dockerfile issues</Badge>
-                  </div>
-                </div>
+            <div style={{ padding: "12px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 12 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 10 }}>
+                <StateCell label="CVEs matched" value={d.vulnerabilities} tone={d.vulnerabilities ? "amber" : "green"} note="deterministic match against the supplied feed" />
+                <StateCell label="worst severity" value={d.worst_severity} tone={sevTone(d.worst_severity)} />
+                <StateCell label="fixable" value={d.fixable} tone={d.fixable ? "amber" : ""} note="advisory carries a fixed version" />
+                <StateCell label="Dockerfile issues" value={d.dockerfile_findings.length} tone={d.dockerfile_findings.length ? "amber" : ""} />
               </div>
-              <div>
-                <div style={{ fontSize: 10, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--faint)", fontFamily: "var(--mono)", marginBottom: 6 }}>Severity breakdown</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {["CRITICAL","HIGH","MEDIUM","LOW"].map(s => sevCounts[s] ? <span key={s} className={`badge ${sevTone(s)}`} style={{ fontFamily: "var(--mono)" }}>{s} {sevCounts[s]}</span> : null)}
-                  {!Object.keys(sevCounts).length && <span className="faint" style={{ fontSize: 12 }}>No CVEs — clean image</span>}
-                </div>
-                <div className="bar" style={{ marginTop: 10, height: 8 }}><i className={d.worst_severity === "CRITICAL" ? "red" : d.vulnerabilities ? "amber" : "green"} style={{ width: `${d.vulnerabilities ? Math.min(100, d.vulnerabilities * 18) : 4}%` }} /></div>
-              </div>
+              <SeverityComposition counts={sevCounts} note="Segment width is the count of matched CVEs at that severity — an input-scoped result, not a score." />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
               <div>
@@ -195,16 +199,12 @@ function K8sPanel() {
         <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
         {d && (
           <>
-            <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 10 }}>
-              <Ring pct={Math.max(0, Math.min(1, 1 - (d.total_findings / Math.max(1, d.total_findings + 2))))} label={`${d.total_findings}`} sub="findings" tone={d.total_findings ? "amber" : "green"} />
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 13 }}>{d.total_findings} findings · {d.manifests_scanned} manifests</div>
-                <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                  {["CRITICAL","HIGH","MEDIUM","LOW"].map(s => sevCountsK8s[s] ? <span key={s} className={`badge ${sevTone(s)}`}>{s} {sevCountsK8s[s]}</span> : null)}
-                  {!Object.keys(sevCountsK8s).length && <span className="faint">Clean — no misconfig</span>}
-                </div>
-                <span style={{ marginTop: 6, display: "inline-block" }}><Badge tone={d.total_findings ? "red" : "green"}>{d.total_findings} findings across {d.manifests_scanned} manifest(s)</Badge></span>
+            <div style={{ padding: "10px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 8 }}>
+                <StateCell label="findings" value={d.total_findings} tone={d.total_findings ? "amber" : "green"} />
+                <StateCell label="manifests scanned" value={d.manifests_scanned} note="files actually parsed" />
               </div>
+              <SeverityComposition counts={sevCountsK8s} note="Misconfig findings by severity across the manifests supplied." />
             </div>
             <FindingTable rows={d.findings} codeKey={(r) => r.code} sevKey={(r) => r.severity} />
           </>
@@ -245,15 +245,12 @@ function PosturePanel() {
         }} disabled={busy} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><IconTarget size={12} /> {busy ? "Evaluating…" : "Evaluate posture"}</button>
         <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
         {d && <>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 10 }}>
-            <Ring pct={Math.max(0, Math.min(1, 1 - (d.total_findings / Math.max(1, d.total_findings + 3))))} label={`${d.total_findings}`} sub="findings" tone={d.total_findings ? "red" : "green"} />
-            <div>
-              <div style={{ fontWeight: 700, fontSize: 13 }}>{d.total_findings} findings · {d.resources_scanned} resources</div>
-              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                {["CRITICAL","HIGH","MEDIUM","LOW"].map(s => sevCloud[s] ? <span key={s} className={`badge ${sevTone(s)}`}>{s} {sevCloud[s]}</span> : null)}
-                {!Object.keys(sevCloud).length && <span className="faint">No findings — posture clean</span>}
-              </div>
+          <div style={{ padding: "10px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 8 }}>
+              <StateCell label="findings" value={d.total_findings} tone={d.total_findings ? "red" : "green"} />
+              <StateCell label="resources scanned" value={d.resources_scanned} note="resources in the submitted JSON" />
             </div>
+            <SeverityComposition counts={sevCloud} note="CIS-style findings by severity across the submitted resources." />
           </div>
           <FindingTable rows={d.findings} codeKey={(r) => r.rule_id} sevKey={(r) => r.severity} />
         </>}
