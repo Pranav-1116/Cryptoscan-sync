@@ -105,6 +105,23 @@ describe("CommandCenter source truth", () => {
     expect(tile(/Crypto assets/)).toHaveAttribute("href", "/cbom");
   });
 
+  /* The drift table stores five severities. The Open-drift panel listed four,
+     so a LOW-only estate drew five zeros and hid the only open event. */
+  it("draws every drift level the API returns, including LOW", async () => {
+    serve({
+      "/api/v1/stats/summary": { total_scans: 2, total_findings: 0, compliant: 0, non_compliant: 0, open_drift: { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 2, INFO: 0 }, coverage: {} },
+    });
+    await mount();
+    const panel = await screen.findByText("Persisted OPEN drift events by severity; all time");
+    const body = panel.closest(".panel") as HTMLElement;
+    expect(within(body).getByText("LOW")).toBeInTheDocument();
+    expect(within(body).getByText("2")).toBeInTheDocument();
+    // every level is present, so a reader can tell "zero LOW" from "no LOW row"
+    for (const level of ["CRITICAL", "HIGH", "MEDIUM", "INFO"]) {
+      expect(within(body).getByText(level)).toBeInTheDocument();
+    }
+  });
+
   it("does not call an unscanned domain zero observed just because another scanner ran", async () => {
     serve({
       "/api/v1/live-scan/inventory": { ...inventory, generated_at: "2026-10-12T11:00:00Z" },

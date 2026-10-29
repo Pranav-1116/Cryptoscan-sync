@@ -87,7 +87,7 @@ function ConnectionBand({ status }: { status: LiveEstateStatus | null }) {
                 display: "block",
                 height: "100%",
                 width: `${Math.min(100, Math.max(1, (connection.seconds_since! / connection.stale_after_seconds) * 100))}%`,
-                background: `var(--${tone === "ok" ? "ok" : tone === "warn" ? "warn" : "bad"})`,
+                background: tone === "ok" ? "var(--green)" : tone === "warn" ? "var(--amber)" : "var(--red)",
               }}
             />
           </div>
@@ -103,7 +103,7 @@ function ConnectionBand({ status }: { status: LiveEstateStatus | null }) {
         />
       )}
       {(status?.trust?.findings ?? []).map((finding) => (
-        <div key={finding} className="mono" style={{ fontSize: 10.5, color: "var(--bad)", lineHeight: 1.45 }}>
+        <div key={finding} className="mono" style={{ fontSize: 10.5, color: "var(--red)", lineHeight: 1.45 }}>
           {finding}
         </div>
       ))}
@@ -214,7 +214,7 @@ function BomDownloadGrid({ status }: { status: LiveEstateStatus | null }) {
         <div
           role="status"
           className="mono"
-          style={{ fontSize: 10.5, color: result.ok ? "var(--ok)" : "var(--bad)", lineHeight: 1.45 }}
+          style={{ fontSize: 10.5, color: result.ok ? "var(--green)" : "var(--red)", lineHeight: 1.45 }}
         >
           {result.text}
         </div>
@@ -233,7 +233,7 @@ function PatternRow({ pattern }: { pattern: AttackPattern }) {
     <div
       style={{
         border: "1px solid var(--line)",
-        borderLeft: `2px solid var(--${tone === "critical" ? "bad" : tone === "warn" ? "warn" : "line-strong"})`,
+        borderLeft: `2px solid ${tone === "critical" ? "var(--red)" : tone === "warn" ? "var(--amber)" : "var(--line-strong)"}`,
         borderRadius: "var(--r)",
         background: "var(--panel-2)",
         padding: "9px 11px",
@@ -282,14 +282,14 @@ function PatternRow({ pattern }: { pattern: AttackPattern }) {
                 padding: "2px 6px",
                 border: "1px solid var(--line)",
                 borderRadius: 2,
-                color: pattern.corroboration.single_source ? "var(--warn)" : "var(--ok)",
+                color: pattern.corroboration.single_source ? "var(--amber)" : "var(--green)",
               }}
             >
               {collector}
             </span>
           ))
         ) : (
-          <span className="mono" style={{ fontSize: 9.5, color: "var(--warn)" }}>
+          <span className="mono" style={{ fontSize: 9.5, color: "var(--amber)" }}>
             none traced to stored evidence
           </span>
         )}
@@ -318,15 +318,17 @@ export default function LiveEstate() {
     key,
     label: key.toLowerCase(),
     value,
-    tone: key.toUpperCase() === "CRITICAL" ? "critical" : key.toUpperCase() === "WARNING" ? "warn" : "info",
+    tone: key.toUpperCase() === "CRITICAL" ? "red" : key.toUpperCase() === "WARNING" || key.toUpperCase() === "HIGH" ? "amber" : "slate",
   }));
 
-  const levelRows = [4, 3, 2, 1, 0].map((level) => ({
-    key: String(level),
-    label: `L${level} ${view?.level_definitions?.[String(level)]?.name ?? ""}`.trim(),
-    value: view?.by_level?.[String(level)] ?? 0,
-    tone: level >= 3 ? "critical" : level === 2 ? "warn" : level === 1 ? "solo" : "",
-  }));
+  const levelRows = view
+    ? [4, 3, 2, 1, 0].map((level) => ({
+        key: String(level),
+        label: `L${level} ${view.level_definitions?.[String(level)]?.name ?? ""}`.trim(),
+        value: view.by_level?.[String(level)] ?? 0,
+        tone: level >= 3 ? "critical" : level === 2 ? "amber" : level === 1 ? "slate" : "",
+      }))
+    : [];
 
   return (
     <div>
@@ -335,14 +337,14 @@ export default function LiveEstate() {
         title="Live estate"
         sub="connected estate, stored changes, current BOMs and correlated activity — measured, never assumed"
         right={
-          <Badge tone={(data?.connection?.state ?? "") === "LIVE" ? "ok" : "warn"}>
+          <Badge tone={(data?.connection?.state ?? "") === "LIVE" ? "green" : "amber"}>
             {data?.connection?.state ?? (status.error ? "READ FAILED" : "READING")}
           </Badge>
         }
       />
 
       {status.error && (
-        <div role="alert" style={{ marginBottom: 10, fontSize: 11.5, color: "var(--bad)" }}>
+        <div role="alert" style={{ marginBottom: 10, fontSize: 11.5, color: "var(--red)" }}>
           live state unavailable ({status.error}) — nothing below is a current reading
         </div>
       )}
@@ -367,19 +369,25 @@ export default function LiveEstate() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 10, alignItems: "start" }}>
         <Panel title="Changes today" sub={data?.changes_today?.note ?? "counted from the stored change feed"}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {/* A count that was never read is not zero. When the status read has
+                not returned, these tiles say so instead of drawing an empty feed. */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-              <StateCell label="changes" value={nf(data?.changes_today?.count ?? 0)} note="stored events (UTC today)" />
+              <StateCell
+                label="changes"
+                value={data ? nf(data.changes_today?.count) : "—"}
+                note={data ? "stored events (UTC today)" : "the live-state read did not return"}
+              />
               <StateCell
                 label="unacknowledged"
-                value={nf(data?.changes_today?.unacknowledged ?? 0)}
-                tone={(data?.changes_today?.unacknowledged ?? 0) > 0 ? "warn" : ""}
+                value={data ? nf(data.changes_today?.unacknowledged) : "—"}
+                tone={data && (data.changes_today?.unacknowledged ?? 0) > 0 ? "amber" : ""}
                 note="nobody has marked these seen"
               />
               <StateCell
                 label="highest level"
-                value={`L${view?.highest_level ?? 0}`}
-                tone={(view?.highest_level ?? 0) >= 2 ? "warn" : ""}
-                note="correlation level, not probability"
+                value={view ? `L${view.highest_level ?? 0}` : "—"}
+                tone={view && (view.highest_level ?? 0) >= 2 ? "amber" : ""}
+                note={view ? "correlation level, not probability" : "no correlation run returned"}
               />
             </div>
             {severitySegments.length ? (

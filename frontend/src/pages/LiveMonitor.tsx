@@ -139,6 +139,7 @@ function LiveMonitorPage() {
   const [samples, setSamples] = useState<Sample[]>([]);
   const [lastReadAt, setLastReadAt] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [scanMsg, setScanMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const prevRef = useRef<Record<string, number> | null>(null);
 
@@ -160,6 +161,9 @@ function LiveMonitorPage() {
   const graph = env?.graph ?? ({} as NonNullable<LiveEnvironmentResponse["graph"]>);
   const events = (env?.events?.events ?? []).filter((e) => !isSystemEvent(e.type)).slice(0, 10);
   const runs: ScanRunSummary[] = (history.data as { runs?: ScanRunSummary[] } | null)?.runs ?? [];
+  /* The read outcome lives on the hook's `source`; the payload's own `source`
+     field names the producer ("scan_orchestrator"), which is not a verdict. */
+  const historyAnswered = history.source === "live";
   const live = lt.source === "live";
   const techBomState = techBom.data as
     | { total_components?: number; layers?: Record<string, { count?: number }>; components_by_layer?: Record<string, number> }
@@ -286,14 +290,25 @@ function LiveMonitorPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  /* A refused start is an answer, not a no-op. The API refuses with a reason
+     (no organization yet, or a role that may not start a scan) and this screen
+     used to discard it, leaving the operator pressing a button that did
+     nothing. The refusal is now shown beside the button that produced it. */
   const startScan = async () => {
     setStarting(true);
+    setScanMsg(null);
     try {
-      await apiLiveOrchestratorStart();
-      setTimeout(() => {
-        void lt.run();
-        void status.run();
-      }, 600);
+      const res = await apiLiveOrchestratorStart();
+      if (res.source === "live" && res.data) {
+        setScanMsg({ ok: true, text: `scan ${String((res.data as { scan?: { scan_id?: string } }).scan?.scan_id ?? "").slice(0, 8) || "submitted"} accepted — this screen reads its state, it does not advance it` });
+        setTimeout(() => {
+          void lt.run();
+          void status.run();
+          void history.run();
+        }, 600);
+      } else {
+        setScanMsg({ ok: false, text: `scan not started: ${res.detail || res.error || "the control plane did not confirm it"}` });
+      }
     } finally {
       setStarting(false);
     }
@@ -470,13 +485,15 @@ function LiveMonitorPage() {
             label="Schedules"
             value={estateState ? `${estateState.schedules.enabled}/${estateState.schedules.total}` : "—"}
             tone={estateState?.schedules.enabled ? "green" : "slate"}
-            note={`${estateState?.schedules.enabled ?? 0} enabled schedule(s)`}
+            note={estateState ? `${estateState.schedules.enabled} enabled schedule(s)` : "the estate read did not return"}
           />
           <StateCell
             label="Last completed run"
-            value={estateState?.runs.last_finished_at ? `${timeAgo(estateState.runs.last_finished_at)} ago` : "none"}
+            value={!estateState ? "—" : estateState.runs.last_finished_at ? `${timeAgo(estateState.runs.last_finished_at)} ago` : "none"}
             tone={estateState?.runs.last_finished_at ? "green" : "slate"}
-            note={`last completed run ${estateState?.runs.last_finished_at ?? "none"}`}
+            note={!estateState
+              ? "the estate read did not return"
+              : `last completed run ${estateState.runs.last_finished_at ?? "none"}`}
           />
           <StateCell
             label="Next due"
@@ -581,15 +598,17 @@ function LiveMonitorPage() {
 
         <Panel title="TechBOM layers" sub={`${nf(techBomTotal)} component(s) reported across ${Object.keys(techBomLayers).length} layer(s)`}>
           <HBars
-            rows={TECHBOM_LAYERS.map((l) => ({
+            rows={techBom.data ? TECHBOM_LAYERS.map((l) => ({
               key: l.k,
               label: l.label,
               value: byLayer[l.k] ?? techBomLayers[l.k]?.count ?? 0,
               tone: l.tone,
               to: l.to,
-            }))}
-            emptyTitle="TechBOM is empty"
-            emptyNote="Layers fill from a completed integrated scan or an onboarding import."
+            })) : []}
+            emptyTitle={techBom.data ? "TechBOM is empty" : "TechBOM not read"}
+            emptyNote={techBom.data
+              ? "Layers fill from a completed integrated scan or an onboarding import."
+              : "The Technology BOM read has not returned; this is an unread panel, not an empty BOM."}
           />
           <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
             <HBars
@@ -650,6 +669,14 @@ function LiveMonitorPage() {
               {starting ? "Submitting…" : "Start scan"}
             </button>
           </div>
+        )}
+        {scanMsg && (
+          <p
+            role={scanMsg.ok ? "status" : "alert"}
+            style={{ margin: "10px 0 0", fontSize: 11.5, color: scanMsg.ok ? "var(--green)" : "var(--red)" }}
+          >
+            {scanMsg.text}
+          </p>
         )}
         {scan && (
           <div style={{ marginTop: 12 }}>
@@ -738,7 +765,7 @@ function LiveMonitorPage() {
       {/* ── run history ────────────────────────────────────────────── */}
       <Panel
         title="Scan run history"
-        sub={`${runs.length} durable run(s) · ${(history.data as { source?: string } | null)?.source === "live" ? "read from the backend" : "backend did not answer"}`}
+        sub={`${runs.length} durable run(s) · ${historyAnswered ? "read from the backend" : "backend did not answer"}`}
       >
         {runs.length ? (
           <div style={{ maxHeight: 300, overflowY: "auto" }}>
@@ -785,8 +812,8 @@ function LiveMonitorPage() {
           </div>
         ) : (
           <VizEmpty
-            title={(history.data as { source?: string } | null)?.source === "live" ? "No run recorded" : "History not available"}
-            note={(history.data as { source?: string } | null)?.source === "live"
+            title={historyAnswered ? "No run recorded" : "History not available"}
+            note={historyAnswered
               ? "No integrated scan has completed against this tenant."
               : "The read failed; this is not a claim that no run exists."}
           />

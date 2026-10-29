@@ -12,12 +12,34 @@ from shared_models.assurance import (Register, CoverageObservation, Sample, Appr
 from shared_models.software_identity import scope_key
 
 router = APIRouter(prefix="/assurance", tags=["assurance"])
+
+#: Kind -> permission required to read its retained revisions.
+#:
+#: These kinds are qualification and trust artefacts: their write routes need a
+#: current typed human with ``assurance.trust``/``assurance.review``, and their
+#: artefact routes need ``assurance.raw``/``crypto.read``. The generic revision
+#: browser is a read path for the same rows, so leaving it on
+#: ``get_current_user`` made every one of those stronger checks bypassable with
+#: ``?kind=``. Kinds absent from this map stay metadata-only reads.
+_KIND_READ_PERMISSION: dict[str, str] = {
+    "host_qualification": "crypto.read",
+    "supplier_signer": "assurance.trust",
+    "adapter_qualification": "assurance.review",
+}
+
+
+def _authorise_kind_read(db: Session, request: Request, user, kind: str) -> None:
+    """Gate the revision browser on the same authority as the kind's own routes."""
+    permission = _KIND_READ_PERMISSION.get(kind)
+    if permission is not None:
+        author(db, request, user, permission)
+
+
 @router.get("/records")
 def records(request: Request, kind: str = Query(min_length=1, max_length=30), limit: int = Query(100, ge=1, le=200),
             offset: int = Query(0, ge=0, le=1000000), user=Depends(get_current_user),
             db: Session = Depends(get_db_session), ctx=Depends(estate)):
-    if kind == "host_qualification":
-        author(db, request, user, "crypto.read")  # protected kind must not bypass human-only qualification reads
+    _authorise_kind_read(db, request, user, kind)
     query = store.rows(db, AssuranceRevision, ctx.tenant_id).filter_by(kind=kind)
     values = query.order_by(AssuranceRevision.created_at, AssuranceRevision.id).offset(offset).limit(limit + 1).all()
     return {"records": [store.public(r) for r in values[:limit]], "has_more": len(values) > limit,
@@ -28,8 +50,7 @@ def records(request: Request, kind: str = Query(min_length=1, max_length=30), li
 def history(request: Request, kind: Annotated[str, Path(min_length=1, max_length=30)], identifier: Key,
             after_revision: int = Query(0, ge=0), user=Depends(get_current_user),
             db: Session = Depends(get_db_session), ctx=Depends(estate)):
-    if kind == "host_qualification":
-        author(db, request, user, "crypto.read")
+    _authorise_kind_read(db, request, user, kind)
     store.latest(db, ctx.tenant_id, kind, identifier)
     values = store.rows(db, AssuranceRevision, ctx.tenant_id).filter_by(kind=kind, subject_id=identifier).filter(
         AssuranceRevision.revision > after_revision).order_by(AssuranceRevision.revision).limit(201).all()

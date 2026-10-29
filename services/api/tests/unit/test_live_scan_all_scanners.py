@@ -41,3 +41,25 @@ def test_unconfigured_is_not_a_failed_or_empty_success():
     state = LiveScanRunner._scanner_availability({}, only=["payment"])["payment"]
     assert state["status"] == "UNCONFIGURED"
     assert state["reason"]
+
+
+def test_run_request_rejects_an_unknown_scanner_family():
+    """A typo is a client error, not a scanner that silently found nothing.
+
+    The runner tolerates an unknown family by recording UNAVAILABLE, so
+    ``{"scanners": ["netwrok"]}`` used to answer 202 and cycle nothing the
+    operator asked for. The registry in the runner is the single source of
+    truth and the request model refuses anything outside it.
+    """
+    import pytest
+    from pydantic import ValidationError
+
+    from api.routers.live_scan import RunScanRequest
+
+    assert RunScanRequest(scanners=["hardware", "network"]).scanners == ["hardware", "network"]
+    # duplicates collapse rather than running a family twice
+    assert RunScanRequest(scanners=["hardware", "hardware"]).scanners == ["hardware"]
+    with pytest.raises(ValidationError) as excinfo:
+        RunScanRequest(scanners=["bogus_scanner"])
+    assert "unknown scanner family: bogus_scanner" in str(excinfo.value)
+    assert "hardware" in str(excinfo.value)  # the refusal lists the known families

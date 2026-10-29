@@ -107,7 +107,12 @@ class DriftRepository(BaseRepository[DriftEvent]):
             .where(DriftEvent.resolution_status == "OPEN")
             .group_by(DriftEvent.severity)
         )
-        counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "INFO": 0}
+        # The zero-filled shape must cover every severity this table actually
+        # stores, or a LOW-only estate returns no LOW key while a LOW+MEDIUM
+        # estate does — the same reader sees two different shapes. All five
+        # levels are present so callers can rely on the keys, not just the
+        # levels that happen to be non-zero.
+        counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
         for severity, count in self.session.execute(stmt):
             counts[str(severity)] = int(count)
         return counts

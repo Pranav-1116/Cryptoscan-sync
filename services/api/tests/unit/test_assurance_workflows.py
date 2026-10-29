@@ -123,6 +123,33 @@ def test_register_has_independent_denominator_and_is_exact_estate(assured):
     assert a.get(P + "/records?kind=estate_register").json()["records"][0]["payload_sha256"] == row["payload_sha256"]
 
 
+def test_revision_browser_cannot_bypass_kind_specific_authority(assured):
+    """?kind= must not be a cheaper read path than the kind's own routes.
+
+    Trust and qualification revisions are written under assurance.trust/
+    assurance.review and read under crypto.read. The generic revision browser
+    used to answer any authenticated tenant user, so an analyst or a readonly
+    member could list them by naming the kind.
+    """
+    clients, db, _ = assured
+    a = clients["bank_a"]
+    done(a.post(P + "/registers", json=manifest()))
+    # metadata-only kinds stay readable for a tenant member
+    assert a.get(P + "/records?kind=estate_register").status_code == 200
+    assert clients["reader_a"].get(P + "/records?kind=estate_register").status_code == 200
+    # trust artefacts: neither an analyst (security_analyst) nor a readonly
+    # member holds assurance.trust / assurance.review
+    for kind in ("supplier_signer", "adapter_qualification"):
+        assert a.get(P + f"/records?kind={kind}").status_code == 403, kind
+        assert clients["reader_a"].get(P + f"/records?kind={kind}").status_code == 403, kind
+        unknown = "00000000-0000-0000-0000-000000000000"
+        assert a.get(P + f"/records/{kind}/{unknown}").status_code == 403, kind
+    # host_qualification is gated on crypto.read, which every role holds; the
+    # gate here is on the *principal* (a current typed human), so a tenant
+    # member reads its metadata and a machine session cannot.
+    assert a.get(P + "/records?kind=host_qualification").status_code == 200
+
+
 def test_register_revision_preserves_history_rejects_stale_writes_and_changed_targets(assured):
     clients, db, _ = assured
     a = clients["bank_a"]

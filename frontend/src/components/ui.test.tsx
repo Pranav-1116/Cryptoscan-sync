@@ -23,6 +23,25 @@ describe("ui primitives", () => {
     expect(screen.getByText("CRITICAL")).toBeInTheDocument();
   });
 
+  /* `warn`/`critical`/`ok` are state words, not colour names. They used to
+     reach the class attribute verbatim ("badge warn"), and global.css defines
+     no `.badge.warn`, so the badge rendered with no colour at all. */
+  it("Badge resolves a state word to the colour class it stands for", () => {
+    const { container, rerender } = render(<Badge tone="warn">EXPORT</Badge>);
+    expect(container.querySelector(".badge")?.className).toBe("badge amber");
+    rerender(<Badge tone="critical">UNKNOWN KIND</Badge>);
+    expect(container.querySelector(".badge")?.className).toBe("badge red");
+    rerender(<Badge tone="ok">READ</Badge>);
+    expect(container.querySelector(".badge")?.className).toBe("badge green");
+    rerender(<Badge tone="WARNING">UPPER</Badge>);
+    expect(container.querySelector(".badge")?.className).toBe("badge amber");
+  });
+
+  it("Badge still infers a tone from its own text when none is given", () => {
+    const { container } = render(<Badge>CRITICAL</Badge>);
+    expect(container.querySelector(".badge")?.className).toBe("badge red");
+  });
+
   it("Bar / ProgressBar / Ring accept percentages without crashing", () => {
     const { container } = render(<><Bar value={42} /><ProgressBar value={73} label="pqc" /><Ring pct={12} label="12%" sub="ready" /></>);
     expect(container.firstChild).toBeTruthy();

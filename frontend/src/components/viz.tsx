@@ -16,10 +16,21 @@
 import React, { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+/* The severity vocabulary the console's pages actually speak.
+ *
+ * Pages state a *state* ("ok", "warn", "critical"), a *severity* ("bad",
+ * "suspicious"), or a colour. Only the colour names used to resolve; every
+ * other word fell through to the accent, which painted a critical state in the
+ * same blue as a neutral one — a status screen that cannot show red. Aliases
+ * are resolved here, once, so both spellings reach the same token.
+ *
+ * No alias invents a state: "muted"/"unknown"/"none" mean an absence and map to
+ * the slate absence token, never to a pass or a failure. */
 const TONE: Record<string, string> = {
   "": "var(--accent)",
   accent: "var(--accent)",
   cyan: "var(--accent)",
+  info: "var(--accent)",
   green: "var(--green)",
   amber: "var(--amber)",
   orange: "var(--orange)",
@@ -27,8 +38,24 @@ const TONE: Record<string, string> = {
   violet: "var(--violet)",
   slate: "var(--slate)",
 };
+const TONE_ALIAS: Record<string, string> = {
+  ok: "green", good: "green", pass: "green", passed: "green", success: "green",
+  live: "green", healthy: "green", verified: "green",
+  warn: "amber", warning: "amber", medium: "amber", degraded: "amber",
+  critical: "red", danger: "red", error: "red", fail: "red", failed: "red",
+  bad: "red", incident: "red",
+  high: "orange",
+  muted: "slate", unknown: "slate", none: "slate", unmeasured: "slate",
+};
 
-export const toneColor = (tone = "") => TONE[tone] ?? TONE[""];
+/** Resolve a tone word to the CSS colour it stands for.
+ *
+ * Unknown words still render as the neutral accent so a typo cannot make a
+ * value invisible — but every word the pages use is listed above. */
+export function toneColor(tone = ""): string {
+  const key = String(tone || "").trim().toLowerCase();
+  return TONE[TONE_ALIAS[key] ?? key] ?? TONE[""];
+}
 
 /** A labelled absence. `note` says what would make the space fill. */
 export function VizEmpty({

@@ -77,9 +77,11 @@ function AttacksPanel() {
     ts: new Date(d.detected_at).toLocaleTimeString(),
     severity: (d.severity === "CRITICAL" ? "critical" : ["HIGH", "ALERT", "MEDIUM"].includes(d.severity) ? "warn" : "info") as "critical" | "warn" | "info",
   }));
+  /* Only the severities the summary actually returned. Filling the missing ones
+     with 0 would draw a composition the server never reported. */
   const severitySegments = [
-    ...SEV_ORDER.map((s) => ({ key: s, label: s.toLowerCase(), value: Number(sev[s] ?? 0), tone: SEV_TONE[s] ?? "slate" })),
-    ...Object.keys(sev).filter((s) => !SEV_ORDER.includes(s)).map((s) => ({ key: s, label: s.toLowerCase(), value: Number(sev[s] ?? 0), tone: "slate" })),
+    ...SEV_ORDER.filter((s) => sev[s] != null).map((s) => ({ key: s, label: s.toLowerCase(), value: Number(sev[s]), tone: SEV_TONE[s] ?? "slate" })),
+    ...Object.keys(sev).filter((s) => !SEV_ORDER.includes(s)).map((s) => ({ key: s, label: s.toLowerCase(), value: Number(sev[s]), tone: "slate" })),
   ];
   const ruleRows = Object.entries(byRule).sort((a, b) => b[1] - a[1]).slice(0, 12)
     .map(([rule, n]) => ({ key: rule, label: rule, value: n }));
@@ -88,7 +90,14 @@ function AttacksPanel() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, margin: "12px 0" }}>
         <StateCell label="detections read" value={attacks.data ? detections.length : "—"} note={attacks.data ? "most recent page of the detection log" : "detection log not read"} />
         {SEV_ORDER.slice(0, 4).map((s) => (
-          <StateCell key={s} label={s.toLowerCase()} value={summary.data ? Number(sev[s] ?? 0) : "—"} tone={Number(sev[s] ?? 0) > 0 ? SEV_TONE[s] : ""} note="detections by server severity" />
+          <StateCell
+            key={s}
+            label={s.toLowerCase()}
+            // a severity the summary did not return is unmeasured, not zero
+            value={summary.data ? (sev[s] == null ? "—" : Number(sev[s])) : "—"}
+            tone={Number(sev[s] ?? 0) > 0 ? SEV_TONE[s] : ""}
+            note="detections by server severity"
+          />
         ))}
       </div>
       <div className="grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 12 }}>

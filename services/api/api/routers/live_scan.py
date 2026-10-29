@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from api.dependencies import get_current_user, require_roles
 from api.security.target_validation import (
@@ -70,6 +70,28 @@ class RunScanRequest(BaseModel):
         default=None, description="operator-supplied binary/firmware input path")
     devsecops_target: Optional[str] = Field(
         default=None, description="operator-supplied DevSecOps artifact/SBOM input path")
+
+    @field_validator("scanners")
+    @classmethod
+    def _known_families(cls, value: list[str]) -> list[str]:
+        """Reject unknown scanner families at the boundary.
+
+        The runner tolerates an unknown family by recording it as UNAVAILABLE,
+        so a typo ("netwrok") used to return 202 with a cycle that scanned
+        nothing the operator asked for. The registry in the runner stays the
+        single source of truth; a name outside it is a client error, not a
+        scanner that failed.
+        """
+        from api.live_scan.runner import LIVE_SCANNER_FAMILIES
+
+        deduped = list(dict.fromkeys(value))
+        unknown = sorted(set(deduped) - set(LIVE_SCANNER_FAMILIES))
+        if unknown:
+            raise ValueError(
+                f"unknown scanner family: {', '.join(unknown)}; "
+                f"known families: {', '.join(LIVE_SCANNER_FAMILIES)}"
+            )
+        return deduped
 
 
 class PeriodicRequest(BaseModel):

@@ -107,8 +107,24 @@ const VARIANT_TO_TONE: Record<string, string> = {
   neutral: "slate",
 };
 
+/* tone → tone alias map. `variant` has always been translated; `tone` was
+ * passed straight into the class name, so `tone="warn"` (and "critical", "ok",
+ * "bad", "muted") produced `class="badge warn"` — a class global.css does not
+ * define, so the badge rendered with no colour at all and a warning looked like
+ * a neutral label. Both spellings now resolve to a tone that exists. */
+const TONE_ALIAS: Record<string, string> = {
+  danger: "red", error: "red", critical: "red", bad: "red", fail: "red", failed: "red",
+  success: "green", ok: "green", good: "green", pass: "green", live: "green", healthy: "green",
+  warning: "amber", warn: "amber", medium: "amber",
+  high: "orange",
+  info: "cyan", primary: "cyan", accent: "cyan",
+  neutral: "slate", muted: "slate", unknown: "slate", none: "slate",
+};
+
 export function Badge({ children, tone, variant }: { children: ReactNode; tone?: string; variant?: string }) {
-  const t = tone || VARIANT_TO_TONE[variant || ""] || BADGE_TONE[String(children).toString().toUpperCase()] || "";
+  const named = tone || VARIANT_TO_TONE[variant || ""] || "";
+  const resolved = TONE_ALIAS[String(named).toLowerCase()] ?? named;
+  const t = resolved || BADGE_TONE[String(children).toString().toUpperCase()] || "";
   return (
     <span className={`badge ${t}`}>
       <span className="dot" />

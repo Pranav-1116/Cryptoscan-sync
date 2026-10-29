@@ -24,6 +24,24 @@ describe("api bridge — offline contract", () => {
     expect(result).toMatchObject({ source: "offline", data: null, error: "HTTP 503" });
   });
 
+  /* A refusal carries the reason. `error` stays the stable "HTTP <status>"
+     code pages branch on; the server's own message travels beside it, because
+     "HTTP 422" alone tells an operator nothing about which scanner name the
+     boundary rejected. */
+  it("carries the server's refusal reason next to the status code", async () => {
+    mockFetch({}, 422);
+    const result = await apiScope();
+    expect(result.error).toBe("HTTP 422");
+    expect(result.detail).toBe("not found");
+  });
+
+  it("leaves detail undefined when the error body is not readable", async () => {
+    globalThis.fetch = (async () => new Response("", { status: 502 })) as unknown as typeof fetch;
+    const result = await apiScope();
+    expect(result).toMatchObject({ source: "offline", error: "HTTP 502" });
+    expect(result.detail).toBeUndefined();
+  });
+
   it("returns live data on 200", async () => {
     mockFetch({ "/api/v1/platform/scope": { does: ["scan"], does_not: ["malware"] } });
     const result = await apiScope();

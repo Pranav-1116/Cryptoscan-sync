@@ -212,12 +212,15 @@ function OperatorDecisionsPage() {
         <p style={{ margin: "0 0 8px", fontSize: 11.5, color: "var(--dim)" }}>{data?.uncertainty || "Coverage is UNKNOWN until an independently registered estate and collection receipts are available."} Every section is paginated; a page is never the whole estate.</p>
         {coverage.length ? coverage.map((r, i) => {
           const counts = (r.counts ?? {}) as Record<string, number>;
-          const registered = Number(r.registered_targets ?? 0);
+          // A register that did not report a denominator is not a register of 0.
+          const registered = r.registered_targets == null || r.registered_targets === ""
+            ? null
+            : Number(r.registered_targets);
           const keys = [...COVERAGE_ORDER.filter((k) => k in counts), ...Object.keys(counts).filter((k) => !COVERAGE_ORDER.includes(k))];
           return <div key={String(r.register_id ?? i)} style={{ borderTop: i ? "1px solid var(--line)" : undefined, padding: "8px 0" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
               <span className="mono" style={{ fontSize: 11.5 }}>{String(r.register_id ?? "unidentified register")}</span>
-              <span className="mono" style={{ fontSize: 10.5, color: "var(--faint)", fontVariantNumeric: "tabular-nums" }}>registered {registered} target(s) · owner completeness {String(r.register_completeness ?? "not reported")}</span>
+              <span className="mono" style={{ fontSize: 10.5, color: "var(--faint)", fontVariantNumeric: "tabular-nums" }}>{registered == null ? "registered target count not reported" : `registered ${registered} target(s)`} · owner completeness {String(r.register_completeness ?? "not reported")}</span>
             </div>
             <div style={{ marginTop: 5 }}>
               <StackedBar segments={keys.map((k) => ({ key: k, label: k.replace(/_/g, " ").toLowerCase(), value: Number(counts[k] ?? 0), tone: COVERAGE_TONE[k] ?? "" }))}

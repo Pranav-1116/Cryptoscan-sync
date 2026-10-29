@@ -49,11 +49,21 @@ export default function LiveEnvironment() {
   const live = lt.source === "live";
   const hasData = domains.total > 0 || (graph.node_count ?? 0) > 0;
 
+  const [scanMsg, setScanMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /* The control plane answers a refused start with a reason (no organization
+     yet, or a role that may not start a scan). Discarding that answer left the
+     button looking inert; the reason is rendered next to it instead. */
   const startScan = async () => {
     setStarting(true);
+    setScanMsg(null);
     try {
-      await apiLiveOrchestratorStart();
-      setTimeout(() => { lt.run(); status.run(); }, 500);
+      const res = await apiLiveOrchestratorStart();
+      if (res.source === "live" && res.data) {
+        setScanMsg({ ok: true, text: "integrated scan accepted — this screen reads its state, it does not advance it" });
+        setTimeout(() => { lt.run(); status.run(); history.run(); }, 500);
+      } else {
+        setScanMsg({ ok: false, text: `scan not started: ${res.detail || res.error || "the control plane did not confirm it"}` });
+      }
     } finally {
       setStarting(false);
     }
@@ -115,6 +125,11 @@ export default function LiveEnvironment() {
             </div>
             <button className="btn btn-primary" disabled={starting} onClick={startScan} style={{ padding: "7px 14px" }}>{starting ? "Starting…" : "Start integrated scan"}</button>
           </div>
+        )}
+        {scanMsg && (
+          <p role={scanMsg.ok ? "status" : "alert"} style={{ margin: "10px 0 0", fontSize: 11.5, color: scanMsg.ok ? "var(--green)" : "var(--red)" }}>
+            {scanMsg.text}
+          </p>
         )}
       </Panel>
 

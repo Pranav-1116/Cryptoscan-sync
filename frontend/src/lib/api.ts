@@ -11,8 +11,39 @@ export interface ApiResult<T = unknown> {
   source: ApiSource;
   data: T | null;
   error?: string;
+  /** The server's own refusal message, when it sent one.
+   *
+   * `error` stays the stable `HTTP <status>` code that pages compare against,
+   * so this is additive. Without it a refused write ("unknown scanner family",
+   * "no organization yet", "role may not start a scan") reached the operator as
+   * a bare status code and the reason — the only actionable part — was lost.
+   */
+  detail?: string;
   ok?: boolean;
   head?: string;
+}
+
+/** Best-effort extraction of a FastAPI error body into one readable line. */
+function errorDetail(body: unknown): string | undefined {
+  const detail = (body as { detail?: unknown } | null)?.detail ?? body;
+  if (typeof detail === "string") return detail.trim() || undefined;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((item) => {
+        const entry = item as { loc?: unknown[]; msg?: string } | null;
+        const where = Array.isArray(entry?.loc) ? entry.loc.slice(1).join(".") : "";
+        const msg = entry?.msg ? String(entry.msg) : "";
+        return msg ? (where ? `${where}: ${msg}` : msg) : "";
+      })
+      .filter(Boolean);
+    return parts.length ? parts.join("; ") : undefined;
+  }
+  if (detail && typeof detail === "object") {
+    const message = (detail as { message?: unknown; error?: unknown }).message
+      ?? (detail as { error?: unknown }).error;
+    return typeof message === "string" ? message : undefined;
+  }
+  return undefined;
 }
 
 const TOKEN_KEY = "zelinx_token";
@@ -191,7 +222,17 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
       credentials: "include",
       ...init,
     });
-    if (!resp.ok) return { source: "offline", data: null, error: `HTTP ${resp.status}` };
+    if (!resp.ok) {
+      // Keep the status code stable for callers that branch on it, and carry
+      // the server's own reason alongside it.
+      let detail: string | undefined;
+      try {
+        detail = errorDetail(await resp.json());
+      } catch {
+        detail = undefined;
+      }
+      return { source: "offline", data: null, error: `HTTP ${resp.status}`, detail };
+    }
     return { source: "live", data: (await resp.json()) as T };
   } catch (e) {
     return { source: "offline", data: null, error: String(e) };

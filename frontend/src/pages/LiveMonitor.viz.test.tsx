@@ -82,3 +82,35 @@ describe("live monitor visualisations", () => {
     expect(screen.getByText(/Total estate assets per read — no samples/)).toBeInTheDocument();
   });
 });
+
+/* The history wrapper answers `{ source: "scan_orchestrator", runs: [] }`: that
+ * field names the producer of the rows, not whether this browser reached the
+ * backend. Keying the panel off it made a clean, successful read claim "backend
+ * did not answer" on every visit. */
+describe("live monitor run history provenance", () => {
+  const answered = "/api/v1/live/orchestrator/history";
+  const status = "/api/v1/live/orchestrator/status";
+  const techbom = "/api/v1/techbom/overview";
+
+  it("trusts the read, not the payload's producer name", async () => {
+    setActiveTenantId("a");
+    mockFetch({
+      [realtime]: emptyEstate,
+      [environment]: emptyEnvironment,
+      [status]: { scan: null, source: "scan_orchestrator", runner: { running: false } },
+      [answered]: { source: "scan_orchestrator", runs: [] },
+    });
+    renderWithProviders(<LiveMonitor />, { route: "/live-monitor" });
+    expect(await screen.findByText("No run recorded")).toBeInTheDocument();
+    expect(screen.getByText(/0 durable run\(s\) · read from the backend/)).toBeInTheDocument();
+    expect(screen.queryByText("History not available")).toBeNull();
+  });
+
+  it("says the read failed when the backend really did not answer", async () => {
+    setActiveTenantId("a");
+    mockFetch({ [realtime]: emptyEstate, [environment]: emptyEnvironment, [status]: { scan: null } }, 503);
+    renderWithProviders(<LiveMonitor />, { route: "/live-monitor" });
+    expect(await screen.findByText("History not available")).toBeInTheDocument();
+    expect(screen.getByText(/backend did not answer/)).toBeInTheDocument();
+  });
+});

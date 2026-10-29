@@ -174,7 +174,21 @@ export default function LiveScanners() {
       source_target: sourceTarget.trim() || undefined,
       universal_target: universalTarget.trim() || undefined,
     });
-    if (r.source === "offline") pushLog(`could not start: ${r.error || "backend unreachable"}`, "fail");
+    /* A 202 is the only proof the cycle was accepted. The old branch logged
+       nothing on success, and a refused request (422 for an unknown family,
+       403 for a role that may not start scans) looked identical to a start
+       that had silently done nothing. */
+    if (r.source === "offline") {
+      pushLog(`could not start: ${r.detail || r.error || "backend unreachable"}`, "fail");
+    } else {
+      const st = String((r.data as { status?: string } | null)?.status ?? "started");
+      pushLog(
+        st === "already_running"
+          ? "a cycle is already running — this request did not start a second one"
+          : `accepted (${st}) — the runner reports progress over SSE`,
+        st === "already_running" ? "info" : "ok",
+      );
+    }
   };
 
   const startLoop = async () => {
@@ -184,8 +198,11 @@ export default function LiveScanners() {
     void refresh();
   };
   const stopLoop = async () => {
-    await apiLiveScanStop();
-    pushLog("periodic loop stopping", "info");
+    const r = await apiLiveScanStop();
+    pushLog(
+      r.source === "live" ? "periodic loop stopping" : `stop failed: ${r.detail || r.error || "backend unreachable"}`,
+      r.source === "live" ? "info" : "fail",
+    );
     void refresh();
   };
 

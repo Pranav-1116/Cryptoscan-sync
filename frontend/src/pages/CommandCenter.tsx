@@ -50,6 +50,26 @@ const CBOM_LABEL: Record<string, string> = {
   unknown: "unclassified",
 };
 
+/* The severity levels the drift engine actually stores. `open_drift` is a
+ * per-level map, so a surface that lists a subset silently hides the levels it
+ * left out (a LOW-only estate drew as all-zero). Every drift surface reads this
+ * one list, and the colour is looked up rather than re-typed per row. */
+const DRIFT_LEVELS = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] as const;
+const DRIFT_TONE: Record<string, string> = {
+  CRITICAL: "red",
+  HIGH: "orange",
+  MEDIUM: "amber",
+  LOW: "green",
+  INFO: "slate",
+};
+const DRIFT_VAR: Record<string, string> = {
+  red: "var(--red)",
+  orange: "var(--orange)",
+  amber: "var(--amber)",
+  green: "var(--green)",
+  slate: "var(--slate)",
+};
+
 const QSTATUS_TONE: Record<string, string> = {
   QUANTUM_VULNERABLE: "red",
   MIGRATION_REQUIRED: "red",
@@ -188,17 +208,11 @@ export default function CommandCenter() {
       .map(([status, value]) => ({ key: status, label: status.replace(/_/g, " ").toLowerCase(), value, tone: QSTATUS_TONE[status] ?? "slate" }));
   })();
 
-  const driftSeverityRows: Array<{ key: string; label: string; tone: string; value: number }> = [
-    { key: "CRITICAL", tone: "red" },
-    { key: "HIGH", tone: "orange" },
-    { key: "MEDIUM", tone: "amber" },
-    { key: "LOW", tone: "green" },
-    { key: "INFO", tone: "slate" },
-  ]
-    .map(({ key, tone }) => ({
+  const driftSeverityRows: Array<{ key: string; label: string; tone: string; value: number }> = DRIFT_LEVELS
+    .map((key) => ({
       key,
       label: key,
-      tone,
+      tone: DRIFT_TONE[key],
       value: driftObserved ? (drift?.changes ?? []).filter((c) => String(c.severity).toUpperCase() === key).length : 0,
     }))
     .filter((row) => row.value > 0);
@@ -208,10 +222,11 @@ export default function CommandCenter() {
         .map((severity) => ({
           key: severity as string,
           label: severity as string,
-          value: numeric(alerts.counts?.[severity]) ?? 0,
+          value: numeric(alerts.counts?.[severity]),
           tone: severity === "CRITICAL" ? "red" : severity === "HIGH" ? "orange" : severity === "MEDIUM" ? "amber" : "green",
         }))
-        .filter((row) => row.value > 0)
+        // a severity the alerts read did not return is unmeasured, not zero
+        .filter((row): row is { key: string; label: string; tone: string; value: number } => row.value !== null && row.value > 0)
     : [];
 
   const inventoryKeys = ["hardware_devices", "network_assets", "libraries", "certificates", "processes"] as const;
@@ -451,19 +466,20 @@ export default function CommandCenter() {
 
         <Panel title="Open drift" sub="Persisted OPEN drift events by severity; all time">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {(["CRITICAL", "HIGH", "MEDIUM", "INFO"] as const).map((severity) => {
+            {DRIFT_LEVELS.map((severity) => {
               const value = stats ? count(openDrift[severity]) : null;
-              const max = stats ? Math.max(1, ...(["CRITICAL", "HIGH", "MEDIUM", "INFO"] as const).map((s) => count(openDrift[s]) ?? 0)) : 1;
+              const max = stats ? Math.max(1, ...DRIFT_LEVELS.map((s) => count(openDrift[s]) ?? 0)) : 1;
+              const color = DRIFT_VAR[DRIFT_TONE[severity]];
               return (
                 <div key={severity} className="spread">
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: 1, background: severity === "CRITICAL" ? "var(--red)" : severity === "HIGH" ? "var(--orange)" : severity === "MEDIUM" ? "var(--amber)" : "var(--slate)" }} />
+                    <span style={{ width: 7, height: 7, borderRadius: 1, background: color }} />
                     <span>{severity}</span>
                   </span>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flex: 1, justifyContent: "flex-end" }}>
                     {value !== null && (
                       <span style={{ width: 70, height: 5, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 1, overflow: "hidden" }}>
-                        <span style={{ display: "block", height: "100%", width: `${(value / max) * 100}%`, background: severity === "CRITICAL" ? "var(--red)" : severity === "HIGH" ? "var(--orange)" : severity === "MEDIUM" ? "var(--amber)" : "var(--slate)" }} />
+                        <span style={{ display: "block", height: "100%", width: `${(value / max) * 100}%`, background: color }} />
                       </span>
                     )}
                     <span className="mono" style={{ margin: 0, minWidth: 34, textAlign: "right" }}>{stats ? observed(value) : "Not observed"}</span>
