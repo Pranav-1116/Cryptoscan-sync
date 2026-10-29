@@ -538,6 +538,15 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(cbom.router, prefix=prefix)
     from api.routers import host_evidence, collection
     app.include_router(collection.router, prefix=prefix)
+    # Three routers existed with routes, tests and console callers but were never
+    # mounted, so `POST /collection/snapshots`, `/resource-monitoring` and
+    # `/traffic-control` answered 404 in the running API while their tests failed
+    # against the same client. Mounting them is the fix; the routes are read/propose
+    # only and keep their own dependencies.
+    from api.routers import collection_views, resource_monitoring, traffic_control
+    app.include_router(collection_views.router, prefix=prefix)
+    app.include_router(resource_monitoring.router, prefix=prefix)
+    app.include_router(traffic_control.router, prefix=prefix)
     from api.routers import oci_collection
     app.include_router(oci_collection.router, prefix=prefix)
     app.include_router(host_evidence.router, prefix=prefix)

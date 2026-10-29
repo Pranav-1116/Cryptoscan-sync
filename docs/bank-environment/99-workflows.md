@@ -29,11 +29,19 @@ lists.
 Two consequences follow, and they are why this document exists:
 
 * **An endpoint with no caller is not automatically a defect** — but it is a capability an
-  operator cannot use, and it is counted as such (574 of 1197 endpoints have a console
-  caller, i.e. 48.0%; 755 are referenced by a test, 63.1%).
+  operator cannot use, and it is counted as such (579 of 1223 endpoints have a console
+  caller, i.e. 47.3%; 762 are referenced by a test, 62.3%).
 * **A caller with no test is not evidence of anything.** Test references are counted, not
   judged: a route reached once by a smoke call counts the same as one with twenty
   behavioural tests.
+
+A worked example, measured while writing this document: three router modules —
+`POST/GET /collection/snapshots`, `/resource-monitoring` and `/traffic-control` — had routes,
+unit tests written against the real FastAPI client, and console callers. None of them had ever
+been added to `create_app`, so every request to them answered `404` and 51 tests failed. Parts
+1, 4 and 5 were present on paper while the route was absent from the running app. That is the
+failure mode this definition exists to catch, it is invisible to a file listing, and the fix
+was three `include_router` lines plus a full re-run.
 
 Every workflow below also carries a **refusal list**: the questions it is *not* allowed to
 answer, printed to the operator at the moment they would otherwise assume it does. That is
@@ -49,7 +57,7 @@ This is the current state of each, with the commit that landed it.
 |---|---|---|---|---|
 | 1 | **Content-addressed evidence** | **Built** `018f25b5` | `EVIDENCE I` ids: `"ev-" + sha256(json{evidence_type,target,layer,source,collector_name,facts}, sort_keys)[:16]`; `evidence show` / `evidence verify` read the record and recompute the address; duplicate observations collapse to one record | records whose id was *supplied* by a caller (not derived) report `not content-addressed` on verify — honest, but it means older/hand-written rows are outside the guarantee |
 | 2 | **`REMEDIATE` — the loop's break** | **Built** `e0f6a972` | the twin opens work from a real conflict, a coverage loss and a simulation blocker; each item's `proof` is fixed at open; `reconcile` closes `PROVEN` only by naming the observation and evidence id that closed it | a `HUMAN`-proof item can only be closed by a person's assertion; nothing in the product executes a fix |
-| 3 | **The assurance surface** | **Partial** — screens `f6704c51`, CLI `0d11f042` | 7 screens (5 new), 13 CLI read subcommands, 7 typed console callers; 13 of 61 endpoints have a console caller | the 48 remaining routes are almost all *writes* (`registers`, `relationships`, `samples/{id}/approve`, `signers`, `remediation-changes`, `remediation-tasks`) — each needs a form carrying a reason, an actor and an expected revision |
+| 3 | **The assurance surface** | **Partial** — screens `f6704c51`, CLI `0d11f042`, register creation `b979c344` | 7 screens, 13 CLI read subcommands, 15 of 61 endpoints with a console caller; `/assurance-coverage` now also *declares* a local-source register revision (role-gated, revision-checked, and labelled "no scan") | the 46 remaining routes are almost all *writes* (`relationships`, `samples/{id}/approve`, `signers`, `remediation-changes`, `remediation-tasks`, `launch/*`) — each needs a form carrying a reason, an actor and an expected revision |
 | 4 | **Signed manifests and bundles** | **Built** `e50c4a8c` | Ed25519 over canonical JSON of every member except `signature`; `release_manifest.py --sign-key`; `bundle export --sign-key` / `bundle verify --public-key`; `verify-installation` prints `MANIFEST_UNSIGNED` when nothing was signed | a signature proves origin and integrity, never authenticity: `VALID` requires a caller-supplied trusted key, and the document's own embedded key is never treated as evidence |
 
 **The order those four were built in matters.** Evidence addressing came first because a
@@ -197,8 +205,17 @@ cryptoscan <command>  →  source: <METHOD> <path> (HTTP n)  →  exit code
 | `2` | incomplete — file mismatch, missing signature, or a capability that cannot finish the job it was asked for |
 | `3` | refused: the capability does not exist, and the refusal names the closest real endpoints |
 
-Two behaviours are worth calling out because they are the difference between a client and a
-stub:
+Since `b979c344` the installed commands that used to open the administrator's local database
+(`scan`, `collect --submit`, `schedule`, `tick`, `coverage`, `boms`) go through the bank's API
+instead, and the transport itself is checked: a remote control plane must be HTTPS with
+certificate verification, plain HTTP is allowed only on loopback in an explicit
+development mode, and `--insecure` additionally needs a lab opt-in. A command that cannot
+express the operator's request refuses instead of submitting something adjacent to it —
+bare `scan`, `scan --manifest`, `scan --static/--runtime/--network` and `collect` without
+`--submit` are all refusals now.
+
+Two further behaviours are worth calling out because they are the difference between a client
+and a stub:
 
 * **A refusal names what does exist.** `scope diff` refuses because there is no
   scope-to-scope diff route, and prints `estate/evidence/twin/compare` and
@@ -206,7 +223,10 @@ stub:
   JSON exports and calling it an authorisation comparison.
 * **A wired command says where the work happened.** `ci scan --path /srv/src` states that
   the path is resolved **on the control plane** — the most likely misunderstanding about
-  that command is that it scanned your laptop. `explain finding` returns `NOT_JOINABLE`
+  that command is that it scanned your laptop. `scan --path` does the same and goes further:
+  it asks `POST /scans/preflight` for admission first, and refuses to submit unless the
+  preview names the same target, creates no job, performs no collection and carries an
+  approval id and policy revision. `explain finding` returns `NOT_JOINABLE`
   because a finding carries a file path and the twin is keyed by asset id, and it says so
   instead of guessing an asset from a path.
 
@@ -250,7 +270,7 @@ The remaining work is not "more endpoints". It is the missing half of specific l
 
 | Missing | Why it is a workflow gap, not a feature request |
 |---|---|
-| The 48 assurance **write** routes with no screen | each is a workflow step a human performs (approve, withdraw, reject, qualify, sign); without a form, the workflow can only be completed with `curl` |
+| The 46 assurance routes with no screen (almost all writes) | each is a workflow step a human performs (approve, withdraw, reject, qualify, sign); without a form, the workflow can only be completed with `curl`. Register declaration now has one; review, signer and remediation writes do not |
 | `RE_DISCOVER` attribution | without it, a fix cannot be shown to be a fix; the estate moves and nobody can say why |
 | A `MONITOR` schedule that the product creates | monitoring today is a schedule an operator must create and keep alive |
 | Scope revision diff | the platform enforces an authorised scope but cannot diff two revisions of it |
@@ -267,7 +287,7 @@ anyone quoting these numbers should say so.
 ## 8. How to check any claim above
 
 ```bash
-# the measured surface: 1197 endpoints, 574 with a console caller, 755 test-referenced
+# the measured surface: 1223 endpoints, 579 with a console caller, 762 test-referenced
 python scripts/audit_build_status.py
 
 # the seven assurance workflows, as the CLI sees them

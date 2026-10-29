@@ -141,12 +141,17 @@ CLI  →  API  →  Job Manager  →  Collector Scheduler
                              CBOM · SBOM · HBOM · NBOM · VBOM · TechBOM
 ```
 
-**Implemented, with one documented exception.** The remote CLI collects nothing: it has no
-collector import, no host access and no credential for one. The exception is the older
-in-process commands (`collect`, `tick`, `serve`) which open the local database and, for
-`collect`, negotiate TLS from the CLI's own process. That path predates this architecture, is
-documented in [97 §9](97-operator-cli.md), and is the next thing to convert into a submission.
-It is not hidden, and no remote command shares that code.
+**Implemented.** The installed CLI collects nothing: it has no collector import, no host
+access and no credential for one. The commands that used to open the administrator's local
+database — `scan`, `collect --submit`, `schedule`, `tick`, `coverage`, `boms` — now go through
+the bank's own API, and the in-process handlers are reachable only to injected test/service
+callers. Bare `collect` (no `--submit`) is refused in the installed CLI for the same reason:
+negotiating TLS from an operator's terminal puts collection back on the jump host.
+
+`serve` is the bank-server daemon entry point, not a workstation command, and it refuses
+without an explicit PostgreSQL. The remaining divergence is narrower and is listed in
+[97 §9](97-operator-cli.md): some older `twin` subcommands still need the server-side
+database contract before they can be called remotely.
 
 ---
 
@@ -173,8 +178,10 @@ cryptoscan target show <id>
 cryptoscan target authorize <id> [--reason …]
 cryptoscan target revoke    <id> [--reason …]
 
-cryptoscan scan [--system ID | --target ID --target-revision N | --dry-run | --manifest f]
-cryptoscan scan --static | --runtime | --network
+cryptoscan scan --path ABS [--dry-run]        # source path resolved ON the control plane
+cryptoscan scan --system ID
+cryptoscan scan --target ID --target-revision N
+# exactly one of --path/--target/--system; a bare `scan` and `--manifest` are refused
 
 cryptoscan jobs list [--limit N]
 cryptoscan jobs show <job-id>
@@ -205,7 +212,17 @@ cryptoscan bundle export --out DIR [--encrypt --passphrase-stdin]
 cryptoscan bundle verify DIR
 cryptoscan bundle import bundle.cse --into DIR
 
-cryptoscan collect --submit --server URL [--system ID | --target ID --target-revision N] [--wait]
+cryptoscan collect --submit [--system ID | --target ID --target-revision N] [--wait]
+
+cryptoscan schedule list | add --name N --every 6h --plane STATIC | enable ID | disable ID
+cryptoscan tick [--worker W] [--lease-seconds S] [--limit N]
+cryptoscan coverage
+cryptoscan boms
+
+cryptoscan collector list | show <id>
+cryptoscan assurance records --kind K | history K ID | coverage REG | trace APP \
+                          | workbook SAMPLE | adapter ID | observations A E | redis OBJ \
+                          | decisions | launch | engagement ID | pilot ID | collection JOB
 
 cryptoscan scope show
 
@@ -360,13 +377,19 @@ export exits `2` — a bundle that quietly omitted a BOM would read as a complet
 
 What it does not do, stated in every bundle's own `limits`: it carries stored evidence and
 projections, **not** the collectors or their raw output; the manifest hashes prove the files
-match the manifest, **not** who produced them (bundles are unsigned); encryption is
+match the manifest, **not** who produced them, and an unsigned bundle says `UNSIGNED` rather
+than implying provenance; encryption is
 AES-256-GCM under a scrypt-derived key from one shared passphrase — confidentiality only, no
 forward secrecy; and importing a bundle into another installation does not make its evidence
 yours, because records keep the estate they were observed under.
 
-Still roadmap: a signed bundle (an Ed25519 release/operator key over the manifest), incremental
-bundles, a bundle that carries raw collector output, and offline licence/upgrade verification.
+Signing is implemented: `bundle export --sign-key key.pem` signs the canonical JSON of the
+manifest with no `signature` member, and `bundle verify --public-key trusted.pem` recomputes it.
+`VALID` requires a key the caller supplied and trusts; the key embedded in the document is
+never treated as evidence, and a signature by some other key is `SIGNATURE_KEY_MISMATCH`.
+
+Still roadmap: incremental bundles, a bundle that carries raw collector output, and offline
+licence/upgrade verification.
 
 ### Component 8 — signed packages
 
@@ -405,12 +428,13 @@ SBOM and reproducible-build provenance attached to the release remain roadmap.
 |---|---|---|
 | `version`, `status`, `doctor`, `login`, `logout` | **Implemented** | §6 for `doctor`; `status` reads `/healthz`, `/readiness/summary`, `/auth/me` |
 | `target list/show/register/authorize/revoke` | **Implemented** | `register` refuses without the authorisation fields |
-| `scan` | **Implemented** (no `--system` → estate discovery) | |
-| `scan --system` | **Implemented** | `POST /systems/{id}/scan` |
-| `scan --target` | **Implemented** | `POST /collection/jobs`; requires `--target-revision` |
-| `scan --static/--runtime/--network` | **Implemented** | mapped to `planes` in the request; sent, not assumed |
-| `scan --dry-run` | **Implemented** | `GET /estate/evidence/plan`; no write |
-| `scan --manifest` | **Implemented (subset)** | `scope.name` + `collectors`; everything else is printed as NOT sent |
+| `scan` (no selector, or a selector plus estate-wide flags) | **Refused** | a generic estate projection is not a queued job; the refusal says so rather than submitting one |
+| `scan --path ABS` | **Implemented** | `POST /scans/preflight`, then `POST /scans/trigger`; the path is resolved **on the control plane**, submits only when the preview is `ADMITTED`, and requires a durable queued job receipt |
+| `scan --path --dry-run` | **Implemented** | `POST /scans/preflight` only — read-only admission preview, no job, no collection; exits 2 when not `ADMITTED` |
+| `scan --system` | **Implemented** | `POST /systems/{id}/scan`; a synchronous report is not accepted as a queued job |
+| `scan --target` | **Implemented** | `POST /collection/jobs`; requires `--target-revision`; watch with `jobs watch --collection` |
+| `scan --static/--runtime/--network` | **Refused on remote selectors** | these are collector flags, and no requested plane is silently ignored |
+| `scan --manifest` | **Refused** | no versioned manifest admission contract exists; see §8 |
 | `jobs`, `jobs show`, `jobs cancel` | **Implemented** | `cancel` = `POST /collection/jobs/{id}/cancel` |
 | `jobs watch` | **Implemented** | terminal states only; timeout exits 2; `--coverage` prints the platform's per-surface coverage |
 | `jobs retry` | **Implemented** | `POST /jobs/{id}/retry`; prints the 409 reasons the server can refuse with |
@@ -431,7 +455,11 @@ SBOM and reproducible-build provenance attached to the release remain roadmap.
 | `ci gate --scan <id>` | **Implemented** | `GET /scans/{id}/gate`, or `POST /ci/gate` with `--record`; exit 0 PASS / 2 WARN (`--fail-on warn`) / 1 FAIL; `--sarif` writes the report |
 | `collector list / show` | **Implemented** | `GET /collection/collectors`; the catalog is the build's own declaration, and most entries are *not* production-qualified |
 | `ci scan --path <dir>` | **Implemented, on the control plane** | `POST /devsecops/sbom/scan {kind: source}`; the path is resolved **on the server**, not on the operator's host, and `--gate` says a scan id is still needed |
-| `bundle export/verify/import` | **Implemented** | encrypted air-gap transfer; see §4 Component 7 |
+| `bundle export/verify/import` | **Implemented** | encrypted air-gap transfer; `export --sign-key` and `verify --public-key` share the release verifier; see §4 Components 7–8 |
+| `schedule list/add/enable/disable` | **Implemented** | `/estate/evidence/schedules`; `remove` is refused because run receipts must stay retained |
+| `tick` | **Implemented** | `POST /estate/evidence/tick`; a run that is not `OK`/`COMPLETE` exits 2 |
+| `coverage` / `boms` | **Implemented** | `GET /estate/evidence/coverage`, `/boms`; an unmeasured coverage state exits 2 |
+| `assurance <13 reads>` | **Implemented** | the seven assurance workflows, read-only ([99 §3](99-workflows.md)); the *writes* of those workflows stay in the console, where a reason, an actor and an expected revision have a form |
 
 Exit codes: `0` ok · `1` error or 4xx · `2` incomplete (5xx, coverage incomplete, watch
 timeout, manifest mismatch, missing `blockers`) · `3` refused (capability absent, or
@@ -475,6 +503,8 @@ beneath it says what it did not.
 
 ## 7. `dry-run`
 
+The proposal's mock-up, kept here as the shape it asked for:
+
 ```bash
 $ cryptoscan scan --system payments --dry-run
 DRY RUN — nothing was collected and nothing was written
@@ -488,16 +518,29 @@ the plan states what the platform is configured to collect; it is not a predicti
 run will observe.
 ```
 
-**Implemented** as the platform's own plan (`GET /estate/evidence/plan`), printed verbatim.
-What the proposal's mock-up shows that this does **not** do:
+**Implemented as an admission preview, not a plan read.** `cryptoscan scan --path ABS
+--dry-run` posts the exact path to `POST /api/v1/scans/preflight` and prints the server's
+answer:
 
-- it does not estimate target counts or collector counts that the endpoint does not return;
-- it does not print a permissions table derived from `allowed_operations` per target. That
-  information lives on the target (`cryptoscan target show <id>`), and a second copy computed
-  by the CLI could disagree with the authorisation the server will enforce.
+```text
+$ cryptoscan scan --path /srv/builds/payments --dry-run
+{ … decision: ADMITTED, adapter: local-source/v1, job_created: false,
+    collection_performed: false, approval_id: …, policy_revision: 3 … }
 
-Both are roadmap items, and both need server-side support to be honest — a client-side
-estimate would be a guess wearing a table.
+source: POST /api/v1/scans/preflight (HTTP 200)
+```
+
+The exit code is the point. The preview is **ADMITTED** only when it names the same target
+the command asked about, the `local-source/v1` adapter, `job_created: false`,
+`collection_performed: false`, a non-empty approval id and a positive policy revision. Any
+other answer exits `2` and says nothing was submitted. A preview that cannot prove those
+things is not a preview of the thing being submitted.
+
+What it does **not** do:
+
+- it does not estimate target or collector counts the endpoint does not return;
+- it does not print a permissions table derived from `allowed_operations`, because a
+  client-side copy of the authorisation could disagree with the one the server enforces.
 
 ---
 
@@ -509,24 +552,28 @@ scope:
 collectors:
   static: true
   runtime: true
-  network: true
+network:
+  cidrs: [10.20.0.0/16]
 policy:
   profile: banking
 ```
 
 ```bash
 $ cryptoscan scan --manifest payments.yaml
-scan: manifest key 'policy' has no field in the estate scan request and was NOT sent — the run
-will not honour it
-submitted — the CLI does not wait for collection unless asked
-job           job-1
+scan --manifest: REFUSED — manifest execution is not wired to exact target admission
+  no manifest field may be silently dropped or treated as permission; use an explicit approved target
 ```
 
-**Implemented subset:** `scope.name` → `scope`, `collectors` → `planes`. **Dropped loudly:**
-anything else, including `targets`, `policy`, `cidrs`. This is deliberate: silently ignoring
-`policy.profile` would let an operator believe a banking policy was applied to a run that
-never saw it, which is precisely the failure this product exists to avoid. JSON needs nothing;
-YAML needs PyYAML, and the command says so when it is absent.
+**Refused, and the file is not even read.** The previous version mapped `scope.name` →
+`scope` and `collectors` → `planes`, printed the remaining keys as *NOT sent*, and submitted a
+generic estate projection. Printing what was dropped is better than hiding it, but it is still
+the wrong shape: a manifest that names targets, a policy profile and a CIDR range expresses an
+**authorisation**, and a scan that runs without it is not the scan the operator described.
+
+What would make this implementable is server work, not CLI work: a versioned, signed manifest
+admission endpoint that returns a collector-plan receipt naming exactly what will run against
+exactly which targets. Until that exists, `scan --path`, `scan --target` and `scan --system`
+are the honest surface, and the manifest path refuses.
 
 ---
 
@@ -854,8 +901,9 @@ approximating an answer.
 
 | File | Tests | What is pinned |
 |---|---|---|
-| `services/api/tests/unit/test_cli_control_plane.py` | 41 | unconfigured client refuses before a connection; `--dry-run` issues only a GET; `scan --target` without a revision never reaches the server; the four refusals exit 3 with the closest route; 401 → 1 with the login hint; 5xx → 2 and "do not treat it as an empty result"; `doctor` reports `NOT_OBSERVED` for a silent probe; `twin status` never opens a local database; the session token is never echoed and is stored `0600`; both credentials are sent when configured |
-| `services/api/tests/unit/test_release_manifest.py` | 4 | generator refuses an empty manifest; `verify-installation` accepts generator output; a tampered file is a mismatch |
+| `services/api/tests/unit/test_cli_control_plane.py` | 104 | unconfigured client refuses before a connection; `--dry-run` posts only a preflight; `scan --target` without a revision never reaches the server; refusals exit 3 with the closest route; 401 → 1 with the login hint; 5xx → 2 and "do not treat it as an empty result"; `doctor` reports `NOT_OBSERVED` for a silent probe; `twin status` never opens a local database; the session token is never echoed and is stored `0600`; both credentials are sent when configured; the assurance reads print what they read and refuse the three wrong readings |
+| `services/api/tests/unit/test_cli_onprem_boundary.py` | 1 | the installed CLI never opens the local database: the bank-API commands are the only path |
+| `services/api/tests/unit/test_release_manifest.py` | 9 | generator refuses an empty manifest; `verify-installation` accepts generator output; a tampered file is a mismatch; a signature is `VALID` only against a caller-supplied key |
 | `test_estate_twin_cli.py`, `test_estate_kubernetes_cli.py`, `test_network_collect_cli.py` | 55 | the pre-existing in-process commands still behave after the merge |
 
 Run them with the repository's PYTHONPATH (which includes `scripts/` for the manifest test):
