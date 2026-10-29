@@ -1,74 +1,109 @@
-"""The bundle ingestion gate — what a bank-side collector's transfer must prove (spec 100).
+"""Live observation intake: the estate is observed continuously, and only changes are stored.
 
-The estate engine (spec 93) projects six BOMs from one evidence graph. This router is
-how that evidence arrives from the bank's side: the collector packages evidence, signs
-the manifest, and the platform verifies before anything is normalised.
+This is the agent-facing half of the live architecture. It exists because copying an entire
+estate every few minutes costs the bank storage and costs the platform the one thing it
+sells: a twin that is current. The rule is one baseline, then changes:
 
-Two routes, and they are deliberately small:
+1. the agent normalises what it sees and computes a **state hash** of that normalised state;
+2. it posts the observation (optionally signed) with the hash it computed;
+3. this router builds the same graph the projection engine builds, computes the platform's
+   own hash, and compares it with the stored twin's;
+4. **equal** → nothing is stored except a single heartbeat row. No run, no evidence, no BOM
+   revision. The response says ``NO_CHANGE`` and names the projection it compared against;
+5. **different** → the observation goes through the estate engine's own ``run_discovery``, so
+   a transferred observation is stored exactly like a collected one: same graph, same
+   evidence store, same change feed, same six projections.
 
-* ``GET /ingestion/bundles/schema`` — the format, its member layout, its reason codes and
-  its limits, so a collector does not have to guess what the receiver accepts;
-* ``POST /ingestion/bundles/verify`` — verify one bundle and report exactly what it proved.
+Three things this file refuses to do:
 
-Three things this router refuses to do:
-
-* **it does not accept a bundle nobody can vouch for.** ``accepted`` is true only when the
-  manifest signature verifies against a key this deployment was configured to trust.
-  Without such a key the answer is ``SIGNATURE_UNCHECKED`` with the deployment fact stated,
-  not a shrug and an ingest;
-* **it does not report a transport success as an ingestion.** The verdict is the module's
-  verdict; the route adds no optimism, and ``projection`` says ``NOT_ATTEMPTED`` because
-  normalisation, identity resolution and the six projections are a later stage that this
-  build does not yet run from a bundle;
-* **it does not let a large body through quietly.** A transfer above the configured ceiling
-  is refused with ``BUNDLE_TOO_LARGE``; chunked upload is not implemented and saying so is
-  better than a truncated ingest.
-
-The trusted collector key is deployment configuration, not a request field: a caller who
-could nominate the key to trust could authorise their own bundle.
+* **it does not call a 200 an ingest.** ``state`` comes from the comparison, ``stored`` says
+  whether anything was written, and ``projection_id`` names the evidence state a later BOM
+  download will project;
+* **it does not hide an unauthenticated observation.** The verdict
+  (``VALID``/``UNSIGNED``/``SIGNED_UNVERIFIED``/``KEY_MISMATCH``/``INVALID``) is returned and
+  recorded with the run. A deployment can require signatures
+  (``CRYPTOSCAN_REQUIRE_SIGNED_OBSERVATIONS=1``), in which case anything but ``VALID`` is
+  refused; the default says what it accepted instead of implying authenticity;
+* **it does not treat a silent agent as a quiet estate.** ``/live/status`` computes the
+  connection state from the age of the last observation. No observation inside the expected
+  interval is ``STALE``, and no observation at all is ``NEVER_CONNECTED`` — never ``LIVE``.
 """
 
 from __future__ import annotations
 
-import base64
 import os
+from datetime import datetime, time, timezone
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user
-from shared_models import evidence_bundle, release_signature
+from api import estate_change_feed
+from api.dependencies import get_current_user, get_db_session
+from api.routers import estate_graph
+from db.repositories.scan_run_repository import ScanRunRepository
+from db.tenancy import current_tenant
+from shared_models import live_estate, release_signature
+from shared_models.estate_graph import build_graph
 
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
-#: bytes a single verification request may carry. Chunked transfer is not built.
-MAX_BUNDLE_BYTES = int(os.getenv("CRYPTOSCAN_BUNDLE_MAX_BYTES", str(64 * 1024 * 1024)))
+#: the twin, the change feed and the BOM projections all read this one run kind, so a live
+#: observation is not a second class of estate state
+LIVE_RUN_KIND = estate_graph.RUN_KIND
 
-#: where this deployment's trusted collector keys live: base64 Ed25519 public keys or
-#: paths to PEM files, separated by the platform path separator or a comma.
-TRUST_KEY_ENV = "CRYPTOSCAN_BUNDLE_TRUST_KEYS"
+#: one pruned row per tenant: proof the agent reported, without storing the estate again
+HEARTBEAT_KIND = "ingestion-heartbeat"
+
+#: where this deployment's trusted collector keys live (PEM path, base64 key, comma/:_sep list)
+TRUST_KEY_ENV = "CRYPTOSCAN_COLLECTOR_TRUST_KEYS"
+
+#: "1" turns "authenticity is reported" into "authenticity is required"
+REQUIRE_SIGNATURES_ENV = "CRYPTOSCAN_REQUIRE_SIGNED_OBSERVATIONS"
+
+#: how often an agent is expected to report; drives the LIVE/STALE boundary
+INTERVAL_ENV = "CRYPTOSCAN_OBSERVATION_INTERVAL_SECONDS"
+
+OBSERVATION_SCHEMA = "cryptoscan.live-observation/1"
+SCHEMA = "cryptoscan.live-ingest/1"
 
 NO_TRUSTED_KEY = "NO_TRUSTED_COLLECTOR_KEY"
-BAD_MEMBER_ENCODING = "MEMBER_NOT_BASE64"
-BUNDLE_TOO_LARGE = "BUNDLE_TOO_LARGE"
 
 
-class BundleVerifyRequest(BaseModel):
-    """A bundle in one piece: the signed manifest and its members, base64 per member."""
+class LiveObservationRequest(BaseModel):
+    """One observation of the estate, as an agent sees it right now."""
 
-    manifest: dict = Field(description="the manifest exactly as the collector signed it")
-    members: dict[str, str] = Field(
-        default_factory=dict,
-        description="member path -> base64 bytes; every member the manifest lists must be here",
+    assets: list[dict[str, Any]] = Field(default_factory=list, max_length=20000)
+    evidence: list[dict[str, Any]] = Field(default_factory=list, max_length=100000)
+    relationships: list[dict[str, Any]] = Field(default_factory=list, max_length=100000)
+    collectors: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    coverage: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
+    estate: str = Field(default="default", max_length=160)
+    scope: str | None = Field(default=None, max_length=160)
+    inventory_id: str = Field(default="default", max_length=160)
+    observed_at: str | None = Field(default=None, max_length=64)
+    state_hash: str | None = Field(
+        default=None,
+        max_length=128,
+        description="the agent's own hash of its normalised state; compared, never trusted",
     )
+    signature: dict[str, Any] | None = Field(
+        default=None,
+        description="an Ed25519 signature block over this observation (see /ingestion/live/status)",
+    )
+    include_boms: bool = Field(default=True)
+    persist: bool = Field(default=True)
+
+
+# --------------------------------------------------------------------------- #
+# deployment configuration (never request fields)
+# --------------------------------------------------------------------------- #
 
 
 def trusted_keys() -> list:
-    """Load the keys this deployment trusts for collector bundles.
-
-    An unreadable entry is skipped rather than silently trusted: a typo in the key path
-    must degrade to "no key configured", which refuses bundles, not to "any key will do".
-    """
+    """Keys this deployment trusts for observations. A broken entry is skipped, not trusted."""
     raw = os.getenv(TRUST_KEY_ENV, "").strip()
     if not raw:
         return []
@@ -79,85 +114,461 @@ def trusted_keys() -> list:
             continue
         try:
             keys.append(release_signature.load_public_key(entry))
-        except Exception:  # noqa: BLE001 — a broken trust entry is skipped, not trusted
+        except Exception:  # noqa: BLE001 — a typo must degrade to "no key", not to "any key"
             continue
     return keys
 
 
-@router.get("/bundles/schema")
-def bundle_schema(_user: str = Depends(get_current_user)) -> dict:
-    """The bundle format as this build accepts it, with its limits stated."""
+def signatures_required() -> bool:
+    return str(os.getenv(REQUIRE_SIGNATURES_ENV, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def interval_seconds() -> int:
+    try:
+        return max(30, int(os.getenv(INTERVAL_ENV, str(live_estate.DEFAULT_INTERVAL_SECONDS))))
+    except ValueError:
+        return live_estate.DEFAULT_INTERVAL_SECONDS
+
+
+def signed_document(body: LiveObservationRequest) -> dict[str, Any]:
+    """The exact document a signature covers — the observation, without the signature."""
     return {
-        "schema": evidence_bundle.BUNDLE_SCHEMA,
-        "signature_schema": release_signature.SCHEMA,
-        "member_kinds": list(evidence_bundle.MEMBER_KINDS),
-        "bundle_files": list(evidence_bundle.BUNDLE_FILES),
-        "coverage_keys": list(evidence_bundle.COVERAGE_KEYS),
-        "states": [
-            evidence_bundle.VERIFIED,
-            evidence_bundle.UNSIGNED,
-            evidence_bundle.SIGNATURE_UNCHECKED,
-            evidence_bundle.REJECTED,
-        ],
-        "reason_codes": sorted(
-            code
-            for name, code in vars(evidence_bundle).items()
-            if name.isupper() and isinstance(code, str) and name not in {"BUNDLE_SCHEMA", "TRUST_KEY_ENV"}
-        ),
-        "trust": {
-            "configured": bool(trusted_keys()),
-            "source": f"deployment configuration ({TRUST_KEY_ENV}); a request cannot nominate its own key",
-        },
-        "max_request_bytes": MAX_BUNDLE_BYTES,
-        "projection": "NOT_ATTEMPTED",
-        "limits": evidence_bundle.LIMITS,
+        "schema": OBSERVATION_SCHEMA,
+        "estate": body.estate,
+        "scope": body.scope,
+        "inventory_id": body.inventory_id,
+        "observed_at": body.observed_at,
+        "assets": body.assets,
+        "evidence": body.evidence,
+        "relationships": body.relationships,
+        "collectors": body.collectors,
+        "coverage": body.coverage,
     }
 
 
-@router.post("/bundles/verify")
-def verify_bundle(body: BundleVerifyRequest, _user: str = Depends(get_current_user)) -> dict:
-    """Verify one bundle. ``accepted`` is true only for a key-verified, intact bundle."""
-    total = 0
-    members: dict[str, bytes] = {}
-    for path, encoded in (body.members or {}).items():
-        try:
-            data = base64.b64decode(encoded, validate=True)
-        except Exception:  # noqa: BLE001 — a bad encoding is a verdict, not a 500
-            raise HTTPException(422, f"{BAD_MEMBER_ENCODING}: {path} is not base64")
-        total += len(data)
-        if total > MAX_BUNDLE_BYTES:
-            raise HTTPException(413, f"{BUNDLE_TOO_LARGE}: this transfer exceeds {MAX_BUNDLE_BYTES} bytes")
-        members[str(path)] = data
-
+def _authenticity(document: dict[str, Any], signature: dict[str, Any] | None) -> dict[str, Any]:
     keys = trusted_keys()
-    result = evidence_bundle.verify_bundle(body.manifest, members, trusted_key=keys[0] if keys else None)
-
-    deployment: list[str] = []
+    trusted = keys[0] if keys else None
+    verdict = release_signature.verify_document(
+        {**document, "signature": signature} if signature else document,
+        trusted_key=trusted,
+    )
+    out = {
+        "schema": "cryptoscan.authenticity/1",
+        "status": verdict.get("status"),
+        "proves": verdict.get("proves"),
+        "reason": verdict.get("reason"),
+        "meaning": verdict.get("meaning"),
+        "key_id": verdict.get("key_id"),
+        "trust_keys_configured": len(keys),
+        "signatures_required": signatures_required(),
+        "store_authorised_for_authenticity": verdict.get("status") == release_signature.VALID,
+    }
+    findings: list[str] = []
     if not keys:
-        deployment.append(
+        findings.append(
             f"{NO_TRUSTED_KEY}: no collector key is configured on this deployment "
-            f"({TRUST_KEY_ENV}), so no bundle can reach {evidence_bundle.VERIFIED} here"
+            f"({TRUST_KEY_ENV}), so no observation can reach {release_signature.VALID} here"
         )
     if len(keys) > 1:
-        deployment.append(
-            f"{len(keys)} collector keys are configured; only the first was used for this "
-            "verdict, so a bundle signed by another trusted key reports a key mismatch"
+        findings.append(
+            f"{len(keys)} collector keys are configured; only the first is used for this verdict"
+        )
+    if verdict.get("status") != release_signature.VALID:
+        findings.append(
+            "the observation was not authenticated: it is stored as evidence the platform saw, "
+            "not as evidence a named collector produced"
+        )
+    out["deployment_findings"] = findings
+    return out
+
+
+# --------------------------------------------------------------------------- #
+# heartbeat: one row per tenant, so a 24/7 agent does not grow the table
+# --------------------------------------------------------------------------- #
+
+
+def _write_heartbeat(
+    db: Session,
+    *,
+    state: str,
+    projection_id: str,
+    counts: dict[str, Any],
+    authenticity: dict[str, Any],
+    observed_at: str | None,
+) -> dict[str, Any]:
+    repo = ScanRunRepository(db)
+    tenant = current_tenant()
+    for row in repo.list_runs(limit=50, target_kind=HEARTBEAT_KIND, owner=tenant):
+        db.delete(row)
+    row = repo.create_run(
+        {
+            "heartbeat": {
+                "state": state,
+                "projection_id": projection_id,
+                "counts": counts,
+                "observed_at": observed_at,
+                "authenticity": authenticity.get("status"),
+                "recorded_at": datetime.now(timezone.utc).isoformat(),
+            }
+        },
+        target_kind=HEARTBEAT_KIND,
+    )
+    db.commit()
+    return {
+        "run_id": row.id,
+        "recorded_at": str(getattr(row, "created_at", "") or ""),
+        "state": state,
+        "stores_estate": False,
+    }
+
+
+def _last_observation(db: Session) -> Any:
+    """Newest sign of life: a heartbeat, else a stored run. Never invented."""
+    repo = ScanRunRepository(db)
+    tenant = current_tenant()
+    beats = repo.list_runs(limit=1, target_kind=HEARTBEAT_KIND, owner=tenant)
+    runs = repo.list_runs(limit=1, target_kind=LIVE_RUN_KIND, owner=tenant)
+    candidates = [row for row in (beats[0] if beats else None, runs[0] if runs else None) if row is not None]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda row: _aware(getattr(row, "created_at", None)) or datetime.min.replace(tzinfo=timezone.utc))
+
+
+# --------------------------------------------------------------------------- #
+# push an observation
+# --------------------------------------------------------------------------- #
+
+
+@router.post("/observations")
+def push_observation(
+    body: LiveObservationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> JSONResponse:
+    """Store this observation only if the estate changed, and say which one happened."""
+    document = signed_document(body)
+    authenticity = _authenticity(document, body.signature)
+    if signatures_required() and authenticity["status"] != release_signature.VALID:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "observation_not_authentic",
+                "authenticity": authenticity,
+                "reason": (
+                    "this deployment requires a signed observation from a trusted collector key; "
+                    "nothing was stored"
+                ),
+            },
         )
 
-    return {
-        **result,
-        "received": {
-            "members": len(members),
-            "bytes": total,
-            "manifest_member_count": result.get("member_count"),
+    try:
+        graph = build_graph(
+            {
+                "estate": body.estate,
+                "scope": body.scope,
+                "assets": body.assets,
+                "evidence": body.evidence,
+                "relationships": body.relationships,
+                "collectors": body.collectors,
+                "coverage": body.coverage,
+            }
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "observation_rejected",
+                "reason": str(exc),
+                "note": (
+                    "evidence must target a declared asset, and a relationship needs a basis plus "
+                    "evidence; an unsupported edge is refused rather than assumed"
+                ),
+                "stored": False,
+            },
+        ) from exc
+
+    projection_id = graph.fingerprint()
+    repo = ScanRunRepository(db)
+    previous = repo.list_runs(limit=1, target_kind=LIVE_RUN_KIND, owner=current_tenant())
+    warnings: list[str] = []
+    previous_id: str | None = None
+    if previous:
+        try:
+            previous_id = estate_graph._graph_from_run(previous[0]).fingerprint()
+        except Exception as exc:  # noqa: BLE001 — an unreadable baseline is stated, not guessed
+            warnings.append(
+                f"PREVIOUS_TWIN_UNREADABLE: the stored observation {previous[0].id} could not be "
+                f"rebuilt ({type(exc).__name__}: {exc}), so this observation is stored as a new baseline"
+            )
+
+    comparison = live_estate.compare_state(previous_id, projection_id)
+    state_hash = live_estate.state_hash_report(projection_id, body.state_hash)
+    counts = {
+        "assets": len(body.assets),
+        "evidence": len(body.evidence),
+        "relationships": len(body.relationships),
+        "collectors": len(body.collectors),
+        "coverage_rows": len(body.coverage),
+    }
+
+    # -- no change: keep the connection, not the estate ---------------------- #
+    if not comparison["store"]:
+        heartbeat = (
+            _write_heartbeat(
+                db,
+                state=comparison["state"],
+                projection_id=projection_id,
+                counts=counts,
+                authenticity=authenticity,
+                observed_at=body.observed_at,
+            )
+            if body.persist
+            else None
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "schema": SCHEMA,
+                "state": comparison["state"],
+                "stored": False,
+                "run_id": None,
+                "comparison": comparison,
+                "state_hash": state_hash,
+                "authenticity": authenticity,
+                "projection_id": projection_id,
+                "counts": counts,
+                "heartbeat": heartbeat,
+                "warnings": warnings,
+                "note": (
+                    "the normalised state equals the stored twin, so no evidence, run or BOM "
+                    "revision was written; the heartbeat records that the agent reported"
+                ),
+                "limits": live_estate.LIMITS,
+            },
+        )
+
+    # -- changed: store the observation through the estate engine ------------ #
+    request = estate_graph.EstateDiscoverRequest(
+        estate=body.estate,
+        scope=body.scope,
+        inventory_id=body.inventory_id,
+        assets=body.assets,
+        evidence=body.evidence,
+        relationships=body.relationships,
+        collectors=body.collectors,
+        coverage=body.coverage,
+        include_boms=body.include_boms,
+        persist=body.persist,
+    )
+    result = estate_graph.run_discovery(db, user, request, graph=graph)
+    detection = result.get("detection") or {}
+    impact = live_estate.bom_impact(detection.get("changes") or [])
+    heartbeat = (
+        _write_heartbeat(
+            db,
+            state=comparison["state"],
+            projection_id=projection_id,
+            counts=counts,
+            authenticity=authenticity,
+            observed_at=body.observed_at,
+        )
+        if body.persist
+        else None
+    )
+    return JSONResponse(
+        status_code=201,
+        content={
+            "schema": SCHEMA,
+            "state": comparison["state"],
+            "stored": body.persist,
+            "comparison": comparison,
+            "state_hash": state_hash,
+            "authenticity": authenticity,
+            "projection_id": projection_id,
+            "run_id": result.get("run_id"),
+            "counts": counts,
+            "coverage": result.get("coverage"),
+            "unknown": result.get("unknown"),
+            "detection": detection or None,
+            "bom_impact": impact,
+            "bom_counts": result.get("bom_counts"),
+            "evidence_store": result.get("evidence_store"),
+            "boms": result.get("boms") if body.include_boms else None,
+            "heartbeat": heartbeat,
+            "warnings": warnings,
+            "note": (
+                "a stored change: the twin, the evidence store and the change feed advanced "
+                "together, and the projections listed in bom_impact are the ones a download will "
+                "render from this projection_id"
+            ),
+            "limits": live_estate.LIMITS,
         },
-        "trusted_keys_configured": len(keys),
-        "deployment_findings": deployment,
-        "projection": {
-            "state": "NOT_ATTEMPTED",
-            "reason": (
-                "verification is a gate, not an ingest: this build does not yet normalise a "
-                "bundle, resolve identities or project the six BOMs from it"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# read the live state
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/observations")
+def list_observations(
+    limit: int = Query(default=20, ge=1, le=200),
+    _user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Stored observations, newest first — the ones that carried a change.
+
+    A quiet estate produces no rows here. That is the point of live mode, and it is why the
+    connection state below is measured from the heartbeat instead of from this list.
+    """
+    rows = ScanRunRepository(db).list_runs(limit=limit, target_kind=LIVE_RUN_KIND, owner=current_tenant())
+    observations = []
+    for row in rows:
+        result = row.result or {}
+        summary = result.get("estate_summary") or {}
+        observations.append(
+            {
+                "run_id": row.id,
+                "recorded_at": str(getattr(row, "created_at", "") or ""),
+                "estate": (result.get("estate_discovery") or {}).get("estate"),
+                "scope": (result.get("estate_discovery") or {}).get("scope"),
+                "projection_id": summary.get("projection_id"),
+                "assets": summary.get("assets"),
+                "evidence": summary.get("evidence"),
+                "relationships": summary.get("relationships"),
+            }
+        )
+    return {
+        "schema": SCHEMA,
+        "count": len(observations),
+        "observations": observations,
+        "note": (
+            "only observations that changed the estate are stored; an unchanged observation "
+            "produces a heartbeat, not a row"
+        ),
+    }
+
+
+@router.get("/live/status")
+def live_status(
+    _user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Is this estate live, what is the twin, and what can be downloaded right now?"""
+    repo = ScanRunRepository(db)
+    tenant = current_tenant()
+    last = _last_observation(db)
+    connection = live_estate.connection_state(last_created_at(last), interval_seconds=interval_seconds())
+    keys = trusted_keys()
+
+    runs = repo.list_runs(limit=1, target_kind=LIVE_RUN_KIND, owner=tenant)
+    twin: dict[str, Any]
+    boms: dict[str, Any]
+    changes_today: dict[str, Any]
+    if runs:
+        row = runs[0]
+        try:
+            graph = estate_graph._graph_from_run(row)
+            summary = graph.summary()
+            projections = graph.project_all()
+            twin = {
+                "state": "OBSERVED",
+                "run_id": row.id,
+                "projection_id": summary["projection_id"],
+                "assets": summary["assets"],
+                "evidence": summary["evidence"],
+                "relationships": summary["relationships"],
+                "coverage": summary["coverage"],
+                "unknown": summary["unknown"],
+                "recorded_at": str(getattr(row, "created_at", "") or ""),
+            }
+            boms = {
+                "projection_id": projections["projection_id"],
+                "counts": projections["counts"],
+                "kinds": {
+                    kind: {
+                        "available": True,
+                        "download": f"/api/v1/estate/evidence/boms/{kind}/export?fmt=cyclonedx",
+                    }
+                    for kind in projections["counts"]
+                },
+            }
+        except Exception as exc:  # noqa: BLE001 — unreadable twin is reported, not hidden
+            twin = {
+                "state": "UNREADABLE",
+                "run_id": row.id,
+                "reason": f"{type(exc).__name__}: {exc}",
+            }
+            boms = {"projection_id": None, "kinds": {}, "reason": "the stored twin cannot be rebuilt"}
+    else:
+        twin = {
+            "state": "NOT_OBSERVED",
+            "reason": "no observation has been accepted for this estate",
+        }
+        boms = {
+            "projection_id": None,
+            "kinds": {},
+            "reason": "nothing to project: a BOM download would be a document about no evidence",
+        }
+
+    today = datetime.combine(datetime.now(timezone.utc).date(), time.min, tzinfo=timezone.utc)
+    events = estate_change_feed.list_events(db, tenant_id=tenant, limit=200)
+    recent = [
+        estate_change_feed.public_event(row)
+        for row in events
+        if (_aware(getattr(row, "last_detected_at", None)) or datetime.min.replace(tzinfo=timezone.utc)) >= today
+    ]
+    changes_today = {
+        "count": len(recent),
+        "by_severity": _count(item.get("severity") for item in recent),
+        "by_verdict": _count(item.get("verdict") for item in recent),
+        "unacknowledged": len([item for item in recent if not item.get("acknowledged")]),
+        "note": "counts of stored change events detected today (UTC), not of open risk",
+    }
+
+    return {
+        "schema": SCHEMA,
+        "connection": connection,
+        "twin": twin,
+        "boms": boms,
+        "changes_today": changes_today,
+        "trust": {
+            "signatures_required": signatures_required(),
+            "trust_keys_configured": len(keys),
+            "findings": (
+                []
+                if keys
+                else [
+                    f"{NO_TRUSTED_KEY}: observations are accepted and recorded as unauthenticated "
+                    f"because no key is configured ({TRUST_KEY_ENV})"
+                ]
             ),
         },
+        "note": (
+            "the twin is the live state; the six BOMs are projections of it and are never stored "
+            "as separate truth"
+        ),
+        "limits": live_estate.LIMITS,
     }
+
+
+def _aware(moment: Any) -> datetime | None:
+    """A stored timestamp as an aware UTC datetime; SQLite returns naive ones."""
+    if not isinstance(moment, datetime):
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
+def last_created_at(row: Any) -> Any:
+    """The timestamp a stored row was written, or ``None`` — never a plausible substitute."""
+    return getattr(row, "created_at", None) if row is not None else None
+
+
+def _count(values) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for value in values:
+        key = str(value or "UNKNOWN")
+        out[key] = out.get(key, 0) + 1
+    return dict(sorted(out.items()))

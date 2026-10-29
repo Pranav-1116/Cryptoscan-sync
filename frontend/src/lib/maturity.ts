@@ -58,6 +58,7 @@ export const CAPABILITIES_JSON = {
   "invite-accept": "ga",
   "launch-readiness": "ga",
   "libraries": "ga",
+  "live": "ga",
   "live-asset-intelligence": "ga",
   "live-environment": "ga",
   "live-monitor": "ga",
@@ -263,6 +264,10 @@ export const CAPABILITY_LIMITS = {
   "libraries": {
     "area": "Intelligence",
     "limit": "Library fingerprint database (ADR-007)."
+  },
+  "live": {
+    "area": "Overview",
+    "limit": "Connection state, stored changes, current BOM downloads and correlated patterns \u2014 the level-3 incident verdict is never assigned by the platform."
   },
   "live-asset-intelligence": {
     "area": "Intelligence",

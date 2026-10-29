@@ -53,8 +53,8 @@ describe("app shell", () => {
     const links = Array.from(nav?.querySelectorAll("a.nav") || []);
     const hrefs = links.map((link) => link.getAttribute("href") || "");
     // 49 links over 48 routes: Audit Log and Security Center share one route.
-    expect(links).toHaveLength(49);
-    expect(new Set(hrefs).size).toBe(48);
+    expect(links).toHaveLength(50);
+    expect(new Set(hrefs).size).toBe(49);
     expect(hrefs.filter((href) => href === "/security-center")).toHaveLength(2);
     for (const path of ["/launch-readiness", "/operator-decisions", "/assurance-records", "/assurance-coverage", "/assurance-trace", "/assurance-sampling", "/assurance-qualification", "/crypto", "/cbom", "/sbom", "/vbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/remediation", "/priorities", "/migration", "/live-scanners"]) {
       expect(hrefs).toContain(path);

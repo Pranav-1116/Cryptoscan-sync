@@ -1276,6 +1276,9 @@ def _cmd_evidence(args: argparse.Namespace, _session: Any = None) -> int:
 
 BOM_KINDS = ("SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "TECHBOM")
 BOMS = "/api/v1/estate/evidence/boms"
+LIVE_STATUS = "/api/v1/ingestion/live/status"
+LIVE_OBSERVATIONS = "/api/v1/ingestion/observations"
+THREAT_PATTERNS = "/api/v1/estate/evidence/threat/patterns"
 
 
 def _cmd_bom(args: argparse.Namespace, _session: Any = None) -> int:
@@ -1283,6 +1286,8 @@ def _cmd_bom(args: argparse.Namespace, _session: Any = None) -> int:
     kind = args.kind.upper()
     if kind not in BOM_KINDS:
         return _refuse("bom", Refused(f"unknown BOM {args.kind!r}", detail=f"expected one of {', '.join(BOM_KINDS)}"))
+    if getattr(args, "download", None):
+        return _bom_download(args, client, kind)
     try:
         payload = client.get(BOMS, bom=kind)
     except (Refused, ApiError) as exc:
@@ -1309,6 +1314,233 @@ def _cmd_bom(args: argparse.Namespace, _session: Any = None) -> int:
               "observed, which is not the same as nothing being present.")
 
     return _emit(args, payload, source=client.source("GET", BOMS, bom=kind), render=render)
+
+
+def _bom_download(args: argparse.Namespace, client: Client, kind: str) -> int:
+    """Download the CURRENT projection — no scan, and the file names the twin it came from."""
+    fmt = str(getattr(args, "format", None) or "cyclonedx").lower()
+    if fmt not in {"cyclonedx", "json"}:
+        return _refuse(
+            "bom download",
+            Refused(f"unknown format {fmt!r}", detail="expected cyclonedx or json"),
+        )
+    path = f"{BOMS}/{kind}/export"
+    try:
+        response = client.request("GET", path, query={"fmt": fmt})
+    except (Refused, ApiError) as exc:
+        return _fail("bom download", exc)
+    body = response.body
+    destination = Path(args.download)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(body)
+    digest = hashlib.sha256(body).hexdigest()
+    projection_id = response.headers.get("x-cryptoscan-projection-id") or response.headers.get(
+        "X-Cryptoscan-Projection-Id"
+    )
+    payload = {
+        "bom": kind,
+        "format": fmt,
+        "file": str(destination),
+        "bytes": len(body),
+        "sha256": digest,
+        "projection_id": projection_id,
+        "not_authoritative": "the digital twin is the source of truth; this file is a projection of it",
+    }
+    if args.json:
+        _print_json(payload)
+        return EXIT_OK
+    print(f"{kind:<10} {destination} ({len(body)} bytes)")
+    print(f"projection  {projection_id or '— (the server did not name one)'}")
+    print(f"sha256      {digest}")
+    print("note: this file is a projection of the current twin, not a stored document; an empty "
+          "section means nothing was observed, not that nothing exists.")
+    if not getattr(args, "quiet", False):
+        print(f"\nsource: {client.source('GET', path, response.status, fmt=fmt)}")
+    return EXIT_OK
+
+
+# --------------------------------------------------------------------------------------
+# commands: live (status, observations, patterns) — the estate as it is now
+# --------------------------------------------------------------------------------------
+
+
+def _cmd_live(args: argparse.Namespace, _session: Any = None) -> int:
+    client = _client(args)
+    action = args.live_command
+    try:
+        if action == "status":
+            payload = client.get(LIVE_STATUS)
+            connection = _field(payload, "connection") or {}
+            twin = _field(payload, "twin") or {}
+            boms = _field(payload, "boms") or {}
+            changes = _field(payload, "changes_today") or {}
+            trust = _field(payload, "trust") or {}
+
+            def render_status() -> None:
+                print(f"connection    {connection.get('state', 'UNKNOWN')}")
+                print(f"last observed {connection.get('last_observation') or '— (never)'}")
+                print(f"age           {connection.get('seconds_since') if connection.get('seconds_since') is not None else '—'}s"
+                      f" of {connection.get('interval_seconds')}s interval")
+                print(f"twin          {twin.get('state', 'UNKNOWN')} {twin.get('projection_id') or ''}".rstrip())
+                for key in ("assets", "evidence", "relationships"):
+                    if twin.get(key) is not None:
+                        print(f"  {key:<11} {twin.get(key)}")
+                counts = boms.get("counts") or {}
+                if counts:
+                    print("current BOMs  " + ", ".join(f"{name} {count}" for name, count in counts.items()))
+                if changes:
+                    print(f"changes today {changes.get('count')} ({changes.get('unacknowledged')} unacknowledged)")
+                for finding in trust.get("findings") or []:
+                    print(f"not checked   {finding}")
+                print("\nnote: a quiet estate and an agent that stopped reporting look identical from "
+                      "here — the state above is measured from the last observation, not assumed.")
+
+            return _emit(args, payload, source=client.source("GET", LIVE_STATUS), render=render_status)
+
+        if action == "observations":
+            query = {"limit": args.limit}
+            payload = client.get(LIVE_OBSERVATIONS, **query)
+            rows = _field(payload, "observations", default=[]) or []
+
+            def render_observations() -> None:
+                if not rows:
+                    print("no stored observation has ever changed this estate — a quiet estate "
+                          "produces a heartbeat, not a row")
+                    return
+                _table(
+                    [
+                        [
+                            _short(row.get("run_id"), 36),
+                            _short(row.get("recorded_at"), 26),
+                            str(row.get("assets") if row.get("assets") is not None else "—"),
+                            _short(row.get("projection_id"), 24),
+                        ]
+                        for row in rows
+                    ],
+                    ["run", "recorded", "assets", "projection"],
+                    limit=args.limit,
+                )
+
+            return _emit(args, payload, source=client.source("GET", LIVE_OBSERVATIONS, **query),
+                         render=render_observations)
+
+        if action == "patterns":
+            query = {"window_seconds": args.window, "limit": args.limit}
+            payload = client.get(THREAT_PATTERNS, **query)
+            patterns = _field(payload, "patterns", default=[]) or []
+
+            def render_patterns() -> None:
+                summary = _field(payload, "summary") or {}
+                print(f"window        {payload.get('window_seconds')}s ({_field(payload, 'window', 'from')} → "
+                      f"{_field(payload, 'window', 'to')})")
+                print(f"signals       {payload.get('signals_considered')} of {payload.get('events_considered')} events")
+                print(f"highest level {payload.get('highest_level')} — level 3 (incident) is never assigned by "
+                      "this engine")
+                if not patterns:
+                    print("patterns      none met a correlation rule; that is not a statement that the "
+                          "estate is safe")
+                    return
+                for pattern in patterns:
+                    print()
+                    print(f"{pattern.get('pattern_id')}  level {pattern.get('level')} "
+                          f"{pattern.get('level_name')}")
+                    print(f"  {pattern.get('headline')}")
+                    print(f"  why: {_short(pattern.get('why'), 160)}")
+                    print(f"  next: {_short(pattern.get('next_action'), 160)}")
+                print(f"\ncounts by level: {summary.get('by_level')}")
+
+            return _emit(args, payload, source=client.source("GET", THREAT_PATTERNS, **query),
+                         render=render_patterns)
+    except (Refused, ApiError) as exc:
+        return _fail(f"live {action}", exc)
+    return EXIT_ERROR
+
+
+def _cmd_observe(args: argparse.Namespace, _session: Any = None) -> int:
+    """Push one observation of the estate. The agent has already normalised it."""
+    client = _client(args)
+    source_path = Path(args.file)
+    try:
+        document = json.loads(source_path.read_text())
+    except OSError as exc:
+        return _refuse("observe push", Refused(f"cannot read {source_path}: {exc}"))
+    except json.JSONDecodeError as exc:
+        return _refuse("observe push", Refused(f"{source_path} is not JSON: {exc}"))
+    if not isinstance(document, Mapping):
+        return _refuse("observe push", Refused(f"{source_path} is not a JSON object"))
+    for required in ("assets", "evidence"):
+        if required not in document:
+            return _refuse(
+                "observe push",
+                Refused(
+                    f"{source_path} has no `{required}`",
+                    detail="an observation is the normalised estate: assets, evidence, and optionally "
+                    "relationships, collectors and coverage",
+                ),
+            )
+
+    signed = dict(document)
+    signed.pop("signature", None)
+    if getattr(args, "sign_key", None):
+        try:
+            key = release_signature.load_private_key(args.sign_key)
+        except Exception as exc:  # noqa: BLE001 — an unreadable key is a refusal, not a traceback
+            return _refuse("observe push", Refused(f"cannot read signing key {args.sign_key}: {exc}"))
+        signed["signature"] = release_signature.sign_document(signed, key)
+
+    if getattr(args, "dry_run", False):
+        payload = {
+            "dry_run": True,
+            "would_post": LIVE_OBSERVATIONS,
+            "estate": signed.get("estate"),
+            "scope": signed.get("scope"),
+            "assets": len(signed.get("assets") or []),
+            "evidence": len(signed.get("evidence") or []),
+            "signed": "signature" in signed,
+            "collected": False,
+            "written": False,
+        }
+        if args.json:
+            _print_json(payload)
+            return EXIT_OK
+        print("dry run: nothing was collected and nothing was written")
+        print(f"would post  {payload['assets']} asset(s) and {payload['evidence']} evidence record(s) "
+              f"to {LIVE_OBSERVATIONS}")
+        print(f"signature   {'present' if payload['signed'] else 'absent — the server will record the observation as unauthenticated'}")
+        return EXIT_OK
+
+    try:
+        response = client.request("POST", LIVE_OBSERVATIONS, body=signed)
+    except (Refused, ApiError) as exc:
+        return _fail("observe push", exc)
+    payload = response.json()
+    state = _field(payload, "state", default="UNKNOWN")
+    stored = bool(_field(payload, "stored", default=False))
+    if args.json:
+        _print_json(payload)
+        return EXIT_OK
+    print(f"state        {state}")
+    print(f"stored       {stored}")
+    print(f"projection   {_field(payload, 'projection_id', default='—')}")
+    if stored:
+        print(f"run          {_field(payload, 'run_id', default='—')}")
+        impact = _field(payload, "bom_impact") or {}
+        print(f"components   {', '.join(impact.get('affected') or []) or '— (no component moved)'}")
+        if impact.get("unknowns_affected"):
+            print(f"unknowns     {', '.join(impact.get('unknowns_affected') or [])} (coverage/unknowns block only)")
+        detection = _field(payload, "detection") or {}
+        if detection.get("headline"):
+            print(f"changes      {detection.get('headline')}")
+    else:
+        print("nothing was stored: the normalised state equals the stored twin; only a heartbeat "
+              "records that the agent reported")
+    authenticity = _field(payload, "authenticity") or {}
+    print(f"authentic    {authenticity.get('status', 'UNKNOWN')}")
+    for finding in authenticity.get("deployment_findings") or []:
+        print(f"  finding    {finding}")
+    if not getattr(args, "quiet", False):
+        print(f"\nsource: {client.source('POST', LIVE_OBSERVATIONS, response.status)}")
+    return EXIT_OK
 
 
 # --------------------------------------------------------------------------------------
@@ -2739,7 +2971,42 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
 
     bom = sub.add_parser("bom", help="print one BOM projection (sbom|cbom|hbom|nbom|vbom|techbom)")
     bom.add_argument("kind", help="SBOM, CBOM, HBOM, NBOM, VBOM or TECHBOM")
+    bom.add_argument(
+        "--download",
+        default=None,
+        metavar="PATH",
+        help="write the CURRENT projection to PATH instead of printing a summary (no scan is run)",
+    )
+    bom.add_argument(
+        "--format",
+        default="cyclonedx",
+        choices=("cyclonedx", "json"),
+        help="download format: cyclonedx 1.6, or the native projection JSON",
+    )
     _add_common(bom)
+
+    live = sub.add_parser("live", help="the estate as it is now: connection, changes, correlations")
+    live_sub = live.add_subparsers(dest="live_command", required=True)
+    live_status = live_sub.add_parser("status", help="is this estate live, and what can be downloaded")
+    _add_common(live_status)
+    live_observations = live_sub.add_parser(
+        "observations", help="stored observations that carried a change (a quiet estate has none)")
+    live_observations.add_argument("--limit", type=int, default=20)
+    _add_common(live_observations)
+    live_patterns = live_sub.add_parser("patterns", help="correlate stored changes into patterns")
+    live_patterns.add_argument("--window", type=int, default=3600, help="seconds of history to correlate")
+    live_patterns.add_argument("--limit", type=int, default=200)
+    _add_common(live_patterns)
+
+    observe = sub.add_parser("observe", help="push one observation of the estate (agent side)")
+    observe_sub = observe.add_subparsers(dest="observe_command", required=True)
+    observe_push = observe_sub.add_parser("push", help="post a normalised observation; stores only a change")
+    observe_push.add_argument("--file", required=True, help="the normalised observation, as JSON")
+    observe_push.add_argument("--sign-key", dest="sign_key", default=None,
+                              help="Ed25519 private key (PEM) used to sign the observation")
+    observe_push.add_argument("--dry-run", dest="dry_run", action="store_true",
+                              help="validate and describe it; collects nothing and writes nothing")
+    _add_common(observe_push)
 
     pqc = sub.add_parser("pqc", help="post-quantum exposure, per layer")
     pqc_sub = pqc.add_subparsers(dest="pqc_command", required=True)
@@ -2900,6 +3167,8 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Any], int]] = {
         ("assurance", _cmd_assurance),
         ("evidence", _cmd_evidence),
         ("bom", _cmd_bom),
+        ("live", _cmd_live),
+        ("observe", _cmd_observe),
         ("pqc", _cmd_pqc),
         ("scope", _cmd_scope),
         ("explain", _cmd_explain),

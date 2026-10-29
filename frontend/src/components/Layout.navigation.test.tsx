@@ -35,8 +35,8 @@ describe("classic sidebar navigation", () => {
       "/findings", "/pqc", "/agility", "/drift", "/scanners", "/live-scanners", "/reports",
       "/assurance-coverage", "/assurance-trace", "/assurance-sampling", "/assurance-qualification",
     ]) expect(routes).toContain(route);
-    expect(routes).toHaveLength(49);
-    expect(new Set(routes).size).toBe(48);
+    expect(routes).toHaveLength(50);
+    expect(new Set(routes).size).toBe(49);
     expect(routes.filter((route) => route === "/security-center")).toHaveLength(2);
   });
 

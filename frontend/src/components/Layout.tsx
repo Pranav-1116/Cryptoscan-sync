@@ -34,6 +34,7 @@ export const PRIMARY_SECTIONS: NavSection[] = [
     items: [
       { to: "/command-center", label: "Dashboard", icon: ChartLineUp },
       { to: "/live-monitor", label: "Live Monitor", icon: Pulse },
+      { to: "/live", label: "Live estate", icon: Pulse },
       { to: "/launch-readiness", label: "Launch readiness", icon: Pulse },
       { to: "/operator-decisions", label: "Operator decisions", icon: Pulse },
       { to: "/live-stream", label: "Activity", icon: Pulse },

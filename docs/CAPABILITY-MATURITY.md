@@ -101,6 +101,7 @@ role-guarded actions.
 | `/command-center` | Overview | Reads the live stats/summary endpoints; empty until a scan runs. |
 | `/executive` | Overview | Executive summary over the same stats; presentation layer. |
 | `/launch-readiness` | Overview | Gated independent-report, operational-duty and bounded-pilot records; real assessor execution, site exercises and customer acceptance require external evidence. |
+| `/live` | Overview | Connection age, stored changes, six BOM downloads and correlated attack patterns. A quiet estate and a stopped agent look identical, so the age is stated; level 3 (incident) is never assigned by the platform. |
 | `/live-monitor` | Overview | Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage. |
 | `/live-stream` | Overview | SSE event stream with Last-Event-ID resume and Redis federation. |
 | `/operator-decisions` | Overview | Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open. |

@@ -27,6 +27,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -52,7 +53,7 @@ from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
 from api.security import anchor_export
 from api.security.estate_bom_anchor import AnchorError, create_anchor, list_anchors, verify_anchor
-from shared_models import estate_twin
+from shared_models import attack_patterns, bom_export, estate_twin
 from shared_models.estate_graph import BOM_KINDS, SCHEMA, build_graph
 
 router = APIRouter(prefix="/estate/evidence", tags=["estate-evidence"])
@@ -610,18 +611,24 @@ def estate_scan(
         ) from exc
 
 
-@router.post("/discover")
-def estate_discover(
+def run_discovery(
+    db: Session,
+    user: str,
     body: EstateDiscoverRequest,
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
+    *,
+    graph: Any | None = None,
+) -> dict[str, Any]:
     """Discover the estate once and project the BOMs from the same evidence graph.
 
     Every response carries its coverage matrix and unknown inventory, because a
     BOM without them invites the reader to assume the estate is complete.
+
+    Kept as a plain function as well as a route: a live observation (spec 100) must reach
+    the *same* constructor and the *same* history, or a pushed estate would be a second,
+    quieter kind of observation. ``graph`` lets the caller pass the graph it already built
+    for change detection, so one observation is normalised once.
     """
-    graph = _build(body)
+    graph = graph if graph is not None else _build(body)
     projections = graph.project_all() if body.include_boms else None
     payload = {
         "estate": body.estate,
@@ -707,6 +714,16 @@ def estate_discover(
         except Exception as exc:  # noqa: BLE001 — the observation already happened
             db.rollback()
             response["catalog"] = {"error": f"{type(exc).__name__}: {exc}"}
+        # ...and so is the evidence store: without this the facts behind a projected BOM
+        # would exist in the graph response only, and no later reader could walk from a
+        # claim back to the record it rests on
+        try:
+            response["evidence_store"] = estate_observations.sync_all(
+                db, graph, tenant_id=current_tenant()
+            )
+        except Exception as exc:  # noqa: BLE001 — reported, never silently skipped
+            db.rollback()
+            response["evidence_store"] = {"error": f"{type(exc).__name__}: {exc}"}
 
     if detection is not None:
         response["detection"] = {
@@ -720,6 +737,16 @@ def estate_discover(
             "note": detection["meaning"],
         }
     return response
+
+
+@router.post("/discover")
+def estate_discover(
+    body: EstateDiscoverRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Discover the estate once and project the BOMs from the same evidence graph."""
+    return run_discovery(db, user, body)
 
 
 @router.get("/summary")
@@ -840,6 +867,84 @@ def estate_boms(
         "counts": projections["counts"],
         "consistency": projections["consistency"],
     }
+
+
+@router.get("/boms/{kind}/export")
+def export_bom(
+    kind: str,
+    fmt: str = Query(default="cyclonedx", pattern="^(cyclonedx|json)$"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Download a BOM projected from the *current* twin — no scan, no stored document.
+
+    The file carries the projection id it was computed from, so two downloads can be shown
+    to describe the same evidence state. ``fmt=cyclonedx`` renders CycloneDX 1.6;
+    ``fmt=json`` returns the native projection with its boundary and unknowns intact.
+    """
+    wanted = str(kind or "").strip().upper()
+    if wanted not in BOM_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "unknown_bom",
+                "reason": f"expected one of {', '.join(BOM_KINDS)}",
+                "download_any": "/api/v1/estate/evidence/boms/export",
+            },
+        )
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    projection = graph.project(wanted)
+    document = bom_export.to_document(projection, fmt)
+    name = bom_export.filename(projection, fmt)
+    return JSONResponse(
+        content=document,
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "X-Cryptoscan-Projection-Id": str(projection.get("projection_id") or ""),
+            "X-Cryptoscan-Run-Id": str(run.id),
+            "X-Cryptoscan-Not-Authoritative": "the digital twin is the source of truth",
+        },
+    )
+
+
+@router.get("/boms/export")
+def export_all_boms(
+    fmt: str = Query(default="json", pattern="^(cyclonedx|json)$"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every projection from the same twin, as one download, sharing one projection id."""
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    projections = graph.project_all()
+    documents = {
+        kind: bom_export.to_document(projections["boms"][kind], fmt) for kind in projections["boms"]
+    }
+    return JSONResponse(
+        content={
+            "schema": bom_export.SCHEMA,
+            "format": fmt,
+            "estate": graph.estate,
+            "projection_id": projections["projection_id"],
+            "run_id": run.id,
+            "projections": documents,
+            "counts": projections["counts"],
+            "consistency": projections["consistency"],
+            "not_authoritative": (
+                "these are projections of the current twin; downloading them again after a "
+                "change produces a different document, which is a real change and not an error"
+            ),
+            "limits": bom_export.LIMITS,
+        },
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="cryptoscan-boms-{str(projections["projection_id"])[:12]}.json"'
+            ),
+            "X-Cryptoscan-Projection-Id": str(projections["projection_id"]),
+            "X-Cryptoscan-Run-Id": str(run.id),
+        },
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1349,6 +1454,37 @@ def estate_twin_graph_load(
         prune_missing=body.prune_missing,
     )
     return {"run_id": run.id, **result}
+
+
+# -- attack patterns over the change feed (spec 100, live mode) --------------- #
+
+
+@router.get("/threat/patterns")
+def estate_threat_patterns(
+    window_seconds: int = Query(default=3600, ge=60, le=604800),
+    include_acknowledged: bool = Query(default=True),
+    limit: int = Query(default=200, ge=1, le=200),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Correlate stored changes into patterns, with the level and the gaps stated.
+
+    This reads the change feed the platform already holds — it does not scan. The strongest
+    level it can return is ``CORRELATED_PATTERN``; ``SECURITY_INCIDENT`` is never assigned
+    here, because a change feed is not an incident declaration.
+    """
+    rows = estate_change_feed.list_events(
+        db,
+        tenant_id=current_tenant(),
+        include_acknowledged=include_acknowledged,
+        limit=limit,
+    )
+    events = [estate_change_feed.public_event(row) for row in rows]
+    result = attack_patterns.correlate(events, window_seconds=window_seconds)
+    result["estate"] = events[0].get("estate") if events else None
+    result["source"] = "/api/v1/estate/evidence/changes"
+    result["summary"] = attack_patterns.summarise(result["patterns"])
+    return result
 
 
 # -- live change detection (spec 94 §17–§18) -------------------------------- #

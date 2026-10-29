@@ -55,6 +55,7 @@ const Libraries = lazy(() => import("./pages/Libraries"));
 const LiveAssetIntelligence = lazy(() => import("./pages/LiveAssetIntelligence"));
 const LiveEnvironment = lazy(() => import("./pages/LiveEnvironment"));
 const LiveMonitor = lazy(() => import("./pages/LiveMonitor"));
+const LiveEstate = lazy(() => import("./pages/LiveEstate"));
 const LiveScanners = lazy(() => import("./pages/LiveScanners"));
 const LiveStream = lazy(() => import("./pages/LiveStream"));
 const Login = lazy(() => import("./pages/Login"));
@@ -200,6 +201,7 @@ function RoutedPages() {
       <Route path="/live-asset-intelligence" element={<LiveAssetIntelligence />} />
       <Route path="/live-environment" element={<LiveEnvironment />} />
       <Route path="/live-monitor" element={<LiveMonitor />} />
+      <Route path="/live" element={<LiveEstate />} />
       <Route path="/live-scanners" element={<LiveScanners />} />
       <Route path="/live-stream" element={<LiveStream />} />
       <Route path="/migration" element={<Migration />} />

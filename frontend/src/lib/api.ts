@@ -5281,6 +5281,106 @@ export const apiEstateScan = (body: { estate?: string; scope?: string | null; pl
 export const apiEstateBoms = (bom?: string): Promise<ApiResult<Record<string, unknown>>> =>
   _rsGet<Record<string, unknown>>(`/api/v1/estate/evidence/boms${bom ? `?bom=${encodeURIComponent(bom)}` : ""}`);
 
+/* Live estate (spec 100): connection state, change-only storage, attack patterns.
+ *
+ * The screen behind these calls must not turn a quiet estate into a green one: the
+ * connection state is computed by the platform from the age of the last observation,
+ * and these types carry the platform's own words for what each state means.
+ */
+export interface LiveConnectionState {
+  schema: string;
+  state: "LIVE" | "STALE" | "NEVER_CONNECTED";
+  last_observation: string | null;
+  seconds_since: number | null;
+  interval_seconds: number;
+  stale_after_seconds: number;
+  meaning: string;
+}
+
+export interface LiveEstateStatus {
+  schema: string;
+  connection: LiveConnectionState;
+  twin:
+    | { state: "OBSERVED"; run_id: string; projection_id: string; assets: number; evidence: number;
+        relationships: number; coverage: Record<string, unknown>; unknown: Record<string, unknown>;
+        recorded_at: string }
+    | { state: "NOT_OBSERVED"; reason: string }
+    | { state: "UNREADABLE"; run_id: string; reason: string };
+  boms: { projection_id: string | null; counts?: Record<string, number>;
+          kinds?: Record<string, { available: boolean; download: string }>; reason?: string };
+  changes_today: { count: number; by_severity: Record<string, number>; by_verdict: Record<string, number>;
+                   unacknowledged: number; note: string };
+  trust: { signatures_required: boolean; trust_keys_configured: number; findings: string[] };
+  note: string;
+  limits: string[];
+}
+
+export const apiLiveEstateStatus = (): Promise<ApiResult<LiveEstateStatus>> =>
+  _rsGet<LiveEstateStatus>("/api/v1/ingestion/live/status");
+
+export interface AttackPatternSignal {
+  event_id: string | null; run_id: string | null; kind: string; severity: string | null;
+  subject: string | null; detail: string | null; at: string | null; evidence_ids: string[];
+}
+
+export interface AttackPattern {
+  pattern_id: string; name: string; level: number; level_name: string; level_meaning: string;
+  headline: string; why: string; subjects: string[]; change_kinds: string[];
+  signals: AttackPatternSignal[]; first_seen: string | null; last_seen: string | null;
+  not_proven: string[]; next_action: string;
+}
+
+export interface AttackPatterns {
+  schema: string; window_seconds: number; window: { from: string; to: string };
+  events_considered: number; signals_considered: number; undated_signals: number;
+  patterns: AttackPattern[]; count: number; by_level: Record<string, number>;
+  highest_level: number;
+  level_definitions: Record<string, { name: string; meaning: string }>;
+  summary: { total: number; by_level: Record<string, number>; level_names: Record<string, string>; note: string };
+  note: string; limits: string[];
+}
+
+export const apiThreatPatterns = (windowSeconds = 3600): Promise<ApiResult<AttackPatterns>> =>
+  _rsGet<AttackPatterns>(`/api/v1/estate/evidence/threat/patterns?window_seconds=${windowSeconds}`);
+
+export interface LiveObservations {
+  schema: string; count: number;
+  observations: Array<{ run_id: string; recorded_at: string; estate: string | null; scope: string | null;
+                        projection_id: string | null; assets: number | null; evidence: number | null;
+                        relationships: number | null }>;
+  note: string;
+}
+
+export const apiLiveObservations = (limit = 20): Promise<ApiResult<LiveObservations>> =>
+  _rsGet<LiveObservations>(`/api/v1/ingestion/observations?limit=${limit}`);
+
+/* A BOM download is a fetch + blob write, so it carries the session (and the tenant)
+ * the same way every other call does, and a failed download leaves no file behind. */
+export async function downloadBom(kind: string, fmt: "cyclonedx" | "json" = "cyclonedx"): Promise<{ ok: boolean; error?: string; filename?: string }> {
+  try {
+    const resp = await tenantFetch(`/api/v1/estate/evidence/boms/${encodeURIComponent(kind)}/export?fmt=${fmt}`, {
+      headers: { Accept: "application/json" },
+      credentials: "include",
+    });
+    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
+    const disposition = resp.headers.get("content-disposition") || "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match ? match[1] : `cryptoscan-${kind.toLowerCase()}.${fmt === "cyclonedx" ? "cdx.json" : "json"}`;
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    return { ok: true, filename };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 export interface DeviceInventoryResponse {
   model: string;
   stored: number;
