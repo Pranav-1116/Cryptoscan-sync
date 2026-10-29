@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { activeTenantId, getToken, tenantFetch } from "../lib/api";
 import { IconNetwork, IconCloud, IconCode, IconContainer, IconHardware, IconCertificate, IconEstate, IconPass, IconTarget, ICON_LG, type Icon } from "../components/icons";
+import { HBars, Meter, StateCell, VizEmpty } from "../components/viz";
 
 type ScanTarget = "Network" | "Cloud" | "Source Repository" | "Container" | "Hardware" | "Certificate" | "Full Estate";
 type ScanStatus = "verifying" | "queued" | "running" | "completed" | "failed" | "cancelled" | "unknown";
@@ -61,6 +62,13 @@ export default function Scanners() {
   const [scanStatus, setScanStatus] = useState<ScanStatus>("queued");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [resultNote, setResultNote] = useState<string | null>(null);
+  // What the run record itself reports about this run: its stage list, the
+  // server's own stage count, and its timestamps. Nothing here is estimated by
+  // the console — an absent field stays absent and renders as unobserved.
+  const [jobProgress, setJobProgress] = useState<Record<string, unknown> | null>(null);
+  const [jobTimes, setJobTimes] = useState<{ created_at: string | null; started_at: string | null; completed_at: string | null } | null>(null);
+  const [requestedAt, setRequestedAt] = useState<string | null>(null);
+  const [sweep, setSweep] = useState<{ hosts_checked: number | null; endpoints: string[] } | null>(null);
   const [trackedSession, setTrackedSession] = useState<{ token: string | null; tenant: string | null } | null>(null);
   const generation = useRef(0);
   const submitting = useRef(false);
@@ -138,8 +146,24 @@ export default function Scanners() {
           }
           const record = body as {
             status?: unknown; error_message?: unknown;
-            progress?: { coverage?: Record<string, unknown>; admission?: { mode?: unknown } };
+            created_at?: unknown; started_at?: unknown; completed_at?: unknown;
+            progress?: {
+              coverage?: Record<string, unknown>;
+              admission?: { mode?: unknown };
+              stages?: Array<{ name?: unknown; index?: unknown; state?: unknown }>;
+              logs?: Array<{ ts?: unknown; stage?: unknown; level?: unknown; message?: unknown }>;
+              percent?: unknown; total_stages?: unknown; stages_complete?: unknown;
+              current_stage?: unknown;
+            };
           };
+          setJobTimes({
+            created_at: typeof record.created_at === "string" ? record.created_at : null,
+            started_at: typeof record.started_at === "string" ? record.started_at : null,
+            completed_at: typeof record.completed_at === "string" ? record.completed_at : null,
+          });
+          if (record.progress && typeof record.progress === "object") {
+            setJobProgress(record.progress as Record<string, unknown>);
+          }
           const status = runStatus(record.status);
           if (!status) {
             setScanStatus("unknown");
@@ -204,6 +228,10 @@ export default function Scanners() {
     setScanStatus("queued");
     setErrorMsg(null);
     setResultNote(null);
+    setJobProgress(null);
+    setJobTimes(null);
+    setRequestedAt(null);
+    setSweep(null);
   };
 
   const handleStartScan = async () => {
@@ -216,6 +244,7 @@ export default function Scanners() {
     const tenant = activeTenantId();
     const sameSession = () => generation.current === requestGeneration && token === getToken() && tenant === activeTenantId();
     setStep("running");
+    setRequestedAt(new Date().toISOString());
     setScanStatus(selectedTarget === "Network" ? "running" : "verifying");
     let requestRefused = false;
     try {
@@ -237,6 +266,10 @@ export default function Scanners() {
           return;
         }
         const result = body as { hosts_checked?: unknown; endpoints: unknown[] };
+        setSweep({
+          hosts_checked: typeof result.hosts_checked === "number" ? result.hosts_checked : null,
+          endpoints: result.endpoints.filter((e): e is string => typeof e === "string"),
+        });
         setResultNote(`Sweep finished${typeof result.hosts_checked === "number" ? `: ${result.hosts_checked} host(s) checked` : ""}; ${result.endpoints.length} open service endpoint(s) returned.`);
         setScanStatus("completed");
       } else if (selectedTarget === "Source Repository") {
@@ -338,6 +371,7 @@ export default function Scanners() {
 
   return (
     <div className="page" style={{ maxWidth: "880px", margin: "0 auto", padding: "20px 0 60px" }}>
+      <Stepper step={step} />
       {step === "select" && (
         <div>
           <div style={{ marginBottom: "28px" }}>
@@ -641,6 +675,20 @@ export default function Scanners() {
             </p>
           )}
 
+          <div style={{ textAlign: "left", margin: "0 0 20px" }}>
+            <RunPhases
+              requestedAt={requestedAt}
+              created={jobTimes?.created_at ?? null}
+              started={jobTimes?.started_at ?? null}
+              completed={jobTimes?.completed_at ?? null}
+              terminal={["completed", "failed", "cancelled"].includes(scanStatus)}
+            />
+            {jobProgress && <StagePipeline progress={jobProgress} />}
+            {jobProgress && <RunCoverage progress={jobProgress} />}
+            {sweep && <SweepResult sweep={sweep} />}
+            {jobProgress && <RunLog progress={jobProgress} />}
+          </div>
+
           {scanStatus === "completed" ? (
             <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
               {selectedTarget === "Network" && <Link to="/assets" className="btn primary" style={{ textDecoration: "none" }}>
@@ -666,6 +714,304 @@ export default function Scanners() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+/* ── workflow rail ─────────────────────────────────────────────────────────
+   Three steps, and only the step the operator is on is marked current. The
+   rail is a position indicator: it carries no progress percentage, because the
+   run's own record is the only thing allowed to report one. */
+function Stepper({ step }: { step: "select" | "configure" | "running" }) {
+  const steps: Array<{ id: typeof step; label: string }> = [
+    { id: "select", label: "Select workflow" },
+    { id: "configure", label: "Target & safety" },
+    { id: "running", label: "Run" },
+  ];
+  const current = steps.findIndex((item) => item.id === step);
+  return (
+    <div role="list" aria-label="Scan workflow progress" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+      {steps.map((item, index) => {
+        const done = index < current;
+        const active = index === current;
+        const color = done ? "var(--green)" : active ? "var(--accent)" : "var(--line-strong)";
+        return (
+          <React.Fragment key={item.id}>
+            <div role="listitem" style={{ display: "flex", alignItems: "center", gap: 7 }}>
+              <span
+                aria-hidden
+                style={{
+                  width: 22,
+                  height: 22,
+                  display: "grid",
+                  placeItems: "center",
+                  borderRadius: 999,
+                  border: `1px solid ${color}`,
+                  background: active ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
+                  color: done ? "var(--green)" : active ? "var(--accent)" : "var(--faint)",
+                  fontFamily: "var(--mono)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                {done ? "✓" : index + 1}
+              </span>
+              <span
+                className="mono"
+                style={{ fontSize: 11, letterSpacing: "0.05em", textTransform: "uppercase", color: active ? "var(--text)" : "var(--faint)" }}
+                aria-current={active ? "step" : undefined}
+              >
+                {item.label}
+              </span>
+            </div>
+            {index < steps.length - 1 && (
+              <span aria-hidden style={{ flex: 1, height: 1, background: done ? "var(--green)" : "var(--line)", minWidth: 16 }} />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── phase timing ─────────────────────────────────────────────────────────
+   Two intervals the platform can actually timestamp: the wait between
+   submission and the worker picking the job up, and the run itself. A phase
+   the record does not timestamp is drawn as unknown, never as zero. */
+function RunPhases({ requestedAt, created, started, completed, terminal }: {
+  requestedAt: string | null;
+  created: string | null;
+  started: string | null;
+  completed: string | null;
+  terminal: boolean;
+}) {
+  const ms = (a: string | null, b: string | null): number | null => {
+    if (!a || !b) return null;
+    const from = new Date(a).getTime();
+    const to = new Date(b).getTime();
+    if (Number.isNaN(from) || Number.isNaN(to) || to < from) return null;
+    return (to - from) / 1000;
+  };
+  const queued = ms(requestedAt, started);
+  const run = ms(started, terminal ? completed : new Date().toISOString());
+  const known = [queued, run].filter((v): v is number => v !== null);
+  const max = Math.max(1, ...known);
+  const rows: Array<{ key: string; label: string; value: number | null; tone: string }> = [
+    { key: "queued", label: "submitted → worker start", value: queued, tone: "amber" },
+    { key: "run", label: terminal ? "worker start → finish" : "worker start → now", value: run, tone: terminal ? "green" : "accent" },
+  ];
+  if (!known.length) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <VizEmpty
+          title="No phase timing recorded"
+          note="The run record has not returned its timestamps yet; nothing here is estimated."
+          height={52}
+        />
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)", textTransform: "uppercase", marginBottom: 6 }}>
+        Run phases
+      </div>
+      {rows.map((row) => (
+        <div key={row.key} style={{ display: "grid", gridTemplateColumns: "minmax(140px, 1fr) 2fr 62px", gap: 8, alignItems: "center", marginBottom: 5 }}>
+          <span style={{ fontSize: 11.5, color: row.value === null ? "var(--faint)" : "var(--text)" }}>{row.label}</span>
+          <span style={{ height: 6, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 1, overflow: "hidden" }}>
+            {row.value !== null && (
+              <span style={{ display: "block", height: "100%", width: `${Math.max(2, (row.value / max) * 100)}%`, background: `var(--${row.tone})` }} />
+            )}
+          </span>
+          <span className="mono" style={{ fontSize: 10.5, textAlign: "right", color: "var(--dim)", fontVariantNumeric: "tabular-nums" }}>
+            {row.value === null ? "unknown" : `${row.value.toFixed(1)}s`}
+          </span>
+        </div>
+      ))}
+      <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--faint)" }}>
+        Timestamps come from the run record; the console adds no estimate.
+      </p>
+    </div>
+  );
+}
+
+const STAGE_TONE: Record<string, string> = {
+  COMPLETED: "green",
+  RUNNING: "accent",
+  PENDING: "slate",
+  FAILED: "red",
+  SKIPPED: "slate",
+};
+
+/* ── pipeline stages ──────────────────────────────────────────────────────
+   The worker publishes the stage list and the stage count. Both are drawn as
+   the server reported them; when the record carries a percent it is shown
+   verbatim and labelled as the record's figure, not the console's. */
+function StagePipeline({ progress }: { progress: Record<string, unknown> }) {
+  const rawStages = Array.isArray(progress.stages) ? (progress.stages as Array<Record<string, unknown>>) : [];
+  const stages = rawStages
+    .map((stage, index) => ({
+      name: typeof stage.name === "string" ? stage.name : `stage ${index + 1}`,
+      index: typeof stage.index === "number" ? stage.index : index + 1,
+      state: typeof stage.state === "string" ? stage.state.toUpperCase() : "PENDING",
+    }))
+    .sort((a, b) => a.index - b.index);
+  const percent = typeof progress.percent === "number" && Number.isFinite(progress.percent) ? progress.percent : null;
+  const complete = typeof progress.stages_complete === "number" ? progress.stages_complete : null;
+  const total = typeof progress.total_stages === "number" ? progress.total_stages : stages.length;
+  const current = typeof progress.current_stage === "string" ? progress.current_stage : null;
+
+  if (!stages.length) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <VizEmpty
+          title="No stage list in this run record"
+          note="Synchronous scanner runs record a coverage summary instead of pipeline stages."
+          height={52}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="spread" style={{ marginBottom: 6 }}>
+        <span className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)", textTransform: "uppercase" }}>
+          Pipeline stages{current ? ` · ${current.replace(/_/g, " ")}` : ""}
+        </span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>
+          {percent !== null ? `${percent}% reported · ` : ""}
+          {complete !== null ? `${complete}/${total} stages complete` : `${total} stages`}
+        </span>
+      </div>
+      {percent !== null && <Meter value={percent} label="Stages complete (as reported by the run record)" tone="accent" />}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
+        {stages.map((stage) => {
+          const tone = STAGE_TONE[stage.state] ?? "slate";
+          return (
+            <span
+              key={`${stage.index}-${stage.name}`}
+              title={`${stage.index}. ${stage.name} — ${stage.state}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                fontFamily: "var(--mono)",
+                fontSize: 10.5,
+                padding: "2px 6px",
+                borderRadius: 2,
+                border: `1px solid ${tone === "accent" ? "var(--accent)" : tone === "slate" ? "var(--line)" : `var(--${tone})`}`,
+                color: tone === "slate" ? "var(--faint)" : `var(--${tone})`,
+                background: tone === "slate" ? "transparent" : `color-mix(in srgb, var(--${tone}) 10%, transparent)`,
+              }}
+            >
+              <span aria-hidden style={{ width: 5, height: 5, borderRadius: 999, background: tone === "slate" ? "var(--line-strong)" : `var(--${tone})` }} />
+              {stage.name.replace(/_/g, " ")}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── coverage counts from the run record ─────────────────────────────── */
+function RunCoverage({ progress }: { progress: Record<string, unknown> }) {
+  const coverage = progress.coverage;
+  if (!coverage || typeof coverage !== "object" || Array.isArray(coverage)) return null;
+  const rows = Object.entries(coverage as Record<string, unknown>)
+    .map(([key, value]) => ({ key, label: key.replace(/_/g, " "), value: typeof value === "number" ? value : Number(value) }))
+    .filter((row) => Number.isFinite(row.value) && row.value >= 0)
+    .map((row) => ({ ...row, tone: "accent" }));
+  if (!rows.length) return null;
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)", textTransform: "uppercase", marginBottom: 6 }}>
+        Coverage counts in this run
+      </div>
+      <HBars rows={rows} emptyTitle="No coverage count recorded" emptyNote="The run record carried no numeric coverage." />
+      <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--faint)" }}>
+        Bar length is relative to the largest count in this run. These summarize the scan result; the findings live in the
+        scanner's own surfaces.
+      </p>
+    </div>
+  );
+}
+
+/* ── the run's own log ───────────────────────────────────────────────── */
+function RunLog({ progress }: { progress: Record<string, unknown> }) {
+  const raw = Array.isArray(progress.logs) ? (progress.logs as Array<Record<string, unknown>>) : [];
+  const lines = raw.map((line) => ({
+    ts: typeof line.ts === "string" ? line.ts : "",
+    stage: typeof line.stage === "string" ? line.stage : "",
+    level: typeof line.level === "string" ? line.level.toUpperCase() : "INFO",
+    message: typeof line.message === "string" ? line.message : "",
+  }));
+  if (!lines.length) {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <VizEmpty
+          title="No run log yet"
+          note="The worker appends one entry per stage; an empty log means no stage has reported."
+          height={48}
+        />
+      </div>
+    );
+  }
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="spread" style={{ marginBottom: 6 }}>
+        <span className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)", textTransform: "uppercase" }}>
+          Run log
+        </span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)" }}>{lines.length} entr{lines.length === 1 ? "y" : "ies"}</span>
+      </div>
+      <div style={{ maxHeight: 200, overflowY: "auto", border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--panel-2)" }}>
+        {lines.map((line, index) => (
+          <div
+            key={`${line.ts}-${index}`}
+            style={{ display: "grid", gridTemplateColumns: "58px 96px 40px 1fr", gap: 8, padding: "4px 8px", borderTop: index ? "1px solid var(--line)" : undefined, alignItems: "baseline" }}
+          >
+            <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
+              {line.ts ? new Date(line.ts).toLocaleTimeString() : "—"}
+            </span>
+            <span className="mono" style={{ fontSize: 10, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {line.stage.replace(/_/g, " ")}
+            </span>
+            <span className="mono" style={{ fontSize: 9.5, color: line.level === "ERROR" ? "var(--red)" : "var(--green)" }}>{line.level}</span>
+            <span style={{ fontSize: 11, color: line.level === "ERROR" ? "var(--red)" : "var(--text)", overflowWrap: "anywhere" }}>{line.message}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── active sweep result ──────────────────────────────────────────────────
+   The sweep returns individual open endpoints. Grouping them by port is the
+   one thing an operator needs first; the count of endpoints that did not carry
+   a parseable port is shown rather than dropped. */
+function SweepResult({ sweep }: { sweep: { hosts_checked: number | null; endpoints: string[] } }) {
+  const byPort = new Map<string, number>();
+  let unparsed = 0;
+  for (const endpoint of sweep.endpoints) {
+    const match = /:(\d+)$/.exec(endpoint);
+    if (match) byPort.set(match[1], (byPort.get(match[1]) ?? 0) + 1);
+    else unparsed += 1;
+  }
+  const rows = [...byPort.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([port, value]) => ({ key: port, label: `port ${port}`, value, tone: "cyan" }));
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 8 }}>
+        <StateCell label="Hosts checked" value={sweep.hosts_checked ?? "—"} tone="accent" note="from the sweep response" />
+        <StateCell label="Open endpoints" value={sweep.endpoints.length} tone={sweep.endpoints.length ? "amber" : "green"} note="services that answered" />
+        <StateCell label="No port parsed" value={unparsed} tone={unparsed ? "slate" : "green"} note="kept out of the port chart" />
+      </div>
+      <HBars rows={rows} emptyTitle="No open endpoint listed" emptyNote="The sweep returned no endpoint with a port." />
     </div>
   );
 }

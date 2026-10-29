@@ -1,19 +1,34 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Panel, Badge, Table, PageHead, Kpi } from "../components/ui.jsx";
+import { Panel, Badge, PageHead } from "../components/ui.jsx";
 import {
   apiLiveScanStatus, apiLiveScanRun, apiLiveScanStart, apiLiveScanStop,
   LiveScanStatus,
 } from "../lib/api.js";
 import { useRealtime } from "../lib/realtime.jsx";
 import { ICON_SM, IconRunning, StatusMark } from "../components/icons";
+import { HBars, Sparkline, StackedBar, StateCell, TickStrip, VizEmpty } from "../components/viz";
 
 /* Realtime scanners — drives the actual CryptoScan scanner CLIs server-side
    and shows them live. Every number comes from a real scan (hardware /
    runtime / network / container / OT). Progress streams over SSE as
    live_scan.* events; the snapshot also polls as a backstop. There is no
-   simulated data: scanners that cannot run show an honest error. */
+   simulated data: scanners that cannot run show an honest error.
+
+   Visualisation rule: the fleet view draws each scanner's own reported result
+   and its own reported elapsed seconds, scaled to the slowest scanner *in that
+   cycle*. The cycle record below it only holds cycles this screen actually
+   observed — it is not a back-filled history, and it says so. */
 
 interface LogLine { ts: string; text: string; tone: "start" | "ok" | "fail" | "info" }
+
+/** One completed cycle, as observed by this screen (SSE event or poll delta). */
+interface ObservedCycle {
+  key: string;
+  ts: string;
+  ok: number | null;
+  failed: number | null;
+  elapsed: number | null;
+}
 
 const SCANNER_LABEL: Record<string, string> = {
   hardware: "Hardware (CPU / TPM / HSM)",
@@ -41,7 +56,7 @@ function TgtInput({ label, value, onChange, ph }: {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
       {label}
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={ph} />
+      <input className="inp" value={value} onChange={(e) => onChange(e.target.value)} placeholder={ph} />
     </label>
   );
 }
@@ -59,8 +74,10 @@ export default function LiveScanners() {
   const [universalTarget, setUniversalTarget] = useState("");
   const [intervalS, setIntervalS] = useState(900);
   const [log, setLog] = useState<LogLine[]>([]);
+  const [cycles, setCycles] = useState<ObservedCycle[]>([]);
   const logRef = useRef<LogLine[]>([]);
   const seenIds = useRef<Set<number>>(new Set());
+  const seenCycleKeys = useRef<Set<string>>(new Set());
 
   const pushLog = (text: string, tone: LogLine["tone"]) => {
     const line = { ts: new Date().toLocaleTimeString(), text, tone };
@@ -68,15 +85,36 @@ export default function LiveScanners() {
     setLog(logRef.current);
   };
 
+  const pushCycle = (cycle: ObservedCycle) => {
+    if (seenCycleKeys.current.has(cycle.key)) return;
+    seenCycleKeys.current.add(cycle.key);
+    setCycles((prev) => [...prev, cycle].slice(-60));
+  };
+
   const refresh = async () => {
     const r = await apiLiveScanStatus();
     setSource(r.source);
-    if (r.data) setStatus(r.data as LiveScanStatus);
+    if (r.data) {
+      const next = r.data as LiveScanStatus;
+      setStatus(next);
+      // A new last_run_at is a cycle this screen did not see the event for
+      // (opened late, or the stream was down). Record it as observed-without-
+      // event, with no elapsed time — the snapshot does not carry one.
+      if (next.last_run_at) {
+        pushCycle({
+          key: `poll-${next.last_run_at}`,
+          ts: next.last_run_at,
+          ok: typeof next.ok_count === "number" ? next.ok_count : null,
+          failed: typeof next.failed_count === "number" ? next.failed_count : null,
+          elapsed: null,
+        });
+      }
+    }
   };
 
   useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 4000);
+    void refresh();
+    const t = setInterval(() => void refresh(), 4000);
     return () => clearInterval(t);
   }, []);
 
@@ -102,11 +140,19 @@ export default function LiveScanners() {
         else pushLog(`✗ ${SCANNER_LABEL[p.scanner as string] || p.scanner}: ${p.error || "failed"}`, "fail");
       } else if (type === "live_scan.completed") {
         pushLog(`cycle complete — ${p.ok} ok, ${p.failed} failed in ${p.elapsed_s}s`, p.failed ? "fail" : "ok");
-        refresh();
+        pushCycle({
+          key: `sse-${ev.ts ?? ev.id}`,
+          ts: ev.ts ?? new Date().toISOString(),
+          ok: typeof p.ok === "number" ? p.ok : null,
+          failed: typeof p.failed === "number" ? p.failed : null,
+          elapsed: typeof p.elapsed_s === "number" ? p.elapsed_s : null,
+        });
+        void refresh();
       } else if (type === "live_scan.error") {
         pushLog(`error: ${p.error}`, "fail");
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realtime.events]);
 
   const runNow = async () => {
@@ -135,12 +181,12 @@ export default function LiveScanners() {
     const r = await apiLiveScanStart(intervalS);
     pushLog(r.source === "live" ? `periodic loop started (every ${intervalS}s)` : `start failed: ${r.error}`,
       r.source === "live" ? "ok" : "fail");
-    refresh();
+    void refresh();
   };
   const stopLoop = async () => {
     await apiLiveScanStop();
     pushLog("periodic loop stopping", "info");
-    refresh();
+    void refresh();
   };
 
   const scannerRows = useMemo(() => {
@@ -153,16 +199,46 @@ export default function LiveScanners() {
       return {
         key,
         label: SCANNER_LABEL[key] || key,
-        ok: s?.ok,
-        elapsed: s?.elapsed_s,
+        ok: s?.ok as boolean | null | undefined,
+        elapsed: typeof s?.elapsed_s === "number" ? s.elapsed_s : null,
         summary: s?.summary,
         error: s?.error,
       };
     });
   }, [status]);
 
-  const toneFor = (ok: boolean | null | undefined): "green" | "red" | "amber" | "" =>
-    ok === true ? "green" : ok === false ? "red" : "";
+  // Fleet split for the last cycle: reported ok, reported failed, and the
+  // scanners that returned no result at all (not the same as passing).
+  const fleet = useMemo(() => {
+    const ok = scannerRows.filter((r) => r.ok === true).length;
+    const failed = scannerRows.filter((r) => r.ok === false).length;
+    const silent = scannerRows.filter((r) => r.ok === undefined || r.ok === null).length;
+    return { ok, failed, silent, total: scannerRows.length };
+  }, [scannerRows]);
+
+  const slowest = Math.max(1, ...scannerRows.map((r) => r.elapsed ?? 0));
+  const okCount = status && typeof status.ok_count === "number" ? status.ok_count : null;
+  const failedCount = status && typeof status.failed_count === "number" ? status.failed_count : null;
+
+  // Which scanners this form will actually request, given the current inputs.
+  const requested = [
+    ...HOST_SCANNERS,
+    ...(netTarget.trim() ? ["network"] : []),
+    ...(cloudLive ? ["cloud"] : []),
+    ...(containerTarget.trim() ? ["container"] : []),
+    ...(otTarget.trim() ? ["ot"] : []),
+    ...(sourceTarget.trim() ? ["source"] : []),
+    ...(universalTarget.trim() ? ["universal"] : []),
+  ];
+
+  const cycleOk = cycles.map((c) => c.ok);
+  const cycleFailed = cycles.map((c) => c.failed);
+  const cycleElapsed = cycles.map((c) => c.elapsed);
+  const worst = cycles.reduce<"info" | "warn" | "critical">((acc, c) => {
+    if (c.failed === null) return acc;
+    if (c.failed > 0) return "warn";
+    return acc;
+  }, "info");
 
   return (
     <>
@@ -177,24 +253,209 @@ export default function LiveScanners() {
         }
       />
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, margin: "14px 0" }}>
-        <Kpi k="Cycle running" v={status?.running ? "yes" : "idle"} tone={status?.running ? "cyan" : ""} />
-        <Kpi k="Last cycle" v={status?.last_run_at ? new Date(status.last_run_at).toLocaleTimeString() : "—"} />
-        <Kpi k="Scanners OK" v={status?.ok_count ?? 0} tone="green" />
-        <Kpi k="Scanners failed" v={status?.failed_count ?? 0} tone={(status?.failed_count ?? 0) ? "red" : ""} />
+      {/* ── cycle state board ─────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, margin: "14px 0" }}>
+        <StateCell
+          label="Cycle"
+          value={status ? (status.running ? "RUNNING" : "idle") : "Not observed"}
+          tone={status ? (status.running ? "green" : "slate") : "slate"}
+          note={status?.periodic?.enabled ? `loop every ${status.periodic.interval_seconds}s` : "no periodic loop"}
+        />
+        <StateCell
+          label="Last cycle"
+          value={status?.last_run_at ? new Date(status.last_run_at).toLocaleTimeString() : "—"}
+          tone={status?.last_run_at ? "accent" : "slate"}
+          note={status?.last_run_at ? new Date(status.last_run_at).toLocaleDateString() : "no completed cycle"}
+        />
+        <StateCell label="Scanners OK" value={okCount ?? "—"} tone={okCount ? "green" : "slate"} note="last cycle, reported" />
+        <StateCell label="Scanners failed" value={failedCount ?? "—"} tone={failedCount ? "red" : "slate"} note="blocked/unconfigured excluded" />
+        <StateCell label="Cycles observed here" value={cycles.length} tone={cycles.length ? "accent" : "slate"} note="since this screen opened" />
       </div>
 
+      {/* ── fleet + cycle record ──────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12 }}>
+        <Panel
+          title="Scanner fleet"
+          sub={status?.running
+            ? "cycle in progress — bars are the last reported elapsed time"
+            : "from the most recent live cycle; bar length is relative to the slowest scanner in it"}
+        >
+          <div style={{ marginBottom: 10 }}>
+            <StackedBar
+              segments={[
+                { key: "ok", label: "reported ok", value: fleet.ok, tone: "green" },
+                { key: "failed", label: "reported failed", value: fleet.failed, tone: "red" },
+                { key: "silent", label: "no result", value: fleet.silent, tone: "slate" },
+              ]}
+              note="Runner result for every scanner this page can drive. “No result” means the scanner reported nothing — it is not a pass."
+            />
+          </div>
+
+          {scannerRows.filter((r) => r.ok !== undefined && r.ok !== null).length === 0 && !status?.running ? (
+            <VizEmpty
+              title="No scanner result recorded"
+              note="Hardware and runtime run without a target; add a target below to include network / container / OT / source scans."
+              height={72}
+            />
+          ) : (
+            <div className="scan-prog">
+              {scannerRows.map((r) => {
+                const isRunning = status?.running && (r.ok === undefined || r.ok === null);
+                const failed = r.ok === false;
+                const cls = isRunning ? "is-running" : failed ? "is-failed" : r.ok === true ? "is-ok" : "";
+                const facts = r.ok === false
+                  ? r.error
+                  : kv(r.summary).map(([k, v]) => `${k}=${String(v)}`).join("  ·  ");
+                return (
+                  <div key={r.key} className={`scan-row ${cls}`} style={{ alignItems: "stretch" }}>
+                    <div className="s-ico">{isRunning ? <IconRunning size={ICON_SM} /> : <StatusMark ok={failed ? false : r.ok === true ? true : null} muted />}</div>
+                    <div className="s-meta" style={{ flex: 1, minWidth: 0 }}>
+                      <div className="s-name">{r.label}</div>
+                      {facts && <div className="s-detail">{facts}</div>}
+                      {/* elapsed bar: only when the runner reported seconds */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5 }}>
+                        <span style={{ flex: 1, height: 5, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 1, overflow: "hidden" }}>
+                          <span
+                            style={{
+                              display: "block",
+                              height: "100%",
+                              width: r.elapsed === null ? "0%" : `${Math.max(2, (r.elapsed / slowest) * 100)}%`,
+                              background: failed ? "var(--red)" : r.ok === true ? "var(--green)" : "var(--slate)",
+                            }}
+                          />
+                        </span>
+                        <span className="mono" style={{ fontSize: 10, color: "var(--faint)", minWidth: 46, textAlign: "right" }}>
+                          {r.elapsed === null ? "no time" : `${r.elapsed.toFixed(2)}s`}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="s-right">
+                      {isRunning
+                        ? <Badge tone="cyan"><span className="dot pulse" /> scanning</Badge>
+                        : r.ok === false
+                          ? <Badge tone="red">failed</Badge>
+                          : r.ok === true
+                            ? <Badge tone="green">ok</Badge>
+                            : <Badge tone="slate">no result</Badge>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+
+        <div>
+          <Panel
+            title="Cycle record"
+            sub={`${cycles.length} cycle(s) observed since this screen opened · not a stored history`}
+          >
+            <div style={{ marginBottom: 10 }}>
+              <TickStrip
+                ticks={cycles.map((c) => ({
+                  ts: new Date(c.ts).toLocaleTimeString(),
+                  severity: c.failed && c.failed > 0 ? "warn" : "info",
+                }))}
+                label="Cycles by outcome"
+                emptyNote="No cycle has completed while this screen was open."
+              />
+            </div>
+            {cycles.length >= 2 ? (
+              <Sparkline
+                series={cycleElapsed}
+                label="Cycle duration (s)"
+                tone="accent"
+                height={54}
+                format={(n) => `${n}s`}
+                emptyNote="Duration comes from the cycle-completed event; cycles seen only through the status snapshot carry no duration."
+              />
+            ) : (
+              <VizEmpty
+                title="Cycle duration — no samples"
+                note="Two completed cycles are needed before a duration line means anything."
+                height={54}
+              />
+            )}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+              <HBars
+                rows={[
+                  { key: "ok", label: "best cycle ok", value: cycleOk.reduce<number>((a, b) => Math.max(a, b ?? 0), 0), tone: "green" },
+                  { key: "failed", label: "worst cycle failed", value: cycleFailed.reduce<number>((a, b) => Math.max(a, b ?? 0), 0), tone: cycleFailed.some((f) => (f ?? 0) > 0) ? "red" : "slate" },
+                ]}
+                emptyTitle="No cycle to compare"
+                emptyNote="Nothing has completed in this session yet."
+              />
+              <p style={{ margin: "8px 0 0", fontSize: 10.5, color: "var(--faint)" }}>
+                Only cycles this screen observed are counted. An empty record means nothing ran while you were watching, not that the
+                estate is healthy.
+              </p>
+            </div>
+          </Panel>
+
+          <Panel title="Live activity" sub={`${log.length} line(s) streamed from the scanners over SSE`} className="mt">
+            <div style={{ maxHeight: 300, overflowY: "auto" }}>
+              {log.length === 0 && <div className="dim" style={{ fontSize: 13 }}>No scan activity yet — run a scan.</div>}
+              <div className="feed">
+                {log.slice().reverse().map((l, i) => (
+                  <div className="ev" key={i}>
+                    <span className="t">{l.ts}</span>
+                    <span className="tag" style={{
+                      color: l.tone === "ok" ? "var(--green)"
+                        : l.tone === "fail" ? "var(--red)"
+                        : l.tone === "start" ? "var(--accent)" : "var(--dim)",
+                      borderColor: "currentColor",
+                    }}>
+                      {l.tone === "ok" ? "ok" : l.tone === "fail" ? "err" : l.tone === "start" ? "run" : "info"}
+                    </span>
+                    <span className="txt" style={{
+                      color: l.tone === "fail" ? "var(--red)" : l.tone === "start" ? "var(--text)" : undefined,
+                    }}>{l.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Panel>
+        </div>
+      </div>
+
+      {/* ── run form ──────────────────────────────────────────────────── */}
       <Panel
         title="Run a live scan"
         sub="Hardware + runtime always run. Fill a target to include that service; leave blank to skip."
+        className="mt"
       >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
+          <span className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)", textTransform: "uppercase", marginRight: 4 }}>
+            will request
+          </span>
+          {[...HOST_SCANNERS, ...TARGET_SCANNERS].map((key) => {
+            const on = requested.includes(key);
+            return (
+              <span
+                key={key}
+                className="mono"
+                style={{
+                  fontSize: 10.5,
+                  padding: "2px 6px",
+                  borderRadius: 2,
+                  border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
+                  color: on ? "var(--accent)" : "var(--faint)",
+                  background: on ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "transparent",
+                }}
+                title={SCANNER_LABEL[key] ?? key}
+              >
+                {key}
+              </span>
+            );
+          })}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
           <TgtInput label="Network TLS target" value={netTarget} onChange={setNetTarget} ph="example.com:443" />
           <TgtInput label="Container / image / rootfs" value={containerTarget} onChange={setContainerTarget} ph="nginx:latest or /host/rootfs" />
           <TgtInput label="OT / ICS passive logs" value={otTarget} onChange={setOtTarget} ph="/var/log/ot  (file or dir)" />
           <TgtInput label="Static source dir" value={sourceTarget} onChange={setSourceTarget} ph="/path/to/source" />
           <TgtInput label="Universal crypto source" value={universalTarget} onChange={setUniversalTarget} ph="/path/to/source" />
-          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, justifyContent: "flex-end" }}>
             <span style={{ opacity: 0.8 }}>Options</span>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
               <input type="checkbox" checked={netFull} onChange={(e) => setNetFull(e.target.checked)} />
@@ -204,90 +465,29 @@ export default function LiveScanners() {
               <input type="checkbox" checked={cloudLive} onChange={(e) => setCloudLive(e.target.checked)} />
               cloud live (read-only, needs creds)
             </label>
-          </label>
+          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginTop: 14 }}>
-          <button className="btn" onClick={runNow} disabled={status?.running}>
+          <button className="btn" onClick={() => void runNow()} disabled={status?.running}>
             {status?.running ? "scan running…" : "Run scan now"}
           </button>
           <span style={{ flex: 1 }} />
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
             Interval (s)
-            <input type="number" value={intervalS} min={30}
+            <input className="inp" type="number" value={intervalS} min={30}
               onChange={(e) => setIntervalS(Number(e.target.value) || 900)} style={{ width: 100 }} />
           </label>
-          <button className="btn" onClick={startLoop} disabled={status?.periodic?.enabled}>
+          <button className="btn" onClick={() => void startLoop()} disabled={status?.periodic?.enabled}>
             {status?.periodic?.enabled ? `loop on (${status.periodic.interval_seconds}s)` : "Start live loop"}
           </button>
-          <button className="btn sm" onClick={stopLoop} disabled={!status?.periodic?.enabled}>Stop</button>
+          <button className="btn sm" onClick={() => void stopLoop()} disabled={!status?.periodic?.enabled}>Stop</button>
         </div>
       </Panel>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 14, marginTop: 14 }}>
-        <Panel
-          title="Scanner fleet"
-          sub={status?.running ? "cycle in progress — live SSE ticks" : "from the most recent live cycle"}
-        >
-          <div className="scan-prog">
-            {scannerRows.filter((r) => r.ok !== undefined || status?.running).map((r) => {
-              const isRunning = status?.running && r.ok === undefined;
-              const failed = r.ok === false;
-              const cls = isRunning ? "is-running" : failed ? "is-failed" : r.ok === true ? "is-ok" : "";
-              const facts = r.ok === false
-                ? r.error
-                : kv(r.summary).map(([k, v]) => `${k}=${String(v)}`).join("  ·  ");
-              return (
-                <div key={r.key} className={`scan-row ${cls}`}>
-                  <div className="s-ico">{isRunning ? <IconRunning size={ICON_SM} /> : <StatusMark ok={failed ? false : r.ok === true ? true : null} muted />}</div>
-                  <div className="s-meta">
-                    <div className="s-name">{r.label}</div>
-                    {facts && <div className="s-detail">{facts}</div>}
-                  </div>
-                  <div className="s-right">
-                    {isRunning
-                      ? <Badge tone="cyan"><span className="dot pulse" /> scanning</Badge>
-                      : r.ok === false
-                        ? <Badge tone="red">failed</Badge>
-                        : r.ok === true
-                          ? <Badge tone="green">ok{r.elapsed != null ? ` · ${Number(r.elapsed).toFixed(2)}s` : ""}</Badge>
-                          : <Badge tone="slate">queued</Badge>}
-                  </div>
-                </div>
-              );
-            })}
-            {scannerRows.every((r) => r.ok === undefined) && !status?.running && (
-              <div className="dim" style={{ fontSize: 13 }}>
-                No scanner results yet — hardware &amp; runtime run without a target; add a target to
-                include network / container / OT / source scans.
-              </div>
-            )}
-          </div>
-        </Panel>
-
-        <Panel title="Live activity" sub="streamed from the scanners via SSE">
-          <div style={{ maxHeight: 360, overflowY: "auto" }}>
-            {log.length === 0 && <div className="dim" style={{ fontSize: 13 }}>No scan activity yet — run a scan.</div>}
-            <div className="feed">
-              {log.slice().reverse().map((l, i) => (
-                <div className="ev" key={i}>
-                  <span className="t">{l.ts}</span>
-                  <span className="tag" style={{
-                    color: l.tone === "ok" ? "var(--green)"
-                      : l.tone === "fail" ? "var(--red)"
-                      : l.tone === "start" ? "var(--cyan)" : "var(--dim)",
-                    borderColor: "currentColor",
-                  }}>
-                    {l.tone === "ok" ? "ok" : l.tone === "fail" ? "err" : l.tone === "start" ? "run" : "info"}
-                  </span>
-                  <span className="txt" style={{
-                    color: l.tone === "fail" ? "var(--red)" : l.tone === "start" ? "var(--text)" : undefined,
-                  }}>{l.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Panel>
-      </div>
+      <p style={{ margin: "10px 0 0", fontSize: 11, color: "var(--faint)" }}>
+        Scanner results are the runner's own report. A cycle with zero failures still excludes blocked and unconfigured
+        scanners, and none of these counts measures estate coverage.
+      </p>
     </>
   );
 }
