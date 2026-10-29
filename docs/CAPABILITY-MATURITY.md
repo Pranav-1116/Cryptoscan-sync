@@ -4,13 +4,12 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`; the console labels every page from it.
 
-The platform ships ~50 services and ~70 console surfaces. All surfaces are production-supported and
-generally available. Unknown routes default to
-**ga** (real system).
+The platform ships many services and console surfaces. Maturity is assigned per route;
+new or unclassified routes default down to **preview**, never to production support.
+A tier describes the reviewed surface, not completeness of an unobserved estate.
 
 The sidebar is organized into six sections: **Overview, Discovery, Intelligence,
-Governance, Output and Administration**. It currently has 32 menu slots and 31
-unique primary route paths; deep-linked routes remain in the maturity inventory
+Governance, Output and Administration**. Deep-linked routes remain in the maturity inventory
 without being duplicated in the sidebar. See the [Navigation & Feature
 Reference](NAVIGATION-FEATURE-REFERENCE.md) for the route-to-page map and
 role-guarded actions.
@@ -18,10 +17,10 @@ role-guarded actions.
 | Tier | Meaning | Surfaces |
 |---|---|---|
 | **GA** | Production-supported. Deterministic core, broad tests, in the burn-in. | 77 |
-| **Beta** | Real code and real data; thinner test coverage or short deployment history. | 0 |
-| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 0 |
+| **Beta** | Real code and real data; thinner test coverage or short deployment history. | 3 |
+| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 5 |
 
-Total: 77 surfaces.
+Total: 85 surfaces.
 
 ## GA (77)
 
@@ -105,15 +104,23 @@ Total: 77 surfaces.
 | `/search-results` | Overview | Cross-inventory search. |
 | `/timeline` | Overview | Estate timeline; aggregates several beta sources. |
 
-## Beta (0)
+## Beta (3)
 
 | Route | Area | Why this tier |
 |---|---|---|
+| `/sbom` | Intelligence | A versioned software projection over available evidence; deployments and missing component versions remain unproven. |
+| `/vbom` | Intelligence | A supplier projection from retained evidence and declarations, not independent supplier validation. |
+| `/live-monitor` | Overview | Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage. |
 
-## Preview (0)
+## Preview (5)
 
 | Route | Area | Why this tier |
 |---|---|---|
+| `/assurance-coverage` | Governance | A source register can be declared and read, but observation and revision writes still lack a console workflow; registration is not coverage. |
+| `/assurance-qualification` | Governance | Read-only qualification views exist; supplier and adapter approval writes require separate operator workflows. |
+| `/assurance-records` | Governance | Reads immutable assurance revisions, but does not originate or independently approve them. |
+| `/assurance-sampling` | Governance | Shows frozen predictions without a score; domain-owner sampling review is not submitted from this page. |
+| `/assurance-trace` | Governance | Displays retained relationship evidence and unresolved links, not a verified runtime call graph. |
 
 ## Retired sidebar entries
 

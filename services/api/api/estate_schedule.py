@@ -26,12 +26,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db.models.estate_schedule import EstateSchedule, EstateScheduleRun
 
 DEFAULT_LEASE_SECONDS = 900
 MAX_INTERVAL_MINUTES = 366 * 24 * 60
+# These adapters only read evidence already retained in this estate. Live cloud,
+# cluster, CMDB, KMS and HSM adapters need separate approved collection controls.
+PERSISTED_SCHEDULE_PLANES = frozenset({"NETWORK", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR"})
 
 _CRON_FIELDS = (
     ("minute", 0, 59),
@@ -188,11 +192,19 @@ def next_run_at(
 # --------------------------------------------------------------------------- #
 # schedule CRUD
 # --------------------------------------------------------------------------- #
-def _planes(planes: Iterable[str] | None) -> str | None:
-    if not planes:
-        return None
-    cleaned = sorted({str(item).strip().upper() for item in planes if str(item).strip()})
-    return json.dumps(cleaned) if cleaned else None
+def admitted_planes(planes: Iterable[str] | None) -> list[str]:
+    """A schedule reprojects retained evidence; it cannot authorize acquisition."""
+    requested = sorted({str(item).strip().upper() for item in planes or [] if str(item).strip()})
+    if not requested:
+        raise ScheduleError("planes_required", "Select at least one persisted-evidence plane; an omitted or empty list would run every live collector")
+    unsupported = sorted(set(requested) - PERSISTED_SCHEDULE_PLANES)
+    if unsupported:
+        raise ScheduleError("plane_not_authorized", f"Scheduled collection is not qualified for {', '.join(unsupported)}; use separately approved acquisition and reproject its stored evidence")
+    return requested
+
+
+def _planes(planes: Iterable[str] | None) -> str:
+    return json.dumps(admitted_planes(planes))
 
 
 def create_schedule(
@@ -242,14 +254,25 @@ def create_schedule(
         created_by=user,
     )
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", "") or ""
+        if constraint not in {"uq_estate_schedule_platform_name", "uq_estate_schedule_tenant_name"} and not (
+            "UNIQUE constraint failed: estate_schedules.name" in str(exc.orig)
+            or "UNIQUE constraint failed: estate_schedules.tenant_id, estate_schedules.name" in str(exc.orig)
+        ):
+            raise
+        raise ScheduleError("schedule_exists", f"a schedule named {label!r} already exists in this estate") from exc
     db.refresh(row)
     return row
 
 
-def list_schedules(db: Session, *, tenant_id: str | None = None, include_disabled: bool = True) -> list[EstateSchedule]:
+def list_schedules(db: Session, *, tenant_id: str | None = None, include_disabled: bool = True,
+                   exact_tenant: bool = False) -> list[EstateSchedule]:
     statement = select(EstateSchedule)
-    if tenant_id is not None:
+    if exact_tenant or tenant_id is not None:
         statement = statement.where(EstateSchedule.tenant_id == tenant_id)
     if not include_disabled:
         statement = statement.where(EstateSchedule.enabled.is_(True))
@@ -258,7 +281,8 @@ def list_schedules(db: Session, *, tenant_id: str | None = None, include_disable
 
 def get_schedule(db: Session, identifier: str, *, tenant_id: str | None = None) -> EstateSchedule | None:
     """Look a schedule up by id **or** name (the name is what operators use)."""
-    statement = select(EstateSchedule).where(EstateSchedule.id == identifier)
+    statement = select(EstateSchedule).where(EstateSchedule.id == identifier,
+                                             EstateSchedule.tenant_id == tenant_id)
     row = db.execute(statement).scalars().first()
     if row is None:
         row = db.execute(
@@ -273,6 +297,8 @@ def set_enabled(db: Session, identifier: str, enabled: bool, *, tenant_id: str |
     row = get_schedule(db, identifier, tenant_id=tenant_id)
     if row is None:
         raise ScheduleError("schedule_not_found", f"no schedule {identifier!r}")
+    if enabled:
+        admitted_planes(json.loads(row.planes) if row.planes else None)
     row.enabled = bool(enabled)
     if enabled:
         # re-enabling must not fire immediately: the schedule resumes on cadence
@@ -288,10 +314,11 @@ def delete_schedule(db: Session, identifier: str, *, tenant_id: str | None = Non
     row = get_schedule(db, identifier, tenant_id=tenant_id)
     if row is None:
         raise ScheduleError("schedule_not_found", f"no schedule {identifier!r}")
-    schedule_id = row.id
-    db.delete(row)
-    db.commit()
-    return schedule_id
+    # The FK on estate_schedule_runs cascades DELETE. Until a separately
+    # reviewed tombstone migration exists, erasing the schedule would erase
+    # every recorded run and make a failed cadence disappear from history.
+    raise ScheduleError("schedule_retention_required",
+                        "Schedules and their run receipts cannot be erased; pause the cadence instead")
 
 
 def _iso(value: datetime | None) -> str | None:
@@ -339,6 +366,8 @@ def claim_due(
     now: datetime | None = None,
     lease_seconds: int = DEFAULT_LEASE_SECONDS,
     limit: int = 20,
+    tenant_id: str | None = None,
+    exact_tenant: bool = False,
 ) -> list[EstateSchedule]:
     """Claim due schedules for ``worker``; a second caller gets none of the same rows.
 
@@ -347,20 +376,22 @@ def claim_due(
     """
     moment = _utc(now)
     lease_until = moment + timedelta(seconds=max(30, int(lease_seconds)))
-    due = db.execute(
+    statement = (
         select(EstateSchedule.id)
         .where(EstateSchedule.enabled.is_(True), EstateSchedule.next_run_at <= moment)
         .where((EstateSchedule.claimed_until.is_(None)) | (EstateSchedule.claimed_until < moment))
-        .order_by(EstateSchedule.next_run_at)
-        .limit(limit)
-    ).scalars().all()
+    )
+    if exact_tenant:
+        statement = statement.where(EstateSchedule.tenant_id == tenant_id)
+    due = db.execute(statement.order_by(EstateSchedule.next_run_at).limit(limit)).scalars().all()
 
     claimed: list[EstateSchedule] = []
     for schedule_id in due:
+        claim = update(EstateSchedule).where(EstateSchedule.id == schedule_id)
+        if exact_tenant:
+            claim = claim.where(EstateSchedule.tenant_id == tenant_id)
         result = db.execute(
-            update(EstateSchedule)
-            .where(EstateSchedule.id == schedule_id)
-            .where((EstateSchedule.claimed_until.is_(None)) | (EstateSchedule.claimed_until < moment))
+            claim.where((EstateSchedule.claimed_until.is_(None)) | (EstateSchedule.claimed_until < moment))
             .values(claimed_by=worker, claimed_until=lease_until)
         )
         if result.rowcount == 1:
@@ -393,6 +424,8 @@ def tick(
     limit: int = 20,
     runner: Callable[..., Mapping[str, Any]] | None = None,
     on_event: Callable[[str, Mapping[str, Any]], Any] | None = None,
+    tenant_id: str | None = None,
+    exact_tenant: bool = False,
 ) -> dict[str, Any]:
     """Run every due schedule once, releasing each lease as it finishes.
 
@@ -402,7 +435,8 @@ def tick(
     caller without one gets identical behaviour and no events.
     """
     moment = _utc(now)
-    claimed = claim_due(db, worker=worker, now=moment, lease_seconds=lease_seconds, limit=limit)
+    claimed = claim_due(db, worker=worker, now=moment, lease_seconds=lease_seconds, limit=limit,
+                        tenant_id=tenant_id, exact_tenant=exact_tenant)
     if runner is None:
         from api import estate_discovery
 
@@ -433,7 +467,13 @@ def tick(
         db.add(run_row)
         db.commit()
         try:
-            report = runner(row) or {}
+            from db.tenancy import tenant_scope
+
+            # Claiming is platform-wide; collection and every emitted event are
+            # confined to the row's estate, never the daemon's ambient context.
+            with tenant_scope(row.tenant_id):
+                admitted_planes(json.loads(row.planes) if row.planes else None)
+                report = runner(row) or {}
             verdict = str(report.get("verdict") or "UNKNOWN")
             coverage_state = str((report.get("coverage") or {}).get("summary", {})
                                  .get("coverage_state") or "UNKNOWN")

@@ -63,16 +63,17 @@ def test_tiers_are_known_and_every_entry_has_a_rationale():
 
 
 def test_unknown_routes_default_down_to_preview():
-    assert tier_of("/never-heard-of-it") == "ga"
+    assert tier_of("/never-heard-of-it") == "preview"
     assert tier_of("/cbom?tab=2") == "ga"
     assert tier_of("dev-sec-ops/binaries") == "ga"
 
 
-def test_not_everything_is_ga():
-    """All navigation is now GA (real system) — no beta/preview surfaces."""
+def test_new_assurance_surfaces_are_not_promoted_to_ga():
     c = counts()
-    assert c["ga"] == len(CAPABILITIES)
-    assert c["beta"] == 0 and c["preview"] == 0
+    assert c == {"ga": 77, "beta": 3, "preview": 5}
+    for route in ("assurance-records", "assurance-coverage", "assurance-trace",
+                  "assurance-sampling", "assurance-qualification"):
+        assert CAPABILITIES[route]["tier"] == "preview"
 
 
 def test_retired_nav_routes_are_gone_from_the_sidebar():
@@ -102,5 +103,5 @@ def test_manifest_shape():
     m = capability_manifest()
     assert m["schema_version"] == 1
     assert set(m["tiers"]) == {"ga", "beta", "preview"}
-    assert m["default_for_unknown"] == "ga"
+    assert m["default_for_unknown"] == "preview"
     assert all(row["route"].startswith("/") for row in m["capabilities"])

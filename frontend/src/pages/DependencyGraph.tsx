@@ -115,7 +115,7 @@ export default function DependencyGraph(){
           <div>
             <div style={{fontSize:10, letterSpacing:.12, fontFamily:"var(--mono)", color:"var(--accent)"}}>DETERMINISTIC TOPOLOGY · LIVE BFS · NO INFERENCE</div>
             <h1 style={{fontSize:22, fontWeight:700, margin:"2px 0 2px", lineHeight:1}}>Cryptographic Dependency Graph</h1>
-            <div style={{fontSize:12, color:"var(--dim)"}}>Systems → libraries → certs → HSMs — observed edges with provenance · <span style={{color:"var(--accent)"}}>{nodes.length} nodes</span> · <span style={{color:"var(--violet)"}}>{edges.length} edges</span></div>
+            <div style={{fontSize:12, color:"var(--dim)"}}>Systems → libraries → certs → HSMs — edges by reported provenance · <span style={{color:"var(--accent)"}}>{nodes.length} nodes</span> · <span style={{color:"var(--violet)"}}>{edges.length} edges</span></div>
           </div>
         </div>
         <div style={{display:"flex", gap:10, alignItems:"center", flexWrap:"wrap"}}>
@@ -139,7 +139,7 @@ export default function DependencyGraph(){
           <div style={{fontSize:22, fontWeight:800, color:"var(--cyan)", margin:"4px 0 2px"}}>{loading?"…": (graphStats?.edges ?? edges.length)}</div>
           <div style={{fontSize:11, color:"var(--dim)"}}>{loading?"…": (provenanceSummary || "no edges yet")}</div>
           {!loading && edges.length>0 && <Bar value={Math.min(1, edges.length/Math.max(1,(graphStats?.nodes ?? nodes.length)))} tone="cyan"/>}
-          <div style={{fontSize:10, color:"var(--faint)", marginTop:4}}>declared = operator · scanner-derived = evidence</div>
+          <div style={{fontSize:10, color:"var(--faint)", marginTop:4}}>declared = operator statement · scanner-derived = from scan evidence · unattributed = origin unknown</div>
         </div>
         <div className="panel" style={{padding:"12px 14px", borderTop: loading || graphData.backend ? "2px solid var(--green)" : "2px solid var(--line-strong)"}}>
           <div style={{fontSize:10, color:"var(--dim)", letterSpacing:.08, display:"flex", gap:6, alignItems:"center"}}><span className="dot" style={{background: loading || graphData.backend ? "var(--green)":"var(--slate)", width:6,height:6,borderRadius:99}}/>ENGINE</div>
@@ -148,8 +148,8 @@ export default function DependencyGraph(){
         </div>
         <div className="panel" style={{padding:"12px 14px", borderTop:"2px solid var(--violet)"}}>
           <div style={{fontSize:10, color:"var(--dim)", letterSpacing:.08, display:"flex", gap:6, alignItems:"center"}}><span className="dot" style={{background:"var(--violet)", width:6,height:6,borderRadius:99}}/>BLAST READY</div>
-          <div style={{fontSize:22, fontWeight:800, margin:"4px 0 2px"}}>{selectedNode ? (blastRadius?.systems?.length ?? 0) : "—"}</div>
-          <div style={{fontSize:11, color:"var(--dim)"}}>{selectedNode ? `${selectedNode.label||selectedNode.id} downstream` : "select a node"}</div>
+          <div style={{fontSize:22, fontWeight:800, margin:"4px 0 2px"}}>{blastRadius ? blastRadius.systems?.length ?? 0 : "—"}</div>
+          <div style={{fontSize:11, color:"var(--dim)"}}>{selectedNode ? blastRadius ? `${selectedNode.label||selectedNode.id} downstream` : "Traversal unavailable — impact unknown" : "select a node"}</div>
           <Bar value={selectedNode && blastRadius ? Math.min(1, (blastRadius.systems?.length||0)/8) : 0} tone="violet"/>
         </div>
       </div>
@@ -281,7 +281,7 @@ export default function DependencyGraph(){
                   </div>
                   {blastRadius.provenance_counts && (
                     <div style={{fontSize:11, color:"var(--dim)", lineHeight:1.5, padding:"8px 10px", background:"var(--panel-2)", border:"1px solid var(--line)", borderRadius:"var(--r)"}}>
-                      Path edges: {Object.entries(blastRadius.provenance_counts as Record<string,number>).filter(([,v])=>Number(v)>0).map(([k,v])=> `${Number(v)} ${String(k).toLowerCase().replace(/_/g,"-")}`).join(" · ") || "none"} — declared = operator statement.
+                      Path edges: {Object.entries(blastRadius.provenance_counts as Record<string,number>).filter(([,v])=>Number(v)>0).map(([k,v])=> `${Number(v)} ${String(k).toLowerCase().replace(/_/g,"-")}`).join(" · ") || "none"} — declared edges are operator statements, not observed traffic.
                     </div>
                   )}
                   {blastRadius.systems && blastRadius.systems.length>0 && (

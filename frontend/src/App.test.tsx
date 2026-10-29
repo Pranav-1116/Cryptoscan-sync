@@ -52,17 +52,28 @@ describe("app shell", () => {
     expect(nav?.querySelectorAll(":scope > .nav-label")).toHaveLength(6);
     const links = Array.from(nav?.querySelectorAll("a.nav") || []);
     const hrefs = links.map((link) => link.getAttribute("href") || "");
-    // 47 links over 46 routes: the Audit Log / Security Center duplication in the sidebar
-    // is deliberate (see Layout.tsx), and the nav wraps them in one section each
-    expect(links).toHaveLength(47);
-    expect(new Set(hrefs).size).toBe(46);
+    // 49 links over 48 routes: Audit Log and Security Center share one route.
+    expect(links).toHaveLength(49);
+    expect(new Set(hrefs).size).toBe(48);
     expect(hrefs.filter((href) => href === "/security-center")).toHaveLength(2);
-    for (const path of ["/launch-readiness", "/operator-decisions", "/assurance-records", "/assurance-coverage", "/assurance-trace", "/assurance-sampling", "/assurance-qualification", "/crypto", "/cbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/remediation", "/priorities", "/migration", "/live-scanners"]) {
+    for (const path of ["/launch-readiness", "/operator-decisions", "/assurance-records", "/assurance-coverage", "/assurance-trace", "/assurance-sampling", "/assurance-qualification", "/crypto", "/cbom", "/sbom", "/vbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/remediation", "/priorities", "/migration", "/live-scanners"]) {
       expect(hrefs).toContain(path);
     }
     expect(hrefs).not.toContain("/vendor-due-diligence");
     expect(hrefs).not.toContain("/audit-merkle");
     expect(hrefs.every((href) => href.startsWith("/") && !href.startsWith("/#"))).toBe(true);
+  });
+
+  it("shows the restored full sidebar even if the previous layout was collapsed", async () => {
+    localStorage.setItem("zelnx-sidebar-collapsed", "true");
+    await act(async () => { shell("/command-center"); });
+    expect(document.querySelector(".shell")).toHaveAttribute("data-sidebar-collapsed", "false");
+    expect(document.querySelector('.primary-nav a[href="/sbom"]')).toBeInTheDocument();
+    expect(document.querySelector('.primary-nav a[href="/vbom"]')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    expect(localStorage.getItem("zelnx-classic-sidebar-collapsed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
+    expect(localStorage.getItem("zelnx-classic-sidebar-collapsed")).toBe("false");
   });
 
   it("exposes global search as a keyboard-focusable button", async () => {

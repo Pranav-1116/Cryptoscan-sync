@@ -101,18 +101,18 @@ describe("HBOM page", () => {
     });
     renderPage();
 
-    await waitFor(() => expect(screen.getByText("Unified estate HBOM")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Unified Estate HBOM")).toBeTruthy());
     // per-asset identity rows — never invented
     expect(await screen.findByText("hw-hsm-1")).toBeTruthy();
     expect(screen.getByText("Utimaco CryptoServer")).toBeTruthy();
     expect(screen.getByText("hw-tpm-1")).toBeTruthy();
     // the content address is shown (truncated)
-    expect(screen.getByText(/SHA-256 a{16}…/)).toBeTruthy();
+    expect(screen.getByText(/SHA-256 a{12}…/)).toBeTruthy();
     // evidence references per component
     expect(screen.getByText("agent-dc-1")).toBeTruthy();
     expect(screen.getByText("2 refs")).toBeTruthy();
     // fleet aggregates
-    expect(screen.getByText(/HSM 1/)).toBeTruthy();
+    expect(screen.getAllByText(/HSM 1/).length).toBeGreaterThan(0);
     // the live-scan panel stays honest about being empty
     expect(screen.getByText(/No HBOM yet/i)).toBeTruthy();
   });
@@ -134,11 +134,9 @@ describe("HBOM page", () => {
     });
     renderPage();
 
-    await waitFor(() => expect(screen.getByText(/No hardware assets are persisted/i)).toBeTruthy());
-    expect(
-      screen.getByText((_, el) => el?.textContent === "0 ESTATE COMPONENTS"),
-    ).toBeTruthy();
-    expect(screen.getByText(/No estate snapshots pinned yet/i)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(/No hardware assets persisted for this environment/i)).toBeTruthy());
+    expect(screen.getByText("0 ESTATE")).toBeTruthy();
+    expect(screen.getByText(/No snapshots pinned yet/i)).toBeTruthy();
     expect(screen.queryByText("hw-hsm-1")).toBeNull();
   });
 
@@ -157,10 +155,10 @@ describe("HBOM page", () => {
     });
     renderPage();
 
-    await waitFor(() => expect(screen.getByText("Unified estate HBOM")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Unified Estate HBOM")).toBeTruthy());
 
     // pin the current estate document
-    fireEvent.click(await screen.findByText("Pin current estate HBOM"));
+    fireEvent.click(await screen.findByText("Pin current →"));
     await waitFor(() => expect(screen.getByText(/Estate HBOM pinned/i)).toBeTruthy());
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/hbom/snapshot", expect.objectContaining({ method: "POST" }));
@@ -170,7 +168,7 @@ describe("HBOM page", () => {
     expect(await screen.findByText("VERBATIM DOCUMENT")).toBeTruthy();
     expect(screen.getByText("OK")).toBeTruthy();
     expect(screen.getByText(/matches the pinned content hash/i)).toBeTruthy();
-    expect(screen.getByText(/3 references total/i)).toBeTruthy();
+    expect(screen.getByText("EVIDENCE REFS").parentElement).toHaveTextContent("3");
     // the stored payload itself is rendered
     expect(screen.getByText(/"bomFormat"/)).toBeTruthy();
   });
@@ -250,12 +248,12 @@ describe("HBOM page", () => {
     });
     renderPage();
 
-    await waitFor(() => expect(screen.getByText("Unified estate HBOM")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Unified Estate HBOM")).toBeTruthy());
 
     // diff the newest pin against the previous (older) one
-    fireEvent.click(await screen.findByText("Diff vs Prev Pin"));
+    fireEvent.click(await screen.findByText("Diff vs Prev"));
     await waitFor(() => expect(screen.getByText("PIN COMPARISON")).toBeTruthy());
-    expect(screen.getByText("+1 devices added")).toBeTruthy();
+    expect(screen.getByText("+1 added")).toBeTruthy();
     expect(screen.getByText("−1 removed")).toBeTruthy();
     expect(screen.getByText("1 changed")).toBeTruthy();
     // field-level drift on the surviving device

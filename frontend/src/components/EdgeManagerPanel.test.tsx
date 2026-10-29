@@ -14,14 +14,14 @@ beforeEach(() => {
 });
 it("requires retirement evidence and sends a revision instead of erasing rows", async () => {
   render(<EdgeManagerPanel />);
-  const retire = await screen.findByRole("button", { name: "retire" });
+  const retire = await screen.findByRole("button", { name: "Retire" });
   expect(retire).toBeDisabled();
-  expect(screen.getByText(/STALE/)).toBeInTheDocument();
+  expect(screen.getByText(/STALE · no expiry · rev 3/)).toBeInTheDocument();
   fireEvent.change(screen.getByRole("textbox", { name: "retirement reason" }), { target: { value: "Approved replacement" } });
   fireEvent.change(screen.getByRole("textbox", { name: "retirement evidence reference" }), { target: { value: "change/BANK-456" } });
   fireEvent.click(retire);
   expect(apiGraphDeleteEdge).toHaveBeenCalledWith("web", "pay", { expected_revision: 3, reason: "Approved replacement", evidence_ref: "change/BANK-456" });
-  expect(await screen.findByText(/retired \(evidence retained\)/)).toBeInTheDocument();
+  expect(await screen.findByText(/Retired \(evidence retained\)/)).toBeInTheDocument();
 });
 it("does not offer to silently reactivate or re-delete terminal evidence", async () => {
   vi.mocked(apiGraphEdges).mockResolvedValue({ source: "live", data: { count: 1, edges: [{
@@ -31,8 +31,8 @@ it("does not offer to silently reactivate or re-delete terminal evidence", async
   render(<EdgeManagerPanel />);
   fireEvent.change(screen.getByRole("textbox", { name: "retirement reason" }), { target: { value: "Approved replacement" } });
   fireEvent.change(screen.getByRole("textbox", { name: "retirement evidence reference" }), { target: { value: "change/BANK-456" } });
-  expect(await screen.findByRole("button", { name: "retire" })).toBeDisabled();
-  expect(screen.getByText(/DELETED/)).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Retire" })).toBeDisabled();
+  expect(screen.getByText(/DELETED · no expiry · rev 4/)).toBeInTheDocument();
   expect(apiGraphDeleteEdge).not.toHaveBeenCalled();
 });
 
@@ -63,5 +63,6 @@ it("does not allow operational edits on collector-owned or terminal edges", asyn
   }] } });
   render(<EdgeManagerPanel />);
   expect(await screen.findByRole("button", { name: "Edit mode" })).toBeDisabled();
-  expect(screen.getByText(/Mode: UNKNOWN/)).toBeInTheDocument();
+  expect(screen.getByText(/Missing modes remain/)).toHaveTextContent("UNKNOWN");
+  expect(screen.getByText(/Not a failure or safety guarantee/)).toBeInTheDocument();
 });

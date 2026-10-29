@@ -22,32 +22,33 @@ describe("drift feed and disposition truth", () => {
   it("does not turn a successful empty feed or missing per-scan comparison into an all-clear", async () => {
     mockFetch({ [driftPath]: list([]), [scansPath]: scans() });
     renderWithProviders(<Drift />);
-    expect(await screen.findByText("No drift events returned")).toBeInTheDocument();
-    expect(screen.getByText("Comparison status unavailable")).toBeInTheDocument();
-    expect(screen.getByText(/not evidence that a baseline was approved or a comparison completed/)).toBeInTheDocument();
-    expect(screen.queryByText(/TimescaleDB|primitives match|Zero cryptographic drift detected|VERIFIED/)).toBeNull();
+    expect(await screen.findByText("No drift events")).toBeInTheDocument();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getByText(/Not evidence of baseline approval or clean comparison/)).toBeInTheDocument();
+    expect(screen.queryByText(/TimescaleDB|primitives match|Zero cryptographic drift detected/)).toBeNull();
+    expect(screen.getByText("No events returned — comparison unproven")).toBeInTheDocument();
   });
 
   it("reports actual scan comparison states without extrapolating to the estate", async () => {
     mockFetch({ [driftPath]: list([]), [scansPath]: scans("NO_APPROVED_BASELINE") });
     renderWithProviders(<Drift />);
     expect(await screen.findByText("No approved baseline")).toBeInTheDocument();
-    expect(screen.getByText(/per scan, not proof that the estate is clear/)).toBeInTheDocument();
+    expect(screen.getByText(/Per-scan · not estate verdict/)).toBeInTheDocument();
   });
 
   it.each([401, 403])("distinguishes HTTP %i refusal from a known empty feed", async status => {
     mockFetch({ [driftPath]: response(status), [scansPath]: response(status) });
     renderWithProviders(<Drift />);
     expect(await screen.findByRole("alert")).toHaveTextContent(status === 401 ? "Authentication required" : "Access denied");
-    expect(screen.queryByText("No drift events returned")).toBeNull();
-    expect(screen.getByText("Comparison status unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No drift events")).toBeNull();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
   });
 
   it("treats an unreachable backend as unknown, not zero events", async () => {
     renderWithProviders(<Drift />);
     expect(await screen.findByRole("alert")).toHaveTextContent("offline or unreachable");
-    expect(screen.getByText("Count unavailable")).toBeInTheDocument();
-    expect(screen.queryByText("No drift events returned")).toBeNull();
+    expect(screen.getByText("Event count unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No drift events")).toBeNull();
   });
 
   it("shows source and observed fields and loads beyond the first 50 while scoping counts", async () => {
@@ -59,14 +60,14 @@ describe("drift feed and disposition truth", () => {
     renderWithProviders(<Drift />);
     expect(await screen.findByText("Loaded 50 of 51 events")).toBeInTheDocument();
     expect(screen.getByText("Partial: configuration unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Critical events in loaded pages").parentElement).toHaveTextContent("50");
+    expect(screen.getByText("CRITICAL DRIFT").parentElement).toHaveTextContent("50");
     expect(screen.getByText(/Source: persisted drift events/)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("/api/v1/");
     expect(screen.getByText("AES · a.py")).toBeInTheDocument();
     expect(screen.queryByText(/TLS 1\.3|ML-KEM-768|WORM Proof/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Load more events" }));
+    fireEvent.click(screen.getByRole("button", { name: /Load more — 1 remaining/ }));
     expect(await screen.findByText("Loaded 51 of 51 events")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Load more events" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Load more/ })).toBeNull();
     expect(fetchSpy.mock.calls.some(([url]) => String(url) === "/api/v1/drift?page=2&page_size=50")).toBe(true);
   });
 
@@ -78,10 +79,10 @@ describe("drift feed and disposition truth", () => {
     });
     renderWithProviders(<Drift />);
     await screen.findByText("Loaded 50 of 51 events");
-    fireEvent.click(screen.getByRole("button", { name: "Load more events" }));
+    fireEvent.click(screen.getByRole("button", { name: /Load more — 1 remaining/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 503");
     expect(screen.getByText("Loaded 50 of 51 events")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Load more events" }));
+    fireEvent.click(screen.getByRole("button", { name: /Load more — 1 remaining/ }));
     expect(await screen.findByText("Loaded 51 of 51 events")).toBeInTheDocument();
   });
 
@@ -103,7 +104,7 @@ describe("drift feed and disposition truth", () => {
     await act(async () => finish(event("evt-1", { resolution_status: "ACKNOWLEDGED", acknowledged_at: "2026-01-02T05:00:00Z", acknowledged_by: "auditor" })));
     expect(await screen.findByRole("status")).toHaveTextContent("This does not resolve or verify remediation");
     expect(screen.getByText(/Disposition:/).parentElement).toHaveTextContent("ACKNOWLEDGED");
-    expect(screen.getByText(/Disposition:/).parentElement).toHaveTextContent("analyst triage — neither resolves nor verifies remediation");
+    expect(screen.getByText(/Analyst triage — neither resolves nor verifies remediation/)).toBeInTheDocument();
   });
 
   it("does not mark rejected actions successful and labels resolution as administrative, never verified", async () => {
@@ -115,14 +116,14 @@ describe("drift feed and disposition truth", () => {
     await screen.findByText("Loaded 1 of 1 events");
     const resolve = screen.getByRole("button", { name: "Administratively resolve" });
     expect(resolve).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Disposition notes (required for administrative resolution)"), { target: { value: "Reviewed change" } });
+    fireEvent.change(screen.getByLabelText("Disposition notes"), { target: { value: "Reviewed change" } });
     fireEvent.click(resolve);
     expect(await screen.findByRole("alert")).toHaveTextContent("Access denied");
     expect(screen.getByText(/Disposition:/).parentElement).toHaveTextContent("OPEN");
     deny = false;
     fireEvent.click(resolve);
     expect(await screen.findByRole("status")).toHaveTextContent("Remediation has not been verified");
-    expect(screen.getByText(/Disposition:/).parentElement).toHaveTextContent("administrative closure, not remediation VERIFIED");
+    expect(screen.getByText(/Administrative closure — not remediation VERIFIED/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Administratively resolve" })).toBeNull();
     expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith("/evt-1/resolve"))).toHaveLength(2);
   });
@@ -140,9 +141,9 @@ describe("drift feed and disposition truth", () => {
     await screen.findByText("Loaded 1 of 1 events");
     fireEvent.click(screen.getByRole("button", { name: "Acknowledge" }));
     act(() => setActiveTenantId("tenant-b"));
-    expect(await screen.findByText(/Event tenant-b-event/)).toBeInTheDocument();
+    expect(await screen.findByText(/tenant-b-event · baseline/)).toBeInTheDocument();
     await act(async () => finish(event("tenant-a-event", { resolution_status: "ACKNOWLEDGED" })));
-    expect(screen.queryByText(/Event tenant-a-event/)).toBeNull();
+    expect(screen.queryByText(/tenant-a-event · baseline/)).toBeNull();
     expect(screen.queryByText(/Acknowledged by the server/)).toBeNull();
     expect(screen.getByText(/Disposition:/).parentElement).toHaveTextContent("OPEN");
   });
@@ -159,7 +160,7 @@ describe("drift feed and disposition truth", () => {
     await waitFor(() => expect(fetchSpy.mock.calls.some(([url]) => String(url).startsWith(driftPath))).toBe(true));
     act(() => setActiveTenantId("tenant-b"));
     expect(await screen.findByText("Loaded 1 of 1 events")).toBeInTheDocument();
-    expect(screen.getByText(/selected tenant tenant-b/)).toBeInTheDocument();
+    expect(screen.getAllByText(/tenant tenant-b/).length).toBeGreaterThan(0);
     await act(async () => finish(list([event("tenant-a-event")])));
     expect(screen.queryByText("tenant-a-event")).toBeNull();
   });
@@ -176,9 +177,9 @@ describe("Drift — condition-level verification display (§4.7)", () => {
     });
     renderWithProviders(<Drift />);
     expect(await screen.findByText(/Condition verified by rescan scan-2/)).toBeInTheDocument();
-    expect(screen.getByText(/the rescan observed the affected file and the condition is gone/)).toBeInTheDocument();
+    expect(screen.getByText(/gone from evidence/)).toBeInTheDocument();
     // the administrative caveat stays — verification supplements, never replaces it
-    expect(screen.getByText(/administrative closure, not remediation VERIFIED/)).toBeInTheDocument();
+    expect(screen.getByText(/Administrative closure — not remediation VERIFIED/)).toBeInTheDocument();
   });
 
   it("says the closure closed nothing when the rescan still sees the condition", async () => {
@@ -190,8 +191,8 @@ describe("Drift — condition-level verification display (§4.7)", () => {
       [scansPath]: scans("COMPARED"),
     });
     renderWithProviders(<Drift />);
-    expect(await screen.findByText(/Condition still present in rescan scan-2 evidence/)).toBeInTheDocument();
-    expect(screen.getByText(/the administrative closure closed nothing/)).toBeInTheDocument();
+    expect(await screen.findByText(/CONDITION STILL PRESENT in rescan scan-2/)).toBeInTheDocument();
+    expect(screen.getByText(/closure closed nothing/)).toBeInTheDocument();
   });
 
   it("claims no verification line when none is recorded", async () => {

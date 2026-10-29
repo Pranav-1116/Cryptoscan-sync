@@ -33,7 +33,7 @@ def render_ts() -> str:
  * Regenerate: python scripts/gen_capability_maturity.py
  *
  * Which console surfaces are GA, beta or preview. The Layout reads this to
- * label every page; unknown routes are "ga" (real system).
+ * label every page; unknown routes default down to preview.
  * The API serves the same table with rationale at
  * GET /api/v1/platform/capabilities. */
 
@@ -50,7 +50,7 @@ export const RETIRED_NAV_ROUTES: readonly string[] = {json.dumps([f"/{s}" for s 
 /** Tier for a pathname such as "/cbom" or "/dev-sec-ops?tab=1". */
 export function tierOf(pathname: string): Tier {{
   const slug = pathname.replace(/^\\/+/, "").split("/")[0].split("?")[0];
-  return (CAPABILITIES_JSON as Record<string, Tier>)[slug] ?? "ga";
+  return (CAPABILITIES_JSON as Record<string, Tier>)[slug] ?? "preview";
 }}
 
 export function tierCounts(): Record<Tier, number> {{
@@ -70,13 +70,12 @@ def render_doc() -> str:
         "> `scripts/gen_capability_maturity.py`. Served live at",
         "> `GET /api/v1/platform/capabilities`; the console labels every page from it.",
         "",
-        "The platform ships ~50 services and ~70 console surfaces. All surfaces are production-supported and",
-        "generally available. Unknown routes default to",
-        "**ga** (real system).",
+        "The platform ships many services and console surfaces. Maturity is assigned per route;",
+        "new or unclassified routes default down to **preview**, never to production support.",
+        "A tier describes the reviewed surface, not completeness of an unobserved estate.",
         "",
         "The sidebar is organized into six sections: **Overview, Discovery, Intelligence,",
-        "Governance, Output and Administration**. It currently has 32 menu slots and 31",
-        "unique primary route paths; deep-linked routes remain in the maturity inventory",
+        "Governance, Output and Administration**. Deep-linked routes remain in the maturity inventory",
         "without being duplicated in the sidebar. See the [Navigation & Feature",
         "Reference](NAVIGATION-FEATURE-REFERENCE.md) for the route-to-page map and",
         "role-guarded actions.",

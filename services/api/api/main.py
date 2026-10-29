@@ -301,12 +301,16 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                 from api.estate_daemon import EstateDaemon
                 from api.estate_events import bus_publisher
                 from db.connection.session import SessionLocal
+                from db.tenancy import current_tenant
+
+                def publish_estate_event(event_type, payload):
+                    bus_publisher(tenant_id=current_tenant())(event_type, payload)
 
                 estate_daemon = EstateDaemon(
                     SessionLocal,
                     worker=f"api-{settings.API_VERSION or '1.0'}",
                     poll_seconds=float(getattr(settings, "ESTATE_REALTIME_POLL_SECONDS", 30.0) or 30.0),
-                    publisher=bus_publisher(),
+                    publisher=publish_estate_event,
                 )
                 estate_thread = threading.Thread(
                     target=estate_daemon.run_forever, name="estate-daemon", daemon=True

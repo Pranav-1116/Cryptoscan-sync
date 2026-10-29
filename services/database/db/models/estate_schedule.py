@@ -28,8 +28,10 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Index,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,6 +45,8 @@ class EstateSchedule(BaseModel, TenantScoped):
     __tablename__ = "estate_schedules"
     __table_args__ = (
         UniqueConstraint("tenant_id", "name", name="uq_estate_schedule_tenant_name"),
+        Index("uq_estate_schedule_platform_name", "name", unique=True,
+              postgresql_where=text("tenant_id IS NULL"), sqlite_where=text("tenant_id IS NULL")),
     )
 
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)

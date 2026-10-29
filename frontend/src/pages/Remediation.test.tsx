@@ -74,8 +74,10 @@ describe("Remediation — task lifecycle", () => {
     // verification reasons are shown verbatim with their rescan
     expect(screen.getByText("No 3DES evidence in rescan; replacement AES-256-GCM observed.")).toBeTruthy();
     expect(screen.getByText("Rescan still shows 3DES at src/LegacyPad.java.")).toBeTruthy();
-    // two verification blocks + the page subtitle mention
-    expect(screen.getAllByText(/against rescan/).length).toBe(3);
+    // Both machine verdicts retain their exact rescan IDs; the subtitle explains the boundary.
+    expect(screen.getByText("rescan scan-12")).toBeTruthy();
+    expect(screen.getByText("rescan scan-11")).toBeTruthy();
+    expect(screen.getAllByText(/against rescan/)).toHaveLength(1);
     // a task without verification says so honestly
     expect(screen.getByText("No verification yet — completion is a declaration, not proof.")).toBeTruthy();
   });

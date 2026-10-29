@@ -35,8 +35,8 @@ describe("Compliance — no false green", () => {
       "/api/v1/compliance/retention": { policy: { audit_log_years: 3 } },
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText("100%")).toBeTruthy());
-    expect(screen.getByText(/2 passing out of 2 evaluated controls/)).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText("100%")).toHaveLength(2));
+    expect(screen.getByText("2 passing of 2 controls")).toBeTruthy();
     expect(screen.getByText("3 Years")).toBeTruthy();
   });
 
@@ -46,16 +46,16 @@ describe("Compliance — no false green", () => {
       "/api/v1/compliance/retention": { policy: { audit_log_years: 3 } },
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText(/Not evaluated — the engine returned no controls/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Not evaluated — no controls returned")).toBeTruthy());
     expect(screen.queryByText("100%")).toBeNull();
   });
 
   it("an unreachable evidence source shows no score and no violation claim", async () => {
     offlineFetch();
     renderPage();
-    await waitFor(() => expect(screen.getByText(/Compliance evidence is unavailable/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Compliance evidence unavailable/i)).toBeTruthy());
     expect(screen.queryByText("100%")).toBeNull();
-    await waitFor(() => expect(screen.getByText(/No evaluation — no violation claim/)).toBeTruthy());
+    expect(screen.getByText("No evaluation — no claim")).toBeTruthy();
   });
 
   it("counts fails and unknowns separately; unknown is not a violation", async () => {
@@ -64,8 +64,8 @@ describe("Compliance — no false green", () => {
       "/api/v1/compliance/retention": { policy: { audit_log_years: 3 } },
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText("33%")).toBeTruthy()); // 1/3 passing
-    expect(screen.getByText(/1 failed · 1 not evaluable/)).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText("33%")).toHaveLength(2)); // 1/3 passing
+    expect(screen.getByText("1/3 passing · 1 fail · 1 unknown")).toBeTruthy();
     expect(screen.getByText("UNKNOWN")).toBeTruthy(); // distinct badge, not FAIL
   });
 
@@ -89,7 +89,7 @@ describe("Compliance — no false green", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /PCI-DSS/ }));
     expect(screen.queryByText("access.session_config")).toBeNull();
-    expect(screen.getByText(/no control mapping for this framework/i)).toBeTruthy();
+    expect(screen.getByText(/the evidence engine has no control mapping for PCI-DSS/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /SOC 2/ }));
     await waitFor(() => expect(screen.getByText("access.session_config")).toBeTruthy());
@@ -182,7 +182,7 @@ describe("Compliance — requirements register", () => {
     await waitFor(() => expect(screen.getByText("SOC2-CC6.1")).toBeTruthy());
     // the four dimensions travel with each row
     expect(screen.getByText("Collection-time snapshot of platform auth configuration only.")).toBeTruthy();
-    expect(screen.getByText(/EXPIRED — older than the 30d window/)).toBeTruthy();
+    expect(screen.getByText(/EXPIRED — older than 30d window/)).toBeTruthy();
     expect(screen.getAllByText(/✓ signed by ciso@example.com/).length).toBe(2);
     // unmapped requirement stays visible and unevaluated — never hidden
     expect(screen.getByText("PCI-DSS-4.2.1")).toBeTruthy();
@@ -206,7 +206,7 @@ describe("Compliance — requirements register", () => {
       },
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText(/No evidence pack has been pinned/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/No evidence pack pinned — requirements are not evaluated/)).toBeTruthy());
     // the register stays visible, honestly: every requirement says NO EVIDENCE
     expect(screen.getByText("SOC2-CC6.1")).toBeTruthy();
     expect(screen.getAllByText("NO EVIDENCE").length).toBe(4);
@@ -218,7 +218,7 @@ describe("Compliance — requirements register", () => {
     expect(post).toBeTruthy();
     await waitFor(() => expect(screen.getByText("1 of 4 requirements closed")).toBeTruthy());
     // after pinning, evidence (and its age) is actually evaluated
-    expect(screen.getByText(/EXPIRED — older than the 30d window/)).toBeTruthy();
+    expect(screen.getByText(/EXPIRED — older than 30d window/)).toBeTruthy();
   });
 
   it("signs a requirement off over the pinned pack and records the reviewer", async () => {

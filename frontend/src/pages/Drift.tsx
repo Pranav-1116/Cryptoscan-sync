@@ -275,7 +275,7 @@ export default function Drift() {
   const criticalCount = analytics.bySev.CRITICAL;
   const openCount = analytics.byStatus.OPEN;
   const resolvedCount = analytics.byStatus.RESOLVED;
-  const ringTone = criticalCount ? "red" : openCount ? "amber" : "green";
+  const ringTone = total === null || !events.length ? "slate" : criticalCount ? "red" : openCount ? "amber" : "green";
   const ringPct = total !== null && events.length ? Math.max(0, 1 - (criticalCount / Math.max(1, events.length))) : 0;
 
   return (
@@ -306,7 +306,7 @@ export default function Drift() {
             <Ring pct={ringPct} label={total === null ? "…" : String(total)} sub="events" tone={ringTone} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>DRIFT POSTURE</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{criticalCount ? `${criticalCount} critical need triage` : openCount ? `${openCount} open events` : total === 0 ? "No drift recorded" : "All triaged"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{total === null ? "Event count unavailable" : criticalCount ? `${criticalCount} critical need triage` : openCount ? `${openCount} open events` : total === 0 ? "No events returned — comparison unproven" : "All loaded events triaged"}</div>
               <div style={{ marginTop: 6 }}><Bar value={total ? 1 - criticalCount / total : 0} tone={ringTone} /></div>
             </div>
           </Panel>
@@ -340,13 +340,13 @@ export default function Drift() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconWarn size={12} /> CRITICAL DRIFT</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: criticalCount ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : criticalCount}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: criticalCount ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : total === null ? "—" : criticalCount}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>All dispositions · loaded pages</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: criticalCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${criticalCount ? "var(--red)" : "var(--green)"}`, color: criticalCount ? "var(--red)" : "var(--green)" }}>{criticalCount ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{criticalCount ? `${Math.round(analytics.criticalPct * 100)}% of loaded` : "no critical"}</span><span style={{ color: criticalCount ? "var(--red)" : "var(--green)" }}>{criticalCount ? "triage now" : "clear"}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{total === null ? "count unknown" : criticalCount ? `${Math.round(analytics.criticalPct * 100)}% of loaded` : "no critical in loaded pages"}</span><span style={{ color: criticalCount ? "var(--red)" : "var(--dim)" }}>{criticalCount ? "triage now" : "not an estate verdict"}</span></div>
             <Bar value={analytics.criticalPct} tone={criticalCount ? "red" : "green"} />
           </div>
         </div>
@@ -355,7 +355,7 @@ export default function Drift() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconClock size={12} /> OPEN DISPOSITIONS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: openCount ? "var(--amber)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : openCount}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: openCount ? "var(--amber)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : total === null ? "—" : openCount}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{analytics.byStatus.ACKNOWLEDGED} acknowledged</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: openCount ? "color-mix(in srgb, var(--amber) 12%, transparent)" : "color-mix(in srgb, var(--green) 12%, transparent)", border: `1px solid ${openCount ? "var(--amber)" : "var(--green)"}`, color: openCount ? "var(--amber)" : "var(--green)" }}><IconClock size={16} /></span>
@@ -383,7 +383,7 @@ export default function Drift() {
             <div style={{ display: "flex", alignItems: "center", gap: 6, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
               <div style={{ width: comparisonState === "COMPARED" ? "100%" : comparisonState ? "55%" : "12%", height: "100%", background: comparisonState === "COMPARED" ? "var(--green)" : comparisonState ? "var(--amber)" : "var(--line-strong)", opacity: .9 }} />
             </div>
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{comparison ? `ended ${timestamp(comparison.scan_end)}` : "Per-scan · not estate verdict"}</div>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{comparison ? `ended ${timestamp(comparison.scan_end)} · ` : ""}Per-scan · not estate verdict</div>
           </div>
         </div>
       </div>
@@ -442,7 +442,7 @@ export default function Drift() {
 
       <p style={{ fontSize: 11, color: "var(--faint)", margin: "0 0 16px", display: "flex", gap: 8, flexWrap: "wrap" }}>
         <span>Source: persisted drift events</span><span>·</span><span>{scope ? `tenant ${scope.slice(0, 12)}` : "server scope"}</span><span>·</span><span>{fetchedAt ? `last fetch ${timestamp(fetchedAt)}` : "not loaded"}</span>
-        <span style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>GET /drift · GET /scans baseline_comparison</span>
+        <span style={{ marginLeft: "auto" }}>Persisted events · latest scan comparison status</span>
       </p>
 
       {/* Two-column: stream + deviation analysis */}

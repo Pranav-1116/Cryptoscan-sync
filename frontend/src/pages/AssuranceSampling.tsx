@@ -28,9 +28,9 @@ function AssuranceSamplingPage() {
       right={<><Badge tone="cyan">READ ONLY</Badge><Badge tone="amber">NO METRIC COMPUTED HERE</Badge></>} />
 
     <Panel title="Why this screen shows labels, not scores">
-      <p>The workbook is the question: here are the frozen predictions, label them. Precision, recall and miss
-        counts are calculated from those labels when a review is published through
-        <code> POST /assurance/samples/&#123;id&#125;/reviews</code>, and an unreviewed sample has none.</p>
+      <p>The workbook is the question: here are the frozen predictions to label. Precision, recall and miss
+        counts are calculated only when a separate domain-owner review is published. This read-only screen
+        does not submit that review, and an unreviewed sample has no score.</p>
       <p>A <code>HOLDOUT</code> phase reads the repeat sample, so the same units are not labelled twice from
         memory. Showing <code>UNREVIEWED</code> as anything other than unreviewed would be the exact error this
         workflow exists to prevent.</p>

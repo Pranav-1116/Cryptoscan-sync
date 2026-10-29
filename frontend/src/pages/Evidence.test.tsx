@@ -58,8 +58,8 @@ describe("Evidence workflow", () => {
     await act(async () => finish(verified("scan-a", "PASS")));
     expect(await screen.findByText(/Server scan verification: PASS/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Verify this record" })).toBeInTheDocument();
-    expect(screen.getByText("0 of 1")).toBeInTheDocument();
-    expect(screen.getByText(/unverified records are not claimed sealed/)).toBeInTheDocument();
+    expect(screen.getByText("0/1 verified")).toBeInTheDocument();
+    expect(screen.getByText(/Unverified ≠ sealed/)).toBeInTheDocument();
   });
 
   it("reports a server FAIL and refuses missing or mismatched scan verdicts", async () => {
@@ -118,7 +118,7 @@ describe("Evidence workflow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load more evidence" }));
     expect(await screen.findByText("Loaded 51 of 51 observations")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Load more scans" }));
-    expect(await screen.findByText("Loaded 21 of 21 scans")).toBeInTheDocument();
+    expect(await within(screen.getByRole("region", { name: "Scan selection" })).findByText("Loaded 21 of 21 scans")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /scan-20/ }));
     expect(await screen.findByText("No evidence observations returned for this scan.")).toBeInTheDocument();
     expect(screen.queryByText("Evidence ID: ev-50")).toBeNull();
@@ -164,7 +164,7 @@ describe("Evidence workflow", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Audit Ledger" }));
     expect(await screen.findByText(/Audit chain verification · 50 suffix entries checked/)).toBeInTheDocument();
     expect(screen.getByText(/discrepancy was reported/)).toBeInTheDocument();
-    expect(screen.getByText("Export JSONL audit log")).toBeInTheDocument();
+    expect(screen.getByText("Export JSONL")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Load more audit events" }));
     const later = await screen.findByRole("button", { name: /audit-50/ });
     fireEvent.click(later);
@@ -221,12 +221,13 @@ describe("Evidence — completed scans disclose failed optional stages (§4.8)",
     renderWithProviders(<Evidence />);
     await screen.findByText("Evidence ID: ev-a");
     // honest starting coverage: nothing individually verified yet
-    expect(screen.getByText("0 of 1")).toBeInTheDocument();
+    expect(screen.getByText("0/1 verified")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Verify this record" }));
     expect(await screen.findByText(/content intact · chain intact · hash format valid/)).toBeInTheDocument();
     expect(screen.getByText(/verified by verifier-1/)).toBeInTheDocument();
-    expect(screen.getByText("1 of 1")).toBeInTheDocument();
-    expect(screen.getByText(/1 PASS, 0 FAIL/)).toBeInTheDocument();
+    expect(screen.queryByText("SECRET_EXAMPLE_DO_NOT_DISPLAY")).toBeNull();
+    expect(screen.getByText("1/1 verified")).toBeInTheDocument();
+    expect(screen.getByText(/1 PASS · 0 FAIL/)).toBeInTheDocument();
     // a mismatched verdict body is refused, never rendered as a seal
     verdict = { ...verdict as object, evidence_id: "other-ev", result: "PASS" };
     fireEvent.click(screen.getByRole("button", { name: "Verify this record" }));

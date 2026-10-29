@@ -25,13 +25,13 @@ const graph = (over: Record<string, unknown> = {}) => ({
     { id: "system:payments", label: "payments", kind: "system" },
     { id: "system:billing", label: "billing", kind: "system" },
   ],
-  edges: [{ src: "system:payments", dst: "system:billing", rel: "CALLS" }],
+  edges: [{ from: "system:payments", to: "system:billing", label: "CALLS" }],
   backend: "memory",
   ...over,
 });
 
 const clickNode = async (label: string) => {
-  fireEvent.click(await screen.findByText(label));
+  fireEvent.click(await screen.findByText(label, { selector: "span" }));
 };
 
 describe("DependencyGraph — honest blast radius and backend", () => {
@@ -52,9 +52,9 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     });
     renderPage();
     await clickNode("payments");
-    await waitFor(() => expect(screen.getByText("Impacted Systems")).toBeTruthy());
-    expect(screen.getByText(/· 1 hop/)).toBeTruthy();
-    expect(screen.getByText(/· 2 hops/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Downstream Dependents:")).toBeTruthy());
+    expect(screen.getByText("↳ billing").parentElement).toHaveTextContent("1 hop");
+    expect(screen.getByText("↳ checkout").parentElement).toHaveTextContent("2 hops");
   });
 
   it("never defaults an unreported backend to Neo4j Cluster", async () => {
@@ -65,7 +65,7 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("Not reported")).toBeTruthy());
     expect(screen.queryByText("Neo4j Cluster")).toBeNull();
-    expect(screen.getByText(/Backend not reported by the API/)).toBeTruthy();
+    expect(screen.getByText("Backend not reported")).toBeTruthy();
   });
 
   it("labels the real neo4j backend from the API response", async () => {
@@ -120,8 +120,8 @@ describe("DependencyGraph — honest blast radius and backend", () => {
       "/api/v1/graph/stats": { nodes: 2, edges: 1 },
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText("Edges by Provenance")).toBeTruthy());
-    expect(screen.getByText("1 unattributed")).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText("1 unattributed").length).toBeGreaterThan(0));
+    expect(screen.getByText(/unattributed = origin unknown/)).toBeTruthy();
     expect(screen.queryByText(/\bobserved edges\b/i)).toBeNull();
   });
 
@@ -155,7 +155,8 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     });
     renderPage();
     await clickNode("payments");
-    await waitFor(() => expect(screen.getByText(/Blast radius unavailable/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/No traversal result — not linked to any system, or graph offline/)).toBeTruthy());
+    expect(screen.getByText("Traversal unavailable — impact unknown")).toBeTruthy();
     expect(screen.queryByText(/No downstream dependencies detected/)).toBeNull();
   });
 });
@@ -180,13 +181,14 @@ describe("DependencyGraph — asset-inventory deep link (round 64)", () => {
         <DependencyGraph />
       </MemoryRouter>,
     );
-    expect(await screen.findByText(/loaded from an inventory cross-link/)).toBeTruthy();
-    expect(screen.getAllByText(/shared across 2 owning system\(s\)/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Impacted Systems")).toBeTruthy();
-    expect(screen.getByText(/· 2 hops/)).toBeTruthy();
+    expect(await screen.findByText(/Asset start — walk fans out from every system using this asset/)).toBeTruthy();
+    expect(screen.getByText(/2 owners/)).toBeTruthy();
+    expect(screen.getByText("Downstream Dependents:")).toBeTruthy();
+    expect(screen.getByText("↳ checkout").parentElement).toHaveTextContent("2 hops");
     // the system-start walk stays available: the topology list still works
     await clickNode("payments");
-    await waitFor(() => expect(screen.queryByText(/loaded from an inventory cross-link/)).toBeNull());
+    await waitFor(() => expect(screen.getByText("payments", { selector: "span" })).toBeTruthy());
+    expect(screen.queryByText(/2 owners/)).toBeNull();
   });
 
   it("?asset= with no system links says unknown, never zero impact", async () => {
@@ -202,7 +204,7 @@ describe("DependencyGraph — asset-inventory deep link (round 64)", () => {
         <DependencyGraph />
       </MemoryRouter>,
     );
-    expect(await screen.findByText(/this asset is not linked to any system/)).toBeTruthy();
-    expect(screen.getByText(/Blast radius is unknown, not zero/)).toBeTruthy();
+    expect(await screen.findByText(/No traversal result — not linked to any system, or graph offline/)).toBeTruthy();
+    expect(screen.getByText(/Blast is unknown, not zero/)).toBeTruthy();
   });
 });

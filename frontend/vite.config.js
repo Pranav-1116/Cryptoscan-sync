@@ -24,6 +24,9 @@ export default defineConfig({
     host: process.env.VITE_DEV_HOST || "127.0.0.1",
     port: 3003,
     strictPort: true,
+    // Coverage/build output is not app source. Watching the coverage HTML tree
+    // caused a full page reload for every generated report file during tests.
+    watch: { ignored: ["**/coverage/**", "**/dist/**"] },
     ...(process.env.VITE_DEV_ALLOWED_HOSTS
       ? { allowedHosts: process.env.VITE_DEV_ALLOWED_HOSTS.split(",").map((h) => h.trim()) }
       : {}),

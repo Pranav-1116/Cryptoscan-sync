@@ -2,7 +2,7 @@
  * Regenerate: python scripts/gen_capability_maturity.py
  *
  * Which console surfaces are GA, beta or preview. The Layout reads this to
- * label every page; unknown routes are "ga" (real system).
+ * label every page; unknown routes default down to preview.
  * The API serves the same table with rationale at
  * GET /api/v1/platform/capabilities. */
 
@@ -22,6 +22,11 @@ export const CAPABILITIES_JSON = {
   "agility": "ga",
   "alerts": "ga",
   "assets": "ga",
+  "assurance-coverage": "preview",
+  "assurance-qualification": "preview",
+  "assurance-records": "preview",
+  "assurance-sampling": "preview",
+  "assurance-trace": "preview",
   "automation": "ga",
   "banking-regulatory": "ga",
   "catalog": "ga",
@@ -53,6 +58,7 @@ export const CAPABILITIES_JSON = {
   "libraries": "ga",
   "live-asset-intelligence": "ga",
   "live-environment": "ga",
+  "live-monitor": "beta",
   "live-scanners": "ga",
   "live-stream": "ga",
   "login": "ga",
@@ -76,6 +82,7 @@ export const CAPABILITIES_JSON = {
   "risk": "ga",
   "role-dashboard": "ga",
   "runtime": "ga",
+  "sbom": "beta",
   "scanners": "ga",
   "scope": "ga",
   "search-results": "ga",
@@ -91,6 +98,7 @@ export const CAPABILITIES_JSON = {
   "tenancy": "ga",
   "timeline": "ga",
   "trust": "ga",
+  "vbom": "beta",
   "vendor": "ga",
   "vendor-due-diligence": "ga",
   "what-if": "ga"
@@ -101,7 +109,7 @@ export const RETIRED_NAV_ROUTES: readonly string[] = ["/activity", "/audit-merkl
 /** Tier for a pathname such as "/cbom" or "/dev-sec-ops?tab=1". */
 export function tierOf(pathname: string): Tier {
   const slug = pathname.replace(/^\/+/, "").split("/")[0].split("?")[0];
-  return (CAPABILITIES_JSON as Record<string, Tier>)[slug] ?? "ga";
+  return (CAPABILITIES_JSON as Record<string, Tier>)[slug] ?? "preview";
 }
 
 export function tierCounts(): Record<Tier, number> {

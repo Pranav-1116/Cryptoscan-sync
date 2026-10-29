@@ -1,20 +1,27 @@
 # Run CryptoScan
 
-Production cryptographic inventory: **scan source / containers / IaC / local certs → hash evidence → store → normalize → evaluate policy → REST API → dashboard**.
+CryptoScan's evidence path is **authorized collection → hash evidence → store → normalize → evaluate policy → REST API → console**. Local development availability does not qualify a production deployment.
 
 Policy is never decided by AI. Fail/pass comes from YAML in `services/policy/rule_definitions/`.
 
-## Local (laptop / this sandbox)
+## Local development (not production)
+
+Provision PostgreSQL, Redis, the API, worker, and existing console on loopback:
 
 ```bash
-python3 -m pip install -r requirements.txt
-export CRYPTOSCAN_ROOT=$PWD
-export PYTHONPATH=$PWD/shared/shared_config:$PWD/shared/shared_logging:$PWD/shared/shared_models:$PWD/services/api:$PWD/services/database:$PWD/services/scanner:$PWD/services/evidence:$PWD/services/normalization:$PWD/services/policy:$PWD/services/drift:$PWD/services/worker:$PWD/services/deduplication:$PWD/services/cbom:$PWD/services/container_scanner:$PWD/services/network_scanner:$PWD/services/cloud_scanner:$PWD/services/graph_engine:$PWD/services/business_context:$PWD/services/quantum:$PWD/services/remediation:$PWD/services/reporting
-bash scripts/run_stack.sh
-bash scripts/run_stack.sh
+# Privately supply LOCAL_DB_PASS, LOCAL_SECRET_KEY, LOCAL_WEBHOOK_SECRET and
+# LOCAL_ADMIN_PASS from an operator-controlled secret store before first startup.
+# Keep them available for restarts; the launcher neither records nor prints them.
+bash scripts/run_local_stack.sh up
+bash scripts/run_local_stack.sh status
 ```
 
-Development login is `admin` / `cryptoscan`. Open `/ui` or the dashboard container. From a scan detail page you can **Verify chain**, **Export CBOM** (CycloneDX 1.5), and **Export JSON**.
+Open `http://127.0.0.1:3003`. There is **no preset administrator password** in
+this launcher. Bootstrap requires an empty users table; public registration alone
+cannot grant scan privileges. A working console and daemon heartbeat are not
+proof of collection: the inventory remains empty until an approved real scan
+retains evidence. An isolated legacy API-only runner exists as `scripts/run_stack.sh`;
+do not use its development defaults as product credentials.
 
 ```bash
 make test    # per-service pytest (avoids shared `tests` package clash)
@@ -92,11 +99,23 @@ A schedule row is not a scheduler: without something calling it, the estate is
 last week's coverage with no error anywhere. Start the loop and check it:
 
 ```bash
-cryptoscan schedule add nightly --every 6h        # what to re-scan, and how often
-cryptoscan serve                                  # the daemon (SIGTERM = clean stop)
-cryptoscan serve --once                           # one cycle, for cron/systemd-timer installs
-curl -s localhost:8000/api/v1/estate/evidence/realtime | jq '{verdict, daemon: .daemon.liveness}'
+# Bank admin terminal: first authenticate to the bank-owned API (or set a private
+# CRYPTOSCAN_SERVER / CRYPTOSCAN_TOKEN from an approved session).
+cryptoscan schedule add nightly --every 6h --plane STATIC  # bank API, stored evidence only
+# Bank server service, not the admin workstation:
+cryptoscan serve                                           # daemon (SIGTERM = clean stop)
+cryptoscan serve --once                                    # one cycle, for cron/systemd-timer installs
+curl -s -H "Authorization: Bearer ${CRYPTOSCAN_SESSION_TOKEN:?}" \
+  http://127.0.0.1:8010/api/v1/estate/evidence/realtime | jq '{verdict, daemon: .daemon.liveness}'
 ```
+
+This cadence reads **persisted evidence**. It does not clone source, probe a network,
+contact a cloud/HSM, or authorize any new collection. Acquire evidence through its
+separately approved collector before treating a scheduled projection as coverage.
+The operator CLI uses the bank-owned HTTPS control plane; schedule mutations
+require a current human session with monitor-management authority. The daemon
+runs on a bank server with database access. Deletion is refused because it
+would cascade into historical run receipts; pause instead.
 
 `cryptoscan serve` claims due schedules with a database lease (so several
 replicas, or a daemon plus a manual `tick`, never double-run), publishes
@@ -115,13 +134,11 @@ scanned": `LIVE`/`STALE`/`STOPPED`/`NEVER_STARTED` for the daemon, plus
 distinct from `WAITING` and `NOT_RUNNING`. A live API process is never treated as
 proof of coverage.
 
-## Development credentials
+## Identity and deployment boundary
 
-| Item | Value |
-|---|---|
-| Username | `admin` |
-| Password | `cryptoscan` |
-| SQLite (dev) | `./data/cryptoscan.db` |
-| Queue | `cryptoscan:jobs:queue` |
-
-These defaults are rejected when `ENVIRONMENT=production`.
+Do not copy example or legacy development credentials into an operational estate.
+Provision a distinct administrator through the reviewed bootstrap path, store only
+password hashes in CryptoScan, and use a current human session for schedule changes.
+Production requires the controlled deployment profile, approved source/runtime
+isolation, independent evidence and a passing site-specific release gate; a local
+`ENVIRONMENT=development` stack is not a production qualification.

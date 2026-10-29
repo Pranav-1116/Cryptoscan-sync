@@ -27,19 +27,19 @@ async function load() {
   fireEvent.click(screen.getByRole("button", { name: "Refresh scopes and samples" }));
   await screen.findByRole("option", { name: /synthetic-linux — recent/ });
   fireEvent.change(screen.getByLabelText("Retained sample"), { target: { value: ID } });
-  await screen.findByRole("heading", { name: "synthetic-linux" });
+  await screen.findByText("synthetic-linux", { selector: "div" });
 }
 
 it("starts honestly empty and does not collect or poll targets", () => {
   render(<ResourceMonitoring />);
-  expect(screen.getByText(/not continuous live monitoring/)).toBeInTheDocument();
+  expect(screen.getAllByText(/not continuous live monitoring/)).toHaveLength(2);
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(fetcher).not.toHaveBeenCalled();
 });
 
 it("renders real zero traffic but unavailable capacity as Unknown without adding filesystems", async () => {
   render(<ResourceMonitoring />); await load();
-  expect(screen.getByText("0.000")).toBeInTheDocument();
+  expect(screen.getAllByText("0.000")).toHaveLength(2);
   expect(screen.getAllByText("Unknown").length).toBeGreaterThanOrEqual(4);
   expect(screen.getByText(/Do not add these rows/)).toBeInTheDocument();
   expect(screen.getByText(/source authenticity unverified/)).toBeInTheDocument();
@@ -85,7 +85,7 @@ it("discards an old-scope response even if the transport ignores abort", async (
   act(() => window.dispatchEvent(new Event("zelinx:tenant")));
   await act(async () => { resolve(response(sample())); });
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "synthetic-linux" })).not.toBeInTheDocument();
+  expect(screen.queryByText("synthetic-linux", { selector: "div" })).not.toBeInTheDocument();
 });
 
 it("marks stale data and disables drafting instead of claiming a current live reading", async () => {

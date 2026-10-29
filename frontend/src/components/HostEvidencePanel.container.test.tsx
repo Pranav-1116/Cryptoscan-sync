@@ -27,7 +27,7 @@ describe("Verified container content and runtime metadata", () => {
     await screen.findByText(/verified layer bytes and virtual overlay/);
     expect(screen.getByText(/1 package DB records/)).toBeTruthy();
     expect(screen.getByText(/kernel cgroup membership only; image operator DECLARED/)).toBeTruthy();
-    expect(screen.getByText(/Container production admission: BLOCKED/)).toBeTruthy();
+    expect(screen.getByText(/Container admission BLOCKED — binding \+ qualification required/)).toBeTruthy();
     expect(fetcher.mock.calls).toHaveLength(1);
   });
   it.each([

@@ -176,7 +176,7 @@ export default function Reports() {
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <button disabled={!r.pdf_b64} onClick={() => downloadPdf(r.id ?? r.snapshot_id)} style={{ fontSize: 11, padding: "5px 10px", borderRadius: "var(--r)", background: r.pdf_b64 ? "var(--cyan)" : "var(--panel)", color: r.pdf_b64 ? "#fff" : "var(--faint)", border: "1px solid var(--line)", cursor: r.pdf_b64 ? "pointer" : "not-allowed", fontWeight: 700 }}>Download signed PDF</button>
                   {r.pdf_signature && <Badge tone="green">HMAC signed</Badge>}
-                  {r.payload_hash ? <Badge tone="cyan">{String(r.payload_hash).slice(0, 10)}…</Badge> : <span style={{ fontSize: 10, color: "var(--faint)" }}>legacy row</span>}
+                  {r.payload_hash ? <Badge tone="cyan">content-addressed {String(r.payload_hash).slice(0, 10)}…</Badge> : <span style={{ fontSize: 10, color: "var(--faint)" }}>legacy row — payload not content-addressed</span>}
                 </div>
               </div>
             ))}

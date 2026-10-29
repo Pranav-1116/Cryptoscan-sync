@@ -284,7 +284,7 @@ function CbomContent() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <IconCloud size={14} style={{ color: "var(--accent)" }} />
             <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Import CBOM metadata</h2>
-            <Badge tone="slate">DECLARED</Badge><Badge tone="cyan">2 MiB cap</Badge>
+            <Badge tone="slate">DECLARED</Badge><Badge tone="cyan">1 MiB cap</Badge>
           </div>
           <span style={{ fontSize: 11, color: "var(--dim)" }}>Declared ≠ observed · not coverage · timestamps preserved</span>
         </div>
@@ -338,9 +338,9 @@ function CbomContent() {
         </div>
         <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--accent)" }}>
           <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--accent)", width: 6, height: 6, borderRadius: 99 }} />COVERAGE</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--accent)", margin: "4px 0 2px" }}>{loading ? "…" : coverage?.coverage_pct == null ? "—" : `${coverage.coverage_pct}%`}</div>
-          <div style={{ fontSize: 11, color: "var(--dim)" }}>{coverage?.with_cbom ?? "—"} / {coverage?.systems ?? "—"} systems · scans only</div>
-          {!loading && coverage?.coverage_pct != null && <Bar value={coverage.coverage_pct / 100} tone="cyan" />}
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--accent)", margin: "4px 0 2px" }}>{loading ? "…" : coverage?.coverage_pct == null || !coverage?.systems ? "Unknown" : `${coverage.coverage_pct}%`}</div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>{coverage?.with_cbom ?? "—"} / {coverage?.systems ?? "—"} systems · scans only · Imports are excluded; this is not discovery completeness</div>
+          {!loading && coverage?.coverage_pct != null && coverage?.systems > 0 && <Bar value={coverage.coverage_pct / 100} tone="cyan" />}
         </div>
       </div>
 

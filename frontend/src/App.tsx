@@ -59,6 +59,8 @@ const LiveScanners = lazy(() => import("./pages/LiveScanners"));
 const LiveStream = lazy(() => import("./pages/LiveStream"));
 const Login = lazy(() => import("./pages/Login"));
 const Nbom = lazy(() => import("./pages/Nbom"));
+const Sbom = lazy(() => import("./pages/Sbom"));
+const Vbom = lazy(() => import("./pages/Vbom"));
 const Migration = lazy(() => import("./pages/Migration"));
 const Network = lazy(() => import("./pages/Network"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -233,6 +235,8 @@ function RoutedPages() {
       <Route path="/vendor" element={<Vendor />} />
       <Route path="/vendor-due-diligence" element={<VendorDueDiligence />} />
       <Route path="/nbom" element={<Nbom />} />
+      <Route path="/sbom" element={<Sbom />} />
+      <Route path="/vbom" element={<Vbom />} />
       <Route path="/what-if" element={<WhatIf />} />
       <Route path="/digital-twin" element={<DigitalTwin />} />
       <Route path="*" element={<Navigate to="/command-center" replace />} />            </Routes>

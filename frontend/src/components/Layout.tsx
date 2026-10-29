@@ -21,75 +21,56 @@ import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 import { tierOf, TIER_LABEL, TIER_DETAIL, type Tier } from "../lib/maturity.js";
 import { RequireRole } from "../lib/auth.js";
 
-// Core categories per UX Prompt:
-// Overview, Discovery, Intelligence, Governance, Output, Administration
-type NavItem = {
-  to: string;
-  label: string;
-  icon: Icon;
-  /** a sub-heading inside the section, so the sidebar reads as the estate tree
-   *  (Estate / Cryptography / Network / Supply Chain / BOM / Intelligence / Digital
-   *  Twin) rather than one flat list of unrelated screens */
-  group?: string;
-};
+// The classic six-section console keeps current workspaces reachable without
+// making the operator learn a new estate-tree navigation.
+type NavItem = { to: string; label: string; icon: Icon };
 type NavSection = { title: string; items: NavItem[] };
 export type { NavItem, NavSection };
 
-// The navigation is deliberately data-driven: the same contract feeds the
-// sidebar, maturity labels, search affordances and route-coverage tests. The
-// duplicate Security Center placement is intentional: audit is a governance
-// workflow, while the same server-verified surface is also an administration
-// control. It remains one route and one source of truth.
+// Audit Log and Security Center intentionally share one route: the same verified
+// surface belongs in both governance and administration.
 export const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Overview",
     items: [
-      { to: "/live-monitor", label: "Live Monitor", icon: Pulse },
       { to: "/command-center", label: "Dashboard", icon: ChartLineUp },
+      { to: "/live-monitor", label: "Live Monitor", icon: Pulse },
       { to: "/launch-readiness", label: "Launch readiness", icon: Pulse },
       { to: "/operator-decisions", label: "Operator decisions", icon: Pulse },
-      { to: "/assurance-records", label: "Assurance records", icon: Pulse },
-      { to: "/assurance-coverage", label: "Registered coverage", icon: Pulse },
-      { to: "/assurance-trace", label: "Application trace", icon: Pulse },
-      { to: "/assurance-sampling", label: "Accuracy sampling", icon: Pulse },
-      { to: "/assurance-qualification", label: "Qualification", icon: Pulse },
       { to: "/live-stream", label: "Activity", icon: Pulse },
     ],
   },
   {
-    title: "Collection",
+    title: "Discovery",
     items: [
       { to: "/scanners", label: "Scan", icon: Scan },
       { to: "/live-scanners", label: "Live Scanners", icon: Pulse },
+      { to: "/assets", label: "Assets", icon: Cube },
+      { to: "/network", label: "Network", icon: GlobeHemisphereWest },
+      { to: "/cloud", label: "Cloud", icon: Cloud },
+      { to: "/dev-sec-ops", label: "Applications", icon: Code },
+      { to: "/hardware", label: "Hardware", icon: Cpu },
+      { to: "/certificates", label: "Certificates", icon: Certificate },
+      { to: "/vendor", label: "Vendors", icon: Buildings },
     ],
   },
-  // The estate tree, in the order a bank reads it (§24): what exists, what it is made of,
-  // how it connects, who supplies it, what cryptography is in it, what the twin knows about
-  // it, and what needs attention. Every route already existed; grouping is the change, so a
-  // reader can find "Certificates" under Cryptography instead of in a list of fourteen.
   {
-    title: "Estate",
+    title: "Intelligence",
     items: [
-      { to: "/assets", label: "Assets", icon: Cube, group: "Estate" },
-      { to: "/dev-sec-ops", label: "Applications", icon: Code, group: "Estate" },
-      { to: "/cloud", label: "Cloud", icon: Cloud, group: "Estate" },
-      { to: "/hardware", label: "Hardware", icon: Cpu, group: "Estate" },
-      { to: "/network", label: "Network", icon: GlobeHemisphereWest, group: "Network" },
-      { to: "/certificates", label: "Certificates", icon: Certificate, group: "Network" },
-      { to: "/vendor", label: "Vendors", icon: Buildings, group: "Supply chain" },
-      { to: "/dependency-graph", label: "Dependencies", icon: Graph, group: "Supply chain" },
-      { to: "/crypto", label: "Cryptography", icon: Key, group: "Cryptography" },
-      { to: "/crypto-assets", label: "Algorithm Catalog", icon: Key, group: "Cryptography" },
-      { to: "/cbom", label: "Crypto Inventory (CBOM)", icon: Atom, group: "Cryptography" },
-      { to: "/hbom", label: "HBOM", icon: HardDrives, group: "BOM" },
-      { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest, group: "BOM" },
-      { to: "/live-asset-intelligence", label: "Technology BOM", icon: Stack, group: "BOM" },
-      { to: "/digital-twin", label: "Digital Twin", icon: Stack, group: "Digital twin" },
-      { to: "/graph", label: "Graph Explorer", icon: Graph, group: "Digital twin" },
-      { to: "/findings", label: "Findings", icon: ListChecks, group: "Intelligence" },
-      { to: "/pqc", label: "PQC Readiness", icon: ShieldCheck, group: "Intelligence" },
-      { to: "/agility", label: "Crypto Agility", icon: SlidersHorizontal, group: "Intelligence" },
-      { to: "/drift", label: "Crypto Drift", icon: Pulse, group: "Intelligence" },
+      { to: "/crypto", label: "Cryptography", icon: Key },
+      { to: "/cbom", label: "Crypto Inventory (CBOM)", icon: Atom },
+      { to: "/crypto-assets", label: "Algorithm Catalog", icon: Key },
+      { to: "/sbom", label: "SBOM", icon: Code },
+      { to: "/hbom", label: "HBOM", icon: HardDrives },
+      { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest },
+      { to: "/vbom", label: "VBOM", icon: Buildings },
+      { to: "/live-asset-intelligence", label: "Technology BOM", icon: Stack },
+      { to: "/dependency-graph", label: "Dependencies", icon: Graph },
+      { to: "/graph", label: "Graph Explorer", icon: Graph },
+      { to: "/findings", label: "Findings", icon: ListChecks },
+      { to: "/pqc", label: "PQC Readiness", icon: ShieldCheck },
+      { to: "/agility", label: "Crypto Agility", icon: SlidersHorizontal },
+      { to: "/drift", label: "Crypto Drift", icon: Pulse },
     ],
   },
   {
@@ -103,6 +84,11 @@ export const PRIMARY_SECTIONS: NavSection[] = [
       { to: "/remediation", label: "Remediation Tasks", icon: ListChecks },
       { to: "/priorities", label: "Remediation Priorities", icon: ListChecks },
       { to: "/migration", label: "Migration", icon: ShieldCheck },
+      { to: "/assurance-records", label: "Assurance records", icon: FileText },
+      { to: "/assurance-coverage", label: "Registered coverage", icon: ListChecks },
+      { to: "/assurance-trace", label: "Application trace", icon: Graph },
+      { to: "/assurance-sampling", label: "Accuracy sampling", icon: Scan },
+      { to: "/assurance-qualification", label: "Qualification", icon: ShieldCheck },
     ],
   },
   {
@@ -110,6 +96,7 @@ export const PRIMARY_SECTIONS: NavSection[] = [
     items: [
       { to: "/reports", label: "Reports", icon: FileText },
       { to: "/what-if", label: "What-If Analysis", icon: MagnifyingGlass },
+      { to: "/digital-twin", label: "Digital Twin", icon: Stack },
     ],
   },
   {
@@ -123,6 +110,10 @@ export const PRIMARY_SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+// Reset the prior estate-tree collapse preference once so the restored classic
+// navigation is visible on first load; subsequent choices use this key.
+const SIDEBAR_PREF_KEY = "zelnx-classic-sidebar-collapsed";
 
 const TIER_STYLE: Record<Tier, { bg: string; fg: string; border: string }> = {
   ga: { bg: "color-mix(in srgb, var(--green) 10%, transparent)", fg: "var(--green)", border: "color-mix(in srgb, var(--green) 35%, transparent)" },
@@ -190,7 +181,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   const [showSearch, setShowSearch] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
-    try { return localStorage.getItem("zelnx-sidebar-collapsed") === "true"; } catch { return false; }
+    try { return localStorage.getItem(SIDEBAR_PREF_KEY) === "true"; } catch { return false; }
   });
   const navRef = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<string>(() => {
@@ -216,7 +207,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   const toggleSidebar = () => {
     setIsCollapsed(prev => {
       const next = !prev;
-      try { localStorage.setItem("zelnx-sidebar-collapsed", String(next)); } catch { /* ignore */ }
+      try { localStorage.setItem(SIDEBAR_PREF_KEY, String(next)); } catch { /* ignore */ }
       return next;
     });
   };
@@ -349,14 +340,10 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
           {PRIMARY_SECTIONS.map((group) => (
           <React.Fragment key={group.title}>
             <div className="nav-label">{group.title}</div>
-            {group.items.map((item, index) => {
-              const previous = index > 0 ? group.items[index - 1].group : undefined;
-              const startsGroup = Boolean(item.group) && item.group !== previous;
+            {group.items.map((item) => {
               const active = route === item.to || (item.to === "/command-center" && (route === "/" || route === ""));
               return (
-                <React.Fragment key={item.to}>
-                {startsGroup && <div className="nav-sublabel">{item.group}</div>}
-                <Link
+                <Link key={item.to}
                   to={item.to}
                   className={`nav ${active ? "active" : ""}`}
                   title={isCollapsed ? item.label : undefined}
@@ -369,7 +356,6 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
                   <span className="nav-text">{item.label}</span>
                   <TierPill tier={tierOf(item.to)} compact />
                 </Link>
-                </React.Fragment>
               );
             })}
           </React.Fragment>

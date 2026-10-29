@@ -148,7 +148,7 @@ def test_package_retains_source_dependency_and_schema_bindings_without_claiming_
     assert provenance["migration_head"] == release.MIGRATION_HEAD
     for name in ["requirements.txt", "requirements.lock.txt", "frontend/package.json", "frontend/package-lock.json"]:
         assert provenance["files_sha256"][name] == hashlib.sha256((root / name).read_bytes()).hexdigest()
-    assert any(Path(name).name.startswith("0106") for name in provenance["files_sha256"])
+    assert any(Path(name).name.startswith(release.MIGRATION_HEAD) for name in provenance["files_sha256"])
     for name, digest in provenance["files_sha256"].items():
         assert hashlib.sha256((root / name).read_bytes()).hexdigest() == digest
 

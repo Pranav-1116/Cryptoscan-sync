@@ -46,6 +46,7 @@ test("loopback defaults, named-host protection and same-origin API proxy remain 
   assert.equal(config.server.host, "127.0.0.1");
   assert.notEqual(config.server.allowedHosts, true);
   assert.equal(config.server.strictPort, true);
+  assert.deepEqual(config.server.watch.ignored, ["**/coverage/**", "**/dist/**"]);
   assert.equal(config.server.proxy["/api"].target, "http://127.0.0.1:8010");
   assert.equal(config.server.proxy["/api"].changeOrigin, true);
 });

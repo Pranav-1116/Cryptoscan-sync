@@ -15,8 +15,9 @@ const routes = (over = {}) => ({ "/api/v1/cbom/legacy-imports": list,
 const renderReview = (onCommitted = vi.fn()) => render(<PrivateScope><CbomLegacyReview refresh={0} onCommitted={onCommitted} /></PrivateScope>);
 async function openReview() {
   fireEvent.click(screen.getByRole("button", { name: "Review historical imports" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Review Payments" }));
-  await screen.findByText(/Payments: 1 historical records/);
+  fireEvent.click(await screen.findByRole("button", { name: "Review" }));
+  await screen.findByText("1 pending");
+  expect(screen.getAllByText("Payments")).toHaveLength(2);
 }
 function confirm() {
   fireEvent.change(screen.getByLabelText("Review rationale (no secrets)"), { target: { value: "Reviewed synthetic original document and replacement metadata." } });
@@ -41,13 +42,13 @@ describe("Historical import reconciliation", () => {
   it("blocks mixed scanner evidence on the UI as well as the server", async () => {
     mockFetch(routes({ "/api/v1/cbom/system/legacy-system/legacy-imports": { ...review, mixed_evidence_assets: 1 } }));
     renderReview(); await openReview(); confirm();
-    expect(screen.getByText(/Automatic reconciliation is blocked/)).toBeTruthy();
+    expect(screen.getByText(/auto-reconcile blocked/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reconcile historical declarations" })).toBeDisabled();
   });
   it("requires a reimported fingerprint", async () => {
     mockFetch(routes({ "/api/v1/cbom/system/legacy-system/legacy-imports": { ...review, replacement_document_sha256: null } }));
     renderReview(); await openReview(); confirm();
-    expect(screen.getByText(/first reimport the original CBOM/)).toBeTruthy();
+    expect(screen.getByText(/none — reimport first via import form/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Reconcile historical declarations" })).toBeDisabled();
   });
   it("does not invent clearance when reads are offline", async () => {
@@ -66,7 +67,7 @@ describe("Historical import reconciliation", () => {
     mockFetch(routes()); renderReview(); await openReview(); confirm();
     await act(async () => { window.dispatchEvent(new StorageEvent("storage", { key: "cryptoscan_tenant", newValue: "other" })); });
     await waitFor(() => expect(screen.queryByRole("checkbox")).toBeNull());
-    expect(screen.queryByText("Payments: 1 historical records")).toBeNull();
+    expect(screen.queryByText("1 pending")).toBeNull();
   });
 });
 
@@ -74,9 +75,9 @@ it("suppresses a late review read after a private-context change", async () => {
   let resolve!: (value: unknown) => void;
   mockFetch(routes({ "/api/v1/cbom/system/legacy-system/legacy-imports": () => new Promise(r => { resolve = r; }) }));
   renderReview(); fireEvent.click(screen.getByRole("button", { name: "Review historical imports" }));
-  fireEvent.click(await screen.findByRole("button", { name: "Review Payments" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Review" }));
   await act(async () => { window.dispatchEvent(new Event("zelinx:auth")); });
   await act(async () => { resolve(review); });
   expect(screen.queryByRole("checkbox")).toBeNull();
-  expect(screen.queryByText("Payments: 1 historical records")).toBeNull();
+  expect(screen.queryByText("1 pending")).toBeNull();
 });

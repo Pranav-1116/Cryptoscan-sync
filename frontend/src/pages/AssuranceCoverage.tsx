@@ -3,7 +3,9 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, PageHead, Panel } from "../components/ui.jsx";
 import { Json, idInputStyle, useAssuranceRead } from "../lib/assuranceRead";
-import { apiAssuranceCoverage, type AssuranceCoverage, type CoverageCounts } from "../lib/api.js";
+import { usePrivateScopeCurrent } from "../components/PrivateScope";
+import { apiAssuranceCoverage, apiAssuranceCreateRegister, getRoles,
+  type AssuranceCoverage, type AssuranceRecord, type CoverageCounts } from "../lib/api.js";
 
 /** Workflow 2 of 7: registered coverage.
  *
@@ -19,13 +21,63 @@ export default function AssuranceCoverage() {
 
 function AssuranceCoveragePage() {
   const [register, setRegister] = useState("");
+  const [scope, setScope] = useState("");
+  const [owner, setOwner] = useState("");
+  const [evidenceRef, setEvidenceRef] = useState("");
+  const [targetId, setTargetId] = useState("");
+  const [sourcePath, setSourcePath] = useState("");
+  const [permissionRef, setPermissionRef] = useState("");
+  const [freshness, setFreshness] = useState(86400);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [created, setCreated] = useState<AssuranceRecord | null>(null);
+  const scopeCurrent = usePrivateScopeCurrent();
+  const canManage = getRoles().some(role => ["superadmin", "ciso", "security_analyst"].includes(role));
   const read = useAssuranceRead<AssuranceCoverage>();
   const data = read.data;
+
+  const createRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (creating || !scopeCurrent()) return;
+    setCreating(true);
+    setCreateError("");
+    setCreated(null);
+    read.clear();
+    try {
+      const result = await apiAssuranceCreateRegister({
+        expected_revision: 0,
+        scope_description: scope.trim(), register_owner: owner.trim(),
+        completeness: "UNKNOWN", completeness_evidence_ref: evidenceRef.trim(),
+        targets: [{ target_id: targetId.trim(), owner_ref: owner.trim(), kind: "SOURCE",
+          source_class: "source", target_ref: sourcePath.trim(), method: "LOCAL_SOURCE",
+          permission_ref: permissionRef.trim(), freshness_seconds: freshness }],
+      });
+      if (!scopeCurrent()) return;
+      if (result.source !== "live" || !result.data) {
+        setCreateError(`Register creation unconfirmed (${result.error || "no receipt"}); inspect current history before retrying.`);
+        return;
+      }
+      const receipt = result.data;
+      if (receipt.kind !== "estate_register" || receipt.revision !== 1
+        || !/^[0-9a-f-]{36}$/.test(receipt.subject_id || "")
+        || !/^[0-9a-f]{64}$/.test(receipt.payload_sha256 || "")) {
+        setCreateError("Register response has no verifiable revision identity; inspect current history before retrying.");
+        return;
+      }
+      setCreated(receipt);
+      setRegister(receipt.subject_id);
+      await read.run(() => apiAssuranceCoverage(receipt.subject_id), "Coverage report");
+    } catch (error) {
+      if (scopeCurrent()) setCreateError(`Register creation unconfirmed: ${error instanceof Error ? error.message : String(error)}; inspect history before retrying.`);
+    } finally {
+      if (scopeCurrent()) setCreating(false);
+    }
+  };
 
   return <div className="assurance-coverage" style={{ minWidth: 0 }}>
     <PageHead crumb="Assurance / Registered coverage" title="Registered coverage"
       sub="Owner-registered denominator · freshness from SQL receipts · no whole-bank percentage"
-      right={<><Badge tone="cyan">READ ONLY</Badge><Badge tone="amber">DENOMINATOR IS THE REGISTER</Badge></>} />
+      right={<><Badge tone="cyan">{canManage ? "DECLARE + READ" : "READ ONLY"}</Badge><Badge tone="amber">DENOMINATOR IS THE REGISTER</Badge></>} />
 
     <Panel title="Read this before reading the counts">
       <p>The register is what the owner <em>declared</em> exists. Coverage is measured against that declaration,
@@ -35,6 +87,35 @@ function AssuranceCoveragePage() {
         receipt is quoted with its timestamp, not extrapolated forward.</p>
       <p><Link to="/assurance-records">Assertion records</Link> · <Link to="/assurance-sampling">Accuracy sampling</Link></p>
     </Panel>
+
+    {canManage && <Panel title="Declare one local source target">
+      <p>This creates an owner-supplied register revision, <strong>not a scan or approval</strong>.
+        Its target begins NOT_ATTEMPTED; only a later exact durable job receipt can establish OBSERVED.
+        Enter an existing permission reference rather than treating this form as permission to collect.</p>
+      <form onSubmit={event => void createRegister(event)}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 250px), 1fr))", gap: 12 }}>
+          <label>Scope description<input required maxLength={500} style={idInputStyle} value={scope}
+            onChange={event => setScope(event.target.value)} /></label>
+          <label>Register owner (declared)<input required maxLength={500} style={idInputStyle} value={owner}
+            onChange={event => setOwner(event.target.value)} /></label>
+          <label>Scope evidence reference<input required maxLength={500} style={idInputStyle} value={evidenceRef}
+            onChange={event => setEvidenceRef(event.target.value)} /></label>
+          <label>Target ID<input required maxLength={80} pattern="[a-zA-Z0-9._-]+" style={idInputStyle}
+            value={targetId} onChange={event => setTargetId(event.target.value)} /></label>
+          <label>Exact absolute source path<input required maxLength={500} style={idInputStyle} value={sourcePath}
+            onChange={event => setSourcePath(event.target.value)} /></label>
+          <label>Existing collection permission reference<input required maxLength={500} style={idInputStyle}
+            value={permissionRef} onChange={event => setPermissionRef(event.target.value)} /></label>
+          <label>Freshness window (seconds)<input required type="number" min={60} max={31536000} step={1}
+            style={idInputStyle} value={freshness} onChange={event => setFreshness(Number(event.target.value))} /></label>
+        </div>
+        <button className="btn primary sm" style={{ marginTop: 12 }} disabled={creating || !sourcePath.trim().startsWith("/")}
+          type="submit">{creating ? "Creating…" : "Create register (no scan)"}</button>
+      </form>
+      {createError && <p role="alert">{createError}</p>}
+      {created && <p role="status">Register <code>{created.subject_id}</code> · revision {created.revision} ·
+        receipt SHA-256 <code>{created.payload_sha256}</code>. Read the current report below.</p>}
+    </Panel>}
 
     <Panel title="Register to inspect">
       <label style={{ display: "block", margin: "8px 0" }}>Exact register ID

@@ -258,12 +258,13 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
               </dl>
               <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <button onClick={() => verifyRecord(f.evidence_id)} disabled={!!recordVerdicts[f.evidence_id]?.busy} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--r)", background: recordVerdicts[f.evidence_id]?.verdict?.result === "PASS" ? "var(--green)" : "var(--amber)", color: "#fff", border: "none", fontWeight: 700, cursor: recordVerdicts[f.evidence_id]?.busy ? "not-allowed" : "pointer", opacity: recordVerdicts[f.evidence_id]?.busy ? 0.6 : 1 }}>{recordVerdicts[f.evidence_id]?.busy ? "Verifying…" : "Verify this record"}</button>
-                {recordVerdicts[f.evidence_id]?.error && <span style={{ color: "var(--amber)", fontSize: 11 }}>{recordVerdicts[f.evidence_id]?.error}</span>}
-                {recordVerdicts[f.evidence_id]?.verdict && (() => { const v = recordVerdicts[f.evidence_id]!.verdict!; return <span style={{ fontSize: 11 }}><Badge variant={v.result === "PASS" ? "success" : "danger"}>{v.result}</Badge> content {v.content_intact ? "intact" : "broken"} · chain {v.chain_intact ? "intact" : "broken"}</span>; })()}
+                {recordVerdicts[f.evidence_id]?.error && <span role="alert" style={{ color: "var(--amber)", fontSize: 11 }}>{recordVerdicts[f.evidence_id]?.error}</span>}
+                {recordVerdicts[f.evidence_id]?.verdict && (() => { const v = recordVerdicts[f.evidence_id]!.verdict!; return <span style={{ fontSize: 11 }}><Badge variant={v.result === "PASS" ? "success" : "danger"}>{v.result}</Badge> content {v.content_intact ? "intact" : "broken"} · chain {v.chain_intact ? "intact" : "broken"} · hash format {v.hash_format_valid ? "valid" : "invalid"} · verified by {field(v.verified_by)}</span>; })()}
               </div>
               <p style={{ color: "var(--faint)", fontSize: 10, margin: "8px 0 0" }}>Provenance fields shown only when provided by the redacted server projection; raw finding data is not displayed.</p>
             </article>)}
             {findingTotal !== null && <p style={{ color: "var(--dim)", fontSize: 11, marginTop: 10 }}>Loaded {findings.length} of {findingTotal} observations</p>}
+            {findingTotal !== null && findings.length < findingTotal && <Button onClick={() => void moreFindings()} disabled={findingPaging}>{findingPaging ? "Loading…" : "Load more evidence"}</Button>}
             <p style={{ marginTop: 12 }}><Link to="/findings" style={{ fontSize: 12, color: "var(--amber)" }}>Open findings console →</Link></p>
           </>}
         </section>

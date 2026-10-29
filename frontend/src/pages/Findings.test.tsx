@@ -117,7 +117,7 @@ describe("Findings page", () => {
     });
 
     fireEvent.click(screen.getByText("Verify this record"));
-    expect(await screen.findByText(/Requires the auditor role/i)).toBeTruthy();
+    expect(await screen.findByText(/Requires auditor role/i)).toBeTruthy();
     expect(screen.queryByText("PASS")).toBeNull();
     expect(screen.queryByText("FAIL")).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith(
@@ -136,8 +136,8 @@ describe("Findings page", () => {
     expect(screen.getByText("VERIFIED")).toBeTruthy();
     expect(screen.getByText(/crypto-team/)).toBeTruthy();
     // and the lifecycle view is one click away
-    expect(screen.getByText("Open task lifecycle view →")).toBeTruthy();
-    expect(screen.getByText(/COMPLETED is a declaration/i)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Open task lifecycle/ })).toHaveAttribute("href", "/remediation");
+    expect(screen.getByText(/COMPLETED = declaration/i)).toBeTruthy();
   });
 
   it("states honestly when no remediation task references the finding", async () => {
@@ -147,7 +147,7 @@ describe("Findings page", () => {
       "/api/v1/remediation/tasks": { tasks: [], total: 0, page: 1, page_size: 20 },
     });
 
-    expect(await screen.findByText(/No remediation tasks reference this finding/i)).toBeTruthy();
+    expect(await screen.findByText(/No tasks reference this/)).toBeTruthy();
   });
 
   it("keeps the drawer honest when the backend is unreachable", async () => {

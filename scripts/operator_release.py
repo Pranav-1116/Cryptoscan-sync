@@ -24,7 +24,7 @@ from verify_release_attestation import verify_attestation
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = "kubernetes-external-services/local-source-v1"
-MIGRATION_HEAD = "0106"
+MIGRATION_HEAD = "0119"
 IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 EXAMPLE_NAMES = {"15-secret.example.yaml"}
 DOCS = ["docs/readiness-evidence/launch-engineering-2026-10-22.md", "docs/runbooks/launch-assurance-handoff.md",

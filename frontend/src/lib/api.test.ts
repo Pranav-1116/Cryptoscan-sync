@@ -4,7 +4,8 @@
 import { describe, expect, it } from "vitest";
 import { mockFetch, offlineFetch } from "../test/setup";
 import {
-  activeTenantId, apiLogin, apiScope, getRoles, getToken, getUserName,
+  activeTenantId, apiLogin, apiRegister, apiScope, apiHostOciSbom, apiHostContainerSbom, apiHostTlsSessionBom,
+  getRoles, getToken, getUserName,
   isBackendLive, setActiveTenantId, setToken, setUserName, syncSession,
 } from "./api";
 
@@ -135,6 +136,25 @@ describe("api bridge — auth + tenancy headers", () => {
   });
 });
 
+describe("approved host export routes", () => {
+  it.each([
+    ["OCI metadata", apiHostOciSbom, "oci-image/cyclonedx-1.6"],
+    ["verified container content", apiHostContainerSbom, "container/cyclonedx-1.6"],
+    ["one TLS session", apiHostTlsSessionBom, "tls-session/cyclonedx-1.6"],
+  ] as const)("uses the exact tenant-scoped %s endpoint", async (_label, read, suffix) => {
+    setToken("session-token");
+    setActiveTenantId("tenant-a");
+    const path = `/api/v1/host-evidence/approvals/approval-1/${suffix}`;
+    const fetchSpy = mockFetch({ [path]: { bomFormat: "CycloneDX", specVersion: "1.6" } });
+    const result = await read("approval-1");
+    expect(result).toMatchObject({ source: "live", ok: true,
+      data: { bomFormat: "CycloneDX", specVersion: "1.6" } });
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(path);
+    expect(init.headers).toMatchObject({ Authorization: "Bearer session-token", "X-Tenant-ID": "tenant-a" });
+  });
+});
+
 describe("apiLogin", () => {
   it("stores token + roles on success", async () => {
     mockFetch({ "/api/v1/auth/login": { token: "jwt-1", roles: ["superadmin"], username: "admin" } });
@@ -167,6 +187,17 @@ describe("apiLogin", () => {
     const result = await apiLogin("admin", "pw");
     expect(result.ok).toBe(false);
     expect(result.error).toBeTruthy();
+  });
+});
+
+describe("apiRegister", () => {
+  it("reports an HTML gateway 500 as unavailable rather than a rejected account", async () => {
+    mockFetch({ "/api/v1/auth/register": () => new Response("gateway unavailable", {
+      status: 500, headers: { "Content-Type": "text/html" },
+    }) });
+    const result = await apiRegister({ username: "reader", password: "not-sent-to-server", role: "readonly" });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/API is unavailable/);
   });
 });
 

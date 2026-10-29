@@ -31,6 +31,11 @@ from db.models.estate_daemon import EstateDaemon as EstateDaemonRow
 NOW = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
 
 
+def _schedule(session, **kwargs):
+    kwargs.setdefault("planes", ["STATIC"])
+    return estate_schedule.create_schedule(session, **kwargs)
+
+
 @pytest.fixture()
 def env():
     """A real session factory (the daemon opens and closes its own sessions)."""
@@ -161,7 +166,7 @@ def test_the_bus_publisher_is_the_platform_bus():
 # the daemon
 # --------------------------------------------------------------------------- #
 def _due_schedule(session, *, every: str = "6h", name: str = "nightly"):
-    return estate_schedule.create_schedule(
+    return _schedule(
         session, name=name, every=every, scope="production", estate="bank-a",
         planes=["STATIC"], now=NOW - timedelta(hours=7),
     )
@@ -195,7 +200,7 @@ def test_a_due_schedule_is_run_and_its_outcome_is_recorded(session, factory):
 def test_an_idle_cycle_says_why_it_did_nothing(session, factory):
     clock = FakeClock()
     # created five minutes ago with a six-hour cadence: nothing is due yet
-    estate_schedule.create_schedule(session, name="nightly", every="6h",
+    _schedule(session, name="nightly", every="6h",
                                     now=NOW - timedelta(minutes=5))
     daemon = EstateDaemon(factory, poll_seconds=5, sleep=clock.sleep, clock=clock.clock,
                           now=clock.now, jitter=lambda: 0.0)
@@ -254,7 +259,7 @@ def test_repeated_failures_back_off_instead_of_hammering(session, factory):
     delays = []
     for _ in range(4):
         # keep a schedule due every cycle so the failure path is exercised
-        estate_schedule.create_schedule(session, name=f"s{len(delays)}", every="1m",
+        _schedule(session, name=f"s{len(delays)}", every="1m",
                                         now=NOW - timedelta(minutes=5))
         result = daemon.run_cycle()
         delays.append(result["sleep_seconds"])
@@ -264,7 +269,7 @@ def test_repeated_failures_back_off_instead_of_hammering(session, factory):
 
 def test_downtime_produces_one_catch_up_run_not_a_queue(session, factory):
     clock = FakeClock()
-    row = estate_schedule.create_schedule(session, name="hourly", every="1h",
+    row = _schedule(session, name="hourly", every="1h",
                                           now=NOW - timedelta(days=2))
     # simulate a long outage: next_run_at is two days in the past
     row.next_run_at = NOW - timedelta(days=2)
@@ -412,11 +417,39 @@ def test_realtime_endpoint_reports_a_live_daemon_and_an_idle_estate(api, session
     assert body["verdict"] == "IDLE_NO_SCHEDULES", "alive but nothing is being re-scanned"
     assert "no schedule is enabled" in body["reason"]
 
-    estate_schedule.create_schedule(session, name="nightly", every="6h")
+    _schedule(session, name="nightly", every="6h")
     body = api.get("/api/v1/estate/evidence/realtime").json()
     assert body["verdict"] in {"WAITING", "RUNNING"}
     assert body["schedules"]["enabled"] == 1
     assert body["schedules"]["seconds_until_due"] is not None
+
+
+def test_realtime_verdict_tracks_failed_projections_and_due_cadence_not_wall_clock_age(api, session):
+    from api.estate_daemon_store import record_heartbeat
+
+    now = datetime.now(timezone.utc)
+    record_heartbeat(session, {"worker": "d1", "state": "RUNNING",
+                               "last_cycle_at": now.isoformat(), "cycles": 4, "runs": 1})
+    row = _schedule(session, name="nightly", every="6h", now=now - timedelta(hours=2))
+    row.last_run_at = now - timedelta(hours=2)
+    row.last_verdict = "COMPLETE"
+    row.last_coverage_state = "MEASURED"
+    session.commit()
+    body = api.get("/api/v1/estate/evidence/realtime").json()
+    assert body["verdict"] == "WAITING", "a six-hour cadence is not stale after two hours"
+
+    row.last_verdict = "PARTIAL_COVERAGE"
+    row.last_coverage_state = "NOT_OBSERVED"
+    session.commit()
+    body = api.get("/api/v1/estate/evidence/realtime").json()
+    assert body["verdict"] == "DEGRADED" and "incomplete coverage" in body["reason"]
+
+    row.last_verdict = "COMPLETE"
+    row.last_coverage_state = "MEASURED"
+    row.next_run_at = now - timedelta(minutes=10)
+    session.commit()
+    body = api.get("/api/v1/estate/evidence/realtime").json()
+    assert body["verdict"] == "DEGRADED" and "overdue" in body["reason"]
 
 
 def test_realtime_endpoint_never_confuses_api_liveness_with_coverage(api):
@@ -529,7 +562,7 @@ def test_the_scheduled_path_compares_against_the_previous_stored_run(session, fa
     from api import estate_discovery
 
     seen: list[tuple[str, dict]] = []
-    estate_schedule.create_schedule(session, name="nightly", every="1h", estate="bank-a",
+    _schedule(session, name="nightly", every="1h", estate="bank-a",
                                     planes=["STATIC"], now=NOW - timedelta(hours=2))
     # a stored previous report is what the real runner would find
     import db.repositories.scan_run_repository as repo_module
@@ -584,7 +617,7 @@ def test_a_stored_run_payload_can_be_compared_with_the_next_one(session, factory
 
 
 def test_a_failed_run_makes_a_one_shot_cycle_exit_incomplete(session, factory, capsys):
-    estate_schedule.create_schedule(session, name="nightly", every="1m", now=NOW - timedelta(minutes=5))
+    _schedule(session, name="nightly", every="1m", now=NOW - timedelta(minutes=5))
 
     import api.estate_daemon as daemon_module
 

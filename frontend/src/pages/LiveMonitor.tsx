@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
+import PrivateScope from "../components/PrivateScope";
+import EstateSchedulePanel from "../components/EstateSchedulePanel";
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Panel, Badge, Bar, Ring } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
-import { useRealtime, useRealtimeRefresh, severityOf, isSystemEvent } from "../lib/realtime.js";
+import { useRealtime, useChannelRefresh, severityOf, isSystemEvent } from "../lib/realtime.js";
 import {
   IconNetwork,
   IconHardware,
@@ -29,9 +31,11 @@ import {
   apiLiveOrchestratorHistory,
   apiLiveOrchestratorStart,
   apiTechBomLive,
+  apiEstateRealtime,
   LiveEnvironmentResponse,
   OrchestratorScan,
   ScanRunSummary,
+  type EstateRealtime,
 } from "../lib/api.js";
 
 // helpers
@@ -82,6 +86,10 @@ const sevTone = (s: string) =>
   s === "CRITICAL" ? "red" : s === "HIGH" ? "amber" : s === "MEDIUM" ? "amber" : "green";
 
 export default function LiveMonitor() {
+  return <PrivateScope><LiveMonitorPage /></PrivateScope>;
+}
+
+function LiveMonitorPage() {
   // interval control — 3s = real-time, 6s = balanced default
   const [intervalMs, setIntervalMs] = useState<number>(3000);
   const [isPaused, setIsPaused] = useState(false);
@@ -107,9 +115,16 @@ export default function LiveMonitor() {
   const status = usePollingApi(apiLiveOrchestratorStatus, isPaused ? 600000 : Math.max(6000, intervalMs * 2));
   const history = usePollingApi(apiLiveOrchestratorHistory, isPaused ? 600000 : 15000);
   const techBom = usePollingApi(() => apiTechBomLive(500), isPaused ? 600000 : intervalMs);
+  const estate = usePollingApi<EstateRealtime>(apiEstateRealtime, isPaused ? 600000 : 15000,
+    [], { channels: ["estate"], liveIntervalMs: 30000 });
   const rt = useRealtime();
-  useRealtimeRefresh(lt.run, status.run, history.run, techBom.run);
+  // Existing live-source reads keep their timer fallback; only relevant estate,
+  // crypto and inventory events prompt an extra refresh. The estate status hook
+  // subscribes separately to its own channel and is not double-refetched.
+  useChannelRefresh(["estate", "crypto", "inventory"], [lt.run, status.run, history.run, techBom.run]);
 
+  const estateState = estate.source === "live" ? estate.data : null;
+  const estateVerdict = estateState?.verdict ?? null;
   const env: LiveEnvironmentResponse | null = (lt.data as LiveEnvironmentResponse | null) ?? null;
   const scan: OrchestratorScan | null = env?.scan ?? (status.data as any)?.scan ?? null;
   const domains = env?.domains ?? { network: 0, hardware: 0, vendor: 0, crypto: 0, certificate: 0, application: 0, total: 0 };
@@ -246,7 +261,7 @@ export default function LiveMonitor() {
   }, [uptimeSec]);
 
   const hasData = domains.total > 0 || (graph.node_count ?? 0) > 0;
-  const liveDots = live && !isPaused;
+  const liveDots = live && !isPaused && estateVerdict === "RUNNING";
 
   // domain tiles config — unified coverage
   const domainTiles: Array<{
@@ -314,6 +329,28 @@ export default function LiveMonitor() {
         </div>
       )}
 
+      <section role="status" aria-label="Estate collection status" style={{
+        padding: "12px 16px", marginBottom: 14, borderRadius: "var(--r)",
+        border: `1px solid ${estateVerdict === "RUNNING" ? "var(--green)" : "var(--line)"}`,
+        background: "var(--panel)", color: "var(--text)",
+      }}>
+        <strong>Scheduled collection: {estateVerdict ?? "UNKNOWN"}</strong>
+        <div style={{ color: "var(--dim)", marginTop: 4 }}>
+          {estateState?.reason ?? "Current daemon and schedule state unavailable; API connectivity is not collection coverage."}
+        </div>
+        {estateState && <div style={{ color: "var(--dim)", marginTop: 4, fontSize: 12 }}>
+          Daemon {estateState.daemon.liveness.state} · {estateState.schedules.enabled} enabled schedule(s) ·
+          last completed run {estateState.runs.last_finished_at || "none"}
+        </div>}
+        {estateState?.next_action && <div style={{ color: "var(--dim)", marginTop: 4, fontSize: 12 }}>
+          Next action: {estateState.next_action}
+        </div>}
+        <div style={{ color: "var(--faint)", marginTop: 6, fontSize: 11 }}>
+          Scheduled discovery reprojects stored observations. A heartbeat, an empty result, or an enabled cadence is not proof that a collector acquired new evidence.
+        </div>
+      </section>
+      <EstateSchedulePanel />
+
       {/* HERO — immersive 24/7 header */}
       <div
         style={{
@@ -375,7 +412,7 @@ export default function LiveMonitor() {
               LIVE MONITOR · 24/7
             </span>
             <Badge tone={live ? "green" : "amber"}>
-              <span className="dot" /> {isPaused ? "PAUSED" : live ? (rt.connected ? "SSE LIVE" : "POLL LIVE") : "OFFLINE"}
+              <span className="dot" /> {isPaused ? "PAUSED" : live ? (rt.connected ? "SSE CONNECTED" : "API POLLING") : "API UNAVAILABLE"}
             </Badge>
             {scan?.scope_validated ? (
               <Badge tone="green">SCOPE: AUTHORIZED</Badge>
@@ -383,7 +420,7 @@ export default function LiveMonitor() {
               <Badge tone="amber">SCOPE: EMPTY</Badge>
             )}
             <span style={{ fontSize: 11, color: "var(--dim)" }}>
-              Uptime {uptimeLabel} · Interval {intervalMs / 1000}s · Last poll {lastPollAt ? timeAgo(lastPollAt) : "—"}
+              Screen open {uptimeLabel} · Interval {intervalMs / 1000}s · Last poll {lastPollAt ? timeAgo(lastPollAt) : "—"}
             </span>
           </div>
 
@@ -596,7 +633,7 @@ export default function LiveMonitor() {
             {liveDots ? "Monitoring" : "Standby"}
           </div>
           <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-            Uptime {uptimeLabel} · {rt.connected ? "SSE connected" : "Polling fallback"} · {intervalMs / 1000}s tick
+            Screen open {uptimeLabel} · {rt.connected ? "SSE connected" : "Polling fallback"} · {intervalMs / 1000}s tick
           </div>
           <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
             <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 999, background: "var(--line)", color: "var(--dim)" }}>

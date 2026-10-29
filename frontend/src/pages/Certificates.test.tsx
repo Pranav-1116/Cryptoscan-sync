@@ -77,9 +77,10 @@ describe("Certificates page", () => {
     // absent owner renders as UNKNOWN — a fact, not an inference
     expect(screen.getByText("UNKNOWN")).toBeTruthy();
     expect(screen.getByText("1 UNKNOWN OWNER")).toBeTruthy();
-    expect(screen.getByText("2 ESTATE ROWS")).toBeTruthy();
+    expect(screen.getByText("2 ROWS")).toBeTruthy();
     // the two surfaces are labeled apart
-    expect(screen.getByText(/not one scan-run's observation/i)).toBeTruthy();
+    expect(screen.getByText(/Deduped by fingerprint/)).toBeTruthy();
+    expect(screen.getByText(/Ephemeral scan run/)).toBeTruthy();
     expect(screen.getByText(/No certificates yet/i)).toBeTruthy();
   });
 
@@ -173,6 +174,8 @@ describe("Certificates page", () => {
 
     offlineFetch();
     renderPage();
-    expect(await screen.findAllByText(/unavailable/i)).not.toHaveLength(0);
+    expect(await screen.findByText(/Persisted estate unavailable/)).toBeTruthy();
+    expect(screen.getByText("— ROWS")).toBeTruthy();
+    expect(screen.getByText("— UNKNOWN OWNER")).toBeTruthy();
   });
 });

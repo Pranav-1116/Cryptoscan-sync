@@ -37,10 +37,12 @@ incomplete/drifted, ``3`` refused (capability or authority missing).
 from __future__ import annotations
 
 import argparse
+import getpass
 import hashlib
 import io
 import json
 import os
+import re
 import secrets
 import ssl
 import sys
@@ -129,6 +131,7 @@ class Config:
     client_key: str | None = None
     verify_tls: bool = True
     timeout: float = DEFAULT_TIMEOUT
+    tenant_id: str | None = None
 
     def with_env(self) -> "Config":
         """Environment wins over the file: it is how CI supplies a credential."""
@@ -140,6 +143,7 @@ class Config:
             ca=os.environ.get("CRYPTOSCAN_CA") or self.ca,
             client_cert=os.environ.get("CRYPTOSCAN_CLIENT_CERT") or self.client_cert,
             client_key=os.environ.get("CRYPTOSCAN_CLIENT_KEY") or self.client_key,
+            tenant_id=os.environ.get("CRYPTOSCAN_TENANT_ID") or self.tenant_id,
         )
 
     def missing(self) -> list[str]:
@@ -309,6 +313,8 @@ class Client:
             headers["Authorization"] = f"Bearer {config.token}"
         if config.api_key:
             headers["x-api-key"] = config.api_key
+        if config.tenant_id:
+            headers["X-Tenant-ID"] = config.tenant_id
         transport = TRANSPORT or _urllib_transport
         response = transport(method, url, headers, payload, self._context, config.timeout)
         if response.status >= 400:
@@ -407,6 +413,22 @@ def _refuse(command: str, exc: Refused) -> int:
     return EXIT_REFUSED
 
 
+def _validate_bank_origin(config: Config) -> None:
+    """Refuse plaintext remote hosts; the operator still selects and trusts the bank endpoint."""
+    parsed = urllib.parse.urlsplit(config.server or "")
+    loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+    local_dev = os.getenv("ENVIRONMENT", "").strip().lower() in {"development", "test", "testing"}
+    if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
+            or parsed.path not in ("", "/") or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback and local_dev))):
+        raise Refused("control plane must use an HTTPS origin",
+            detail="plain HTTP requires explicit development/test mode and loopback; never put credentials in a URL")
+    if not config.verify_tls and not (loopback and local_dev and os.getenv("CRYPTOSCAN_ALLOW_INSECURE_LAB") == "1"):
+        raise Refused("TLS verification cannot be disabled for a bank control plane",
+            detail="supply the bank CA with --ca; --insecure requires explicit loopback lab opt-in")
+    if config.tenant_id and not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", config.tenant_id):
+        raise Refused("invalid tenant selector", detail="use the exact tenant id from the bank control plane")
+
+
 def _client(args: argparse.Namespace) -> Client:
     """Build a client from file + environment + flags, and refuse early when unusable."""
     config = load_config().with_env()
@@ -417,6 +439,8 @@ def _client(args: argparse.Namespace) -> Client:
         overrides["token"] = args.token
     if getattr(args, "api_key", None):
         overrides["api_key"] = args.api_key
+    if getattr(args, "tenant", None):
+        overrides["tenant_id"] = args.tenant
     if getattr(args, "ca", None):
         overrides["ca"] = args.ca
     if getattr(args, "client_cert", None):
@@ -434,6 +458,7 @@ def _client(args: argparse.Namespace) -> Client:
             detail="; ".join(missing),
             closest=("cryptoscan login --server https://<control-plane>", "cryptoscan doctor"),
         )
+    _validate_bank_origin(config)
     return Client(config)
 
 
@@ -468,17 +493,27 @@ def _cmd_login(args: argparse.Namespace, _session: Any = None) -> int:
     server = args.server or config.server
     if not server:
         return _refuse("login", Refused("no server given", detail="pass --server https://<control-plane>"))
-    password = args.password or os.environ.get("CRYPTOSCAN_PASSWORD")
     if getattr(args, "password_stdin", False):
         password = sys.stdin.readline().rstrip("\n")
+    elif sys.stdin.isatty():
+        password = getpass.getpass("CryptoScan password: ")
+    else:
+        password = os.environ.get("CRYPTOSCAN_PASSWORD")
     body = {"username": args.username, "password": password}
     if not body["password"]:
         return _refuse("login", Refused(
             "no password supplied",
             detail="use --password-stdin to keep the password out of shell history and process args",
         ))
-    client = Client(replace(config, server=server, token=None, api_key=None))
     try:
+        client_config = replace(config, server=server, token=None, api_key=None,
+                                ca=args.ca or config.ca,
+                                client_cert=args.client_cert or config.client_cert,
+                                client_key=args.client_key or config.client_key)
+        if bool(client_config.client_cert) != bool(client_config.client_key):
+            raise Refused("mTLS needs both client certificate and key paths")
+        _validate_bank_origin(client_config)
+        client = Client(client_config)
         payload = client.post("/api/v1/auth/login", body)
     except (Refused, ApiError) as exc:
         return _fail("login", exc)
@@ -495,7 +530,7 @@ def _cmd_login(args: argparse.Namespace, _session: Any = None) -> int:
     session = _field(payload, "token")
     if not session:
         return _fail("login", Refused("the control plane returned no session token"))
-    saved = save_config(replace(config, server=server, token=session, api_key=None))
+    saved = save_config(replace(client_config, token=session))
     print(f"logged in as {_field(payload, 'username', default=args.username)} "
           f"roles={','.join(_field(payload, 'roles', default=[]) or [])}")
     print(f"session expires: {_field(payload, 'session_expires_at', default='unknown')}")
@@ -509,6 +544,7 @@ def _cmd_logout(args: argparse.Namespace, _session: Any = None) -> int:
     revoked = "not_attempted"
     if config.server and config.token:
         try:
+            _validate_bank_origin(config)
             Client(config).post("/api/v1/auth/logout")
             revoked = "revoked_by_server"
         except (Refused, ApiError) as exc:
@@ -893,7 +929,7 @@ def _watch(client: Client, args: argparse.Namespace) -> int:
     """Poll a job until it reaches a terminal state, printing real transitions only."""
     deadline = time.monotonic() + args.timeout
     last = None
-    path = f"/api/v1/jobs/{urllib.parse.quote(args.job_id)}"
+    path = getattr(args, "job_path", None) or f"/api/v1/{'collection/jobs' if getattr(args, 'collection', False) else 'jobs'}/{urllib.parse.quote(args.job_id)}"
     while True:
         try:
             payload = client.get(path)
@@ -2184,6 +2220,14 @@ def _check_manifest_signature(manifest: Mapping[str, Any], public_key_path: str 
 # --------------------------------------------------------------------------------------
 
 
+def _admitted_source_preview(value: Any, target: str) -> bool:
+    return (isinstance(value, Mapping) and value.get("decision") == "ADMITTED"
+            and value.get("target") == target and value.get("adapter") == "local-source/v1"
+            and value.get("job_created") is False and value.get("collection_performed") is False
+            and isinstance(value.get("approval_id"), str) and bool(value["approval_id"])
+            and type(value.get("policy_revision")) is int and value["policy_revision"] > 0)
+
+
 def scan_remote(args: argparse.Namespace, _session: Any = None) -> int:
     """Submit collection work to the control plane instead of running it here.
 
@@ -2192,40 +2236,50 @@ def scan_remote(args: argparse.Namespace, _session: Any = None) -> int:
     starts an **estate discovery run** — whichever the operator asked for, with the
     endpoint named in the output.
     """
-    client = _client(args)
-    manifest = _load_manifest(getattr(args, "manifest", None))
-
+    selectors = [value for value in (getattr(args, "path", None), getattr(args, "target", None),
+                                     getattr(args, "system", None)) if value]
+    if len(selectors) != 1:
+        return _refuse("scan", Refused("choose exactly one --path, --target or --system",
+            detail="a generic estate projection is not a queued scan and cannot stand in for target admission"))
+    if getattr(args, "manifest", None):
+        return _refuse("scan --manifest", Refused("manifest execution is not wired to exact target admission",
+            detail="no manifest field may be silently dropped or treated as permission; use an explicit approved target"))
+    if (getattr(args, "scope", "production") != "production" or getattr(args, "estate", "default") != "default"
+            or getattr(args, "no_persist", False) or getattr(args, "no_boms", False)
+            or getattr(args, "allow_partial", False)):
+        return _refuse("scan", Refused("estate-projection flags are not bound to this queued job",
+            detail="submit an exact target; no requested scope, persistence or policy override is silently ignored"))
+    if getattr(args, "branch", "main") != "main" and not getattr(args, "path", None):
+        return _refuse("scan", Refused("--branch is not bound to the selected target or system job"))
+    if getattr(args, "path", None) and getattr(args, "branch", "main") != "main":
+        return _refuse("scan --path", Refused("local source has no Git branch attestation",
+            detail="scan the exact on-prem directory; an arbitrary --branch label cannot change or prove its bytes"))
+    if getattr(args, "planes", None) or getattr(args, "remote_runtime", False) or getattr(args, "remote_network", False):
+        return _refuse("scan", Refused("collector flags are not bound to this job route",
+            detail="choose an explicitly registered target with an approved method; no requested plane is silently ignored"))
+    if getattr(args, "remote_static", False) and not getattr(args, "path", None):
+        return _refuse("scan", Refused("--static is supported only for an exact local source path"))
+    if getattr(args, "target_revision", None) is not None and not getattr(args, "target", None):
+        return _refuse("scan", Refused("--target-revision is only bound to a registered target job"))
     if getattr(args, "dry_run", False):
+        if not getattr(args, "path", None):
+            return _refuse("scan --dry-run", Refused("no exact admission preview for this selector",
+                detail="a generic estate collector plan cannot qualify a system or registered target"))
         try:
-            plan = client.get("/api/v1/estate/evidence/plan")
+            client = _client(args)
+            response = client.request("POST", "/api/v1/scans/preflight",
+                body={"repo_url": args.path, "branch": args.branch, "scan_mode": "safe"})
+            preview = response.json()
         except (Refused, ApiError) as exc:
             return _fail("scan --dry-run", exc)
-
-        def render_plan() -> None:
-            print("DRY RUN — nothing was collected and nothing was written")
-            payload = plan if isinstance(plan, Mapping) else {}
-            for key in ("planes", "collectors", "targets", "scope", "estate", "coverage"):
-                value = payload.get(key)
-                if value is None:
-                    continue
-                if isinstance(value, list):
-                    print(f"{key:<12} {len(value)}")
-                    for entry in value[:20]:
-                        label = entry.get("plane") or entry.get("collector") or entry.get("name") if isinstance(entry, Mapping) else entry
-                        status = entry.get("status") or entry.get("state") if isinstance(entry, Mapping) else None
-                        print(f"  {label}"
-                              + (f"  [{status}]" if status else "")
-                              + ("  ← would run" if (isinstance(entry, Mapping) and entry.get("enabled") is False) else ""))
-                elif isinstance(value, Mapping):
-                    print(f"{key:<12} {len(value)} entries")
-                else:
-                    print(f"{key:<12} {_short(value)}")
-            print("\nthe plan states what the platform is configured to collect; it is not a "
-                  "prediction of what a run will observe.")
-
-        return _emit(args, plan, source=client.source("GET", "/api/v1/estate/evidence/plan"), render=render_plan)
+        if not _admitted_source_preview(preview, args.path):
+            _emit(args, preview, source=client.source("POST", "/api/v1/scans/preflight", response.status))
+            return EXIT_INCOMPLETE
+        return _emit(args, preview, source=client.source("POST", "/api/v1/scans/preflight", response.status),
+            render=lambda: print("ADMITTED TO SUBMIT — no collection or job was started; the worker rechecks authority at execution"))
 
     try:
+        client = _client(args)
         if getattr(args, "target", None):
             submit = {
                 "target_id": args.target,
@@ -2237,39 +2291,57 @@ def scan_remote(args: argparse.Namespace, _session: Any = None) -> int:
                     detail="the control plane refuses a job whose target changed since the operator "
                            "read it; pass --target-revision (see `cryptoscan target show <id>`)",
                 ))
-            response = client.post("/api/v1/collection/jobs", submit)
-            source = client.source("POST", "/api/v1/collection/jobs", 202)
+            result = client.request("POST", "/api/v1/collection/jobs", body=submit)
+            response = result.json()
+            source = client.source("POST", "/api/v1/collection/jobs", result.status)
             submitted = {"target": args.target, "job": response}
+            job_kind = "collection"
         elif getattr(args, "system", None):
             path = f"/api/v1/systems/{urllib.parse.quote(args.system)}/scan"
-            response = client.post(path)
-            source = client.source("POST", path, 202)
+            result = client.request("POST", path)
+            response = result.json()
+            source = client.source("POST", path, result.status)
             submitted = {"system": args.system, "scan": response}
+            job_kind = "scan"
         else:
-            body, ignored = _scan_body(args, manifest)
-            for key in ignored:
-                print(f"scan: manifest key {key!r} has no field in the estate scan request and was "
-                      f"NOT sent — the run will not honour it", file=sys.stderr)
-            response = client.post("/api/v1/estate/evidence/scan", body)
-            source = client.source("POST", "/api/v1/estate/evidence/scan", 202)
-            submitted = {"estate": body["estate"], "scan": response}
+            body = {"repo_url": args.path, "branch": args.branch, "scan_mode": "safe"}
+            preview = client.request("POST", "/api/v1/scans/preflight", body=body).json()
+            if not _admitted_source_preview(preview, args.path):
+                print("scan refused: exact control-plane admission is not qualified; no job was submitted", file=sys.stderr)
+                return EXIT_INCOMPLETE
+            path = "/api/v1/scans/trigger"
+            result = client.request("POST", path, body=body)
+            response = result.json()
+            source = client.source("POST", path, result.status)
+            submitted = {"path_on_control_plane": args.path, "scan": response}
+            job_kind = "scan"
     except (Refused, ApiError) as exc:
         return _fail("scan", exc)
 
-    job_id = (_field(response, "job_id") or _field(response, "id") or _field(response, "scan_id")
-              or _field(response, "identifier"))
+    job_id = _field(response, "job_id") or (_field(response, "id") if job_kind == "collection" else None)
+    state = str(_field(response, "status", default="") or "").upper()
+    if not isinstance(job_id, str) or not job_id or state not in {"QUEUED", "PENDING", "DEFERRED"}:
+        print("scan outcome unconfirmed: the control plane returned no durable queued job receipt; inspect current jobs before retrying", file=sys.stderr)
+        return EXIT_INCOMPLETE
 
     def render_submitted() -> None:
         print("submitted — the CLI does not wait for collection unless asked")
-        print(f"job           {job_id or '— (the control plane returned no id)'}")
-        print(f"status        {_field(response, 'status', default='—')}")
-        if job_id:
-            print(f"\nwatch it with: cryptoscan jobs watch {job_id}")
+        print(f"job           {job_id}")
+        print(f"status        {state}")
+        watch_flags = " --collection --coverage" if job_kind == "collection" else ""
+        print(f"\nwatch it with: cryptoscan jobs watch {job_id}{watch_flags}")
         print("collectors run inside the bank; this command only submitted the work")
+        if job_kind == "scan" and getattr(args, "path", None):
+            print("local source bytes are not Git-branch or commit attested")
 
-    if getattr(args, "wait", False) and job_id:
+    if getattr(args, "wait", False):
         print(f"submitted job {job_id}; waiting")
-        args.job_id = str(job_id)
+        print(f"source: {source}")
+        args.job_id = job_id
+        args.timeout = getattr(args, "timeout", 1800.0)
+        args.interval = getattr(args, "interval", 5.0)
+        if job_kind == "collection":
+            args.job_path = f"/api/v1/collection/jobs/{urllib.parse.quote(job_id)}"
         return _watch(client, args)
     return _emit(args, submitted, source=source, render=render_submitted)
 
@@ -2344,57 +2416,129 @@ def _scan_body(args: argparse.Namespace, manifest: Mapping[str, Any] | None) -> 
 
 
 def collect_remote(args: argparse.Namespace, _session: Any = None) -> int:
-    """``collect --submit``: hand collection to the control plane, collect nothing here.
-
-    The in-process ``collect`` negotiates TLS from the operator's terminal. This mode does
-    not: it submits, prints the id, and — with ``--wait`` — follows the job and its real
-    per-surface coverage. The plane list is *requested*, and the response is what decides
-    what actually ran.
-    """
-    client = _client(args)
-    try:
-        if getattr(args, "target", None):
-            if args.target_revision is None:
-                return _refuse("collect --submit --target", Refused(
-                    "expected target revision is required",
-                    detail="pass --target-revision (see `cryptoscan target show <id>`)",
-                ))
-            payload = client.post("/api/v1/collection/jobs", {
-                "target_id": args.target,
-                "expected_target_revision": args.target_revision,
-            })
-            source = client.source("POST", "/api/v1/collection/jobs", 202)
-        elif getattr(args, "system", None):
-            path = f"/api/v1/systems/{urllib.parse.quote(args.system)}/scan"
-            payload = client.post(path)
-            source = client.source("POST", path, 202)
-        else:
-            body = {
-                "estate": getattr(args, "estate", "default") or "default",
-                "scope": getattr(args, "scope", "production"),
-                "include_boms": True,
-                "persist": True,
-            }
-            payload = client.post("/api/v1/estate/evidence/scan", body)
-            source = client.source("POST", "/api/v1/estate/evidence/scan", 202)
-    except (Refused, ApiError) as exc:
-        return _fail("collect --submit", exc)
-
-    job_id = (_field(payload, "job_id") or _field(payload, "id")
-              or _field(payload, "scan_id") or _field(payload, "identifier"))
-    print("submitted — no collection happened in this process")
-    print(f"job           {job_id or '— (the control plane returned no id)'}")
-    print(f"status        {_field(payload, 'status', default='—')}")
-    if job_id:
-        print(f"\nwatch: cryptoscan jobs watch {job_id} --coverage")
-    print(f"source: {source}")
-    if getattr(args, "wait", False) and job_id:
-        args.job_id = str(job_id)
-        args.coverage = True
+    """Submit an exact existing target or system job; never collect in this process."""
+    if (getattr(args, "endpoints", "") or getattr(args, "versions", False)
+            or getattr(args, "ciphers", False) or getattr(args, "no_estate", False)
+            or getattr(args, "scope", "production") != "production"
+            or getattr(args, "inventory", "default") != "default"
+            or getattr(args, "protocol", "TLS") != "TLS"):
+        return _refuse("collect --submit", Refused("local collection flags cannot be bound to a remote job",
+            detail="register the exact method and scope on the control plane; nothing was submitted"))
+    if not getattr(args, "target", None) and not getattr(args, "system", None):
+        return _refuse("collect --submit", Refused("select an approved --target or --system",
+            detail="a generic estate projection is not a collection job"))
+    if getattr(args, "wait", False):
+        args.coverage = bool(getattr(args, "target", None))
         args.interval = getattr(args, "interval", 5.0)
         args.timeout = getattr(args, "timeout", 1800.0)
-        return _watch(client, args)
+    return scan_remote(args, _session)
+
+
+def schedule_remote(args: argparse.Namespace, _session: Any = None) -> int:
+    """Manage retained projection cadences through the bank API, never its database."""
+    action = args.schedule_command
+    if action == "remove":
+        return _refuse("schedule remove", Refused("schedule history cannot be erased",
+            detail="use `cryptoscan schedule disable <id>`; run receipts must remain retained"))
+    if action == "add" and not getattr(args, "planes", None):
+        return _refuse("schedule add", Refused("select an explicit persisted-evidence plane",
+            detail="pass --plane STATIC (or another qualified stored-evidence plane); a cadence does not acquire data"))
+    path = "/api/v1/estate/evidence/schedules"
+    try:
+        client = _client(args)
+        if action == "list":
+            result = client.request("GET", path)
+            payload = result.json()
+            if not isinstance(payload, Mapping) or not isinstance(payload.get("schedules"), list):
+                return _refuse("schedule list", Refused("schedule directory response is incomplete"))
+            rows = payload["schedules"]
+            return _emit(args, payload, source=client.source("GET", path, result.status),
+                render=lambda: _table([[row.get("name", "—"), "enabled" if row.get("enabled") else "paused",
+                                        ",".join(row.get("planes") or []) or "unqualified legacy",
+                                        _field(row, "last_run", "verdict", default="NOT_RUN") or "NOT_RUN"]
+                                       for row in rows if isinstance(row, Mapping)],
+                                      ("name", "state", "stored planes", "last verdict")))
+        if action == "add":
+            body = {"name": args.name, "every": args.every, "cron": args.cron,
+                    "scope": args.scope, "estate": args.estate, "planes": args.planes,
+                    "enabled": not args.disabled}
+            result = client.request("POST", path, body=body)
+            payload = result.json()
+            if not isinstance(payload, Mapping) or not payload.get("id") or payload.get("name") != args.name:
+                return _refuse("schedule add", Refused("no retained schedule identity returned; inspect list before retrying"))
+            return _emit(args, payload, source=client.source("POST", path, result.status),
+                render=lambda: print(f"saved      {payload['name']} · {payload['id']} · {payload.get('next_run_at') or 'not scheduled'}"))
+        if action in {"enable", "disable"}:
+            endpoint = f"{path}/{urllib.parse.quote(args.identifier)}"
+            enabled = action == "enable"
+            result = client.request("PATCH", endpoint, body={"enabled": enabled})
+            payload = result.json()
+            if not isinstance(payload, Mapping) or payload.get("enabled") is not enabled or not payload.get("id"):
+                return _refuse(f"schedule {action}", Refused("no matching retained schedule receipt returned"))
+            return _emit(args, payload, source=client.source("PATCH", endpoint, result.status),
+                render=lambda: print(f"{action}d     {payload.get('name')} · {payload['id']}"))
+    except (Refused, ApiError) as exc:
+        return _fail(f"schedule {action}", exc)
+    return _refuse("schedule", Refused(f"unknown action {action!r}"))
+
+
+def tick_remote(args: argparse.Namespace, _session: Any = None) -> int:
+    """Ask the bank API to claim due schedules; no collector runs in the CLI."""
+    path = "/api/v1/estate/evidence/tick"
+    try:
+        client = _client(args)
+        result = client.request("POST", path, body={"worker": args.worker,
+            "lease_seconds": args.lease_seconds, "limit": args.limit})
+        payload = result.json()
+    except (Refused, ApiError) as exc:
+        return _fail("tick", exc)
+    if not isinstance(payload, Mapping) or not isinstance(payload.get("claimed"), int) or not isinstance(payload.get("ran"), list):
+        return _refuse("tick", Refused("control plane did not return a durable tick receipt"))
+    _emit(args, payload, source=client.source("POST", path, result.status),
+          render=lambda: print(f"claimed    {payload['claimed']} due schedule(s); "
+                               f"{len(payload['ran'])} recorded result(s)"))
+    if any(not isinstance(row, Mapping) or row.get("status") != "OK"
+           or row.get("verdict") != "COMPLETE" for row in payload["ran"]):
+        return EXIT_INCOMPLETE
     return EXIT_OK
+
+
+def coverage_remote(args: argparse.Namespace, _session: Any = None) -> int:
+    """Read one retained estate coverage matrix from the bank control plane."""
+    path = "/api/v1/estate/evidence/coverage"
+    try:
+        client = _client(args)
+        result = client.request("GET", path)
+        payload = result.json()
+    except (Refused, ApiError) as exc:
+        return _fail("coverage", exc)
+    summary = _field(payload, "summary")
+    if not isinstance(summary, Mapping) or not payload.get("run_id"):
+        return _refuse("coverage", Refused("no verifiable retained coverage response"))
+    _emit(args, payload, source=client.source("GET", path, result.status),
+          render=lambda: print(f"run        {payload['run_id']}\ncoverage   {summary.get('coverage_state') or 'UNKNOWN'} "
+                               f"· {summary.get('collected', 0)} of {summary.get('expected', 0)} requested targets"))
+    return EXIT_OK if summary.get("coverage_state") == "MEASURED" else EXIT_INCOMPLETE
+
+
+def boms_remote(args: argparse.Namespace, _session: Any = None) -> int:
+    """Read BOM projections; the API's retained evidence graph remains authoritative."""
+    path = "/api/v1/estate/evidence/boms"
+    kind = str(getattr(args, "bom", None) or "").strip().upper()
+    if kind and kind not in {"SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "TECHBOM"}:
+        return _refuse("boms", Refused(f"unsupported BOM kind {kind!r}"))
+    try:
+        client = _client(args)
+        result = client.request("GET", path, query={"bom": kind} if kind else None)
+        payload = result.json()
+    except (Refused, ApiError) as exc:
+        return _fail("boms", exc)
+    if not isinstance(payload, Mapping) or not payload.get("run_id") or not payload.get("projection_id"):
+        return _refuse("boms", Refused("no retained BOM projection identity returned"))
+    source = client.source("GET", path, result.status, **({"bom": kind} if kind else {}))
+    return _emit(args, payload, source=source,
+                 render=lambda: print(f"projection {payload['projection_id']} · run {payload['run_id']}\n"
+                                      "BOMs are views of retained evidence, not proof of uncollected infrastructure"))
 
 
 # --------------------------------------------------------------------------------------
@@ -2403,7 +2547,8 @@ def collect_remote(args: argparse.Namespace, _session: Any = None) -> int:
 
 
 def _add_common(parser: argparse.ArgumentParser, *, credential_flags: bool = True) -> None:
-    parser.add_argument("--server", default=None, help="control-plane base URL (default: stored config)")
+    parser.add_argument("--server", default=None, help="bank-owned control-plane base URL (default: stored config)")
+    parser.add_argument("--tenant", default=None, help="exact selected tenant id (or CRYPTOSCAN_TENANT_ID)")
     parser.add_argument("--json", action="store_true", help="emit the raw response document")
     parser.add_argument("--quiet", action="store_true", help="suppress the source footer")
     if credential_flags:
@@ -2431,8 +2576,11 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     login = sub.add_parser("login", help="obtain a short-lived session from the control plane")
     login.add_argument("--server", default=None)
     login.add_argument("--username", required=True)
-    login.add_argument("--password", default=None, help="prefer --password-stdin or CRYPTOSCAN_PASSWORD")
-    login.add_argument("--password-stdin", dest="password_stdin", action="store_true")
+    login.add_argument("--password-stdin", dest="password_stdin", action="store_true",
+                       help="read the password from standard input; a TTY prompts privately by default")
+    login.add_argument("--ca", default=None, help="trusted bank CA bundle")
+    login.add_argument("--client-cert", dest="client_cert", default=None, help="mTLS client certificate")
+    login.add_argument("--client-key", dest="client_key", default=None, help="mTLS client key")
     login.add_argument("--mfa-code", dest="mfa_code", default=None, help="second factor when the account requires it")
     login.add_argument("--json", action="store_true")
 
@@ -2511,6 +2659,8 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
         _add_common(parser)
     jobs_watch = jobs_sub.add_parser("watch", help="follow a job until it reaches a terminal state")
     jobs_watch.add_argument("job_id")
+    jobs_watch.add_argument("--collection", action="store_true",
+                            help="watch an approved collection job rather than a source-scan job")
     jobs_watch.add_argument("--coverage", action="store_true",
                             help="also print per-surface collection coverage when the job settles")
     jobs_watch.add_argument("--timeout", type=float, default=1800.0)

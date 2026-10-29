@@ -1,33 +1,21 @@
-"""``cryptoscan`` CLI — the operator's entry point to the estate pipeline (spec 93 §18).
+"""``cryptoscan`` entry point for the bank-owned control plane.
 
-The directive opens with ``cryptoscan scan --scope production``: one command, one
-estate-discovery job, six BOMs. Until now that pipeline existed only behind
-``POST /estate/evidence/scan`` — fine for the console, useless for the operator
-who runs it from a cron unit, a jump host or a change ticket.
+Installed scan/collect commands use the bank's API and never collect from the
+operator's terminal. Schedule, tick, coverage and BOM reads also go through that
+API; the bank-server daemon and some legacy twin commands still use local database
+handlers. ``session_factory`` keeps those handlers testable without making them
+the default operator path.
 
-This module is the real command, not a demo wrapper:
-
-* it opens the **same database** the API uses (``init_db`` + ``configure_session``),
-  so what it stores is what the console reads back;
-* it runs the **same** ``api.estate_discovery.run`` job, so the CLI and the API
-  cannot drift apart;
-* it prints the coverage matrix, the collector verdicts, the unknown work and the
-  six BOM counts, and it exits **non-zero** when coverage is incomplete — unless
-  the operator explicitly passes ``--allow-partial``, which records the decision
-  in the output instead of hiding it.
-
-Exit codes: ``0`` coverage complete, ``2`` partial coverage (a plane failed, was
-short-read, or had no adapter), ``1`` the job could not run at all.
-
-Refusals that matter: there is no ``--force`` that turns a failed collector into a
-pass, no ``--skip-planes`` that silently reports full coverage, and ``--json``
-carries the same limitations the API returns.
+A queued job receipt is not a finding, and a schedule only reprojects already
+retained evidence. Exit 2 means incomplete, exit 3 means the requested capability
+or authority was refused; neither becomes a fabricated success response.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any, Callable, Sequence
 
@@ -39,24 +27,24 @@ EXIT_REFUSED = 3
 DEFAULT_PLANES = None  # every plane
 
 
-REMOTE_SCAN_FLAGS = ("server", "system", "target", "dry_run", "manifest", "wait",
+REMOTE_SCAN_FLAGS = ("server", "system", "target", "path", "dry_run", "manifest", "wait",
                      "remote_static", "remote_runtime", "remote_network")
 
 
 def _remote_scan_requested(args: argparse.Namespace) -> bool:
-    """Remote mode is explicit: any control-plane switch selects it, silence does not."""
+    """Legacy injected handlers may opt into remote mode; installed scan always uses it."""
     return any(getattr(args, flag, None) for flag in REMOTE_SCAN_FLAGS)
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cryptoscan",
-        description="CryptoScan — one estate discovery, six BOM projections (spec 93)",
+        description="CryptoScan — bank-owned control plane client; collectors run on bank servers",
     )
     parser.add_argument("--version", action="version", version="cryptoscan 1.0")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    scan = sub.add_parser("scan", help="run one estate-discovery job and project the six BOMs")
+    scan = sub.add_parser("scan", help="submit an exact job through the bank-owned API")
     scan.add_argument("--scope", default="production", help="scope label recorded with the run")
     scan.add_argument("--estate", default="default", help="estate name (tenant-visible label)")
     scan.add_argument(
@@ -86,6 +74,9 @@ def _build_parser() -> argparse.ArgumentParser:
                       help="control-plane base URL; selects remote mode")
     scan.add_argument("--system", default=None, help="remote: trigger a scan for one system")
     scan.add_argument("--target", default=None, help="remote: submit a collection job for a target")
+    scan.add_argument("--path", default=None,
+                      help="remote: approved absolute source path on the control plane (never this terminal)")
+    scan.add_argument("--branch", default="main", help="local source is not Git-attested; non-default branches are refused")
     scan.add_argument("--target-revision", dest="target_revision", type=int, default=None,
                       help="remote: the target revision the operator read (required with --target)")
     scan.add_argument("--static", dest="remote_static", action="store_true",
@@ -108,7 +99,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     collect = sub.add_parser(
         "collect",
-        help="collect crypto evidence inside the approved scope, then build the estate and the six BOMs",
+        help="submit an authorized target or system job to the bank-owned control plane",
     )
     collect.add_argument("--endpoints", default="",
                          help="comma-separated endpoints; omitted = every scope destination")
@@ -134,7 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
     collect.add_argument("--token", default=None)
     collect.add_argument("--api-key", dest="api_key", default=None)
 
-    schedule = sub.add_parser("schedule", help="save, list, enable or remove scheduled estate runs")
+    schedule = sub.add_parser("schedule", help="save, list, pause or resume retained estate schedules")
     schedule_sub = schedule.add_subparsers(dest="schedule_command", required=True)
     add = schedule_sub.add_parser("add", help="save a cadence for the estate job")
     add.add_argument("name")
@@ -149,7 +140,7 @@ def _build_parser() -> argparse.ArgumentParser:
     listing = schedule_sub.add_parser("list", help="show saved schedules and their last outcome")
     listing.add_argument("--tenant", default=None)
     listing.add_argument("--json", action="store_true")
-    remove = schedule_sub.add_parser("remove", help="delete a schedule by name or id")
+    remove = schedule_sub.add_parser("remove", help="refused for audit retention; use disable to pause")
     remove.add_argument("identifier")
     remove.add_argument("--tenant", default=None)
     toggle_on = schedule_sub.add_parser("enable", help="re-enable a paused schedule")
@@ -725,7 +716,7 @@ def _cmd_schedule(args: argparse.Namespace, session_factory: Callable[[], Any] |
                         print(json.dumps({"schedules": rows}, indent=2, default=str))
                         return EXIT_OK
                     if not rows:
-                        print("no schedules saved — add one: cryptoscan schedule add nightly --every 6h")
+                        print("no schedules saved — add a persisted-evidence projection: cryptoscan schedule add nightly --every 6h --plane STATIC")
                         return EXIT_OK
                     print(f"  {'name':<20} {'state':<8} {'next run':<26} last verdict")
                     print("  " + "-" * 78)
@@ -770,6 +761,8 @@ def _cmd_tick(args: argparse.Namespace, session_factory: Callable[[], Any] | Non
                 worker=args.worker,
                 lease_seconds=args.lease_seconds,
                 limit=args.limit,
+                tenant_id=args.tenant,
+                exact_tenant=args.tenant is not None,
             )
             if args.json:
                 print(json.dumps(result, indent=2, default=str))
@@ -796,12 +789,15 @@ def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | No
 
     from api.estate_daemon import EstateDaemon
     from api.estate_events import bus_publisher
-    from db.tenancy import tenant_scope
+    from db.tenancy import current_tenant, tenant_scope
 
     def factory() -> Any:
         return _session(session_factory)
 
-    publisher = None if args.no_events else bus_publisher(tenant_id=args.tenant)
+    def publish_estate_event(event_type, payload):
+        bus_publisher(tenant_id=current_tenant())(event_type, payload)
+
+    publisher = None if args.no_events else publish_estate_event
     daemon = EstateDaemon(
         factory,
         worker=args.worker,
@@ -1616,10 +1612,9 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Callable[[], Any] | None], int
     "twin": _cmd_twin,
 }
 
-# The CLI is two tools in one entry point: an in-process operator (the database is local)
-# and a control-plane client (the database is the bank's). Keeping the handlers in separate
-# modules makes that boundary visible; merging them here keeps one command name for the
-# operator who does not care which mode they are in.
+# The bank operator commands in main() are routed to cli_remote. In-process
+# handlers remain for the server daemon and injected tests; their remaining twin
+# subcommands must migrate before the installed CLI is API-only in every mode.
 from api import cli_remote as _cli_remote  # noqa: E402  (after COMMANDS, to avoid a cycle)
 
 COMMANDS.update(_cli_remote.COMMANDS)
@@ -1631,9 +1626,38 @@ REMOTE_TWIN_COMMANDS = frozenset({"status", "snapshot", "diff", "remediation", "
 
 
 def main(argv: Sequence[str] | None = None, session_factory: Callable[[], Any] | None = None) -> int:
-    """Entry point. ``session_factory`` exists for tests; production uses the real database."""
+    """Operator scan/collect commands use the in-bank API, never this terminal's collectors."""
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if session_factory is None and args.command == "scan":
+        from api import cli_remote
+
+        try:
+            return cli_remote.scan_remote(args)
+        except Exception as exc:  # noqa: BLE001 — a failed control-plane call is not a scan
+            print(f"cryptoscan scan failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+    if session_factory is None and args.command == "collect" and not args.submit:
+        print("refused: the operator CLI does not collect locally; use --submit with a registered, authorized target", file=sys.stderr)
+        return EXIT_REFUSED
+    if session_factory is None and args.command in {"schedule", "tick", "coverage", "boms"}:
+        from api import cli_remote
+
+        try:
+            remote = {"schedule": cli_remote.schedule_remote, "tick": cli_remote.tick_remote,
+                      "coverage": cli_remote.coverage_remote, "boms": cli_remote.boms_remote}
+            return remote[args.command](args)
+        except Exception as exc:  # noqa: BLE001 — never fall back to an operator-terminal database
+            print(f"cryptoscan {args.command} failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return EXIT_ERROR
+    local_service = args.command == "serve" or (
+        args.command == "twin" and args.twin_command not in REMOTE_TWIN_COMMANDS)
+    if session_factory is None and local_service and not os.getenv("DATABASE_URL", "").startswith(
+        ("postgresql://", "postgresql+psycopg2://", "postgresql+psycopg://")
+    ):
+        print(f"refused: {args.command} is a bank-server service operation; no explicit PostgreSQL estate is configured",
+              file=sys.stderr)
+        return EXIT_REFUSED
     handler = COMMANDS.get(args.command)
     if handler is None:
         parser.error(f"unknown command {args.command!r}")

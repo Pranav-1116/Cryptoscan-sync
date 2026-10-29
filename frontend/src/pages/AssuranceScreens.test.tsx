@@ -110,6 +110,71 @@ describe("assurance read screens", () => {
     expect(screen.getByText(/no whole-bank percentage/)).toBeInTheDocument();
   });
 
+  it("creates a declared local source register and reads its NOT_ATTEMPTED receipt", async () => {
+    localStorage.setItem("zelinx_roles", JSON.stringify(["superadmin"]));
+    localStorage.setItem("cryptoscan_tenant", "tenant-one");
+    const id = "11111111-1111-1111-1111-111111111111";
+    const fetch = mockFetch({
+      "/api/v1/assurance/registers": (_url: string, init?: RequestInit) => {
+        expect(init?.method).toBe("POST");
+        expect(new Headers(init?.headers).get("X-Tenant-ID")).toBe("tenant-one");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          expected_revision: 0, scope_description: "Current repository", register_owner: "Source owner",
+          completeness: "UNKNOWN", completeness_evidence_ref: "scope-document-1",
+          targets: [{ target_id: "repo", owner_ref: "Source owner", kind: "SOURCE", source_class: "source",
+            target_ref: "/approved/repo", method: "LOCAL_SOURCE", permission_ref: "approval-1",
+            freshness_seconds: 86400 }],
+        });
+        return { ...record(1, id), subject_id: id, payload_sha256: "c".repeat(64) };
+      },
+      [`/api/v1/assurance/registers/${id}/coverage`]: {
+        ...coverage, register_id: id, revision: 1, registered_targets: 1,
+        counts: { OBSERVED: 0, STALE: 0, BLOCKED: 0, UNSUPPORTED: 0, NOT_ATTEMPTED: 1 },
+        targets: [{ target_id: "repo", target_ref: "/approved/repo", kind: "SOURCE", method: "LOCAL_SOURCE",
+          state: "NOT_ATTEMPTED", freshness_seconds: 86400, expires_at: null,
+          last_attempted_at: null, last_successful_at: null }],
+      },
+    });
+    render(<MemoryRouter><AssuranceCoverage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Scope description"), { target: { value: "Current repository" } });
+    fireEvent.change(screen.getByLabelText("Register owner (declared)"), { target: { value: "Source owner" } });
+    fireEvent.change(screen.getByLabelText("Scope evidence reference"), { target: { value: "scope-document-1" } });
+    fireEvent.change(screen.getByLabelText("Target ID"), { target: { value: "repo" } });
+    fireEvent.change(screen.getByLabelText("Exact absolute source path"), { target: { value: "/approved/repo" } });
+    fireEvent.change(screen.getByLabelText("Existing collection permission reference"), { target: { value: "approval-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create register (no scan)" }));
+
+    expect(await screen.findByText(/receipt SHA-256/)).toHaveTextContent(id);
+    expect(await screen.findByText(/1 registered target\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText("whole_bank_verified: false")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not show a receipt when the server refuses a register write", async () => {
+    localStorage.setItem("zelinx_roles", JSON.stringify(["superadmin"]));
+    const fetch = mockFetch({
+      "/api/v1/assurance/registers": () => new Response(JSON.stringify({ detail: "Current durable human authority is required" }),
+        { status: 403, headers: { "Content-Type": "application/json" } }),
+    });
+    render(<MemoryRouter><AssuranceCoverage /></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Scope description"), { target: { value: "Repository" } });
+    fireEvent.change(screen.getByLabelText("Register owner (declared)"), { target: { value: "Owner" } });
+    fireEvent.change(screen.getByLabelText("Scope evidence reference"), { target: { value: "scope-ref" } });
+    fireEvent.change(screen.getByLabelText("Target ID"), { target: { value: "repo" } });
+    fireEvent.change(screen.getByLabelText("Exact absolute source path"), { target: { value: "/approved/repo" } });
+    fireEvent.change(screen.getByLabelText("Existing collection permission reference"), { target: { value: "approval-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create register (no scan)" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("HTTP 403");
+    expect(screen.queryByText(/receipt SHA-256/)).toBeNull();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not advertise register creation to a readonly account", () => {
+    localStorage.setItem("zelinx_roles", JSON.stringify(["readonly"]));
+    render(<MemoryRouter><AssuranceCoverage /></MemoryRouter>);
+    expect(screen.queryByRole("button", { name: "Create register (no scan)" })).toBeNull();
+  });
+
   it("trace screen shows the unresolved component instead of dropping it", async () => {
     mockFetch({ "/api/v1/assurance/applications/app-1/trace": trace });
     render(<MemoryRouter><AssuranceTrace /></MemoryRouter>);

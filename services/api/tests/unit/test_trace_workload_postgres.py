@@ -11,7 +11,8 @@ from sqlalchemy import event, text
 from db.models.system import System
 from db.models.evidence_record import EvidenceRecord
 from api.assurance import relationships, store
-from test_workflow_postgres import quality_cluster as quality_cluster, pgdb as pgdb, banks as pg_banks
+# These fixtures are also imported by test_isolated_cohort_recovery during collection.
+from test_workflow_postgres import quality_cluster as quality_cluster, pgdb as pgdb, banks as pg_banks  # noqa: F401
 from test_assurance_workflows import assured as assured, P, done, new_scan
 from test_software_supply_chain_api import register, attach, deploy
 from test_package_identity_integrity import stored, relationship
@@ -21,7 +22,7 @@ BASELINE = "c48f667e3dee70b0ffc48f338004382b6543f94f"
 
 
 @pytest.fixture
-def banks(pg_banks, monkeypatch):
+def banks(pg_banks, monkeypatch):  # noqa: F811 — exported cohort fixture wraps the imported base
     clients, db, tmp = pg_banks
     monkeypatch.setenv("SBOM_STORAGE_DIR", str(tmp / "sboms"))
     import api.routers.devsecops as ds

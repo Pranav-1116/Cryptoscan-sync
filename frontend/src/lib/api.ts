@@ -208,6 +208,8 @@ export async function apiLogin(username: string, password: string): Promise<{ ok
       credentials: "include",
     });
     if (!resp.ok) {
+      if (resp.status >= 500 && resp.headers.get("content-type")?.toLowerCase().includes("text/html"))
+        return { ok: false, error: "API is unavailable (gateway error). Try again when the service is reachable." };
       const body = await resp.json().catch(() => ({}));
       return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
     }
@@ -229,8 +231,7 @@ export async function apiLogin(username: string, password: string): Promise<{ ok
   }
 }
 
-/* Self-service registration — picks one of the 8 RBAC roles
-   (POST /api/v1/auth/register; superadmin is admin-assigned only). */
+/* Self-service registration assigns readonly; elevated roles require an administrator. */
 export async function apiRegister(input: {
   username: string;
   password: string;
@@ -246,6 +247,8 @@ export async function apiRegister(input: {
       body: JSON.stringify(input),
       credentials: "include",
     });
+    if (!resp.ok && resp.status >= 500 && resp.headers.get("content-type")?.toLowerCase().includes("text/html"))
+      return { ok: false, error: "API is unavailable (gateway error). Try again when the service is reachable." };
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
     return { ok: true, username: body.username, roles: body.roles };
@@ -5259,8 +5262,18 @@ export interface EstateRealtime {
 export const apiEstateRealtime = (): Promise<ApiResult<EstateRealtime>> =>
   _rsGet<EstateRealtime>("/api/v1/estate/evidence/realtime");
 
-export const apiEstateSchedules = (): Promise<ApiResult<{ schedules: Array<Record<string, unknown>>; count: number }>> =>
-  _rsGet<{ schedules: Array<Record<string, unknown>>; count: number }>("/api/v1/estate/evidence/schedules");
+export interface EstateScheduleRow {
+  id: string; name: string; tenant_id: string | null; enabled: boolean;
+  planes: string[] | null; next_run_at: string; consecutive_failures: number;
+  cadence: { every?: string; interval_minutes?: number; cron?: string; timezone?: string };
+  last_run: { at: string | null; run_id: string | null; verdict: string | null; coverage_state: string | null };
+}
+export interface EstateSchedules { model: string; schedules: EstateScheduleRow[]; note: string }
+export const apiEstateSchedules = (): Promise<ApiResult<EstateSchedules>> =>
+  _rsGet<EstateSchedules>("/api/v1/estate/evidence/schedules");
+export const apiEstateCreateSchedule = (body: { name: string; every: string; planes: string[];
+  enabled: boolean; scope: string; estate: string }): Promise<ApiResult<EstateScheduleRow>> =>
+  _rsPost<EstateScheduleRow>("/api/v1/estate/evidence/schedules", body);
 
 export const apiEstateScan = (body: { estate?: string; scope?: string | null; planes?: string[]; include_boms?: boolean; persist?: boolean } = {}): Promise<ApiResult<EstateScanReport>> =>
   _rsPost<EstateScanReport>("/api/v1/estate/evidence/scan", body);
@@ -5896,10 +5909,58 @@ export type HostImportReceipt = {
   policy_result: "NOT_EVALUATED"; pqc_assessment: "UNKNOWN";
   whole_host_coverage_verified: false; host_identity_attested: false;
 };
+export interface HostMetadataFact {
+  kind: string; algorithm: string; key_size: number | null; local_basis: string;
+  runtime_use: string; software_name: string | null; software_version: string | null;
+  purpose?: string; operation_use?: string; policy_result?: string; pqc_assessment?: string;
+  interface?: string; interface_sha256?: string | null; identity_key?: string;
+  capture_basis?: string; capabilities_observed?: boolean;
+  address?: string | null; address_family?: string; port?: number | null;
+  sni?: string; tls_version?: string; cipher_suite?: string; cipher_bits?: number;
+  reviewed_target_sha256?: string; authorized_operation?: string;
+  negotiated_session_observed?: boolean; peer_fingerprint_matched?: boolean;
+  certificate_chain_validated?: boolean; hostname_validated?: boolean;
+  revocation_checked?: boolean; all_tls_versions_tested?: boolean;
+  application_data_sent?: boolean; application_identity_verified?: boolean;
+  peer_der_bytes?: number; wire_bytes_sent?: number; wire_bytes_received?: number;
+  key_exchange_group?: string; server_signature_scheme?: string;
+  certificate?: { algorithm: string; certificate_signature_oid: string; curve: string;
+    fingerprint_sha256: string; key_size: number | null; signature_hash: string };
+  selected_group_id?: number; group_classification?: string; group_classification_basis?: string;
+  server_hello_hex?: string; server_hello_sha256?: string;
+  hello_retry_request_seen?: boolean; pqc_implementation_verified?: boolean;
+  pqc_readiness_verified?: boolean; all_groups_tested?: boolean;
+  hybrid_session_completed?: boolean; tls_provider?: string; openssl_version?: string;
+  pyopenssl_version?: string; cryptography_version?: string; provider_identity_basis?: string;
+  listener_count?: number; listeners?: { address: string; port: number; scope_id: number; owning_pid: number }[];
+  process_identity_verified?: boolean; tls_observed?: boolean; asset_absence_proven?: boolean;
+  layout_sha256?: string; index_sha256?: string; manifest_sha256?: string; manifest_size?: number;
+  config_sha256?: string; config_size?: number; image_os?: string; image_architecture?: string;
+  image_variant?: string | null; layers?: { diff_id: string; digest: string; media_type: string; size: number }[];
+  declared_ports?: string[]; declared_base_digest?: string | null; configuration_basis?: string;
+  layer_contents_verified?: boolean; filesystem_materialized?: boolean;
+  package_inventory_verified?: boolean; deployment_verified?: boolean; vendor_identity_verified?: boolean;
+  image?: HostMetadataFact; final_filesystem_view_verified?: boolean; rootfs_view_sha256?: string;
+  packages?: { manager: string; name: string; version: string | null; basis: string;
+    source_path: string; source_sha256: string; layer_index: number }[];
+  databases?: { manager: string; path: string; status: string; sha256: string | null; layer_index: number | null }[];
+  complete_inventory_verified?: boolean; unsupported_package_surfaces?: string;
+  runtime?: string; container_id?: string; image_manifest_sha256?: string;
+  image_binding_basis?: string; runtime_image_verified?: boolean; process_observed?: boolean;
+  process?: HostMetadataFact; source_sha256?: string; cgroup_sha256?: string;
+  pid?: number | null; process_start_ticks?: number; boot_id?: string;
+  process_name?: string | null; library_path?: string | null; service_name?: string | null;
+  service_state?: string | null; hardware_type?: string | null; manufacturer?: string | null;
+  model?: string | null; tpm_major_version?: number | null;
+  provider_context?: string; provider_type?: number; provider_name?: string;
+  api_structure_version?: number; tpm_specification?: string;
+  registration_mode?: string; registration_interface?: string; registration_flags?: number;
+  registered_functions?: string[]; creation_filetime?: string; image_path?: string;
+}
 export type HostSnapshotInspection = HostImportReceipt & {
   integrity: { result: string; content_intact: boolean; chain_intact: boolean; manifest_intact: boolean; hash_format_valid: boolean };
   snapshot: { manifest: { host_id: string; environment: string }; finished_at: string;
-    receipts: { input_id: string; status: string; reason: string; facts: { kind: string; algorithm: string; key_size: number | null; local_basis: string; runtime_use: string; software_name: string | null; software_version: string | null; interface?: string; interface_sha256?: string; purpose?: string; operation_use?: string; capabilities_observed?: false; identity_key?: string; pid?: number | null; process_name?: string | null; library_path?: string | null; service_name?: string | null; service_state?: string | null; address?: string | null; port?: number | null; hardware_type?: string | null; manufacturer?: string | null; model?: string | null; tpm_major_version?: number | null }[] }[] };
+    receipts: { input_id: string; status: string; reason: string; facts: HostMetadataFact[] }[] };
 };
 export const apiApproveHostScope = (systemId: string, manifest: unknown) =>
   _rsPost<{ subject_id: string; payload_sha256: string }>("/api/v1/host-evidence/approvals", { system_id: systemId, manifest });
@@ -5909,6 +5970,12 @@ export const apiInspectHostSnapshot = (approvalId: string) =>
   _rsGet<HostSnapshotInspection>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/snapshot`);
 export const apiHostCbom = (approvalId: string) =>
   _rsGet<Record<string, unknown>>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/cbom`);
+export const apiHostOciSbom = (approvalId: string) =>
+  _rsGet<Record<string, unknown>>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/oci-image/cyclonedx-1.6`);
+export const apiHostContainerSbom = (approvalId: string) =>
+  _rsGet<Record<string, unknown>>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/container/cyclonedx-1.6`);
+export const apiHostTlsSessionBom = (approvalId: string) =>
+  _rsGet<Record<string, unknown>>(`/api/v1/host-evidence/approvals/${encodeURIComponent(approvalId)}/tls-session/cyclonedx-1.6`);
 
 /** Reviewed metadata associations, never CycloneDX operational dependencies. */
 export type HostAssociationTargetType = "sbom_binding" | "phase_receipt" | "hardware" | "vendor" | "deployment";
@@ -6624,11 +6691,9 @@ export const apiEstateTrustPaths = (): Promise<ApiResult<EstateTrustPaths>> =>
 /* ---------------------------------------------------------------------------
  * Evidence assurance (the `/api/v1/assurance` workflows).
  *
- * These are the *read* routes of the seven assurance workflows. Each one returns
- * the server's own payload; nothing here computes a percentage, and no caller
- * substitutes a cached success. The mutating routes of the same workflows are
- * driven by the pages that already exist (/operator-decisions, /launch-readiness)
- * because a POST needs a reason, an actor and a receipt, not a table view.
+ * Reads return the server's payload without derived percentages or cached
+ * success. Registered source scope can be declared here, but only a later
+ * durable collection receipt can make a target OBSERVED.
  * ------------------------------------------------------------------------- */
 
 export interface AssuranceRecord {
@@ -6660,6 +6725,21 @@ export const apiAssuranceRecords = (kind: string, offset = 0, limit = 100): Prom
 export const apiAssuranceHistory = (kind: string, identifier: string, after = 0): Promise<ApiResult<{ revisions: AssuranceRecord[]; has_more: boolean }>> =>
   _rsGet<{ revisions: AssuranceRecord[]; has_more: boolean }>(
     `/api/v1/assurance/records/${encodeURIComponent(kind)}/${encodeURIComponent(identifier)}?after_revision=${after}`);
+
+export interface AssuranceSourceRegister {
+  expected_revision: 0;
+  scope_description: string;
+  register_owner: string;
+  completeness: "UNKNOWN";
+  completeness_evidence_ref: string;
+  targets: [{
+    target_id: string; owner_ref: string; kind: "SOURCE"; source_class: "source";
+    target_ref: string; method: "LOCAL_SOURCE"; permission_ref: string;
+    freshness_seconds: number;
+  }];
+}
+export const apiAssuranceCreateRegister = (body: AssuranceSourceRegister): Promise<ApiResult<AssuranceRecord>> =>
+  call<AssuranceRecord>("/api/v1/assurance/registers", { method: "POST", body: JSON.stringify(body) });
 
 export interface CoverageCounts { OBSERVED: number; STALE: number; BLOCKED: number; UNSUPPORTED: number; NOT_ATTEMPTED: number }
 export interface CoverageTarget {

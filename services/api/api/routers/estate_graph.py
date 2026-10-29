@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -366,16 +366,25 @@ def estate_schedules(user: str = Depends(get_current_user), db: Session = Depend
 
 def _schedule_rows(db: Session) -> list[dict[str, Any]]:
     tenant = current_tenant()
-    return [estate_schedule.as_dict(row) for row in estate_schedule.list_schedules(db, tenant_id=tenant)]
+    return [estate_schedule.as_dict(row) for row in estate_schedule.list_schedules(
+        db, tenant_id=tenant, exact_tenant=True)]
+
+
+def _schedule_actor(db: Session, request: Request, user: str) -> str:
+    from api.assurance.store import actor
+
+    return actor(db, request, user, "monitor.manage")
 
 
 @router.post("/schedules", status_code=201)
 def estate_schedule_create(
     body: EstateScheduleRequest,
+    request: Request,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Save a cadence. ``every`` or ``cron`` — exactly one."""
+    """A current monitor manager schedules only explicitly selected persisted planes."""
+    actor_id = _schedule_actor(db, request, user)
     try:
         row = estate_schedule.create_schedule(
             db,
@@ -387,7 +396,7 @@ def estate_schedule_create(
             cron=body.cron,
             planes=body.planes,
             enabled=body.enabled,
-            user=user,
+            user=actor_id,
         )
     except estate_schedule.ScheduleError as exc:
         raise HTTPException(status_code=409 if exc.code == "schedule_exists" else 422,
@@ -399,39 +408,48 @@ def estate_schedule_create(
 def estate_schedule_toggle(
     identifier: str,
     body: EstateScheduleToggle,
+    request: Request,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Pause or resume a schedule without deleting its history."""
+    _schedule_actor(db, request, user)
     try:
         row = estate_schedule.set_enabled(db, identifier, body.enabled, tenant_id=current_tenant())
     except estate_schedule.ScheduleError as exc:
-        raise HTTPException(status_code=404, detail={"error": exc.code, "reason": exc.reason}) from exc
+        raise HTTPException(status_code=404 if exc.code == "schedule_not_found" else 409,
+                            detail={"error": exc.code, "reason": exc.reason}) from exc
     return estate_schedule.as_dict(row)
 
 
 @router.delete("/schedules/{identifier}")
 def estate_schedule_delete(
     identifier: str,
+    request: Request,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    _schedule_actor(db, request, user)
     try:
-        removed = estate_schedule.delete_schedule(db, identifier, tenant_id=current_tenant())
+        estate_schedule.delete_schedule(db, identifier, tenant_id=current_tenant())
     except estate_schedule.ScheduleError as exc:
-        raise HTTPException(status_code=404, detail={"error": exc.code, "reason": exc.reason}) from exc
-    return {"deleted": removed}
+        raise HTTPException(status_code=404 if exc.code == "schedule_not_found" else 409,
+                            detail={"error": exc.code, "reason": exc.reason}) from exc
+    raise HTTPException(status_code=500, detail="Schedule deletion has no retained tombstone receipt")
 
 
 @router.post("/tick")
 def estate_tick(
     body: EstateTickRequest,
+    request: Request,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """Run what is due now. The lease makes a manual tick and a sidecar safe together."""
+    _schedule_actor(db, request, user)
     return estate_schedule.tick(
-        db, worker=body.worker, lease_seconds=body.lease_seconds, limit=body.limit
+        db, worker=body.worker, lease_seconds=body.lease_seconds, limit=body.limit,
+        tenant_id=current_tenant(), exact_tenant=True,
     )
 
 
@@ -451,7 +469,7 @@ def estate_realtime(
     * the runs — the most recent scheduled runs and how long ago the last one
       completed, so "the daemon is up" is never confused with "scans are happening".
     """
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
 
     from db.models.estate_schedule import EstateScheduleRun
 
@@ -462,7 +480,8 @@ def estate_realtime(
     beat = estate_daemon_store.latest(db)
     liveness = stale_state(beat, now=now)
 
-    schedules = estate_schedule.list_schedules(db, tenant_id=current_tenant(), include_disabled=True)
+    schedules = estate_schedule.list_schedules(db, tenant_id=current_tenant(), include_disabled=True,
+                                               exact_tenant=True)
     enabled = [row for row in schedules if row.enabled]
     next_due = min((estate_schedule._utc(row.next_run_at) for row in enabled), default=None)
     leases = [
@@ -501,17 +520,20 @@ def estate_realtime(
     elif not enabled:
         verdict = "IDLE_NO_SCHEDULES"
         reason = "the daemon is alive but no schedule is enabled: nothing is being re-scanned"
-        next_action = "create one — `cryptoscan schedule add nightly --every 6h`"
+        next_action = "select an authorized persisted-evidence plane — `cryptoscan schedule add nightly --every 6h --plane STATIC`; this reprojects stored observations, it does not collect source"
     elif leases:
         verdict = "RUNNING"
         reason = f"{len(leases)} schedule(s) are leased right now: a run is in flight"
         next_action = None
-    elif last_run_age is not None and last_run_age > 3600:
+    elif any(row.last_verdict in {"ERROR", "PARTIAL_COVERAGE"} or row.last_coverage_state in
+             {"NOT_OBSERVED", "PARTIAL", "FAILED"} for row in enabled if row.last_run_at):
         verdict = "DEGRADED"
-        reason = (
-            f"the daemon is alive but the last scheduled run finished {round(last_run_age)}s ago"
-        )
-        next_action = "check the schedule cadence and the daemon log for skipped cycles"
+        reason = "a scheduled projection reported an error or incomplete coverage; a live daemon cannot clear that result"
+        next_action = "inspect the failed run and its source receipts before claiming current coverage"
+    elif next_due is not None and next_due < now - timedelta(seconds=180):
+        verdict = "DEGRADED"
+        reason = "an enabled schedule is overdue despite a live daemon"
+        next_action = "inspect its lease and daemon log; the cadence is not being met"
     else:
         verdict = "WAITING"
         reason = "the daemon is alive and the next run is not yet due"

@@ -24,7 +24,7 @@ describe("Stored approved TLS session, not a discovery console",()=>{
     const fetcher=mockFetch({[`${P}/${id}/snapshot`]:detail()});mount();
     await screen.findByText(/one pinned TLSv1.3 session/);
     expect(screen.getByText(/CA\/hostname\/revocation not validated/)).toBeTruthy();
-    expect(screen.getByText(/Active TLS candidate: operator-run only; production execution BLOCKED/)).toBeTruthy();
+    expect(screen.getByText(/Active TLS: operator-run only · production BLOCKED/)).toBeTruthy();
     expect(fetcher.mock.calls).toHaveLength(1);
   });
   it.each([{hostname_validated:true},{certificate_chain_validated:true},{application_identity_verified:true},

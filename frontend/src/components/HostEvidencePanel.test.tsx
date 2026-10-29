@@ -24,7 +24,9 @@ async function load(label: string, data: unknown, size = 100) {
 describe("Approved offline host workflow", () => {
   it("makes no request on mount and never offers broad remote execution", () => {
     const fetcher = mockFetch({}); mount(); expect(fetcher).not.toHaveBeenCalled();
+    expect(screen.getByText(/No remote execution/)).toBeTruthy();
     expect(screen.getByText(/Windows execution and production host admission are not qualified/)).toBeTruthy();
+    expect(screen.getByText(/Host identity/, { selector: "span" })).toHaveTextContent("UNVERIFIED · runtime UNKNOWN");
     expect(screen.getByRole("button", { name: "Approve host scope" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Import approved metadata" })).toBeDisabled();
   });
@@ -42,16 +44,19 @@ describe("Approved offline host workflow", () => {
     await load("Offline host snapshot JSON", { schema_version: "fixture" }); expect(fetcher).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Import approved metadata" }));
     await screen.findByText(/Metadata committed as IMPORTED/);
+    expect(screen.getByText(/runtime UNKNOWN · PQC UNKNOWN · NOT_EVALUATED/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import approved metadata" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: /Download CycloneDX/ })).toBeNull();
   });
   it("inspects a stored receipt without interpreting denied inputs as security results", async () => {
     const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: detail }); mount(); inspect();
-    await screen.findByText("payments-1 · prod"); expect(screen.getByText("UNAVAILABLE · NOT_FOUND")).toBeTruthy();
-    expect(screen.getByText(/Runtime use: UNKNOWN · PQC assessment: UNKNOWN/)).toBeTruthy();
+    await screen.findByText("payments-1"); expect(screen.getByText("prod")).toBeTruthy();
+    expect(screen.getByText("UNAVAILABLE · NOT_FOUND")).toBeTruthy();
+    expect(screen.getByText(/Host identity/, { selector: "span" })).toHaveTextContent("UNVERIFIED · runtime UNKNOWN");
+    expect(screen.getByText(/Operator DECLARED scope/)).toHaveTextContent("not host attestation");
     expect(fetcher.mock.calls).toHaveLength(1);
     fireEvent.change(screen.getByLabelText("Host approval ID"), { target: { value: "b".repeat(36) } });
-    expect(screen.queryByText("payments-1 · prod")).toBeNull();
+    expect(screen.queryByText("payments-1")).toBeNull();
   });
   it.each([
     { ...detail, source_basis: "OBSERVED" }, { ...detail, host_identity_attested: true }, { ...detail, whole_host_coverage_verified: true },
@@ -68,7 +73,7 @@ describe("Approved offline host workflow", () => {
     act(() => window.dispatchEvent(new StorageEvent("storage", { key: "cryptoscan_tenant", newValue: "other" })));
     await screen.findByText(/Private evidence and unsubmitted drafts were cleared/);
     await act(async () => { finish(detail); });
-    expect(screen.queryByText("payments-1 · prod")).toBeNull(); expect(fetcher.mock.calls).toHaveLength(1);
+    expect(screen.queryByText("payments-1")).toBeNull(); expect(fetcher.mock.calls).toHaveLength(1);
     expect(screen.getByLabelText("Host approval ID")).toHaveValue("");
   });
   it("discards a pending import response on logout", async () => {
@@ -92,11 +97,12 @@ describe("Approved offline host workflow", () => {
     const os = { ...detail, snapshot: { ...detail.snapshot, receipts: [{ input_id: "os", status: "PARSED", reason: "METADATA_ONLY", facts: [{ kind: "OS_RELEASE", algorithm: "UNKNOWN", key_size: null, local_basis: "DECLARED", runtime_use: "UNKNOWN", software_name: "ubuntu", software_version: "24.04" }] }] } };
     mockFetch({ [`${P}/${id}/snapshot`]: os }); mount(); inspect();
     await screen.findByText(/OS_RELEASE · ubuntu · 24.04 · local claim DECLARED/);
-    expect(screen.getByText(/Runtime use: UNKNOWN · PQC assessment: UNKNOWN/)).toBeTruthy();
+    expect(screen.getByText(/Host identity/, { selector: "span" })).toHaveTextContent("UNVERIFIED · runtime UNKNOWN");
+    expect(screen.getByText(/Operator DECLARED scope/)).toHaveTextContent("not host attestation");
   });
   it("does not invent evidence when offline", async () => {
     offlineFetch(); mount(); inspect(); await screen.findByText(/No verified receipt or security verdict assumed/);
-    expect(screen.queryByText("payments-1 · prod")).toBeNull();
+    expect(screen.queryByText("payments-1")).toBeNull();
   });
 });
 
@@ -106,7 +112,8 @@ describe("Passive runtime metadata, not cryptographic operation proof", () => {
   it("shows a listener without inferring TLS from port 443", async () => {
     mockFetch({ [`${P}/${id}/snapshot`]: runtimeDetail() }); mount(); inspect();
     await screen.findByText(/LISTENER · 127.0.0.1:443/);
-    expect(screen.getByText(/Runtime use: UNKNOWN · PQC assessment: UNKNOWN/)).toBeTruthy();
+    expect(screen.getByText(/Host identity/, { selector: "span" })).toHaveTextContent("UNVERIFIED · runtime UNKNOWN");
+    expect(screen.getByText(/Operator DECLARED scope/)).toHaveTextContent("not host attestation");
   });
   it.each([{ algorithm: "RSA" }, { local_basis: "DECLARED" }, { interface_sha256: "invalid" }, { operation_use: "OBSERVED" }, { capabilities_observed: true }])("refuses promoted or uncommitted runtime proof", async changes => {
     mockFetch({ [`${P}/${id}/snapshot`]: runtimeDetail(changes) }); mount(); inspect();
@@ -122,7 +129,9 @@ describe("Windows exact process/module candidate", () => {
     const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: images() }); mount(); inspect();
     await screen.findByText(/WINDOWS_MODULE · C:\\Reviewed\\libcrypto.dll/);
     expect(screen.getByText(/creation FILETIME 133800000000000001 · repeated module metadata, not invocation/)).toBeTruthy();
+    expect(screen.getByText(/No remote execution/)).toBeTruthy();
     expect(screen.getByText(/Windows execution and production host admission are not qualified/)).toBeTruthy();
+    expect(screen.getByText(/Host identity/, { selector: "span" })).toHaveTextContent("UNVERIFIED · runtime UNKNOWN");
     expect(fetcher.mock.calls).toHaveLength(1);
   });
   it.each([

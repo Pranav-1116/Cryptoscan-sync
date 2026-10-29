@@ -343,7 +343,7 @@ export default function HostEvidencePanel() {
     </div>
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10, padding: "8px 10px", background: "color-mix(in srgb, var(--amber) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 30%, var(--line))", borderRadius: "var(--r)" }}>
       <Badge tone="amber">IMPORTED</Badge>
-      <span style={{ fontSize: 11, color: "var(--dim)" }}>Host identity <strong style={{ color: "var(--amber)" }}>UNVERIFIED</strong> · runtime <strong>UNKNOWN</strong> · library ≠ use · configured TLS ≠ effective TLS</span>
+      <span style={{ fontSize: 11, color: "var(--dim)" }}>Host identity <strong style={{ color: "var(--amber)" }}>UNVERIFIED</strong> · runtime <strong>UNKNOWN</strong> · library ≠ use · configured TLS ≠ effective TLS · Windows execution and production host admission are not qualified</span>
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 8, marginBottom: 12 }}>
       {[

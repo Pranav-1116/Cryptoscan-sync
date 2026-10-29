@@ -1,9 +1,11 @@
 # 97 — The operator CLI: a control-plane client, not a scanner
 
-Status: implemented and tested. `cryptoscan` now has two modes in one entry point — the
-existing **in-process** operator (the database is on this host) and the new **control-plane
-client** (the control plane and the collectors are inside the bank, the terminal is a jump
-host). Remote mode is selected by control-plane flags, never by silence.
+Status: partial. Installed `scan`, `collect --submit`, `schedule`, `tick`, `coverage`
+and `boms` commands now use the **bank-owned on-prem control plane** rather than the
+administrator's local database. Collectors and job workers run inside that bank
+boundary. `serve` remains the bank-server daemon entry point; some older twin
+commands still use direct database access and require migration before the entire
+operator CLI is API-only.
 
 The long-form architecture and command reference — the eight components, what is implemented
 versus refused versus roadmap, and why — is
@@ -23,11 +25,16 @@ admin terminal  →  cryptoscan  →  HTTPS / mTLS  →  CryptoScan control plan
                                             canonical estate graph → CBOM/SBOM/HBOM/NBOM/VBOM/TechBOM
 ```
 
-The CLI enumerates no hosts, reads no `/proc`, talks to no HSM and holds no private key.
-It authenticates to the bank's own control plane, submits work, watches it, and reads
+The installed operator CLI enumerates no hosts, reads no `/proc`, and talks to no HSM.
+It may use a bank-provisioned mTLS client identity for its API connection, but never
+retrieves the bank's cryptographic key material from a collector. It authenticates
+to the bank's own control plane, submits work, watches it, and reads
 evidence back. That is what makes it installable: everything that touches the estate stays
 inside the bank's security boundary, and the tool an administrator runs from a jump host has
-no collection capability to abuse.
+no collection capability to abuse. The API, PostgreSQL, worker, evidence storage and
+optional graph/index are owned and operated **inside the bank**. No ZELNX-hosted
+database or cloud service is a dependency of this control-plane path. External
+cloud/HSM collectors remain separately scoped and unqualified until approved.
 
 Each command prints the endpoint it read (`source: GET /path (HTTP 200)`). An operator can
 check any number against the API, and a command whose endpoint does not exist cannot print
@@ -40,7 +47,7 @@ something invented.
 | `version` | `GET /health` | falls back to the local build string and says so |
 | `status` | `GET /healthz`, `/readiness/summary`, `/auth/me` | three probes; failures are counted, not averaged away |
 | `doctor` | `/healthz/dependencies`, `/healthz/schema`, `/health/worker-fleet`, `/health/connectors`, `/control/health`, `/graph/health`, `/automation/health/platform` | see §4 |
-| `login` | `POST /auth/login`, `/auth/login/mfa` | session token, MFA honoured |
+| `login` | `POST /auth/login`, `/auth/login/mfa` | password from private TTY or `--password-stdin`, never `--password` in process arguments; MFA honoured |
 | `logout` | `POST /auth/logout` | revokes, then clears the stored token |
 | `target list / show` | `GET /collection/targets`, `/{id}` | |
 | `target register` | `POST /collection/targets` | no defaults invented (§3) |
@@ -48,8 +55,8 @@ something invented.
 | `target authorize / revoke` | `POST /collection/targets/{id}/authorize`, `/revoke` | |
 | `jobs list / show / logs` | `GET /jobs`, `/{id}`, `/{id}/logs` | |
 | `jobs cancel` | `POST /collection/jobs/{id}/cancel` | collection jobs own cancellation; the generic job API has no cancel |
-| `jobs watch` | `GET /jobs/{id}` | terminal states only; a timeout is exit 2, not success |
-| `jobs watch --coverage` | `GET /collection/jobs/{id}/coverage` | printed when the job settles: `surfaces`, `basis`, `limits`; no percentage |
+| `jobs watch` | `GET /jobs/{id}` | source-scan jobs; terminal states only; timeout exits 2 |
+| `jobs watch --collection --coverage` | `GET /collection/jobs/{id}`, then `/coverage` | exact collection job and its surface receipts, not a source-scan job |
 | `jobs retry <id>` | `POST /jobs/{id}/retry` | a 409 is shown with the server's reason, not retried blindly |
 | `jobs evidence / errors / projections <job>` | `GET /collection/jobs/{id}/evidence`, `/errors`, `/projections` | an empty list is printed as empty, with the reminder that it is not proof the estate is empty |
 | `collector list / show <id>` | `GET /collection/collectors` | prints how many collectors are production-execution qualified; `show` says the filter happened client-side (it is a catalog, not a per-collector route) |
@@ -62,7 +69,10 @@ something invented.
 | `pqc impact` | `POST /estate/evidence/twin/impact` | blast radius from an algorithm, protocol, asset or key size; truncated walks exit 2 |
 | `ci gate --scan <id>` | `GET /scans/{id}/gate`, `…/gate.sarif`, `POST /ci/gate` | never recomputes the decision: PASS 0, WARN 2 (with `--fail-on warn`), FAIL 1 |
 | `bundle export / verify / import` | `GET` of nine evidence and projection routes | `--encrypt` (AES-256-GCM + scrypt), `verify` byte-checks the files against the manifest, `import` refuses a tar member escaping the target |
-| `collect --submit` | `POST /collection/jobs`, `/systems/{id}/scan`, `/estate/evidence/scan` | hands the work to the control plane; prints "no collection happened in this process" |
+| `collect --submit --target/--system` | `POST /collection/jobs` or `/systems/{id}/scan` | submits an exact target/system job; refuses unbound selectors and ignored local collection flags |
+| `schedule add/list/enable/disable` | `/estate/evidence/schedules` | selected estate via `--tenant` or `CRYPTOSCAN_TENANT_ID`; server verifies current human authority |
+| `tick` | `POST /estate/evidence/tick` | requests an exact-estate projection; incomplete run exits 2 |
+| `coverage` / `boms` | `GET /estate/evidence/coverage`, `/boms` | reads the retained bank graph; no terminal database |
 | `scope show` | `GET /platform/scope` | |
 | `assurance records --kind` | `GET /assurance/records` | every retained revision, with `has_more`/`next_offset`; an empty kind is printed as an empty table, not a clean estate |
 | `assurance history <kind> <id>` | `GET /assurance/records/{kind}/{id}` | the chain for one exact subject |
@@ -80,13 +90,14 @@ something invented.
 | `explain asset / system / node` | `/estate/evidence/why/{id}?fact_type=`, `/risk/systems/{id}/explain`, `/graph/explain` | every answer names its source |
 | `report generate` | `/scans/{id}/report`, `.html`, `.pdf` | streamed to a file, sha256 printed |
 | `twin status / snapshot / diff` | `/estate/evidence/twin`, `/twin/snapshot`, `/twin/compare` | remote mode; never opens a local database |
-| `scan --dry-run` | `GET /estate/evidence/plan` | prints the plan, issues no write |
-| `scan --system <id>` | `POST /systems/{id}/scan` | |
-| `scan --target <id>` | `POST /collection/jobs` | requires `--target-revision` |
-| `scan` (no target) | `POST /estate/evidence/scan` | estate discovery run |
-| `scan --manifest <file>` | as above | JSON or YAML (§5) |
+| `scan --path <absolute> --dry-run` | `POST /scans/preflight` | exact path on the bank control plane; read-only admission preview, no job or collection |
+| `scan --path <absolute>` | `POST /scans/preflight`, then `/scans/trigger` | exact approval and isolation preview first; submits only after ADMITTED, then requires a queued job receipt; not Git-branch attested |
+| `scan --system <id>` | `POST /systems/{id}/scan` | requires a queued job receipt, not a synchronous report |
+| `scan --target <id>` | `POST /collection/jobs` | requires `--target-revision`; watch with `--collection` |
+| `scan` (no target) | *(refused)* | a generic estate projection is not a collection job |
+| `scan --manifest <file>` | *(refused)* | no silent dropping of target, policy or collector fields (§5) |
 | `verify-installation` | *(local)* | hashes files against a release manifest and checks its Ed25519 signature (`--public-key`), §6 |
-| `collect` (no `--submit`) | *(local collection)* | the one in-process mode; it prints, on stderr, that this process is the collector |
+| `collect` (no `--submit`) | *(refused in installed CLI)* | network collection belongs in bank-hosted collectors, not the operator terminal |
 
 ## 3. What the CLI refuses, on purpose
 
@@ -114,11 +125,11 @@ is complete, and the command says so beneath its own verdict. The clock check is
 
 ## 5. Scan manifests
 
-`cryptoscan scan --manifest payments.yaml` reads `scope.name`, `collectors.{static,runtime,…}`
-and maps them onto the estate scan request (`scope`, `planes`). **Anything the API cannot
-express is printed as NOT sent** — silently dropping `policy.profile` would let an operator
-believe a policy applied to a run that never saw it. JSON needs nothing extra; YAML needs
-PyYAML, and the command says so if it is missing.
+`cryptoscan scan --manifest payments.yaml` currently **refuses without reading or
+submitting the file**. The API has no atomic target/scope/policy manifest admission
+contract. The previous CLI could drop unsupported fields and still execute a generic
+estate projection; that is not a safe bank scan. A versioned, signed manifest admission
+endpoint and collector-plan receipt remain work to build.
 
 ## 6. Installation integrity, and what it can claim
 
@@ -160,36 +171,42 @@ checked.
 | mTLS | `--client-cert`, `--client-key`, `--ca` | bank TLS termination; enforced at the transport |
 
 Environment overrides the config file (that is how CI supplies a credential). Both are sent
-when both are configured; the server decides, not the client. `--insecure` exists for a lab
-and the command says which mode it used.
+when both are configured; the server decides, not the client. Remote control planes
+require HTTPS with certificate verification; plaintext HTTP requires explicit local
+development mode on loopback. `login` accepts the bank's `--ca`, `--client-cert` and
+`--client-key` so the later session uses the same trusted transport. `--insecure`
+additionally requires loopback and a separate lab opt-in, never a bank-network TLS bypass.
 
 Credentials are stored as `0600`; `doctor` reports `PRIVATE` / `TOO_OPEN` for the file rather
 than assuming it.
 
 ## 8. Job model, not synchronous scanning
 
-Submitting returns an id (`job_id`, `scan_id` or `identifier`, whichever the endpoint
-returned) and the command prints the watch line. `cryptoscan jobs watch <id>` polls for real
+A submission succeeds only with a durable queued **job ID**. A scan ID or a synchronous
+projection is not accepted as a queued job. The command prints the exact HTTP status and
+watch line. `cryptoscan jobs watch <id>` polls for real
 state transitions only and returns non-zero on `FAILED`/`CANCELLED`, and 2 — not 0 — on
 timeout. Progress percentages are not printed: the platform does not expose per-collector
 progress on these endpoints, and a fabricated bar is worse than none.
 
 ## 9. Known divergences (not hidden)
 
-- The older in-process commands (`scan` without control-plane flags, `collect`, `tick`,
-  `serve`, `coverage`, `boms`, `schedule`) still open the local database, and `collect`
-  performs network collection **in the CLI's own process**. That contradicts the boundary in
-  §1 and is the main remaining work: `collect` should become a submission to the control
-  plane, with the in-process path retained only as a single-node development mode.
-- `cryptoscan status` reports health and identity, not estate coverage. Coverage lives in the
-  estate coverage endpoints and the in-process `coverage` command.
+- Installed `scan`, `collect --submit`, `schedule`, `tick`, `coverage` and `boms`
+  now use the bank API. In-process collection handlers remain reachable only to
+  injected test/service callers. `serve` is the bank-server daemon, not an
+  administrator-workstation command; without explicit PostgreSQL it refuses.
+  Some older twin subcommands still require that server-side database contract
+  and need API-backed operator equivalents.
+- `cryptoscan status` reports health and identity, not estate coverage. `coverage`
+  reads the retained matrix from the bank API and exits incomplete when it is unknown.
 - No interactive TUI, no `--format table|json|yaml` matrix; `--json` covers automation.
 
 ## 10. Verification
 
-`services/api/tests/unit/test_cli_control_plane.py` (41 tests) pins the properties, not the
-wiring: an unconfigured client refuses before opening a connection; `scan --dry-run` issues
-only a GET; `scan --target` without a revision never reaches the server; the four refusals in
+`services/api/tests/unit/test_cli_control_plane.py` pins the properties, not the
+wiring: an unconfigured client refuses before opening a connection; exact source dry-run
+requests a no-write admission preview; `scan --target` without a revision never reaches
+the server; the refusals in
 §3 exit 3 and name their closest route; a 401 exits 1 with the login hint and a 5xx exits 2
 without being read as an empty estate; `doctor` reports `NOT_OBSERVED` for a silent probe;
 `twin status` never opens a local database; the session token is never echoed and is stored

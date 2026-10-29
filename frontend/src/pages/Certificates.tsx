@@ -530,8 +530,8 @@ export default function Certificates() {
       >
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px solid var(--line)", flexWrap: "wrap" }}>
           {estate.source === "live" && <LiveBadge source="live" label="LIVE" />}
-          <Badge tone={estateRows.length ? "cyan" : ""}><span className="dot" /> {estateRows.length.toLocaleString()} ROWS</Badge>
-          <Badge tone={unknownOwner ? "amber" : "green"}>{unknownOwner} UNKNOWN OWNER</Badge>
+          <Badge tone={estate.source === "live" && estateRows.length ? "cyan" : ""}><span className="dot" /> {estate.source === "live" ? estateRows.length.toLocaleString() : "—"} ROWS</Badge>
+          <Badge tone={estate.source === "live" && unknownOwner ? "amber" : "slate"}>{estate.source === "live" ? unknownOwner : "—"} UNKNOWN OWNER</Badge>
           <span className="dim" style={{ fontSize: 11, marginLeft: "auto" }}>Deduped by fingerprint · <span style={{ color: "var(--accent)" }}>tap to assign owner</span></span>
         </div>
         <Table
@@ -557,7 +557,7 @@ export default function Certificates() {
           <div style={{ textAlign: "center", padding: "24px 16px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px dashed var(--line)", marginTop: 10 }}>
             <IconCloud size={22} style={{ color: "var(--faint)", marginBottom: 6 }} />
             <div className="dim" style={{ fontSize: 12, maxWidth: 480, marginInline: "auto" }}>
-              Estate empty — certificates appear here when scans or CT monitoring store them. Whole-estate view, not just last run.
+              {estate.source === "live" ? "Persisted estate is empty — certificates appear here when scans or CT monitoring store them. Whole-estate view, not just last run." : "Persisted estate unavailable — cannot determine whether certificates are stored."}
             </div>
           </div>
         )}

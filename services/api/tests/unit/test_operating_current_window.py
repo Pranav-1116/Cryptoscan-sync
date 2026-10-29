@@ -3,7 +3,6 @@
 Synthetic authenticated users only; no real roster, support or alert delivery.
 """
 from datetime import timedelta
-import pytest
 from api.assurance import launch
 from db.models.base import utcnow
 from test_assurance_workflows import assured as assured, banks as banks, blob, done

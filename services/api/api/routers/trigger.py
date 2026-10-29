@@ -5,13 +5,15 @@ from __future__ import annotations
 import inspect
 import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 from db.repositories.job_repository import JobRepository
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy.orm import Session
 
 from api.config.settings import get_settings
 from api.middleware.trace import active_trace
-from api.dependencies import get_job_repository
+from api.dependencies import get_db_session, get_job_repository
 from api.schemas.job_schemas import TriggerScanRequest, TriggerScanResponse
 from api.security.rbac import require_permission
 
@@ -252,6 +254,54 @@ def enqueue_scan_job(
         else datetime.now(timezone.utc).isoformat(),
         message=f"Scan queued. Poll /api/v1/jobs/{job_id} for status.",
     )
+
+
+@router.post("/scans/preflight")
+def preflight_local_source(
+    body: TriggerScanRequest,
+    current_user: str = Depends(require_scan_trigger),
+    db: Session = Depends(get_db_session),
+):
+    """Preview exact local-source admission without queuing or collecting anything."""
+    from api.security.target_validation import TargetValidationError, validate_source_target
+    from db.repositories.execution_control import (
+        ExecutionDenied, current_request_principal, matching_approval, required, typed_authority,
+    )
+    from db.tenancy import current_tenant
+
+    try:
+        validate_source_target(body.repo_url, label="repo_url")
+    except TargetValidationError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    if body.commit or body.branch not in (None, "main") or body.scan_mode not in (None, "safe", "passive"):
+        raise HTTPException(409, detail="Local source preflight does not qualify a Git branch, commit or active scan mode")
+    if not required():
+        return {"decision": "NOT_QUALIFIED", "reason": "Controlled local-source deployment is not enabled",
+                "job_created": False, "collection_performed": False}
+
+    from api.security.scan_admission import admit_scan
+    from worker.core.controlled_source import preflight
+
+    admit_scan(scan_mode=body.scan_mode or "safe", asset=body.repo_url, queued=True)
+    principal = current_request_principal()
+    if principal is None:
+        raise HTTPException(403, detail="Current typed operator identity is required")
+    job = SimpleNamespace(tenant_id=current_tenant(), target_repo=body.repo_url,
+                          job_type="MANUAL", target_commit=None,
+                          progress={"scan_options": {"scan_mode": body.scan_mode or "safe"}})
+    pinned = {**principal, "estate": current_tenant()}
+    authority, _roles = typed_authority(db, job, pinned)
+    if authority is None:
+        raise HTTPException(403, detail="Current typed operator does not own this estate")
+    try:
+        policy, approval = matching_approval(db, job, pinned, available_request=True)
+        preflight()
+    except ExecutionDenied as exc:
+        raise HTTPException(409, detail=str(exc)) from exc
+    return {"decision": "ADMITTED", "target": body.repo_url, "adapter": "local-source/v1",
+            "approval_id": approval.id, "policy_revision": policy.revision,
+            "job_created": False, "collection_performed": False,
+            "meaning": "Admission is current only; local directory bytes are not Git-attested, and enqueue/worker claim recheck authority"}
 
 
 @router.post("/scans/trigger", response_model=TriggerScanResponse, status_code=status.HTTP_202_ACCEPTED)

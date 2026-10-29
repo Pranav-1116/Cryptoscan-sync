@@ -155,6 +155,7 @@ def test_main_ci_uses_discovery_and_a_fail_closed_aggregate():
     assert "-c requirements.lock.txt" in json.dumps(backend)
     assert "scripts/check_junit.py --allow-skips" in json.dumps(backend)
     assert "${PWD}/services/api/tests/unit" in json.dumps(backend)
+    assert "${PWD}/scripts" in json.dumps(backend)
     assert any(
         step.get("uses", "").startswith("actions/upload-artifact@") and step.get("if") == "always()"
         for step in backend["steps"]

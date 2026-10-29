@@ -122,6 +122,17 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "role-dashboard": {"tier": "ga", "area": "Overview", "why": "Per-role landing view."},
     "digital-twin": {"tier": "ga", "area": "Intelligence", "why": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations."},
 
+
+    # Newly routed surfaces retain their measured gaps rather than inheriting GA.
+    "assurance-coverage": {"tier": "preview", "area": "Governance", "why": "A source register can be declared and read, but observation and revision writes still lack a console workflow; registration is not coverage."},
+    "assurance-qualification": {"tier": "preview", "area": "Governance", "why": "Read-only qualification views exist; supplier and adapter approval writes require separate operator workflows."},
+    "assurance-records": {"tier": "preview", "area": "Governance", "why": "Reads immutable assurance revisions, but does not originate or independently approve them."},
+    "assurance-sampling": {"tier": "preview", "area": "Governance", "why": "Shows frozen predictions without a score; domain-owner sampling review is not submitted from this page."},
+    "assurance-trace": {"tier": "preview", "area": "Governance", "why": "Displays retained relationship evidence and unresolved links, not a verified runtime call graph."},
+    "live-monitor": {"tier": "beta", "area": "Overview", "why": "Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage."},
+    "sbom": {"tier": "beta", "area": "Intelligence", "why": "A versioned software projection over available evidence; deployments and missing component versions remain unproven."},
+    "vbom": {"tier": "beta", "area": "Intelligence", "why": "A supplier projection from retained evidence and declarations, not independent supplier validation."},
+
     # ── preview: shown for direction, labelled so it is not mistaken for GA ──
     "what-if": {"tier": "ga", "area": "Intelligence", "why": "Scenario simulation over the inventory; scenarios are fixed templates today."},
     "pqc-map": {"tier": "ga", "area": "Intelligence", "why": "Geographic/estate PQC map; needs location context the scanners do not collect yet."},
@@ -151,7 +162,7 @@ def tier_of(route: str) -> Tier:
     """
     slug = route.strip("/").split("/")[0].split("?")[0]
     entry = CAPABILITIES.get(slug)
-    return entry["tier"] if entry else "ga"  # type: ignore[return-value]
+    return entry["tier"] if entry else "preview"  # type: ignore[return-value]
 
 
 def counts() -> dict[str, int]:
@@ -171,7 +182,7 @@ def capability_manifest() -> dict[str, Any]:
             {"route": f"/{slug}", **entry} for slug, entry in sorted(CAPABILITIES.items())
         ],
         "retired_nav_routes": [f"/{slug}" for slug in RETIRED_NAV_ROUTES],
-        "default_for_unknown": "ga",
+        "default_for_unknown": "preview",
     }
 
 

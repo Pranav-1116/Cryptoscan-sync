@@ -38,7 +38,7 @@ it("failed download is never offered as a usable packet", async () => {
   fetcher.mockResolvedValue(new Response('{"detail":"Separate-human approval required"}', { status: 409 }));
   render(<TrafficControlReview />); select("packet");
   fireEvent.click(screen.getByRole("button", { name: "Run selected step" }));
-  await screen.findByText(/Refused \(409\)/);
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Refused (409):"));
   expect(screen.queryByRole("button", { name: "Save original JSON" })).not.toBeInTheDocument();
 });
 

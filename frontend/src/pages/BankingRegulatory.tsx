@@ -103,9 +103,9 @@ function BankingRegulatoryPage() {
   const milestones: any[] = actionPlan?.milestones ?? [];
 
   // Hero ring: HSM readiness dominates banking posture
-  const heroPct = loading ? 0 : hsmTotal ? hsmPct : swiftReady ? 0.72 : 0.35;
-  const heroTone = hndlAtRisk ? "red" as const : hsmPct >= 0.6 ? "green" as const : "amber" as const;
-  const heroLabel = loading ? "…" : hndlAtRisk ? "RISK" : hsmTotal ? `${Math.round(hsmPct*100)}%` : swiftReady ? "READY" : "REVIEW";
+  const heroPct = hsmTotal ? hsmPct : 0;
+  const heroTone = hndlAtRisk ? "red" as const : hsmTotal && hsmPct >= 0.6 ? "green" as const : "amber" as const;
+  const heroLabel = loading ? "…" : hndlAtRisk ? "RISK" : hsmTotal ? `${Math.round(hsmPct*100)}%` : "—";
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -133,7 +133,7 @@ function BankingRegulatoryPage() {
             <Ring pct={heroPct} label={heroLabel} sub={hndlAtRisk ? "hndl risk" : "hsm pqc"} tone={heroTone} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>BANKING POSTURE</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 140, lineHeight: 1.4 }}>{loading ? "Loading evidence…" : hndlAtRisk ? "Confidential records at risk — triage" : hsmTotal ? `${hsmReady}/${hsmTotal} HSMs verified PQC-ready` : "HSM declarations unverified"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 140, lineHeight: 1.4 }}>{loading ? "Loading evidence…" : hndlAtRisk ? "Confidential records at risk — triage" : hsmTotal ? `${hsmReady}/${hsmTotal} HSMs verified PQC-ready` : "HSM declarations are not verified PQC readiness"}</div>
               <div style={{ marginTop: 6 }}><Bar value={heroPct} tone={heroTone} /></div>
             </div>
           </Panel>
@@ -151,18 +151,18 @@ function BankingRegulatoryPage() {
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconTarget size={12} /> HNDL EXPOSURE</div>
               <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: hndlAtRisk ? "var(--red)" : "var(--text)" }}>{loading ? "…" : hndl?.total ?? "—"}</div>
-              <div style={{ fontSize: 12, color: hndlAtRisk ? "var(--red)" : "var(--dim)" }}>{loading ? "Loading…" : !hndl ? "Not evaluated — not zero risk" : hndlAtRisk ? "Confidential records at risk" : "No HNDL candidates in scope"}</div>
+              <div style={{ fontSize: 12, color: hndlAtRisk ? "var(--red)" : "var(--dim)" }}>{loading ? "Loading…" : !hndl ? "HNDL evidence unavailable — not zero risk." : hndlAtRisk ? "Confidential records at risk" : hndl.at_risk === null ? "HNDL risk unknown — unresolved or unclassified evidence." : hndl.total === 0 ? "No HNDL candidates in returned scope — not proof of completeness." : "No HNDL exposure identified in returned scope — not proof of completeness."}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hndlAtRisk ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `1px solid ${hndlAtRisk ? "var(--red)" : "var(--amber)"}`, color: hndlAtRisk ? "var(--red)" : "var(--amber)" }}><IconClock size={16} /></span>
           </div>
-          <div style={{ padding: "0 16px 12px" }}><Bar value={hndlAtRisk ? 1 : loading ? 0 : 0.25} tone={hndlAtRisk ? "red" : "amber"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Harvest-Now-Decrypt-Later window</div></div>
+          <div style={{ padding: "0 16px 12px" }}><Bar value={hndlAtRisk ? 1 : 0} tone={hndlAtRisk ? "red" : "amber"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Harvest-Now-Decrypt-Later window</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${hsmPct >= 0.6 ? "var(--green)" : hsmPct > 0 ? "var(--amber)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>HSM FLEET — PQC READINESS</div>
               <div style={{ fontSize: 22, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : hsmFleet?.fleet ? `${hsmReady}/${hsmFleet.fleet.total}` : "—"}</div>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>verified / returned · family name ≠ validation</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>HSM declarations are not verified PQC readiness</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hsmPct >= 0.6 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${hsmPct >= 0.6 ? "var(--green)" : "var(--line)"}`, color: hsmPct >= 0.6 ? "var(--green)" : "var(--faint)" }}><IconComponent size={16} /></span>
           </div>
@@ -177,18 +177,18 @@ function BankingRegulatoryPage() {
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: swiftReady ? "color-mix(in srgb, var(--green) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `1px solid ${swiftReady ? "var(--green)" : "var(--amber)"}`, color: swiftReady ? "var(--green)" : "var(--amber)" }}><IconSecurity size={16} /></span>
           </div>
-          <div style={{ padding: "0 16px 12px" }}><Bar value={controls.length ? controls.filter((c: any) => c.status === "satisfied").length / controls.length : swiftReady ? 0.7 : 0.25} tone={swiftReady ? "green" : "amber"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{controls.length ? `${controls.filter((c:any)=>c.status==="satisfied").length}/${controls.length} satisfied` : "No CSCF evaluation yet"}</div></div>
+          <div style={{ padding: "0 16px 12px" }}><Bar value={controls.length ? controls.filter((c: any) => c.status === "satisfied").length / controls.length : 0} tone={swiftReady ? "green" : "amber"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{controls.length ? `${controls.filter((c:any)=>c.status==="satisfied").length}/${controls.length} satisfied` : "No CSCF evaluation yet"}</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--cyan)" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>JURISDICTIONS MAPPED</div>
-              <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : jurisdictionsKnown ? jurisdictions.length : "—"}</div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>Jurisdiction mappings returned</div>
+              <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : jurisdictionsKnown ? jurisdictions.length : "Unavailable"}</div>
               <div style={{ fontSize: 11, color: "var(--dim)" }}>presence ≠ regulatory approval</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--cyan) 14%, transparent)", border: "1px solid var(--cyan)", color: "var(--cyan)" }}><IconCloud size={16} /></span>
           </div>
-          <div style={{ padding: "0 16px 12px" }}><Bar value={jurisdictionsKnown ? Math.min(1, jurisdictions.length / 8) : 0} tone="cyan" /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>ECB / MAS / HKMA / Fed harmonized</div></div>
+          <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Mappings returned are not regulatory approval</div></div>
         </div>
       </div>
 
@@ -251,7 +251,7 @@ function BankingRegulatoryPage() {
               {j.code.toUpperCase()} ({String(j.region).split(" ")[0]})
             </button>
           ))}
-          {!jurisdictions.length && !loading && <span style={{ fontSize: 12, color: "var(--dim)" }}>No jurisdictions returned — mapping presence is not regulatory approval.</span>}
+          {!jurisdictions.length && !loading && <span style={{ fontSize: 12, color: "var(--dim)" }}>{jurisdictionsKnown ? "No jurisdictions returned — mapping presence is not regulatory approval." : "Jurisdiction mapping unavailable — coverage is unknown."}</span>}
         </div>
         {actionPlan ? (
           <div style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 14 }}>

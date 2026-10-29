@@ -17,6 +17,7 @@ Four properties are under test, and they are the product's, not the code's:
 
 from __future__ import annotations
 
+import io
 import json
 import urllib.parse
 from pathlib import Path
@@ -82,6 +83,38 @@ def test_an_unconfigured_client_refuses_before_opening_a_connection(capsys, monk
     assert "cryptoscan login" in err
 
 
+def test_remote_plain_http_and_url_credentials_are_refused_before_login_or_scan(capsys, monkeypatch, env):
+    transport = FakeControlPlane()
+    monkeypatch.setenv("CRYPTOSCAN_SERVER", "http://10.20.30.40:8010")
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay") == 3
+    monkeypatch.setattr("sys.stdin", io.StringIO("synthetic-test-only\n"))
+    assert run(monkeypatch, transport, "login", "--server", "http://10.20.30.40:8010",
+               "--username", "operator", "--password-stdin") == 3
+    monkeypatch.setenv("CRYPTOSCAN_SERVER", "https://user:pass@control.bank.internal")
+    assert run(monkeypatch, transport, "status") == 3
+    assert transport.calls == []
+    assert "HTTPS origin" in capsys.readouterr().err
+
+
+def test_invalid_tenant_selector_is_refused_before_any_bank_request(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "schedule", "list", "--tenant", "other\ntenant") == 3
+    assert transport.calls == []
+    assert "invalid tenant selector" in capsys.readouterr().err
+
+
+def test_loopback_http_requires_explicit_dev_mode_and_insecure_tls_requires_opt_in(monkeypatch, env):
+    transport = FakeControlPlane({("POST", "/api/v1/scans/preflight"): (200, {"decision": "NOT_QUALIFIED"})})
+    monkeypatch.setenv("CRYPTOSCAN_SERVER", "http://127.0.0.1:8010")
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--dry-run") == 3
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--dry-run") == 2
+    monkeypatch.setenv("CRYPTOSCAN_SERVER", BASE)
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--insecure") == 3
+    assert transport.paths == ["/api/v1/scans/preflight"]
+
+
 def test_status_without_credentials_names_the_credential_problem(capsys, monkeypatch, env):
     monkeypatch.delenv("CRYPTOSCAN_TOKEN")
     transport = FakeControlPlane()
@@ -143,6 +176,16 @@ def test_doctor_refuses_when_there_is_no_client(capsys, monkeypatch, env):
 # --- login / logout --------------------------------------------------------------------
 
 
+def test_login_does_not_accept_a_password_in_process_arguments(monkeypatch, env):
+    from api import cli
+
+    transport = FakeControlPlane()
+    monkeypatch.setattr(cli_remote, "TRANSPORT", transport)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["login", "--username", "operator", "--password", "synthetic-test-only"])
+    assert exc.value.code == 2 and transport.calls == []
+
+
 def test_login_stores_a_private_session_and_never_prints_it(capsys, monkeypatch, env):
     transport = FakeControlPlane({
         ("POST", "/api/v1/auth/login"): (200, {
@@ -150,8 +193,9 @@ def test_login_stores_a_private_session_and_never_prints_it(capsys, monkeypatch,
             "token": "session-abc", "session_expires_at": "2026-10-28T12:00:00Z",
         }),
     })
+    monkeypatch.setattr("sys.stdin", io.StringIO("correct-horse\n"))
     code = run(monkeypatch, transport, "login", "--username", "ops.bank",
-               "--password", "correct-horse")
+               "--password-stdin")
     assert code == 0
     out = capsys.readouterr().out
     assert "session-abc" not in out, "the CLI echoed the session token"
@@ -170,7 +214,8 @@ def test_login_without_the_second_factor_stops_instead_of_saving_a_challenge(cap
             "mfa_required": True, "mfa_token": "challenge-1",
         }),
     })
-    code = run(monkeypatch, transport, "login", "--username", "ops.bank", "--password", "pw")
+    monkeypatch.setattr("sys.stdin", io.StringIO("pw\n"))
+    code = run(monkeypatch, transport, "login", "--username", "ops.bank", "--password-stdin")
     assert code == 3
     assert "--mfa-code" in capsys.readouterr().err
     assert not Path(env["config"]).exists(), "a challenge token was stored as if it were a session"
@@ -188,7 +233,8 @@ def test_login_with_the_second_factor_completes_the_session(monkeypatch, env):
             "token": "session-abc", "session_expires_at": "2026-10-28T12:00:00Z",
         }),
     })
-    assert run(monkeypatch, transport, "login", "--username", "ops.bank", "--password", "pw",
+    monkeypatch.setattr("sys.stdin", io.StringIO("pw\n"))
+    assert run(monkeypatch, transport, "login", "--username", "ops.bank", "--password-stdin",
                "--mfa-code", "123456") == 0
     assert json.loads(Path(env["config"]).read_text())["token"] == "session-abc"
 
@@ -245,19 +291,45 @@ def test_target_list_renders_the_listing_wrapper_it_was_given(capsys, monkeypatc
 # --- scan: the CLI must not collect ----------------------------------------------------
 
 
-def test_dry_run_reads_the_plan_and_issues_nothing_else(capsys, monkeypatch, env):
+def test_dry_run_preflights_exact_control_plane_source_without_queueing(capsys, monkeypatch, env):
     transport = FakeControlPlane({
-        ("GET", "/api/v1/estate/evidence/plan"): (200, {
-            "estate": "default",
-            "planes": [{"plane": "STATIC", "status": "READY"}, {"plane": "HSM", "status": "NOT_CONFIGURED"}],
+        ("POST", "/api/v1/scans/preflight"): (200, {
+            "decision": "ADMITTED", "job_created": False, "collection_performed": False,
+            "target": "/approved/pay", "adapter": "local-source/v1",
+            "approval_id": "approval-1", "policy_revision": 4,
         }),
     })
-    assert run(monkeypatch, transport, "scan", "--dry-run") == 0
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--dry-run") == 0
     out = capsys.readouterr().out
-    assert transport.calls[0][0] == "GET"
-    assert all(method == "GET" for method, *_ in transport.calls), "a dry run issued a write"
-    assert "DRY RUN — nothing was collected" in out
-    assert "HSM" in out
+    assert transport.paths == ["/api/v1/scans/preflight"]
+    assert json.loads(transport.calls[0][3]) == {"repo_url": "/approved/pay", "branch": "main", "scan_mode": "safe"}
+    assert "ADMITTED TO SUBMIT" in out and "no collection or job was started" in out
+
+
+def test_unqualified_preflight_never_exits_as_ready(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/scans/preflight"): (200, {"decision": "NOT_QUALIFIED", "job_created": False}),
+    })
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--dry-run") == 2
+    assert "NOT_QUALIFIED" in capsys.readouterr().out
+    assert transport.paths == ["/api/v1/scans/preflight"]
+
+
+def test_generic_dry_run_refuses_instead_of_qualifying_unrelated_collectors(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "scan", "--dry-run") == 3
+    assert transport.calls == []
+    assert "choose exactly one" in capsys.readouterr().err
+
+
+def test_target_watch_uses_collection_job_resource_not_source_job_route(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/collection/jobs"): (201, {"job_id": "collection-1", "status": "QUEUED"}),
+        ("GET", "/api/v1/collection/jobs/collection-1"): (200, {"job_id": "collection-1", "status": "COMPLETED"}),
+    })
+    assert run(monkeypatch, transport, "scan", "--target", "target-1", "--target-revision", "3", "--wait") == 0
+    assert transport.paths == ["/api/v1/collection/jobs", "/api/v1/collection/jobs/collection-1"]
+    assert "HTTP 201" in capsys.readouterr().out
 
 
 def test_scan_target_without_a_revision_refuses_before_submitting(capsys, monkeypatch, env):
@@ -269,41 +341,101 @@ def test_scan_target_without_a_revision_refuses_before_submitting(capsys, monkey
 
 def test_scan_system_submits_one_job_and_names_the_endpoint(capsys, monkeypatch, env):
     transport = FakeControlPlane({
-        ("POST", "/api/v1/systems/payments/scan"): (202, {"scan_id": "scan-77", "status": "QUEUED"}),
+        ("POST", "/api/v1/systems/payments/scan"): (200, {"job_id": "job-77", "status": "QUEUED"}),
     })
     assert run(monkeypatch, transport, "scan", "--system", "payments") == 0
     out = capsys.readouterr().out
-    assert "scan-77" in out
-    assert "source: POST /api/v1/systems/payments/scan" in out
+    assert "job-77" in out
+    assert "source: POST /api/v1/systems/payments/scan (HTTP 200)" in out
     assert "collectors run inside the bank" in out
 
 
-def test_scan_manifest_reports_fields_the_api_cannot_honour(capsys, monkeypatch, env):
+def test_scan_path_submits_a_durable_job_on_the_bank_control_plane(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/scans/preflight"): (200, {"decision": "ADMITTED", "target": "/approved/pay",
+            "adapter": "local-source/v1", "approval_id": "approval-1", "policy_revision": 4,
+            "job_created": False, "collection_performed": False}),
+        ("POST", "/api/v1/scans/trigger"): (202, {"job_id": "job-42", "status": "QUEUED"}),
+    })
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay") == 0
+    assert transport.paths == ["/api/v1/scans/preflight", "/api/v1/scans/trigger"]
+    assert json.loads(transport.calls[1][3]) == {"repo_url": "/approved/pay", "branch": "main", "scan_mode": "safe"}
+    out = capsys.readouterr().out
+    assert "job-42" in out and "HTTP 202" in out
+    assert "path_on_control_plane" in out or "collectors run inside the bank" in out
+
+
+def test_scan_path_refuses_an_unbound_or_incomplete_preflight_receipt(monkeypatch, env):
+    for preview in (
+        {"decision": "ADMITTED", "target": "/other/estate", "adapter": "local-source/v1",
+         "approval_id": "approval-1", "policy_revision": 4, "job_created": False, "collection_performed": False},
+        {"decision": "ADMITTED", "target": "/approved/pay", "adapter": "local-source/v1",
+         "job_created": False, "collection_performed": False},
+    ):
+        transport = FakeControlPlane({("POST", "/api/v1/scans/preflight"): (200, preview)})
+        assert run(monkeypatch, transport, "scan", "--path", "/approved/pay") == 2
+        assert transport.paths == ["/api/v1/scans/preflight"]
+
+
+def test_local_path_rejects_unattested_branch_before_submission(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--branch", "release-4") == 3
+    assert transport.calls == []
+    assert "no Git branch attestation" in capsys.readouterr().err
+
+
+def test_scan_does_not_label_a_synchronous_report_as_a_queued_job(monkeypatch, env, capsys):
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/scans/preflight"): (200, {"decision": "ADMITTED", "target": "/approved/pay",
+            "adapter": "local-source/v1", "approval_id": "approval-1", "policy_revision": 4,
+            "job_created": False, "collection_performed": False}),
+        ("POST", "/api/v1/scans/trigger"): (200, {"scan_id": "scan-42", "verdict": "COMPLETE"}),
+    })
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay") == 2
+    assert "no durable queued job receipt" in capsys.readouterr().err
+
+
+def test_queue_submission_refuses_unbound_scope_and_policy_flags(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "scan", "--system", "payments", "--scope", "production-east") == 3
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--allow-partial") == 3
+    assert run(monkeypatch, transport, "scan", "--target", "target-1", "--branch", "release-4") == 3
+    assert transport.calls == []
+    assert "not bound" in capsys.readouterr().err
+
+
+def test_scan_manifest_cannot_silently_drop_target_or_policy_fields(capsys, monkeypatch, env):
     manifest = Path(env["tmp"]) / "payments.json"
     manifest.write_text(json.dumps({
         "scope": {"name": "payments-production"},
         "collectors": {"static": True, "runtime": True},
         "policy": {"profile": "banking"},
     }))
-    transport = FakeControlPlane({
-        ("POST", "/api/v1/estate/evidence/scan"): (202, {"job_id": "job-1"}),
-    })
-    assert run(monkeypatch, transport, "scan", "--manifest", str(manifest)) == 0
-    err = capsys.readouterr().err
-    assert "policy" in err and "NOT sent" in err
-    body = json.loads(transport.calls[0][3])
-    assert body["scope"] == "payments-production"
-    assert body["planes"] == ["STATIC", "RUNTIME"]
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--manifest", str(manifest)) == 3
+    assert transport.calls == []
+    assert "manifest execution is not wired" in capsys.readouterr().err
 
 
-def test_scan_remote_mode_is_selected_by_flags_not_by_silence(monkeypatch, env):
-    """Without a control-plane flag the command keeps its in-process behaviour."""
+def test_server_only_daemon_and_legacy_twin_refuse_a_terminal_sqlite_fallback(monkeypatch, env, capsys):
     from api import cli
 
-    args = cli._build_parser().parse_args(["scan"])
-    assert cli._remote_scan_requested(args) is False
-    args = cli._build_parser().parse_args(["scan", "--dry-run"])
-    assert cli._remote_scan_requested(args) is True
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(cli, "_session", lambda *_args: (_ for _ in ()).throw(AssertionError("opened local database")))
+    assert cli.main(["serve", "--once"]) == 3
+    assert cli.main(["twin", "placement"]) == 3
+    assert "bank-server service operation" in capsys.readouterr().err
+
+
+def test_installed_scan_never_opens_a_database_or_collects_without_a_target(monkeypatch, env, capsys):
+    from api import cli
+
+    transport = FakeControlPlane()
+    monkeypatch.setattr(cli_remote, "TRANSPORT", transport)
+    monkeypatch.setattr(cli, "_session", lambda *_args: (_ for _ in ()).throw(AssertionError("CLI opened the database")))
+    assert cli.main(["scan"]) == 3
+    assert transport.calls == []
+    assert "choose exactly one" in capsys.readouterr().err
 
 
 # --- evidence / bom / pqc / scope / explain --------------------------------------------
@@ -768,26 +900,33 @@ def test_export_without_a_passphrase_refuses_before_writing_an_envelope(tmp_path
 
 def test_collect_submit_sends_work_and_collects_nothing_here(monkeypatch, env, capsys):
     transport = FakeControlPlane({
-        ("POST", "/api/v1/systems/payments/scan"): (202, {"scan_id": "scan-88", "status": "QUEUED"}),
+        ("POST", "/api/v1/systems/payments/scan"): (200, {"job_id": "job-88", "status": "QUEUED"}),
     })
     run(monkeypatch, transport, "collect", "--submit", "--system", "payments")
     out = capsys.readouterr().out
-    assert "no collection happened in this process" in out
-    assert "scan-88" in out
+    assert "collectors run inside the bank" in out
+    assert "job-88" in out and "HTTP 200" in out
     # the only request is the submission: nothing was negotiated from this terminal
     assert transport.paths == ["/api/v1/systems/payments/scan"]
 
 
-def test_local_collection_announces_the_boundary_it_crosses(capsys):
-    """The in-process path still exists; it says so rather than leaving it to the docs."""
+def test_installed_cli_refuses_local_collection_before_opening_the_database(capsys, monkeypatch):
     from api import cli
 
-    args = cli._build_parser().parse_args(["collect"])
-    assert args.submit is False, "local collection must be the explicit absence of --submit"
-    cli._collect_boundary_notice()
+    monkeypatch.setattr(cli, "_session", lambda *_args: (_ for _ in ()).throw(AssertionError("CLI opened the database")))
+    assert cli.main(["collect", "--endpoints", "10.0.0.5:443"]) == 3
     err = capsys.readouterr().err
-    assert "collecting from THIS process" in err
-    assert "--submit" in err
+    assert "does not collect locally" in err and "--submit" in err
+
+
+def test_collect_submit_does_not_send_an_unbound_estate_projection(monkeypatch, env, capsys):
+    transport = FakeControlPlane()
+    assert run(monkeypatch, transport, "collect", "--submit") == 3
+    assert run(monkeypatch, transport, "collect", "--submit", "--system", "payments",
+               "--endpoints", "10.0.0.5:443") == 3
+    assert transport.calls == []
+    err = capsys.readouterr().err
+    assert "not a collection job" in err and "local collection flags" in err
 
 
 def test_collect_submit_requires_a_target_revision(monkeypatch, env, capsys):
@@ -795,6 +934,63 @@ def test_collect_submit_requires_a_target_revision(monkeypatch, env, capsys):
     assert run(monkeypatch, transport, "collect", "--submit", "--target", "pay-01") == 3
     assert transport.calls == []
     assert "expected target revision" in capsys.readouterr().err
+
+
+# --- bank-owned schedule controls: no terminal database --------------------------------
+
+
+def test_operator_schedule_uses_bank_api_and_exact_selected_tenant(monkeypatch, env, capsys):
+    from api import cli
+
+    path = "/api/v1/estate/evidence/schedules"
+    transport = FakeControlPlane({
+        ("POST", path): (201, {"id": "schedule-1", "name": "nightly", "enabled": True,
+                              "planes": ["STATIC"], "next_run_at": "2026-10-29T00:00:00Z"}),
+        ("GET", path): (200, {"schedules": [{"id": "schedule-1", "name": "nightly",
+                                              "enabled": True, "planes": ["STATIC"],
+                                              "last_run": {"verdict": None}}]}),
+        ("PATCH", path + "/schedule-1"): (200, {"id": "schedule-1", "name": "nightly", "enabled": False}),
+    })
+    monkeypatch.setattr(cli, "_session", lambda *_args: (_ for _ in ()).throw(AssertionError("opened local database")))
+    assert run(monkeypatch, transport, "schedule", "add", "nightly", "--every", "6h", "--plane", "STATIC", "--tenant", "a") == 0
+    assert run(monkeypatch, transport, "schedule", "list", "--tenant", "a") == 0
+    assert run(monkeypatch, transport, "schedule", "disable", "schedule-1", "--tenant", "a") == 0
+    assert transport.paths == [path, path, path + "/schedule-1"]
+    assert all(call[2]["X-Tenant-ID"] == "a" for call in transport.calls)
+    assert "HTTP 201" in capsys.readouterr().out
+    assert run(monkeypatch, transport, "schedule", "remove", "schedule-1") == 3
+    assert len(transport.calls) == 3
+
+
+def test_operator_coverage_and_boms_read_bank_api_not_local_database(monkeypatch, env, capsys):
+    from api import cli
+
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/coverage"): (200, {"run_id": "run-1",
+            "summary": {"coverage_state": "NOT_OBSERVED", "expected": 0, "collected": 0}}),
+        ("GET", "/api/v1/estate/evidence/boms"): (200, {"run_id": "run-1",
+            "projection_id": "projection-1", "boms": {}, "counts": {}}),
+    })
+    monkeypatch.setattr(cli, "_session", lambda *_args: (_ for _ in ()).throw(AssertionError("opened local database")))
+    assert run(monkeypatch, transport, "coverage", "--tenant", "a") == 2
+    assert run(monkeypatch, transport, "boms", "--tenant", "a") == 0
+    assert transport.paths == ["/api/v1/estate/evidence/coverage", "/api/v1/estate/evidence/boms"]
+    assert all(call[2]["X-Tenant-ID"] == "a" for call in transport.calls)
+    assert "NOT_OBSERVED" in capsys.readouterr().out
+
+
+def test_operator_tick_preserves_partial_verdict_and_does_not_open_a_database(monkeypatch, env, capsys):
+    from api import cli
+
+    transport = FakeControlPlane({
+        ("POST", "/api/v1/estate/evidence/tick"): (200, {"claimed": 1, "ran": [
+            {"schedule": "nightly", "status": "OK", "verdict": "PARTIAL_COVERAGE"}]}),
+    })
+    monkeypatch.setattr(cli, "_session", lambda *_args: (_ for _ in ()).throw(AssertionError("opened local database")))
+    assert run(monkeypatch, transport, "tick", "--tenant", "a") == 2
+    assert transport.paths == ["/api/v1/estate/evidence/tick"]
+    assert transport.calls[0][2]["X-Tenant-ID"] == "a"
+    assert "HTTP 200" in capsys.readouterr().out
 
 
 # --- twin remediation: the hand-off, from the terminal ---------------------------------

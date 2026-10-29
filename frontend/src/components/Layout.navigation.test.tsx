@@ -1,72 +1,49 @@
+/* The familiar six-section sidebar, backed by real routes rather than a second UI. */
 import { describe, expect, it } from "vitest";
 
 import { PRIMARY_SECTIONS } from "./Layout";
 
-/* §24 — the sidebar is the estate tree, not a list of fourteen screens.
- *
- * These are data assertions on the same constant the sidebar renders: a nav that groups
- * items cannot be checked by clicking each one, and the failure that matters is not "the
- * label is wrong" but "a route moved into a group where nobody will look for it, or fell
- * out of the nav entirely while still being served".
- */
-
 const items = PRIMARY_SECTIONS.flatMap((section) =>
   section.items.map((item) => ({ ...item, section: section.title })),
 );
-const routes = new Set(items.map((item) => item.to));
+const routes = items.map((item) => item.to);
 
-describe("sidebar groups (§24)", () => {
-  it("keeps the estate tree in the order a bank reads it", () => {
-    const estate = PRIMARY_SECTIONS.find((section) => section.title === "Estate");
-    expect(estate).toBeDefined();
-    const groups = estate!.items.map((item) => item.group);
-
-    expect(groups[0]).toBe("Estate");
-    expect(groups).toContain("Cryptography");
-    expect(groups).toContain("Network");
-    expect(groups).toContain("Supply chain");
-    expect(groups).toContain("BOM");
-    expect(groups).toContain("Digital twin");
-    expect(groups).toContain("Intelligence");
-    // the groups appear in the spec's order, not the order they were typed
-    const order = ["Estate", "Network", "Supply chain", "Cryptography", "BOM", "Digital twin", "Intelligence"];
-    const seen = groups.filter((group, index) => index === 0 || group !== groups[index - 1]);
-    expect(seen).toEqual(order);
+describe("classic sidebar navigation", () => {
+  it("keeps the six original sections in their familiar order", () => {
+    expect(PRIMARY_SECTIONS.map((section) => section.title)).toEqual([
+      "Overview", "Discovery", "Intelligence", "Governance", "Output", "Administration",
+    ]);
   });
 
-  it("puts each screen where a reader would look for it", () => {
-    const byLabel = new Map(items.map((item) => [item.label, item]));
-
-    expect(byLabel.get("Certificates")?.group).toBe("Network");
-    expect(byLabel.get("Algorithm Catalog")?.group).toBe("Cryptography");
-    expect(byLabel.get("Crypto Inventory (CBOM)")?.group).toBe("Cryptography");
-    expect(byLabel.get("Vendors")?.group).toBe("Supply chain");
-    expect(byLabel.get("Digital Twin")?.group).toBe("Digital twin");
-    expect(byLabel.get("PQC Readiness")?.group).toBe("Intelligence");
-    expect(byLabel.get("Crypto Drift")?.group).toBe("Intelligence");
+  it("places existing and new workspaces where an operator expects them", () => {
+    const sectionOf = (route: string) => items.find((item) => item.to === route)?.section;
+    expect(sectionOf("/live-monitor")).toBe("Overview");
+    expect(sectionOf("/certificates")).toBe("Discovery");
+    for (const bom of ["/cbom", "/sbom", "/hbom", "/nbom", "/vbom", "/live-asset-intelligence"])
+      expect(sectionOf(bom)).toBe("Intelligence");
+    for (const assurance of ["/assurance-records", "/assurance-coverage", "/assurance-trace",
+      "/assurance-sampling", "/assurance-qualification"])
+      expect(sectionOf(assurance)).toBe("Governance");
+    expect(sectionOf("/digital-twin")).toBe("Output");
   });
 
-  it("still serves every route that has a screen, each from one place", () => {
+  it("keeps every prior sidebar route and the added BOM and assurance pages", () => {
     for (const route of [
       "/assets", "/dev-sec-ops", "/cloud", "/hardware", "/network", "/certificates",
       "/vendor", "/dependency-graph", "/crypto", "/crypto-assets", "/cbom", "/hbom",
-      "/nbom", "/live-asset-intelligence", "/digital-twin", "/graph", "/findings",
-      "/pqc", "/agility", "/drift", "/scanners", "/live-scanners", "/reports",
-    ]) {
-      expect(routes.has(route)).toBe(true);
+      "/nbom", "/sbom", "/vbom", "/live-asset-intelligence", "/digital-twin", "/graph",
+      "/findings", "/pqc", "/agility", "/drift", "/scanners", "/live-scanners", "/reports",
+      "/assurance-coverage", "/assurance-trace", "/assurance-sampling", "/assurance-qualification",
+    ]) expect(routes).toContain(route);
+    expect(routes).toHaveLength(49);
+    expect(new Set(routes).size).toBe(48);
+    expect(routes.filter((route) => route === "/security-center")).toHaveLength(2);
+  });
+
+  it("never lists the same route twice inside one section", () => {
+    for (const section of PRIMARY_SECTIONS) {
+      const paths = section.items.map((item) => item.to);
+      expect(new Set(paths).size, section.title).toBe(paths.length);
     }
-  });
-
-  it("does not list the same route twice inside the estate tree", () => {
-    const estate = PRIMARY_SECTIONS.find((section) => section.title === "Estate")!;
-    const seen = estate.items.map((item) => item.to);
-
-    expect(new Set(seen).size).toBe(seen.length);
-  });
-
-  it("collapses a section with no groups without inventing headings", () => {
-    const collection = PRIMARY_SECTIONS.find((section) => section.title === "Collection")!;
-
-    expect(collection.items.every((item) => item.group === undefined)).toBe(true);
   });
 });

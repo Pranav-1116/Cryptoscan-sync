@@ -12,17 +12,20 @@ function read() { fireEvent.change(screen.getByLabelText("Collection job ID"), {
 it("never scans/loads automatically and labels unknown scope instead of zero coverage", async () => {
   const fetch = mockFetch({ [PATH]: report() }); render(<CollectionCoveragePanel />);
   expect(fetch).not.toHaveBeenCalled(); read();
-  expect(await screen.findAllByText("Not requested — no denominator")).toHaveLength(8);
-  expect(screen.getByText(/SBOM: 0/)).toHaveTextContent("VBOM: 0");
+  expect(await screen.findAllByText("— / — · not requested")).toHaveLength(8);
+  expect(screen.getByText(/SBOM:/).closest("span")).toHaveTextContent("SBOM: 0");
+  expect(screen.getByText(/VBOM:/).closest("span")).toHaveTextContent("VBOM: 0");
+  expect(screen.getByText(/zero ≠ absence/)).toBeInTheDocument();
   expect(fetch.mock.calls[0][1]?.method).toBeUndefined();
 });
 it("preserves failure and declared provenance without a complete-host percentage", async () => {
   const value = report();
   Object.assign(value.surfaces.certificates, { approved_inputs: 2, parsed_inputs: 1, failed_inputs: 1, fact_count: 1, outcome: "PARTIAL", approved_input_parse_percent: 50, inputs: [{ input_id: "cert", status: "PARSED", reason: "PARSED_RECEIPT_NOT_ABSENCE_PROOF", fact_count: 1, local_basis_counts: { OBSERVED: 0, DECLARED: 1 } }, { input_id: "denied", status: "DENIED", reason: "ACCESS_DENIED", fact_count: 0, local_basis_counts: { OBSERVED: 0, DECLARED: 0 } }] });
   mockFetch({ [PATH]: value }); render(<CollectionCoveragePanel />); read();
-  expect(await screen.findByText("1/2 (50% input parsing only)")).toBeInTheDocument();
-  expect(screen.getByText(/denied: DENIED · ACCESS_DENIED/)).toBeInTheDocument();
-  expect(screen.getByText(/cert: PARSED/)).toHaveTextContent("DECLARED 1");
+  expect(await screen.findByText("1/2 · 50%")).toBeInTheDocument();
+  expect(screen.getByText(/denied:/)).toHaveTextContent("DENIED ACCESS_DENIED · OBS 0 / DECL 0");
+  expect(screen.getByText(/cert:/)).toHaveTextContent("PARSED PARSED_RECEIPT_NOT_ABSENCE_PROOF · OBS 0 / DECL 1");
+  expect(screen.getByText(/not whole-host completeness/)).toBeInTheDocument();
 });
 it.each(["tenant", "auth", "storage", "resume", "history"])("discards old evidence/IDs after %s even when fetch ignores abort", async change => {
   let resolve!: (r: Response) => void; globalThis.fetch = vi.fn(() => new Promise<Response>(r => { resolve = r; }));
@@ -35,20 +38,21 @@ it.each(["tenant", "auth", "storage", "resume", "history"])("discards old eviden
   });
   await act(async () => resolve(new Response(JSON.stringify(report()))));
   expect(screen.getByLabelText("Collection job ID")).toHaveValue("");
-  expect(screen.queryByText(/IMPORTED evidence · envelope/)).not.toBeInTheDocument();
+  expect(screen.queryByText("IMPORTED evidence")).not.toBeInTheDocument();
 });
 it("rejects fabricated completeness flags instead of rendering a green fallback", async () => {
   mockFetch({ [PATH]: { ...report(), whole_host_coverage_verified: true } }); render(<CollectionCoveragePanel />); read();
   expect(await screen.findByRole("alert")).toHaveTextContent("inconsistent");
-  expect(screen.queryByText(/IMPORTED evidence · envelope/)).not.toBeInTheDocument();
+  expect(screen.queryByText("IMPORTED evidence")).not.toBeInTheDocument();
 });
 it("clears prior data when a different ID is entered and propagates tenant/auth on GET", async () => {
   localStorage.setItem("cryptoscan_tenant", "synthetic-bank"); localStorage.setItem("zelinx_token", "synthetic-session");
   const fetch = mockFetch({ [PATH]: report() }); render(<CollectionCoveragePanel />); read();
-  await screen.findByText(/IMPORTED evidence · envelope/);
+  await screen.findByText("IMPORTED evidence");
+  expect(screen.getByText(/^envelope /)).toHaveTextContent(report().envelope_sha256.slice(0,16));
   expect(fetch.mock.calls[0][1]?.headers).toMatchObject({ "X-Tenant-ID": "synthetic-bank", Authorization: "Bearer synthetic-session" });
   fireEvent.change(screen.getByLabelText("Collection job ID"), { target: { value: "another-job" } });
-  expect(screen.queryByText(/IMPORTED evidence · envelope/)).not.toBeInTheDocument(); expect(fetch).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText("IMPORTED evidence")).not.toBeInTheDocument(); expect(fetch).toHaveBeenCalledTimes(1);
 });
 it("bounds a non-cooperative read at 20 seconds without retry or late proof", async () => {
   vi.useFakeTimers(); let resolve!: (r: Response) => void;
@@ -57,5 +61,5 @@ it("bounds a non-cooperative read at 20 seconds without retry or late proof", as
   await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
   expect(screen.getByRole("alert")).toHaveTextContent("timed out");
   await act(async () => resolve(new Response(JSON.stringify(report()))));
-  expect(screen.queryByText(/IMPORTED evidence · envelope/)).not.toBeInTheDocument(); expect(fetch).toHaveBeenCalledTimes(1);
+  expect(screen.queryByText("IMPORTED evidence")).not.toBeInTheDocument(); expect(fetch).toHaveBeenCalledTimes(1);
 });

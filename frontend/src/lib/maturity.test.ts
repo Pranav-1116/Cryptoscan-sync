@@ -27,17 +27,17 @@ describe("capability maturity", () => {
   });
 
   it("unknown routes default down to preview; query strings and sub-paths are ignored", () => {
-    expect(tierOf("/no-such-page")).toBe("ga");
+    expect(tierOf("/no-such-page")).toBe("preview");
     expect(tierOf("/cbom?tab=export")).toBe("ga");
     expect(tierOf("dev-sec-ops/binaries")).toBe("ga");
-    expect(tierOf("/what-if")).toBe("ga");
+    expect(tierOf("/assurance-coverage")).toBe("preview");
+    expect(tierOf("/live-monitor")).toBe("beta");
   });
 
-  it("is all GA (real system)", () => {
+  it("does not promote incomplete new workflows to GA", () => {
     const c = tierCounts();
-    expect(c.ga).toBe(Object.keys(CAPABILITIES_JSON).length);
-    expect(c.beta).toBe(0);
-    expect(c.preview).toBe(0);
+    expect(c).toEqual({ ga: 77, beta: 3, preview: 5 });
+    expect(c.ga + c.beta + c.preview).toBe(Object.keys(CAPABILITIES_JSON).length);
   });
 
   it("retired sidebar routes are gone and every sidebar link has a page", () => {

@@ -81,7 +81,8 @@ describe("Cbom — no fabricated components", () => {
     });
     renderPage();
     await waitFor(() => expect(screen.getByText("No CBOM identities found")).toBeTruthy());
-    expect(screen.getByText(/Distinct canonical identities/)).toBeTruthy();
+    expect(screen.getByText("Canonical spine")).toBeTruthy();
+    expect(screen.getByText("Register systems, then initiate network, host, or container discovery scans.")).toBeTruthy();
   });
 
   it("flags cross-BOM conflicts instead of a blanket green", async () => {
@@ -99,7 +100,8 @@ describe("Cbom — no fabricated components", () => {
     });
     renderPage();
     await waitFor(() => expect(screen.getByText("1 conflict")).toBeTruthy());
-    expect(screen.getByText(/Cross-BOM Conflicts/)).toBeTruthy();
+    expect(screen.getByText("Value disagreements")).toBeTruthy();
+    expect(screen.queryByText("no conflicts")).toBeNull();
   });
 
   it("linkage filters only affect real fields", async () => {
@@ -122,7 +124,7 @@ describe("Cbom — no fabricated components", () => {
   it("unreachable BOM sources leave the table empty with a warning, never fake rows", async () => {
     offlineFetch();
     renderPage();
-    await waitFor(() => expect(screen.getByText(/BOM sources are unreachable/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Offline").parentElement).toHaveTextContent("no live query · table empty · no cache fallback"));
     await waitFor(() => expect(screen.getByText("No CBOM identities found")).toBeTruthy());
     expect(screen.queryByText("Quantum Ready")).toBeNull();
   });
