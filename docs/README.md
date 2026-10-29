@@ -149,7 +149,7 @@ of the whole roadmap or production approval.
 
 > **Start with [docs/product/](product/README.md)** — the whole product end to end, with diagrams.
 > **For an enterprise vendor-style manual, use the [Enterprise Documentation Center](product/enterprise/README.md)** — product, deployment, security, API, operations, developer, support, adoption, and readiness in one path.
-> **For the current console menu and route map, use [Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** — it mirrors the six sidebar sections in `frontend/src/components/Layout.tsx` and the deep links in `frontend/src/App.tsx`.
+> **For the current console menu and route map, use [Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** — it mirrors the five sidebar sections and their groups in `frontend/src/components/Layout.tsx` and the deep links in `frontend/src/App.tsx`.
 > **How production-ready is it?** Read the current gate at
 > [the root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md). It reports
 > explicit PASS/FAIL/SKIP evidence and does not turn percentages or synthetic
@@ -204,7 +204,7 @@ generation; route availability and qualification remain separate.
 |---|---|
 | **[The product, end to end](product/README.md)** | ten implementation/strategy documents with 31 rendered diagrams and explanatory posters: what it is, every feature, architecture, data flow, scan trace, scope & readiness, glossary, engines, end-to-end trace, and the Cryptography Threat Intelligence roadmap |
 | **[Documentation status and coverage](DOCUMENTATION-STATUS.md)** | full `docs/` inventory, source-of-truth order, documentation families, stale-count reconciliation, known gaps, and update rules |
-| **[Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** | the current six-section sidebar, primary routes, deep-linked pages, role-guarded actions, and the binary BOM workflow behind Applications |
+| **[Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** | the current five-section sidebar and its groups, primary routes, deep-linked pages, role-guarded actions, and the binary BOM workflow behind Applications |
 | **[Enterprise Documentation Center](product/enterprise/README.md)** | vendor-style documentation path covering overview, capability catalog, deployment, first scan, architecture, data, identity, privacy, scanners, policy, API, operations, support, developer extensions, lifecycle, adoption, and readiness |
 | [Telecom — 5G crypto configuration](telecom-5g-crypto.md) | SUPI concealment, NEA/NIA, N32 roaming, MILENAGE/TUAK and the 5G key hierarchy — the TS 33.501 controls no external probe can see, where the permissive setting looks healthy in service |
 | [Network controls](security/NETWORK-CONTROLS.md) | how the product behaves behind a bank's IDS, firewalls, proxies and rate limits — traffic matrix and pilot firewall rules |

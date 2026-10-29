@@ -690,6 +690,16 @@ select.inp option { background: var(--panel); color: var(--text); }
   .shell { grid-template-columns: 1fr; }
   .sidebar { position: static; height: auto; width: 100%; overflow-y: visible; display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
   .sidebar .nav-label { display: none; }
+  /* The top bar has no room for a section fold, and a hidden header over a closed section
+     would make that section unreachable. On a phone every section's rows flow into the bar
+     instead, and a group still opens in place. */
+  .sidebar .nav-items,
+  .sidebar .nav-items[hidden] { display: contents; }
+  .sidebar button.nav-group { width: auto; padding: 5px 8px; font-size: 12px; }
+  .sidebar .nav-sub { display: contents; margin: 0; padding: 0; border: 0; }
+  .sidebar .nav-sub[hidden] { display: none; }
+  .sidebar button.nav-group .nav-count,
+  .sidebar button.nav-group .nav-caret { display: none; }
   .sidebar a.nav { font-size: 12px; padding: 5px 8px; }
   .main { grid-column: 1; padding: 16px 14px 80px; }
   .livehead { margin: -16px -14px 16px; padding: 10px 14px; }
@@ -1310,20 +1320,83 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   letter-spacing: .22em;
   font-family: var(--mono);
 }
-/* the estate tree inside a section: quieter than a section label, indented like a heading
-   over the routes beneath it. Collapsed, the sidebar shows icons only and these disappear
-   with the rest of the text, which is why they are marked aria-hidden in the markup */
-.sidebar .nav-sublabel {
-  margin-top: 12px;
-  padding-inline: 12px;
+/* A section is a disclosure, not a heading over fifty links. The count of rows it hides is
+   not shown: five section labels already tell the operator where they are, and a number next
+   to "Intelligence" would read as a badge rather than as a fold. */
+.sidebar button.nav-label.nav-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: 20px;
+  padding: 2px 4px;
+  background: none;
+  border: 0;
+  cursor: pointer;
   color: var(--faint);
   font-size: 9px;
-  letter-spacing: .18em;
+  letter-spacing: .22em;
   text-transform: uppercase;
   font-family: var(--mono);
-  opacity: .85;
 }
-.shell.collapsed .sidebar .nav-sublabel { display: none; }
+.sidebar button.nav-label.nav-section:hover { color: var(--dim); }
+.sidebar button.nav-label.nav-section .nav-caret { transition: transform .16s ease; transform: rotate(-90deg); }
+.sidebar button.nav-label.nav-section.open .nav-caret { transform: none; }
+.nav-items { display: flex; flex-direction: column; gap: 2px; }
+/* A group row looks like a link because it behaves like one: it is where the pages under it
+   live. It carries the number of pages it holds so a folded group is not a mystery box. */
+.sidebar button.nav-group {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  cursor: pointer;
+  color: var(--dim);
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  transition: color .16s ease, background-color .16s ease;
+}
+.sidebar button.nav-group:hover { color: var(--text); background: rgba(216,255,79,.08); }
+.sidebar button.nav-group.active { color: var(--text); background: rgba(216,255,79,.12); }
+.sidebar button.nav-group.active .nav-icon { color: var(--accent); }
+.sidebar button.nav-group .nav-text { flex: 1; }
+.sidebar .nav-count {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 1.6;
+}
+.sidebar button.nav-group[aria-expanded="true"] .nav-count { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.sidebar .nav-caret { color: var(--faint); flex: 0 0 auto; transition: transform .16s ease; transform: rotate(-90deg); }
+.sidebar button.nav-group[aria-expanded="true"] .nav-caret { transform: none; }
+/* the pages inside a group: indented under it with a hairline, so the hierarchy is visible
+   without a second box or a second colour */
+.sidebar .nav-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 4px;
+  padding-inline-start: 10px;
+  border-inline-start: 1px solid var(--line);
+  margin-inline-start: 22px;
+}
+.sidebar .nav-sub a.nav { padding: 7px 10px; font-size: 12.5px; gap: 9px; }
+.shell.collapsed .sidebar .nav-sub { display: none; }
+.shell.collapsed .sidebar button.nav-group { justify-content: center; padding-inline: 8px; }
+.shell.collapsed .sidebar button.nav-group .nav-count,
+.shell.collapsed .sidebar button.nav-group .nav-caret,
+.shell.collapsed .sidebar button.nav-group .nav-text { display: none; }
+.shell.collapsed .sidebar button.nav-label.nav-section { justify-content: center; padding: 2px 0; }
+.shell.collapsed .sidebar button.nav-label.nav-section .nav-caret { display: none; }
 .sidebar a.nav {
   border-left: 0;
   border-radius: 9px;

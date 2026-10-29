@@ -36,7 +36,7 @@ assurance claims separate.
 
 For the current console menu and route map, read the
 [Navigation & Feature Reference](../NAVIGATION-FEATURE-REFERENCE.md). It mirrors
-the six sidebar sections in `frontend/src/components/Layout.tsx`, the routed
+the five sidebar sections and groups in `frontend/src/components/Layout.tsx`, the routed
 pages in `frontend/src/App.tsx`, and the server-verified role guard on the
 **Start Scan** action.
 

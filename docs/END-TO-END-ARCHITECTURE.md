@@ -97,8 +97,8 @@
                                   ▼
   ┌──────────────────────────── DASHBOARD ──────────────────────────────┐
   │  Vite/React SPA (Live Asset Intelligence, CBOM, HBOM, graph, ...)   │
-  │  live SSE feed · no full-page refresh · 6 sidebar sections          │
-  │  41 menu slots / 40 unique primary routes + deep-linked pages       │
+  │  live SSE feed · no full-page refresh · 5 sections, folded groups   │
+  │  27 rows / 49 primary links + deep-linked pages                     │
   └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -440,9 +440,10 @@ Every BOM operation emits a typed event on `target_name="technology-bom"`:
   polls a live endpoint and `useLiveTicker` for the SSE tick.
 - `frontend/src/pages/LiveAssetIntelligence.tsx` — the unified BOM page with
   **6 tabs**: Overview, Components, Compare, Export, Schedules, Evidence & Vendor.
-- Six primary sidebar sections — Overview / Discovery / Intelligence /
-  Governance / Output / Administration — with 41 menu slots, 40 unique
-  primary route paths and additional deep-linked pages. See
+- Five primary sidebar sections — Overview / Discovery / Intelligence /
+  Governance / Administration — with 27 rows over 49 links: related pages share
+  a group, and only the section holding the current page is open on arrival.
+  Additional deep-linked pages are not navigation slots. See
   `docs/NAVIGATION-FEATURE-REFERENCE.md` for the exact current map.
 
 ---
@@ -506,5 +507,5 @@ scan source/network/cloud/container/hardware/runtime/OT
   described here. Use it to follow a single fact from scanner → evidence →
   inventory → BOM → snapshot → export → SSE, plus the scheduled-export flow.
 - **[NAVIGATION-FEATURE-REFERENCE.md](./NAVIGATION-FEATURE-REFERENCE.md)** — the
-  current six-section sidebar, 41 menu slots, deep-linked routes, role guards
+  current five-section sidebar (27 rows over 49 links), deep-linked routes, role guards
   and the pipeline each primary page consumes.

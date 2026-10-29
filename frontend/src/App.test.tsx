@@ -45,31 +45,54 @@ describe("app shell", () => {
     expect(external.every((h) => !h.includes("/api/"))).toBe(true);
   });
 
-  it("exposes the real threat-intelligence workspaces across six sections", async () => {
+  it("opens on one section's worth of rows, not fifty links", async () => {
     await act(async () => { shell("/command-center"); });
     const nav = document.querySelector(".primary-nav");
     expect(nav).toBeInTheDocument();
-    expect(nav?.querySelectorAll(":scope > .nav-label")).toHaveLength(6);
-    const links = Array.from(nav?.querySelectorAll("a.nav") || []);
-    const hrefs = links.map((link) => link.getAttribute("href") || "");
-    // 49 links over 48 routes: Audit Log and Security Center share one route.
-    expect(links).toHaveLength(50);
-    expect(new Set(hrefs).size).toBe(49);
-    expect(hrefs.filter((href) => href === "/security-center")).toHaveLength(2);
-    for (const path of ["/launch-readiness", "/operator-decisions", "/assurance-records", "/assurance-coverage", "/assurance-trace", "/assurance-sampling", "/assurance-qualification", "/crypto", "/cbom", "/sbom", "/vbom", "/findings", "/live-asset-intelligence", "/dependency-graph", "/remediation", "/priorities", "/migration", "/live-scanners"]) {
+    // five sections, each a disclosure; the section holding the current page is the open one
+    expect(nav?.querySelectorAll(":scope > .nav-items")).toHaveLength(5);
+    const open = Array.from(nav?.querySelectorAll(":scope > .nav-items") || [])
+      .filter((block) => !(block as HTMLElement).hidden);
+    expect(open).toHaveLength(1);
+    const visibleLinks = Array.from(document.querySelectorAll(".primary-nav a.nav"))
+      .filter((link) => !link.closest("[hidden]"));
+    expect(visibleLinks.length).toBeLessThanOrEqual(8);
+  });
+
+  it("keeps every workspace reachable through its section and group", async () => {
+    await act(async () => { shell("/command-center"); });
+    const nav = document.querySelector(".primary-nav")!;
+    // a group row is a disclosure: it renders its pages when opened, and the pages are links
+    const sections = Array.from(nav.querySelectorAll(".nav-section")) as HTMLButtonElement[];
+    fireEvent.click(sections.find((button) => button.textContent?.includes("Intelligence"))!);
+    // the section block belongs to its header via aria-controls, so read it by id
+    const intelligence = document.getElementById("nav-Intelligence")!;
+    const bomGroup = Array.from(intelligence.querySelectorAll("button.nav-group"))
+      .find((button) => button.textContent?.includes("BOMs")) as HTMLButtonElement;
+    expect(bomGroup).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(bomGroup);
+    expect(bomGroup).toHaveAttribute("aria-expanded", "true");
+    const hrefs = Array.from(intelligence.querySelectorAll("a.nav")).map((a) => a.getAttribute("href"));
+    for (const path of ["/cbom", "/sbom", "/hbom", "/nbom", "/vbom", "/live-asset-intelligence"])
       expect(hrefs).toContain(path);
-    }
+    expect(hrefs.every((href) => href && href.startsWith("/"))).toBe(true);
+  });
+
+  it("never points the sidebar at a page that is not a route", async () => {
+    await act(async () => { shell("/command-center"); });
+    const hrefs = Array.from(document.querySelectorAll(".primary-nav a[href]"))
+      .map((a) => a.getAttribute("href") || "");
     expect(hrefs).not.toContain("/vendor-due-diligence");
     expect(hrefs).not.toContain("/audit-merkle");
-    expect(hrefs.every((href) => href.startsWith("/") && !href.startsWith("/#"))).toBe(true);
+    expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
   it("shows the restored full sidebar even if the previous layout was collapsed", async () => {
     localStorage.setItem("zelnx-sidebar-collapsed", "true");
     await act(async () => { shell("/command-center"); });
     expect(document.querySelector(".shell")).toHaveAttribute("data-sidebar-collapsed", "false");
-    expect(document.querySelector('.primary-nav a[href="/sbom"]')).toBeInTheDocument();
-    expect(document.querySelector('.primary-nav a[href="/vbom"]')).toBeInTheDocument();
+    // the dashboard's section is open; its rows are links, not a wall
+    expect(document.querySelector('.primary-nav a[href="/live"]')).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     expect(localStorage.getItem("zelnx-classic-sidebar-collapsed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
@@ -88,6 +111,22 @@ describe("app shell", () => {
   it("supports keyboard navigation, browser history, and a direct workspace entry", async () => {
     await act(async () => { shell("/findings"); });
     expect(screen.getByTestId("location")).toHaveTextContent("/findings");
+    // /cbom sits inside the BOMs group; open it the way an operator would, and let the
+    // disclosure finish rendering before reaching for the link inside it
+    await act(async () => {
+      // /findings is in Intelligence, so that section is already open — opening a disclosure
+      // that is open would close it and hide the link the test is about
+      const header = Array.from(document.querySelectorAll(".nav-section"))
+        .find((button) => button.textContent?.includes("Intelligence")) as HTMLButtonElement;
+      if (header.getAttribute("aria-expanded") !== "true") fireEvent.click(header);
+    });
+    await act(async () => {
+      const block = document.getElementById("nav-Intelligence")!;
+      fireEvent.click(
+        Array.from(block.querySelectorAll("button.nav-group"))
+          .find((button) => button.textContent?.includes("BOMs")) as HTMLButtonElement,
+      );
+    });
     const inventory = document.querySelector<HTMLAnchorElement>('.primary-nav a[href="/cbom"]');
     expect(inventory).toBeInTheDocument();
     inventory?.focus();

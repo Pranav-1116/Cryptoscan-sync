@@ -120,7 +120,7 @@ found._
   worst case.
 - **`make test-frontend`.** `tsc --noEmit`, then vitest + Testing Library on
   jsdom with `fetch` mocked: the app boots and routes; every page surface
-  mounts without throwing; the six-section sidebar and route map are separately
+  mounts without throwing; the sectioned sidebar and route map are separately
   maintained in the navigation reference; UI primitives; the API client's
   auth/refresh/error shaping; maturity lookup matches the generated table.
   Smoke-level by design — a page that throws on mount cannot ship.

@@ -5,91 +5,106 @@
 > route changes, update this page in the same change. This is documentation of
 > the current repository, not a product promise or an external assurance claim.
 
-The console has **six primary sidebar sections**, **41 menu slots** and **40
-unique primary route paths**. `Security Center` intentionally appears twice:
-it is available as **Audit Log** under Governance and as **Security Center**
-under Administration, but both labels open `/security-center`. The application
-also has deep-link pages that are reached from cards, search, alerts, reports,
-or links inside primary pages rather than from the sidebar.
+The console has **five primary sidebar sections**, **27 rows** and **49 links**.
+Pages that answer one question share a **group** — the six BOMs, the five
+assurance records, remediation, infrastructure, monitors, oversight, posture,
+dependencies and output — and a group is a disclosure: the pages inside it are
+one click away and only rendered when it is opened. Only the section holding the
+current page is open on arrival, so an operator reads about six rows, not fifty.
+The duplicate `Security Center` placement is gone: the route is reached once, as
+**Audit log** under Governance, and the header's Security Center button opens the
+admin drawer rather than a second nav row.
 
 The root route `/` redirects to `/command-center`. Login and account recovery
 routes are authentication flows, not primary navigation entries.
 
 ## Primary sidebar
 
-**Reviewed 2026-10-22 at `698beb38`.** The table below matches every current
-sidebar placement, including intentionally duplicated Security Center.
+**Reviewed 2026-10-29.** The table below matches every current sidebar placement.
+Rows with a group render as a disclosure; the `—` rows are links.
 
 ### Overview
 
-| Sidebar label | Route | Component | Purpose |
-|---|---|---|---|
-| Dashboard | `/command-center` | `CommandCenter` | Current estate summary, scan state, risk and live activity entry points. |
-| Launch readiness | `/launch-readiness` | `LaunchReadiness` | Gated independent-report, operational-duty and bounded-pilot records; real assessor execution, site exercises and customer acceptance require external evidence. |
-| Operator decisions | `/operator-decisions` | `OperatorDecisions` | Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open. |
-| Activity | `/live-stream` | `LiveStream` | Durable activity and event stream with live updates. |
+| Sidebar label | Group | Route | Component | Purpose |
+|---|---|---|---|---|
+| Dashboard | — | `/command-center` | `CommandCenter` | Current estate summary, scan state, risk and live activity entry points. |
+| Live estate | — | `/live` | `LiveEstate` | Connection age, stored changes, six BOM downloads and correlated attack patterns. A quiet estate and a stopped agent look identical, so the age is stated; level 3 (incident) is never assigned by the platform. |
+| Activity | — | `/live-stream` | `LiveStream` | Durable activity and event stream with live updates. |
+| Monitors | Monitors | `/live-monitor` | — | One row over the two live runners. |
+| Live monitor | Monitors | `/live-monitor` | `LiveMonitor` | Watch-list daemon and estate streams; a live daemon with no enabled schedule is not collection coverage. |
+| Live scanners | Monitors | `/live-scanners` | `LiveScanners` | Live scan runner status; same orchestrator as /scanners. |
+| Oversight | Oversight | `/launch-readiness` | — | One row over the two preview oversight workspaces. |
+| Launch readiness | Oversight | `/launch-readiness` | `LaunchReadiness` | Gated independent-report, operational-duty and bounded-pilot records; real assessor execution, site exercises and customer acceptance require external evidence. |
+| Operator decisions | Oversight | `/operator-decisions` | `OperatorDecisions` | Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open. |
 
 ### Discovery
 
-| Sidebar label | Route | Component | Purpose |
-|---|---|---|---|
-| Scan | `/scanners` | `Scanners` | Start and monitor authorized collection jobs. |
-| Live Scanners | `/live-scanners` | `LiveScanners` | Live scan runner status; same orchestrator as /scanners. |
-| Assets | `/assets` | `Assets` | Browse the unified asset inventory; detail carries identity spine, facts, blast radius and the remediation tasks bound to the asset's evidence. |
-| Network | `/network` | `Network` | Review network inventory and authorized network-scan results. |
-| Cloud | `/cloud` | `Cloud` | Review connected AWS, Azure and GCP inventory. |
-| Applications | `/dev-sec-ops` | `DevSecOps` | Source, container, SBOM, binary and firmware workflows. |
-| Hardware | `/hardware` | `Hardware` | Hardware, HSM, TPM and firmware inventory. |
-| Certificates | `/certificates` | `Certificates` | Live TLS-scan view plus the persisted estate: fingerprint-deduped rows, where observed, honest revocation checks and ownership assignment. |
-| Vendors | `/vendor` | `Vendor` | Vendor, product and supply-chain relationships. |
+| Sidebar label | Group | Route | Component | Purpose |
+|---|---|---|---|---|
+| Scan | — | `/scanners` | `Scanners` | Start and monitor authorized collection jobs. |
+| Assets | — | `/assets` | `Assets` | Browse the unified asset inventory; detail carries identity spine, facts, blast radius and the remediation tasks bound to the asset's evidence. |
+| Applications | — | `/dev-sec-ops` | `DevSecOps` | Source, container, SBOM, binary and firmware workflows. |
+| Certificates | — | `/certificates` | `Certificates` | Live TLS-scan view plus the persisted estate: fingerprint-deduped rows, where observed, honest revocation checks and ownership assignment. |
+| Vendors | — | `/vendor` | `Vendor` | Vendor, product and supply-chain relationships. |
+| Infrastructure | Infrastructure | `/network` | — | One row over the three infrastructure surfaces. |
+| Network | Infrastructure | `/network` | `Network` | Review network inventory and authorized network-scan results. |
+| Cloud | Infrastructure | `/cloud` | `Cloud` | Review connected AWS, Azure and GCP inventory. |
+| Hardware | Infrastructure | `/hardware` | `Hardware` | Hardware, HSM, TPM and firmware inventory. |
 
 ### Intelligence
 
-| Sidebar label | Route | Component | Purpose |
-|---|---|---|---|
-| Cryptography | `/crypto` | `Crypto` | Algorithm registry + normalized crypto view (114 normalization tests). |
-| Crypto Inventory (CBOM) | `/cbom` | `Cbom` | Cryptographic assets, algorithms, libraries, protocols and CBOM views. |
-| Algorithm Catalog | `/crypto-assets` | `CryptoAssets` | Normalized cryptographic asset inventory. |
-| Technology BOM | `/live-asset-intelligence` | `LiveAssetIntelligence` | Materialize, compare, export and review the unified Technology BOM state. |
-| HBOM | `/hbom` | `Hbom` | Live-scan BOM plus the independent unified estate HBOM — content-addressed pins with pin-to-pin diff. |
-| NBOM | `/nbom` | `Nbom` | Network BOM view; static binary capability candidates remain separate from live network observations. |
-| Dependencies | `/dependency-graph` | `DependencyGraph` | Same graph engine as /graph. |
-| Graph Explorer | `/graph` | `Graph` | Relationships, dependencies and blast-radius exploration. |
-| Findings | `/findings` | `Findings` | Policy-evaluated findings with evidence links. |
-| PQC Readiness | `/pqc` | `Pqc` | Quantum-vulnerability classification and migration readiness. |
-| Crypto Agility | `/agility` | `Agility` | Deterministic replaceability and migration-planning signals. |
-| Crypto Drift | `/drift` | `Drift` | Approved-baseline changes and drift events. |
+| Sidebar label | Group | Route | Component | Purpose |
+|---|---|---|---|---|
+| BOMs | BOMs | `/cbom` | — | The six projections of one evidence graph, behind one row. |
+| CBOM | BOMs | `/cbom` | `Cbom` | Cryptographic assets, algorithms, libraries, protocols and CBOM views. |
+| SBOM | BOMs | `/sbom` | `Sbom` | Software components and dependency edges. |
+| HBOM | BOMs | `/hbom` | `Hbom` | Live-scan BOM plus the independent unified estate HBOM — content-addressed pins with pin-to-pin diff. |
+| NBOM | BOMs | `/nbom` | `Nbom` | Network BOM view; static binary capability candidates remain separate from live network observations. |
+| VBOM | BOMs | `/vbom` | `Vbom` | A supplier projection from retained evidence and declarations, not independent supplier validation. |
+| Technology BOM | BOMs | `/live-asset-intelligence` | `LiveAssetIntelligence` | Materialize, compare, export and review the unified Technology BOM state. |
+| Dependencies | Dependencies | `/dependency-graph` | — | The graph engine and its explorer. |
+| Cascade | Dependencies | `/dependency-graph` | `DependencyGraph` | Directional blast radius across the estate graph. |
+| Graph explorer | Dependencies | `/graph` | `Graph` | Relationships, dependencies and blast-radius exploration. |
+| Posture | Posture | `/findings` | — | What the estate is failing, and how removable it is. |
+| Cryptography | Posture | `/crypto` | `Crypto` | Algorithm registry + normalized crypto view (114 normalization tests). |
+| Algorithm catalog | Posture | `/crypto-assets` | `CryptoAssets` | Normalized cryptographic asset inventory. |
+| Findings | Posture | `/findings` | `Findings` | Policy-evaluated findings with evidence links. |
+| PQC readiness | Posture | `/pqc` | `Pqc` | Quantum-vulnerability classification and migration readiness. |
+| Crypto agility | Posture | `/agility` | `Agility` | Deterministic replaceability and migration-planning signals. |
+| Crypto drift | Posture | `/drift` | `Drift` | Approved-baseline changes and drift events. |
+| Digital twin | — | `/digital-twin` | `DigitalTwin` | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
+| Output | Output | `/reports` | — | Reports and read-only analysis. |
+| Reports | Output | `/reports` | `Reports` | Reports, exports and report delivery status. |
+| What-if analysis | Output | `/what-if` | `WhatIf` | Read-only migration and scenario analysis. |
 
 ### Governance
 
-| Sidebar label | Route | Component | Purpose |
-|---|---|---|---|
-| Banking & SWIFT | `/banking-regulatory` | `BankingRegulatory` | Banking, payment and SWIFT-oriented regulatory mapping. |
-| Policies | `/security-policy` | `SecurityPolicy` | Deterministic policy packs, scope and policy decisions. |
-| Compliance | `/compliance` | `Compliance` | Framework mappings and compliance evidence. |
-| Evidence | `/evidence` | `Evidence` | Hashes, manifests, scan and per-record verification (with an X-of-Y coverage line), and the filterable, exportable audit ledger. |
-| Audit Log | `/security-center` | `SecurityCenter` | Platform security posture and operational controls. |
-| Remediation Tasks | `/remediation` | `Remediation` | Owned task lifecycle with machine verification against rescan evidence; new surface over the full task API. |
-| Remediation Priorities | `/priorities` | `Priorities` | Deterministic prioritisation over findings + business context. |
-| Migration | `/migration` | `Migration` | Scan → project → tasks → velocity forecast; forecast model is simple. |
-
-### Output
-
-| Sidebar label | Route | Component | Purpose |
-|---|---|---|---|
-| Reports | `/reports` | `Reports` | Reports, exports and report delivery status. |
-| What-If Analysis | `/what-if` | `WhatIf` | Read-only migration and scenario analysis. |
-| Digital Twin | `/digital-twin` | `DigitalTwin` | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
+| Sidebar label | Group | Route | Component | Purpose |
+|---|---|---|---|---|
+| Banking & SWIFT | — | `/banking-regulatory` | `BankingRegulatory` | Banking, payment and SWIFT-oriented regulatory mapping. |
+| Policies | — | `/security-policy` | `SecurityPolicy` | Deterministic policy packs, scope and policy decisions. |
+| Compliance | — | `/compliance` | `Compliance` | Framework mappings and compliance evidence. |
+| Evidence | — | `/evidence` | `Evidence` | Hashes, manifests, scan and per-record verification (with an X-of-Y coverage line), and the filterable, exportable audit ledger. |
+| Remediation | Remediation | `/remediation` | — | The task lifecycle, its ranking and the migration plan. |
+| Tasks | Remediation | `/remediation` | `Remediation` | Owned task lifecycle with machine verification against rescan evidence. |
+| Priorities | Remediation | `/priorities` | `Priorities` | Deterministic prioritisation over findings + business context. |
+| Migration | Remediation | `/migration` | `Migration` | Scan → project → tasks → velocity forecast; forecast model is simple. |
+| Assurance | Assurance | `/assurance-records` | — | The five assurance surfaces behind one row. |
+| Records | Assurance | `/assurance-records` | `AssuranceRecords` | Independent-report and operational-duty records. |
+| Coverage | Assurance | `/assurance-coverage` | `AssuranceCoverage` | Registered coverage of the assurance programme. |
+| Application trace | Assurance | `/assurance-trace` | `AssuranceTrace` | Requirement trace from an application to its evidence. |
+| Accuracy sampling | Assurance | `/assurance-sampling` | `AssuranceSampling` | Sampling plan and measured accuracy. |
+| Qualification | Assurance | `/assurance-qualification` | `AssuranceQualification` | Local qualification results; site acceptance requires external evidence. |
+| Audit log | — | `/security-center` | `SecurityCenter` | Platform security posture and operational controls. |
 
 ### Administration
 
-| Sidebar label | Route | Component | Purpose |
-|---|---|---|---|
-| System Health | `/system-health` | `SystemHealth` | Health, readiness and platform service status — with independently measured worker-fleet and connector health (never derived from API liveness). |
-| Settings & Org | `/settings` | `Settings` | Organization and application settings. |
-| Security Center | `/security-center` | `SecurityCenter` | Platform security posture and operational controls. |
-| Users & Teams | `/identity` | `Identity` | Users, roles, MFA and identity administration. |
-| Integrations & API | `/integrations` | `Integrations` | Connectors, API and delivery integrations. |
+| Sidebar label | Group | Route | Component | Purpose |
+|---|---|---|---|---|
+| System health | — | `/system-health` | `SystemHealth` | Health, readiness and platform service status — with independently measured worker-fleet and connector health (never derived from API liveness). |
+| Settings & org | — | `/settings` | `Settings` | Organization and application settings. |
+| Users & teams | — | `/identity` | `Identity` | Users, roles, MFA and identity administration. |
+| Integrations & API | — | `/integrations` | `Integrations` | Connectors, API and delivery integrations. |
 
 ## Sidebar actions and access behavior
 
@@ -106,7 +121,11 @@ sidebar placement, including intentionally duplicated Security Center.
 - The signed-in session and roles come from `GET /api/v1/auth/me`; local storage
   is only a first-paint hint and must not authorize an action.
 - The collapsed sidebar preserves the same routes and exposes item labels as
-  tooltips. English and Arabic layouts share the same route map.
+  tooltips; group rows expand the sidebar instead of opening a submenu with no
+  text in it. English and Arabic layouts share the same route map.
+- A section and each group remember whether they are open
+  (`zelnx-nav-open`), and a route inside a closed group still opens that group
+  on arrival — the navigation follows the page you are on.
 
 ## Routed pages reached by deep link
 
@@ -168,9 +187,9 @@ See [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md).
 | Overview | Live events, scan status, summary metrics and the current Technology BOM state. |
 | Discovery | Authorized source, dependency, container, binary, firmware, network, cloud, hardware, certificate and vendor observations. |
 | Intelligence | SBOM/CBOM/HBOM/NBOM/VBOM correlations, vulnerability BOM findings, graph relationships, PQC and agility analysis. |
-| Governance | Deterministic policy, compliance mappings, approvals, audit history and evidence verification. |
-| Output | Reports, signed/exportable artifacts and read-only what-if analysis. |
+| Governance | Deterministic policy, compliance mappings, approvals, audit history, assurance records, remediation and evidence verification. |
 | Administration | Health, organization, identity, security posture, integrations and API access. |
+| (folded into Intelligence) | Reports, signed/exportable artifacts and read-only what-if analysis now sit in the Intelligence **Output** group; the separate Output section existed only to hold three links. |
 
 ### Binary application workflow
 

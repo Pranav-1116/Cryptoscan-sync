@@ -248,12 +248,15 @@ error shaping), one SSE subscription shared by every page
 from `shared_models/capability_maturity.py`) that puts a **Beta** or
 **Preview** badge in the sidebar and page header for anything not GA.
 
-The sidebar has the six sections **Overview, Discovery, Intelligence,
-Governance, Output and Administration**. It currently exposes 41 menu slots
-across 40 unique primary route paths; the remaining routed pages are reached
-from role workspaces, search, alerts, reports or deep links. The exact route
-map is maintained in the [Navigation & Feature Reference](../NAVIGATION-FEATURE-REFERENCE.md)
-and must be updated with `Layout.tsx` or `App.tsx`. Every page surface is
+The sidebar has five sections — **Overview, Discovery, Intelligence, Governance
+and Administration** — and folds related pages into groups (the six BOMs, the
+assurance records, remediation, infrastructure, posture, dependencies, output,
+monitors, oversight). It exposes 27 rows over 49 links; every route is still one
+click away, and only the section holding the current page is open on arrival.
+The remaining routed pages are reached from role workspaces, search, alerts,
+reports or deep links. The exact route map is maintained in the
+[Navigation & Feature Reference](../NAVIGATION-FEATURE-REFERENCE.md) and must be
+updated with `Layout.tsx` or `App.tsx`. Every page surface is
 smoke-tested to mount against a mocked API (`pages.smoke.test.tsx`), and no
 page seeds or fabricates data.
 

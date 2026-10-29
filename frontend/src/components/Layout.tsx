@@ -20,57 +20,113 @@ import { usePollingApi } from "../lib/apiUi.jsx";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 import { RequireRole } from "../lib/auth.js";
 
-// The classic six-section console keeps current workspaces reachable without
-// making the operator learn a new estate-tree navigation.
-type NavItem = { to: string; label: string; icon: Icon };
+// One nav row per job, and every page still one click away.
+//
+// The sidebar used to be a flat list of fifty links under six headings: every BOM kind,
+// every assurance page and every remediation page sat at the same level as Dashboard, so
+// finding anything meant reading fifty labels. Nothing is removed here — every route is
+// still in the tree — but pages that answer the same question are folded into one group
+// (the six BOMs under "BOMs", the five assurance pages under "Assurance"), and only the
+// section you are actually in is open on arrival. A reader sees ~6 rows, not 56.
+type NavItem = { to: string; label: string; icon: Icon; children?: NavItem[] };
 type NavSection = { title: string; items: NavItem[] };
 export type { NavItem, NavSection };
 
-// Audit Log and Security Center intentionally share one route: the same verified
-// surface belongs in both governance and administration.
 export const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Overview",
     items: [
       { to: "/command-center", label: "Dashboard", icon: ChartLineUp },
-      { to: "/live-monitor", label: "Live Monitor", icon: Pulse },
       { to: "/live", label: "Live estate", icon: Pulse },
-      { to: "/launch-readiness", label: "Launch readiness", icon: Pulse },
-      { to: "/operator-decisions", label: "Operator decisions", icon: Pulse },
       { to: "/live-stream", label: "Activity", icon: Pulse },
+      {
+        to: "/live-monitor",
+        label: "Monitors",
+        icon: Pulse,
+        children: [
+          { to: "/live-monitor", label: "Live monitor", icon: Pulse },
+          { to: "/live-scanners", label: "Live scanners", icon: Scan },
+        ],
+      },
+      {
+        to: "/launch-readiness",
+        label: "Oversight",
+        icon: ListChecks,
+        children: [
+          { to: "/launch-readiness", label: "Launch readiness", icon: ListChecks },
+          { to: "/operator-decisions", label: "Operator decisions", icon: ListChecks },
+        ],
+      },
     ],
   },
   {
     title: "Discovery",
     items: [
       { to: "/scanners", label: "Scan", icon: Scan },
-      { to: "/live-scanners", label: "Live Scanners", icon: Pulse },
       { to: "/assets", label: "Assets", icon: Cube },
-      { to: "/network", label: "Network", icon: GlobeHemisphereWest },
-      { to: "/cloud", label: "Cloud", icon: Cloud },
       { to: "/dev-sec-ops", label: "Applications", icon: Code },
-      { to: "/hardware", label: "Hardware", icon: Cpu },
       { to: "/certificates", label: "Certificates", icon: Certificate },
       { to: "/vendor", label: "Vendors", icon: Buildings },
+      {
+        to: "/network",
+        label: "Infrastructure",
+        icon: GlobeHemisphereWest,
+        children: [
+          { to: "/network", label: "Network", icon: GlobeHemisphereWest },
+          { to: "/cloud", label: "Cloud", icon: Cloud },
+          { to: "/hardware", label: "Hardware", icon: Cpu },
+        ],
+      },
     ],
   },
   {
     title: "Intelligence",
     items: [
-      { to: "/crypto", label: "Cryptography", icon: Key },
-      { to: "/cbom", label: "Crypto Inventory (CBOM)", icon: Atom },
-      { to: "/crypto-assets", label: "Algorithm Catalog", icon: Key },
-      { to: "/sbom", label: "SBOM", icon: Code },
-      { to: "/hbom", label: "HBOM", icon: HardDrives },
-      { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest },
-      { to: "/vbom", label: "VBOM", icon: Buildings },
-      { to: "/live-asset-intelligence", label: "Technology BOM", icon: Stack },
-      { to: "/dependency-graph", label: "Dependencies", icon: Graph },
-      { to: "/graph", label: "Graph Explorer", icon: Graph },
-      { to: "/findings", label: "Findings", icon: ListChecks },
-      { to: "/pqc", label: "PQC Readiness", icon: ShieldCheck },
-      { to: "/agility", label: "Crypto Agility", icon: SlidersHorizontal },
-      { to: "/drift", label: "Crypto Drift", icon: Pulse },
+      {
+        to: "/cbom",
+        label: "BOMs",
+        icon: Stack,
+        children: [
+          { to: "/cbom", label: "CBOM", icon: Atom },
+          { to: "/sbom", label: "SBOM", icon: Code },
+          { to: "/hbom", label: "HBOM", icon: HardDrives },
+          { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest },
+          { to: "/vbom", label: "VBOM", icon: Buildings },
+          { to: "/live-asset-intelligence", label: "Technology BOM", icon: Stack },
+        ],
+      },
+      {
+        to: "/dependency-graph",
+        label: "Dependencies",
+        icon: Graph,
+        children: [
+          { to: "/dependency-graph", label: "Cascade", icon: Graph },
+          { to: "/graph", label: "Graph explorer", icon: Graph },
+        ],
+      },
+      {
+        to: "/findings",
+        label: "Posture",
+        icon: ShieldCheck,
+        children: [
+          { to: "/crypto", label: "Cryptography", icon: Key },
+          { to: "/crypto-assets", label: "Algorithm catalog", icon: Key },
+          { to: "/findings", label: "Findings", icon: ListChecks },
+          { to: "/pqc", label: "PQC readiness", icon: ShieldCheck },
+          { to: "/agility", label: "Crypto agility", icon: SlidersHorizontal },
+          { to: "/drift", label: "Crypto drift", icon: Pulse },
+        ],
+      },
+      { to: "/digital-twin", label: "Digital twin", icon: Stack },
+      {
+        to: "/reports",
+        label: "Output",
+        icon: FileText,
+        children: [
+          { to: "/reports", label: "Reports", icon: FileText },
+          { to: "/what-if", label: "What-if analysis", icon: MagnifyingGlass },
+        ],
+      },
     ],
   },
   {
@@ -80,36 +136,83 @@ export const PRIMARY_SECTIONS: NavSection[] = [
       { to: "/security-policy", label: "Policies", icon: Scales },
       { to: "/compliance", label: "Compliance", icon: ListChecks },
       { to: "/evidence", label: "Evidence", icon: FileText },
-      { to: "/security-center", label: "Audit Log", icon: ListChecks },
-      { to: "/remediation", label: "Remediation Tasks", icon: ListChecks },
-      { to: "/priorities", label: "Remediation Priorities", icon: ListChecks },
-      { to: "/migration", label: "Migration", icon: ShieldCheck },
-      { to: "/assurance-records", label: "Assurance records", icon: FileText },
-      { to: "/assurance-coverage", label: "Registered coverage", icon: ListChecks },
-      { to: "/assurance-trace", label: "Application trace", icon: Graph },
-      { to: "/assurance-sampling", label: "Accuracy sampling", icon: Scan },
-      { to: "/assurance-qualification", label: "Qualification", icon: ShieldCheck },
-    ],
-  },
-  {
-    title: "Output",
-    items: [
-      { to: "/reports", label: "Reports", icon: FileText },
-      { to: "/what-if", label: "What-If Analysis", icon: MagnifyingGlass },
-      { to: "/digital-twin", label: "Digital Twin", icon: Stack },
+      {
+        to: "/remediation",
+        label: "Remediation",
+        icon: ListChecks,
+        children: [
+          { to: "/remediation", label: "Tasks", icon: ListChecks },
+          { to: "/priorities", label: "Priorities", icon: ListChecks },
+          { to: "/migration", label: "Migration", icon: ShieldCheck },
+        ],
+      },
+      {
+        to: "/assurance-records",
+        label: "Assurance",
+        icon: FileText,
+        children: [
+          { to: "/assurance-records", label: "Records", icon: FileText },
+          { to: "/assurance-coverage", label: "Coverage", icon: ListChecks },
+          { to: "/assurance-trace", label: "Application trace", icon: Graph },
+          { to: "/assurance-sampling", label: "Accuracy sampling", icon: Scan },
+          { to: "/assurance-qualification", label: "Qualification", icon: ShieldCheck },
+        ],
+      },
+      { to: "/security-center", label: "Audit log", icon: ListChecks },
     ],
   },
   {
     title: "Administration",
     items: [
-      { to: "/system-health", label: "System Health", icon: Pulse },
-      { to: "/settings", label: "Settings & Org", icon: GearSix },
-      { to: "/security-center", label: "Security Center", icon: ShieldCheck },
-      { to: "/identity", label: "Users & Teams", icon: UsersThree },
+      { to: "/system-health", label: "System health", icon: Pulse },
+      { to: "/settings", label: "Settings & org", icon: GearSix },
+      { to: "/identity", label: "Users & teams", icon: UsersThree },
       { to: "/integrations", label: "Integrations & API", icon: PlugsConnected },
     ],
   },
 ];
+
+/** Every route the sidebar renders as a link, in tree order — the nav tests and search.
+ *
+ * A group row is a disclosure, not a destination: its own ``to`` only marks the group active
+ * when you are on that page, which is why the parent's page also appears as a child. Counting
+ * both would report the same route twice and hide a genuine duplicate behind the noise.
+ */
+export function navRoutes(sections: NavSection[] = PRIMARY_SECTIONS): string[] {
+  return sections.flatMap((section) =>
+    section.items.flatMap((item) =>
+      item.children?.length ? item.children.map((child) => child.to) : [item.to],
+    ),
+  );
+}
+
+// The old preference name described a "classic" sidebar; the layout is now sectioned and
+// groupable, so the collapse flag keeps its name (a returning operator's choice survives)
+// while the open/closed state of sections and groups is stored beside it.
+const NAV_STATE_KEY = "zelnx-nav-open";
+
+function readNavState(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(NAV_STATE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
+  } catch { return {}; }
+}
+
+function writeNavState(state: Record<string, boolean>) {
+  try { localStorage.setItem(NAV_STATE_KEY, JSON.stringify(state)); } catch { /* ignore */ }
+}
+
+function sameRoute(candidate: string, route: string): boolean {
+  if (candidate === route) return true;
+  // "/" and "" are the dashboard, not a page of their own
+  return candidate === "/command-center" && (route === "/" || route === "");
+}
+
+function itemActive(item: NavItem, route: string): boolean {
+  if (sameRoute(item.to, route)) return true;
+  return (item.children || []).some((child) => sameRoute(child.to, route));
+}
 
 // Reset the prior estate-tree collapse preference once so the restored classic
 // navigation is visible on first load; subsequent choices use this key.
@@ -131,6 +234,10 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem(SIDEBAR_PREF_KEY) === "true"; } catch { return false; }
   });
+  // Which section and which group are open. The route decides by default — the section you
+  // are in and the group holding the current page are open — and a click overrides that for
+  // as long as the operator's choice is stored (a route change does not undo it).
+  const [navOpen, setNavOpen] = useState<Record<string, boolean>>(() => readNavState());
   const navRef = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<string>(() => {
     try {
@@ -156,6 +263,14 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
     setIsCollapsed(prev => {
       const next = !prev;
       try { localStorage.setItem(SIDEBAR_PREF_KEY, String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  const toggleNav = (key: string, fallback: boolean) => {
+    setNavOpen((prev) => {
+      const next = { ...prev, [key]: !(prev[key] ?? fallback) };
+      writeNavState(next);
       return next;
     });
   };
@@ -285,28 +400,95 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
         )}
 
         <nav ref={navRef} className="primary-nav" aria-label="Primary console sections">
-          {PRIMARY_SECTIONS.map((group) => (
-          <React.Fragment key={group.title}>
-            <div className="nav-label">{group.title}</div>
-            {group.items.map((item) => {
-              const active = route === item.to || (item.to === "/command-center" && (route === "/" || route === ""));
-              return (
-                <Link key={item.to}
-                  to={item.to}
-                  className={`nav ${active ? "active" : ""}`}
-                  title={isCollapsed ? item.label : undefined}
-                  aria-label={isCollapsed ? item.label : undefined}
-                  aria-current={active ? "page" : undefined}
-                >
-                  <span className="nav-icon" aria-hidden="true">
-                    <item.icon size={18} weight={active ? "fill" : "regular"} />
-                  </span>
-                  <span className="nav-text">{item.label}</span>
-                </Link>
-              );
-            })}
-          </React.Fragment>
-          ))}
+          {PRIMARY_SECTIONS.map((group) => {
+            const sectionKey = `section:${group.title}`;
+            // a section is open when the route is inside it, unless the operator said otherwise
+            const sectionHasRoute = group.items.some((item) => itemActive(item, route));
+            const sectionOpen = navOpen[sectionKey] ?? sectionHasRoute;
+            return (
+              <React.Fragment key={group.title}>
+                {isCollapsed ? (
+                  <div className="nav-label" aria-hidden="true">{group.title}</div>
+                ) : (
+                  <button
+                    type="button"
+                    className={`nav-label nav-section${sectionOpen ? " open" : ""}`}
+                    onClick={() => toggleNav(sectionKey, sectionHasRoute)}
+                    aria-expanded={sectionOpen}
+                    aria-controls={`nav-${group.title}`}
+                  >
+                    <span>{group.title}</span>
+                    <IconCaretDown className="nav-caret" size={ICON_SM} />
+                  </button>
+                )}
+                <div id={`nav-${group.title}`} className="nav-items" hidden={!sectionOpen && !isCollapsed}>
+                  {group.items.map((item) => {
+                    const active = itemActive(item, route);
+                    const children = item.children || [];
+                    if (!children.length) {
+                      return (
+                        <Link key={item.to}
+                          to={item.to}
+                          className={`nav ${active ? "active" : ""}`}
+                          title={isCollapsed ? item.label : undefined}
+                          aria-label={isCollapsed ? item.label : undefined}
+                          aria-current={active ? "page" : undefined}
+                        >
+                          <span className="nav-icon" aria-hidden="true">
+                            <item.icon size={18} weight={active ? "fill" : "regular"} />
+                          </span>
+                          <span className="nav-text">{item.label}</span>
+                        </Link>
+                      );
+                    }
+                    const groupKey = `group:${group.title}:${item.label}`;
+                    const groupOpen = navOpen[groupKey] ?? active;
+                    return (
+                      <React.Fragment key={groupKey}>
+                        <button
+                          type="button"
+                          className={`nav nav-group ${active ? "active" : ""}`}
+                          title={item.label}
+                          aria-expanded={isCollapsed ? undefined : groupOpen}
+                          aria-controls={`nav-group-${groupKey}`}
+                          onClick={() => {
+                            // a group is a disclosure, not a page: in the collapsed rail it
+                            // expands the sidebar so its contents can be read
+                            if (isCollapsed) { setIsCollapsed(false); try { localStorage.setItem(SIDEBAR_PREF_KEY, "false"); } catch { /* ignore */ } }
+                            toggleNav(groupKey, active);
+                          }}
+                        >
+                          <span className="nav-icon" aria-hidden="true">
+                            <item.icon size={18} weight={active ? "fill" : "regular"} />
+                          </span>
+                          <span className="nav-text">{item.label}</span>
+                          <span className="nav-count" aria-hidden="true">{children.length}</span>
+                          <IconCaretDown className="nav-caret" size={ICON_SM} />
+                        </button>
+                        <div id={`nav-group-${groupKey}`} className="nav-sub" hidden={!groupOpen}>
+                          {children.map((child) => {
+                            const childActive = sameRoute(child.to, route);
+                            return (
+                              <Link key={child.to}
+                                to={child.to}
+                                className={`nav ${childActive ? "active" : ""}`}
+                                aria-current={childActive ? "page" : undefined}
+                              >
+                                <span className="nav-icon" aria-hidden="true">
+                                  <child.icon size={16} weight={childActive ? "fill" : "regular"} />
+                                </span>
+                                <span className="nav-text">{child.label}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </React.Fragment>
+            );
+          })}
         </nav>
 
         <div style={{ marginTop: 24, padding: "0 8px" }}>

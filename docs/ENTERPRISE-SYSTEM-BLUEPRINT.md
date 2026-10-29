@@ -166,16 +166,15 @@ Before a release is promoted:
 
 ## 5. Console information architecture
 
-The console has six primary sections and follows a command-to-proof workflow:
+The console has five primary sections and follows a command-to-proof workflow:
 
-1. **Overview** — Dashboard, Launch readiness, Operator decisions, Activity.
-2. **Discovery** — Scan, Live Scanners, Assets, Network, Cloud, Applications, Hardware, Certificates, Vendors.
-3. **Intelligence** — Cryptography, Crypto Inventory (CBOM), Algorithm Catalog, Technology BOM, HBOM, NBOM, Dependencies, Graph Explorer, Findings, PQC Readiness, Crypto Agility, Crypto Drift.
-4. **Governance** — Banking & SWIFT, Policies, Compliance, Evidence, Audit Log, Remediation Tasks, Remediation Priorities, Migration.
-5. **Output** — Reports, What-If Analysis, Digital Twin.
-6. **Administration** — System Health, Settings & Org, Security Center, Users & Teams, Integrations & API.
+1. **Overview** — Dashboard, Live estate, Activity; groups *Monitors* (Live monitor, Live scanners) and *Oversight* (Launch readiness, Operator decisions).
+2. **Discovery** — Scan, Assets, Applications, Certificates, Vendors; group *Infrastructure* (Network, Cloud, Hardware).
+3. **Intelligence** — Digital twin; groups *BOMs* (CBOM, SBOM, HBOM, NBOM, VBOM, Technology BOM), *Dependencies* (Cascade, Graph explorer), *Posture* (Cryptography, Algorithm catalog, Findings, PQC readiness, Crypto agility, Crypto drift) and *Output* (Reports, What-if analysis).
+4. **Governance** — Banking & SWIFT, Policies, Compliance, Evidence, Audit log; groups *Remediation* (Tasks, Priorities, Migration) and *Assurance* (Records, Coverage, Application trace, Accuracy sampling, Qualification).
+5. **Administration** — System Health, Settings & Org, Users & Teams, Integrations & API.
 
-The six sections contain 41 sidebar slots (4 + 9 + 12 + 8 + 3 + 5) and 40 unique primary paths. The duplicate Security Center placement is intentional: the governance placement is an audit workflow; the administration placement is a platform-control entry point. It remains one route and one permission model. Other authenticated pages may remain deep-link routes reached from cards, search and reports; a deep link is not implied to be a primary navigation slot.
+The five sections contain 27 rows and 49 links. A row that names a group is a disclosure, not a page slot: the pages inside it are one click away and are only rendered when it opens, so an operator arrives on roughly six rows instead of fifty. Only the section holding the current page is open on arrival, and a route inside a closed group opens that group. `Security Center` is reached once, as **Audit log** under Governance; the header button of that name opens the admin drawer, which is not a navigation slot. Other authenticated pages may remain deep-link routes reached from cards, search and reports; a deep link is not implied to be a primary navigation slot.
 
 ### 5.1 Navigation behavior
 
@@ -267,7 +266,7 @@ A CryptoScan deployment is ready to call enterprise-qualified only when all appl
 
 ## 9. Next implementation sequence
 
-1. **Ship the console foundation:** the route table, isolated auth entries, collapsible six-section navigation, server-verified Start Scan control, generated maturity pills and RTL-aware shell.
+1. **Ship the console foundation:** the route table, isolated auth entries, collapsible sectioned navigation, server-verified Start Scan control, generated maturity pills and RTL-aware shell.
 2. **Ship the visual system:** graphite surfaces, chartreuse/terracotta/emerald semantic signals, display/body typography, asymmetrical workspace grids, spring transitions and auto-animated lists.
 3. **Ship the Applications pipeline view:** explicit SBOM/CBOM/HBOM/NBOM/VBOM stages, provenance badges and unknown/coverage boundary markers.
 4. **Harden operational workflows:** connector configuration lifecycle, queue/retry/dead-letter visibility, approval gates, evidence verification and export review.

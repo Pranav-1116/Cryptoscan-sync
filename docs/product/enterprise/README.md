@@ -49,7 +49,7 @@ remain the implementation authority for detailed procedures. The current
 console map is maintained separately so product navigation does not drift from
 code:
 
-- [Navigation & Feature Reference](../../NAVIGATION-FEATURE-REFERENCE.md) — six sidebar sections, primary/deep-linked routes, role guards and feature ownership.
+- [Navigation & Feature Reference](../../NAVIGATION-FEATURE-REFERENCE.md) — five sidebar sections and their groups, primary/deep-linked routes, role guards and feature ownership.
 - [Product narrative](../README.md) — nine deep chapters and diagrams.
 - [User guide](../../user-guide/) — operator and analyst workflows.
 - [Admin guide](../../admin-guide/) — installation, configuration, identity,

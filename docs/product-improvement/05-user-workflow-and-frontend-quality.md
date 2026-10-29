@@ -27,7 +27,8 @@ The remaining user-task/RTL/zoom/endurance/site requirements below stay open.
 
 Improve the existing Scan, evidence/BOM, Operator decisions, remediation and
 Launch readiness journeys. Do not add dashboards, menu sections, summary scores
-or alternate approval flows. The current console has six sidebar sections;
+or alternate approval flows. The current console has five sidebar sections with
+foldable groups;
 use the [navigation reference](../NAVIGATION-FEATURE-REFERENCE.md) rather than
 copying an older screenshot or reintroducing retired menu labels.
 

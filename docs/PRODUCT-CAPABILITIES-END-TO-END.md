@@ -251,7 +251,7 @@ tenant model with provisioning/invites, Prometheus metrics, `/healthz` +
 
 | Doc | For |
 |---|---|
-| `docs/NAVIGATION-FEATURE-REFERENCE.md` | current six-section console navigation, primary/deep-linked routes, role-guarded actions and feature ownership |
+| `docs/NAVIGATION-FEATURE-REFERENCE.md` | current five-section console navigation and its groups, primary/deep-linked routes, role-guarded actions and feature ownership |
 | `docs/product/02-features.md` · `docs/user-guide/binary-firmware-scanning.md` | correlated binary BOM family and bounded binary/mobile/WASM behavior |
 | `docs/END-TO-END-ARCHITECTURE.md` · `docs/DATAFLOW.md` | how data moves between services |
 | `docs/enterprise-readiness.md` | capability matrix with honest gaps |
