@@ -26,7 +26,25 @@ do not use its development defaults as product credentials.
 ```bash
 make test    # per-service pytest (avoids shared `tests` package clash)
 make api     # frontend :3003 + API :8010
+
+# One command, no Docker: API + console on SQLite (development only)
+bash scripts/run_dev_stack.sh          # up; Ctrl-C stops both
+bash scripts/run_dev_stack.sh status   # what is listening, and is /ready 200
+bash scripts/run_dev_stack.sh down     # stop what it started
 ```
+
+`scripts/run_dev_stack.sh` is the smallest path to a working console: SQLite
+instead of PostgreSQL (the same `ALLOW_SQLITE=1` path the tests use), no Redis
+and no worker. Consequences, stated because they are easy to misread:
+
+- with no Redis nothing consumes the scan queue, so a submitted scan stays
+  `QUEUED` and no evidence appears — a fresh console is an EMPTY estate, and
+  every screen is supposed to look empty rather than healthy;
+- it bootstraps one admin **only if the users table is empty**, so a generated
+  password applies exactly once; the script says so instead of printing a
+  password that silently would not work, and `RESET_DB=1` starts clean;
+- it is not a qualification deployment. The real local stack (Postgres + Redis
+  + worker) is `scripts/run_local_stack.sh`, which needs Docker.
 
 Trigger a scan of the bundled sample with `local://<authorized-source>`.
 
