@@ -22,6 +22,7 @@
 #   bash scripts/run_dev_stack.sh console      # console only
 #   bash scripts/run_dev_stack.sh status       # what is listening, and is it healthy
 #   bash scripts/run_dev_stack.sh down         # stop whatever this script started
+#   bash scripts/run_dev_stack.sh reset-admin  # set a known password for the dev admin
 #
 # Environment (all optional)
 #   API_PORT          default 8010
@@ -273,6 +274,82 @@ stop_owned() {
   OWNED_PIDS=()
 }
 
+sqlite_path() {
+  case "$DATABASE_URL" in
+    sqlite:///*|sqlite://*)
+      local path="$DATABASE_URL"
+      path="${path#sqlite:///}"; path="${path#sqlite://}"
+      printf '%s\n' "$path" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Reset an existing development admin's password.
+#
+# The bootstrap creates an admin only when the users table is empty, so on any
+# database that has booted once the password printed by `up` is not the one that
+# works. This is the way out that does not delete the estate:
+#
+#   bash scripts/run_dev_stack.sh reset-admin              # random password, printed once
+#   ADMIN_PASSWORD='...' bash scripts/run_dev_stack.sh reset-admin
+#   bash scripts/run_dev_stack.sh reset-admin someoneelse
+#
+# It hashes with the application's own PBKDF2 implementation (`hash_password`),
+# not a re-implementation, so the stored value is byte-compatible with what
+# `POST /auth/login` verifies. SQLite only: a real deployment changes a password
+# through the API, where the change is audited.
+reset_admin() {
+  local user="${ADMIN_PASSWORD_USER:-${1:-$ADMIN_USERNAME}}" path
+  local -a helper=(alembic)
+  path="$(sqlite_path)" || die "reset-admin only touches the SQLite development database; DATABASE_URL=$DATABASE_URL"
+  [ -f "$path" ] || die "no database at $path — run '$0 up' once to create it"
+  ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(head -c 18 /dev/urandom | base64 | tr -d '/+=' | cut -c1-16)}"
+  export ADMIN_PASSWORD
+
+  PYTHONPATH="$PYTHONPATH" "$PY" - "$path" "$user" "$ADMIN_PASSWORD" <<'PYEOF'
+import sqlite3, sys
+from api.security.passwords import hash_password
+
+path, user, password = sys.argv[1], sys.argv[2], sys.argv[3]
+con = sqlite3.connect(path)
+con.row_factory = sqlite3.Row
+rows = con.execute("select username, roles, is_active, mfa_enabled, deleted_at from users order by username").fetchall()
+if not rows:
+    print("no users exist yet — run `bash scripts/run_dev_stack.sh up` to bootstrap one, "
+          "or pass RESET_DB=1 to start clean", file=sys.stderr)
+    raise SystemExit(3)
+hashed = hash_password(password)
+target = next((r for r in rows if r["username"] == user), None)
+if target is None:
+    names = ", ".join(r["username"] for r in rows)
+    print(f"no user {user!r} in this database. Existing usernames: {names}", file=sys.stderr)
+    print("pass one of those: bash scripts/run_dev_stack.sh reset-admin <username>", file=sys.stderr)
+    raise SystemExit(3)
+# failed_attempts/locked_until are cleared because a locked account refuses a
+# correct password too; is_active is restored so a deactivated dev admin works.
+# roles are NOT touched: this resets a credential, it does not grant authority.
+con.execute(
+    "update users set password_hash=?, is_active=1, failed_attempts=0, locked_until=null,"
+    " deleted_at=null where username=?",
+    (hashed, user),
+)
+con.commit()
+print(f"password reset for {user!r} (roles: {target['roles']})")
+if target["mfa_enabled"]:
+    print("NOTE: this account has MFA enabled. The password is correct, but sign-in will also "
+          "ask for a code; a lost authenticator needs a separate reset.", file=sys.stderr)
+PYEOF
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    die "reset-admin failed (exit $rc) — nothing was written"
+  fi
+  umask 077
+  printf 'ADMIN_USERNAME=%s\nADMIN_PASSWORD=%s\n' "$user" "$ADMIN_PASSWORD" > "$STATE"
+  umask 022
+  log "sign in as $user / $ADMIN_PASSWORD"
+  log "(saved in $STATE for the next run; the API does not need a restart)"
+}
+
 status() {
   printf '%-10s %-6s %s\n' "process" "port" "state"
   if listening "$API_PORT"; then
@@ -303,6 +380,7 @@ banner() {
   api docs  http://127.0.0.1:$API_PORT/api/docs
   login     $ADMIN_USERNAME / ${ADMIN_PASSWORD:-<set ADMIN_PASSWORD>}
             password: ${PASSWORD_STATUS:-as configured}
+            (unknown? run: bash scripts/run_dev_stack.sh reset-admin)
 
   An empty console is an empty estate, not a broken build: nothing has been
   collected, and no screen here is allowed to make that look healthy.
@@ -359,10 +437,11 @@ case "${1:-up}" in
     trap 'log "stopping console"; stop_owned; exit 0' INT TERM
     tail -f "$RUN_DIR/console.log"
     ;;
+  reset-admin|reset_admin|passwd) shift || true; reset_admin "${1:-}" ;;
   status) status ;;
   down|stop) down ;;
   *)
-    echo "usage: bash scripts/run_dev_stack.sh [up|api|console|status|down]" >&2
+    echo "usage: bash scripts/run_dev_stack.sh [up|api|console|status|down|reset-admin [username]]" >&2
     exit 64
     ;;
 esac
