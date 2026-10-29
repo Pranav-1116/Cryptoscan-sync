@@ -31,6 +31,7 @@ make api     # frontend :3003 + API :8010
 bash scripts/run_dev_stack.sh          # up; Ctrl-C stops both
 bash scripts/run_dev_stack.sh status   # what is listening, and is /ready 200
 bash scripts/run_dev_stack.sh down     # stop what it started
+bash scripts/run_dev_stack.sh reset-admin   # set a known admin password (SQLite dev DB)
 ```
 
 `scripts/run_dev_stack.sh` is the smallest path to a working console: SQLite
@@ -41,8 +42,11 @@ and no worker. Consequences, stated because they are easy to misread:
   `QUEUED` and no evidence appears — a fresh console is an EMPTY estate, and
   every screen is supposed to look empty rather than healthy;
 - it bootstraps one admin **only if the users table is empty**, so a generated
-  password applies exactly once; the script says so instead of printing a
-  password that silently would not work, and `RESET_DB=1` starts clean;
+  password applies exactly once. If the banner says the password is `UNKNOWN`,
+  that database already has an admin and the printed value would not work — run
+  `bash scripts/run_dev_stack.sh reset-admin` to set a known one (optionally
+  `ADMIN_PASSWORD=... reset-admin`, or `reset-admin <username>`), or `RESET_DB=1`
+  to start from an empty database;
 - it is not a qualification deployment. The real local stack (Postgres + Redis
   + worker) is `scripts/run_local_stack.sh`, which needs Docker.
 
