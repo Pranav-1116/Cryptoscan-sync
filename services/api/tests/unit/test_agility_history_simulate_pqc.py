@@ -164,3 +164,45 @@ async def test_pqc_portfolio_ranks_systems(app_db):
     assert [row["system_id"] for row in body["systems"]] == ["sys-a", "sys-b"]
     top = body["systems"][0]
     assert top["quantum_vulnerable_sites"] == 2 and top["sites"] == 3
+
+
+@pytest.mark.asyncio
+async def test_portfolio_average_is_null_when_nothing_is_scored():
+    """An average over zero systems is not 0/100.
+
+    The empty read used to answer ``average: 0``, which a client cannot tell
+    apart from "every system scored zero" — the console printed an
+    undiscovered estate as a measured, rigid 0. The response now says what the
+    average is over.
+    """
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
+    session = Session()
+    application = create_app()
+    application.dependency_overrides[get_current_user] = lambda: "testuser"
+
+    def _session():
+        yield session
+
+    application.dependency_overrides[get_db_session] = _session
+
+    try:
+        transport = ASGITransport(app=application)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/v1/agility")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["systems"] == []
+        assert body["average"] is None
+        assert body["scored_systems"] == 0
+        assert body["average_basis"] == "scored_systems"
+    finally:
+        session.close()
+        engine.dispose()

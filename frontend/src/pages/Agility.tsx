@@ -13,30 +13,44 @@ interface AgilitySystem {
 }
 interface AgilityResp {
   systems?: AgilitySystem[];
-  average?: number;
+  /** null when nothing is scored — the API no longer answers a bare 0 here. */
+  average?: number | null;
+  average_basis?: string;
+  scored_systems?: number;
 }
 
 export default function Agility() {
-  const { data, loading, error } = useLive<AgilityResp>("/api/v1/agility", { systems: [], average: 0 });
+  const { data, loading, error } = useLive<AgilityResp>("/api/v1/agility", { systems: [], average: null });
   const systems = data.systems ?? [];
-  const score = Math.round(data.average ?? 0);
-  const pqcReady = systems.length ? Math.round((systems.filter((s) => (s.agility_score ?? 0) >= 70).length / systems.length) * 100) : 0;
-  const hardCoded = systems.length ? Math.round((systems.filter((s) => (s.agility_score ?? 0) < 40).length / systems.length) * 100) : 0;
-  const configurable = 100 - hardCoded;
-  const midTier = 100 - pqcReady - hardCoded;
+  // Nothing here is drawn until the read returned. The fallback shape carries
+  // average 0, which used to render as "0/100 · RIGID" and, worse, as
+  // "100% configurable" — arithmetic on an estate that was never read.
+  const readOk = !loading && !error;
+  const hasSystems = readOk && systems.length > 0;
+  // The server sends `average: 0` for an estate with no scored systems. An
+  // average over zero systems is not a measurement, so it renders as "—".
+  const score = readOk && systems.length > 0 && data.average != null ? Math.round(data.average) : null;
+  const pct = (n: number | null) => (n == null ? "—" : `${n}%`);
 
-  // Derived buckets for visual spectrum
+  // Bucket counts come from the per-system scores the server returned; the
+  // percentages are shares of the systems actually scored, never of a
+  // theoretical total.
   const agileCount = systems.filter((s) => (s.agility_score ?? 0) >= 70).length;
   const midCount = systems.filter((s) => (s.agility_score ?? 0) >= 40 && (s.agility_score ?? 0) < 70).length;
   const rigidCount = systems.filter((s) => (s.agility_score ?? 0) < 40).length;
-  const avgPct = score / 100;
+  const pqcReady = hasSystems ? Math.round((agileCount / systems.length) * 100) : null;
+  const hardCoded = hasSystems ? Math.round((rigidCount / systems.length) * 100) : null;
+  const midTier = hasSystems ? Math.round((midCount / systems.length) * 100) : null;
+  const configurable = hasSystems ? pqcReady : null;
+  const avgPct = score == null ? 0 : score / 100;
   const categoryBreakdown = useMemo(() => {
     const m: Record<string, number> = {};
     systems.forEach((s) => { const c = s.category || "unclassified"; m[c] = (m[c] || 0) + 1; });
     return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [systems]);
 
-  const tone = score >= 70 ? "green" : score >= 50 ? "amber" : "red";
+  const tone = score == null ? "slate" : score >= 70 ? "green" : score >= 50 ? "amber" : "red";
+  const scoreWord = score == null ? "not read" : score >= 70 ? "agile" : score >= 50 ? "moderate" : "rigid";
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -63,17 +77,17 @@ export default function Agility() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
-            <Ring pct={score / 100} label={score} sub="agility" tone={tone} />
+            <Ring pct={avgPct} label={score ?? "—"} sub="agility" tone={tone} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>ENTERPRISE SCORE</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{score >= 70 ? "Agile — configurable surface" : score >= 50 ? "Moderate — mixed surface" : "Rigid — hard-coded dominance"}</div>
-              <div style={{ marginTop: 6 }}><Bar value={score / 100} tone={tone} /></div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{score == null ? "agility read did not return" : score >= 70 ? "Agile — configurable surface" : score >= 50 ? "Moderate — mixed surface" : "Rigid — hard-coded dominance"}</div>
+              <div style={{ marginTop: 6 }}><Bar value={avgPct} tone={tone} /></div>
             </div>
           </Panel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <Link to="/cbom" className="btn outline" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center", border: "1px solid var(--line-strong)", background: "var(--panel-2)" }}>Explore CBOM →</Link>
             <Link to="/migration" className="btn primary" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center" }}>Migration plan →</Link>
-            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{systems.length} systems scored</span>
+            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{readOk ? `${systems.length} systems scored` : "not read"}</span>
           </div>
         </div>
       </div>
@@ -86,15 +100,15 @@ export default function Agility() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconTarget size={12} /> ENTERPRISE AGILITY</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)" }}>{loading ? "…" : `${score}`}<span style={{ fontSize: 16, color: "var(--faint)" }}> / 100</span></div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : tone === "slate" ? "var(--slate)" : "var(--red)" }}>{loading ? "…" : score == null ? "—" : `${score}`}<span style={{ fontSize: 16, color: "var(--faint)" }}>{score == null ? "" : " / 100"}</span></div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Aggregate across estate</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: tone === "green" ? "color-mix(in srgb, var(--green) 14%, transparent)" : tone === "amber" ? "color-mix(in srgb, var(--amber) 14%, transparent)" : "color-mix(in srgb, var(--red) 14%, transparent)", border: `1px solid ${tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)"}`, color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{systems.length} systems</span><span style={{ color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)" }}>{score >= 70 ? "agile" : score >= 50 ? "moderate" : "rigid"}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{readOk ? `${systems.length} systems` : "not read"}</span><span style={{ color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--slate)" }}>{scoreWord}</span></div>
             <Bar value={avgPct} tone={tone} />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Weighted by system criticality</div>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{score == null ? "no aggregate in this read" : "server-computed estate average"}</div>
           </div>
         </div>
 
@@ -102,14 +116,14 @@ export default function Agility() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconWarn size={12} /> HARD-CODED CRYPTO</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: rigidCount ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : `${hardCoded}%`}</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>{rigidCount} systems · code change required</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: hardCoded == null ? "var(--slate)" : rigidCount ? "var(--red)" : "var(--dim)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : pct(hardCoded)}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? `${rigidCount} systems · code change required` : "not read"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: rigidCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${rigidCount ? "var(--red)" : "var(--green)"}`, color: rigidCount ? "var(--red)" : "var(--green)" }}>{rigidCount ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>blocker systems</span><span style={{ color: rigidCount ? "var(--red)" : "var(--green)" }}>{rigidCount ? "action needed" : "clear"}</span></div>
-            <Bar value={hardCoded / 100} tone={rigidCount ? "red" : "green"} />
+            <Bar value={(hardCoded ?? 0) / 100} tone={rigidCount ? "red" : "green"} />
             <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>In binary / firmware / source</div>
           </div>
         </div>
@@ -118,32 +132,32 @@ export default function Agility() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconCrypto size={12} /> CONFIGURABLE SURFACE</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : `${configurable}%`}</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>{systems.length - rigidCount} systems · config switch</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: configurable == null ? "var(--slate)" : "var(--text)" }}>{loading ? "…" : pct(configurable)}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? `${systems.length - rigidCount} systems above the rigid band` : "not read"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>re-configurable</span><span style={{ color: "var(--accent)" }}>● fast path</span></div>
-            <Bar value={configurable / 100} tone="cyan" />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>No code change — policy flip</div>
+            <Bar value={(configurable ?? 0) / 100} tone="cyan" />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>share of scored systems scoring ≥ 70</div>
           </div>
         </div>
 
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--green)", background: "color-mix(in srgb, var(--green) 4%, var(--panel))" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>PQC READY</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: "var(--green)" }}>{loading ? "…" : `${pqcReady}%`}</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>{agileCount} systems ≥ 70 agility</div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>AGILE BAND (≥ 70)</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: pqcReady == null ? "var(--slate)" : "var(--green)" }}>{loading ? "…" : pct(pqcReady)}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? `${agileCount} systems ≥ 70 agility` : "not read"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid var(--green)", color: "var(--green)" }}><IconCertificate size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
-              <div style={{ width: `${pqcReady}%`, height: "100%", background: "var(--green)", opacity: .95 }} />
-              <div style={{ width: `${midTier}%`, height: "100%", background: "var(--amber)", opacity: .9 }} />
-              <div style={{ width: `${hardCoded}%`, height: "100%", background: "var(--red)", opacity: .85 }} />
+              <div style={{ width: `${pqcReady ?? 0}%`, height: "100%", background: "var(--green)", opacity: .95 }} />
+              <div style={{ width: `${midTier ?? 0}%`, height: "100%", background: "var(--amber)", opacity: .9 }} />
+              <div style={{ width: `${hardCoded ?? 0}%`, height: "100%", background: "var(--red)", opacity: .85 }} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>{agileCount} agile</span><span>{midCount} transit</span><span>{rigidCount} rigid</span></div>
           </div>
@@ -156,15 +170,15 @@ export default function Agility() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ width: 32, height: 32, borderRadius: 999, display: "grid", placeItems: "center", background: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)", color: tone === "amber" ? "#000" : "#fff" }}><IconClock size={14} /></span>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)" }}>Agility spectrum — {systems.length} systems</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)" }}>Agility spectrum — {readOk ? `${systems.length} systems` : "not read"}</div>
               <div style={{ fontSize: 11, color: "var(--dim)" }}>From hard-coded (code change) → configurable (policy flip) → PQC ready</div>
             </div>
           </div>
           <div style={{ flex: "1 1 220px", minWidth: 200 }}>
             <div style={{ height: 10, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
-              <div style={{ width: `${hardCoded}%`, background: "var(--red)" }} title={`${rigidCount} rigid`} />
-              <div style={{ width: `${midTier}%`, background: "var(--amber)" }} title={`${midCount} transitional`} />
-              <div style={{ width: `${pqcReady}%`, background: "var(--green)" }} title={`${agileCount} agile`} />
+              <div style={{ width: `${hardCoded ?? 0}%`, background: "var(--red)" }} title={`${rigidCount} rigid`} />
+              <div style={{ width: `${midTier ?? 0}%`, background: "var(--amber)" }} title={`${midCount} transitional`} />
+              <div style={{ width: `${pqcReady ?? 0}%`, background: "var(--green)" }} title={`${agileCount} agile`} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 4 }}><span>● rigid</span><span>● transitional</span><span>● agile</span></div>
           </div>
@@ -180,9 +194,9 @@ export default function Agility() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginBottom: 18 }}>
         <Panel title="Agility distribution" sub="systems by agility band" style={{ padding: "14px 16px" }}>
           {[
-            ["Agile ≥ 70", pqcReady / 100, "green", agileCount],
-            ["Transitional 40-69", midTier / 100, "amber", midCount],
-            ["Rigid < 40", hardCoded / 100, "red", rigidCount],
+            ["Agile ≥ 70", (pqcReady ?? 0) / 100, "green", agileCount],
+            ["Transitional 40-69", (midTier ?? 0) / 100, "amber", midCount],
+            ["Rigid < 40", (hardCoded ?? 0) / 100, "red", rigidCount],
           ].map(([label, v, t, n]) => (
             <div key={label as string} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
               <span style={{ width: 130, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>{label as string}</span>
@@ -195,17 +209,17 @@ export default function Agility() {
 
         <Panel title="Migration velocity" sub="score trend per system" style={{ padding: "14px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <div style={{ width: 54, height: 54, borderRadius: 999, background: score >= 50 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `2px solid ${score >= 70 ? "var(--green)" : score >= 50 ? "var(--amber)" : "var(--red)"}`, display: "grid", placeItems: "center", color: score >= 70 ? "var(--green)" : score >= 50 ? "var(--amber)" : "var(--red)", fontSize: 18, fontWeight: 800 }}>{score}</div>
+            <div style={{ width: 54, height: 54, borderRadius: 999, background: score == null ? "var(--panel-2)" : score >= 50 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `2px solid ${score == null ? "var(--line)" : score >= 70 ? "var(--green)" : score >= 50 ? "var(--amber)" : "var(--red)"}`, display: "grid", placeItems: "center", color: score == null ? "var(--slate)" : score >= 70 ? "var(--green)" : score >= 50 ? "var(--amber)" : "var(--red)", fontSize: 18, fontWeight: 800 }}>{score ?? "—"}</div>
             <div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>Enterprise velocity</div>
               <div style={{ fontSize: 11, color: "var(--dim)" }}>{systems.filter((s) => (s.score_delta ?? 0) > 0).length} improving · {systems.filter((s) => (s.score_delta ?? 0) < 0).length} declining</div>
-              <div style={{ fontSize: 10, color: score >= 70 ? "var(--green)" : "var(--amber)", marginTop: 2 }}>{score >= 70 ? "on track" : "needs acceleration"}</div>
+              <div style={{ fontSize: 10, color: score == null ? "var(--faint)" : score >= 70 ? "var(--green)" : "var(--amber)", marginTop: 2 }}>{score == null ? "no aggregate returned" : score >= 70 ? "on track" : "needs acceleration"}</div>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, textAlign: "center" }}>
-            <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--green) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--green)" }}>{systems.filter((s) => (s.score_delta ?? 0) > 0).length}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>IMPROVING</div></div>
-            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800 }}>{systems.filter((s) => (s.score_delta ?? 0) === 0 || s.score_delta === undefined).length}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>FLAT</div></div>
-            <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--red) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--red)" }}>{systems.filter((s) => (s.score_delta ?? 0) < 0).length}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>DECLINING</div></div>
+            <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--green) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: hasSystems ? "var(--green)" : "var(--slate)" }}>{hasSystems ? systems.filter((s) => (s.score_delta ?? 0) > 0).length : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>IMPROVING</div></div>
+            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: hasSystems ? undefined : "var(--slate)" }}>{hasSystems ? systems.filter((s) => (s.score_delta ?? 0) === 0 || s.score_delta === undefined).length : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>FLAT</div></div>
+            <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--red) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: hasSystems ? "var(--red)" : "var(--slate)" }}>{hasSystems ? systems.filter((s) => (s.score_delta ?? 0) < 0).length : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>DECLINING</div></div>
           </div>
         </Panel>
 

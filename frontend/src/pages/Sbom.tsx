@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Bar, Ring } from "../components/ui";
 import { usePollingApi } from "../lib/apiUi.jsx";
@@ -7,25 +7,33 @@ import { IconComponent, IconTarget, IconClock, IconSecurity, IconCrypto, IconHar
 
 export default function Sbom() {
   const live = usePollingApi(apiTechBomLive, 15000);
+  // A read that did not return is not an SBOM of zero components.
+  const readOk = live.source === "live" && live.data != null;
   const state = (live.data ?? null) as TechBomState | null;
   const sbomLayer = state?.layers?.sbom;
   const components = sbomLayer?.components ?? [];
-  const total = sbomLayer?.count ?? components.length;
-  const estateTotal = state?.total_components ?? 0;
+  const total = sbomLayer?.count ?? (readOk ? components.length : null);
+  const estateTotal = state?.total_components ?? null;
+  const [snapshotMsg, setSnapshotMsg] = useState<string | null>(null);
 
-  const bySupplier = useMemo(() => {
+  const supplierCounts = useMemo(() => {
     const m: Record<string, number> = {};
     components.forEach((c) => {
       const s = String(c.supplier || "unknown").trim() || "unknown";
       m[s] = (m[s] || 0) + 1;
     });
-    return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
   }, [components]);
-
-  const uniqueSuppliers = bySupplier.length;
-  const vendorCount = state?.components_by_layer?.vendor ?? 0;
-  const pctOfEstate = estateTotal ? total / estateTotal : 0;
-  const ringPct = estateTotal ? Math.min(1, total / Math.max(50, estateTotal * 0.6)) : Math.min(1, total / 80);
+  // The list below shows the top five; the *count* is over every component,
+  // otherwise an estate with 30 suppliers reported "5".
+  const bySupplier = supplierCounts.slice(0, 5);
+  const uniqueSuppliers = supplierCounts.length;
+  // Breadth is a share of the components that named a supplier — not of an
+  // invented target like "20 suppliers".
+  const namedComponents = components.filter((c) => String(c.supplier || "").trim()).length;
+  const namedShare = components.length ? namedComponents / components.length : null;
+  const vendorCount = state?.components_by_layer?.vendor ?? null;
+  const pctOfEstate = total && estateTotal ? total / estateTotal : null;
   const ringTone = total ? "violet" as const : "slate" as const;
 
   return (
@@ -52,15 +60,21 @@ export default function Sbom() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
-            <Ring pct={pctOfEstate} label={String(total)} sub="sbom" tone="violet" />
+            <Ring pct={pctOfEstate ?? 0} label={readOk ? String(total) : "—"} sub="sbom" tone="violet" />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>SUPPLY CHAIN</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{total ? `${Math.round(pctOfEstate*100)}% of estate · ${uniqueSuppliers} suppliers` : "No SBOM yet — scan to populate"}</div>
-              <div style={{ marginTop: 6 }}><Bar value={pctOfEstate} tone="violet" /></div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{!readOk ? "SBOM not read" : total ? `${pctOfEstate == null ? "estate total —" : `${Math.round(pctOfEstate*100)}% of estate`} · ${uniqueSuppliers} suppliers` : "No SBOM yet — scan to populate"}</div>
+              <div style={{ marginTop: 6 }}><Bar value={pctOfEstate ?? 0} tone="violet" /></div>
             </div>
           </Panel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <button className="btn primary" onClick={async () => { const r = await apiTechBomSnapshot(); if (r.ok) live.run(); }} style={{ fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)" }}>Capture snapshot</button>
+            <button className="btn primary" onClick={async () => {
+              setSnapshotMsg(null);
+              const r = await apiTechBomSnapshot();
+              if (r.ok) { setSnapshotMsg("snapshot captured"); void live.run(); }
+              else { setSnapshotMsg(`not captured: ${r.error || "the control plane did not confirm it"}`); }
+            }} style={{ fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)" }}>Capture snapshot</button>
+            {snapshotMsg && <span role="status" style={{ fontSize: 11, color: snapshotMsg.startsWith("snapshot") ? "var(--green)" : "var(--red)", textAlign: "center" }}>{snapshotMsg}</span>}
             <Link to="/live-asset-intelligence" className="btn outline" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center", border: "1px solid var(--line-strong)", background: "var(--panel-2)" }}>Technology BOM →</Link>
             <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{state?.fingerprint ? `SHA ${state.fingerprint.slice(0,8)}…` : "no hash yet"}</span>
           </div>
@@ -72,35 +86,37 @@ export default function Sbom() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconComponent size={12} /> SBOM COMPONENTS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{total}</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>Software inventory</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: readOk ? "var(--text)" : "var(--slate)" }}>{readOk ? total : "—"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? "Software inventory" : "SBOM not read"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <Bar value={estateTotal ? total / estateTotal : 0} tone="violet" />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{estateTotal ? `${Math.round((total/estateTotal)*100)}% of ${estateTotal} total assets` : "estate total —"}</div>
+            <Bar value={pctOfEstate ?? 0} tone="violet" />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{pctOfEstate == null ? "estate total —" : `${Math.round(pctOfEstate * 100)}% of ${estateTotal} total assets`}</div>
           </div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--accent)" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>UNIQUE SUPPLIERS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{uniqueSuppliers}</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>Top supplier {bySupplier[0]?.[0]?.slice(0,14) || "—"} · {bySupplier[0]?.[1] ?? 0}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: readOk ? "var(--text)" : "var(--slate)" }}>{readOk ? uniqueSuppliers : "—"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? `Top supplier ${bySupplier[0]?.[0]?.slice(0,14) || "—"} · ${bySupplier[0]?.[1] ?? 0}` : "suppliers not read"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconCloud size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <Bar value={uniqueSuppliers ? Math.min(1, uniqueSuppliers/20) : 0} tone="cyan" />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Supply-chain breadth</div>
+            <Bar value={namedShare ?? 0} tone={namedShare == null ? "slate" : "cyan"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>
+              {namedShare == null ? "not read" : `${Math.round(namedShare * 100)}% of components name a supplier`}
+            </div>
           </div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${vendorCount ? "var(--green)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>LINKED VENDORS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{vendorCount}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: readOk ? "var(--text)" : "var(--slate)" }}>{readOk && vendorCount != null ? vendorCount : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Via VBOM mapping</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: vendorCount ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${vendorCount ? "var(--green)" : "var(--line)"}`, color: vendorCount ? "var(--green)" : "var(--faint)" }}><IconHardware size={16} /></span>
@@ -120,8 +136,8 @@ export default function Sbom() {
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--slate)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <Bar value={ringPct} tone={total ? "violet" : "slate"} />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>HMAC-signed exports available</div>
+            <Bar value={pctOfEstate ?? 0} tone={total ? "violet" : "slate"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{pctOfEstate == null ? "share of estate —" : "share of estate"} · HMAC-signed exports available</div>
           </div>
         </div>
       </div>
@@ -139,15 +155,15 @@ export default function Sbom() {
         </Panel>
         <Panel title="BOM coverage" sub="SBOM share of estate" style={{ padding: "14px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-            <div style={{ width: 54, height: 54, borderRadius: 999, background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "2px solid var(--violet)", display: "grid", placeItems: "center", color: "var(--violet)", fontSize: 18, fontWeight: 800 }}>{Math.round(pctOfEstate*100)}%</div>
+            <div style={{ width: 54, height: 54, borderRadius: 999, background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "2px solid var(--violet)", display: "grid", placeItems: "center", color: "var(--violet)", fontSize: 18, fontWeight: 800 }}>{pctOfEstate == null ? "—" : `${Math.round(pctOfEstate * 100)}%`}</div>
             <div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>Software footprint</div>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>{total} of {estateTotal || "—"} in SBOM</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{readOk ? `${total ?? "—"} of ${estateTotal ?? "—"} in SBOM` : "not read"}</div>
               <div style={{ fontSize: 10, color: "var(--violet)", marginTop: 2 }}>{(state?.components_by_layer?.cbom ?? 0)} crypto · {(state?.components_by_layer?.hbom ?? 0)} hardware</div>
             </div>
           </div>
           <div style={{ height: 8, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
-            <div style={{ width: `${pctOfEstate*100}%`, background: "var(--violet)" }} />
+            <div style={{ width: `${(pctOfEstate ?? 0) * 100}%`, background: "var(--violet)" }} />
             <div style={{ flex: 1, background: "var(--panel-2)" }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>● SBOM</span><span>● rest of estate</span></div>
@@ -156,7 +172,7 @@ export default function Sbom() {
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Snapshot</span><span style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{fmtSnapshotId(state?.snapshot_id).slice(0, 20)}</span></div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Version</span><Badge tone="violet">v{state?.state_version ?? 0}</Badge></div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Deps</span><span style={{ fontFamily: "var(--mono)" }}>{state?.dependency_count ?? 0} edges</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Deps</span><span style={{ fontFamily: "var(--mono)" }}>{state?.dependency_count ?? "—"} edges</span></div>
             <div style={{ padding: "8px 10px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11, fontFamily: "var(--mono)", wordBreak: "break-all" }}>{state?.fingerprint || "— no fingerprint yet"}</div>
           </div>
         </Panel>

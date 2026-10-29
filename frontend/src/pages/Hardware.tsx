@@ -50,14 +50,18 @@ export default function Hardware() {
 
   const [sel, setSel] = useState<LiveHardwareDevice | null>(null);
 
-  const rotCells: Array<{ k: string; present: boolean; v: string; icon: Icon }> = [
-    { k: "AES-NI acceleration", present: !!hwSummary.aes_ni, v: hwSummary.aes_ni ? "present" : "absent", icon: IconAccelerator },
-    { k: "hardware RNG", present: !!hwSummary.hw_rng, v: hwSummary.hw_rng ? "present" : "absent", icon: IconSecret },
-    { k: "TPM", present: !!hwSummary.tpm_present, v: hwSummary.tpm_present ? (String(hwSummary.tpm_version ?? "present")) : "absent", icon: IconSecurity },
-    { k: "HSM", present: !!hwSummary.hsm_present, v: hwSummary.hsm_present ? "present" : "absent", icon: IconCrypto },
+  // The hardware scanner reports these four primitives in its summary. With no
+  // summary (no cycle has run) the answer is "not measured" — calling the host
+  // "absent" would be a claim about hardware nobody looked at.
+  const hwMeasured = stat.source === "live" && Object.keys(hwSummary).length > 0;
+  const rotCells: Array<{ k: string; present: boolean | null; v: string; icon: Icon }> = [
+    { k: "AES-NI acceleration", present: hwMeasured ? !!hwSummary.aes_ni : null, v: hwMeasured ? (hwSummary.aes_ni ? "present" : "absent") : "not measured", icon: IconAccelerator },
+    { k: "hardware RNG", present: hwMeasured ? !!hwSummary.hw_rng : null, v: hwMeasured ? (hwSummary.hw_rng ? "present" : "absent") : "not measured", icon: IconSecret },
+    { k: "TPM", present: hwMeasured ? !!hwSummary.tpm_present : null, v: hwMeasured ? (hwSummary.tpm_present ? String(hwSummary.tpm_version ?? "present") : "absent") : "not measured", icon: IconSecurity },
+    { k: "HSM", present: hwMeasured ? !!hwSummary.hsm_present : null, v: hwMeasured ? (hwSummary.hsm_present ? "present" : "absent") : "not measured", icon: IconCrypto },
   ];
   const cpuModel = (hwSummary.cpu as string) || (devices.find((d) => d.type === "CPU")?.vendor) || "—";
-  const rotPresent = rotCells.filter(c => c.present).length;
+  const rotPresent = rotCells.filter(c => c.present === true).length;
   const deviceTypes = useMemo(() => {
     const m: Record<string, number> = {};
     for (const d of devices) m[d.type] = (m[d.type] ?? 0) + 1;
@@ -87,7 +91,7 @@ export default function Hardware() {
             Hardware root of trust
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            <b style={{ color: "var(--text)" }}>{totalDevices} live devices</b> · CPU · TPM · HSM · secure elements · accelerators — from <span style={{ color: "var(--amber)", fontFamily: "var(--mono)" }}>live hardware scanner</span> {live && data?.generated_at ? `· ${new Date(data.generated_at as string).toLocaleTimeString()}` : "· awaiting scan"}.
+            <b style={{ color: "var(--text)" }}>{live && data ? `${totalDevices} live devices` : "Hardware inventory not read"}</b> · CPU · TPM · HSM · secure elements · accelerators — from <span style={{ color: "var(--amber)", fontFamily: "var(--mono)" }}>live hardware scanner</span> {live && data?.generated_at ? `· ${new Date(data.generated_at as string).toLocaleTimeString()}` : "· awaiting scan"}.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
             <span className="kicker" style={{ fontSize: 10 }}>LIVE SCAN INVENTORY</span>
@@ -97,13 +101,13 @@ export default function Hardware() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
-            <Ring pct={Math.min(1, totalDevices / 12)} label={String(totalDevices)} sub="devices" tone={totalDevices ? "amber" : "slate"} />
+            <Ring pct={hwMeasured ? rotPresent / 4 : 0} label={hwMeasured ? `${rotPresent}/4` : "—"} sub="root of trust" tone={hwMeasured ? (rotPresent >= 3 ? "green" : "amber") : "slate"} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>LIVE ESTATE</div>
               <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>
-                {totalDevices ? `${Object.keys(deviceTypes).length} types · ${rotPresent}/4 RoT present` : "No hardware yet — run a scan"}
+                {live && data ? `${Object.keys(deviceTypes).length} types · ${hwMeasured ? `${rotPresent}/4 RoT present` : "RoT not measured"}` : "inventory read did not return"}
               </div>
-              <div style={{ marginTop: 6 }}><Bar value={totalDevices ? Math.min(1, totalDevices / 12) : 0} tone={totalDevices ? "amber" : "slate"} /></div>
+              <div style={{ marginTop: 6 }}><Bar value={hwMeasured ? rotPresent / 4 : 0} tone={hwMeasured ? (rotPresent >= 3 ? "green" : "amber") : "slate"} /></div>
             </div>
           </Panel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -138,13 +142,13 @@ export default function Hardware() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>ROOT OF TRUST</div>
-              <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{rotPresent}/4</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>{rotPresent === 4 ? "Complete" : rotPresent >= 2 ? "Partial" : "Minimal"}</div>
+              <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: hwMeasured ? "var(--text)" : "var(--slate)" }}>{hwMeasured ? `${rotPresent}/4` : "—"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{!hwMeasured ? "no hardware summary yet" : rotPresent === 4 ? "Complete" : rotPresent >= 2 ? "Partial" : "Minimal"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: rotPresent >= 3 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${rotPresent >= 3 ? "var(--green)" : "var(--line)"}`, color: rotPresent >= 3 ? "var(--green)" : "var(--faint)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <Bar value={rotPresent / 4} tone={rotPresent >= 3 ? "green" : rotPresent >= 2 ? "amber" : "slate"} />
+            <Bar value={hwMeasured ? rotPresent / 4 : 0} tone={rotPresent >= 3 ? "green" : rotPresent >= 2 ? "amber" : "slate"} />
             <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>AES-NI · RNG · TPM · HSM</div>
           </div>
         </div>
@@ -187,13 +191,13 @@ export default function Hardware() {
       </div>
 
       {/* Root of trust — visual cards */}
-      <Panel title="Root of trust" sub={`${rotPresent} of 4 hardware primitives present — live hardware scanner`}>
+      <Panel title="Root of trust" sub={hwMeasured ? `${rotPresent} of 4 hardware primitives present — live hardware scanner` : "No hardware summary in the last cycle — nothing measured"}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
           {rotCells.map((cell) => (
             <div key={cell.k} style={{
               padding: "12px 14px",
-              border: `1px solid ${cell.present ? "color-mix(in srgb, var(--green) 30%, var(--line))" : "var(--line)"}`,
-              borderTop: `2px solid ${cell.present ? "var(--green)" : "var(--line-strong)"}`,
+              border: `1px solid ${cell.present ? "color-mix(in srgb, var(--green) 30%, var(--line))" : cell.present === false ? "color-mix(in srgb, var(--red) 24%, var(--line))" : "var(--line)"}`,
+              borderTop: `2px solid ${cell.present ? "var(--green)" : cell.present === false ? "var(--red)" : "var(--line-strong)"}`,
               borderRadius: "var(--r)",
               background: cell.present ? "color-mix(in srgb, var(--green) 6%, var(--panel))" : "var(--panel)",
               display: "flex",
@@ -201,15 +205,15 @@ export default function Hardware() {
               gap: 8,
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: cell.present ? "var(--green)" : "var(--faint)", lineHeight: 0 }}><cell.icon size={16} /></span>
+                <span style={{ color: cell.present ? "var(--green)" : cell.present === false ? "var(--red)" : "var(--faint)", lineHeight: 0 }}><cell.icon size={16} /></span>
                 <span style={{
                   width: 8, height: 8, borderRadius: 99,
-                  background: cell.present ? "var(--green)" : "var(--faint)",
+                  background: cell.present ? "var(--green)" : cell.present === false ? "var(--red)" : "var(--faint)",
                   boxShadow: cell.present ? "0 0 6px var(--green)" : "none",
                 }} />
               </div>
               <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".04em", color: "var(--faint)" }}>{cell.k.toUpperCase()}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: cell.present ? "var(--green)" : "var(--faint)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: cell.present ? "var(--green)" : cell.present === false ? "var(--red)" : "var(--faint)" }}>
                 {cell.present ? <StatusMark ok muted /> : null}{cell.v}
               </div>
             </div>
@@ -218,7 +222,7 @@ export default function Hardware() {
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap", fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>
           <span style={{ padding: "3px 8px", borderRadius: 999, background: "var(--panel-2)", border: "1px solid var(--line)" }}>host <b style={{ color: "var(--text)" }}>{String(hwSummary.host ?? data?.host ?? "—")}</b></span>
           <span style={{ padding: "3px 8px", borderRadius: 999, background: "var(--panel-2)", border: "1px solid var(--line)" }}>cpu <b style={{ color: "var(--text)" }}>{cpuModel}</b></span>
-          <span style={{ marginLeft: "auto", color: "var(--faint)" }}>{rotPresent}/4 primitives · {devices.length} devices</span>
+          <span style={{ marginLeft: "auto", color: "var(--faint)" }}>{hwMeasured ? `${rotPresent}/4 primitives · ` : ""}{devices.length} devices</span>
         </div>
       </Panel>
 

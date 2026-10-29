@@ -410,12 +410,40 @@ describe("simulation workspace", () => {
     expect(screen.getByText(/not stored: a result that matched nothing/)).toBeInTheDocument();
   });
 
-  it("says there is no twin instead of simulating over nothing", async () => {
-    mockFetch({ [`${BASE}/catalog`]: new Response(JSON.stringify({ detail: { error: "no_estate_discovery" } }), { status: 404 }) });
+  it("says there is no twin instead of simulating over nothing, and offers the job that creates one", async () => {
+    const fetchMock = mockFetch({
+      [`${BASE}/catalog`]: new Response(JSON.stringify({ detail: { error: "no_estate_discovery" } }), { status: 404 }),
+      "/api/v1/estate/evidence/summary": new Response(
+        JSON.stringify({ detail: { error: "no_estate_discovery", reason: "no estate discovery has run for this tenant" } }),
+        { status: 404 }),
+      "/api/v1/estate/evidence/scan": {
+        model: "cryptoscan.estate-discovery-job/1", run_id: 7, estate: "default", scope: null,
+        projection_id: "p1",
+        collectors: [
+          { plane: "NETWORK", status: "COMPLETE", expected: 0, collected: 0,
+            reason: "no network observation run is stored (NOT_OBSERVED, not 'no crypto')",
+            impact: null, is_failure: false },
+          { plane: "CLOUD", status: "NOT_ATTEMPTED", expected: 0, collected: 0,
+            reason: null, impact: "CLOUD was not requested", is_failure: true },
+        ],
+        lifecycle: [], summary: { assets: 0, evidence: 0, relationships: 0, projection_id: "p1" },
+      },
+    });
     renderWithProviders(<Simulation />);
 
     expect(await screen.findByRole("heading", { name: "No twin to simulate against" })).toBeInTheDocument();
     expect(screen.getByText(/Nothing has been discovered yet/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Run discovery" })).toHaveAttribute("href", "/scanners");
+
+    // The affordance is the discovery job itself, not a link to live scanning:
+    // scanning collects evidence, discovery is the join this page reads.
+    fireEvent.click(await screen.findByRole("button", { name: "Run estate discovery" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/estate/evidence/scan", expect.objectContaining({ method: "POST" })));
+
+    expect(await screen.findByText(/estate discovery stored \(run 7\)/)).toBeInTheDocument();
+    expect(screen.getByText(/NOT_OBSERVED, not an estate without crypto/)).toBeInTheDocument();
+    // the page re-reads its own endpoint after the job
+    await waitFor(() => expect(fetchMock.mock.calls.filter(
+      (call) => String(call[0]).includes(`${BASE}/catalog`)).length).toBeGreaterThan(1));
   });
 });

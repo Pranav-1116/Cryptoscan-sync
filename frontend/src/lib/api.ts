@@ -39,9 +39,14 @@ function errorDetail(body: unknown): string | undefined {
     return parts.length ? parts.join("; ") : undefined;
   }
   if (detail && typeof detail === "object") {
-    const message = (detail as { message?: unknown; error?: unknown }).message
-      ?? (detail as { error?: unknown }).error;
-    return typeof message === "string" ? message : undefined;
+    const record = detail as { message?: unknown; error?: unknown; reason?: unknown };
+    if (typeof record.message === "string") return record.message;
+    // Several routers answer a refusal as {error: <code>, reason: <sentence>}.
+    // The code alone ("no_estate_discovery") is not actionable; the reason is.
+    if (typeof record.reason === "string") {
+      return typeof record.error === "string" ? `${record.reason} (${record.error})` : record.reason;
+    }
+    return typeof record.error === "string" ? record.error : undefined;
   }
   return undefined;
 }
@@ -2796,7 +2801,13 @@ export async function _rsPut<T>(path: string, body?: unknown): Promise<ApiResult
       credentials: "include",
     });
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) return { source: "live", ok: false, error: "HTTP " + resp.status, data: null };
+    if (!resp.ok) {
+      // keep `error` the stable HTTP code pages compare against, and carry the
+      // server's own reason alongside it (a 404 "no_estate_discovery" is a
+      // different state from a refused read, and only the reason says which).
+      const detail = errorDetail(data);
+      return { source: "live", ok: false, error: "HTTP " + resp.status, data: null, ...(detail ? { detail } : {}) };
+    }
     return { source: "live", ok: true, data: data as T };
   } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
 }
@@ -2809,7 +2820,10 @@ async function _rsGet<T>(path: string): Promise<ApiResult<T>> {
       credentials: "include",
     });
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) return { source: "live", ok: false, error: "HTTP " + resp.status, data: null };
+    if (!resp.ok) {
+      const detail = errorDetail(data);
+      return { source: "live", ok: false, error: "HTTP " + resp.status, data: null, ...(detail ? { detail } : {}) };
+    }
     return { source: "live", ok: true, data: data as T };
   } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
 }
@@ -5377,6 +5391,17 @@ export const apiEstateCreateSchedule = (body: { name: string; every: string; pla
 
 export const apiEstateScan = (body: { estate?: string; scope?: string | null; planes?: string[]; include_boms?: boolean; persist?: boolean } = {}): Promise<ApiResult<EstateScanReport>> =>
   _rsPost<EstateScanReport>("/api/v1/estate/evidence/scan", body);
+
+/** Whether this tenant has a stored estate-discovery run at all.
+ *
+ * Every ``/estate/evidence/*`` read 404s with ``no_estate_discovery`` until one
+ * job has run, and a payload-less client cannot invent the evidence that job
+ * reads. This probe lets a page tell "nothing has been discovered yet" apart
+ * from "the read failed", so it can offer the one action that fixes it instead
+ * of blaming the operator's scope.
+ */
+export const apiEstateSummary = (): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsGet<Record<string, unknown>>("/api/v1/estate/evidence/summary");
 
 export const apiEstateBoms = (bom?: string): Promise<ApiResult<Record<string, unknown>>> =>
   _rsGet<Record<string, unknown>>(`/api/v1/estate/evidence/boms${bom ? `?bom=${encodeURIComponent(bom)}` : ""}`);

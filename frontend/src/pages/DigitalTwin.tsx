@@ -24,15 +24,19 @@ export default function DigitalTwin() {
   const simulate = async () => { if (!selected) return; setBusy(true); const payload: Record<string, unknown> = {}; for (const [k, v] of Object.entries(params)) { if (v === "") continue; if (k === "actions") payload[k] = v.split(",").map((x) => x.trim()).filter(Boolean); else if (/^\d+(\.\d+)?$/.test(v)) payload[k] = Number(v); else payload[k] = v; } setResult(await apiDigitalTwinSimulate(selected, payload) as ApiResult<SimulateResp>); setBusy(false); };
   const loadTimeline = async () => { if (!timelineAsset.trim()) return; setTimeline(await apiDigitalTwinTimeline(timelineAsset.trim()) as ApiResult<TimelineResp>); };
   const res = result?.data; const unknowns = res?.honest_unknowns ?? []; const fidelityUnknowns = fid.honest_unknowns ?? []; const quantum = ov?.quantum_mix ?? {}; const timelineEvents = timeline?.data?.events ?? [];
+  // A twin that was never read is not a twin holding zero assets: every figure
+  // below renders "—" until the overview read returned.
+  const ovRead = overview.source === "live" && ov != null;
+  const n = (v: number | undefined | null) => (ovRead ? String(v ?? 0) : "—");
   const overviewCards = useMemo(() => [
-    { k: "twin assets", v: ov?.twin_assets ?? 0, sub: "live crypto replicas", accent: "var(--cyan)" },
-    { k: "systems", v: ov?.systems ?? 0, sub: "registered estate systems", accent: "var(--violet)" },
-    { k: "certificates", v: ov?.certificates ?? 0, sub: "inventory certificates", accent: "var(--amber)" },
-    { k: "evidence records", v: ov?.evidence_records ?? 0, sub: "source-scan findings", accent: "var(--green)" },
-    { k: "dependency edges", v: ov?.dependency_edges ?? 0, sub: ov?.dependency_source && ov.dependency_source !== "none" ? `from ${ov.dependency_source.replace(/_/g, " ")}` : "no graph yet", accent: "var(--slate)" },
-    { k: "network observed", v: `${ov?.network_endpoints_observed ?? 0}/${ov?.network_endpoints ?? 0}`, sub: "observed / total incl. targets", accent: "var(--cyan)" },
-    { k: "hardware fleet", v: `${ov?.hardware_hsms ?? 0} HSMs`, sub: `${ov?.hardware_assets ?? 0} hardware assets`, accent: "var(--green)" },
-  ], [ov]);
+    { k: "twin assets", v: n(ov?.twin_assets), sub: ovRead ? "live crypto replicas" : "overview not read", accent: "var(--cyan)" },
+    { k: "systems", v: n(ov?.systems), sub: ovRead ? "registered estate systems" : "overview not read", accent: "var(--violet)" },
+    { k: "certificates", v: n(ov?.certificates), sub: ovRead ? "inventory certificates" : "overview not read", accent: "var(--amber)" },
+    { k: "evidence records", v: n(ov?.evidence_records), sub: ovRead ? "source-scan findings" : "overview not read", accent: "var(--green)" },
+    { k: "dependency edges", v: n(ov?.dependency_edges), sub: ovRead ? (ov?.dependency_source && ov.dependency_source !== "none" ? `from ${ov.dependency_source.replace(/_/g, " ")}` : "no graph yet") : "overview not read", accent: "var(--slate)" },
+    { k: "network observed", v: ovRead ? `${ov?.network_endpoints_observed ?? 0}/${ov?.network_endpoints ?? 0}` : "—", sub: ovRead ? "observed / total incl. targets" : "overview not read", accent: "var(--cyan)" },
+    { k: "hardware fleet", v: ovRead ? `${ov?.hardware_hsms ?? 0} HSMs` : "—", sub: ovRead ? `${ov?.hardware_assets ?? 0} hardware assets` : "overview not read", accent: "var(--green)" },
+  ], [ov, ovRead]);
   const fidelityPct = fid.coverage?.systems_covered_pct != null ? fid.coverage.systems_covered_pct / 100 : fid.staleness?.staleness_pct != null ? 1 - fid.staleness.staleness_pct / 100 : 0;
 
   return (
@@ -55,7 +59,7 @@ export default function DigitalTwin() {
             <Ring pct={fidelityPct} label={fid.coverage?.systems_covered_pct != null ? `${fid.coverage.systems_covered_pct}%` : ov?.twin_assets ? String(ov.twin_assets) : "—"} sub="fidelity" tone={fidelityPct >= 0.6 ? "green" : fidelityPct > 0 ? "amber" : "slate"} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>REPLICA FIDELITY</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 135, lineHeight: 1.4 }}>{fid.twin?.assets ?? ov?.twin_assets ?? 0} replicas · {fid.staleness?.assets_fresh ?? 0} fresh · {fid.staleness?.assets_stale ?? 0} stale</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 135, lineHeight: 1.4 }}>{!ovRead ? "overview not read" : `${fid.twin?.assets ?? ov?.twin_assets ?? 0} replicas · ${fid.staleness?.assets_fresh ?? 0} fresh · ${fid.staleness?.assets_stale ?? 0} stale`}</div>
               <div style={{ marginTop: 6 }}><Bar value={fidelityPct} tone={fidelityPct >= 0.6 ? "green" : fidelityPct > 0 ? "amber" : "slate"} /></div>
             </div>
           </Panel>
@@ -96,12 +100,12 @@ export default function DigitalTwin() {
           <div style={{ padding: 14 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {[
-                ["assets fresh", String(fid.staleness?.assets_fresh ?? 0)],
-                ["assets stale", String(fid.staleness?.assets_stale ?? 0)],
+                ["assets fresh", fid.twin == null ? "—" : String(fid.staleness?.assets_fresh ?? 0)],
+                ["assets stale", fid.twin == null ? "—" : String(fid.staleness?.assets_stale ?? 0)],
                 ["staleness", fid.staleness?.staleness_pct == null ? "—" : `${fid.staleness.staleness_pct}%`],
-                ["journal events", String(fid.twin?.journal_events ?? 0)],
-                ["max CBOM version", String(fid.twin?.cbom_versions?.max ?? "—")],
-                ["systems with twin state", `${fid.twin?.systems_with_twin_state ?? 0} / ${fid.twin?.systems_known ?? 0}`],
+                ["journal events", fid.twin == null ? "—" : String(fid.twin.journal_events ?? 0)],
+                ["max CBOM version", fid.twin == null ? "—" : String(fid.twin.cbom_versions?.max ?? "—")],
+                ["systems with twin state", fid.twin == null ? "—" : `${fid.twin.systems_with_twin_state ?? 0} / ${fid.twin.systems_known ?? 0}`],
                 ["coverage", fid.coverage?.systems_covered_pct == null ? "unknown" : `${fid.coverage.systems_covered_pct}%`],
                 ["network observed", fid.coverage?.network_observed_pct == null ? "no endpoints" : `${fid.coverage.network_endpoints_observed ?? 0}/${fid.coverage.network_endpoints ?? 0} (${fid.coverage.network_observed_pct}%)`],
               ].map(([k, v]) => <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 10px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}><span style={{ fontSize: 11, color: "var(--faint)" }}>{k}</span><span style={{ fontWeight: 700, fontSize: 12, fontFamily: "var(--mono)" }}>{v}</span></div>)}

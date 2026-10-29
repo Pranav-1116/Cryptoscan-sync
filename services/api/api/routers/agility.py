@@ -77,13 +77,19 @@ def list_agility(user: str = Depends(get_current_user), db: Session = Depends(ge
             row["previous_agility_score"] = previous.agility_score
             row["score_delta"] = int(row.get("agility_score") or 0) - previous.agility_score
     scores = [int(row.get("agility_score") or 0) for row in rows]
-    avg = round(sum(scores) / len(scores), 1) if scores else 0
+    # An estate with nothing scored has no average. Reporting 0.0 made an
+    # unmeasured estate indistinguishable from one where every system scored
+    # zero — and every client had to special-case it to avoid printing a
+    # fabricated "0/100, rigid". `average_basis` says what the number is over.
+    avg = round(sum(scores) / len(scores), 1) if scores else None
     dist = {"EXCELLENT": 0, "GOOD": 0, "MODERATE": 0, "POOR": 0, "CRITICAL": 0}
     for row in rows:
         dist[str(row.get("category") or "CRITICAL")] = dist.get(str(row.get("category") or "CRITICAL"), 0) + 1
     return {
         "systems": rows,
         "average": avg,
+        "average_basis": "scored_systems",
+        "scored_systems": len(scores),
         "distribution": dist,
         "trend": portfolio_trend(rows),
         "systems_truncated": _trunc,

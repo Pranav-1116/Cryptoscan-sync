@@ -15,7 +15,11 @@ const SEV_TONE: Record<string, string> = {
 };
 
 function prop(component: NbomComponent, key: string): string | undefined {
-  return component.properties.find((p) => p.name === `cryptoscan:${key}`)?.value;
+  // CycloneDX allows a component with no properties array. Reading `.find` off
+  // it threw and blanked the whole page — one sparse component, no NBOM.
+  const properties = component.properties;
+  if (!Array.isArray(properties)) return undefined;
+  return properties.find((p) => p.name === `cryptoscan:${key}`)?.value;
 }
 
 export default function Nbom() {
@@ -27,11 +31,14 @@ export default function Nbom() {
   const load = useCallback(async () => {
     setLoading(true);
     const res = await apiNbomLive();
-    if (res.ok && res.data) {
+    // `call()` reports through `source`/`data`, never `ok`: gating on `ok` was
+    // always false, so a working endpoint rendered as "no network inventory".
+    if (res.source === "live" && res.data) {
       setData(res.data);
       setError(null);
     } else {
-      setError(res.error || "No network inventory available yet.");
+      // A failed read is not an empty network. Say which one happened.
+      setError(res.detail || res.error || "The NBOM read did not return");
       setData(null);
     }
     setLoading(false);
@@ -58,8 +65,10 @@ export default function Nbom() {
     return { byKind: sortedKind, unobserved, observed };
   }, [components, summary]);
 
-  const posturePct = components.length ? Math.max(0, 1 - (critical ? critical / Math.max(1, components.length) : 0)) : 0;
-  const ringTone = critical ? "red" : high ? "amber" : components.length ? "green" : "slate";
+  // The share of wire components the scan actually observed. There is no
+  // server-side posture score, and a client must not invent one.
+  const observedPct = components.length ? analytics.observed / components.length : null;
+  const ringTone = !data ? "slate" : critical ? "red" : high ? "amber" : "slate";
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -67,7 +76,7 @@ export default function Nbom() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
-            <span style={{ width: 6, height: 6, borderRadius: 99, background: critical ? "var(--red)" : "var(--green)" }} /> BOMS · NBOM · NETWORK EXPOSURE
+            <span style={{ width: 6, height: 6, borderRadius: 99, background: !data ? "var(--slate)" : critical ? "var(--red)" : "var(--green)" }} /> BOMS · NBOM · NETWORK EXPOSURE
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--accent)", color: "var(--on-accent)" }}><IconCrypto size={18} /></span>
@@ -86,11 +95,12 @@ export default function Nbom() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
-            <Ring pct={posturePct} label={loading ? "…" : String(components.length)} sub="components" tone={ringTone} />
+            <Ring pct={observedPct ?? 0} label={loading ? "…" : data ? String(components.length) : "—"} sub="components" tone={ringTone} />
             <div>
-              <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>WIRE POSTURE</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{critical ? `${critical} critical need rotation` : high ? `${high} high need hardening` : components.length ? "No critical exposure" : "No wire inventory yet"}</div>
-              <div style={{ marginTop: 6 }}><Bar value={posturePct} tone={ringTone} /></div>
+              <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>WIRE COMPONENTS</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{!data ? "NBOM not read" : critical ? `${critical} critical by server severity` : high ? `${high} high by server severity` : components.length ? "No critical/high severity returned" : "NBOM returned no components"}</div>
+              <div style={{ marginTop: 6 }}><Bar value={observedPct ?? 0} tone={ringTone} /></div>
+              <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 4 }}>{observedPct == null ? "no components to probe" : `${Math.round(observedPct * 100)}% probed by the scanner`}</div>
             </div>
           </Panel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -107,7 +117,7 @@ export default function Nbom() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconTarget size={12} /> WIRE COMPONENTS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : components.length.toLocaleString()}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : data ? components.length.toLocaleString() : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Listeners · certs · tunnels</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconHardware size={16} /></span>
@@ -123,7 +133,7 @@ export default function Nbom() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconWarn size={12} /> CRITICAL FINDINGS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: critical ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : critical}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: critical ? "var(--red)" : data ? "var(--text)" : "var(--slate)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : data ? critical : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{totalFindings} total findings</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: critical ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${critical ? "var(--red)" : "var(--green)"}`, color: critical ? "var(--red)" : "var(--green)" }}><IconSecurity size={16} /></span>
@@ -138,7 +148,7 @@ export default function Nbom() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconClock size={12} /> UNOBSERVED</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: analytics.unobserved ? "var(--amber)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : analytics.unobserved}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: analytics.unobserved ? "var(--amber)" : "var(--dim)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : data ? analytics.unobserved : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Never successfully probed</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: analytics.unobserved ? "color-mix(in srgb, var(--amber) 12%, transparent)" : "color-mix(in srgb, var(--green) 12%, transparent)", border: `1px solid ${analytics.unobserved ? "var(--amber)" : "var(--green)"}`, color: analytics.unobserved ? "var(--amber)" : "var(--green)" }}><IconClock size={16} /></span>
@@ -337,6 +347,12 @@ export default function Nbom() {
         </div>
       )}
 
+      {!loading && error && (
+        <div role="status" style={{ padding: "10px 14px", marginBottom: 14, background: "color-mix(in srgb, var(--amber) 8%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)", fontSize: 12, color: "var(--amber)" }}>
+          NBOM not read: {error}. Every figure above is a dash, because no network inventory was returned — an empty page is not an empty network.
+        </div>
+      )}
+
       {/* Inventory */}
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
@@ -357,14 +373,17 @@ export default function Nbom() {
                 const kind = prop(c, "kind") ?? "—";
                 const observed = prop(c, "observed") !== "False";
                 const detail = prop(c, "tls_version") ?? prop(c, "public_key_algorithm") ?? prop(c, "encryption") ?? prop(c, "protocol") ?? "—";
-                const worst = c["cryptoscan:findings"][0]?.severity;
+                // A component the scanner returned without a findings array is
+                // "no findings recorded", not a TypeError that blanks the page.
+                const findings = c["cryptoscan:findings"] ?? [];
+                const worst = findings[0]?.severity;
                 return (
                   <tr key={c["bom-ref"]} style={{ background: !observed ? "color-mix(in srgb, var(--amber) 5%, transparent)" : undefined }}>
                     <td><span className="mono" style={{ fontWeight: 600, fontSize: 12 }}>{c.name}</span></td>
                     <td><Badge tone={kind === "certificate" ? "violet" : kind === "listener" ? "cyan" : "slate"}>{kind}</Badge></td>
                     <td><span className="mono" style={{ fontSize: 11 }}>{detail}</span></td>
                     <td>{observed ? <Badge tone="green">observed</Badge> : <Badge tone="slate">unobserved</Badge>}</td>
-                    <td>{worst ? <Badge tone={SEV_TONE[worst] ?? "slate"}>{c["cryptoscan:findings"].length} findings</Badge> : <span style={{ color: "var(--faint)", fontSize: 11 }}>—</span>}</td>
+                    <td>{worst ? <Badge tone={SEV_TONE[worst] ?? "slate"}>{findings.length} findings</Badge> : <span style={{ color: "var(--faint)", fontSize: 11 }}>—</span>}</td>
                   </tr>
                 );
               })}

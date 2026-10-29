@@ -95,6 +95,14 @@ export default function Hbom() {
   }
 
   const meta = estateDoc?.metadata;
+  // "not read" is not "zero": every estate figure below is gated on the estate
+  // document actually having been returned. The two invented normalisers that
+  // used to sit in the bars (/100, /80, /50, /40, /12) are gone — a bar now only
+  // draws a ratio of two counts the document itself reports.
+  const estateRead = estateLive && estateDoc != null;
+  const ec = meta?.component_count ?? 0;
+  const anchoredShare = ec > 0 ? Math.min(1, ((meta?.hsm_count ?? 0) + (meta?.tpm_count ?? 0)) / ec) : 0;
+  const hsmShare = ec > 0 ? Math.min(1, (meta?.hsm_count ?? 0) / ec) : 0;
 
   // Live breakdown by type
   const liveByType = useMemo(() => {
@@ -111,8 +119,8 @@ export default function Hbom() {
     return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [estateDoc]);
 
-  const ringPct = estateDoc ? Math.min(1, (meta?.component_count ?? 0) / 100) : devices.length ? Math.min(1, devices.length / 50) : 0;
-  const ringTone = estateDoc ? "green" : devices.length ? "cyan" : "slate";
+  const ringPct = estateRead ? anchoredShare : 0;
+  const ringTone = estateRead ? "green" : "slate";
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -139,10 +147,12 @@ export default function Hbom() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
-            <Ring pct={ringPct} label={estateDoc ? String(meta?.component_count ?? 0) : String(devices.length)} sub={estateDoc ? "estate" : "live"} tone={ringTone} />
+            <Ring pct={ringPct} label={estateRead ? String(ec) : "—"} sub={estateRead ? "estate" : "not read"} tone={ringTone} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>HARDWARE POSTURE</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{estateDoc ? `${meta?.hsm_count ?? 0} HSM · ${meta?.tpm_count ?? 0} TPM anchored ${meta?.as_of ? new Date(meta.as_of).toLocaleDateString() : "—"}` : devices.length ? `${devices.length} live components` : "No hardware yet"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{estateRead
+                ? `${meta?.hsm_count ?? 0} HSM · ${meta?.tpm_count ?? 0} TPM anchored ${meta?.as_of ? new Date(meta.as_of).toLocaleDateString() : "—"}`
+                : estateLive ? "estate HBOM not returned" : "estate HBOM not read"}</div>
               <div style={{ marginTop: 6 }}><Bar value={ringPct} tone={ringTone} /></div>
             </div>
           </Panel>
@@ -167,8 +177,12 @@ export default function Hbom() {
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{liveByType.length ? liveByType[0][0] : "—"} top</span><span style={{ color: live ? "var(--green)" : "var(--faint)" }}>{live ? "● LIVE" : "offline"}</span></div>
-            <Bar value={devices.length ? Math.min(1, devices.length / 40) : 0} tone="cyan" />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>What this scan happened to see</div>
+            <Bar value={estateRead && estateDoc!.components.length ? Math.min(1, devices.length / estateDoc!.components.length) : 0} tone={live ? "cyan" : "slate"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>
+              {estateRead && estateDoc!.components.length
+                ? `${Math.round((devices.length / estateDoc!.components.length) * 100)}% of the persisted estate seen by this scan-run`
+                : "What this scan happened to see"}
+            </div>
           </div>
         </div>
 
@@ -176,15 +190,17 @@ export default function Hbom() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconSecurity size={12} /> ESTATE COMPONENTS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: (meta?.component_count ?? 0) ? "var(--green)" : "var(--faint)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{meta?.component_count ?? 0}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: ec ? "var(--green)" : "var(--faint)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{estateRead ? ec : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Unified persisted DB truth</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (meta?.component_count ?? 0) ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${(meta?.component_count ?? 0) ? "var(--green)" : "var(--line)"}`, color: (meta?.component_count ?? 0) ? "var(--green)" : "var(--faint)" }}><IconCertificate size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>ENV {meta?.environment || "—"}</span><span style={{ color: "var(--green)" }}>content-addressed</span></div>
-            <Bar value={meta?.component_count ? Math.min(1, meta.component_count / 80) : 0} tone={(meta?.component_count ?? 0) ? "green" : "slate"} />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>ONE document — not live engine memory</div>
+            <Bar value={anchoredShare} tone={ec ? "green" : "slate"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>
+              {ec ? `${Math.round(anchoredShare * 100)}% of components carry an HSM/TPM anchor` : "ONE document — not live engine memory"}
+            </div>
           </div>
         </div>
 
@@ -192,17 +208,18 @@ export default function Hbom() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconCrypto size={12} /> HSM FLEET</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{meta?.hsm_count ?? 0}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{estateRead ? meta?.hsm_count ?? 0 : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Hardware security modules</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (meta?.hsm_count ?? 0) ? "color-mix(in srgb, var(--violet) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${(meta?.hsm_count ?? 0) ? "var(--violet)" : "var(--line)"}`, color: (meta?.hsm_count ?? 0) ? "var(--violet)" : "var(--faint)" }}><IconCrypto size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-              <Badge tone={meta?.hsm_count ? "violet" : "slate"}>HSM {meta?.hsm_count ?? 0}</Badge>
-              <Badge tone={meta?.tpm_count ? "violet" : "slate"}>TPM {meta?.tpm_count ?? 0}</Badge>
+              <Badge tone={meta?.hsm_count ? "violet" : "slate"}>HSM {estateRead ? meta?.hsm_count ?? 0 : "—"}</Badge>
+              <Badge tone={meta?.tpm_count ? "violet" : "slate"}>TPM {estateRead ? meta?.tpm_count ?? 0 : "—"}</Badge>
             </div>
-            <Bar value={meta?.hsm_count ? Math.min(1, meta.hsm_count / 12) : 0} tone="violet" />
+            <Bar value={hsmShare} tone={ec ? "violet" : "slate"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{ec ? "share of estate components" : "estate not read"}</div>
           </div>
         </div>
 
@@ -255,9 +272,9 @@ export default function Hbom() {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, textAlign: "center" }}>
-            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, fontFamily: "var(--mono)" }}>{estateDoc ? (estateDoc.components.reduce((a, c) => a + (c.evidence?.evidence_ids?.length ?? 0), 0)) : 0}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>EVIDENCE REFS</div></div>
+            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, fontFamily: "var(--mono)" }}>{estateRead ? estateDoc!.components.reduce((a, c) => a + (c.evidence?.evidence_ids?.length ?? 0), 0) : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>EVIDENCE REFS</div></div>
             <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--violet) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--violet)" }}>{snapshots.length}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>SNAPSHOTS</div></div>
-            <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--green) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--green)" }}>{estateDoc ? (meta?.sources?.length ?? 0) : 0}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>SOURCES</div></div>
+            <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--green) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--green)" }}>{estateRead ? meta?.sources?.length ?? 0 : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>SOURCES</div></div>
           </div>
         </Panel>
       </div>
@@ -308,7 +325,7 @@ export default function Hbom() {
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             {estateLive && <LiveBadge source="live" label="LIVE" />}
-            <Badge tone={meta?.component_count ? "violet" : "slate"}>{meta?.component_count ?? 0} ESTATE</Badge>
+            <Badge tone={ec ? "violet" : "slate"}>{estateRead ? `${ec} ESTATE` : "estate not read"}</Badge>
             {meta?.hsm_count ? <Badge tone="violet">HSM {meta.hsm_count}</Badge> : null}
             {meta?.tpm_count ? <Badge tone="violet">TPM {meta.tpm_count}</Badge> : null}
             <Badge tone="slate">0 deps — declared</Badge>

@@ -17,6 +17,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Stat } from "../components/ui";
 import { IconTarget, IconSecurity } from "../components/icons";
+import EstateDiscoveryCta from "../components/EstateDiscoveryCta";
 import {
   apiSimulationCatalog, apiSimulationPlan, apiSimulationRun, apiSimulationRuns,
   LiveBadge, ApiResult,
@@ -162,17 +163,14 @@ export default function Simulation() {
   const [history, setHistory] = useState<SimulationRuns | null>(null);
   const [busy, setBusy] = useState<"plan" | "run" | null>(null);
 
-  useEffect(() => {
-    let live = true;
-    void (async () => {
-      const response = await apiSimulationCatalog();
-      if (!live) return;
-      setCatalog(response);
-      const first = response.data?.kinds?.[0]?.kind;
-      if (first) setKind((current) => current || first);
-    })();
-    return () => { live = false; };
+  const loadCatalog = useCallback(async () => {
+    const response = await apiSimulationCatalog();
+    setCatalog(response);
+    const first = response.data?.kinds?.[0]?.kind;
+    if (first) setKind((current) => current || first);
   }, []);
+
+  useEffect(() => { void loadCatalog(); }, [loadCatalog]);
 
   const loadHistory = useCallback(async () => {
     const response = await apiSimulationRuns();
@@ -360,8 +358,13 @@ export default function Simulation() {
               ? "Nothing has been discovered yet, so there is no evidence state to copy."
               : `The simulation catalog could not be read: ${catalog?.error}`}
             {" "}
-            <Link to="/scanners">Run discovery</Link> — a simulate over an empty estate would report
-            zero impact for everything, which is the one answer this page must never give.
+            A simulate over an undiscovered estate would report zero impact for everything, which is
+            the one answer this page must never give.
+          </div>
+          <EstateDiscoveryCta onDiscovered={loadCatalog} compact />
+          <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 4 }}>
+            Live scanning collects the raw evidence; <Link to="/scanners">scanners</Link> is where that
+            happens. Estate discovery is the join that this page reads.
           </div>
         </Panel>
       )}

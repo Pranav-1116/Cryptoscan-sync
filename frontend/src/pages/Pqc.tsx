@@ -36,18 +36,29 @@ export default function Pqc() {
     return () => { alive = false; };
   }, []);
 
-  const totalComponents = techBom?.total_components ?? 0;
-  const weakLegacy = roadmap?.weak_legacy_instances ?? 0;
-  const totalInScope = roadmap?.total_in_scope ?? 0;
+  // Each of the three reads stands on its own: a failed BOM read does not make
+  // the roadmap's numbers zero, and an unread roadmap does not mean the estate
+  // has no weak legacy primitives.
+  const tbOk = techBom != null;
+  const rmOk = roadmap != null;
+  const hndlOk = hndl != null;
+  const totalComponents: number | null = tbOk ? techBom?.total_components ?? null : null;
+  const weakLegacy: number | null = rmOk ? roadmap?.weak_legacy_instances ?? null : null;
+  const totalInScope: number | null = rmOk ? roadmap?.total_in_scope ?? null : null;
   const phases: any[] = roadmap?.phases || [];
-  const hndlTotal = hndl?.total ?? 0;
+  const hndlTotal: number | null = hndlOk ? hndl?.total ?? null : null;
   const hndlAtRisk = hndl?.at_risk;
+  const missing = [!tbOk ? "Technology BOM" : null, !rmOk ? "IR 8547 roadmap" : null, !hndlOk ? "HNDL model" : null].filter(Boolean) as string[];
 
-  // Derived visuals
-  const weakPct = totalInScope ? Math.min(1, weakLegacy / Math.max(1, totalInScope)) : 0;
-  const hndlPct = totalInScope ? Math.min(1, hndlTotal / Math.max(1, totalInScope)) : 0;
-  const readinessPct = totalInScope ? Math.max(0, 1 - weakPct) : 0;
+  // Shares of the in-scope instances the roadmap actually counted. No score is
+  // invented: "readiness" is the measured share that is not weak legacy.
+  const weakPct = totalInScope && weakLegacy != null ? Math.min(1, weakLegacy / totalInScope) : null;
+  const hndlPct = totalInScope && hndlTotal != null ? Math.min(1, hndlTotal / totalInScope) : null;
+  const readinessPct = weakPct == null ? null : Math.max(0, 1 - weakPct);
+  const readinessTone = readinessPct == null ? "slate" : readinessPct > 0.7 ? "green" : readinessPct > 0.4 ? "amber" : "red";
   const phasedTotal = useMemo(() => phases.reduce((s: number, p: any) => s + (p.instance_count || 0), 0), [phases]);
+  const num = (v: number | null | undefined) => (v == null ? "—" : v.toLocaleString());
+  const share = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -74,11 +85,11 @@ export default function Pqc() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
-            <Ring pct={readinessPct} label={`${Math.round(readinessPct * 100)}%`} sub="ready" tone={readinessPct > 0.7 ? "green" : readinessPct > 0.4 ? "amber" : "red"} />
+            <Ring pct={readinessPct ?? 0} label={readinessPct == null ? "—" : `${Math.round(readinessPct * 100)}%`} sub="ready" tone={readinessTone} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>ESTATE READINESS</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 120, lineHeight: 1.4 }}>{weakLegacy === 0 ? "No weak legacy in scope" : `${weakLegacy} weak instances need migration`}</div>
-              <div style={{ marginTop: 6 }}><Bar value={readinessPct} tone={readinessPct > 0.7 ? "green" : readinessPct > 0.4 ? "amber" : "red"} /></div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 120, lineHeight: 1.4 }}>{weakLegacy == null ? "roadmap not read" : weakLegacy === 0 ? "No weak legacy in scope" : `${weakLegacy} weak instances need migration`}</div>
+              <div style={{ marginTop: 6 }}><Bar value={readinessPct ?? 0} tone={readinessTone} /></div>
             </div>
           </Panel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -86,10 +97,16 @@ export default function Pqc() {
               Export IR 8547 Roadmap
             </AuthenticatedDownload>
             <Link to="/cbom" className="btn primary" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center" }}>Filter CBOM →</Link>
-            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{totalInScope || 0} in scope · {phasedTotal || 0} phased</span>
+            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{num(totalInScope)} in scope · {rmOk ? `${phasedTotal.toLocaleString()} phased` : "phases not read"}</span>
           </div>
         </div>
       </div>
+
+      {!loading && missing.length > 0 && (
+        <p role="status" style={{ margin: "0 0 14px", fontSize: 11.5, color: "var(--amber)" }}>
+          Not read in this load: {missing.join(", ")}. Their figures below show —, not zero.
+        </p>
+      )}
 
       {/* Top 4 metric cards — visual */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
@@ -97,48 +114,52 @@ export default function Pqc() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconHardware size={12} /> TOTAL IN-SCOPE CRYPTOGRAPHY</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : totalInScope.toLocaleString()}</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>Surveyed across Technology BOM</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : num(totalInScope)}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{rmOk ? "Counted by the IR 8547 roadmap" : "roadmap not read"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{totalComponents.toLocaleString()} components</span><span style={{ color: "var(--accent)" }}>● inventory</span></div>
-            <Bar value={totalInScope ? Math.min(1, totalInScope / 200) : 0} tone="cyan" />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Coverage = BOMs + wire observations</div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{num(totalComponents)} components in the Technology BOM</span><span style={{ color: "var(--accent)" }}>● inventory</span></div>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>
+              {tbOk
+                ? "Components across all four BOM layers — the denominator the roadmap counts against"
+                : "Technology BOM not read in this load"}
+            </div>
           </div>
         </div>
 
-        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${weakLegacy > 0 ? "var(--red)" : "var(--green)"}` }}>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${weakLegacy == null ? "var(--line-strong)" : weakLegacy > 0 ? "var(--red)" : "var(--green)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconWarn size={12} /> WEAK LEGACY PRIMITIVES</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: weakLegacy > 0 ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : weakLegacy.toLocaleString()}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: weakLegacy == null ? "var(--slate)" : weakLegacy > 0 ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : num(weakLegacy)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>DES / 3DES / RC4 / MD5 / SHA-1</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: weakLegacy ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${weakLegacy ? "var(--red)" : "var(--green)"}`, color: weakLegacy ? "var(--red)" : "var(--green)" }}>{weakLegacy ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{weakLegacy ? `${Math.round(weakPct * 100)}% of estate` : "clean"}</span><span style={{ color: weakLegacy ? "var(--red)" : "var(--green)" }}>{weakLegacy ? "action needed" : "no action"}</span></div>
-            <Bar value={weakPct} tone={weakLegacy ? "red" : "green"} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{weakPct == null ? "share not read" : weakLegacy ? `${Math.round(weakPct * 100)}% of in-scope instances` : "clean"}</span><span style={{ color: weakLegacy ? "var(--red)" : weakLegacy == null ? "var(--slate)" : "var(--green)" }}>{weakLegacy == null ? "not read" : weakLegacy ? "action needed" : "no action"}</span></div>
+            <Bar value={weakPct ?? 0} tone={weakLegacy == null ? "slate" : weakLegacy ? "red" : "green"} />
           </div>
         </div>
 
-        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${hndlAtRisk ? "var(--red)" : hndlTotal ? "var(--amber)" : "var(--green)"}` }}>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${hndlTotal == null ? "var(--line-strong)" : hndlAtRisk ? "var(--red)" : hndlTotal ? "var(--amber)" : "var(--green)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconCrypto size={12} /> HNDL CONFIDENTIALITY RISK</div>
-              <div style={{ fontSize: 32, fontWeight: 800, color: hndlAtRisk ? "var(--red)" : hndlTotal ? "var(--amber)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : hndlTotal.toLocaleString()}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: hndlTotal == null ? "var(--slate)" : hndlAtRisk ? "var(--red)" : hndlTotal ? "var(--amber)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : num(hndlTotal)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Harvest-Now-Decrypt-Later records</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hndlAtRisk ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--amber) 12%, transparent)", border: `1px solid ${hndlAtRisk ? "var(--red)" : "var(--amber)"}`, color: hndlAtRisk ? "var(--red)" : "var(--amber)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-              <Badge tone={hndlAtRisk ? "red" : hndlTotal ? "amber" : "green"}>{hndlAtRisk ? "AT RISK" : hndlTotal ? "EXPOSED" : "CLEAR"}</Badge>
-              {hndl?.critical ? <Badge tone="red">{hndl.critical} critical</Badge> : null}
+              <Badge tone={hndlTotal == null ? "slate" : hndlAtRisk ? "red" : hndlTotal ? "amber" : "green"}>{hndlTotal == null ? "NOT READ" : hndlAtRisk ? "AT RISK" : hndlTotal ? "EXPOSED" : "CLEAR"}</Badge>
+              {hndl && hndl.assessment_complete === false && <Badge tone="slate">classification not supplied</Badge>}
+              {(hndl?.by_exposure?.critical ?? 0) > 0 ? <Badge tone="red">{hndl.by_exposure.critical} critical</Badge> : null}
             </div>
-            <Bar value={hndlPct} tone={hndlAtRisk ? "red" : "amber"} />
+            <Bar value={hndlPct ?? 0} tone={hndlPct == null ? "slate" : hndlAtRisk ? "red" : "amber"} />
             <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Long-lived confidentiality horizon</div>
           </div>
         </div>
@@ -154,17 +175,19 @@ export default function Pqc() {
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
-              <div style={{ width: "28%", height: "100%", background: "var(--violet)", opacity: .9 }} />
-              <div style={{ width: "35%", height: "100%", background: "var(--accent)", opacity: .9 }} />
-              <div style={{ width: "37%", height: "100%", background: "var(--red)", opacity: .85 }} />
+              <div style={{ flex: 1, height: "100%", background: "var(--violet)", opacity: .9 }} />
+              <div style={{ flex: 1, height: "100%", background: "var(--accent)", opacity: .9 }} />
+              <div style={{ flex: 1, height: "100%", background: "var(--red)", opacity: .85 }} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>2027 purge</span><span>2030 replace</span><span>2035 disallow</span></div>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 2 }}>
+              Schematic of the standard's milestones — the segment widths are equal, not estate proportions</div>
           </div>
         </div>
       </div>
 
       {/* HNDL + Inventory visual strip */}
-      {hndl && hndlTotal > 0 && (
+      {hndl && (hndlTotal ?? 0) > 0 && (
         <div className="panel" style={{ padding: "14px 16px", marginBottom: 18, borderLeft: "3px solid var(--amber)", background: "color-mix(in srgb, var(--amber) 4%, var(--panel))" }}>
           <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -175,8 +198,8 @@ export default function Pqc() {
               </div>
             </div>
             <div style={{ flex: "1 1 180px", minWidth: 160 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 4 }}><span>exposure</span><span>{Math.round(hndlPct * 100)}% of scope</span></div>
-              <Bar value={hndlPct} tone="amber" />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 4 }}><span>exposure</span><span>{share(hndlPct)} of scope</span></div>
+              <Bar value={hndlPct ?? 0} tone="amber" />
             </div>
             <Badge tone={hndlAtRisk ? "red" : "amber"}>{hndlAtRisk ? "RETENTION > HORIZON" : "MONITORED"}</Badge>
           </div>
@@ -260,52 +283,70 @@ export default function Pqc() {
         </div>
       </div>
 
-      {/* Analytics strip — 3 visual panels */}
+      {/* Analytics strip — 3 panels, all from the roadmap read. Nothing here is a
+          modelled mix: the estate model counts instances per IR 8547 phase and the
+          weak-legacy share; it does not classify hybrid vs pure-PQC keys, so that
+          cell says so instead of showing a made-up percentage. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginBottom: 18 }}>
-        <Panel title="Quantum exposure by family" sub="share of evaluated estate" style={{ padding: "14px 16px" }}>
-          {[
-            ["RSA 2048", 0.42, "red"],
-            ["ECC P-256", 0.28, "orange"],
-            ["DH / DSA", 0.18, "amber"],
-            ["AES-128", 0.12, "cyan"],
-          ].map(([label, v, t]) => (
-            <div key={label as string} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              <span style={{ width: 90, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>{label as string}</span>
-              <div style={{ flex: 1 }}><Bar value={v as number} tone={t as string} /></div>
-              <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)", minWidth: 32, textAlign: "right" }}>{Math.round((v as number) * 100)}%</span>
+        <Panel title="Instances per migration phase" sub="counted by the roadmap read" style={{ padding: "14px 16px" }}>
+          {phases.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.5 }}>
+              {rmOk ? "The roadmap returned no phases." : "The IR 8547 roadmap was not read in this load."}
             </div>
-          ))}
-          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 8 }}>Shor-vulnerable = factory + key-length · source: TechBOM</div>
+          )}
+          {phases.map((p: any, idx: number) => {
+            const c = p.instance_count ?? 0;
+            const v = phasedTotal ? c / phasedTotal : 0;
+            return (
+              <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <span style={{ width: 90, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>{p.phase} · {p.deadline ?? "∞"}</span>
+                <div style={{ flex: 1 }}><Bar value={v} tone={c === 0 ? "slate" : c > 10 ? "red" : "amber"} /></div>
+                <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)", minWidth: 56, textAlign: "right" }}>{c} · {Math.round(v * 100)}%</span>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+            Share of the {phasedTotal} instances the roadmap placed. A phase with 0 has nothing left in it.
+          </div>
         </Panel>
 
-        <Panel title="Transition momentum" sub="remediation velocity" style={{ padding: "14px 16px" }}>
+        <Panel title="Transition momentum" sub="in-scope instances that are not weak legacy" style={{ padding: "14px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-            <div style={{ width: 54, height: 54, borderRadius: 999, background: weakLegacy ? "color-mix(in srgb, var(--amber) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `2px solid ${weakLegacy ? "var(--amber)" : "var(--green)"}`, display: "grid", placeItems: "center", color: weakLegacy ? "var(--amber)" : "var(--green)", fontSize: 18, fontWeight: 800 }}>{phasedTotal ? Math.round((1 - weakPct) * 100) : 0}%</div>
+            <div style={{ width: 54, height: 54, borderRadius: 999, background: readinessPct == null ? "var(--panel-2)" : readinessPct > 0.7 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `2px solid ${readinessTone === "slate" ? "var(--line)" : readinessTone === "green" ? "var(--green)" : readinessTone === "amber" ? "var(--amber)" : "var(--red)"}`, display: "grid", placeItems: "center", color: readinessTone === "slate" ? "var(--slate)" : readinessTone === "green" ? "var(--green)" : readinessTone === "amber" ? "var(--amber)" : "var(--red)", fontSize: 18, fontWeight: 800 }}>{readinessPct == null ? "—" : `${Math.round(readinessPct * 100)}%`}</div>
             <div>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>Migration progress</div>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>{totalInScope - weakLegacy} of {totalInScope || 0} phased to PQC</div>
-              <div style={{ fontSize: 10, color: weakLegacy ? "var(--amber)" : "var(--green)", marginTop: 2 }}>{weakLegacy ? `${weakLegacy} remain` : "on track"}</div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Not weak legacy</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>
+                {weakPct == null || totalInScope == null || weakLegacy == null
+                  ? "roadmap not read"
+                  : `${(totalInScope - weakLegacy).toLocaleString()} of ${totalInScope.toLocaleString()} in scope`}
+              </div>
+              <div style={{ fontSize: 10, color: weakLegacy ? "var(--amber)" : weakLegacy == null ? "var(--slate)" : "var(--green)", marginTop: 2 }}>
+                {weakLegacy == null ? "no figure returned" : weakLegacy ? `${weakLegacy} weak instances remain` : "nothing weak in scope"}
+              </div>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, textAlign: "center" }}>
-            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--green)" }}>{phases.filter((p: any) => (p.instance_count || 0) === 0).length}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>DONE</div></div>
-            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--amber)" }}>{phases.filter((p: any) => (p.instance_count || 0) > 0).length}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>ACTIVE</div></div>
-            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800 }}>{phases.length}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>TOTAL</div></div>
+            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--green)" }}>{rmOk ? phases.filter((p: any) => (p.instance_count || 0) === 0).length : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>DONE</div></div>
+            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--amber)" }}>{rmOk ? phases.filter((p: any) => (p.instance_count || 0) > 0).length : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>ACTIVE</div></div>
+            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800 }}>{rmOk ? phases.length : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>TOTAL</div></div>
           </div>
         </Panel>
 
-        <Panel title="Crypto agility" sub="hybrid + PQC readiness" style={{ padding: "14px 16px" }}>
+        <Panel title="What the estate model does not classify" sub="so it is not read as a readiness score" style={{ padding: "14px 16px" }}>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid var(--green)", textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>PQC ready</div><div style={{ fontSize: 18, fontWeight: 800, color: "var(--green)" }}>—</div></span>
-            <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: "var(--panel-2)", border: "1px solid var(--line)", textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>Hybrid</div><div style={{ fontSize: 18, fontWeight: 800 }}>{Math.round(readinessPct * 40)}%</div></span>
-            <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: "color-mix(in srgb, var(--red) 8%, transparent)", border: "1px solid var(--red)", textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>Legacy</div><div style={{ fontSize: 18, fontWeight: 800, color: "var(--red)" }}>{Math.round(weakPct * 100)}%</div></span>
+            <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: weakLegacy == null ? "var(--panel-2)" : "color-mix(in srgb, var(--red) 8%, transparent)", border: `1px solid ${weakLegacy == null ? "var(--line)" : "var(--red)"}`, textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>Weak legacy</div><div style={{ fontSize: 18, fontWeight: 800, color: weakLegacy == null ? "var(--slate)" : "var(--red)" }}>{share(weakPct)}</div></span>
+            <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: "var(--panel-2)", border: "1px solid var(--line)", textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>Hybrid keys</div><div style={{ fontSize: 18, fontWeight: 800, color: "var(--slate)" }}>—</div></span>
+            <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: "var(--panel-2)", border: "1px solid var(--line)", textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>Pure PQC</div><div style={{ fontSize: 18, fontWeight: 800, color: "var(--slate)" }}>—</div></span>
           </div>
           <div style={{ height: 8, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
-            <div style={{ width: `${readinessPct * 100}%`, background: "var(--green)" }} />
-            <div style={{ width: `${Math.max(0, 1 - readinessPct - 0.08) * 100}%`, background: "var(--accent)" }} />
-            <div style={{ flex: 1, background: "var(--red)" }} />
+            <div style={{ width: `${(weakPct ?? 0) * 100}%`, background: "var(--red)" }} />
+            <div style={{ flex: 1, background: "var(--slate)", opacity: 0.35 }} />
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>● classical</span><span>● hybrid</span><span>● PQC</span></div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>● weak legacy</span><span>● everything else (not classified)</span></div>
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+            No collector reports a per-key hybrid/PQC split, so this page does not print one. The
+            estate-evidence PQC read is where that question is answered, once discovery has run.
+          </div>
         </Panel>
       </div>
 

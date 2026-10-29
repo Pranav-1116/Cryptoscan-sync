@@ -149,7 +149,7 @@ export function Ring({ pct, label, sub, tone = "cyan" }: { pct: number; label: R
   const r = 62;
   const c = 2 * Math.PI * r;
   const off = c * (1 - Math.min(1, Math.max(0, pct)));
-  const colors: Record<string, string> = { cyan: "var(--accent)", green: "var(--green)", amber: "var(--amber)", orange: "var(--orange)", red: "var(--red)", violet: "var(--violet)", blue: "var(--accent)" };
+  const colors: Record<string, string> = { cyan: "var(--accent)", green: "var(--green)", amber: "var(--amber)", orange: "var(--orange)", red: "var(--red)", violet: "var(--violet)", blue: "var(--accent)", slate: "var(--slate)", muted: "var(--slate)" };
   const col = colors[tone || "cyan"] || colors.cyan;
   return (
     <div className="ring">

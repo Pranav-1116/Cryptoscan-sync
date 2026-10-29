@@ -11,12 +11,18 @@ export default function Vbom() {
   const vendorPoll = usePollingApi(apiTechBomVendor, 15000);
   const state = (live.data ?? null) as TechBomState | null;
   const vendorInv = (vendorPoll.data as TechBomVendorInventory | null) ?? null;
+  // The vendor register is its own read: without it there is no vendor count,
+  // not a vendor count of zero.
+  const vendorRead = vendorPoll.source === "live" && vendorInv != null;
+  const bomRead = live.source === "live" && state != null;
   const vendors = vendorInv?.vendors ?? [];
   const linkage = vendorInv?.linkage ?? [];
-  const vendorCount = vendorInv?.vendor_count ?? state?.components_by_layer?.vendor ?? 0;
+  const vendorCount = vendorInv?.vendor_count ?? state?.components_by_layer?.vendor ?? null;
   const vendorComponents = state?.layers?.vendor?.components ?? [];
-  const total = vendorComponents.length || vendorCount;
-  const estateTotal = state?.total_components ?? 0;
+  // Component count comes from the vendor layer; the register count is a
+  // different measurement and is never substituted for it.
+  const total = bomRead ? (state?.layers?.vendor?.count ?? vendorComponents.length) : null;
+  const estateTotal = state?.total_components ?? null;
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
@@ -28,7 +34,10 @@ export default function Vbom() {
   }, [vendors, q]);
 
   const criticalCount = vendors.filter((v) => String(v.criticality||"").toUpperCase()==="CRITICAL" || String(v.criticality||"").toUpperCase()==="HIGH").length;
-  const ringPct = estateTotal ? Math.min(1, total / Math.max(30, estateTotal * 0.4)) : Math.min(1, total / 20);
+  // Every bar below is a share of something that was actually measured, or it
+  // is not drawn: the old ones scaled against invented denominators (30/40/80).
+  const vendorShare = total != null && estateTotal ? total / estateTotal : null;
+  const linkedShare = vendorRead && vendors.length ? linkage.length / vendors.length : null;
   const coveredSystems = new Set(linkage.map((l) => l.system_id || l.system)).size;
 
   return (
@@ -50,22 +59,22 @@ export default function Vbom() {
             <span style={{ color: "var(--line-strong)" }}>·</span>
             <span className="kicker" style={{ fontSize: 10 }}>LINKED TO ESTATE</span>
             <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>{linkage.length} links · {coveredSystems} systems covered</span>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>{vendorRead ? `${linkage.length} links · ${coveredSystems} systems covered` : "vendor register not read"}</span>
           </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
-            <Ring pct={estateTotal ? total / estateTotal : 0} label={String(vendorCount)} sub="vendors" tone={vendorCount ? "green" : "slate"} />
+            <Ring pct={vendorShare ?? 0} label={vendorRead ? String(vendorCount ?? 0) : "—"} sub="vendors" tone={vendorCount ? "green" : "slate"} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>VENDOR FOOTPRINT</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{vendorCount ? `${criticalCount || 0} critical · ${linkage.length} links` : "No VBOM yet"}</div>
-              <div style={{ marginTop: 6 }}><Bar value={vendorCount ? Math.min(1, vendorCount/30) : 0} tone={vendorCount ? "green" : "slate"} /></div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 130, lineHeight: 1.4 }}>{!vendorRead ? "vendor register not read" : vendorCount ? `${criticalCount} critical · ${linkage.length} links` : "No vendors registered"}</div>
+              <div style={{ marginTop: 6 }}><Bar value={linkedShare ?? 0} tone={linkage.length ? "green" : "slate"} /></div>
             </div>
           </Panel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <Link to="/vendor" className="btn primary" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center" }}>Vendor workspace →</Link>
             <Link to="/live-asset-intelligence" className="btn outline" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center", border: "1px solid var(--line-strong)", background: "var(--panel-2)" }}>Technology BOM →</Link>
-            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{total} components · v{state?.state_version ?? 0}</span>
+            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{total == null ? "vendor layer not read" : `${total} components`} · v{state?.state_version ?? 0}</span>
           </div>
         </div>
       </div>
@@ -75,27 +84,28 @@ export default function Vbom() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconCloud size={12} /> VENDORS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{vendorCount}</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>In vendor inventory</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: vendorRead ? "var(--text)" : "var(--slate)" }}>{vendorRead ? vendorCount ?? 0 : "—"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{vendorRead ? "In vendor inventory" : "register not read"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid var(--green)", color: "var(--green)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <Bar value={vendorCount ? Math.min(1, vendorCount/40) : 0} tone="green" />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{criticalCount} critical/high — third-party risk</div>
+            <Bar value={linkedShare ?? 0} tone="green" />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{vendorRead ? `${criticalCount} critical/high by registered criticality` : "criticality not read"}</div>
           </div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${linkage.length ? "var(--accent)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>VENDOR → SYSTEM LINKS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{linkage.length}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: vendorRead ? "var(--text)" : "var(--slate)" }}>{vendorRead ? linkage.length : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{coveredSystems} systems covered</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: linkage.length ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${linkage.length ? "var(--accent)" : "var(--line)"}`, color: linkage.length ? "var(--accent)" : "var(--faint)" }}><IconCrypto size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <Bar value={linkage.length ? Math.min(1, linkage.length/80) : 0} tone={linkage.length ? "cyan" : "slate"} />
+            <Bar value={linkedShare ?? 0} tone={linkage.length ? "cyan" : "slate"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{linkedShare == null ? "links not read" : `${Math.round(linkedShare * 100)}% of registered vendors are linked to a system`}</div>
             <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Vendor supply graph</div>
           </div>
         </div>
@@ -103,14 +113,16 @@ export default function Vbom() {
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
               <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>VBOM COMPONENTS</div>
-              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{total}</div>
-              <div style={{ fontSize: 12, color: "var(--dim)" }}>Materialized vendor layer</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: bomRead ? "var(--text)" : "var(--slate)" }}>{bomRead ? total ?? 0 : "—"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{bomRead ? "Materialized vendor layer" : "Technology BOM not read"}</div>
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconComponent size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
-            <Bar value={ringPct} tone="cyan" />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>From unified asset model</div>
+            <Bar value={vendorShare ?? 0} tone={vendorShare == null ? "slate" : "cyan"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>
+              {vendorShare == null ? "share not measured" : `${Math.round(vendorShare * 100)}% of the estate's components are vendor-layer`}
+            </div>
           </div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--slate)" }}>
@@ -150,20 +162,20 @@ export default function Vbom() {
             <div style={{ width: 54, height: 54, borderRadius: 999, background: linkage.length ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `2px solid ${linkage.length ? "var(--green)" : "var(--line)"}`, display: "grid", placeItems: "center", color: linkage.length ? "var(--green)" : "var(--faint)", fontSize: 18, fontWeight: 800 }}>{linkage.length}</div>
             <div>
               <div style={{ fontSize: 12, fontWeight: 700 }}>Supply graph</div>
-              <div style={{ fontSize: 11, color: "var(--dim)" }}>{vendorCount} vendors → {coveredSystems} systems</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{vendorRead ? `${vendorCount ?? 0} vendors → ${coveredSystems} systems` : "not read"}</div>
               <div style={{ fontSize: 10, color: linkage.length ? "var(--green)" : "var(--faint)", marginTop: 2 }}>{linkage.length ? "linked" : "no links yet"}</div>
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, textAlign: "center" }}>
-            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800 }}>{vendorCount}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>VENDORS</div></div>
-            <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--green) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--green)" }}>{linkage.length}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>LINKS</div></div>
+            <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800 }}>{vendorRead ? vendorCount ?? 0 : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>VENDORS</div></div>
+            <div style={{ padding: "8px 6px", background: "color-mix(in srgb, var(--green) 8%, var(--panel-2))", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800, color: "var(--green)" }}>{vendorRead ? linkage.length : "—"}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>LINKS</div></div>
             <div style={{ padding: "8px 6px", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}><div style={{ fontSize: 16, fontWeight: 800 }}>{coveredSystems}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>SYSTEMS</div></div>
           </div>
         </Panel>
         <Panel title="Integrity" sub="snapshot + vendor posture" style={{ padding: "14px 16px" }}>
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Env</span><Badge tone="slate">{state?.environment || "—"}</Badge></div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Vendors in VBOM layer</span><span style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{total}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Vendors in VBOM layer</span><span style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{total ?? "—"}</span></div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Fingerprint</span><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{state?.fingerprint ? `${state.fingerprint.slice(0,10)}…` : "—"}</span></div>
             <div style={{ padding: "8px 10px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11, color: "var(--dim)" }}>Deep dive: <Link to="/vendor-due-diligence" style={{ color: "var(--green)" }}>Due diligence →</Link> · <Link to="/vendor" style={{ color: "var(--accent)" }}>Vendors →</Link></div>
           </div>
@@ -206,7 +218,7 @@ export default function Vbom() {
         <div style={{ padding: "10px 16px", background: "var(--bg-2)", borderTop: "1px solid var(--line)", display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: "var(--dim)" }}>
           <Link to="/live-asset-intelligence" style={{ color: "var(--accent)" }}>Technology BOM →</Link>
           <span>·</span>
-          <span>{linkage.length} vendor→system links</span>
+          <span>{vendorRead ? `${linkage.length} vendor→system links` : "vendor links not read"}</span>
           <span style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>ONE asset model · four layers</span>
         </div>
       </div>
