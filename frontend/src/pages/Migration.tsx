@@ -26,7 +26,9 @@ export default function Migration() {
   const vulnerable = inv.vulnerable_sites ?? 0;
   const ready = inv.pqc_ready_sites ?? 0;
   const progressPct = total ? Math.round((ready / total) * 100) : 0;
-  const progressTone = progressPct >= 60 ? "green" as const : progressPct >= 25 ? "amber" as const : "red" as const;
+  // No sites read ⇒ no readiness ratio. Slate, not red: an unmeasured estate is
+  // not a failing one.
+  const progressTone = total === 0 ? "slate" as const : progressPct >= 60 ? "green" as const : progressPct >= 25 ? "amber" as const : "red" as const;
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -51,10 +53,10 @@ export default function Migration() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 165, display: "flex", alignItems: "center", gap: 12 }}>
-            <Ring pct={progressPct / 100} label={`${progressPct}%`} sub="pqc-ready" tone={progressTone} />
+            <Ring pct={progressPct / 100} label={total ? `${progressPct}%` : "—"} sub="pqc-ready" tone={progressTone} />
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>MIGRATION PROGRESS</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 135, lineHeight: 1.4 }}>{ready}/{total} ready · {vulnerable} still vulnerable</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 135, lineHeight: 1.4 }}>{total ? `${ready}/${total} ready · ${vulnerable} still vulnerable` : "No sites returned — readiness not measured"}</div>
               <div style={{ marginTop: 6 }}><Bar value={progressPct / 100} tone={progressTone} /></div>
             </div>
           </Panel>
@@ -95,7 +97,7 @@ export default function Migration() {
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>MOSCA RISK MODEL</div><div style={{ fontSize: 16, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>{data.mosca?.computable ? `CRQC in ${data.mosca?.z_years_to_crqc ?? "?"}y` : "NOT COMPUTABLE"}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{data.mosca?.threat_year ? `threat year ${data.mosca.threat_year}` : data.mosca?.reason ?? "shelf-life vs migration time"}</div></div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: data.mosca?.computable ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${data.mosca?.computable ? "var(--green)" : "var(--line)"}`, color: data.mosca?.computable ? "var(--green)" : "var(--faint)" }}><IconInfo size={16} /></span>
           </div>
-          <div style={{ padding: "0 16px 12px" }}><Bar value={data.mosca?.computable ? Math.min(1, (data.mosca?.z_years_to_crqc ?? 10) / 15) : 0} tone={data.mosca?.computable ? "green" : "slate"} /></div>
+          <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)" }}>{data.mosca?.computable ? "years until a cryptographically relevant quantum computer, from the model — no fixed scale" : "not computable from the returned inputs"}</div></div>
         </div>
       </div>
 

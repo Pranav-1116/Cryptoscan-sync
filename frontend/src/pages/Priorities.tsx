@@ -32,8 +32,8 @@ function Detail({ item, onClose }: { item: RankedItem; onClose: () => void }) {
       <button onClick={onClose} style={{ fontSize: 12, padding: "6px 12px", borderRadius: "var(--r)", background: "var(--panel-2)", border: "1px solid var(--line)", cursor: "pointer", marginBottom: 12 }}>← Back to queue</button>
       <Panel title={`#${item.rank} — ${item.kind}`} sub={`${item.severity_in} · priority ${item.priority.toFixed(1)} · effort ${item.effort.toFixed(1)}`} style={{ borderTop: `2px solid ${SEV_COLOR(item.severity_in)}` } as any}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 12 }}>
-          <div style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", textAlign: "center" }}><div style={{ fontSize: 10, letterSpacing: ".06em", color: "var(--faint)" }}>PRIORITY</div><div style={{ fontSize: 20, fontWeight: 800, color: "var(--amber)" }}>{item.priority.toFixed(1)}</div><Bar value={Math.min(1, item.priority / 20)} tone="amber" /></div>
-          <div style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", textAlign: "center" }}><div style={{ fontSize: 10, letterSpacing: ".06em", color: "var(--faint)" }}>EFFORT</div><div style={{ fontSize: 20, fontWeight: 800 }}>{item.effort.toFixed(1)}</div><Bar value={Math.min(1, item.effort / 50)} tone={item.effort > 25 ? "amber" : "slate"} /></div>
+          <div style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", textAlign: "center" }}><div style={{ fontSize: 10, letterSpacing: ".06em", color: "var(--faint)" }}>PRIORITY</div><div style={{ fontSize: 20, fontWeight: 800, color: "var(--amber)" }}>{item.priority.toFixed(1)}</div><Bar value={Math.min(1, item.priority / 25)} tone="amber" /><div style={{ fontSize: 10, color: "var(--faint)" }}>revenue × severity × agility · max 25</div></div>
+          <div style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", textAlign: "center" }}><div style={{ fontSize: 10, letterSpacing: ".06em", color: "var(--faint)" }}>EFFORT</div><div style={{ fontSize: 20, fontWeight: 800 }}>{item.effort.toFixed(1)}</div><div style={{ fontSize: 10, color: "var(--faint)" }}>assets × complexity × (2 − agility) · no ceiling</div></div>
           <div style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", textAlign: "center" }}><div style={{ fontSize: 10, letterSpacing: ".06em", color: "var(--faint)" }}>SEVERITY</div><div style={{ fontSize: 14, fontWeight: 800, color: SEV_COLOR(item.severity_in) }}>{item.severity_in}</div><Badge tone={SEV_TONE[item.severity_in] ?? "slate"}>{item.source}</Badge></div>
           <div style={{ padding: "10px 12px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", textAlign: "center" }}><div style={{ fontSize: 10, letterSpacing: ".06em", color: "var(--faint)" }}>SOURCE</div><div style={{ fontSize: 13, fontWeight: 700 }}>{item.source}</div><div style={{ fontSize: 11, color: "var(--faint)" }}>rank {item.rank}</div></div>
         </div>
@@ -90,7 +90,7 @@ export default function Priorities() {
           </Panel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{ cov ? `profile ${cov.profile ?? "—"}` : "loading coverage…"}</span>
-            <span style={{ fontSize: 11, color: "var(--dim)", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "6px 10px", textAlign: "center" }}>Top P {topPriority.toFixed(1)} · Effort {ranked[0]?.effort.toFixed(1) ?? "—"}</span>
+            <span style={{ fontSize: 11, color: "var(--dim)", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "6px 10px", textAlign: "center" }}>Top P {ranked.length ? topPriority.toFixed(1) : "—"} · Effort {ranked[0]?.effort.toFixed(1) ?? "—"}</span>
           </div>
         </div>
       </div>
@@ -101,7 +101,7 @@ export default function Priorities() {
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>OPEN ITEMS</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{total}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>drift + runtime findings</div></div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--slate) 14%, transparent)", border: "1px solid var(--slate)", color: "var(--slate)" }}><IconComponent size={16} /></span>
           </div>
-          <div style={{ padding: "0 16px 12px" }}><Bar value={total ? Math.min(1, total / 50) : 0} tone="slate" /></div>
+          <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)" }}>{cov ? `drift ${cov.open_drift_events} · runtime ${cov.runtime_findings}` : "counting inputs…"}</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${critical ? "var(--red)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -142,7 +142,7 @@ export default function Priorities() {
                     <td><Badge tone={SEV_TONE[r.severity_in] ?? "slate"}>{r.severity_in}</Badge></td>
                     <td style={{ fontSize: 12, maxWidth: 360 }}><span style={{ color: "var(--faint)" }}>{r.kind}:</span> {r.explanation.slice(0, 80)}{r.explanation.length > 80 ? "…" : ""}</td>
                     <td style={{ fontWeight: 800, fontFamily: "var(--mono)", color: SEV_COLOR(r.severity_in) }}>{r.priority.toFixed(1)}</td>
-                    <td style={{ minWidth: 100 }}><Bar value={Math.min(1, r.effort / 50)} tone={r.effort > 25 ? "amber" : "slate"} /><span style={{ fontSize: 10, color: "var(--faint)" }}>{r.effort.toFixed(1)}</span></td>
+                    <td style={{ minWidth: 100, fontFamily: "var(--mono)" }}><span style={{ fontSize: 12 }}>{r.effort.toFixed(1)}</span><span style={{ fontSize: 10, color: "var(--faint)", display: "block" }}>unbounded</span></td>
                     <td><code style={{ fontSize: 11, background: "var(--panel-2)", padding: "2px 6px", borderRadius: "var(--r)", fontFamily: "var(--mono)" }}>{r.replacement ? r.replacement.replacement.slice(0, 28) : "—"}</code></td>
                     <td>{r.correlated.length > 0 ? <Badge tone="amber">+{r.correlated.length}</Badge> : <span style={{ color: "var(--faint)" }}>—</span>}</td>
                   </tr>

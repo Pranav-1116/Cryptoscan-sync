@@ -38,10 +38,32 @@ export default function SecurityPolicy() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [policyLive, setPolicyLive] = useState<boolean | null>(null);
+  const [policyReadError, setPolicyReadError] = useState<string | null>(null);
   const setScan = (k: string, v: unknown) => setPolicy((p) => ({ ...p, scan: { ...p.scan, [k]: v } }));
   const setPriv = (k: string, v: unknown) => setPolicy((p) => ({ ...p, privacy: { ...p.privacy, [k]: v } }));
 
-  useEffect(() => { (async () => { const r = await apiSecurityPolicyGet(); if (r.data?.policy) { setPolicy({ scan: { ...EMPTY.scan, ...r.data.policy.scan }, privacy: { ...EMPTY.privacy, ...r.data.policy.privacy } }); } if (r.data?.sector) setSector(r.data.sector); setLoading(false); })(); }, []);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const r = await apiSecurityPolicyGet();
+      if (!alive) return;
+      if (r.source === "live" && r.data?.policy) {
+        setPolicy({ scan: { ...EMPTY.scan, ...r.data.policy.scan }, privacy: { ...EMPTY.privacy, ...r.data.policy.privacy } });
+        if (r.data.sector) setSector(r.data.sector);
+        setPolicyLive(true);
+        setPolicyReadError(null);
+      } else {
+        // The stored policy was not read. The form still shows the platform's
+        // documented conservative defaults, and must say so — otherwise these
+        // look like this deployment's configured state.
+        setPolicyLive(false);
+        setPolicyReadError(r.detail || r.error || "no policy returned");
+      }
+      setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, []);
   const save = async () => {
     setSaving(true); setError(null); setSaved(null);
     const r = await apiSecurityPolicyPut(policy); setSaving(false);
@@ -57,6 +79,13 @@ export default function SecurityPolicy() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      {policyLive === false && (
+        <div role="alert" style={{ marginBottom: 14, padding: "10px 14px", borderRadius: "var(--r)", border: "1px solid var(--amber)", background: "color-mix(in srgb, var(--amber) 8%, transparent)", fontSize: 12.5, color: "var(--amber)", display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <b>Policy not read from the control plane</b>
+          <span style={{ color: "var(--dim)" }}>— the values below are the platform's documented conservative defaults, not this deployment's stored policy ({policyReadError}). Saving writes them.</span>
+        </div>
+      )}
+
       {/* Hero */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>

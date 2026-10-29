@@ -23,6 +23,8 @@ function BankingRegulatoryPage() {
   const [jurisdictionsKnown, setJurisdictionsKnown] = useState(false);
   const [selectedJurisdiction, setSelectedJurisdiction] = useState<string>("eu");
   const [actionPlan, setActionPlan] = useState<any>(null);
+  const [planState, setPlanState] = useState<"idle" | "loading" | "live" | "error">("idle");
+  const [planError, setPlanError] = useState<string | null>(null);
   const [isoInput, setIsoInput] = useState<string>(
 `<?xml version="1.0" encoding="UTF-8"?>
 <head.001.001.01 xmlns="urn:iso:std:iso:20022:tech:xsd:head.001.001.01">
@@ -74,9 +76,16 @@ function BankingRegulatoryPage() {
   useEffect(() => {
     if (!selectedJurisdiction) return;
     let alive = true;
+    setPlanState("loading");
+    setPlanError(null);
     apiBankingActionPlanJurisdiction(selectedJurisdiction).then((r) => {
-      if (alive && r.source === "live" && r.data) setActionPlan(r.data);
-    }).catch(() => {});
+      if (!alive) return;
+      if (r.source === "live" && r.data) { setActionPlan(r.data); setPlanState("live"); }
+      else { setActionPlan(null); setPlanError(r.error || "no supervisory plan returned"); setPlanState("error"); }
+    }).catch((e) => {
+      if (!alive) return;
+      setActionPlan(null); setPlanError(String(e)); setPlanState("error");
+    });
     return () => { alive = false; };
   }, [selectedJurisdiction]);
 
@@ -155,7 +164,7 @@ function BankingRegulatoryPage() {
             </div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hndlAtRisk ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `1px solid ${hndlAtRisk ? "var(--red)" : "var(--amber)"}`, color: hndlAtRisk ? "var(--red)" : "var(--amber)" }}><IconClock size={16} /></span>
           </div>
-          <div style={{ padding: "0 16px 12px" }}><Bar value={hndlAtRisk ? 1 : 0} tone={hndlAtRisk ? "red" : "amber"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Harvest-Now-Decrypt-Later window</div></div>
+          <div style={{ padding: "0 16px 12px" }}><Badge tone={hndl?.at_risk == null ? "slate" : hndlAtRisk ? "red" : "green"}>{hndl?.at_risk == null ? "at_risk not reported" : hndlAtRisk ? "at risk" : "no at-risk flag"}</Badge><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Harvest-Now-Decrypt-Later window</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${hsmPct >= 0.6 ? "var(--green)" : hsmPct > 0 ? "var(--amber)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -205,7 +214,6 @@ function BankingRegulatoryPage() {
                   </div>
                   <div style={{ fontSize: 12, color: "var(--text)" }}>{c.evidence}</div>
                   <div style={{ fontSize: 11, color: "var(--dim)" }}>{c.detail}</div>
-                  <Bar value={c.status === "satisfied" ? 1 : c.status === "gap" ? 0.35 : 0.55} tone={c.status === "satisfied" ? "green" : c.status === "gap" ? "red" : "slate"} />
                 </div>
               ))}
             </div>
@@ -265,11 +273,16 @@ function BankingRegulatoryPage() {
                   <div style={{ fontSize: 11, fontWeight: 700, color: "var(--cyan)", letterSpacing: ".04em" }}>PHASE {idx + 1}: {String(m.title || m.phase).toUpperCase()}</div>
                   <div style={{ fontSize: 12, color: "var(--text)", margin: "6px 0" }}>{m.requirement || m.description}</div>
                   <div style={{ fontSize: 11, color: "var(--dim)", display: "flex", alignItems: "center", gap: 6 }}><IconClock size={11} /> Deadline: {m.deadline || "Post-2030"}</div>
-                  <div style={{ marginTop: 8 }}><Bar value={idx === 0 ? 0.3 : idx === 1 ? 0.6 : 0.9} tone={idx === 0 ? "red" : idx === 1 ? "amber" : "green"} /></div>
                 </div>
               ))}
               {!milestones.length && <div style={{ fontSize: 12, color: "var(--dim)", gridColumn: "1/-1", padding: 12, textAlign: "center" }}>No milestones returned for this jurisdiction — framework not yet mapped.</div>}
             </div>
+          </div>
+        ) : planState === "loading" ? (
+          <div role="status" style={{ padding: 16, textAlign: "center", color: "var(--dim)", fontSize: 13 }}>Reading the {selectedJurisdiction.toUpperCase()} supervisory framework…</div>
+        ) : planState === "error" ? (
+          <div role="alert" style={{ padding: 16, textAlign: "center", color: "var(--amber)", fontSize: 13, background: "color-mix(in srgb, var(--amber) 8%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)" }}>
+            Supervisory framework not read — {planError}. Nothing is shown for {selectedJurisdiction.toUpperCase()} rather than a partial plan.
           </div>
         ) : (
           <div style={{ padding: 16, textAlign: "center", color: "var(--faint)", fontSize: 13, background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}>Select a jurisdiction to load its supervisory framework — evidence, not attestation.</div>

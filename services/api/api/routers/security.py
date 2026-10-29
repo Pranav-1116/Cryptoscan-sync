@@ -499,7 +499,7 @@ def get_scan_policy(
 
 @router.put("/policy", status_code=200)
 def put_scan_policy(
-    body: dict = Body(default={}),
+    body: dict = Body(...),
     user: str = Depends(require_roles(*_POLICY_OPERATORS)),
     db: Session = Depends(get_db_session),
 ):
@@ -508,8 +508,30 @@ def put_scan_policy(
     value is the normalized policy (unknown keys dropped)."""
     from db.models.app_setting import AppSetting
 
-    scan = (body or {}).get("scan") or {}
-    privacy = (body or {}).get("privacy") or {}
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=422, detail="policy body must be an object")
+    scan = body.get("scan")
+    privacy = body.get("privacy")
+    # A write must carry both halves. Previously an empty (or half-empty) body
+    # was accepted and silently persisted the built defaults, which reset an
+    # organisation's stored policy while returning updated=true.
+    if not isinstance(scan, dict) or not isinstance(privacy, dict) or not scan or not privacy:
+        raise HTTPException(
+            status_code=422,
+            detail="policy must include non-empty 'scan' and 'privacy' objects",
+        )
+    # Guardrails run on the *requested* values, before normalisation: build_policy
+    # coerces a looser request back to a safe one, which would otherwise turn a
+    # refused write into a silent downgrade.
+    if privacy.get("collect_private_keys") or privacy.get("collect_secrets"):
+        raise HTTPException(status_code=422, detail="sensitive-data collection is not permitted")
+    requested_mode = str(scan.get("mode", "") or "").strip().lower()
+    if requested_mode and requested_mode != "read-only":
+        raise HTTPException(status_code=422, detail="scan mode must be read-only")
+    requested_intensity = scan.get("intensity")
+    if requested_intensity is not None and requested_intensity not in ("off", "low", "medium"):
+        raise HTTPException(status_code=422, detail="intensity must be off/low/medium")
+
     sector = _active_sector(db)
     try:
         from privacy.policy import apply_sector_overrides, build_policy

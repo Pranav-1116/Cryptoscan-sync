@@ -105,7 +105,9 @@ export default function SystemHealth() {
                 <div>
                   <div style={{ fontWeight: 600, fontSize: "13px" }}>{scn.name}</div>
                   <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>
-                    State: {scn.lastObservation} · Discovered: {scn.assetsDiscovered} assets
+                    State: {scn.lastObservation} · {scn.assetsDiscovered > 0
+                      ? `Estate assets measured: ${scn.assetsDiscovered}`
+                      : "Estate asset count not measured by this engine"}
                   </div>
                 </div>
                 <Badge tone={scn.status === "Healthy" ? "green" : scn.status === "On demand" ? "neutral" : "red"}>{scn.status}</Badge>

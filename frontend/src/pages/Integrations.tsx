@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import {
-  apiIntegrations, apiDeliveries, apiTestIntegration, apiFlushDeliveries,
+  apiIntegrations, apiDeliveries, apiTestIntegration, apiFlushDeliveries, apiRegisterIntegration,
   apiVaultCredentials, apiVaultCredentialCreate, apiVaultCredentialLease,
   apiVaultLeaseRelease, apiVaultCredentialRotate, apiVaultLeases,
   LiveBadge,
@@ -132,7 +132,28 @@ export default function Integrations() {
   const deliv = usePollingApi(apiDeliveries, 12000);
   useRealtimeRefresh(ints.run, deliv.run);
   const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [form, setForm] = useState({ kind: "siem", provider: "", name: "", endpoint: "", credential_id: "" });
+  const setField = (k: string, v: string) => setForm((p) => ({ ...p, [k]: v }));
+
+  async function register() {
+    if (!form.name.trim() || !form.provider.trim()) { setMsg({ ok: false, text: "name and provider are required" }); return; }
+    setBusy("register");
+    const r = await apiRegisterIntegration({
+      kind: form.kind, provider: form.provider.trim(), name: form.name.trim(),
+      ...(form.endpoint.trim() ? { endpoint: form.endpoint.trim() } : {}),
+      ...(form.credential_id.trim() ? { credential_id: form.credential_id.trim() } : {}),
+    });
+    setBusy(null);
+    if (r.source === "live" && r.data) {
+      const id = (r.data as { integration_id?: string }).integration_id;
+      setMsg({ ok: true, text: `registered ${form.name.trim()}${id ? ` · ${String(id).slice(0, 8)}…` : ""} — endpoint is non-secret, credentials resolve from the vault` });
+      setForm({ kind: form.kind, provider: "", name: "", endpoint: "", credential_id: "" });
+      void ints.run();
+    } else {
+      setMsg({ ok: false, text: `registration refused: ${r.detail || r.error || "request failed"}` });
+    }
+  }
 
   const liveInts = (ints.data?.integrations ?? []) as Array<Record<string, unknown>>;
   const deliveries = (deliv.data?.deliveries ?? []) as Array<Record<string, unknown>>;
@@ -145,11 +166,11 @@ export default function Integrations() {
     const r = await apiTestIntegration(id);
     setBusy(null);
     if (r.ok) {
-      setMsg(`Delivery test: ${r.status} (HTTP ${r.http_status ?? "—"})`);
+      setMsg({ ok: true, text: `Delivery test: ${r.status ?? "—"} (HTTP ${r.http_status ?? "—"})` });
       void deliv.run();
       void ints.run();
     } else {
-      setMsg(`Test failed: ${r.error}`);
+      setMsg({ ok: false, text: `Test failed: ${r.error}` });
     }
   }
 
@@ -157,8 +178,9 @@ export default function Integrations() {
     setBusy("flush");
     const r = await apiFlushDeliveries(25);
     setBusy(null);
-    setMsg(r.ok ? `Flushed ${r.events_flushed} events · ${r.delivered} delivered · ${r.failed} failed`
-               : `Flush failed: ${r.error}`);
+    setMsg(r.ok
+      ? { ok: true, text: `Flushed ${r.events_flushed ?? 0} events · ${r.delivered ?? 0} delivered · ${r.failed ?? 0} failed` }
+      : { ok: false, text: `Flush failed: ${r.error}` });
     void deliv.run();
   }
 
@@ -202,26 +224,59 @@ export default function Integrations() {
         />
         {rows.length === 0 && (
           <div className="dim" style={{ fontSize: 13, marginTop: 12 }}>
-            No integrations registered yet. Connect a SIEM/SOC, ticketing (ITSM), CMDB or webhook
-            destination below; credentials are referenced from the vault, never stored.
+            No integrations registered yet. Register a SIEM/SOC, ticketing (ITSM), CMDB or SOAR
+            destination in the form below; the endpoint URL is non-secret and credentials are
+            referenced from the vault, never stored.
           </div>
         )}
         {live && (
-          <div className="row" style={{ marginTop: 12, gap: 10 }}>
-            <button className="btn primary" disabled={busy === "flush"} onClick={() => void flush()}>
-              {busy === "flush" ? "Flushing…" : "Flush outbox now (real delivery)"}
-            </button>
-            {msg && <span className="dim" style={{ fontSize: 12.5 }}>{msg}</span>}
-          </div>
+          <>
+            <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
+              <label style={{ fontSize: 11, color: "var(--dim)", display: "grid", gap: 3 }}>
+                kind
+                <select value={form.kind} onChange={(e) => setField("kind", e.target.value)} style={{ fontSize: 12, padding: "6px 8px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)", background: "var(--bg)", color: "var(--text)" }}>
+                  {["siem", "itsm", "cmdb", "soar"].map((k) => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </label>
+              <label style={{ fontSize: 11, color: "var(--dim)", display: "grid", gap: 3 }}>
+                provider
+                <input value={form.provider} onChange={(e) => setField("provider", e.target.value)} placeholder="splunk / servicenow" style={{ fontSize: 12, padding: "6px 8px", minWidth: 150, borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />
+              </label>
+              <label style={{ fontSize: 11, color: "var(--dim)", display: "grid", gap: 3 }}>
+                name
+                <input value={form.name} onChange={(e) => setField("name", e.target.value)} placeholder="SIEM prod" style={{ fontSize: 12, padding: "6px 8px", minWidth: 140, borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />
+              </label>
+              <label style={{ fontSize: 11, color: "var(--dim)", display: "grid", gap: 3 }}>
+                endpoint (https, non-secret)
+                <input value={form.endpoint} onChange={(e) => setField("endpoint", e.target.value)} placeholder="https://siem.internal/ingest" style={{ fontSize: 12, padding: "6px 8px", minWidth: 230, borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />
+              </label>
+              <label style={{ fontSize: 11, color: "var(--dim)", display: "grid", gap: 3 }}>
+                vault credential id (optional)
+                <input value={form.credential_id} onChange={(e) => setField("credential_id", e.target.value)} placeholder="credential uuid" style={{ fontSize: 12, padding: "6px 8px", minWidth: 170, borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />
+              </label>
+              <button className="btn primary" disabled={busy === "register"} onClick={() => void register()}>
+                {busy === "register" ? "Registering…" : "Register destination"}
+              </button>
+            </div>
+            <div className="row" style={{ marginTop: 12, gap: 10 }}>
+              <button className="btn" disabled={busy === "flush"} onClick={() => void flush()}>
+                {busy === "flush" ? "Flushing…" : "Flush outbox now (real delivery)"}
+              </button>
+              {msg && <Badge tone={msg.ok ? "green" : "red"}>{msg.text}</Badge>}
+            </div>
+          </>
         )}
       </Panel>
 
       {live && (
         <Panel title="Outbound delivery log" sub="cp_delivery_logs — real HTTP POST results to external systems" className="mt">
           <div className="row" style={{ gap: 8, marginBottom: 12 }}>
-            <Badge tone="green">{stats.delivered ?? 0} DELIVERED</Badge>
-            <Badge tone="red">{stats.failed ?? 0} FAILED</Badge>
-            <Badge tone="amber">{stats.skipped ?? 0} SKIPPED (air-gap/outbox)</Badge>
+            {(["delivered", "failed", "skipped"] as const).map((k) => (
+              <Badge key={k} tone={stats[k] == null ? "slate" : k === "delivered" ? "green" : k === "failed" ? "red" : "amber"}>
+                {stats[k] == null ? `${k.toUpperCase()} — NOT REPORTED` : `${stats[k]} ${k.toUpperCase()}`}
+              </Badge>
+            ))}
+            {deliveries.length === 0 && <span className="dim" style={{ fontSize: 12 }}>no delivery attempts recorded yet</span>}
           </div>
           <Table
             head={["time", "provider", "kind", "event", "status", "HTTP", "attempts"]}

@@ -332,14 +332,14 @@ function AuditLedger() {
           <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>AUDIT CHAIN</div><div style={{ fontSize: 16, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>{verify ? verify.status : verifying ? "VERIFYING…" : "—"}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{verify ? `${verify.checked} ${verify.mode === "incremental" ? "suffix" : "entries"} checked` : "Ledger-wide verdict"}</div></div>
           <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: verify?.status === "OK" ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${verify?.status === "OK" ? "var(--green)" : "var(--line)"}`, color: verify?.status === "OK" ? "var(--green)" : "var(--faint)" }}><IconSecurity size={16} /></span>
         </div>
-        <div style={{ padding: "0 16px 12px" }}><Bar value={verify?.status === "OK" ? 1 : verify?.status === "TAMPERED" ? 0.4 : 0} tone={verify?.status === "OK" ? "green" : verify?.status === "TAMPERED" ? "red" : "slate"} /></div>
+        <div style={{ padding: "0 16px 12px" }}><Bar value={verify?.status === "OK" ? 1 : verify?.status === "TAMPERED" ? 1 : 0} tone={verify?.status === "OK" ? "green" : verify?.status === "TAMPERED" ? "red" : "slate"} /></div>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--violet)" }}>
         <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>EVENTS LOADED</div><div style={{ fontSize: 28, fontWeight: 800, margin: "4px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{events.length}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{hasMore ? "more available" : "all loaded"}</div></div>
           <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconClock size={16} /></span>
         </div>
-        <div style={{ padding: "0 16px 12px" }}><Bar value={hasMore ? Math.min(1, events.length / 100) : 1} tone="violet" /></div>
+        <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)" }}>page of the ledger — the export carries all rows</div></div>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--cyan)" }}>
         <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>

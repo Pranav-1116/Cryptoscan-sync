@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
-import { apiAuthMeDetails, apiMfaEnroll, apiMfaEnable, apiMfaDisable, tenantFetch } from "../lib/api";
+import { apiAuthMeDetails, apiSsoStatus, apiMfaEnroll, apiMfaEnable, apiMfaDisable, tenantFetch } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import { ICON_MD, IconOk } from "../components/icons";
 
@@ -9,6 +9,8 @@ export default function Identity() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [roles, setRoles] = useState<any[]>([]);
+  const [sourceErrors, setSourceErrors] = useState<{ users?: string; roles?: string }>({});
+  const [samlEnabled, setSamlEnabled] = useState<boolean | null>(null);
   const [mfaSecretData, setMfaSecretData] = useState<any>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaDisablePassword, setMfaDisablePassword] = useState("");
@@ -27,24 +29,60 @@ export default function Identity() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
       };
-      const [meRes, usersRes, rolesRes] = await Promise.all([
+
+      // Each source is read independently: one refused endpoint must not blank
+      // the other two. Anything not read stays empty and is reported as such.
+      const [meRes, usersRes, rolesRes, ssoRes] = await Promise.allSettled([
         apiAuthMeDetails(),
         liveJson("/api/v1/auth/users"),
         liveJson("/api/v1/auth/roles"),
+        apiSsoStatus(),
       ]);
 
-      if (meRes.source === "live" && meRes.data) {
-        setCurrentUser(meRes.data);
+      let failure: string | null = null;
+      if (meRes.status === "fulfilled" && meRes.value.source === "live" && meRes.value.data) {
+        setCurrentUser(meRes.value.data);
       } else {
-        throw new Error(meRes.error || "authenticated identity is unavailable");
+        setCurrentUser(null);
+        failure = meRes.status === "fulfilled"
+          ? (meRes.value.error || "authenticated identity is unavailable")
+          : String(meRes.reason);
       }
-      if (Array.isArray(usersRes)) setUsers(usersRes);
-      if (Array.isArray(rolesRes)) setRoles(rolesRes);
-    } catch (err) {
-      setCurrentUser(null);
-      setUsers([]);
-      setRoles([]);
-      setMessage({ text: `Identity data unavailable: ${String(err)}`, error: true });
+
+      const nextErrors: { users?: string; roles?: string } = {};
+      if (usersRes.status === "fulfilled" && Array.isArray(usersRes.value)) {
+        setUsers(usersRes.value as any[]);
+      } else {
+        setUsers([]);
+        nextErrors.users = usersRes.status === "fulfilled"
+          ? "unexpected payload — no user array returned"
+          : String(usersRes.reason);
+      }
+      // The role catalogue is a name -> description map on the wire; it is
+      // normalised here rather than rendered raw (an object is not a list).
+      if (rolesRes.status === "fulfilled" && rolesRes.value && typeof rolesRes.value === "object") {
+        const raw = rolesRes.value as any;
+        const source = raw.roles ?? raw;
+        const list = Array.isArray(source)
+          ? source.map((r: any) => (typeof r === "string" ? { name: r, description: "" } : { name: r.name ?? r.id, description: r.description ?? "" }))
+          : Object.entries(source).map(([name, description]) => ({ name, description: String(description ?? "") }));
+        setRoles(list.filter((r) => r.name));
+        if (list.length === 0) nextErrors.roles = "role catalogue returned no roles";
+      } else {
+        setRoles([]);
+        nextErrors.roles = rolesRes.status === "fulfilled"
+          ? "unexpected payload — no role catalogue returned"
+          : String(rolesRes.reason);
+      }
+      setSourceErrors(nextErrors);
+
+      if (ssoRes.status === "fulfilled" && ssoRes.value.source === "live" && ssoRes.value.data) {
+        setSamlEnabled(!!(ssoRes.value.data as { saml_enabled?: boolean }).saml_enabled);
+      } else {
+        setSamlEnabled(null);
+      }
+
+      setMessage(failure ? { text: `Authenticated identity unavailable: ${failure}`, error: true } : null);
     } finally {
       setLoading(false);
     }
@@ -129,7 +167,7 @@ export default function Identity() {
           </div>
           <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Identity & Access Governance</h1>
           <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
-            RBAC role-based access, SCIM 2.0 provisioning lifecycle, and FIPS 140-3 hardware MFA enforcement.
+            RBAC role-based access, the SCIM 2.0 provisioning lifecycle, and TOTP (RFC 6238) multi-factor enrolment.
           </p>
         </div>
 
@@ -142,14 +180,27 @@ export default function Identity() {
           >
             SCIM 2.0 Config
           </AuthenticatedDownload>
-          <AuthenticatedDownload
-            path="/api/v1/auth/saml/metadata"
-            filename="saml-metadata.xml"
-            className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
-          >
-            SAML Metadata
-          </AuthenticatedDownload>
+          {samlEnabled === true ? (
+            <AuthenticatedDownload
+              path="/api/v1/auth/saml/metadata"
+              filename="saml-metadata.xml"
+              className="btn outline"
+              style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
+            >
+              SAML Metadata
+            </AuthenticatedDownload>
+          ) : (
+            <span
+              className="btn outline"
+              aria-disabled="true"
+              title={samlEnabled === null
+                ? "SSO status not read — SP metadata is only served when SAML is configured"
+                : "SAML is not configured on this deployment (SAML_ENABLED / SAML_IDP_ENTITY_ID unset) — the platform returns 404 rather than emitting unsigned SP metadata"}
+              style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)", opacity: 0.55, cursor: "not-allowed" }}
+            >
+              SAML Metadata
+            </span>
+          )}
         </div>
       </div>
 
@@ -185,13 +236,13 @@ export default function Identity() {
 
         <div className="panel" style={{ padding: "18px" }}>
           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            MFA / Hardware Token Posture
+            MFA posture
           </div>
           <div style={{ fontSize: "22px", fontWeight: 700, color: currentUser?.mfa_enabled ? "var(--green)" : "var(--amber)", margin: "6px 0" }}>
             {loading ? "..." : (currentUser?.mfa_enabled ? "Enforced (Active)" : "Not Enforced")}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-            RFC 6238 / FIDO2 Token
+            RFC 6238 TOTP · hardware keys not implemented
           </div>
         </div>
 
@@ -212,7 +263,7 @@ export default function Identity() {
             Active Login Sessions
           </div>
           <div style={{ fontSize: "28px", fontWeight: 700, margin: "4px 0" }}>
-            {loading ? "..." : (currentUser?.active_sessions ?? 1)}
+            {loading ? "..." : (currentUser?.active_sessions ?? "—")}
           </div>
           <div style={{ fontSize: "12px", color: "var(--green)" }}>
             24h sliding rotation window
@@ -223,9 +274,11 @@ export default function Identity() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
         {/* Hardware Token & MFA Enrolment Panel */}
         <div className="panel" style={{ padding: "24px" }}>
-          <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>FIPS 140-3 Hardware Token & MFA</h3>
+          <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Multi-Factor Authentication (TOTP)</h3>
           <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
-            Enforce time-based one-time passwords (TOTP) or hardware security key authentication for your account.
+            Enrol a time-based one-time password (TOTP, RFC 6238) authenticator for your account.
+            Hardware security keys (FIDO2/WebAuthn) are not implemented in this build — the platform
+            does not claim them.
           </p>
 
           {!currentUser?.mfa_enabled ? (
@@ -236,7 +289,7 @@ export default function Identity() {
                     Multi-factor authentication is currently <b>disabled</b> for this account. Tier-1 financial institutions mandate MFA for all privileged roles.
                   </p>
                   <Button variant="primary" onClick={handleStartEnroll} disabled={mfaSubmitting}>
-                    {mfaSubmitting ? "Generating Secret..." : "Enroll Hardware Authenticator"}
+                    {mfaSubmitting ? "Generating Secret..." : "Enroll TOTP Authenticator"}
                   </Button>
                 </div>
               ) : (
@@ -342,12 +395,41 @@ export default function Identity() {
               </div>
             ))}
             {users.length === 0 && !loading && (
-              <div style={{ textAlign: "center", padding: "24px", color: "var(--dim)", fontSize: "12.5px" }}>
-                No directory users found.
+              <div style={{ textAlign: "center", padding: "24px", color: sourceErrors.users ? "var(--amber)" : "var(--dim)", fontSize: "12.5px" }}>
+                {sourceErrors.users
+                  ? `User list not read — ${sourceErrors.users}. An empty list here is an unread list, not an empty directory.`
+                  : "The user endpoint returned no rows."}
               </div>
             )}
           </div>
         </div>
+      </div>
+
+      {/* RBAC catalogue — read from /auth/roles, never a client-side constant */}
+      <div className="panel" style={{ padding: "24px" }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>RBAC Role Catalogue</h3>
+        <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
+          The roles the platform actually enforces, with the server's own description of each.
+          Permissions are evaluated server-side on every request; this table grants nothing.
+        </p>
+        {sourceErrors.roles ? (
+          <div role="alert" style={{ padding: "12px", fontSize: "12.5px", color: "var(--amber)", background: "color-mix(in srgb, var(--amber) 8%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)" }}>
+            Role catalogue not read — {sourceErrors.roles}. No roles are shown rather than a guessed list.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "8px" }}>
+            {roles.map((r: any) => (
+              <div key={r.name} style={{ padding: "10px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
+                <div style={{ fontFamily: "var(--mono)", fontSize: "12.5px", fontWeight: 700, color: "var(--cyan)" }}>{r.name}</div>
+                <div style={{ fontSize: "11.5px", color: "var(--dim)", marginTop: "2px" }}>{r.description || "no description returned"}</div>
+              </div>
+            ))}
+            {roles.length === 0 && !loading && (
+              <div style={{ fontSize: "12.5px", color: "var(--dim)" }}>Role catalogue loaded but empty.</div>
+            )}
+            {loading && <div style={{ fontSize: "12.5px", color: "var(--dim)" }}>Reading role catalogue…</div>}
+          </div>
+        )}
       </div>
     </div>
   );

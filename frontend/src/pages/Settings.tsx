@@ -37,6 +37,7 @@ export default function Settings() {
   const [sectorMsg, setSectorMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [routeMsg, setRouteMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingSector, setSavingSector] = useState(false);
 
   useEffect(() => {
     const data = routing.data as { routing?: RouteItem[] } | null;
@@ -47,9 +48,13 @@ export default function Settings() {
 
   const saveSector = async () => {
     setSectorMsg(null);
-    if (!sectorSel) return;
+    if (!sectorSel || savingSector) return;
+    setSavingSector(true);
     const r = await apiSetActiveSector(sectorSel);
-    setSectorMsg({ ok: r.ok, text: r.ok ? `Active sector → ${sectorSel}` : r.error || "failed" });
+    setSavingSector(false);
+    setSectorMsg({ ok: r.ok, text: r.ok ? `Active sector → ${r.sector || sectorSel}` : r.error || "failed" });
+    // Re-read the active profile: the acknowledgement is not the new state.
+    if (r.ok) void sector.run();
   };
 
   const saveRouting = async () => {
@@ -85,8 +90,11 @@ export default function Settings() {
               {(sectors.data?.sectors ?? []).map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
+              {!sectors.data && <option value="">{sectors.running ? "reading sector catalogue…" : "sector catalogue unavailable"}</option>}
             </select>
-            <button className="btn primary" onClick={() => void saveSector()} disabled={saving || !sectorSel}>Save</button>
+            <button className="btn primary" onClick={() => void saveSector()} disabled={savingSector || !sectorSel}>
+              {savingSector ? "Saving…" : "Save"}
+            </button>
           </div>
           {sector.data && (
             <div className="dim" style={{ fontSize: 12.5, marginTop: 10 }}>
@@ -100,7 +108,7 @@ export default function Settings() {
           <div className="mono-list">
             <Row k="SAML 2.0" v={ssoData?.saml_enabled ? <Badge tone="green">enabled</Badge> : <Badge tone="">disabled</Badge>} />
             <Row k="LDAP / AD" v={ssoData?.ldap_enabled ? <Badge tone="green">enabled</Badge> : <Badge tone="">disabled</Badge>} />
-            <Row k="Directory groups" v="map to the 8-role RBAC catalog" />
+            <Row k="Directory groups" v="map to the platform RBAC catalogue" />
             <Row k="Unmapped users" v="default to read-only" />
           </div>
         </Panel>
