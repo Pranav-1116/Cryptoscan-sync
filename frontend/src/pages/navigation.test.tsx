@@ -34,7 +34,8 @@ describe("primary workspace CTAs", () => {
 
   it("routes the CBOM dependency CTA to an actual graph workspace", async () => {
     await act(async () => { mount(<Cbom />, "/cbom"); });
-    const graph = screen.getByRole("link", { name: "View Dependency Graph" });
+    // the CBOM hero and its inventory footer both link to the graph workspace
+    const [graph] = screen.getAllByRole("link", { name: "Dependency graph →" });
     expect(graph).toHaveAttribute("href", "/dependency-graph");
     fireEvent.click(graph);
     expect(screen.getByTestId("location")).toHaveTextContent("/dependency-graph");

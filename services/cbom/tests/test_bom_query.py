@@ -320,3 +320,82 @@ def test_live_endpoints_distinguish_inventory_variation(sqlite_app):
     assert {row["value"] for variation in dossier["variations"]
             for row in variation["values"]} == {"128", "256"}
     assert {variation["bom"] for variation in dossier["variations"]} == {"cbom", "techbom"}
+
+
+# ── Estate-wide summary (the CBOM page's headline cards) ─────────────
+
+
+def test_summary_counts_every_identity_not_the_filtered_result():
+    """A filtered table must not relabel a subset total as the estate total."""
+    result = query_boms(_boms(), identity="crypto:RSA-2048")
+    assert result["identities_matching"] == 1
+    summary = result["summary"]
+    # five canonical identities exist: AES-256, RSA-2048, SHA-1, payment api, Thales
+    assert summary["identities"] == 5
+    assert result["identities_total"] == summary["identities"]
+    assert summary["linked"] == 2          # RSA-2048, payment api
+    assert summary["single_source"] == 3   # AES-256, SHA-1, Thales
+    assert summary["linked"] + summary["single_source"] == summary["identities"]
+    assert summary["asset_identity_confirmed"] is False
+    assert "estate-wide" in summary["scope"]
+
+
+def test_summary_kind_and_bom_participation_are_ranked_and_complete():
+    summary = query_boms(_boms())["summary"]
+    kinds = {row["kind"]: row["identities"] for row in summary["by_kind"]}
+    assert kinds == {"crypto": 3, "application": 1, "vendor": 1}
+    counts = [row["identities"] for row in summary["by_kind"]]
+    assert counts == sorted(counts, reverse=True)  # largest first, deterministic
+    # an identity is counted once per BOM that actually observed it
+    participation = {row["bom"]: row["identities"] for row in summary["by_bom"]}
+    assert participation == {"cbom": 3, "techbom": 3, "vbom": 1}
+
+
+def test_summary_conflicts_match_the_unfiltered_conflict_count():
+    unfiltered = query_boms(_boms())
+    filtered = query_boms(_boms(), unlinked_only=True)
+    assert unfiltered["summary"]["conflict_count"] == unfiltered["conflict_count"]
+    assert filtered["summary"]["conflict_count"] == unfiltered["conflict_count"]
+    assert filtered["conflict_count"] == 0  # the filtered rows hold none
+    assert (filtered["summary"]["variation_count"]
+            == unfiltered["variation_count"] == unfiltered["summary"]["variation_count"])
+
+
+def test_empty_estate_summary_is_zero_not_missing():
+    summary = query_boms({})["summary"]
+    assert summary["identities"] == 0
+    assert summary["linked"] == 0
+    assert summary["single_source"] == 0
+    assert summary["conflict_count"] == 0
+    assert summary["by_kind"] == []
+    assert summary["by_bom"] == []
+
+
+def test_query_endpoint_returns_the_estate_summary(sqlite_app):
+    client, db_url = sqlite_app
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import db.models  # noqa: F401
+    from db.models.crypto_asset import CryptoAsset
+
+    eng = create_engine(db_url)
+    session = sessionmaker(bind=eng)()
+    session.add_all([
+        CryptoAsset(algorithm="RSA-2048", key_size=2048, purpose="ENCRYPTION",
+                    file_path="a.py", line_number=1, confidence="HIGH"),
+        CryptoAsset(algorithm="AES-256", key_size=256, purpose="ENCRYPTION",
+                    file_path="b.py", line_number=2, confidence="HIGH"),
+    ])
+    session.commit()
+    session.close()
+    eng.dispose()
+
+    admin = _login(client)
+    body = client.get("/api/v1/cbom/query", headers=admin,
+                      params={"algorithm": "rsa"}).json()
+    summary = body["summary"]
+    assert summary["identities"] >= 1
+    assert any(row["bom"] == "techbom" for row in summary["by_bom"])
+    # the filter narrowed the rows but not the estate arithmetic
+    assert summary["identities"] >= body["identities_matching"]

@@ -19,11 +19,27 @@ const renderPage = () =>
     </MemoryRouter>,
   );
 
-const queryResponse = (matches: unknown[]) => ({
+/* The backend computes the estate-wide summary (services/cbom/bom_query.py);
+ * this fixture mirrors that arithmetic so the page's headline cards are
+ * always echoing server numbers rather than counting rows in the browser. */
+const summary = (matches: any[]) => ({
+  identities: matches.length,
+  linked: matches.filter((m) => m.linked).length,
+  single_source: matches.filter((m) => !m.linked).length,
+  conflict_count: matches.reduce((n, m) => n + (m.conflicts?.length || 0), 0),
+  variation_count: matches.reduce((n, m) => n + (m.variations?.length || 0), 0),
+  by_kind: [],
+  by_bom: [],
+  scope: "estate-wide — counts every canonical identity, not the filtered result",
+  asset_identity_confirmed: false,
+});
+
+const queryResponse = (matches: any[]) => ({
   model: "cross-bom/query-v1",
   boms: ["cbom"],
   identities_matching: matches.length,
   matches,
+  summary: summary(matches),
   conflict_count: 0,
   note: "Canonical keys associate matching algorithms/names, not confirmed physical assets.",
 });
@@ -463,4 +479,87 @@ it("does not turn unavailable scan coverage into a fabricated zero", async () =>
   expect(screen.getByText("Unknown")).toBeTruthy();
   expect(screen.queryByText("0%")).toBeNull();
   expect(screen.getByText(/Imports are excluded; this is not discovery completeness/)).toBeTruthy();
+});
+
+/* ── Same shell as SBOM / NBOM / VBOM (request: "same UI, different
+ * content"). The CBOM page reads the shared Technology BOM's materialized
+ * crypto layer and the query's estate-wide summary; nothing here counts
+ * rows in the browser to produce a headline number. ── */
+
+const techBom = {
+  snapshot_id: "TECHBOM-20261029-120000",
+  environment: "production",
+  state_version: 7,
+  total_components: 10,
+  components_by_layer: { cbom: 3, sbom: 7 },
+  layers: {
+    cbom: {
+      count: 3,
+      components: [
+        { type: "crypto", algorithm: "ECDSA-P256", "bom-ref": "crypto:1:" },
+        { type: "crypto", algorithm: "ECDSA-P256", "bom-ref": "crypto:2:" },
+        { type: "crypto", algorithm: "SHA-1", "bom-ref": "crypto:3:" },
+      ],
+    },
+  },
+  fingerprint: "abcdef0123456789",
+};
+
+describe("Cbom — shared Technology BOM shell", () => {
+  it("renders the CBOM layer's algorithms, share of estate and fingerprint", async () => {
+    mockFetch({
+      "/api/v1/technology-bom": techBom,
+      "/api/v1/cbom/query": queryResponse([match()]),
+      "/api/v1/cbom/coverage": coverage,
+    });
+    renderPage();
+    expect(await screen.findByText("ECDSA-P256")).toBeTruthy();
+    expect(screen.getByText("SHA-1")).toBeTruthy();
+    // the headline card quotes the layer count and its share of the estate
+    expect(screen.getByText("CBOM COMPONENTS")).toBeTruthy();
+    expect(screen.getByText("30% of 10 total assets")).toBeTruthy();
+    expect(screen.getByText(/algorithm field/)).toBeTruthy();
+    expect(screen.getByText("SHA abcdef01…")).toBeTruthy();
+    expect(screen.getByText("v7")).toBeTruthy();
+    expect(screen.getByText("production")).toBeTruthy();
+  });
+
+  it("headline cards echo the query's estate-wide summary, not the visible rows", async () => {
+    const base = queryResponse([
+      match(),
+      match({ identity: "vendor:OpenSSL", kind: "vendor", label: "OpenSSL", boms: ["hbom"], bom_count: 1, linked: false, conflicts: [], present_in: [{ bom: "hbom", ref: "h-1", values: {} }] }),
+    ]);
+    mockFetch({
+      "/api/v1/cbom/query": {
+        ...base,
+        summary: { ...base.summary, identities: 40, linked: 12, single_source: 28 },
+      },
+      "/api/v1/cbom/coverage": coverage,
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("crypto:RSA-2048")).toBeTruthy());
+    // server numbers, not the two rows on screen
+    const identitiesCard = screen.getByText("IDENTITIES").parentElement as HTMLElement;
+    expect(identitiesCard).toHaveTextContent("40");
+    expect(identitiesCard).not.toHaveTextContent("2 ");
+    expect(screen.getByText("12")).toBeTruthy();
+    expect(screen.getByText("12 / 40 in 2+ BOMs")).toBeTruthy();
+    expect(screen.getByText("30% of 40 identities")).toBeTruthy();
+
+    // filtering the table to one row leaves the estate cards alone
+    fireEvent.click(screen.getByRole("button", { name: "UNLINKED" }));
+    expect(screen.queryByText("crypto:RSA-2048")).toBeNull();
+    expect(screen.getByText("IDENTITIES").parentElement).toHaveTextContent("40");
+    expect(screen.getByText("12")).toBeTruthy();
+  });
+
+  it("an unreachable query leaves the cards without numbers rather than zeros", async () => {
+    offlineFetch();
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Offline")).toBeTruthy());
+    const identitiesCard = screen.getByText("IDENTITIES").parentElement;
+    expect(identitiesCard).toHaveTextContent("—");
+    expect(identitiesCard).not.toHaveTextContent("0");
+    expect(screen.getAllByText("no live query").length).toBeGreaterThan(0);
+  });
 });

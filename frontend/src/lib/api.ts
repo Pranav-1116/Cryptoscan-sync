@@ -2934,6 +2934,22 @@ export interface TechBomComponent {
   version?: string;
   supplier?: string;
   properties?: Record<string, unknown>;
+  /* CBOM-layer fields (`cbom.component_registry.crypto_layer_component`).
+     Present on crypto components only; absent elsewhere — never defaulted. */
+  algorithm?: string;
+  key_type?: string;
+  key_size?: number | string | null;
+  purpose?: string;
+  mode?: string;
+  library?: string;
+  asset?: string;
+  application?: string;
+  location?: string;
+  pqc_status?: string;
+  quantum_status?: string;
+  confidence?: string;
+  first_seen?: string | null;
+  last_seen?: string | null;
 }
 export interface TechBomLayer {
   count: number;
@@ -4432,8 +4448,51 @@ export const apiCbomSearch = (query: string): Promise<ApiResult<any>> =>
   call(`/api/v1/cbom/search?q=${encodeURIComponent(query)}`);
 
 /* Unified cross-BOM query (round 37). Matches are canonical identity
- * associations with real per-BOM refs/values, linkage and conflicts. */
-export const apiCbomQuery = (limit = 2000): Promise<ApiResult<any>> =>
+ * dossiers; `summary` is the estate-wide arithmetic the CBOM page's
+ * headline cards show — counts every identity, never the filtered result.
+ * Mirrors `services/cbom/cbom/bom_query.py`. */
+export interface CbomQuerySummaryRow {
+  kind?: string;
+  bom?: string;
+  identities: number;
+}
+export interface CbomQuerySummary {
+  identities: number;
+  linked: number;
+  single_source: number;
+  conflict_count: number;
+  variation_count: number;
+  by_kind: CbomQuerySummaryRow[];
+  by_bom: CbomQuerySummaryRow[];
+  scope?: string;
+  asset_identity_confirmed?: boolean;
+}
+export interface CbomQueryMatch {
+  identity: string;
+  kind: string;
+  label: string;
+  boms: string[];
+  bom_count: number;
+  linked: boolean;
+  relationship?: string;
+  asset_identity_confirmed?: boolean;
+  present_in: { bom: string; ref: string; values: Record<string, unknown> }[];
+  conflicts: unknown[];
+  variations: unknown[];
+}
+export interface CbomQueryResponse {
+  model?: string;
+  boms?: string[];
+  identities_total?: number;
+  identities_matching?: number;
+  matches?: CbomQueryMatch[];
+  summary?: CbomQuerySummary;
+  conflict_count?: number;
+  variation_count?: number;
+  note?: string;
+  error?: string;
+}
+export const apiCbomQuery = (limit = 2000): Promise<ApiResult<CbomQueryResponse>> =>
   call(`/api/v1/cbom/query?limit=${limit}`);
 
 /* ── Governance, Drift & Compliance APIs ── */

@@ -56,7 +56,7 @@ Rows with a group render as a disclosure; the `—` rows are links.
 | Sidebar label | Group | Route | Component | Purpose |
 |---|---|---|---|---|
 | BOMs | BOMs | `/cbom` | — | The six projections of one evidence graph, behind one row. |
-| CBOM | BOMs | `/cbom` | `Cbom` | Cryptographic assets, algorithms, libraries, protocols and CBOM views. |
+| CBOM | BOMs | `/cbom` | `Cbom` | Cryptographic assets, algorithms, libraries and protocols in the same shell as SBOM/NBOM/VBOM: headline cards, breakdown panels and an identity inventory, with the estate-wide counts from `/cbom/query`'s own summary. |
 | SBOM | BOMs | `/sbom` | `Sbom` | Software components and dependency edges. |
 | HBOM | BOMs | `/hbom` | `Hbom` | Live-scan BOM plus the independent unified estate HBOM — content-addressed pins with pin-to-pin diff. |
 | NBOM | BOMs | `/nbom` | `Nbom` | Network BOM view; static binary capability candidates remain separate from live network observations. |

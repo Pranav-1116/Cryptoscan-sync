@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import React, { useEffect, useRef, useState } from "react";
-import { Badge, Bar, Ring } from "../components/ui";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Badge, Bar, Panel, Ring } from "../components/ui";
+import { usePollingApi } from "../lib/apiUi.jsx";
 import {
   apiCbomCoverage,
   apiCbomIngest,
@@ -10,13 +11,18 @@ import {
   apiCbomSnapshot,
   apiCbomSnapshotDiff,
   apiScansRecent,
+  apiTechBomLive,
+  fmtSnapshotId,
+  CbomQueryMatch,
+  CbomQuerySummary,
+  TechBomState,
 } from "../lib/api";
 import PrivateScope, { usePrivateScopeCurrent } from "../components/PrivateScope";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import CbomLegacyReview from "../components/CbomLegacyReview";
 import HostEvidencePanel from "../components/HostEvidencePanel";
 import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
-import { ICON_SM, IconCaretDown, IconCaretRight, IconComponent, IconSecurity, IconCloud, IconSearch, IconTarget } from "../components/icons";
+import { ICON_SM, IconCaretDown, IconCaretRight, IconCloud, IconComponent, IconCrypto, IconInfo, IconSearch, IconSecurity, IconTarget } from "../components/icons";
 
 /* One row per canonical identity from the unified cross-BOM query.
  * Every field below is echoed from the backend response — nothing is
@@ -89,6 +95,10 @@ function CbomContent() {
   const [coverage, setCoverage] = useState<any>(null);
   const [components, setComponents] = useState<CbomItem[]>([]);
   const [queryNote, setQueryNote] = useState<string>("");
+  // Estate-wide arithmetic from /cbom/query's `summary` — the backend counts
+  // every canonical identity, so the headline cards never relabel a filtered
+  // subset as the estate total.
+  const [querySummary, setQuerySummary] = useState<CbomQuerySummary | null>(null);
 
   // pinned snapshots (§4.4): one scan's pinned, content-addressed CBOM
   // renderings — the live query above regenerates; these do not
@@ -198,6 +208,7 @@ function CbomContent() {
     async function loadCbom() {
       setLoading(true);
       setOffline(false); setComponents([]); setCoverage(null); setQueryNote("");
+      setQuerySummary(null);
       try {
         const [qRes, covRes] = await Promise.all([
           apiCbomQuery(),
@@ -210,7 +221,7 @@ function CbomContent() {
         // query must NOT fall back to fabricated rows — the table stays
         // empty and the page says so.
         if (qRes.source === "live" && qRes.data) {
-          const matches: CbomItem[] = (qRes.data.matches || []).map((m: any) => ({
+          const matches: CbomItem[] = (qRes.data.matches || []).map((m: CbomQueryMatch) => ({
             identity: m.identity,
             kind: m.kind,
             label: m.label,
@@ -222,6 +233,7 @@ function CbomContent() {
             present_in: m.present_in || [],
           }));
           setComponents(matches);
+          setQuerySummary(qRes.data.summary ?? null);
           if (typeof qRes.data.note === "string") setQueryNote(qRes.data.note);
         } else {
           setOffline(true);
@@ -259,26 +271,219 @@ function CbomContent() {
   const bomBadge = (bom: string) =>
     ({ cbom: "green", techbom: "cyan", vbom: "cyan", hbom: "orange", nbom: "orange" } as Record<string, any>)[bom] || "neutral";
 
+  /* Same shared Technology BOM state as SBOM / HBOM / VBOM — this page reads
+   * the materialized CBOM layer and the query's own summary; it never derives
+   * crypto counts of its own. */
+  const live = usePollingApi(apiTechBomLive, 15000);
+  const techState = (live.data ?? null) as TechBomState | null;
+  const cryptoComponents = techState?.layers?.cbom?.components ?? [];
+  const cryptoTotal = techState?.layers?.cbom?.count ?? cryptoComponents.length;
+  const estateTotal = techState?.total_components ?? 0;
+  const cryptoShare = estateTotal ? cryptoTotal / estateTotal : 0;
+
+  const byAlgorithm = useMemo(() => {
+    const counts: Record<string, number> = {};
+    cryptoComponents.forEach((component) => {
+      const algorithm = String(component.algorithm || "").trim();
+      if (!algorithm) return; // a blank field is not an "unknown" algorithm
+      counts[algorithm] = (counts[algorithm] || 0) + 1;
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  }, [cryptoComponents]);
+
+  const identities = querySummary?.identities ?? null;
+  const linkedTotal = querySummary?.linked ?? null;
+  const conflictTotal = querySummary?.conflict_count ?? null;
+  const linkedPct = identities && linkedTotal != null ? linkedTotal / identities : 0;
+  const coveragePct = coverage?.coverage_pct ?? null;
+  const heroConflict = (conflictTotal ?? 0) > 0;
+  const count = (value: number | null | undefined) => (loading ? "…" : value == null ? "—" : String(value));
+
+
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)" }}><IconComponent size={16} style={{ color: "var(--accent)" }} /></span>
-          <div>
-            <div style={{ fontSize: 10, letterSpacing: .12, fontFamily: "var(--mono)", color: "var(--accent)" }}>CYCLONEDX 1.6 · LIVE QUERY · NO INFERENCE</div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: "2px 0 2px", lineHeight: 1 }}>Cryptographic Bill of Materials</h1>
-            <div style={{ fontSize: 12, color: "var(--dim)" }}>Cross-BOM identity spine — linked, conflicts and coverage at a glance</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
+        <div style={{ flex: "1 1 460px", minWidth: 280 }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+            <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--accent)" }} /> BOMS · CBOM · CRYPTOGRAPHIC ASSETS
+          </div>
+          <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ width: 34, height: 34, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--accent)", color: "var(--on-accent)" }}><IconCrypto size={18} /></span>
+            Cryptographic Bill of Materials
+          </h1>
+          <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
+            Every <b style={{ color: "var(--text)" }}>algorithm, key and protocol</b> in the estate — the CBOM layer of the unified asset model, linked through the cross-BOM identity spine. <span style={{ color: "var(--accent)" }}>One asset model</span>, materialized for crypto-agility.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <span className="kicker" style={{ fontSize: 10 }}>CycloneDX 1.6</span>
+            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span className="kicker" style={{ fontSize: 10 }}>LIVE QUERY · NO INFERENCE</span>
+            <span style={{ color: "var(--line-strong)" }}>·</span>
+            <span style={{ fontSize: 11, color: "var(--dim)" }}>{cryptoTotal} crypto assets · snapshot {fmtSnapshotId(techState?.snapshot_id).slice(0, 16)} · v{techState?.state_version ?? 0}</span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          {!loading && components.length > 0 && <div style={{ display: "flex", alignItems: "center", gap: 8 }}><Ring pct={components.length ? linkedCount / components.length : 0} label={`${components.length ? Math.round((linkedCount / components.length) * 100) : 0}%`} sub="linked" tone="cyan" /><div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.3 }}>{linkedCount} / {components.length} multi-BOM<br />{conflictCount ? <span style={{ color: "var(--red)" }}>{conflictCount} conflicts</span> : <span style={{ color: "var(--green)" }}>no conflicts</span>}</div></div>}
-          <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
-            <AuthenticatedDownload path="/api/v1/cbom/portfolio?fmt=cyclonedx16" filename="cryptoscan-cbom-1.6.json" className="btn outline" style={{ fontSize: 12, padding: "7px 12px", borderRadius: "var(--r)" }}>Export CycloneDX 1.6 JSON</AuthenticatedDownload>
-            <Link to="/dependency-graph" className="btn primary" style={{ textDecoration: "none", fontSize: 12, padding: "7px 12px", borderRadius: "var(--r)", textAlign: "center" }}>View Dependency Graph</Link>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <Panel style={{ padding: "10px 14px", minWidth: 190, display: "flex", alignItems: "center", gap: 12 }}>
+            <Ring pct={linkedPct} label={identities == null ? "—" : `${Math.round(linkedPct * 100)}%`} sub="linked" tone={identities ? "cyan" : "slate"} />
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)" }}>IDENTITY SPINE</div>
+              <div style={{ fontSize: 12, color: "var(--dim)", maxWidth: 150, lineHeight: 1.4 }}>
+                {identities == null ? "No live query result" : `${linkedTotal ?? 0} / ${identities} in 2+ BOMs`}
+              </div>
+              <div style={{ fontSize: 11, marginTop: 2, color: identities == null ? "var(--faint)" : heroConflict ? "var(--red)" : "var(--green)" }}>
+                {identities == null ? "no live query" : heroConflict ? "review disagreements" : "no conflicts"}
+              </div>
+              <div style={{ marginTop: 6 }}><Bar value={linkedPct} tone={identities ? "cyan" : "slate"} /></div>
+            </div>
+          </Panel>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 190 }}>
+            <AuthenticatedDownload path="/api/v1/cbom/portfolio?fmt=cyclonedx16" filename="cryptoscan-cbom-1.6.json" className="btn primary" style={{ fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center" }}>Export CycloneDX 1.6 JSON</AuthenticatedDownload>
+            <Link to="/dependency-graph" className="btn outline" style={{ textDecoration: "none", fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)", textAlign: "center", border: "1px solid var(--line-strong)", background: "var(--panel-2)" }}>Dependency graph →</Link>
+            <span style={{ fontSize: 11, color: "var(--faint)", textAlign: "center" }}>{techState?.fingerprint ? `SHA ${techState.fingerprint.slice(0, 8)}…` : "no hash yet"}</span>
           </div>
         </div>
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--accent)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", display: "flex", alignItems: "center", gap: 6 }}><IconCrypto size={12} /> CBOM COMPONENTS</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{techState ? cryptoTotal : "…"}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>Crypto-asset layer</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconTarget size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <Bar value={cryptoShare} tone="cyan" />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{estateTotal ? `${Math.round(cryptoShare * 100)}% of ${estateTotal} total assets` : "estate total —"}</div>
+          </div>
+        </div>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--line-strong)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>IDENTITIES</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{count(identities)}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>Canonical spine</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--panel-2)", border: "1px solid var(--line)", color: "var(--slate)" }}><IconComponent size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <Bar value={identities ? 1 : 0} tone={identities ? "cyan" : "slate"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Estate-wide count — never the filtered rows</div>
+          </div>
+        </div>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--cyan)" }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>LINKED IDENTITIES</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: linkedTotal ? "var(--cyan)" : undefined }}>{count(linkedTotal)}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>2+ BOMs · association</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: linkedTotal ? "color-mix(in srgb, var(--cyan) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${linkedTotal ? "var(--cyan)" : "var(--line)"}`, color: linkedTotal ? "var(--cyan)" : "var(--faint)" }}><IconSearch size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <Bar value={linkedPct} tone={linkedTotal ? "cyan" : "slate"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{identities ? `${Math.round(linkedPct * 100)}% of ${identities} identities` : "no live query"}</div>
+          </div>
+        </div>
+        <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${heroConflict ? "var(--red)" : "var(--green)"}` }}>
+          <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>CONFLICTS</div>
+              <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: heroConflict ? "var(--red)" : undefined }}>{count(conflictTotal)}</div>
+              <div style={{ fontSize: 12, color: "var(--dim)" }}>{conflictTotal == null ? "No live query result" : heroConflict ? "Value disagreements" : "No disagreements"}</div>
+            </div>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: heroConflict ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${heroConflict ? "var(--red)" : "var(--green)"}`, color: heroConflict ? "var(--red)" : "var(--green)" }}><IconSecurity size={16} /></span>
+          </div>
+          <div style={{ padding: "0 16px 12px" }}>
+            <Bar value={identities ? Math.min(1, (conflictTotal ?? 0) / Math.max(1, identities)) : 0} tone={heroConflict ? "red" : "green"} />
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Cross-BOM value disagreements — never averaged</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginBottom: 18 }}>
+        <Panel title="Top algorithms" sub="by crypto-asset count — what the estate actually uses" style={{ padding: "14px 16px" }}>
+          {byAlgorithm.length ? byAlgorithm.map(([algorithm, n]) => (
+            <div key={algorithm} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ width: 130, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{algorithm}</span>
+              <div style={{ flex: 1 }}><Bar value={cryptoTotal ? n / cryptoTotal : 0} tone="cyan" /></div>
+              <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)", minWidth: 28, textAlign: "right" }}>{n}</span>
+            </div>
+          )) : <div style={{ fontSize: 12, color: "var(--dim)", padding: "8px 0" }}>No CBOM components yet</div>}
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 8 }}>From CBOM layer · algorithm field · {cryptoTotal} assets</div>
+        </Panel>
+        <Panel title="CBOM coverage" sub="scanned systems reporting cryptography" style={{ padding: "14px 16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+            <div style={{ width: 54, height: 54, borderRadius: 999, background: coveragePct ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)", border: `2px solid ${coveragePct ? "var(--accent)" : "var(--line)"}`, display: "grid", placeItems: "center", color: coveragePct ? "var(--accent)" : "var(--faint)", fontSize: 18, fontWeight: 800 }}>{coveragePct == null ? "—" : `${coveragePct}%`}</div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>Cryptography coverage</div>
+              <div style={{ fontSize: 11, color: "var(--dim)" }}>{coverage?.with_cbom ?? "—"} of {coverage?.systems ?? "—"} systems report a CBOM</div>
+              <div style={{ fontSize: 10, color: coveragePct ? "var(--accent)" : "var(--faint)", marginTop: 2 }}>{coveragePct == null ? "Unknown" : "scans only"}</div>
+            </div>
+          </div>
+          <div style={{ height: 8, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
+            <div style={{ width: `${Math.min(100, Math.max(0, Number(coveragePct) || 0))}%`, background: "var(--accent)" }} />
+            <div style={{ flex: 1, background: "var(--panel-2)" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>● with CBOM</span><span>● no CBOM</span></div>
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 8 }}>Imports are excluded; this is not discovery completeness{coverage?.message ? ` — ${coverage.message}` : "."}</div>
+        </Panel>
+        <Panel title="Integrity" sub="snapshot + audit trail" style={{ padding: "14px 16px" }}>
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Snapshot</span><span style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{fmtSnapshotId(techState?.snapshot_id).slice(0, 20)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Version</span><Badge tone="cyan">v{techState?.state_version ?? 0}</Badge></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Crypto assets</span><span style={{ fontFamily: "var(--mono)" }}>{techState ? cryptoTotal : "…"}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Identities</span><span style={{ fontFamily: "var(--mono)" }}>{count(identities)}</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: "var(--faint)" }}>Environment</span><Badge tone="slate">{techState?.environment || "—"}</Badge></div>
+            <div style={{ padding: "8px 10px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11, fontFamily: "var(--mono)", wordBreak: "break-all" }}>{techState?.fingerprint || "— no fingerprint yet"}</div>
+          </div>
+        </Panel>
+      </div>
+
+      {offline && !loading && (
+        <div className="panel" style={{ padding: "12px 14px", marginBottom: 14, border: "1px solid var(--amber)", borderLeft: "3px solid var(--amber)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <IconTarget size={14} style={{ color: "var(--amber)" }} />
+          <div style={{ fontSize: 12, color: "var(--amber)" }}><strong>Offline</strong> — no live query · table empty · no cache fallback</div>
+        </div>
+      )}
+
+      <div className="panel" style={{ padding: 0, overflow: "hidden", marginBottom: 18 }}>
+        <div style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}><IconInfo size={14} style={{ color: "var(--accent)" }} /> Identity Inventory</h3>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--dim)" }}>CBOM · cross-BOM spine · <span style={{ color: "var(--accent)" }}>every row is a canonical identity, echoed from the query</span></p>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "4px 8px" }}>
+              <IconSearch size={12} style={{ color: "var(--faint)" }} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="filter identity, kind, BOM…" style={{ background: "transparent", border: 0, color: "var(--text)", fontSize: 12, outline: "none", width: 160, fontFamily: "var(--mono)" }} />
+            </div>
+            <Badge tone={components.length ? "cyan" : "slate"}>{filtered.length} / {components.length}</Badge>
+            {conflictCount > 0 && <Badge tone="red">{conflictCount} conflicts</Badge>}
+            {linkedCount > 0 && <Badge tone="cyan">{linkedCount} linked</Badge>}
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", padding: "8px 18px", borderBottom: "1px solid var(--line)" }}>
+          {LINKAGE_FILTERS.map((r) => (
+            <button key={r} onClick={() => setFilterLinkage(r)} className="btn sm" style={{ background: filterLinkage === r ? "var(--cyan)" : undefined, color: filterLinkage === r ? "var(--on-accent)" : undefined, fontWeight: filterLinkage === r ? 700 : 500, fontSize: 11, padding: "5px 10px" }}>{r}</button>
+          ))}
+          <span style={{ fontSize: 11, color: "var(--faint)", marginLeft: "auto" }}>Tap a row → per-BOM observations · PQC sim</span>
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="tbl" style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ width: "36px" }}></th>
+                <th>Identity & Label</th>
+                <th>Kind</th>
+                <th>Source BOMs</th>
+                <th>Linkage</th>
+                <th>Conflicts</th>
+              </tr>
+            </thead>
+            <tbody>
       <section className="panel" aria-label="Import CBOM metadata" style={{ padding: 16, marginBottom: 16, borderTop: "2px solid var(--accent)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -310,70 +515,6 @@ function CbomContent() {
       <HostEvidencePanel />
       <CbomLegacyReview refresh={refresh} onCommitted={() => setRefresh(value => value + 1)} />
 
-      {offline && !loading && (
-        <div className="panel" style={{ padding: "12px 14px", marginBottom: 14, border: "1px solid var(--amber)", borderLeft: "3px solid var(--amber)", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <IconTarget size={14} style={{ color: "var(--amber)" }} />
-          <div style={{ fontSize: 12, color: "var(--amber)" }}><strong>Offline</strong> — no live query · table empty · no cache fallback</div>
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 16 }}>
-        <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--line-strong)" }}>
-          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--accent)", width: 6, height: 6, borderRadius: 99 }} />IDENTITIES</div>
-          <div style={{ fontSize: 22, fontWeight: 800, margin: "4px 0 2px" }}>{loading ? "…" : components.length}</div>
-          <div style={{ fontSize: 11, color: "var(--dim)" }}>Canonical spine</div>
-          {!loading && components.length > 0 && <Bar value={1} tone="cyan" />}
-        </div>
-        <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--cyan)" }}>
-          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--cyan)", width: 6, height: 6, borderRadius: 99 }} />LINKED</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--cyan)", margin: "4px 0 2px" }}>{loading ? "…" : linkedCount}</div>
-          <div style={{ fontSize: 11, color: "var(--dim)" }}>2+ BOMs · association</div>
-          {!loading && <Bar value={components.length ? linkedCount / components.length : 0} tone="cyan" />}
-        </div>
-        <div className="panel" style={{ padding: "12px 14px", borderTop: conflictCount > 0 ? "2px solid var(--red)" : "2px solid var(--line-strong)" }}>
-          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: conflictCount > 0 ? "var(--red)" : "var(--green)", width: 6, height: 6, borderRadius: 99 }} />CONFLICTS</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: conflictCount > 0 ? "var(--red)" : "var(--text)", margin: "4px 0 2px" }}>{loading ? "…" : conflictCount}</div>
-          <div style={{ fontSize: 11, color: "var(--dim)" }}>{conflictCount > 0 ? "Value disagreements" : "No disagreements"}</div>
-          {!loading && conflictCount > 0 && <Bar value={Math.min(1, conflictCount / Math.max(1, components.length))} tone="red" />}
-        </div>
-        <div className="panel" style={{ padding: "12px 14px", borderTop: "2px solid var(--accent)" }}>
-          <div style={{ fontSize: 10, color: "var(--dim)", letterSpacing: .08, display: "flex", gap: 6, alignItems: "center" }}><span className="dot" style={{ background: "var(--accent)", width: 6, height: 6, borderRadius: 99 }} />COVERAGE</div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--accent)", margin: "4px 0 2px" }}>{loading ? "…" : coverage?.coverage_pct == null || !coverage?.systems ? "Unknown" : `${coverage.coverage_pct}%`}</div>
-          <div style={{ fontSize: 11, color: "var(--dim)" }}>{coverage?.with_cbom ?? "—"} / {coverage?.systems ?? "—"} systems · scans only · Imports are excluded; this is not discovery completeness</div>
-          {!loading && coverage?.coverage_pct != null && coverage?.systems > 0 && <Bar value={coverage.coverage_pct / 100} tone="cyan" />}
-        </div>
-      </div>
-
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12, padding: "10px 12px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
-        <div style={{ position: "relative", flex: "1", minWidth: 240, maxWidth: 420, display: "flex", alignItems: "center", gap: 8 }}>
-          <IconSearch size={13} style={{ color: "var(--faint)" }} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search identity, label, kind or BOM…" style={{ flex: 1, padding: "8px 12px", fontSize: 12.5, background: "var(--bg-2)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontFamily: "var(--mono)" }} />
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          {LINKAGE_FILTERS.map((r) => (
-            <button key={r} onClick={() => setFilterLinkage(r)} className="btn sm" style={{ background: filterLinkage === r ? "var(--cyan)" : undefined, color: filterLinkage === r ? "var(--on-accent)" : undefined, fontWeight: filterLinkage === r ? 700 : 500, fontSize: 11, padding: "6px 10px" }}>{r}</button>
-          ))}
-        </div>
-      </div>
-
-      <div className="panel" style={{ padding: "14px 16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10, padding: "8px 10px", background: "var(--bg-2)", borderRadius: "var(--r)", border: "1px solid var(--line)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><IconComponent size={14} style={{ color: "var(--accent)" }} /><span style={{ fontSize: 12, fontWeight: 700 }}>Identity inventory</span><Badge tone={components.length ? "cyan" : "slate"}>{filtered.length} / {components.length}</Badge>{conflictCount > 0 && <Badge tone="red">{conflictCount} conflicts</Badge>}{linkedCount > 0 && <Badge tone="cyan">{linkedCount} linked</Badge>}</div>
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>Tap row → observations · PQC sim</span>
-        </div>
-        <div style={{ overflowX: "auto" }}>
-          <table className="tbl" style={{ width: "100%" }}>
-            <thead>
-              <tr>
-                <th style={{ width: "36px" }}></th>
-                <th>Identity & Label</th>
-                <th>Kind</th>
-                <th>Source BOMs</th>
-                <th>Linkage</th>
-                <th>Conflicts</th>
-              </tr>
-            </thead>
-            <tbody>
               {filtered.map((item) => {
                 const isExpanded = expandedRow === item.identity;
                 return (
@@ -488,21 +629,29 @@ function CbomContent() {
           </table>
         </div>
         {queryNote && !loading && (
-          <div style={{ fontSize: "11.5px", color: "var(--faint)", marginTop: "12px" }}>
+          <div style={{ fontSize: "11.5px", color: "var(--faint)", padding: "10px 18px", borderTop: "1px solid var(--line)" }}>
             {queryNote}
           </div>
         )}
+        <div style={{ padding: "10px 18px", background: "var(--bg-2)", borderTop: "1px solid var(--line)", display: "flex", gap: 8, flexWrap: "wrap", fontSize: 11, color: "var(--dim)" }}>
+          <Link to="/live-asset-intelligence" style={{ color: "var(--accent)" }}>Technology BOM →</Link>
+          <span>·</span>
+          <Link to="/dependency-graph" style={{ color: "var(--cyan)" }}>Dependency graph →</Link>
+          <span>·</span>
+          <Link to="/what-if" style={{ color: "var(--violet)" }}>PQC what-if →</Link>
+          <span style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>ONE asset model · four layers</span>
+        </div>
       </div>
 
-      <div className="panel" style={{ padding: 16, marginTop: 16, borderTop: "2px solid var(--violet)" }}>
+      <div className="panel" style={{ padding: 16, marginTop: 16, borderTop: "2px solid var(--accent)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)" }}><IconSecurity size={14} style={{ color: "var(--violet)" }} /></span>
+            <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)" }}><IconSecurity size={14} style={{ color: "var(--accent)" }} /></span>
             <div>
-              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Pinned Snapshots</h3>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Pinned Snapshots</h3>
               <div style={{ fontSize: 11, color: "var(--dim)" }}>SHA-256 content-addressed · scan-bound · verbatim proof</div>
             </div>
-            {snapshots.length > 0 && <Badge tone="violet">{snapshots.length} pins</Badge>}
+            {snapshots.length > 0 && <Badge tone="cyan">{snapshots.length} pins</Badge>}
           </div>
           <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
             <select

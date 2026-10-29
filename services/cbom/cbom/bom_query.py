@@ -62,10 +62,28 @@ def query_boms(
     unknown_bom = bool(bom_filter) and bom_filter not in {
         _norm(k) for k in boms}
 
-    matches: list[dict[str, Any]] = []
+    # Resolve every identity once (members, BOMs present, conflicts and
+    # variations) before any filter is applied: the estate-wide summary below
+    # and the filtered matches then read from the same comparison, so a
+    # filtered page can never report different conflict totals than the
+    # unfiltered estate it came from.
+    groups: dict[str, dict[str, Any]] = {}
     for ident, members in sorted(by_identity.items()):
         boms_present = sorted({m["bom"] for m in members})
-        linked = len(boms_present) >= 2
+        conflicts, variations = compare_members(members)
+        groups[ident] = {
+            "members": members,
+            "boms": boms_present,
+            "linked": len(boms_present) >= 2,
+            "conflicts": conflicts,
+            "variations": [{"identity": ident, **entry} for entry in variations],
+        }
+
+    matches: list[dict[str, Any]] = []
+    for ident, group in groups.items():
+        members = group["members"]
+        boms_present = group["boms"]
+        linked = group["linked"]
 
         if identity_filter and ident != identity_filter:
             continue
@@ -86,8 +104,7 @@ def query_boms(
         if unlinked_only and linked:
             continue
 
-        conflicts, variations = compare_members(members)
-        variations = [{"identity": ident, **entry} for entry in variations]
+        conflicts, variations = group["conflicts"], group["variations"]
 
         if conflicts_only and not conflicts:
             continue
@@ -108,6 +125,32 @@ def query_boms(
             "variations": variations,
         })
 
+    # Estate-wide arithmetic over EVERY identity, computed before/independently
+    # of the filters above. The CBOM page's headline cards are these numbers,
+    # so a searched or filtered table cannot present a subset total as the
+    # estate's total.
+    by_kind: dict[str, int] = {}
+    by_bom: dict[str, int] = {}
+    for group in groups.values():
+        kind_key = group["members"][0]["kind"]
+        by_kind[kind_key] = by_kind.get(kind_key, 0) + 1
+        for bom_kind in group["boms"]:
+            by_bom[bom_kind] = by_bom.get(bom_kind, 0) + 1
+    linked_total = sum(1 for group in groups.values() if group["linked"])
+    summary: dict[str, Any] = {
+        "identities": len(groups),
+        "linked": linked_total,
+        "single_source": len(groups) - linked_total,
+        "conflict_count": sum(len(group["conflicts"]) for group in groups.values()),
+        "variation_count": sum(len(group["variations"]) for group in groups.values()),
+        "by_kind": [{"kind": k, "identities": n}
+                    for k, n in sorted(by_kind.items(), key=lambda kv: (-kv[1], kv[0]))],
+        "by_bom": [{"bom": k, "identities": n}
+                   for k, n in sorted(by_bom.items(), key=lambda kv: (-kv[1], kv[0]))],
+        "scope": "estate-wide — counts every canonical identity, not the filtered result",
+        "asset_identity_confirmed": False,
+    }
+
     response: dict[str, Any] = {
         "model": "cross-bom/query-v1",
         "boms": sorted(boms.keys()),
@@ -123,6 +166,7 @@ def query_boms(
         "identities_total": len(by_identity),
         "identities_matching": len(matches),
         "matches": matches,
+        "summary": summary,
         "conflict_count": sum(len(m["conflicts"]) for m in matches),
         "variation_count": sum(len(m["variations"]) for m in matches),
         "note": "Canonical keys associate matching algorithms/names, not confirmed "
