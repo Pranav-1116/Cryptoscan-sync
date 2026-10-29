@@ -1,30 +1,21 @@
+/* Live monitor — the estate as it is being measured, not as it is described.
+ *
+ * Layout rule for this screen: every block answers "what was measured, over
+ * what window, and how much of it is missing". Prose is demoted to a footnote
+ * or a disclosure; a number without a window is a lie dressed as a metric, and
+ * a chart without samples renders as an explicit labelled absence (see
+ * components/viz.tsx). This page never computes a percentage of a target,
+ * never invents history for a chart, and never shows the last good read after
+ * a failed one.
+ */
+
 import { Link } from "react-router-dom";
 import PrivateScope from "../components/PrivateScope";
 import EstateSchedulePanel from "../components/EstateSchedulePanel";
-import React, { useEffect, useRef, useState, useMemo } from "react";
-import { Panel, Badge, Bar, Ring } from "../components/ui.jsx";
-import { usePollingApi } from "../lib/apiUi.jsx";
-import { useRealtime, useChannelRefresh, severityOf, isSystemEvent } from "../lib/realtime.js";
-import {
-  IconNetwork,
-  IconHardware,
-  IconTenant,
-  IconCrypto,
-  IconCode,
-  IconCertificate,
-  IconEstate,
-  IconCloud,
-  IconLive,
-  IconTarget,
-  IconClock,
-  IconSecurity,
-  IconComponent,
-  IconInfo,
-  IconTrendUp,
-  IconTrendDown,
-  IconTrendFlat,
-  type Icon,
-} from "../components/icons";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Badge, Panel } from "../components/ui";
+import { usePollingApi } from "../lib/apiUi";
+import { useRealtime, useChannelRefresh, severityOf, isSystemEvent } from "../lib/realtime";
 import {
   apiLiveEnvironment,
   apiLiveOrchestratorStatus,
@@ -36,13 +27,16 @@ import {
   OrchestratorScan,
   ScanRunSummary,
   type EstateRealtime,
-} from "../lib/api.js";
+} from "../lib/api";
+import { DeltaChip, HBars, Meter, Sparkline, StackedBar, StateCell, TickStrip, VizEmpty } from "../components/viz";
 
-// helpers
-function timeAgo(ts: string): string {
+type Severity = "info" | "warn" | "critical";
+
+function timeAgo(ts: string | null | undefined): string {
   if (!ts) return "—";
-  const d = Math.max(0, Date.now() - new Date(ts).getTime());
-  if (Number.isNaN(d)) return "—";
+  const t = new Date(ts).getTime();
+  if (Number.isNaN(t)) return "—";
+  const d = Math.max(0, Date.now() - t);
   if (d < 1000) return "now";
   if (d < 60_000) return `${Math.floor(d / 1000)}s`;
   if (d < 3600_000) return `${Math.floor(d / 60_000)}m`;
@@ -50,9 +44,12 @@ function timeAgo(ts: string): string {
   return `${Math.floor(d / 86400_000)}d`;
 }
 
-function formatNumber(n: number): string {
-  return n.toLocaleString();
+function clock(ts: string): string {
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleTimeString();
 }
+
+const nf = (n: number) => n.toLocaleString();
 
 type ChangeRecord = {
   id: string;
@@ -61,108 +58,156 @@ type ChangeRecord = {
   delta: number;
   from: number;
   to: number;
-  severity: "info" | "warn" | "critical";
+  severity: Severity;
 };
 
-const DOMAIN_META: Record<
-  string,
-  { label: string; icon: Icon; color: string; tone: string; to: string; desc: string }
-> = {
-  network: { label: "Network", icon: IconNetwork, color: "var(--cyan)", tone: "cyan", to: "/network", desc: "Endpoints, segments, exposed services" },
-  hardware: { label: "Hardware", icon: IconHardware, color: "var(--amber)", tone: "amber", to: "/hardware", desc: "HSMs, servers, OT/ICS, fleet" },
-  vendor: { label: "Vendors", icon: IconTenant, color: "var(--violet)", tone: "violet", to: "/vendor", desc: "Supply chain, attestations" },
-  crypto: { label: "Cryptography", icon: IconCrypto, color: "var(--green)", tone: "green", to: "/crypto", desc: "Algorithms, keys, protocols" },
-  certificate: { label: "Certificates", icon: IconCertificate, color: "var(--red)", tone: "red", to: "/certificates", desc: "X.509, expiry, trust" },
-  application: { label: "Applications", icon: IconCode, color: "var(--accent)", tone: "cyan", to: "/dev-sec-ops", desc: "Codebases, SBOM packages" },
-  software: { label: "Software (SBOM)", icon: IconComponent, color: "var(--accent)", tone: "cyan", to: "/sbom", desc: "SBOM components, deps" },
-  techbom: { label: "TechBOM", icon: IconEstate, color: "var(--violet)", tone: "violet", to: "/live-asset-intelligence", desc: "Unified SBOM+CBOM+HBOM+NBOM" },
-  cloud: { label: "Cloud", icon: IconCloud, color: "var(--cyan)", tone: "cyan", to: "/cloud", desc: "Accounts, resources" },
+/** One read of this screen. `null` marks a read that failed — a gap, not a zero. */
+type Sample = { ts: string; total: number | null; severity: Severity; failed: boolean };
+
+const DOMAIN_META: Record<string, { label: string; tone: string; to: string }> = {
+  network: { label: "Network", tone: "cyan", to: "/network" },
+  hardware: { label: "Hardware", tone: "amber", to: "/hardware" },
+  crypto: { label: "Cryptography", tone: "green", to: "/crypto" },
+  vendor: { label: "Vendors", tone: "violet", to: "/vendor" },
+  certificate: { label: "Certificates", tone: "red", to: "/certificates" },
+  application: { label: "Applications", tone: "cyan", to: "/dev-sec-ops" },
+  software: { label: "Software (SBOM)", tone: "cyan", to: "/sbom" },
+  techbom: { label: "TechBOM", tone: "violet", to: "/live-asset-intelligence" },
 };
+
+const TECHBOM_LAYERS = [
+  { k: "sbom", label: "Software", to: "/sbom", tone: "cyan" },
+  { k: "cbom", label: "Crypto", to: "/cbom", tone: "green" },
+  { k: "hbom", label: "Hardware", to: "/hbom", tone: "amber" },
+  { k: "nbom", label: "Network", to: "/nbom", tone: "violet" },
+  { k: "vendor", label: "Vendors", to: "/vbom", tone: "slate" },
+  { k: "certificates", label: "Certificates", to: "/certificates", tone: "red" },
+];
 
 const phaseTone = (phase: string) =>
-  phase === "live_monitoring" ? "green" : phase === "completed" ? "green" : phase === "failed" ? "red" : "amber";
+  phase === "live_monitoring" || phase === "completed" ? "green" : phase === "failed" ? "red" : "amber";
 
-const sevTone = (s: string) =>
-  s === "CRITICAL" ? "red" : s === "HIGH" ? "amber" : s === "MEDIUM" ? "amber" : "green";
+const sevTone = (s: string) => (s === "CRITICAL" ? "red" : s === "HIGH" ? "orange" : s === "MEDIUM" ? "amber" : "green");
+
+const llTone = (live: boolean) => (live ? "green" : "red");
+
+function livenessTone(state?: string) {
+  if (state === "LIVE") return "green";
+  if (state === "STALE") return "amber";
+  if (state === "STOPPED") return "red";
+  return "slate";
+}
+
+function stateColor(verdict: string | null) {
+  if (verdict === "RUNNING") return "var(--green)";
+  if (verdict === "DEGRADED") return "var(--red)";
+  if (verdict === "WAITING") return "var(--amber)";
+  if (verdict === "NOT_RUNNING" || verdict === "IDLE_NO_SCHEDULES") return "var(--slate)";
+  return "var(--slate)";
+}
+
+const verdictTone = (v: string | null) =>
+  v === "RUNNING" ? "green" : v === "DEGRADED" ? "red" : v === "WAITING" ? "amber" : "slate";
+
+const toolbarBtn = (active: boolean, tone = "var(--accent)"): React.CSSProperties => ({
+  padding: "4px 9px",
+  borderRadius: 2,
+  fontSize: 11,
+  fontFamily: "var(--mono)",
+  fontWeight: 600,
+  border: `1px solid ${active ? tone : "var(--line-strong)"}`,
+  background: active ? `color-mix(in srgb, ${tone} 14%, transparent)` : "var(--panel)",
+  color: active ? tone : "var(--text)",
+  cursor: "pointer",
+});
 
 export default function LiveMonitor() {
-  return <PrivateScope><LiveMonitorPage /></PrivateScope>;
+  return (
+    <PrivateScope>
+      <LiveMonitorPage />
+    </PrivateScope>
+  );
 }
 
 function LiveMonitorPage() {
-  // interval control — 3s = real-time, 6s = balanced default
-  const [intervalMs, setIntervalMs] = useState<number>(3000);
+  const [intervalMs, setIntervalMs] = useState<number>(6000);
   const [isPaused, setIsPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(() => {
-    try {
-      return localStorage.getItem("live-monitor-sound") !== "false";
-    } catch {
-      return true;
-    }
-  });
+  const [toneEnabled, setToneEnabled] = useState(false);
   const [uptimeSec, setUptimeSec] = useState(0);
   const [changes, setChanges] = useState<ChangeRecord[]>([]);
-  const [lastPollAt, setLastPollAt] = useState<string | null>(null);
+  const [samples, setSamples] = useState<Sample[]>([]);
+  const [lastReadAt, setLastReadAt] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
-  // refs for delta detection
-  const prevDomainsRef = useRef<Record<string, number> | null>(null);
-  const prevTechBomRef = useRef<number | null>(null);
+  const prevRef = useRef<Record<string, number> | null>(null);
 
-  // live data — effective interval is paused ? 600000 : intervalMs
   const effectiveInterval = isPaused ? 600000 : intervalMs;
   const lt = usePollingApi(apiLiveEnvironment, effectiveInterval);
   const status = usePollingApi(apiLiveOrchestratorStatus, isPaused ? 600000 : Math.max(6000, intervalMs * 2));
   const history = usePollingApi(apiLiveOrchestratorHistory, isPaused ? 600000 : 15000);
   const techBom = usePollingApi(() => apiTechBomLive(500), isPaused ? 600000 : intervalMs);
-  const estate = usePollingApi<EstateRealtime>(apiEstateRealtime, isPaused ? 600000 : 15000,
-    [], { channels: ["estate"], liveIntervalMs: 30000 });
+  const estate = usePollingApi<EstateRealtime>(apiEstateRealtime, isPaused ? 600000 : 15000, [],
+    { channels: ["estate"], liveIntervalMs: 30000 });
   const rt = useRealtime();
-  // Existing live-source reads keep their timer fallback; only relevant estate,
-  // crypto and inventory events prompt an extra refresh. The estate status hook
-  // subscribes separately to its own channel and is not double-refetched.
   useChannelRefresh(["estate", "crypto", "inventory"], [lt.run, status.run, history.run, techBom.run]);
 
   const estateState = estate.source === "live" ? estate.data : null;
   const estateVerdict = estateState?.verdict ?? null;
   const env: LiveEnvironmentResponse | null = (lt.data as LiveEnvironmentResponse | null) ?? null;
-  const scan: OrchestratorScan | null = env?.scan ?? (status.data as any)?.scan ?? null;
+  const scan: OrchestratorScan | null = env?.scan ?? (status.data as { scan?: OrchestratorScan | null } | null)?.scan ?? null;
   const domains = env?.domains ?? { network: 0, hardware: 0, vendor: 0, crypto: 0, certificate: 0, application: 0, total: 0 };
-  const graph = env?.graph ?? {};
-  const events = (env?.events?.events ?? []).filter((e) => !isSystemEvent(e.type)).slice(0, 8);
-  const runs: ScanRunSummary[] = (history.data as any)?.runs ?? [];
+  const graph = env?.graph ?? ({} as NonNullable<LiveEnvironmentResponse["graph"]>);
+  const events = (env?.events?.events ?? []).filter((e) => !isSystemEvent(e.type)).slice(0, 10);
+  const runs: ScanRunSummary[] = (history.data as { runs?: ScanRunSummary[] } | null)?.runs ?? [];
   const live = lt.source === "live";
-  const techBomState: any = techBom.data ?? null;
-  const techBomTotal: number = techBomState?.total_components ?? 0;
+  const techBomState = techBom.data as
+    | { total_components?: number; layers?: Record<string, { count?: number }>; components_by_layer?: Record<string, number> }
+    | null;
+  const techBomTotal = techBomState?.total_components ?? 0;
   const techBomLayers = techBomState?.layers ?? {};
-  const byLayer: Record<string, number> = techBomState?.components_by_layer ?? {};
+  const byLayer = techBomState?.components_by_layer ?? {};
 
-  // uptime ticker
   useEffect(() => {
     const t = setInterval(() => setUptimeSec((s) => s + 1), 1000);
     return () => clearInterval(t);
   }, []);
 
-  // fullscreen handling — add class to body
   useEffect(() => {
     if (isFullscreen) document.documentElement.setAttribute("data-live-fullscreen", "true");
     else document.documentElement.removeAttribute("data-live-fullscreen");
     return () => document.documentElement.removeAttribute("data-live-fullscreen");
   }, [isFullscreen]);
 
-  // sound toggle persist
+  // ── observation record ────────────────────────────────────────────────
+  // One sample per completed read. A failed read is recorded with a null total
+  // so the chart draws a gap: the alternative — carrying the previous figure
+  // forward — would show a flat line that looks like a stable estate while the
+  // API was refusing to answer.
   useEffect(() => {
-    try {
-      localStorage.setItem("live-monitor-sound", String(soundEnabled));
-    } catch {}
-  }, [soundEnabled]);
+    const ts = new Date().toISOString();
+    if (lt.source === "offline") {
+      if (samples.length === 0 || !samples[samples.length - 1].failed) {
+        const gap: Sample = { ts, total: null, severity: "warn", failed: true };
+        setSamples((prev) => [...prev, gap].slice(-180));
+      }
+      return;
+    }
+    if (lt.source !== "live" || !env) return;
+    setLastReadAt(ts);
+    const total = domains.total;
+    setSamples((prev) => {
+      const recent = prev.slice(-180);
+      const withSample = [...recent, { ts, total, severity: "info" as Severity, failed: false }];
+      return withSample.slice(-180);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lt.source, lt.data, env?.domains.total]);
 
-  // change detection — compare current domains to previous
+  // ── change detection ──────────────────────────────────────────────────
   useEffect(() => {
     if (!env || lt.source !== "live") return;
     const now = new Date().toISOString();
-    setLastPollAt(now);
-
     const curr: Record<string, number> = {
       network: domains.network,
       hardware: domains.hardware,
@@ -172,79 +217,82 @@ function LiveMonitorPage() {
       application: domains.application,
       total: domains.total,
       techbom: techBomTotal,
-      // derived software = sbom + application (approx)
       software: (byLayer["sbom"] ?? techBomLayers?.sbom?.count ?? 0) + domains.application,
     };
+    const prev = prevRef.current;
+    prevRef.current = curr;
+    if (!prev) return;
 
-    const prev = prevDomainsRef.current;
-    if (prev) {
-      const newChanges: ChangeRecord[] = [];
-      for (const k of Object.keys(curr)) {
-        const from = prev[k] ?? 0;
-        const to = curr[k] ?? 0;
-        if (from !== to) {
-          const delta = to - from;
-          const abs = Math.abs(delta);
-          const severity: ChangeRecord["severity"] =
-            k === "crypto" || k === "certificate" ? (abs >= 3 ? "critical" : "warn") : abs >= 5 ? "warn" : "info";
-          newChanges.push({
-            id: `${now}-${k}-${from}-${to}`,
-            ts: now,
-            domain: k,
-            delta,
-            from,
-            to,
-            severity,
-          });
-          // sound for critical changes
-          if (severity === "critical" && soundEnabled) {
-            try {
-              const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-              const o = ctx.createOscillator();
-              const g = ctx.createGain();
-              o.type = "sine";
-              o.frequency.value = 880;
-              g.gain.value = 0.08;
-              o.connect(g).connect(ctx.destination);
-              o.start();
-              setTimeout(() => {
-                o.stop();
-                ctx.close();
-              }, 180);
-            } catch {}
-          }
-        }
-      }
-      if (newChanges.length) {
-        setChanges((prevChanges) => [...newChanges, ...prevChanges].slice(0, 40));
+    const fresh: ChangeRecord[] = [];
+    for (const key of Object.keys(curr)) {
+      const from = prev[key] ?? 0;
+      const to = curr[key] ?? 0;
+      if (from === to) continue;
+      const delta = to - from;
+      const abs = Math.abs(delta);
+      const severity: Severity =
+        key === "crypto" || key === "certificate" ? (abs >= 3 ? "critical" : "warn") : abs >= 5 ? "warn" : "info";
+      fresh.push({ id: `${now}-${key}-${from}-${to}`, ts: now, domain: key, delta, from, to, severity });
+    }
+    if (!fresh.length) return;
+
+    setChanges((prevChanges) => [...fresh, ...prevChanges].slice(0, 60));
+    // The tick that carried these deltas is tinted by the worst of them.
+    const worst: Severity = fresh.some((c) => c.severity === "critical")
+      ? "critical"
+      : fresh.some((c) => c.severity === "warn")
+        ? "warn"
+        : "info";
+    setSamples((prevSamples) => {
+      if (!prevSamples.length) return prevSamples;
+      const next = [...prevSamples];
+      next[next.length - 1] = { ...next[next.length - 1], severity: worst };
+      return next;
+    });
+
+    if (toneEnabled && fresh.some((c) => c.severity === "critical")) {
+      try {
+        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new Ctx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = 880;
+        gain.gain.value = 0.06;
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        setTimeout(() => {
+          osc.stop();
+          void ctx.close();
+        }, 160);
+      } catch {
+        /* audio is optional; a refused AudioContext must not break the screen */
       }
     }
-    prevDomainsRef.current = curr;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [domains.network, domains.hardware, domains.vendor, domains.crypto, domains.certificate, domains.application, domains.total, techBomTotal]);
 
-  // keyboard shortcuts: Space = pause, F = fullscreen
   useEffect(() => {
-    const h = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === "Space") {
         e.preventDefault();
         setIsPaused((p) => !p);
       }
       if (e.key.toLowerCase() === "f") setIsFullscreen((f) => !f);
+      if (e.key === "Escape") setIsFullscreen(false);
     };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const [starting, setStarting] = useState(false);
   const startScan = async () => {
     setStarting(true);
     try {
       await apiLiveOrchestratorStart();
       setTimeout(() => {
-        lt.run();
-        status.run();
+        void lt.run();
+        void status.run();
       }, 600);
     } finally {
       setStarting(false);
@@ -255,843 +303,495 @@ function LiveMonitorPage() {
     const h = Math.floor(uptimeSec / 3600);
     const m = Math.floor((uptimeSec % 3600) / 60);
     const s = uptimeSec % 60;
-    if (h > 0) return `${h}h ${m}m ${s}s`;
-    if (m > 0) return `${m}m ${s}s`;
+    if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+    if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
     return `${s}s`;
   }, [uptimeSec]);
 
-  const hasData = domains.total > 0 || (graph.node_count ?? 0) > 0;
-  const liveDots = live && !isPaused && estateVerdict === "RUNNING";
+  const collected = samples.filter((s) => !s.failed).length;
+  const failedReads = samples.filter((s) => s.failed).length;
+  const totals = samples.filter((s) => s.total !== null).map((s) => s.total as number);
+  const everObservedAssets = totals.some((t) => t > 0);
+  const recentChanges = changes.filter((c) => Date.now() - new Date(c.ts).getTime() < 300_000).length;
+  const engineLive = live && !isPaused;
 
-  // domain tiles config — unified coverage
-  const domainTiles: Array<{
-    key: string;
-    value: number;
-    prevValue?: number;
-    active: boolean;
-    delta?: number;
-  }> = [
-    { key: "network", value: domains.network, active: domains.network > 0, delta: prevDomainsRef.current ? domains.network - (prevDomainsRef.current.network ?? 0) : 0 },
-    { key: "hardware", value: domains.hardware, active: domains.hardware > 0, delta: prevDomainsRef.current ? domains.hardware - (prevDomainsRef.current.hardware ?? 0) : 0 },
-    { key: "crypto", value: domains.crypto, active: domains.crypto > 0, delta: prevDomainsRef.current ? domains.crypto - (prevDomainsRef.current.crypto ?? 0) : 0 },
-    { key: "vendor", value: domains.vendor, active: domains.vendor > 0, delta: prevDomainsRef.current ? domains.vendor - (prevDomainsRef.current.vendor ?? 0) : 0 },
-    { key: "techbom", value: techBomTotal, active: techBomTotal > 0, delta: prevDomainsRef.current ? techBomTotal - (prevDomainsRef.current.techbom ?? 0) : 0 },
-    { key: "software", value: (byLayer["sbom"] ?? 0) + domains.application, active: (byLayer["sbom"] ?? 0) + domains.application > 0, delta: prevDomainsRef.current ? (byLayer["sbom"] ?? 0) + domains.application - (prevDomainsRef.current.software ?? 0) : 0 },
-    { key: "certificate", value: domains.certificate, active: domains.certificate > 0, delta: prevDomainsRef.current ? domains.certificate - (prevDomainsRef.current.certificate ?? 0) : 0 },
-    { key: "application", value: domains.application, active: domains.application > 0, delta: prevDomainsRef.current ? domains.application - (prevDomainsRef.current.application ?? 0) : 0 },
-  ];
+  const domainRows = (["network", "hardware", "crypto", "vendor", "certificate", "application", "software", "techbom"] as const).map((key) => {
+    const meta = DOMAIN_META[key];
+    const value =
+      key === "software"
+        ? (byLayer["sbom"] ?? 0) + domains.application
+        : key === "techbom"
+          ? techBomTotal
+          : (domains as unknown as Record<string, number>)[key] ?? 0;
+    const lastChange = changes.find((c) => c.domain === key);
+    return { key, label: meta.label, value, tone: meta.tone, to: meta.to, delta: lastChange?.delta ?? 0 };
+  });
 
-  const recentChangesCount = changes.filter((c) => Date.now() - new Date(c.ts).getTime() < 300_000).length; // last 5m
+  const graphKinds = Object.entries(graph.by_kind ?? {}).map(([k, v]) => ({
+    key: k,
+    label: k,
+    value: Number(v) || 0,
+    tone: "violet",
+  }));
 
   return (
     <div
-      className={isFullscreen ? "live-monitor-fullscreen" : ""}
       style={{
-        maxWidth: isFullscreen ? "100%" : "1280px",
+        maxWidth: isFullscreen ? "100%" : 1360,
         margin: "0 auto",
-        padding: isFullscreen ? "8px 12px 40px" : "10px 0 60px",
+        padding: isFullscreen ? "10px 14px 40px" : "0 0 48px",
       }}
     >
-      {/* fullscreen bar */}
       {isFullscreen && (
         <div
           style={{
             position: "sticky",
             top: 0,
-            zIndex: 5,
+            zIndex: 20,
             display: "flex",
             alignItems: "center",
             gap: 12,
             padding: "8px 12px",
-            margin: "-8px -12px 12px",
-            background: "var(--bg)",
-            borderBottom: "1px solid var(--line)",
+            margin: "0 0 12px",
+            background: "var(--bg-2)",
+            border: "1px solid var(--line)",
+            borderRadius: "var(--r)",
+            fontFamily: "var(--mono)",
+            fontSize: 11.5,
           }}
         >
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 13 }}>
-            <span
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 999,
-                background: liveDots ? "var(--green)" : "var(--amber)",
-                boxShadow: liveDots ? "0 0 10px var(--green)" : "none",
-                animation: liveDots ? "pulse 1.2s infinite" : "none",
-              }}
-            />
-            LIVE MONITOR — FULLSCREEN 24/7
-          </span>
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>Press F or Esc to exit · Space to pause</span>
+          <span style={{ color: engineLive ? "var(--green)" : "var(--slate)" }}>●</span>
+          <b>Live monitor — fullscreen</b>
+          <span style={{ color: "var(--dim)" }}>F or Esc exits · Space pauses</span>
           <span style={{ marginLeft: "auto" }} />
-          <button onClick={() => setIsFullscreen(false)} className="btn btn-primary" style={{ padding: "6px 12px" }}>
+          <button type="button" onClick={() => setIsFullscreen(false)} style={toolbarBtn(false)}>
             Exit fullscreen
           </button>
         </div>
       )}
 
-      <section role="status" aria-label="Estate collection status" style={{
-        padding: "12px 16px", marginBottom: 14, borderRadius: "var(--r)",
-        border: `1px solid ${estateVerdict === "RUNNING" ? "var(--green)" : "var(--line)"}`,
-        background: "var(--panel)", color: "var(--text)",
-      }}>
-        <strong>Scheduled collection: {estateVerdict ?? "UNKNOWN"}</strong>
-        <div style={{ color: "var(--dim)", marginTop: 4 }}>
-          {estateState?.reason ?? "Current daemon and schedule state unavailable; API connectivity is not collection coverage."}
-        </div>
-        {estateState && <div style={{ color: "var(--dim)", marginTop: 4, fontSize: 12 }}>
-          Daemon {estateState.daemon.liveness.state} · {estateState.schedules.enabled} enabled schedule(s) ·
-          last completed run {estateState.runs.last_finished_at || "none"}
-        </div>}
-        {estateState?.next_action && <div style={{ color: "var(--dim)", marginTop: 4, fontSize: 12 }}>
-          Next action: {estateState.next_action}
-        </div>}
-        <div style={{ color: "var(--faint)", marginTop: 6, fontSize: 11 }}>
-          Scheduled discovery reprojects stored observations. A heartbeat, an empty result, or an enabled cadence is not proof that a collector acquired new evidence.
-        </div>
-      </section>
-      <EstateSchedulePanel />
-
-      {/* HERO — immersive 24/7 header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 16,
-          flexWrap: "wrap",
-          padding: "14px 16px",
-          marginBottom: 14,
-          background: liveDots
-            ? "linear-gradient(135deg, color-mix(in srgb, var(--green) 8%, var(--bg)) 0%, var(--bg) 55%, color-mix(in srgb, var(--accent) 6%, var(--bg)) 100%)"
-            : "var(--panel)",
-          border: `1px solid ${liveDots ? "color-mix(in srgb, var(--green) 30%, var(--line))" : "var(--line)"}`,
-          borderRadius: "var(--r)",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        {/* subtle grid overlay */}
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            opacity: 0.06,
-            backgroundImage:
-              "linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px)",
-            backgroundSize: "22px 22px",
-          }}
-        />
-        <div style={{ position: "relative", flex: "1 1 520px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "3px 10px",
-                borderRadius: 999,
-                background: liveDots ? "var(--green)" : "var(--amber)",
-                color: "#fff",
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "0.06em",
-              }}
-            >
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 999,
-                  background: "#fff",
-                  opacity: 0.95,
-                  boxShadow: "0 0 8px rgba(255,255,255,0.9)",
-                  animation: liveDots ? "pulse 1s infinite" : "none",
-                }}
-              />
-              LIVE MONITOR · 24/7
-            </span>
-            <Badge tone={live ? "green" : "amber"}>
-              <span className="dot" /> {isPaused ? "PAUSED" : live ? (rt.connected ? "SSE CONNECTED" : "API POLLING") : "API UNAVAILABLE"}
-            </Badge>
-            {scan?.scope_validated ? (
-              <Badge tone="green">SCOPE: AUTHORIZED</Badge>
-            ) : (
-              <Badge tone="amber">SCOPE: EMPTY</Badge>
-            )}
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>
-              Screen open {uptimeLabel} · Interval {intervalMs / 1000}s · Last poll {lastPollAt ? timeAgo(lastPollAt) : "—"}
-            </span>
-          </div>
-
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 800,
-              letterSpacing: "-0.02em",
-              margin: "8px 0 6px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <span
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                display: "grid",
-                placeItems: "center",
-                background: liveDots ? "var(--green)" : "var(--amber)",
-                color: "#fff",
-                boxShadow: liveDots ? "0 0 14px color-mix(in srgb, var(--green) 50%, transparent)" : "none",
-              }}
-            >
-              <IconLive size={18} />
-            </span>
-            Live Infrastructure Monitor
-          </h1>
-          <p style={{ margin: 0, color: "var(--dim)", fontSize: 13, lineHeight: 1.5, maxWidth: 680 }}>
-            Continuous 24/7 estate monitoring — <b style={{ color: "var(--text)" }}>network · hardware · cryptography · vendors · TechBOM · software · infra</b> — one graph, one scan id, real-time change detection. Every tick diffs the estate and surfaces what changed.
-          </p>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-            <Link to="/live-environment" className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>
-              live environment →
-            </Link>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <Link to="/live-asset-intelligence" className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>
-              TechBOM →
-            </Link>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <Link to="/live-stream" className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>
-              live stream →
-            </Link>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <Link to="/graph" className="mono" style={{ fontSize: 11, color: "var(--accent)" }}>
-              dependency graph →
-            </Link>
+      {/* ── header ─────────────────────────────────────────────────── */}
+      <div className="topbar" style={{ marginBottom: 14 }}>
+        <div>
+          <div className="crumb">Operate · live estate</div>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 650, letterSpacing: "-0.01em" }}>Live monitor</h1>
+          <div className="mono" style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 4 }}>
+            {scan ? `scan ${scan.scan_id.slice(0, 8)} · ${scan.phase.replace(/_/g, " ")}` : "no integrated scan recorded"}
+            {" · "}
+            {collected} read(s) since this screen opened · {uptimeLabel}
           </div>
         </div>
-
-        {/* right hero controls */}
-        <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 10, minWidth: 280, alignItems: "stretch" }}>
-          {/* interval + pause */}
-          <div
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              flexWrap: "wrap",
-              padding: "8px 10px",
-              background: "color-mix(in srgb, var(--bg) 80%, transparent)",
-              border: "1px solid var(--line)",
-              borderRadius: "var(--r)",
-            }}
-          >
-            <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dim)" }}>Refresh</span>
+        <div className="row" style={{ alignItems: "center", gap: 6 }}>
+          <Badge tone={rt.connected ? "green" : llTone(live)}>{rt.connected ? "SSE LIVE" : live ? "API POLLING" : "API UNREACHABLE"}</Badge>
+          <Badge tone={verdictTone(estateVerdict)}>collection {estateVerdict ?? "UNKNOWN"}</Badge>
+          <span className="row" style={{ gap: 4 }}>
             {[3000, 6000, 15000, 30000].map((ms) => (
               <button
                 key={ms}
+                type="button"
                 onClick={() => setIntervalMs(ms)}
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: 999,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  border: `1px solid ${intervalMs === ms ? "var(--accent)" : "var(--line)"}`,
-                  background: intervalMs === ms ? "var(--accent)" : "transparent",
-                  color: intervalMs === ms ? "#fff" : "var(--text)",
-                  cursor: "pointer",
-                }}
+                style={toolbarBtn(intervalMs === ms && !isPaused)}
+                aria-pressed={intervalMs === ms}
+                title={`Read the API every ${ms / 1000}s`}
               >
                 {ms / 1000}s
               </button>
             ))}
             <button
+              type="button"
               onClick={() => setIsPaused((p) => !p)}
-              style={{
-                marginLeft: "auto",
-                padding: "4px 10px",
-                borderRadius: 999,
-                fontSize: 11,
-                fontWeight: 700,
-                border: `1px solid ${isPaused ? "var(--red)" : "var(--line-strong)"}`,
-                background: isPaused ? "var(--red)" : "var(--panel)",
-                color: isPaused ? "#fff" : "var(--text)",
-                cursor: "pointer",
-              }}
-              title="Space to toggle"
+              style={toolbarBtn(isPaused, "var(--amber)")}
+              aria-pressed={isPaused}
+              title="Space toggles polling"
             >
-              {isPaused ? "▶ Resume" : "⏸ Pause"}
+              {isPaused ? "Resume" : "Pause"}
             </button>
-          </div>
-
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={() => setIsFullscreen((f) => !f)}
-              style={{
-                flex: 1,
-                padding: "7px 10px",
-                borderRadius: "var(--r)",
-                border: "1px solid var(--line-strong)",
-                background: isFullscreen ? "var(--accent)" : "var(--panel)",
-                color: isFullscreen ? "#fff" : "var(--text)",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-              title="F to toggle"
-            >
-              {isFullscreen ? "Exit Fullscreen" : "⛶ Fullscreen"}
+            <button type="button" onClick={() => setIsFullscreen((f) => !f)} style={toolbarBtn(isFullscreen)} title="F toggles fullscreen">
+              Fullscreen
             </button>
             <button
-              onClick={() => setSoundEnabled((s) => !s)}
-              style={{
-                padding: "7px 10px",
-                borderRadius: "var(--r)",
-                border: "1px solid var(--line)",
-                background: "var(--panel)",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-              title="Sound on critical changes"
+              type="button"
+              onClick={() => setToneEnabled((t) => !t)}
+              style={toolbarBtn(toneEnabled, "var(--amber)")}
+              aria-pressed={toneEnabled}
+              title="Play a tone when a critical delta is first seen (off by default)"
             >
-              {soundEnabled ? "🔔 Sound" : "🔕 Muted"}
+              Tone {toneEnabled ? "on" : "off"}
             </button>
-          </div>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: "var(--dim)" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 999,
-                  background: recentChangesCount ? "var(--red)" : "var(--green)",
-                  boxShadow: recentChangesCount ? "0 0 8px var(--red)" : "none",
-                  animation: recentChangesCount ? "pulse 1s infinite" : "none",
-                }}
-              />
-              {recentChangesCount ? `${recentChangesCount} change(s) in last 5m` : "No recent changes"}
-            </span>
-            <span style={{ marginLeft: "auto" }}>{changes.length ? `Total ${changes.length} detected` : "Watching…"}</span>
-          </div>
-
-          <Panel
-            frame={false}
-            style={{
-              padding: "8px 10px",
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              background: "color-mix(in srgb, var(--bg) 90%, transparent)",
-            }}
-          >
-            <Ring
-              pct={Math.min(1, domains.total / 200)}
-              label={formatNumber(domains.total)}
-              sub="estate"
-              tone={hasData ? "green" : "cyan"}
-            />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--faint)", letterSpacing: "0.06em" }}>TOTAL ESTATE</div>
-              <div style={{ fontSize: 12, color: "var(--dim)", lineHeight: 1.4 }}>
-                {domains.total} assets · {graph.node_count ?? 0} graph nodes / {graph.edge_count ?? 0} edges
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <Bar value={hasData ? Math.min(1, domains.total / 150) : 0} tone={hasData ? "green" : "cyan"} />
-              </div>
-              <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 4 }}>
-                {scan ? `${scan.scan_id.slice(0, 8)}… · ${scan.phase.replace(/_/g, " ")}` : "No active scan"}
-              </div>
-            </div>
-          </Panel>
+          </span>
         </div>
       </div>
 
-      {/* KPI STRIP — 4 key health cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 12 }}>
-        <Panel
-          style={{ padding: "12px 14px", borderLeft: `3px solid ${liveDots ? "var(--green)" : "var(--amber)"}` }}
-          frame={false}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--faint)" }}>LIVE ENGINE</span>
-            <Badge tone={liveDots ? "green" : "amber"}>{liveDots ? "24/7 RUNNING" : isPaused ? "PAUSED" : "IDLE"}</Badge>
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+      {/* ── collection state ───────────────────────────────────────── */}
+      <section
+        role="status"
+        aria-label="Estate collection status"
+        className="panel"
+        style={{ padding: "10px 12px", marginBottom: 12, borderLeft: `2px solid ${stateColor(estateVerdict)}` }}
+      >
+        <div className="spread" style={{ gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
             <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 999,
-                background: liveDots ? "var(--green)" : "var(--amber)",
-                animation: liveDots ? "pulse 1.2s infinite" : "none",
-              }}
-            />
-            {liveDots ? "Monitoring" : "Standby"}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-            Screen open {uptimeLabel} · {rt.connected ? "SSE connected" : "Polling fallback"} · {intervalMs / 1000}s tick
-          </div>
-          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-            <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 999, background: "var(--line)", color: "var(--dim)" }}>
-              {events.length} live events
+              className="mono"
+              style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: "0.02em", color: stateColor(estateVerdict) }}
+            >
+              Scheduled collection: {estateVerdict ?? "UNKNOWN"}
             </span>
-            <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 999, background: "var(--line)", color: "var(--dim)" }}>
-              {changes.length} changes tracked
+            <span style={{ fontSize: 12, color: "var(--dim)" }}>
+              {estateState?.reason ?? "Current daemon and schedule state unavailable; API connectivity is not collection coverage."}
             </span>
           </div>
-        </Panel>
+          {estateState?.next_action && (
+            <span className="mono" style={{ fontSize: 11, color: "var(--amber)", whiteSpace: "nowrap" }}>
+              next: {estateState.next_action}
+            </span>
+          )}
+        </div>
 
-        <Panel
-          style={{ padding: "12px 14px", borderLeft: `3px solid ${scan?.phase === "live_monitoring" ? "var(--green)" : "var(--accent)"}` }}
-          frame={false}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--faint)" }}>ORCHESTRATOR</span>
-            {scan ? <Badge tone={phaseTone(scan.phase)}>{scan.phase.replace(/_/g, " ")}</Badge> : <Badge tone="">NO SCAN</Badge>}
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 6, fontFamily: "var(--mono)" }}>{scan?.scan_id ?? "—"}</div>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-            {scan ? `${scan.org_name || "—"} · ${timeAgo(scan.started_at)} ago · ${scan.status}` : "Start a scan to begin 24/7 monitoring"}
-          </div>
-          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-            {scan?.error ? (
-              <span style={{ fontSize: 10, color: "var(--red)" }}>{scan.error}</span>
-            ) : scan ? (
-              <span style={{ fontSize: 10, color: "var(--green)" }}>Scope {scan.scope_validated ? "validated" : "pending"}</span>
-            ) : null}
-          </div>
-        </Panel>
-
-        <Panel
+        <div
           style={{
-            padding: "12px 14px",
-            borderLeft: `3px solid ${recentChangesCount ? "var(--red)" : "var(--green)"}`,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+            gap: 8,
+            marginTop: 10,
           }}
-          frame={false}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--faint)" }}>CHANGE DETECTION</span>
-            <Badge tone={recentChangesCount ? "red" : "green"}>{recentChangesCount ? `${recentChangesCount} NEW` : "STABLE"}</Badge>
-          </div>
-          <div style={{ fontSize: 18, fontWeight: 800, marginTop: 6 }}>
-            {changes.length === 0 ? "No changes" : `${changes.length} change(s)`}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-            {changes[0] ? `Last: ${changes[0].domain} ${changes[0].delta > 0 ? "+" : ""}${changes[0].delta} · ${timeAgo(changes[0].ts)} ago` : "Watching all domains for deltas"}
-          </div>
+          <StateCell
+            label="Daemon liveness"
+            value={estateState?.daemon.liveness.state ?? "NOT_READ"}
+            tone={livenessTone(estateState?.daemon.liveness.state)}
+            note={
+              estateState
+                ? `${estateState.daemon.liveness.age_seconds === null ? "age unknown" : `heartbeat ${estateState.daemon.liveness.age_seconds}s ago`}`
+                : "the status read did not return"
+            }
+          />
+          <StateCell
+            label="Schedules"
+            value={estateState ? `${estateState.schedules.enabled}/${estateState.schedules.total}` : "—"}
+            tone={estateState?.schedules.enabled ? "green" : "slate"}
+            note={`${estateState?.schedules.enabled ?? 0} enabled schedule(s)`}
+          />
+          <StateCell
+            label="Last completed run"
+            value={estateState?.runs.last_finished_at ? `${timeAgo(estateState.runs.last_finished_at)} ago` : "none"}
+            tone={estateState?.runs.last_finished_at ? "green" : "slate"}
+            note={`last completed run ${estateState?.runs.last_finished_at ?? "none"}`}
+          />
+          <StateCell
+            label="Next due"
+            value={estateState?.schedules.next_due_at ? clock(estateState.schedules.next_due_at) : "—"}
+            note={estateState?.schedules.seconds_until_due === null || estateState?.schedules.seconds_until_due === undefined
+              ? "no cadence registered"
+              : `in ${estateState.schedules.seconds_until_due}s`}
+          />
+        </div>
+
+        <details style={{ marginTop: 8 }}>
+          <summary className="mono" style={{ fontSize: 10.5, color: "var(--faint)", cursor: "pointer" }}>
+            What this state proves, and what it does not
+          </summary>
+          <p style={{ fontSize: 11, color: "var(--faint)", margin: "6px 0 0", lineHeight: 1.5, maxWidth: 900 }}>
+            Scheduled discovery reprojects stored observations. A heartbeat, an empty result, or an enabled cadence is
+            not proof that a collector acquired new evidence. API connectivity is not collection coverage.
+          </p>
+        </details>
+      </section>
+
+      {/* ── observation record + composition ───────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 12 }}>
+        <Panel
+          title="Observation record"
+          sub={`${collected} successful read(s) · ${failedReads} failed · interval ${isPaused ? "paused" : `${intervalMs / 1000}s`} · last read ${lastReadAt ? `${timeAgo(lastReadAt)} ago` : "—"}`}
+        >
+          <Sparkline
+            series={samples.map((s) => s.total)}
+            label="Total estate assets per read"
+            tone="accent"
+            height={74}
+            emptyNote="Nothing has been read yet. The chart fills from the values this screen actually received."
+          />
           <div style={{ marginTop: 8 }}>
-            <Bar value={Math.min(1, changes.length / 10)} tone={recentChangesCount ? "red" : "green"} />
+            <TickStrip
+              ticks={samples.map((s) => ({ ts: s.ts, severity: s.severity }))}
+              label="Ticks by change severity"
+              emptyNote="No read has completed, so there is no tick to colour."
+            />
           </div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 8 }}>
+            <span style={{ fontSize: 10.5, color: "var(--faint)" }}>
+              <span style={{ color: "var(--green)" }}>▮</span> tick with no delta
+            </span>
+            <span style={{ fontSize: 10.5, color: "var(--faint)" }}>
+              <span style={{ color: "var(--amber)" }}>▮</span> warning delta
+            </span>
+            <span style={{ fontSize: 10.5, color: "var(--faint)" }}>
+              <span style={{ color: "var(--red)" }}>▮</span> critical delta
+            </span>
+            <span style={{ fontSize: 10.5, color: "var(--faint)" }}>┊ dashed = read failed (gap, not zero)</span>
+          </div>
+          {collected > 0 && !everObservedAssets && (
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--dim)" }}>
+              Every read returned 0 assets. That is a measurement of an empty estate — not an error, and not coverage.
+            </p>
+          )}
         </Panel>
 
+        <Panel title="Estate composition" sub={`${nf(domains.total)} asset(s) attributed to a domain`}>
+          <StackedBar
+            segments={[
+              { key: "network", label: "Network", value: domains.network, tone: "cyan" },
+              { key: "hardware", label: "Hardware", value: domains.hardware, tone: "amber" },
+              { key: "crypto", label: "Crypto", value: domains.crypto, tone: "green" },
+              { key: "vendor", label: "Vendor", value: domains.vendor, tone: "violet" },
+              { key: "application", label: "Application", value: domains.application, tone: "slate" },
+              { key: "certificate", label: "Certificate", value: domains.certificate, tone: "red" },
+            ]}
+            note="Shares are of what the API returned for this tenant, not of the bank's real estate."
+          />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+            <StateCell label="Graph nodes" value={nf(graph.node_count ?? 0)} tone={(graph.node_count ?? 0) ? "violet" : "slate"} note="dependency view" />
+            <StateCell label="Graph edges" value={nf(graph.edge_count ?? 0)} tone={(graph.edge_count ?? 0) ? "violet" : "slate"} note="dependency view" />
+          </div>
+          <Link to="/graph" className="mono" style={{ display: "inline-block", marginTop: 10, fontSize: 11, color: "var(--accent)" }}>
+            open dependency graph →
+          </Link>
+        </Panel>
+      </div>
+
+      {/* ── coverage by domain ─────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12, marginBottom: 12 }}>
         <Panel
-          style={{ padding: "12px 14px", borderLeft: "3px solid var(--violet)" }}
-          frame={false}
+          title="Assets by domain"
+          sub="Bar length is relative to the largest domain in this read; the chip is the last delta seen on this screen."
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--faint)" }}>TECHBOM LIVE</span>
-            <Badge tone={techBomTotal ? "green" : ""}>{techBomTotal ? `${formatNumber(techBomTotal)} assets` : "—"}</Badge>
-          </div>
-          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 6 }}>
-            {techBomTotal ? `${Object.keys(techBomLayers).length} layers active` : "Waiting for inventory"}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>
-            {Object.entries(byLayer)
-              .map(([k, v]) => `${k} ${v}`)
-              .join(" · ") || "No TechBOM yet"}
-          </div>
-          <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
-            {Object.keys(techBomLayers).length ? (
-              Object.keys(techBomLayers).map((k) => (
-                <span key={k} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 999, background: "var(--line)", color: "var(--dim)" }}>
-                  {k}
-                </span>
-              ))
-            ) : (
-              <span style={{ fontSize: 10, color: "var(--faint)" }}>TechBOM populates from estate scans</span>
-            )}
+          {/* No read, no rows: a zero row would be a claim that the domain was
+              measured and came back empty, which is a different statement. */}
+          <HBars
+            rows={env ? domainRows : []}
+            emptyTitle="No domain returned a count"
+            emptyNote="The environment read has not returned; this is an unread panel, not an empty estate."
+          />
+          {env && domainRows.every((r) => r.value === 0) && (
+            <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--faint)" }}>
+              All eight domains measured 0 in this read. The table says what the API returned for this tenant.
+            </p>
+          )}
+        </Panel>
+
+        <Panel title="TechBOM layers" sub={`${nf(techBomTotal)} component(s) reported across ${Object.keys(techBomLayers).length} layer(s)`}>
+          <HBars
+            rows={TECHBOM_LAYERS.map((l) => ({
+              key: l.k,
+              label: l.label,
+              value: byLayer[l.k] ?? techBomLayers[l.k]?.count ?? 0,
+              tone: l.tone,
+              to: l.to,
+            }))}
+            emptyTitle="TechBOM is empty"
+            emptyNote="Layers fill from a completed integrated scan or an onboarding import."
+          />
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+            <HBars
+              rows={graphKinds}
+              emptyTitle="No graph kinds recorded"
+              emptyNote="Dependency topology appears after discovery attributes assets to a graph."
+            />
           </div>
         </Panel>
       </div>
 
-      {/* DOMAIN GRID — 8 live tiles */}
-      <Panel title="Infrastructure coverage — live per domain" sub="Every tile is a live domain. Delta badges appear the moment a count changes. Click to inspect.">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
-          {domainTiles.map(({ key, value, active, delta = 0 }) => {
-            const meta = DOMAIN_META[key] ?? { label: key, icon: IconEstate, color: "var(--faint)", tone: "", to: "#", desc: "" };
-            const deltaTone = (delta ?? 0) > 0 ? "green" : (delta ?? 0) < 0 ? "red" : "";
-            const DeltaIcon = (delta ?? 0) > 0 ? IconTrendUp : (delta ?? 0) < 0 ? IconTrendDown : IconTrendFlat;
-            return (
-              <Link
-                key={key}
-                to={meta.to}
-                style={{
-                  textDecoration: "none",
-                  color: "inherit",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                  padding: "12px 12px",
-                  border: `1px solid ${active ? "var(--line-strong)" : "var(--line)"}`,
-                  borderRadius: "var(--r)",
-                  background: active ? "color-mix(in srgb, var(--bg) 70%, transparent)" : "transparent",
-                  opacity: active ? 1 : 0.6,
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                {/* accent top bar */}
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 2,
-                    background: meta.color,
-                    opacity: active ? 1 : 0.4,
-                  }}
-                />
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ color: meta.color, lineHeight: 0 }}>
-                    <meta.icon size={20} />
-                  </span>
-                  <span style={{ fontWeight: 700, fontSize: 12 }}>{meta.label}</span>
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      width: 7,
-                      height: 7,
-                      borderRadius: 999,
-                      background: active ? "var(--green)" : "var(--faint)",
-                      boxShadow: active && liveDots ? "0 0 6px var(--green)" : "none",
-                    }}
-                  />
-                </div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                  <span style={{ fontSize: 22, fontWeight: 800, fontFamily: "var(--mono)" }}>{formatNumber(value)}</span>
-                  {delta !== 0 && delta !== undefined && (
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 4,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "1px 6px",
-                        borderRadius: 999,
-                        background: deltaTone === "green" ? "color-mix(in srgb, var(--green) 18%, transparent)" : "color-mix(in srgb, var(--red) 18%, transparent)",
-                        color: deltaTone === "green" ? "var(--green)" : "var(--red)",
-                        border: `1px solid ${deltaTone === "green" ? "var(--green)" : "var(--red)"}`,
-                      }}
-                    >
-                      <DeltaIcon size={12} /> {delta > 0 ? `+${delta}` : delta}
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: 10, color: "var(--faint)", lineHeight: 1.4 }}>{meta.desc}</div>
-                <div style={{ marginTop: "auto", display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--dim)" }}>
-                  <span style={{ width: 6, height: 6, borderRadius: 999, background: active ? "var(--green)" : "var(--line-strong)" }} />
-                  {active ? "LIVE" : "IDLE"} · {value ? "tracked" : "awaiting data"}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+      {/* ── assessment cadences ────────────────────────────────────── */}
+      <EstateSchedulePanel />
 
-        {/* estate composition bar */}
-        <div style={{ marginTop: 14, padding: "10px 12px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, fontWeight: 600, color: "var(--dim)", marginBottom: 6 }}>
-            <span>ESTATE COMPOSITION</span>
-            <span style={{ fontFamily: "var(--mono)" }}>{domains.total} total</span>
-          </div>
-          <div style={{ display: "flex", height: 10, borderRadius: 999, overflow: "hidden", background: "var(--line)" }}>
-            {[
-              { k: "network", v: domains.network, c: "var(--cyan)" },
-              { k: "hardware", v: domains.hardware, c: "var(--amber)" },
-              { k: "crypto", v: domains.crypto, c: "var(--green)" },
-              { k: "vendor", v: domains.vendor, c: "var(--violet)" },
-              { k: "application", v: domains.application, c: "var(--accent)" },
-              { k: "certificate", v: domains.certificate, c: "var(--red)" },
-            ].map((s) => {
-              const pct = domains.total ? (s.v / domains.total) * 100 : 0;
-              if (!pct) return null;
-              return <span key={s.k} title={`${s.k} ${s.v}`} style={{ width: `${pct}%`, background: s.c }} />;
-            })}
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 6, fontSize: 10, color: "var(--dim)" }}>
-            {[
-              { k: "Network", c: "var(--cyan)" },
-              { k: "Hardware", c: "var(--amber)" },
-              { k: "Crypto", c: "var(--green)" },
-              { k: "Vendor", c: "var(--violet)" },
-              { k: "Software", c: "var(--accent)" },
-              { k: "Certs", c: "var(--red)" },
-            ].map((l) => (
-              <span key={l.k} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: l.c }} /> {l.k}
-              </span>
-            ))}
-          </div>
-        </div>
-      </Panel>
-
-      {/* SCAN ORCHESTRATOR — expanded */}
-      <Panel title="Scan orchestrator — 24/7 runner" sub="One global scan id · phase state machine · per-scanner progress · survives restarts">
+      {/* ── orchestrator ───────────────────────────────────────────── */}
+      <Panel
+        title="Scan orchestrator"
+        sub="One global scan id · phase machine · per-scanner progress as reported by the runner"
+      >
         {scan ? (
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
-            <div style={{ minWidth: 200 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", color: "var(--faint)" }}>GLOBAL SCAN ID</div>
-              <div style={{ fontFamily: "var(--mono)", fontWeight: 800, fontSize: 16, marginTop: 2 }}>{scan.scan_id}</div>
-              <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 2 }}>{scan.org_name || "—"} · started {timeAgo(scan.started_at)} ago</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 }}>
+            <div>
+              <div className="mono" style={{ fontSize: 15, fontWeight: 700, wordBreak: "break-all" }}>{scan.scan_id}</div>
+              <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>
+                {scan.org_name || "—"} · started {timeAgo(scan.started_at)} ago
+              </div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 <Badge tone={phaseTone(scan.phase)}>{scan.phase.replace(/_/g, " ")}</Badge>
-                <Badge tone={scan.status === "running" ? "green" : scan.status === "completed" ? "green" : "amber"}>{scan.status}</Badge>
-                {scan.scope_validated && <Badge tone="green">scope validated</Badge>}
+                <Badge tone={scan.status === "running" || scan.status === "completed" ? "green" : "amber"}>{scan.status}</Badge>
+                <Badge tone={scan.scope_validated ? "green" : "amber"}>
+                  scope {scan.scope_validated ? "validated" : "pending"}
+                </Badge>
               </div>
+              {scan.error && <div style={{ fontSize: 11, color: "var(--red)", marginTop: 8 }}>{scan.error}</div>}
             </div>
-
-            <div style={{ flex: "1 1 320px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10 }}>
-              {Object.entries(scan.progress || {}).length ? (
-                Object.entries(scan.progress)
-                  .slice(0, 12)
-                  .map(([k, v]) => (
-                    <div key={k} style={{ padding: "8px 10px", border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--panel)" }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--faint)", textTransform: "uppercase" }}>{k}</div>
-                      <div style={{ height: 6, background: "var(--line)", borderRadius: 999, overflow: "hidden", marginTop: 6 }}>
-                        <div style={{ width: `${v}%`, height: "100%", background: v >= 100 ? "var(--green)" : "var(--accent)", transition: "width 400ms ease" }} />
-                      </div>
-                      <div style={{ fontSize: 11, fontWeight: 700, marginTop: 4, fontFamily: "var(--mono)" }}>{v}%</div>
-                    </div>
-                  ))
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+              {Object.entries(scan.progress ?? {}).length ? (
+                Object.entries(scan.progress).slice(0, 12).map(([k, v]) => (
+                  <Meter key={k} label={k.replace(/_/g, " ")} value={v} tone={v >= 100 ? "green" : "accent"} />
+                ))
               ) : (
-                <div style={{ fontSize: 12, color: "var(--dim)", padding: "10px 0" }}>Awaiting first scanner heartbeat…</div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <VizEmpty title="No scanner has reported progress" note="The runner writes progress per scanner; an empty map means none reported." height={64} />
+                </div>
               )}
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 160 }}>
-              <button onClick={startScan} disabled={starting} className="btn btn-primary" style={{ padding: "8px 14px", opacity: starting ? 0.6 : 1 }}>
-                {starting ? "Starting…" : "Restart scan"}
-              </button>
-              <div style={{ fontSize: 10, color: "var(--faint)", lineHeight: 1.4, textAlign: "center" }}>Runner {scan ? (status.data as any)?.runner?.running ? "● running" : "○ idle" : "—"} · History {runs.length} runs</div>
             </div>
           </div>
         ) : (
-          <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ flex: 1, fontSize: 13, color: "var(--dim)" }}>
-              {(status as any)?.source === "live"
-                ? "No integrated scan yet — start one to discover the authorized scope in one pass and enter live_monitoring."
-                : "Backend offline — orchestrator unavailable."}
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 320px" }}>
+              <VizEmpty
+                title="No integrated scan recorded"
+                note="Submit a scan to create a scan id. It runs as a job; this screen reads its state, it does not advance it."
+                height={64}
+              />
             </div>
-            <button onClick={startScan} disabled={starting} className="btn btn-primary" style={{ padding: "8px 14px" }}>
-              {starting ? "Starting…" : "Start integrated scan"}
+            <button type="button" className="btn btn-primary" onClick={() => void startScan()} disabled={starting}>
+              {starting ? "Submitting…" : "Start scan"}
+            </button>
+          </div>
+        )}
+        {scan && (
+          <div style={{ marginTop: 12 }}>
+            <button type="button" className="btn" onClick={() => void startScan()} disabled={starting}>
+              {starting ? "Submitting…" : "Start another scan"}
             </button>
           </div>
         )}
       </Panel>
 
-      {/* MAIN GRID — changes + live events + graph */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12, marginTop: 12 }}>
-        {/* CHANGE TIMELINE */}
+      {/* ── deltas + events ────────────────────────────────────────── */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12, marginTop: 12 }}>
         <Panel
-          title={`Change detection — live timeline`}
-          sub={`${changes.length} change(s) tracked · deltas computed every ${intervalMs / 1000}s · most recent first`}
+          title="Deltas observed on this screen"
+          sub={`${changes.length} recorded · ${recentChanges} in the last 5m · local poll-to-poll diff, not a server claim`}
         >
           {changes.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 360, overflowY: "auto", paddingRight: 4 }}>
-              {changes.map((c) => {
-                const meta = DOMAIN_META[c.domain] ?? { label: c.domain, icon: IconEstate, color: "var(--faint)", tone: "", to: "#", desc: "" };
-                return (
-                  <div
-                    key={c.id}
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      padding: "8px 10px",
-                      border: "1px solid var(--line)",
-                      borderRadius: "var(--r)",
-                      background:
-                        c.severity === "critical"
-                          ? "color-mix(in srgb, var(--red) 8%, var(--panel))"
-                          : c.severity === "warn"
-                            ? "color-mix(in srgb, var(--amber) 6%, var(--panel))"
-                            : "var(--panel)",
-                    }}
-                  >
-                    <span style={{ color: meta.color, lineHeight: 0 }}>
-                      <meta.icon size={16} />
-                    </span>
-                    <span style={{ fontWeight: 700, fontSize: 12, minWidth: 80 }}>{meta.label}</span>
-                    <span
-                      style={{
-                        fontFamily: "var(--mono)",
-                        fontSize: 11,
-                        padding: "2px 7px",
-                        borderRadius: 999,
-                        background: c.delta > 0 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "color-mix(in srgb, var(--red) 14%, transparent)",
-                        color: c.delta > 0 ? "var(--green)" : "var(--red)",
-                        border: `1px solid ${c.delta > 0 ? "var(--green)" : "var(--red)"}`,
-                        fontWeight: 700,
-                      }}
-                    >
-                      {c.delta > 0 ? `+${c.delta}` : c.delta} · {c.from} → {c.to}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--dim)", marginLeft: "auto" }}>{timeAgo(c.ts)} ago</span>
-                    <Badge tone={c.severity === "critical" ? "red" : c.severity === "warn" ? "amber" : "green"}>{c.severity}</Badge>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div
-              style={{
-                padding: "18px 12px",
-                textAlign: "center",
-                color: "var(--faint)",
-                fontSize: 12,
-                border: "1px dashed var(--line)",
-                borderRadius: "var(--r)",
-                background: "var(--panel)",
-              }}
-            >
-              No deltas yet — estate is stable. New assets, certs, crypto, or vendor entries will appear here within {intervalMs / 1000}s of being observed.
-            </div>
-          )}
-          <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 8, textAlign: "center" }}>
-            Tip: Press <b>Space</b> to pause · <b>F</b> for fullscreen · Change detection is local delta (poll-to-poll), not just server events.
-          </div>
-        </Panel>
-
-        {/* LIVE EVENTS */}
-        <Panel title="Live events — real state changes streamed over SSE" sub={`${events.length} newest · backend ${rt.connected ? "SSE LIVE" : "polling"} · topology below`}>
-          {events.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {events.map((e: any) => (
-                <div key={e.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 10px", border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--panel)" }}>
-                  <Badge tone={sevTone(severityOf(e.type))}>{severityOf(e.type)}</Badge>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 11, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.type}</span>
-                  <span style={{ fontSize: 11, color: "var(--dim)" }}>{timeAgo(e.ts)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div style={{ fontSize: 12, color: "var(--faint)", padding: "14px", textAlign: "center", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}>
-              {rt.connected ? "No live events yet — run a scan." : "Backend offline — no event stream."}
-            </div>
-          )}
-          <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 8 }}>
-            {(env as any)?.events?.events?.length ? `${(env as any).events.events.length} retained estate events sampled${(env as any).events.has_more ? " · more pages available" : ""}` : "All estate changes are persisted to the event log"}
-          </div>
-
-          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--faint)", letterSpacing: "0.06em", marginBottom: 8 }}>DEPENDENCY TOPOLOGY</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6, fontSize: 11 }}>
-              {Object.entries(graph.by_kind ?? {}).map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
-                  <span style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>{k}</span>
-                  <span style={{ fontWeight: 700 }}>{String(v)}</span>
-                </div>
-              ))}
-              {!Object.keys(graph.by_kind ?? {}).length && <span style={{ fontSize: 11, color: "var(--faint)", gridColumn: "1 / -1" }}>No graph yet — populate via onboarding scope + discovery.</span>}
-            </div>
-            <Link to="/graph" style={{ fontSize: 11, display: "inline-block", marginTop: 8, color: "var(--accent)", fontFamily: "var(--mono)" }}>
-              open full dependency graph →
-            </Link>
-          </div>
-        </Panel>
-      </div>
-
-      {/* HISTORY + TECHBOM FOOTER */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 12, marginTop: 12 }}>
-        <Panel title="Scan run history — durable 24/7 log" sub={`${runs.length} runs · survives restarts · visible from any worker`}>
-          {runs.length ? (
-            <div style={{ maxHeight: 280, overflowY: "auto" }}>
-              <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
+            <div style={{ maxHeight: 300, overflowY: "auto" }}>
+              <table className="tbl" style={{ width: "100%", fontSize: 11.5 }}>
                 <thead>
-                  <tr style={{ color: "var(--faint)", textAlign: "left" }}>
-                    <th style={{ padding: "6px 6px", fontWeight: 600 }}>Run</th>
-                    <th style={{ padding: "6px 6px", fontWeight: 600 }}>Phase</th>
-                    <th style={{ padding: "6px 6px", fontWeight: 600 }}>Status</th>
-                    <th style={{ padding: "6px 6px", fontWeight: 600 }}>Started</th>
-                    <th style={{ padding: "6px 6px", fontWeight: 600 }}>Duration</th>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>Observed</th>
+                    <th style={{ textAlign: "left" }}>Domain</th>
+                    <th style={{ textAlign: "right" }}>From → to</th>
+                    <th style={{ textAlign: "right" }}>Δ</th>
+                    <th style={{ textAlign: "left" }}>Severity</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {runs.slice(0, 8).map((r) => (
-                    <tr key={r.scan_id} style={{ borderTop: "1px solid var(--line)" }}>
-                      <td style={{ padding: "6px 6px", fontFamily: "var(--mono)", fontWeight: 600 }}>{r.scan_id.slice(0, 12)}…</td>
-                      <td style={{ padding: "6px 6px" }}>
-                        <Badge tone={phaseTone(r.phase ?? "completed")}>{(r.phase ?? "—").replace(/_/g, " ")}</Badge>
-                      </td>
-                      <td style={{ padding: "6px 6px" }}>
-                        <Badge tone={r.status === "completed" ? "green" : r.status === "failed" ? "red" : "amber"}>{r.status}</Badge>
-                      </td>
-                      <td style={{ padding: "6px 6px", color: "var(--dim)" }}>{r.started_at ? timeAgo(r.started_at) : "—"}</td>
-                      <td style={{ padding: "6px 6px", color: "var(--dim)" }}>
-                        {r.started_at && r.ended_at ? `${Math.max(0, Math.round((new Date(r.ended_at).getTime() - new Date(r.started_at).getTime()) / 1000))}s` : "—"}
-                      </td>
+                  {changes.slice(0, 25).map((c) => (
+                    <tr key={c.id}>
+                      <td className="mono" style={{ whiteSpace: "nowrap" }}>{timeAgo(c.ts)} ago</td>
+                      <td>{DOMAIN_META[c.domain]?.label ?? c.domain}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{c.from} → {c.to}</td>
+                      <td style={{ textAlign: "right" }}><DeltaChip value={c.delta} /></td>
+                      <td><Badge tone={c.severity === "critical" ? "red" : c.severity === "warn" ? "amber" : "green"}>{c.severity}</Badge></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: "var(--faint)", padding: "10px", textAlign: "center", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}>
-              {(history as any)?.source === "live" ? "No integrated scans yet — start one above to record history." : "Backend offline — run history unavailable."}
-            </div>
+            <VizEmpty
+              title="No delta yet"
+              note={`A delta is recorded only when two reads return different counts. Nothing has changed in ${collected} read(s).`}
+            />
           )}
         </Panel>
 
-        <Panel title="TechBOM live — unified asset truth" sub={`${techBomTotal} total components · ${Object.keys(techBomLayers).length} layers · poll ${intervalMs / 1000}s · click to open`}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 8 }}>
-            {[
-              { k: "sbom", label: "Software", to: "/sbom" },
-              { k: "cbom", label: "Crypto", to: "/cbom" },
-              { k: "hbom", label: "Hardware", to: "/hbom" },
-              { k: "nbom", label: "Network", to: "/nbom" },
-              { k: "vendor", label: "Vendors", to: "/vbom" },
-              { k: "certificates", label: "Certs", to: "/certificates" },
-            ].map((l) => {
-              const v = byLayer[l.k] ?? techBomLayers[l.k]?.count ?? 0;
-              return (
-                <Link
-                  key={l.k}
-                  to={l.to}
-                  style={{
-                    textDecoration: "none",
-                    padding: "8px 10px",
-                    border: "1px solid var(--line)",
-                    borderRadius: "var(--r)",
-                    background: (v as number) > 0 ? "var(--panel)" : "transparent",
-                    opacity: (v as number) > 0 ? 1 : 0.6,
-                  }}
-                >
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--faint)", letterSpacing: "0.06em" }}>{l.label.toUpperCase()}</div>
-                  <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "var(--mono)", marginTop: 2 }}>{String(v)}</div>
-                  <div style={{ height: 3, background: "var(--line)", borderRadius: 999, marginTop: 6, overflow: "hidden" }}>
-                    <span style={{ display: "block", width: `${techBomTotal ? (Math.min(100, ((v as number) / Math.max(1, techBomTotal)) * 100)) : 0}%`, height: "100%", background: "var(--violet)" }} />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-          <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 8, textAlign: "center" }}>
-            Correlation graph · {graph.node_count ?? 0} nodes / {graph.edge_count ?? 0} edges · {graph.backend ? `backend ${graph.backend}` : "backend (in-memory)"} · {graph.by_kind ? Object.entries(graph.by_kind).map(([k, v]) => `${k} ${v}`).join(" · ") : "no by_kind yet"}
-          </div>
-          {!hasData && (
-            <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 8, padding: "8px 10px", border: "1px solid var(--line)", borderRadius: "var(--r)", background: "var(--panel)" }}>
-              Hierarchy populates from onboarding scope and discovery. Configure your estate in <Link to="/onboarding">Onboarding</Link>, then run an integrated scan.
+        <Panel
+          title="Estate events"
+          sub={`${events.length} newest retained event(s) · ${rt.connected ? "streamed over SSE" : "polled, stream not connected"}`}
+        >
+          {events.length ? (
+            <div style={{ maxHeight: 300, overflowY: "auto" }}>
+              <table className="tbl" style={{ width: "100%", fontSize: 11.5 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>Age</th>
+                    <th style={{ textAlign: "left" }}>Type</th>
+                    <th style={{ textAlign: "left" }}>Severity</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((e) => (
+                    <tr key={e.id}>
+                      <td className="mono" style={{ whiteSpace: "nowrap" }}>{timeAgo(e.ts)} ago</td>
+                      <td className="mono" style={{ wordBreak: "break-all" }}>{e.type}</td>
+                      <td><Badge tone={sevTone(severityOf(e.type))}>{severityOf(e.type)}</Badge></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          ) : (
+            <VizEmpty
+              title={rt.connected ? "No estate event retained" : "Event stream not connected"}
+              note={rt.connected
+                ? "The stream is open and has delivered no estate event. An open stream is not evidence of activity."
+                : "Open the stream by signing in on this screen; until then this list is a read of stored events, not a live feed."}
+            />
           )}
         </Panel>
       </div>
 
-      <style>{`@keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.08); } 100% { opacity: 1; transform: scale(1); } }`}</style>
+      {/* ── run history ────────────────────────────────────────────── */}
+      <Panel
+        title="Scan run history"
+        sub={`${runs.length} durable run(s) · ${(history.data as { source?: string } | null)?.source === "live" ? "read from the backend" : "backend did not answer"}`}
+      >
+        {runs.length ? (
+          <div style={{ maxHeight: 300, overflowY: "auto" }}>
+            <table className="tbl" style={{ width: "100%", fontSize: 11.5 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Run</th>
+                  <th style={{ textAlign: "left" }}>Phase</th>
+                  <th style={{ textAlign: "left" }}>Status</th>
+                  <th style={{ textAlign: "left" }}>Started</th>
+                  <th style={{ textAlign: "left" }}>Duration</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.slice(0, 12).map((r) => {
+                  const secs = r.started_at && r.ended_at
+                    ? Math.max(0, Math.round((new Date(r.ended_at).getTime() - new Date(r.started_at).getTime()) / 1000))
+                    : null;
+                  const longest = runs.reduce((acc, x) => {
+                    const s = x.started_at && x.ended_at
+                      ? Math.max(0, Math.round((new Date(x.ended_at).getTime() - new Date(x.started_at).getTime()) / 1000))
+                      : 0;
+                    return Math.max(acc, s);
+                  }, 0);
+                  return (
+                    <tr key={r.scan_id}>
+                      <td className="mono">{r.scan_id.slice(0, 12)}…</td>
+                      <td><Badge tone={phaseTone(r.phase ?? "completed")}>{(r.phase ?? "—").replace(/_/g, " ")}</Badge></td>
+                      <td><Badge tone={r.status === "completed" ? "green" : r.status === "failed" ? "red" : "amber"}>{r.status}</Badge></td>
+                      <td style={{ color: "var(--dim)" }}>{r.started_at ? `${timeAgo(r.started_at)} ago` : "—"}</td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ flex: 1, height: 5, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 2, overflow: "hidden" }}>
+                            <span style={{ display: "block", height: "100%", width: `${longest ? ((secs ?? 0) / longest) * 100 : 0}%`, background: "var(--accent)" }} />
+                          </span>
+                          <span className="mono" style={{ minWidth: 40, textAlign: "right" }}>{secs === null ? "—" : `${secs}s`}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <VizEmpty
+            title={(history.data as { source?: string } | null)?.source === "live" ? "No run recorded" : "History not available"}
+            note={(history.data as { source?: string } | null)?.source === "live"
+              ? "No integrated scan has completed against this tenant."
+              : "The read failed; this is not a claim that no run exists."}
+          />
+        )}
+      </Panel>
     </div>
   );
 }
