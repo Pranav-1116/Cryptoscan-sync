@@ -78,6 +78,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "compliance": {"tier": "ga", "area": "Governance", "why": "Requirement-by-requirement reports from policy evidence, 6 templates."},
     "evidence": {"tier": "ga", "area": "Governance", "why": "SHA-256 content/chain/manifest hashes, audit packs, verify endpoint."},
     "reports": {"tier": "ga", "area": "Output", "why": "JSON/HTML/PDF reports and schedules over the evidence chain."},
+    "live": {"tier": "ga", "area": "Overview", "why": "Connection age, stored changes, six BOM downloads and correlated attack patterns. A quiet estate and a stopped agent look identical, so the age is stated; level 3 (incident) is never assigned by the platform, and a pattern reports which collectors corroborate it without raising its level."},
     "live-stream": {"tier": "ga", "area": "Overview", "why": "SSE event stream with Last-Event-ID resume and Redis federation."},
     "alerts": {"tier": "ga", "area": "Overview", "why": "Alert stage output + monitor events."},
     "system-health": {"tier": "ga", "area": "Administration", "why": "/health, /readyz, /metrics, DB health."},

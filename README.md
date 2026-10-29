@@ -44,6 +44,17 @@ HBOM/VBOM generation, practical payments examples, console/API exports and
 acceptance criteria. It distinguishes code-backed behavior from prerequisites,
 known route differences and unqualified bank/provider runtime claims.
 
+[Live, change-driven estate intelligence](docs/bank-environment/100-live-change-driven-estate.md)
+is the current operating model: collectors observe continuously, the platform establishes an
+evidence-backed baseline once, stores only the changes, keeps the Digital Twin current and
+projects the six BOMs on download — `GET /api/v1/estate/evidence/boms/CBOM/export?fmt=cyclonedx`.
+A scheduled or manual discovery of an unchanged estate writes no run and no BOM revision
+(`storage.state = NO_CHANGE`); the bank-side agent (`services/agent`, `python -m agent.runner`)
+posts an observation only when its state hash moves, signs it with Ed25519 when a key is
+configured, and reports a failed collector as a `FAILED` plane instead of a smaller estate.
+Attack patterns state which collectors corroborate them without raising their level, and live
+history is trimmed only on request (`POST /api/v1/ingestion/live/compact`, a dry run by default).
+
 The [dependency and cascade guides](docs/bank-environment/12-dependency-discovery-and-evidence.md)
 explain discovery, directional blast radius, bank examples, APIs, current limits
 and recommended acceptance checks. They distinguish modeled exposure from

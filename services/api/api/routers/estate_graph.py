@@ -111,6 +111,10 @@ class EstateScanRequest(BaseModel):
     )
     include_boms: bool = True
     persist: bool = True
+    force: bool = Field(
+        default=False,
+        description="store a revision even when the estate has not changed since the stored run",
+    )
 
 
 class EstateDiscoverRequest(BaseModel):
@@ -595,6 +599,9 @@ def estate_scan(
             persist=body.persist,
             include_boms=body.include_boms,
             trigger="api",
+            # store only a change: an estate that fingerprints to the stored projection
+            # writes no run, no catalogue, no history and no BOM revision
+            change_only=not body.force,
             # every run compares itself with the previous one, so a console (or
             # an alert rule) learns about change without polling /drift
             previous=(estate_discovery.previous_report(db, tenant_id=current_tenant())
@@ -1480,7 +1487,31 @@ def estate_threat_patterns(
         limit=limit,
     )
     events = [estate_change_feed.public_event(row) for row in rows]
-    result = attack_patterns.correlate(events, window_seconds=window_seconds)
+
+    # Corroboration comes from the evidence store, not from the change record: only the
+    # store knows which collector produced each fact. A fact whose evidence was never
+    # stored maps to no collector and is reported as unmapped rather than assumed.
+    records = estate_observations.evidence_for(db, limit=1000, tenant_id=current_tenant()).get("records") or []
+    collectors_by_evidence = {
+        str(record["evidence_id"]): str(record["collector"])
+        for record in records
+        if record.get("evidence_id") and record.get("collector")
+    }
+    collectors_by_subject: dict[str, list[str]] = {}
+    for record in records:
+        target = str(record.get("target") or "").strip()
+        collector = str(record.get("collector") or "").strip()
+        if target and collector:
+            known = collectors_by_subject.setdefault(target, [])
+            if collector not in known:
+                known.append(collector)
+
+    result = attack_patterns.correlate(
+        events,
+        window_seconds=window_seconds,
+        collectors_by_evidence=collectors_by_evidence,
+        collectors_by_subject=collectors_by_subject,
+    )
     result["estate"] = events[0].get("estate") if events else None
     result["source"] = "/api/v1/estate/evidence/changes"
     result["summary"] = attack_patterns.summarise(result["patterns"])

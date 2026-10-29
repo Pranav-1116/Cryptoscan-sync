@@ -267,7 +267,7 @@ export const CAPABILITY_LIMITS = {
   },
   "live": {
     "area": "Overview",
-    "limit": "Connection state, stored changes, current BOM downloads and correlated patterns \u2014 the level-3 incident verdict is never assigned by the platform."
+    "limit": "Connection age, stored changes, six BOM downloads and correlated attack patterns. A quiet estate and a stopped agent look identical, so the age is stated; level 3 (incident) is never assigned by the platform, and a pattern reports which collectors corroborate it without raising its level."
   },
   "live-asset-intelligence": {
     "area": "Intelligence",

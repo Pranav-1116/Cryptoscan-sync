@@ -452,6 +452,8 @@ def tick(
                 on_event=on_event,
                 trigger="schedule",
                 previous=previous,
+                # a cadence is not a reason to store an unchanged estate
+                change_only=True,
             )
 
     ran: list[dict[str, Any]] = []

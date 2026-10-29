@@ -1,6 +1,7 @@
 # 100 — Live, Change-Driven Estate Intelligence
 
-Status: **architecture + first live slice built** on `arena/bb4b80dd-cryproscan`.
+Status: **the live slice is built** on `arena/bb4b80dd-cryproscan`: intake, twin, BOM
+downloads, patterns with collector corroboration, the bank-side agent, and manual retention.
 Companions: [`93-estate-evidence-graph-and-six-bom-projections.md`](93-estate-evidence-graph-and-six-bom-projections.md),
 [`94-digital-twin.md`](94-digital-twin.md), [`97-operator-cli.md`](97-operator-cli.md),
 [`98-cli-architecture.md`](98-cli-architecture.md).
@@ -23,13 +24,17 @@ Companions: [`93-estate-evidence-graph-and-six-bom-projections.md`](93-estate-ev
 | CycloneDX 1.6 renderer with limits in the document | **built** | `shared_models/bom_export.py` |
 | BOM-impact narrowing per change | **built** | `live_estate.bom_impact` |
 | Attack-pattern correlation, evidence levels 0–4 | **built** | `shared_models/attack_patterns.py`, `GET /api/v1/estate/evidence/threat/patterns` |
-| CLI `live status\|observations\|patterns`, `observe push`, `bom --download` | **built** | `services/api/api/cli_remote.py` |
+| Per-collector corroboration of each pattern | **built** | `attack_patterns.correlate(collectors_by_evidence=…)`, fed from the evidence store |
+| Scheduled/manual discovery stores only a change | **built** | `estate_discovery.run(change_only=True)`, `EstateScanRequest.force` |
+| Bank-side agent that pushes on a cadence | **built** | `services/agent/agent/runner.py`, `python -m agent.runner` |
+| Retention / compaction of live history | **built (manual)** | `POST /api/v1/ingestion/live/compact`, `cryptoscan live compact` |
+| CLI `live status\|observations\|patterns\|compact`, `observe push`, `bom --download` | **built** | `services/api/api/cli_remote.py` |
 | Change feed, evidence store, catalogue, twin, drift | **built earlier** | `GET /estate/evidence/changes`, `…/evidence/records`, `…/catalog`, `…/twin`, `…/drift` |
-| Continuous agent that *runs the collectors* on a cadence | **not built** | collectors are importable modules/surfaces; no supervised agent process |
+| Continuous agent that *runs the collectors* on a cadence | **not built, by design** | the agent transports collector output; running collectors stays with the platform tools that already own it |
 | Server-side scheduling of observation pushes | **partly built** | `POST /estate/evidence/schedules` stores a cadence; no worker executes it in this build |
 | mTLS machine identity for the agent | **not built** | observations are signed (Ed25519) and the verdict is recorded; transport identity is deployment work |
-| Runtime/network/static correlation across collectors in one pattern | **partly built** | patterns correlate change *kinds* and subjects; per-collector corroboration is not modelled |
-| Live UI screen for connection, changes and patterns | **not built** | API + CLI exist; the console reads the change feed but has no `/live` surface |
+| Runtime/network/static correlation across collectors in one pattern | **built** | every pattern carries `corroboration.collectors`, `independent_sources`, `single_source` and the evidence ids it could not trace |
+| Live UI screen for connection, changes and patterns | **built** | `/live` in the console (`frontend/src/pages/LiveEstate.tsx`) |
 | Air-gapped evidence bundle transfer (`cryptoscan.bundle/1`) | **withdrawn** | removed from the product by decision on 2026-10-29; git history keeps the earlier module |
 
 An air-gapped *bundle* path was designed and partly built, and then withdrawn: the product
@@ -157,13 +162,76 @@ reporting is `attributable: false`), `COLLECTION_LOSS`, `CRYPTOGRAPHIC_REGRESSIO
 Every pattern carries `why`, `next_action`, the signals (event, kind, subject, evidence ids)
 and a `not_proven` list that starts with "a pattern is not proof of compromise".
 
-## 5. CLI (built)
+**Corroboration.** Each pattern also states who saw it:
+
+| Field | Meaning |
+| --- | --- |
+| `corroboration.collectors` | the collectors whose stored evidence stands behind the pattern's signals |
+| `independent_sources` | how many distinct collectors that is |
+| `single_source` | true when the pattern rests on one collector, or on none that could be traced |
+| `signals_with_provenance` / `signals_total` | how much of the pattern is traceable to a stored record |
+| `unmapped_evidence_ids` | evidence ids a signal cites that the store cannot resolve |
+| `does_not_change_level` | the sentence that keeps this honest |
+
+Provenance comes from the evidence store (`EstateEvidenceRecord.collector`), not from the
+change record: a change says *what* moved and never *who* observed it. A pattern whose
+evidence was never stored therefore reports zero collectors rather than a plausible one, and
+that is a different sentence from "one source". Corroboration is reported beside the level and
+never folded into it: a level-2 pattern seen by four collectors is still level 2, because
+agreement about what changed says nothing about intent.
+
+## 5. The bank-side agent (built)
+
+`services/agent` is a transport, not a scanner. Collectors write one JSON file per plane into
+a directory; the agent merges them, hashes the result and posts it — or posts nothing.
+
+```bash
+python -m agent.runner --source /var/lib/cryptoscan/observations \
+    --server https://control-plane.bank.internal \
+    --sign-key /etc/cryptoscan/agent.key \
+    --state /var/lib/cryptoscan/agent-state.json --interval 300
+```
+
+| Behaviour | Why it is that way |
+| --- | --- |
+| an unchanged state hash is **not posted at all** | an agent that re-uploads an unchanged estate on a timer is the cost this architecture exists to remove |
+| an unreadable collector file becomes a `FAILED` plane | a smaller estate must never read as a smaller crypto surface |
+| a collector that states no coverage is `expected: null` | completeness becomes `UNKNOWN`, not `100%` |
+| an observation with no assets and no evidence is not sent | a push on no evidence would advance the twin's observation clock |
+| the last-hash cache advances only on success | a failed push retries the change instead of swallowing it |
+| 401/403 stops the cycle (exit 2) | retrying a rejected credential is how an account gets locked out overnight |
+| observations are signed when `--sign-key` is given | the platform records `authenticity` per observation, so an unsigned push is visible as such |
+
+Per-cycle states: `PUSHED`, `UNCHANGED`, `NOTHING_COLLECTED`, `REFUSED`, `FAILED`. The agent
+never executes a collector and holds no risk opinion.
+
+The **server-side** collection path obeys the same rule: a scheduled or manual discovery of an
+unchanged estate writes no run, no catalogue, no history and no BOM revision, and says so in
+`storage: {state: "NO_CHANGE", stored: false}`. `force: true` on
+`POST /api/v1/estate/evidence/scan` stores a revision anyway, for the case where an operator
+wants a fresh timestamp on an unchanged estate.
+
+## 6. Retention (built, manual)
+
+`POST /api/v1/ingestion/live/compact` (CLI: `cryptoscan live compact`) is the only place live
+history is deleted, and it is a **dry run unless `confirm: true`**:
+
+* the newest N observations are never candidates — they are the twin, and the BOM download
+  projects from them;
+* an unacknowledged change event is never trimmed — an unread claim is not history yet;
+* the response states `cutoff`, `candidates`, `deleted` and what was preserved.
+
+No compaction runs on a schedule in this build: a retention decision belongs to an operator,
+and a job that shortens an audit trail silently is not a feature.
+
+## 7. CLI (built)
 
 ```
 cryptoscan observe push --file observation.json [--sign-key collector.key] [--dry-run]
 cryptoscan live status
 cryptoscan live observations [--limit 20]
 cryptoscan live patterns [--window 3600]
+cryptoscan live compact [--keep-days 30] [--keep-latest 3] [--no-events] [--confirm]
 cryptoscan bom CBOM --download current-cbom.cdx.json [--format cyclonedx|json]
 ```
 
@@ -172,7 +240,7 @@ cryptoscan bom CBOM --download current-cbom.cdx.json [--format cyclonedx|json]
   no request;
 * a failed download leaves no file behind and exits non-zero.
 
-## 6. Operational facts this build states rather than hides
+## 8. Operational facts this build states rather than hides
 
 * **a quiet estate and a stopped agent look identical** — which is why `live status` reports
   the age of the last observation against the expected interval, and `STALE` is a state in
@@ -183,13 +251,16 @@ cryptoscan bom CBOM --download current-cbom.cdx.json [--format cyclonedx|json]
 * **no BOM is authoritative**; the twin is, and the twin holds evidence, not files;
 * **levels 3 and 4 are not confidence** — 4 means "several patterns, same window".
 
-## 7. Not built (and not pretended)
+## 9. Not built (and not pretended)
 
-* a supervised agent process that runs collectors on a cadence and pushes observations
-  itself (the endpoint, the CLI push, and the schedules table exist; the worker does not);
-* mTLS machine identity between agent and API;
-* per-collector corroboration inside a pattern (the data to do it — collector per evidence
-  record — exists in the evidence store; the correlation rule does not use it yet);
-* a console surface for connection state, live changes and patterns;
-* retention/compaction policy for the change feed;
+* a supervised agent process that *runs* collectors — the agent transports their output, and
+  collector scheduling stays with the tools that already own it (systemd timers, Kubernetes
+  CronJobs);
+* mTLS machine identity between agent and API (observations are signed; transport identity is
+  deployment work);
+* an agent installer, package and upgrade path (`services/agent` is a Python package with a
+  documented invocation — there is no `.deb`, container image or `cryptoscan agent init`);
+* scheduled compaction, and retention of the heartbeat rows beyond "the newest one is kept";
+* acknowledgement of a *pattern* as a first-class record (change events can be acknowledged; a
+  pattern has no ack state of its own yet);
 * horizontal scale-out of projection rendering.

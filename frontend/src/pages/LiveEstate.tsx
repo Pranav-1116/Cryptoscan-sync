@@ -268,6 +268,36 @@ function PatternRow({ pattern }: { pattern: AttackPattern }) {
           </span>
         ))}
       </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.06em", color: "var(--faint)" }}>
+          sources
+        </span>
+        {pattern.corroboration?.collectors?.length ? (
+          pattern.corroboration.collectors.map((collector) => (
+            <span
+              key={collector}
+              className="mono"
+              style={{
+                fontSize: 9.5,
+                padding: "2px 6px",
+                border: "1px solid var(--line)",
+                borderRadius: 2,
+                color: pattern.corroboration.single_source ? "var(--warn)" : "var(--ok)",
+              }}
+            >
+              {collector}
+            </span>
+          ))
+        ) : (
+          <span className="mono" style={{ fontSize: 9.5, color: "var(--warn)" }}>
+            none traced to stored evidence
+          </span>
+        )}
+        <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)" }}>
+          {pattern.corroboration?.independent_sources ?? 0} independent
+          {pattern.corroboration?.single_source ? " · single source, not confirmed by a second plane" : ""}
+        </span>
+      </div>
       <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: 1.45 }}>
         next: {pattern.next_action}
       </div>

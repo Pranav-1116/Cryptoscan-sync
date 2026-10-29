@@ -1279,6 +1279,7 @@ BOMS = "/api/v1/estate/evidence/boms"
 LIVE_STATUS = "/api/v1/ingestion/live/status"
 LIVE_OBSERVATIONS = "/api/v1/ingestion/observations"
 THREAT_PATTERNS = "/api/v1/estate/evidence/threat/patterns"
+LIVE_COMPACT = "/api/v1/ingestion/live/compact"
 
 
 def _cmd_bom(args: argparse.Namespace, _session: Any = None) -> int:
@@ -1446,11 +1447,51 @@ def _cmd_live(args: argparse.Namespace, _session: Any = None) -> int:
                           f"{pattern.get('level_name')}")
                     print(f"  {pattern.get('headline')}")
                     print(f"  why: {_short(pattern.get('why'), 160)}")
+                    corroboration = pattern.get("corroboration") or {}
+                    sources = corroboration.get("collectors") or []
+                    print(
+                        f"  sources: {', '.join(sources) if sources else 'none traced to stored evidence'}"
+                        f" ({corroboration.get('independent_sources', 0)} independent)"
+                    )
+                    if corroboration.get("note"):
+                        print(f"    {_short(corroboration.get('note'), 160)}")
                     print(f"  next: {_short(pattern.get('next_action'), 160)}")
                 print(f"\ncounts by level: {summary.get('by_level')}")
 
             return _emit(args, payload, source=client.source("GET", THREAT_PATTERNS, **query),
                          render=render_patterns)
+
+        if action == "compact":
+            body = {
+                "keep_days": args.keep_days,
+                "keep_latest_observations": args.keep_latest,
+                "include_change_events": not args.no_events,
+                "acknowledged_only": not args.include_unacknowledged,
+                "confirm": bool(args.confirm),
+            }
+            response = client.request("POST", LIVE_COMPACT, body=body)
+            payload = response.json()
+            candidates = _field(payload, "candidates") or {}
+            deleted = _field(payload, "deleted") or {}
+            preserved = _field(payload, "preserved") or {}
+
+            def render_compact() -> None:
+                print(f"cutoff        {payload.get('cutoff')} ({payload.get('keep_days')} days)")
+                print(f"candidates    {candidates.get('observations', 0)} observation(s), "
+                      f"{candidates.get('change_events', 0)} change event(s), "
+                      f"~{candidates.get('approx_bytes', 0)} bytes")
+                if payload.get("dry_run"):
+                    print("dry run       nothing was deleted; pass --confirm to apply this policy")
+                else:
+                    print(f"deleted       {deleted.get('observations', 0)} observation(s), "
+                          f"{deleted.get('change_events', 0)} change event(s)")
+                print(f"kept          newest {preserved.get('newest_observations')} observation(s), "
+                      f"{preserved.get('unacknowledged_events')} unacknowledged claim(s)")
+                print("note: the newest observation is the twin — it is never a candidate, and an "
+                      "unread claim is not history yet")
+
+            return _emit(args, payload, source=client.source("POST", LIVE_COMPACT, response.status),
+                         render=render_compact)
     except (Refused, ApiError) as exc:
         return _fail(f"live {action}", exc)
     return EXIT_ERROR
@@ -2997,6 +3038,18 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     live_patterns.add_argument("--window", type=int, default=3600, help="seconds of history to correlate")
     live_patterns.add_argument("--limit", type=int, default=200)
     _add_common(live_patterns)
+
+    live_compact = live_sub.add_parser(
+        "compact", help="trim live history by age (a dry run unless --confirm)")
+    live_compact.add_argument("--keep-days", dest="keep_days", type=int, default=30)
+    live_compact.add_argument("--keep-latest", dest="keep_latest", type=int, default=3,
+                              help="always keep the newest N stored observations")
+    live_compact.add_argument("--no-events", dest="no_events", action="store_true",
+                              help="leave change events alone")
+    live_compact.add_argument("--include-unacknowledged", dest="include_unacknowledged",
+                              action="store_true", help="also trim claims nobody has read")
+    live_compact.add_argument("--confirm", action="store_true", help="apply the policy")
+    _add_common(live_compact)
 
     observe = sub.add_parser("observe", help="push one observation of the estate (agent side)")
     observe_sub = observe.add_subparsers(dest="observe_command", required=True)

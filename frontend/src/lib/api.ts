@@ -5323,11 +5323,17 @@ export interface AttackPatternSignal {
   subject: string | null; detail: string | null; at: string | null; evidence_ids: string[];
 }
 
+export interface AttackPatternCorroboration {
+  collectors: string[]; independent_sources: number; single_source: boolean;
+  signals_total: number; signals_with_provenance: number; unmapped_evidence_ids: string[];
+  note: string; does_not_change_level: string;
+}
+
 export interface AttackPattern {
   pattern_id: string; name: string; level: number; level_name: string; level_meaning: string;
   headline: string; why: string; subjects: string[]; change_kinds: string[];
   signals: AttackPatternSignal[]; first_seen: string | null; last_seen: string | null;
-  not_proven: string[]; next_action: string;
+  not_proven: string[]; next_action: string; corroboration: AttackPatternCorroboration;
 }
 
 export interface AttackPatterns {
@@ -5336,6 +5342,9 @@ export interface AttackPatterns {
   patterns: AttackPattern[]; count: number; by_level: Record<string, number>;
   highest_level: number;
   level_definitions: Record<string, { name: string; meaning: string }>;
+  corroboration: {
+    evidence_mapped: number; subjects_mapped: number; single_source_patterns: number; note: string;
+  };
   summary: { total: number; by_level: Record<string, number>; level_names: Record<string, string>; note: string };
   note: string; limits: string[];
 }

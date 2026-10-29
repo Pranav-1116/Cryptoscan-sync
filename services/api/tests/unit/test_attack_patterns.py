@@ -183,3 +183,90 @@ def test_the_summary_counts_patterns_by_level_not_risk():
     assert summary["total"] == 1
     assert summary["by_level"]["1"] == 1
     assert "not a probability" in summary["note"]
+
+
+# -- corroboration: who saw this, reported beside the level --------------------------- #
+
+
+def _trust_path_event() -> dict:
+    """A crypto artefact and the edge that reached it, each with its own evidence id."""
+    return _event(
+        1,
+        0,
+        {**_change("CRYPTO_ADDED", "payments-api"), "evidence_ids": ["ev-linux"]},
+        {
+            **_change("RELATIONSHIP_ESTABLISHED", "payments-api —uses→ hsm-01"),
+            "evidence_ids": ["ev-network"],
+        },
+    )
+
+
+def test_two_collectors_are_counted_as_independent_sources():
+    result = attack_patterns.correlate(
+        [_trust_path_event()],
+        now=BASE + timedelta(minutes=1),
+        collectors_by_evidence={"ev-linux": "linux-static", "ev-network": "network-tls"},
+    )
+
+    pattern = next(p for p in result["patterns"] if p["name"] == "TRUST_PATH_MUTATION")
+    corroboration = pattern["corroboration"]
+    assert corroboration["collectors"] == ["linux-static", "network-tls"]
+    assert corroboration["independent_sources"] == 2
+    assert corroboration["single_source"] is False
+    assert corroboration["signals_with_provenance"] == 2
+    assert corroboration["signals_total"] == 2
+    assert "2 independent collectors" in corroboration["note"]
+    # reported beside the level, never folded into it
+    assert pattern["level"] == 2
+    assert "not folded into it" in corroboration["does_not_change_level"]
+    assert result["corroboration"]["single_source_patterns"] == 0
+
+
+def test_one_collector_is_a_single_source_and_says_so():
+    result = attack_patterns.correlate(
+        [_trust_path_event()],
+        now=BASE + timedelta(minutes=1),
+        collectors_by_evidence={"ev-linux": "linux-static", "ev-network": "linux-static"},
+    )
+
+    pattern = next(p for p in result["patterns"] if p["name"] == "TRUST_PATH_MUTATION")
+    assert pattern["corroboration"]["collectors"] == ["linux-static"]
+    assert pattern["corroboration"]["single_source"] is True
+    assert "single source" in pattern["corroboration"]["note"]
+    assert result["corroboration"]["single_source_patterns"] >= 1
+
+
+def test_evidence_that_cannot_be_traced_is_listed_rather_than_assumed():
+    result = attack_patterns.correlate(
+        [_trust_path_event()],
+        now=BASE + timedelta(minutes=1),
+        collectors_by_evidence={"ev-linux": "linux-static"},
+    )
+
+    pattern = next(p for p in result["patterns"] if p["name"] == "TRUST_PATH_MUTATION")
+    assert pattern["corroboration"]["unmapped_evidence_ids"] == ["ev-network"]
+    assert pattern["corroboration"]["signals_with_provenance"] == 1
+
+
+def test_without_provenance_no_collector_is_invented():
+    result = attack_patterns.correlate([_event(1, 0, _change("COVERAGE_DEGRADED", "Linux hosts"))], now=BASE + timedelta(minutes=1))
+
+    corroboration = result["patterns"][0]["corroboration"]
+    assert corroboration["collectors"] == []
+    assert corroboration["independent_sources"] == 0
+    assert "no collector corroborates" in corroboration["note"]
+    assert "not the same as a single source" in corroboration["note"]
+    assert result["corroboration"]["evidence_mapped"] == 0
+
+
+def test_a_subject_fallback_is_used_only_when_a_signal_cites_no_evidence():
+    event = _event(1, 0, _change("COVERAGE_DEGRADED", "Windows hosts"))
+    result = attack_patterns.correlate(
+        [event],
+        now=BASE + timedelta(minutes=1),
+        collectors_by_subject={"Windows hosts": ["windows-static"]},
+    )
+
+    corroboration = result["patterns"][0]["corroboration"]
+    assert corroboration["collectors"] == ["windows-static"]
+    assert corroboration["unmapped_evidence_ids"] == []

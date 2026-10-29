@@ -666,6 +666,7 @@ def run(
     on_event: Callable[[str, Mapping[str, Any]], Any] | None = None,
     trigger: str = "manual",
     previous: Mapping[str, Any] | None = None,
+    change_only: bool = False,
 ) -> dict[str, Any]:
     """Discover the estate once and project every BOM from the same snapshot.
 
@@ -687,6 +688,14 @@ def run(
     every run — asking an operator to open a drift endpoint is not monitoring.
     Without ``previous`` the report says ``NO_BASELINE`` rather than claiming
     nothing moved.
+
+    ``change_only`` makes the run store *only a change*. It costs real money to
+    write a full estate revision every fifteen minutes, so when the payload
+    fingerprints to the same projection as the stored baseline the run writes no
+    run row, no catalogue, no history and no BOM revision, and says so in
+    ``report["storage"]``. The report is still returned in full: the observation
+    happened, only the storage did not. A caller that wants a revision anyway (an
+    operator asking for a fresh timestamp on an unchanged estate) turns it off.
     """
     emitted: list[tuple[str, dict[str, Any]]] = []
 
@@ -802,6 +811,9 @@ def run(
     }
     try:
         graph = build_graph(payload)
+        # stored with the run so a later cycle can compare content addresses without
+        # rebuilding the previous graph first
+        payload["projection_id"] = graph.fingerprint()
     except Exception as exc:  # noqa: BLE001 — announce the failure, then let it propagate
         emit("estate.run.failed", {
             "estate": estate,
@@ -844,6 +856,58 @@ def run(
         "coverage": graph.coverage()["summary"],
         "at": datetime.now(timezone.utc).isoformat(),
     })
+
+    # -- does this observation differ from the stored one? -------------------- #
+    # A previous run that predates ``payload["projection_id"]`` is rebuilt from its own
+    # payload rather than treated as absent: an existing baseline is not "no baseline".
+    current_projection = graph.fingerprint()
+    previous_projection: str | None = None
+    if previous:
+        stated = str(previous.get("projection_id") or "").strip()
+        if stated:
+            previous_projection = stated
+        else:
+            try:
+                previous_projection = build_graph(previous).fingerprint()
+            except Exception:  # noqa: BLE001 — an unreadable baseline is stored as a new one
+                previous_projection = None
+
+    if previous_projection is None:
+        storage_state = "FIRST_BASELINE"
+    elif previous_projection == current_projection:
+        storage_state = "NO_CHANGE"
+    else:
+        storage_state = "CHANGED"
+
+    # "nothing changed" suppresses every write; an explicit ``persist=False`` does not, because
+    # callers that ask for a dry run still expect the catalogue and feed guards to be exercised
+    suppressed = change_only and storage_state == "NO_CHANGE"
+    if suppressed and persist:
+        persist = False
+    if storage_state == "FIRST_BASELINE":
+        storage_note = "no observation has been stored for this estate, so this one is the baseline"
+    elif storage_state == "CHANGED":
+        storage_note = "the estate differs from the stored one, so this observation was stored"
+    elif suppressed:
+        # the note describes what happened, not what the state was: a forced scan of an
+        # unchanged estate still stores, and saying otherwise would be a lie in the payload
+        storage_note = (
+            "the normalised estate equals the stored one, so nothing was written: no run, "
+            "no catalogue, no history, no BOM revision"
+        )
+    else:
+        storage_note = (
+            "the normalised estate equals the stored one, and this caller asked for a revision "
+            "anyway, so the run and its catalogue/history were written"
+        )
+    storage: dict[str, Any] = {
+        "state": storage_state,
+        "stored": False,
+        "change_only": change_only,
+        "previous_projection_id": previous_projection,
+        "projection_id": current_projection,
+        "note": storage_note,
+    }
 
     change: dict[str, Any] | None = None
     if projections:
@@ -892,6 +956,7 @@ def run(
         # the raw collector output for every record in this run is stored with the run, so
         # each evidence row can point at it rather than asking a reader to go looking
         graph.annotate_raw_reference(f"run:{run_id}")
+        storage["stored"] = True
 
     # -- live change detection ------------------------------------------------ #
     # Change detection is a consequence of observing, not a button: the twin-level
@@ -902,27 +967,35 @@ def run(
     detection: dict[str, Any] | None = None
     detection_error: str | None = None
     try:
-        from api import estate_change_feed
-        from db.tenancy import current_tenant
+        if not suppressed:
+            from api import estate_change_feed
+            from db.tenancy import current_tenant
 
-        before_graph = build_graph(previous) if previous else None
-        detection = estate_change_feed.observe(
-            db,
-            before_graph,
-            graph,
-            tenant_id=current_tenant(),
-            run_id=run_id,
-            trigger=trigger,
-        )
-        payload["change_detail"] = {
-            "verdict": detection["verdict"],
-            "severity": detection["severity"],
-            "headline": detection["headline"],
-            "counts": detection["counts"],
-            "event_id": (detection.get("recorded") or {}).get("event_id"),
-            "stored": bool((detection.get("recorded") or {}).get("created")),
-            "announced": (detection.get("announced") or {}).get("event_types"),
-        }
+            before_graph = build_graph(previous) if previous else None
+            detection = estate_change_feed.observe(
+                db,
+                before_graph,
+                graph,
+                tenant_id=current_tenant(),
+                run_id=run_id,
+                trigger=trigger,
+            )
+            payload["change_detail"] = {
+                "verdict": detection["verdict"],
+                "severity": detection["severity"],
+                "headline": detection["headline"],
+                "counts": detection["counts"],
+                "event_id": (detection.get("recorded") or {}).get("event_id"),
+                "stored": bool((detection.get("recorded") or {}).get("created")),
+                "announced": (detection.get("announced") or {}).get("event_types"),
+            }
+        else:
+            # nothing is stored, so there is no before/after pair to claim: the run reports
+            # the observation and no change verdict rather than inventing one
+            payload["change_detail"] = {
+                "verdict": "NOT_STORED",
+                "reason": "this run stored nothing, so no change claim is made",
+            }
     except Exception as exc:  # noqa: BLE001 — detection must never fail a scan
         detection_error = f"{type(exc).__name__}: {exc}"
         rollback = getattr(db, "rollback", None)
@@ -954,10 +1027,11 @@ def run(
                 pass
 
     try:
-        from api import estate_catalog
-        from db.tenancy import current_tenant
+        if not suppressed:
+            from api import estate_catalog
+            from db.tenancy import current_tenant
 
-        catalog = estate_catalog.sync(db, graph, tenant_id=current_tenant(), run_id=run_id)
+            catalog = estate_catalog.sync(db, graph, tenant_id=current_tenant(), run_id=run_id)
     except Exception as exc:  # noqa: BLE001 — a catalogue write cannot fail the scan
         catalog_error = f"{type(exc).__name__}: {exc}"
         _guard()
@@ -966,10 +1040,11 @@ def run(
     # asset was seen 40 times and cannot say its algorithm changed on the 31st. Separate
     # guard, so a history write failing does not discard a good catalogue.
     try:
-        from api import estate_observations
-        from db.tenancy import current_tenant
+        if not suppressed:
+            from api import estate_observations
+            from db.tenancy import current_tenant
 
-        history = estate_observations.sync_all(db, graph, tenant_id=current_tenant())
+            history = estate_observations.sync_all(db, graph, tenant_id=current_tenant())
     except Exception as exc:  # noqa: BLE001 — history is a record, not a gate
         history_error = f"{type(exc).__name__}: {exc}"
         _guard()
@@ -1044,6 +1119,7 @@ def run(
         "duration_seconds": round((datetime.now(timezone.utc) - moment).total_seconds(), 3),
         "at": datetime.now(timezone.utc).isoformat(),
     })
+    report["storage"] = storage
     report["change"] = change
     report["detection"] = detection or ({"error": detection_error} if detection_error else None)
     report["catalog"] = catalog or ({"error": catalog_error} if catalog_error else None)

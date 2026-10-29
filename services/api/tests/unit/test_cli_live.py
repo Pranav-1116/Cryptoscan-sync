@@ -224,3 +224,81 @@ def test_a_failed_download_is_not_an_empty_bom(monkeypatch, env, capsys):
     assert not destination.exists(), "a failed download must not leave a file that looks like a BOM"
     err = capsys.readouterr().err
     assert "no_estate_discovery" in err
+
+
+def test_live_patterns_prints_the_collectors_behind_a_pattern(monkeypatch, env, capsys):
+    payload = {
+        "window_seconds": 3600,
+        "window": {"from": "2026-10-29T10:00:00+00:00", "to": "2026-10-29T11:00:00+00:00"},
+        "events_considered": 1,
+        "signals_considered": 2,
+        "highest_level": 2,
+        "summary": {"by_level": {"2": 1}},
+        "patterns": [
+            {
+                "pattern_id": "PAT-abc",
+                "level": 2,
+                "level_name": "SUSPICIOUS_ACTIVITY",
+                "headline": "trust path mutation: payments-api",
+                "why": "a crypto artefact and the edge that reached it moved together",
+                "next_action": "walk the relationships in the twin",
+                "corroboration": {
+                    "collectors": ["linux-static", "network-tls"],
+                    "independent_sources": 2,
+                    "note": "2 independent collectors corroborate this pattern",
+                },
+            }
+        ],
+    }
+    transport = FakeControlPlane({("GET", "/api/v1/estate/evidence/threat/patterns"): (200, payload)})
+
+    assert run(monkeypatch, transport, "live", "patterns") == 0
+    out = capsys.readouterr().out
+    assert "sources: linux-static, network-tls" in out
+    assert "2 independent" in out
+
+
+def test_live_compact_is_a_dry_run_unless_confirmed(monkeypatch, env, capsys):
+    payload = {
+        "dry_run": True,
+        "cutoff": "2026-09-29T00:00:00+00:00",
+        "keep_days": 30,
+        "candidates": {"observations": 4, "change_events": 9, "approx_bytes": 2048},
+        "deleted": {"observations": 0, "change_events": 0},
+        "preserved": {"newest_observations": 3, "unacknowledged_events": 2},
+        "note": "nothing was deleted",
+    }
+    transport = FakeControlPlane({("POST", "/api/v1/ingestion/live/compact"): (200, payload)})
+
+    assert run(monkeypatch, transport, "live", "compact") == 0
+    out = capsys.readouterr().out
+    assert "nothing was deleted" in out
+    assert "4 observation(s)" in out
+    body = json.loads(transport.calls[0][3])
+    assert body["confirm"] is False
+    assert "source: POST /api/v1/ingestion/live/compact (HTTP 200)" in out
+
+
+def test_live_compact_passes_the_policy_choices(monkeypatch, env):
+    payload = {
+        "dry_run": False,
+        "cutoff": "2026-09-29T00:00:00+00:00",
+        "keep_days": 7,
+        "candidates": {"observations": 1, "change_events": 0, "approx_bytes": 100},
+        "deleted": {"observations": 1, "change_events": 0},
+        "preserved": {"newest_observations": 1, "unacknowledged_events": 0},
+        "note": "the listed rows were deleted",
+    }
+    transport = FakeControlPlane({("POST", "/api/v1/ingestion/live/compact"): (200, payload)})
+
+    assert run(
+        monkeypatch, transport, "live", "compact", "--keep-days", "7", "--keep-latest", "1",
+        "--no-events", "--confirm",
+    ) == 0
+    assert json.loads(transport.calls[0][3]) == {
+        "keep_days": 7,
+        "keep_latest_observations": 1,
+        "include_change_events": False,
+        "acknowledged_only": True,
+        "confirm": True,
+    }

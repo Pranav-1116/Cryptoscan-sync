@@ -71,6 +71,16 @@ const patterns = (overrides: Record<string, unknown> = {}) => ({
       last_seen: "2026-10-29T11:21:00+00:00",
       not_proven: ["a pattern is not proof of compromise"],
       next_action: "walk the affected asset's relationships in the twin",
+      corroboration: {
+        collectors: ["linux-static", "network-tls"],
+        independent_sources: 2,
+        single_source: false,
+        signals_total: 2,
+        signals_with_provenance: 2,
+        unmapped_evidence_ids: [],
+        note: "2 independent collectors corroborate this pattern",
+        does_not_change_level: "corroboration is not folded into the level",
+      },
     },
   ],
   count: 1,
@@ -84,6 +94,12 @@ const patterns = (overrides: Record<string, unknown> = {}) => ({
     "4": { name: "CORRELATED_PATTERN", meaning: "" },
   },
   summary: { total: 1, by_level: { "2": 1 }, level_names: {}, note: "" },
+  corroboration: {
+    evidence_mapped: 4,
+    subjects_mapped: 3,
+    single_source_patterns: 0,
+    note: "collector provenance is read from the evidence store",
+  },
   note: "an empty result means nothing in this window met a correlation rule",
   limits: ["only changes that were stored can be correlated"],
   ...overrides,
@@ -96,6 +112,8 @@ describe("live estate", () => {
 
     expect((await screen.findAllByText("LIVE")).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/stale after/i)).toBeInTheDocument();
+    expect(await screen.findByText("linux-static")).toBeInTheDocument();
+    expect(screen.getByText(/2 independent/)).toBeInTheDocument();
     expect(screen.getByText("CBOM")).toBeInTheDocument();
     expect(screen.getByText("736")).toBeInTheDocument();
     expect(screen.getAllByRole("button").length).toBeGreaterThanOrEqual(12);

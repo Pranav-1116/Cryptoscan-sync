@@ -291,3 +291,186 @@ def test_the_change_feed_and_the_patterns_read_the_same_stored_changes(api, keys
     assert patterns["highest_level"] != 3
     # a stored change is correlated into at least one named pattern or none — never into "safe"
     assert "not that the estate is safe" in patterns["note"]
+
+
+# -- retention: the change feed grows, the twin does not ------------------------------- #
+
+
+def _backdate(session, days: int, *, keep_newest: int = 1) -> None:
+    """Age every stored observation except the newest N — the newest is the twin."""
+    from datetime import datetime, timedelta, timezone
+
+    from db.models.network_scan_run import NetworkScanRun
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    rows = sorted(
+        session.query(NetworkScanRun).filter(NetworkScanRun.target_kind == "estate-discovery").all(),
+        key=lambda row: (row.created_at, row.id),
+        reverse=True,
+    )
+    for row in rows[keep_newest:]:
+        row.created_at = cutoff
+    session.commit()
+
+
+def test_compaction_is_a_dry_run_until_confirmed(api, keys, monkeypatch):
+    http, session = api
+    _trust(monkeypatch, keys)
+    http.post("/api/v1/ingestion/observations", json=_observation())
+    http.post("/api/v1/ingestion/observations", json=_observation(extra=True))
+    _backdate(session, 90)
+
+    plan = http.post(
+        "/api/v1/ingestion/live/compact", json={"keep_days": 30, "keep_latest_observations": 1}
+    )
+
+    assert plan.status_code == 200, plan.text
+    body = plan.json()
+    assert body["dry_run"] is True
+    assert body["candidates"]["observations"] == 1, "the newest observation must never be a candidate"
+    assert body["deleted"] == {"observations": 0, "change_events": 0}
+    assert "nothing was deleted" in body["note"]
+    assert http.get("/api/v1/ingestion/observations").json()["count"] == 2
+
+
+def test_compaction_keeps_the_twin_and_the_newest_change_event(api, keys, monkeypatch):
+    http, session = api
+    _trust(monkeypatch, keys)
+    http.post("/api/v1/ingestion/observations", json=_observation())
+    http.post("/api/v1/ingestion/observations", json=_observation(extra=True))
+    latest = http.get("/api/v1/ingestion/live/status").json()
+    _backdate(session, 90)
+
+    applied = http.post(
+        "/api/v1/ingestion/live/compact",
+        json={"keep_days": 30, "keep_latest_observations": 1, "confirm": True, "include_change_events": False},
+    ).json()
+
+    assert applied["dry_run"] is False
+    assert applied["deleted"]["observations"] == 1
+    assert http.get("/api/v1/ingestion/observations").json()["count"] == 1
+    # the twin the BOM download projects from is still there and unchanged
+    status = http.get("/api/v1/ingestion/live/status").json()
+    assert status["twin"]["state"] == "OBSERVED"
+    assert status["twin"]["projection_id"] == latest["twin"]["projection_id"]
+    assert http.get("/api/v1/estate/evidence/boms/CBOM/export").status_code == 200
+
+
+def test_an_unacknowledged_claim_is_never_trimmed(api, keys, monkeypatch):
+    http, session = api
+    _trust(monkeypatch, keys)
+    http.post("/api/v1/ingestion/observations", json=_observation())
+    http.post("/api/v1/ingestion/observations", json=_observation(extra=True))
+    _backdate(session, 90)
+
+    from db.models.estate_change_event import EstateChangeEvent
+
+    events = session.query(EstateChangeEvent).all()
+    assert events, "the changed observation should have produced a change event"
+    for row in events:
+        row.last_detected_at = row.last_detected_at.replace(year=2025)
+    session.commit()
+
+    result = http.post(
+        "/api/v1/ingestion/live/compact",
+        json={"keep_days": 30, "confirm": True, "include_change_events": True, "acknowledged_only": True},
+    ).json()
+
+    assert result["candidates"]["change_events"] == 0, "an unread claim is not history yet"
+    assert session.query(EstateChangeEvent).count() == len(events)
+
+
+# -- the collection path stores changes too -------------------------------------------- #
+
+
+def test_a_second_scan_of_an_unchanged_estate_writes_nothing(api):
+    http, _session = api
+
+    first = http.post("/api/v1/estate/evidence/scan", json={"persist": True})
+    second = http.post("/api/v1/estate/evidence/scan", json={"persist": True})
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert first.json()["storage"]["state"] in {"FIRST_BASELINE", "CHANGED"}
+    assert first.json()["storage"]["stored"] is True
+    assert second.json()["storage"]["state"] == "NO_CHANGE"
+    assert second.json()["storage"]["stored"] is False
+    assert second.json()["run_id"] is None
+
+
+def test_a_forced_scan_stores_a_revision_even_when_nothing_changed(api):
+    http, _session = api
+    http.post("/api/v1/estate/evidence/scan", json={"persist": True})
+
+    forced = http.post("/api/v1/estate/evidence/scan", json={"persist": True, "force": True})
+
+    assert forced.json()["storage"]["stored"] is True
+    assert forced.json()["run_id"]
+
+
+# -- corroboration is read from the evidence store, not invented ----------------------- #
+
+
+def _attributed_observation() -> dict:
+    document = _observation(extra=True)
+    document["evidence"] = [{**item, "collector": "linux-static/1.4.0"} for item in document["evidence"]]
+    # an edge appearing at the same time as a crypto artefact is the pair TRUST_PATH_MUTATION
+    # needs; the edge carries its own evidence so a second collector is traceable
+    document["relationships"] = [
+        {
+            "subject": "api",
+            "predicate": "routes_to",
+            "object": "host-02",
+            "basis": "NETWORK_OBSERVATION",
+            "evidence_ids": ["ev-tls"],
+        }
+    ]
+    document["evidence"].append(
+        {
+            "evidence_id": "ev-tls",
+            "source": "network-tls",
+            "collector": "network-tls/0.9.1",
+            "evidence_type": "RUNTIME_OBSERVED",
+            "target": "host-02",
+            "layer": "NETWORK_TRANSPORT",
+            "facts": {"endpoint": "host-02:443", "protocol": "TLSv1.3", "algorithm": "AES", "key_size": 256},
+        }
+    )
+    return document
+
+
+def test_patterns_carry_the_collectors_whose_evidence_stands_behind_them(api, keys, monkeypatch):
+    http, _session = api
+    _trust(monkeypatch, keys)
+    http.post("/api/v1/ingestion/observations", json=_observation())
+    stored = http.post("/api/v1/ingestion/observations", json=_attributed_observation())
+    assert stored.status_code == 201, stored.text
+    assert stored.json()["stored"] is True
+
+    patterns = http.get("/api/v1/estate/evidence/threat/patterns", params={"window_seconds": 86400})
+
+    assert patterns.status_code == 200, patterns.text
+    body = patterns.json()
+    traced = {
+        collector
+        for item in body["patterns"]
+        for collector in item["corroboration"]["collectors"]
+    }
+    assert traced & {"linux-static/1.4.0", "network-tls/0.9.1"}, "no pattern traced to a collector"
+    for item in body["patterns"]:
+        assert item["corroboration"]["does_not_change_level"]
+        assert item["level"] <= 4
+    assert body["corroboration"]["evidence_mapped"] >= 1
+
+
+def test_the_storage_note_never_claims_nothing_was_written_when_a_revision_was(api):
+    http, _session = api
+    http.post("/api/v1/estate/evidence/scan", json={"persist": True})
+
+    forced = http.post("/api/v1/estate/evidence/scan", json={"persist": True, "force": True}).json()
+
+    assert forced["storage"]["stored"] is True
+    assert "nothing was written" not in forced["storage"]["note"]
+    quiet = http.post("/api/v1/estate/evidence/scan", json={"persist": True}).json()
+    assert quiet["storage"]["stored"] is False
+    assert "nothing was written" in quiet["storage"]["note"]

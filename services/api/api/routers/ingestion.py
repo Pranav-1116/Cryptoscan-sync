@@ -32,7 +32,7 @@ Three things this file refuses to do:
 from __future__ import annotations
 
 import os
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -405,6 +405,126 @@ def push_observation(
             "limits": live_estate.LIMITS,
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+# retention: the change feed grows, the twin does not
+# --------------------------------------------------------------------------- #
+
+
+class CompactionRequest(BaseModel):
+    """What to keep when trimming live history. A dry run unless ``confirm`` is true."""
+
+    keep_days: int = Field(default=30, ge=1, le=3650)
+    keep_latest_observations: int = Field(
+        default=3,
+        ge=1,
+        le=50,
+        description="always keep the newest N stored observations, however old they are",
+    )
+    include_change_events: bool = Field(
+        default=True, description="trim change events too; the newest event is always kept"
+    )
+    acknowledged_only: bool = Field(
+        default=True,
+        description="only trim change events somebody has acknowledged — an unread claim is not history yet",
+    )
+    confirm: bool = Field(
+        default=False, description="false = report what would be deleted, delete nothing"
+    )
+
+
+@router.post("/live/compact")
+def compact_live_history(
+    body: CompactionRequest,
+    _user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Trim live history by age — the one part of live mode that grows without bound.
+
+    Storage grows with *changes*, so the change feed is the only table that needs a policy.
+    The rules are stated rather than tuned silently:
+
+    * the newest N observations are kept regardless of age — they are the twin;
+    * change events nobody has acknowledged are kept — deleting an unread claim would make
+      the feed a place where history disappears before it is read;
+    * a dry run is the default, because a retention call made in passing should not be able
+      to shorten an audit trail.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=int(body.keep_days))
+    tenant = current_tenant()
+    repo = ScanRunRepository(db)
+
+    runs = repo.list_runs(limit=500, target_kind=LIVE_RUN_KIND, owner=tenant)
+    keep_ids = {row.id for row in runs[: int(body.keep_latest_observations)]}
+    stale_runs = [
+        row
+        for row in runs
+        if row.id not in keep_ids
+        and _aware(getattr(row, "created_at", None)) is not None
+        and _aware(row.created_at) < cutoff
+    ]
+
+    events = estate_change_feed.list_events(db, tenant_id=tenant, include_acknowledged=True, limit=200)
+    newest_event_id = events[0].id if events else None
+    stale_events = []
+    if body.include_change_events:
+        for row in events:
+            if row.id == newest_event_id:
+                continue
+            if body.acknowledged_only and getattr(row, "acknowledged_at", None) is None:
+                continue
+            detected = _aware(getattr(row, "last_detected_at", None) or getattr(row, "first_detected_at", None))
+            if detected is not None and detected < cutoff:
+                stale_events.append(row)
+
+    run_bytes = sum(len(str(row.result or "")) for row in stale_runs)
+    event_bytes = sum(
+        len(str(row.changes or "")) + len(str(row.headline or "")) for row in stale_events
+    )
+
+    deleted = {"observations": 0, "change_events": 0}
+    if body.confirm:
+        for row in stale_runs:
+            db.delete(row)
+        for row in stale_events:
+            db.delete(row)
+        db.commit()
+        deleted = {"observations": len(stale_runs), "change_events": len(stale_events)}
+
+    return {
+        "schema": SCHEMA,
+        "dry_run": not body.confirm,
+        "cutoff": cutoff.isoformat(),
+        "keep_days": body.keep_days,
+        "candidates": {
+            "observations": len(stale_runs),
+            "change_events": len(stale_events),
+            "approx_bytes": run_bytes + event_bytes,
+        },
+        "deleted": deleted,
+        "preserved": {
+            "newest_observations": min(len(runs), int(body.keep_latest_observations)),
+            "newest_change_event": newest_event_id,
+            "unacknowledged_events": len(
+                [row for row in events if getattr(row, "acknowledged_at", None) is None]
+            ),
+            "heartbeat": len(repo.list_runs(limit=1, target_kind=HEARTBEAT_KIND, owner=tenant)),
+        },
+        "note": (
+            "nothing was deleted: pass confirm=true to apply this policy"
+            if not body.confirm
+            else "the listed rows were deleted; the latest observation, the latest change event "
+            "and every unacknowledged claim were kept"
+        ),
+        "limits": [
+            "deleting an observation removes the twin state stored with it; the change events "
+            "derived from it remain unless they are trimmed too",
+            "retention is per tenant and by observation time, not by row write time",
+            "no compaction runs on a schedule in this build — the endpoint is manual",
+        ],
+    }
 
 
 # --------------------------------------------------------------------------- #

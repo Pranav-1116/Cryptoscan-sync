@@ -100,6 +100,9 @@ LIMITS = [
     "and more coincidence",
     "asset type is taken from the change record; an untyped change is correlated by kind only",
     "no external threat intelligence, no attacker identity and no attribution are involved",
+    "corroboration counts the collectors whose stored evidence stands behind a pattern; it is "
+    "reported beside the level and never folded into it, and a pattern whose evidence was not "
+    "stored shows no collector rather than a plausible one",
 ]
 
 
@@ -212,13 +215,96 @@ def _headline(name: str, signals: list[Mapping[str, Any]]) -> str:
     return f"{readable}: {shown}" if shown else readable
 
 
+def _collectors_for(
+    signal: Mapping[str, Any],
+    by_evidence: Mapping[str, str],
+    by_subject: Mapping[str, Iterable[str]],
+) -> tuple[list[str], list[str]]:
+    """Which collectors stand behind one signal, and which evidence ids cannot be traced.
+
+    Evidence ids are the authoritative route: the store knows which collector recorded
+    each fact. A subject fallback exists because a change can be attributed to an asset
+    whose evidence was recorded under a different id; it is used only when the signal
+    cites no evidence at all, and it is never used to invent an id.
+    """
+    evidence_ids = [str(item) for item in (signal.get("evidence_ids") or []) if item]
+    missing = [item for item in evidence_ids if item not in by_evidence]
+    found = [by_evidence[item] for item in evidence_ids if item in by_evidence]
+    if not evidence_ids:
+        subject = str(signal.get("subject") or "").strip()
+        found = [str(item) for item in (by_subject.get(subject) or []) if item]
+    return found, missing
+
+
+def _corroboration(
+    signals: list[Mapping[str, Any]],
+    by_evidence: Mapping[str, str],
+    by_subject: Mapping[str, Iterable[str]],
+) -> dict[str, Any]:
+    """The provenance block: how much of this pattern a second plane can confirm."""
+    collectors: list[str] = []
+    unmapped: list[str] = []
+    with_provenance = 0
+    for signal in signals:
+        found, missing = _collectors_for(signal, by_evidence, by_subject)
+        for collector in found:
+            if collector not in collectors:
+                collectors.append(collector)
+        for item in missing:
+            if item not in unmapped:
+                unmapped.append(item)
+        if found:
+            with_provenance += 1
+    collectors.sort()
+    unmapped.sort()
+    total = len(signals)
+    independent = len(collectors)
+    single = independent < 2
+    if not total:
+        note = "this pattern cites no signal, so no collector corroborates it"
+    elif not independent:
+        note = (
+            "no collector corroborates this pattern: none of its evidence traced back to a stored "
+            "record, which is not the same as a single source"
+        )
+    elif single:
+        note = (
+            f"single source: {collectors[0]} is the only collector behind this pattern, so it "
+            "rests on one plane's view"
+        )
+    else:
+        note = f"{independent} independent collectors corroborate this pattern: {', '.join(collectors)}"
+    return {
+        "collectors": collectors,
+        "independent_sources": independent,
+        "single_source": single,
+        "signals_total": total,
+        "signals_with_provenance": with_provenance,
+        "unmapped_evidence_ids": unmapped,
+        "note": note,
+        "does_not_change_level": (
+            "corroboration is reported beside the level, not folded into it: two collectors "
+            "seeing the same change is a stronger claim about the estate and says nothing about "
+            "intent"
+        ),
+    }
+
+
 def correlate(
     events: Iterable[Mapping[str, Any]],
     *,
     window_seconds: int = DEFAULT_WINDOW_SECONDS,
     now: datetime | None = None,
+    collectors_by_evidence: Mapping[str, str] | None = None,
+    collectors_by_subject: Mapping[str, Iterable[str]] | None = None,
 ) -> dict[str, Any]:
-    """Group the changes inside one window into patterns, with their level and their gaps."""
+    """Group the changes inside one window into patterns, with their level and their gaps.
+
+    ``collectors_by_evidence`` maps a stored evidence id to the collector that recorded it,
+    and ``collectors_by_subject`` maps a subject to the collectors that observed it. When
+    neither is supplied every pattern reports zero collectors — an honest "not traced"
+    rather than a guessed one.
+    """
     window = max(1, int(window_seconds or DEFAULT_WINDOW_SECONDS))
     materialised = [event for event in events if isinstance(event, Mapping)]
     signals = _signals(materialised)
@@ -239,6 +325,14 @@ def correlate(
     patterns.extend(_burst_pattern(in_window))
     patterns.extend(_correlated(patterns, in_window))
 
+    by_evidence = {str(key): str(value) for key, value in (collectors_by_evidence or {}).items() if value}
+    by_subject = {str(key): list(value) for key, value in (collectors_by_subject or {}).items()}
+
+    for pattern in patterns:
+        # corroboration is computed from the signals this pattern cites, so it answers
+        # "who saw this", not "who saw anything in the window"
+        pattern["corroboration"] = _corroboration(pattern["signals"], by_evidence, by_subject)
+
     patterns.sort(key=lambda item: (-item["level"], item["name"], item["pattern_id"]))
     by_level: dict[str, int] = {}
     for pattern in patterns:
@@ -257,6 +351,15 @@ def correlate(
         "by_level": by_level,
         "highest_level": max((p["level"] for p in patterns), default=0),
         "level_definitions": {str(level): definition for level, definition in LEVELS.items()},
+        "corroboration": {
+            "evidence_mapped": len(by_evidence),
+            "subjects_mapped": len(by_subject),
+            "single_source_patterns": len([p for p in patterns if p["corroboration"]["single_source"]]),
+            "note": (
+                "corroboration counts independent collectors whose stored evidence stands behind "
+                "a pattern; it is reported, never used to raise a level"
+            ),
+        },
         "note": (
             "an empty result means nothing in this window met a correlation rule — not that the "
             "estate is safe; a blind plane is reported as COLLECTION_LOSS, never as quiet"
