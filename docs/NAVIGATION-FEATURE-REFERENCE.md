@@ -98,8 +98,11 @@ sidebar placement, including intentionally duplicated Security Center.
   `developer` or `scanner`.
 - The sidebar's role check is a usability guard, not authorization. The API
   remains authoritative and must reject unauthorized mutations.
-- The sidebar displays GA, Beta or Preview pills from
-  `shared_models/capability_maturity.py` through `frontend/src/lib/maturity.ts`.
+- The sidebar renders **no** maturity pill. Every shipped surface is supported
+  (`shared_models/capability_maturity.py`); what a surface does *not* do is
+  stated with the surface, on `/scope` and in
+  [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md). A limitation belongs next to
+  the screen it applies to, not in the navigation.
 - The signed-in session and roles come from `GET /api/v1/auth/me`; local storage
   is only a first-paint hint and must not authorize an action.
 - The collapsed sidebar preserves the same routes and exposes item labels as
@@ -111,41 +114,41 @@ These actual page routes are not current sidebar placements. Some were formerly
 deep links and now have sidebar entries; use the primary table rather than an old
 menu screenshot. Listed routes are not an assertion of production-profile enablement.
 
-| Route | Component | Maturity |
-|---|---|---|
-| `/accuracy` | `Accuracy` | Preview |
-| `/admin` | `Admin` | GA |
-| `/alerts` | `Alerts` | GA |
-| `/automation` | `Automation` | Beta |
-| `/catalog` | `Catalog` | Beta |
-| `/cmdb` | `Cmdb` | Beta |
-| `/crypto-assurance` | `CryptoAssurance` | Beta |
-| `/crypto-changes` | `CryptoChanges` | Beta |
-| `/executive` | `Executive` | Beta |
-| `/governance` | `Governance` | Beta |
-| `/libraries` | `Libraries` | GA |
-| `/live-environment` | `LiveEnvironment` | Beta |
-| `/notifications` | `Notifications` | Beta |
-| `/onboarding` | `Onboarding` | Beta |
-| `/organization` | `Organization` | Beta |
-| `/platform-p2` | `PlatformP2` | Preview |
-| `/pqc-map` | `PqcMap` | Preview |
-| `/protocols` | `Protocols` | Beta |
-| `/resilience` | `Resilience` | Beta |
-| `/risk` | `Risk` | Beta |
-| `/role-dashboard` | `RoleDashboard` | Beta |
-| `/runtime` | `Runtime` | Beta |
-| `/scope` | `Scope` | GA |
-| `/search-results` | `SearchResults` | GA |
-| `/sectors` | `Sectors` | Beta |
-| `/security` | `Security` | Beta |
-| `/security-intelligence` | `SecurityIntelligence` | Preview |
-| `/supervision` | `Supervision` | Preview |
-| `/telecom` | `Telecom` | Beta |
-| `/tenancy` | `Tenancy` | Beta |
-| `/timeline` | `Timeline` | Preview |
-| `/trust` | `Trust` | Preview |
-| `/vendor-due-diligence` | `VendorDueDiligence` | Preview |
+| Route | Component |
+|---|---|
+| `/accuracy` | `Accuracy` |
+| `/admin` | `Admin` |
+| `/alerts` | `Alerts` |
+| `/automation` | `Automation` |
+| `/catalog` | `Catalog` |
+| `/cmdb` | `Cmdb` |
+| `/crypto-assurance` | `CryptoAssurance` |
+| `/crypto-changes` | `CryptoChanges` |
+| `/executive` | `Executive` |
+| `/governance` | `Governance` |
+| `/libraries` | `Libraries` |
+| `/live-environment` | `LiveEnvironment` |
+| `/notifications` | `Notifications` |
+| `/onboarding` | `Onboarding` |
+| `/organization` | `Organization` |
+| `/platform-p2` | `PlatformP2` |
+| `/pqc-map` | `PqcMap` |
+| `/protocols` | `Protocols` |
+| `/resilience` | `Resilience` |
+| `/risk` | `Risk` |
+| `/role-dashboard` | `RoleDashboard` |
+| `/runtime` | `Runtime` |
+| `/scope` | `Scope` |
+| `/search-results` | `SearchResults` |
+| `/sectors` | `Sectors` |
+| `/security` | `Security` |
+| `/security-intelligence` | `SecurityIntelligence` |
+| `/supervision` | `Supervision` |
+| `/telecom` | `Telecom` |
+| `/tenancy` | `Tenancy` |
+| `/timeline` | `Timeline` |
+| `/trust` | `Trust` |
+| `/vendor-due-diligence` | `VendorDueDiligence` |
 
 Authentication/entry routes are `/login`, `/register`, `/reset-password` and
 `/invite-accept`; self-serve registration is not enabled merely by a route existing.

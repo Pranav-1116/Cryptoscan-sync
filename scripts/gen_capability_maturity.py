@@ -3,8 +3,11 @@
 
 Source of truth: shared_models/capability_maturity.py. This writes:
 
-- frontend/src/lib/maturity.ts     (route → tier, embedded as JSON)
+- frontend/src/lib/maturity.ts     (route → tier + the stated limit, embedded as JSON)
 - docs/CAPABILITY-MATURITY.md      (the human-readable table)
+
+Every shipped surface is supported; ``why`` carries the limit that used to be a
+"beta" badge, so the limitation survives the vocabulary change.
 
 A shared_models test fails when the TS copy drifts, so run this after any
 tier change:  python scripts/gen_capability_maturity.py
@@ -29,11 +32,18 @@ DOC_PATH = ROOT / "docs" / "CAPABILITY-MATURITY.md"
 def render_ts() -> str:
     table = {slug: entry["tier"] for slug, entry in sorted(CAPABILITIES.items())}
     blob = json.dumps(table, indent=2)
+    limits = {
+        slug: {"area": entry["area"], "limit": entry["why"]}
+        for slug, entry in sorted(CAPABILITIES.items())
+    }
+    limits_blob = json.dumps(limits, indent=2)
     return f'''/* GENERATED — do not edit. Source: shared_models/capability_maturity.py
  * Regenerate: python scripts/gen_capability_maturity.py
  *
- * Which console surfaces are GA, beta or preview. The Layout reads this to
- * label every page; unknown routes default down to preview.
+ * Support status of every console surface. Every shipped surface is "ga"; the
+ * sidebar does not label pages. CAPABILITY_LIMITS carries the sentence that
+ * says what each surface does not do — that is the honest part, and /scope
+ * renders it. Unknown routes default down to "preview".
  * The API serves the same table with rationale at
  * GET /api/v1/platform/capabilities. */
 
@@ -44,6 +54,11 @@ export const TIER_LABEL: Record<Tier, string> = {json.dumps({k: v["label"] for k
 export const TIER_DETAIL: Record<Tier, string> = {json.dumps({k: v["detail"] for k, v in TIERS.items()}, indent=2)};
 
 export const CAPABILITIES_JSON = {blob} as const;
+
+/** route slug -> the limit stated with that surface (rendered on /scope). */
+export const CAPABILITY_LIMITS = {limits_blob} as const;
+
+export type CapabilityLimit = {{ area: string; limit: string }};
 
 export const RETIRED_NAV_ROUTES: readonly string[] = {json.dumps([f"/{s}" for s in RETIRED_NAV_ROUTES])};
 
@@ -64,35 +79,35 @@ export function tierCounts(): Record<Tier, number> {{
 def render_doc() -> str:
     c = counts()
     lines = [
-        "# Capability maturity — what is GA, what is beta, what is preview",
+        "# Capability record — every console surface, and what it does not do",
         "",
         "> Generated from `shared_models/capability_maturity.py` by",
         "> `scripts/gen_capability_maturity.py`. Served live at",
-        "> `GET /api/v1/platform/capabilities`; the console labels every page from it.",
+        "> `GET /api/v1/platform/capabilities`.",
         "",
-        "The platform ships many services and console surfaces. Maturity is assigned per route;",
-        "new or unclassified routes default down to **preview**, never to production support.",
-        "A tier describes the reviewed surface, not completeness of an unobserved estate.",
+        f"**{c['ga']} shipped surfaces, all supported.** The navigation carries no maturity",
+        "badges: a product's sidebar is not the place to negotiate what is proven. What",
+        "used to be a `beta` or `preview` label is now the **stated limit** column below,",
+        "which is the part that actually told an operator something. A support statement",
+        "and a completeness statement are different claims, and only the first one is",
+        "uniform across the product.",
+        "",
+        "Unknown routes still default **down** to `preview`, never up: a route nobody",
+        "wrote a rationale for is not something we have decided to support.",
         "",
         "The sidebar is organized into six sections: **Overview, Discovery, Intelligence,",
-        "Governance, Output and Administration**. Deep-linked routes remain in the maturity inventory",
-        "without being duplicated in the sidebar. See the [Navigation & Feature",
+        "Governance, Output and Administration**. Deep-linked routes remain in this",
+        "record without being duplicated in the sidebar. See the [Navigation & Feature",
         "Reference](NAVIGATION-FEATURE-REFERENCE.md) for the route-to-page map and",
         "role-guarded actions.",
         "",
-        "| Tier | Meaning | Surfaces |",
+        "| Route | Area | What it is, and its stated limit |",
         "|---|---|---|",
     ]
-    for tier, meta in TIERS.items():
-        lines.append(f"| **{meta['label']}** | {meta['detail']} | {c[tier]} |")
-    lines += ["", f"Total: {sum(c.values())} surfaces.", ""]
-    for tier, meta in TIERS.items():
-        lines += [f"## {meta['label']} ({c[tier]})", "", "| Route | Area | Why this tier |", "|---|---|---|"]
-        for slug, entry in sorted(CAPABILITIES.items(), key=lambda kv: (kv[1]["area"], kv[0])):
-            if entry["tier"] == tier:
-                lines.append(f"| `/{slug}` | {entry['area']} | {entry['why']} |")
-        lines.append("")
+    for slug, entry in sorted(CAPABILITIES.items(), key=lambda kv: (kv[1]["area"], kv[0])):
+        lines.append(f"| `/{slug}` | {entry['area']} | {entry['why']} |")
     lines += [
+        "",
         "## Retired sidebar entries",
         "",
         "These used to appear in the navigation but had no page behind them (they",
@@ -102,9 +117,9 @@ def render_doc() -> str:
     lines += [f"- `/{slug}`" for slug in RETIRED_NAV_ROUTES]
     lines += [
         "",
-        "## Changing a tier",
+        "## Changing an entry",
         "",
-        "1. Edit `shared_models/capability_maturity.py` (tier + a real rationale).",
+        "1. Edit `shared_models/capability_maturity.py` (status + a real rationale).",
         "2. `python scripts/gen_capability_maturity.py`",
         "3. `pytest shared/shared_models/tests/test_capability_maturity.py`",
         "",

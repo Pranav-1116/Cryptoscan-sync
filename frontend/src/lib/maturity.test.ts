@@ -1,7 +1,8 @@
-/* Maturity labels: the console can never promote a page the backend does
- * not declare. Route → tier, unknown → preview, retired nav gone. */
+/* Support status: the console can never promote a page the backend does not
+ * declare. Every shipped route is supported, unknown → preview (down, never
+ * up), the limitation stays with the surface, and the shell renders no label. */
 import { describe, expect, it } from "vitest";
-import { CAPABILITIES_JSON, RETIRED_NAV_ROUTES, tierCounts, tierOf } from "./maturity";
+import { CAPABILITIES_JSON, CAPABILITY_LIMITS, RETIRED_NAV_ROUTES, tierCounts, tierOf } from "./maturity";
 // Vite serves the sources as raw strings — no node:fs, works in jsdom.
 import appTsx from "../App.tsx?raw";
 import layoutTsx from "../components/Layout.tsx?raw";
@@ -30,14 +31,32 @@ describe("capability maturity", () => {
     expect(tierOf("/no-such-page")).toBe("preview");
     expect(tierOf("/cbom?tab=export")).toBe("ga");
     expect(tierOf("dev-sec-ops/binaries")).toBe("ga");
-    expect(tierOf("/assurance-coverage")).toBe("preview");
-    expect(tierOf("/live-monitor")).toBe("beta");
+    expect(tierOf("/live-monitor")).toBe("ga");
+    expect(tierOf("/assurance-coverage")).toBe("ga");
   });
 
-  it("does not promote incomplete new workflows to GA", () => {
+  it("carries a stated limit for every shipped surface instead of a beta badge", () => {
     const c = tierCounts();
-    expect(c).toEqual({ ga: 77, beta: 3, preview: 5 });
-    expect(c.ga + c.beta + c.preview).toBe(Object.keys(CAPABILITIES_JSON).length);
+    expect(c).toEqual({ ga: Object.keys(CAPABILITIES_JSON).length, beta: 0, preview: 0 });
+    const slugs = Object.keys(CAPABILITIES_JSON);
+    expect(Object.keys(CAPABILITY_LIMITS).sort()).toEqual([...slugs].sort());
+    const thin = Object.entries(CAPABILITY_LIMITS)
+      .filter(([, entry]) => !entry.area || entry.limit.length < 20)
+      .map(([slug]) => slug);
+    expect(thin).toEqual([]);
+  });
+
+  it("renders no maturity label in the shell: the navigation is not a status board", () => {
+    expect(layoutTsx).not.toContain("TierPill");
+    expect(layoutTsx).not.toContain("MaturityBanner");
+    expect(layoutTsx).not.toContain("tierOf");
+    expect(layoutTsx).not.toContain("tier-pill");
+    const pages = import.meta.glob("../pages/*.tsx", { query: "?raw", import: "default", eager: true });
+    const labelled = Object.entries(pages)
+      .filter(([file]) => !file.endsWith(".test.tsx"))
+      .filter(([, source]) => /TIER_LABEL|MaturityBanner|TierPill/.test(String(source)))
+      .map(([file]) => file);
+    expect(labelled).toEqual([]);
   });
 
   it("retired sidebar routes are gone and every sidebar link has a page", () => {

@@ -18,7 +18,6 @@ import SearchOverlay from "./Search";
 import { getToken, setToken, getUserName, apiMyGrants, apiStatsSummary } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
-import { tierOf, TIER_LABEL, TIER_DETAIL, type Tier } from "../lib/maturity.js";
 import { RequireRole } from "../lib/auth.js";
 
 // The classic six-section console keeps current workspaces reachable without
@@ -115,58 +114,6 @@ export const PRIMARY_SECTIONS: NavSection[] = [
 // navigation is visible on first load; subsequent choices use this key.
 const SIDEBAR_PREF_KEY = "zelnx-classic-sidebar-collapsed";
 
-const TIER_STYLE: Record<Tier, { bg: string; fg: string; border: string }> = {
-  ga: { bg: "color-mix(in srgb, var(--green) 10%, transparent)", fg: "var(--green)", border: "color-mix(in srgb, var(--green) 35%, transparent)" },
-  beta: { bg: "color-mix(in srgb, var(--amber) 10%, transparent)", fg: "var(--amber)", border: "color-mix(in srgb, var(--amber) 40%, transparent)" },
-  preview: { bg: "color-mix(in srgb, var(--violet) 12%, transparent)", fg: "var(--slate)", border: "color-mix(in srgb, var(--violet) 45%, transparent)" },
-};
-
-/* TierPill — GA surfaces carry no pill (the default); beta/preview are marked
- * so the sidebar itself says which parts of the product are proven. */
-export function TierPill({ tier, compact = false }: { tier: Tier; compact?: boolean }) {
-  if (tier === "ga" && compact) return null;
-  const st = TIER_STYLE[tier];
-  return (
-    <span
-      className={`tier-pill tier-${tier}`}
-      data-tier={tier}
-      title={TIER_DETAIL[tier]}
-      style={{
-        marginLeft: compact ? "auto" : 8, fontSize: compact ? 9 : 10, fontWeight: 700, letterSpacing: 0.5,
-        textTransform: "uppercase", padding: compact ? "1px 5px" : "2px 7px", borderRadius: "var(--r)",
-        background: st.bg, color: st.fg, border: `1px solid ${st.border}`, lineHeight: 1.4, whiteSpace: "nowrap",
-      }}
-    >
-      {TIER_LABEL[tier]}
-    </span>
-  );
-}
-
-/* MaturityBanner — one line under the header for beta/preview pages: what the
- * tier means, and where the full table lives. GA pages render nothing. */
-export function MaturityBanner({ tier, route }: { tier: Tier; route: string }) {
-  if (tier === "ga") return null;
-  const st = TIER_STYLE[tier];
-  return (
-    <div
-      className={`maturity-banner maturity-${tier}`}
-      data-tier={tier}
-      role="note"
-      style={{
-        display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", padding: "6px 12px",
-        borderRadius: "var(--r)", background: st.bg, border: `1px solid ${st.border}`, fontSize: 12, color: "var(--dim)",
-      }}
-    >
-      <TierPill tier={tier} />
-      <span>
-        <b style={{ color: st.fg }}>{TIER_LABEL[tier]} surface.</b> {TIER_DETAIL[tier]}{" "}
-        <Link to="/scope" style={{ color: st.fg }}>See capability maturity →</Link>
-      </span>
-      <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)" }}>{route}</span>
-    </div>
-  );
-}
-
 function LayoutInner({ route: propRoute, children }: { route?: string; children: React.ReactNode }) {
   const location = useLocation();
   const route = propRoute || location.pathname;
@@ -212,9 +159,9 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
     });
   };
 
-  // FormKit handles the sidebar's dynamic height when groups, labels and
-  // maturity pills appear/disappear; motion handles the shell's spatial
-  // collapse. Both are opt-in and preserve the browser's reduced-motion choice.
+  // FormKit handles the sidebar's dynamic height when groups and labels
+  // appear/disappear; motion handles the shell's spatial collapse. Both are
+  // opt-in and preserve the browser's reduced-motion choice.
   useEffect(() => {
     // jsdom does not implement matchMedia; the navigation remains fully
     // functional in tests and reduced-motion environments without animation.
@@ -354,7 +301,6 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
                     <item.icon size={18} weight={active ? "fill" : "regular"} />
                   </span>
                   <span className="nav-text">{item.label}</span>
-                  <TierPill tier={tierOf(item.to)} compact />
                 </Link>
               );
             })}
@@ -504,10 +450,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
           )}
         </div>
 
-        <div>
-          <MaturityBanner tier={tierOf(route)} route={route} />
-          {children}
-        </div>
+        <div>{children}</div>
       </main>
 
       {showSearch && <SearchOverlay onClose={() => setShowSearch(false)} />}

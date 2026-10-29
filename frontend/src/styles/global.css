@@ -1298,7 +1298,6 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
 .shell.collapsed .sidebar .nav-label,
 .shell.collapsed .sidebar .footer-text,
 .shell.collapsed .sidebar .realtime-banner .nav-text,
-.shell.collapsed .sidebar .tier-pill,
 .shell.collapsed .sidebar .org-selector,
 .shell.collapsed .sidebar .env-selector { display: none; }
 .shell.collapsed .sidebar a.nav { justify-content: center; padding-inline: 8px; }
@@ -1362,7 +1361,7 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
 @media (max-width: 900px) {
   .shell, .shell.collapsed { grid-template-columns: 76px minmax(0, 1fr); }
   .sidebar .logo-text, .sidebar .nav-label, .sidebar .footer-text,
-  .sidebar .realtime-banner .nav-text, .sidebar .tier-pill { display: none; }
+  .sidebar .realtime-banner .nav-text { display: none; }
   .sidebar a.nav { justify-content: center; padding-inline: 8px; }
   .main { padding-inline: 18px; }
   .livehead { margin-inline: -18px; padding-inline: 18px; }

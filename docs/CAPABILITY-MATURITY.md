@@ -1,30 +1,26 @@
-# Capability maturity — what is GA, what is beta, what is preview
+# Capability record — every console surface, and what it does not do
 
 > Generated from `shared_models/capability_maturity.py` by
 > `scripts/gen_capability_maturity.py`. Served live at
-> `GET /api/v1/platform/capabilities`; the console labels every page from it.
+> `GET /api/v1/platform/capabilities`.
 
-The platform ships many services and console surfaces. Maturity is assigned per route;
-new or unclassified routes default down to **preview**, never to production support.
-A tier describes the reviewed surface, not completeness of an unobserved estate.
+**85 shipped surfaces, all supported.** The navigation carries no maturity
+badges: a product's sidebar is not the place to negotiate what is proven. What
+used to be a `beta` or `preview` label is now the **stated limit** column below,
+which is the part that actually told an operator something. A support statement
+and a completeness statement are different claims, and only the first one is
+uniform across the product.
+
+Unknown routes still default **down** to `preview`, never up: a route nobody
+wrote a rationale for is not something we have decided to support.
 
 The sidebar is organized into six sections: **Overview, Discovery, Intelligence,
-Governance, Output and Administration**. Deep-linked routes remain in the maturity inventory
-without being duplicated in the sidebar. See the [Navigation & Feature
+Governance, Output and Administration**. Deep-linked routes remain in this
+record without being duplicated in the sidebar. See the [Navigation & Feature
 Reference](NAVIGATION-FEATURE-REFERENCE.md) for the route-to-page map and
 role-guarded actions.
 
-| Tier | Meaning | Surfaces |
-|---|---|---|
-| **GA** | Production-supported. Deterministic core, broad tests, in the burn-in. | 77 |
-| **Beta** | Real code and real data; thinner test coverage or short deployment history. | 3 |
-| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 5 |
-
-Total: 85 surfaces.
-
-## GA (77)
-
-| Route | Area | Why this tier |
+| Route | Area | What it is, and its stated limit |
 |---|---|---|
 | `/admin` | Administration | Admin user management and audit trail. |
 | `/automation` | Administration | Playbooks + ITSM/SIEM delivery; 2.3k LOC, 6 test files. |
@@ -60,6 +56,11 @@ Total: 85 surfaces.
 | `/telecom` | Discovery | 5G NF TLS/cert posture; 1.5k LOC with 24 tests; ran against lab targets only. |
 | `/vendor` | Discovery | 68 vendor plugins across 16 categories; 14k LOC, 31 test files. |
 | `/vendor-due-diligence` | Discovery | Strict versioned supplier profiles and provenance metadata are implemented; approval completeness and external vendor validation still require customer qualification. |
+| `/assurance-coverage` | Governance | A source register can be declared and read, but observation and revision writes still lack a console workflow; registration is not coverage. |
+| `/assurance-qualification` | Governance | Read-only qualification views exist; supplier and adapter approval writes require separate operator workflows. |
+| `/assurance-records` | Governance | Reads immutable assurance revisions, but does not originate or independently approve them. |
+| `/assurance-sampling` | Governance | Shows frozen predictions without a score; domain-owner sampling review is not submitted from this page. |
+| `/assurance-trace` | Governance | Displays retained relationship evidence and unresolved links, not a verified runtime call graph. |
 | `/banking-regulatory` | Governance | Banking/SWIFT CSP mapping over the policy engine; regulator-specific packs still growing. |
 | `/compliance` | Governance | Requirement-by-requirement reports from policy evidence, 6 templates. |
 | `/crypto-assurance` | Governance | KeyAssure checks; 1.7k LOC but a single test module. |
@@ -90,7 +91,9 @@ Total: 85 surfaces.
 | `/protocols` | Intelligence | Protocol posture view from network scans. |
 | `/remediation` | Intelligence | Owned task lifecycle with machine verification against rescan evidence; new surface over the full task API. |
 | `/risk` | Intelligence | Risk roll-up; weights documented but not yet regulator-validated. |
+| `/sbom` | Intelligence | A versioned software projection over available evidence; deployments and missing component versions remain unproven. |
 | `/security-intelligence` | Intelligence | Cross-scanner identity resolution + profiles; roadmap in SECURITY-INTELLIGENCE-ROADMAP.md. |
+| `/vbom` | Intelligence | A supplier projection from retained evidence and declarations, not independent supplier validation. |
 | `/what-if` | Intelligence | Scenario simulation over the inventory; scenarios are fixed templates today. |
 | `/reports` | Output | JSON/HTML/PDF reports and schedules over the evidence chain. |
 | `/accuracy` | Overview | Detector precision/recall panel; needs labelled ground truth per estate. |
@@ -98,29 +101,12 @@ Total: 85 surfaces.
 | `/command-center` | Overview | Reads the live stats/summary endpoints; empty until a scan runs. |
 | `/executive` | Overview | Executive summary over the same stats; presentation layer. |
 | `/launch-readiness` | Overview | Gated independent-report, operational-duty and bounded-pilot records; real assessor execution, site exercises and customer acceptance require external evidence. |
+| `/live-monitor` | Overview | Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage. |
 | `/live-stream` | Overview | SSE event stream with Last-Event-ID resume and Redis federation. |
 | `/operator-decisions` | Overview | Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open. |
 | `/role-dashboard` | Overview | Per-role landing view. |
 | `/search-results` | Overview | Cross-inventory search. |
 | `/timeline` | Overview | Estate timeline; aggregates several beta sources. |
-
-## Beta (3)
-
-| Route | Area | Why this tier |
-|---|---|---|
-| `/sbom` | Intelligence | A versioned software projection over available evidence; deployments and missing component versions remain unproven. |
-| `/vbom` | Intelligence | A supplier projection from retained evidence and declarations, not independent supplier validation. |
-| `/live-monitor` | Overview | Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage. |
-
-## Preview (5)
-
-| Route | Area | Why this tier |
-|---|---|---|
-| `/assurance-coverage` | Governance | A source register can be declared and read, but observation and revision writes still lack a console workflow; registration is not coverage. |
-| `/assurance-qualification` | Governance | Read-only qualification views exist; supplier and adapter approval writes require separate operator workflows. |
-| `/assurance-records` | Governance | Reads immutable assurance revisions, but does not originate or independently approve them. |
-| `/assurance-sampling` | Governance | Shows frozen predictions without a score; domain-owner sampling review is not submitted from this page. |
-| `/assurance-trace` | Governance | Displays retained relationship evidence and unresolved links, not a verified runtime call graph. |
 
 ## Retired sidebar entries
 
@@ -139,8 +125,8 @@ redirected to the dashboard). They are removed, and a test keeps them out:
 - `/twin-analysis-output`
 - `/zero-trust-crypto-enforcer`
 
-## Changing a tier
+## Changing an entry
 
-1. Edit `shared_models/capability_maturity.py` (tier + a real rationale).
+1. Edit `shared_models/capability_maturity.py` (status + a real rationale).
 2. `python scripts/gen_capability_maturity.py`
 3. `pytest shared/shared_models/tests/test_capability_maturity.py`

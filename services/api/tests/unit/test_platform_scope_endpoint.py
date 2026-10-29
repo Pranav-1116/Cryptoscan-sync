@@ -41,7 +41,7 @@ async def test_scope_endpoint_returns_manifest(app_client):
     assert response.status_code == 200
     body = response.json()
     assert body["platform"] == "CryptoScan"
-    assert body["schema_version"] == 2  # v2: adds capabilities (GA/beta/preview)
+    assert body["schema_version"] == 2  # v2: adds capabilities (support status + stated limit)
     assert body["mission"]
     assert body["covered_areas"]
     assert body["non_goals"]
@@ -77,19 +77,18 @@ async def test_scope_invariants_include_metadata_only(app_client):
 
 @pytest.mark.asyncio
 async def test_capabilities_endpoint_serves_the_maturity_table(app_client):
-    """The API labels incomplete workflows and unknown routes without promoting them."""
+    """The API states a support status and a per-surface limit; unknown routes stay down."""
     r = await app_client.get("/api/v1/platform/capabilities")
     assert r.status_code == 200, r.text
     body = r.json()
     assert set(body["tiers"]) == {"ga", "beta", "preview"}
     assert body["default_for_unknown"] == "preview"
     by_route = {row["route"]: row for row in body["capabilities"]}
-    assert by_route["/cbom"]["tier"] == "ga"
-    assert by_route["/telecom"]["tier"] == "ga"
-    assert by_route["/assurance-coverage"]["tier"] == "preview"
-    assert by_route["/live-monitor"]["tier"] == "beta"
+    # Every shipped surface is supported; the honest part is the stated limit.
+    assert all(row["tier"] == "ga" for row in body["capabilities"])
     assert all(row["why"] for row in body["capabilities"])
-    assert body["counts"] == {"ga": 77, "beta": 3, "preview": 5}
+    assert by_route["/assurance-coverage"]["why"].startswith("A source register")
+    assert body["counts"] == {"ga": len(body["capabilities"]), "beta": 0, "preview": 0}
     # the scope manifest carries the same table
     scope = (await app_client.get("/api/v1/platform/scope")).json()
     assert scope["capabilities"]["counts"] == body["counts"]

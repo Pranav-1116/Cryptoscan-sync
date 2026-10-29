@@ -45,7 +45,7 @@ class TestScopeManifest:
     def test_manifest_shape(self):
         manifest = scope_manifest()
         assert manifest["platform"] == "CryptoScan"
-        assert manifest["schema_version"] == 2  # v2: adds capabilities (GA/beta/preview)
+        assert manifest["schema_version"] == 2  # v2: adds capabilities (support status + stated limit)
         for key in ("mission", "covered_areas", "non_goals",
                     "access_model", "invariants"):
             assert key in manifest

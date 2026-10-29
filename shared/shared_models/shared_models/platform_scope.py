@@ -255,7 +255,7 @@ def scope_manifest() -> dict[str, Any]:
 
 
 def _capabilities() -> dict[str, Any]:
-    """GA / beta / preview tier of every console surface (capability_maturity)."""
+    """Support status and stated limit of every console surface (capability_maturity)."""
     from shared_models.capability_maturity import capability_manifest
 
     return capability_manifest()

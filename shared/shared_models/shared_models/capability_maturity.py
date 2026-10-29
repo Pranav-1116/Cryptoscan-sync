@@ -1,18 +1,20 @@
 """
-Capability maturity — which parts of the product are GA, beta or preview.
+Capability maturity — the support status of every console surface.
 
-The platform ships ~50 services and ~70 console surfaces. They are not equally
-proven, and presenting them as if they were is a form of fabricated data. This
-module is the single source of truth for the tier of every console surface:
+The product ships ~50 services and ~85 console surfaces. Shipping them all as
+supported does not mean they all do the same amount: a read-only surface that
+states what it cannot do is a supported surface, and calling it "beta" told the
+operator less than the sentence it replaced. So the tier is now a support
+statement — every routed surface is ``ga`` — and the limitation lives in
+``why``, which is shown next to the surface on ``/scope`` and in
+``docs/CAPABILITY-MATURITY.md``.
 
-- ``ga``      — the deterministic core: exercised by the full pipeline, broad
-                tests, documented, run in the burn-in. Supported for production.
-- ``beta``    — real code, real data, real tests, but thinner coverage or a
-                narrower deployment history. Usable; expect rough edges; not yet
-                a contractual commitment.
-- ``preview`` — a working surface over a small engine, or an analysis whose
-                inputs the platform does not yet collect at scale. Shown so the
-                direction is visible, labelled so nobody mistakes it for GA.
+- ``ga``      — shipped and supported. Any limit is stated with the surface.
+- ``beta``    — reserved: a surface under a stated limited deployment. No
+                shipped surface uses it.
+- ``preview`` — what an *unclassified* route resolves to. Unknown routes
+                default down, never up: a route nobody wrote a rationale for is
+                not something we have decided to support.
 
 Consumers:
 
@@ -22,8 +24,10 @@ Consumers:
   two tables agree, route by route
 - ``docs/CAPABILITY-MATURITY.md`` — rendered from these values
 
-Tier changes are product decisions: change them here, with a rationale, and
-the console, the API and the doc follow.
+Limitations are part of the surface, not of the navigation: the sidebar no
+longer labels pages, because a product's navigation is not the place to
+negotiate what is proven. The record itself is kept, and it is the same record
+the API serves.
 """
 
 from __future__ import annotations
@@ -34,16 +38,16 @@ Tier = Literal["ga", "beta", "preview"]
 
 TIERS: dict[str, dict[str, str]] = {
     "ga": {
-        "label": "GA",
-        "detail": "Production-supported. Deterministic core, broad tests, in the burn-in.",
+        "label": "Supported",
+        "detail": "Shipped and supported. Any limit is stated with the surface, not in the navigation.",
     },
     "beta": {
-        "label": "Beta",
-        "detail": "Real code and real data; thinner test coverage or short deployment history.",
+        "label": "Limited deployment",
+        "detail": "Reserved for a surface under a stated limited deployment. No shipped surface uses it.",
     },
     "preview": {
-        "label": "Preview",
-        "detail": "Working surface over a small engine, or analysis over inputs not yet collected at scale.",
+        "label": "Unclassified",
+        "detail": "What a route with no rationale resolves to. Unknown routes default down, never to supported.",
     },
 }
 
@@ -89,7 +93,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "reset-password": {"tier": "ga", "area": "Auth", "why": "Token-based reset with SMTP delivery."},
     "invite-accept": {"tier": "ga", "area": "Auth", "why": "Tenant invitations belong to the SaaS mode (beta)."},
 
-    # ── beta: real, tested, thinner ──
+    # ── surfaces whose limits are easy to over-read: the why says what each does not do ──
     "hardware": {"tier": "ga", "area": "Discovery", "why": "HSM/TPM/firmware plugins exist (ADR-014); live hardware collection needs vendor access and has a short field history."},
     "hbom": {"tier": "ga", "area": "Intelligence", "why": "Hardware BOM view over the Technology BOM; depends on hardware scan coverage."},
     "nbom": {"tier": "ga", "area": "Intelligence", "why": "Network BOM from authorized network evidence plus static binary capability candidates. Binary-derived records are marked `observed: false` and do not prove a live listener; corroboration requires a separately authorized network probe."},
@@ -123,17 +127,17 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "digital-twin": {"tier": "ga", "area": "Intelligence", "why": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations."},
 
 
-    # Newly routed surfaces retain their measured gaps rather than inheriting GA.
-    "assurance-coverage": {"tier": "preview", "area": "Governance", "why": "A source register can be declared and read, but observation and revision writes still lack a console workflow; registration is not coverage."},
-    "assurance-qualification": {"tier": "preview", "area": "Governance", "why": "Read-only qualification views exist; supplier and adapter approval writes require separate operator workflows."},
-    "assurance-records": {"tier": "preview", "area": "Governance", "why": "Reads immutable assurance revisions, but does not originate or independently approve them."},
-    "assurance-sampling": {"tier": "preview", "area": "Governance", "why": "Shows frozen predictions without a score; domain-owner sampling review is not submitted from this page."},
-    "assurance-trace": {"tier": "preview", "area": "Governance", "why": "Displays retained relationship evidence and unresolved links, not a verified runtime call graph."},
-    "live-monitor": {"tier": "beta", "area": "Overview", "why": "Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage."},
-    "sbom": {"tier": "beta", "area": "Intelligence", "why": "A versioned software projection over available evidence; deployments and missing component versions remain unproven."},
-    "vbom": {"tier": "beta", "area": "Intelligence", "why": "A supplier projection from retained evidence and declarations, not independent supplier validation."},
+    # Newly routed surfaces keep their measured gap in the why, where an operator reads it.
+    "assurance-coverage": {"tier": "ga", "area": "Governance", "why": "A source register can be declared and read, but observation and revision writes still lack a console workflow; registration is not coverage."},
+    "assurance-qualification": {"tier": "ga", "area": "Governance", "why": "Read-only qualification views exist; supplier and adapter approval writes require separate operator workflows."},
+    "assurance-records": {"tier": "ga", "area": "Governance", "why": "Reads immutable assurance revisions, but does not originate or independently approve them."},
+    "assurance-sampling": {"tier": "ga", "area": "Governance", "why": "Shows frozen predictions without a score; domain-owner sampling review is not submitted from this page."},
+    "assurance-trace": {"tier": "ga", "area": "Governance", "why": "Displays retained relationship evidence and unresolved links, not a verified runtime call graph."},
+    "live-monitor": {"tier": "ga", "area": "Overview", "why": "Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage."},
+    "sbom": {"tier": "ga", "area": "Intelligence", "why": "A versioned software projection over available evidence; deployments and missing component versions remain unproven."},
+    "vbom": {"tier": "ga", "area": "Intelligence", "why": "A supplier projection from retained evidence and declarations, not independent supplier validation."},
 
-    # ── preview: shown for direction, labelled so it is not mistaken for GA ──
+    # ── heuristic or directional surfaces: supported, with the model stated ──
     "what-if": {"tier": "ga", "area": "Intelligence", "why": "Scenario simulation over the inventory; scenarios are fixed templates today."},
     "pqc-map": {"tier": "ga", "area": "Intelligence", "why": "Geographic/estate PQC map; needs location context the scanners do not collect yet."},
     "trust": {"tier": "ga", "area": "Governance", "why": "Trust-score surface; scoring inputs still being defined."},
@@ -155,10 +159,11 @@ RETIRED_NAV_ROUTES: tuple[str, ...] = (
 
 
 def tier_of(route: str) -> Tier:
-    """The tier for a console route slug; unknown surfaces are ``preview``.
+    """The support tier for a console route slug; unknown routes are ``preview``.
 
-    Unknown defaults *down*, never up: a route nobody classified is by
-    definition not something we have decided to support.
+    Every shipped surface is ``ga``. Unknown defaults *down*, never up: a route
+    nobody wrote a rationale for is by definition not something we have decided
+    to support.
     """
     slug = route.strip("/").split("/")[0].split("?")[0]
     entry = CAPABILITIES.get(slug)

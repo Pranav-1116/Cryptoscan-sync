@@ -6,8 +6,7 @@ import {
   apiScopeEnvelope, apiTenantIsolation, apiConnectorCatalog, apiScopeAuthorize,
   ScopeEnvelope, TenantIsolation, ConnectorCatalog,
 } from "../lib/api.js";
-import { CAPABILITIES_JSON, TIER_DETAIL, TIER_LABEL, tierCounts, type Tier } from "../lib/maturity.js";
-import { TierPill } from "../components/Layout.jsx";
+import { CAPABILITY_LIMITS, type CapabilityLimit } from "../lib/maturity.js";
 
 /* Scope & Authorization + Multi-Tenant isolation (#2 / #11).
 
@@ -55,7 +54,7 @@ export default function Scope() {
         right={<>{envelope.source === "live" ? <Badge tone="green"><span className="dot" /> AUTHORIZED SCOPE: LIVE</Badge> : <Badge tone="amber">SCOPE: OFFLINE</Badge>}</>}
       />
 
-      <CapabilityMaturityPanel />
+      <CapabilityLimitsPanel />
 
       {!env && envelope.source === "live" && (
         <Panel title="No scope yet" sub="Create an organization to set up your scope">
@@ -171,42 +170,73 @@ export default function Scope() {
 }
 
 
-/* CapabilityMaturityPanel — which console surfaces are GA / beta / preview.
-   The table is generated from shared_models/capability_maturity.py (the same
-   one GET /api/v1/platform/capabilities serves), so the console cannot claim
-   more than the backend declares. Static by design: it is a product statement,
-   not a live metric. */
-export function CapabilityMaturityPanel() {
-  const counts = tierCounts();
-  const tiers: Tier[] = ["ga", "beta", "preview"];
-  const rows = Object.entries(CAPABILITIES_JSON as Record<string, Tier>).sort(
-    ([a, ta], [b, tb]) => tiers.indexOf(ta) - tiers.indexOf(tb) || a.localeCompare(b),
-  );
+/* CapabilityLimitsPanel — every console surface, with the sentence that says
+   what it does not do.
+
+   This used to be a GA/beta/preview table. The label was the less useful half:
+   "preview" told an operator that something was unproven without telling them
+   what was missing, and a sidebar badge is a poor place to hold a limitation.
+   The limits are the record now, and they are the same strings the API serves
+   at GET /api/v1/platform/capabilities, so the console cannot state a limit
+   the backend does not. Static by design: it is a product statement, not a
+   live metric. */
+export function CapabilityLimitsPanel() {
+  const [query, setQuery] = useState("");
+  const rows = Object.entries(CAPABILITY_LIMITS as Record<string, CapabilityLimit>)
+    .filter(([slug, entry]) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      return slug.includes(q) || entry.area.toLowerCase().includes(q) || entry.limit.toLowerCase().includes(q);
+    })
+    .sort(([a, ea], [b, eb]) => ea.area.localeCompare(eb.area) || a.localeCompare(b));
+  const areas = Array.from(new Set(Object.values(CAPABILITY_LIMITS as Record<string, CapabilityLimit>).map((e) => e.area)));
   return (
     <Panel
-      title="Capability maturity"
-      sub="All console surfaces are GA and production-supported."
+      title="Capability record"
+      sub={`${Object.keys(CAPABILITY_LIMITS).length} shipped surface(s) across ${areas.length} areas · each row states what the surface does and what it does not do`}
       frame
     >
-      <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 12 }} data-testid="tier-counts">
-        {tiers.map((t) => (
-          <div key={t} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <TierPill tier={t} />
-            <b style={{ fontSize: 20 }}>{counts[t]}</b>
-            <span style={{ fontSize: 11, color: "var(--faint)" }}>{TIER_DETAIL[t]}</span>
-          </div>
-        ))}
+      <div className="row" style={{ marginBottom: 10 }}>
+        <input
+          className="inp"
+          style={{ minWidth: 260 }}
+          placeholder="Filter by route, area or limit"
+          aria-label="Filter capability record"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>{rows.length} shown</span>
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {rows.map(([slug, tier]) => (
-          <span key={slug} data-tier={tier} title={`${TIER_LABEL[tier]} — ${TIER_DETAIL[tier]}`}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--mono)", fontSize: 11,
-              padding: "3px 8px", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
-            /{slug}
-            <TierPill tier={tier} />
-          </span>
-        ))}
+      <div style={{ maxHeight: 420, overflowY: "auto" }}>
+        <table className="tbl" style={{ width: "100%", fontSize: 11.5 }}>
+          <thead>
+            <tr>
+              <th style={{ textAlign: "left" }}>Surface</th>
+              <th style={{ textAlign: "left" }}>Area</th>
+              <th style={{ textAlign: "left" }}>What it is, and its stated limit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(([slug, entry]) => (
+              <tr key={slug}>
+                <td className="mono" style={{ whiteSpace: "nowrap" }}>/{slug}</td>
+                <td style={{ color: "var(--dim)", whiteSpace: "nowrap" }}>{entry.area}</td>
+                <td style={{ color: "var(--dim)" }}>{entry.limit}</td>
+              </tr>
+            ))}
+            {!rows.length && (
+              <tr>
+                <td colSpan={3} style={{ color: "var(--faint)" }}>No surface matches that filter.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
+      <p style={{ fontSize: 10.5, color: "var(--faint)", margin: "8px 0 0" }}>
+        A route with no entry here resolves to unclassified and is not presented as supported. Unknown routes default
+        down, never up.
+      </p>
     </Panel>
   );
 }
+

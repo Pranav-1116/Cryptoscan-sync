@@ -1,4 +1,7 @@
-"""The maturity table is complete, honest and in sync with the console."""
+"""The capability table is complete, honest and in sync with the console.
+
+Every shipped surface is supported; the honest part is the stated limit, which
+this file requires to be present and specific for every route."""
 from __future__ import annotations
 
 import json
@@ -68,12 +71,23 @@ def test_unknown_routes_default_down_to_preview():
     assert tier_of("dev-sec-ops/binaries") == "ga"
 
 
-def test_new_assurance_surfaces_are_not_promoted_to_ga():
+def test_every_shipped_surface_is_supported():
     c = counts()
-    assert c == {"ga": 77, "beta": 3, "preview": 5}
-    for route in ("assurance-records", "assurance-coverage", "assurance-trace",
-                  "assurance-sampling", "assurance-qualification"):
-        assert CAPABILITIES[route]["tier"] == "preview"
+    assert c == {"ga": len(CAPABILITIES), "beta": 0, "preview": 0}
+
+
+def test_every_surface_states_its_limit_rather_than_carrying_a_badge():
+    """A support tier is uniform; the limitation is per surface, in ``why``."""
+    for slug, entry in CAPABILITIES.items():
+        assert len(entry["why"]) >= 20, f"{slug}: the limit needs a sentence, not a word"
+        assert entry["why"].rstrip().endswith("."), slug
+
+
+def test_the_console_labels_no_page():
+    """The shell must not render a maturity pill or banner for any route."""
+    layout = LAYOUT_TSX.read_text("utf-8")
+    for banned in ("TierPill", "MaturityBanner", "tierOf", "tier-pill"):
+        assert banned not in layout, f"the sidebar still renders {banned}"
 
 
 def test_retired_nav_routes_are_gone_from_the_sidebar():
@@ -97,6 +111,11 @@ def test_frontend_copy_matches_the_source_of_truth():
     theirs = json.loads(blob.group(1))
     ours = {slug: entry["tier"] for slug, entry in CAPABILITIES.items()}
     assert theirs == ours, "run: python scripts/gen_capability_maturity.py"
+    limits = re.search(r"CAPABILITY_LIMITS = (\{.*?\}) as const;", ts, re.S)
+    assert limits, "maturity.ts must embed CAPABILITY_LIMITS"
+    assert json.loads(limits.group(1)) == {
+        slug: {"area": entry["area"], "limit": entry["why"]} for slug, entry in CAPABILITIES.items()
+    }, "run: python scripts/gen_capability_maturity.py"
 
 
 def test_manifest_shape():
@@ -105,3 +124,5 @@ def test_manifest_shape():
     assert set(m["tiers"]) == {"ga", "beta", "preview"}
     assert m["default_for_unknown"] == "preview"
     assert all(row["route"].startswith("/") for row in m["capabilities"])
+    # Every served row carries its limit, so /scope cannot show a bare tier.
+    assert all(row["why"] for row in m["capabilities"])
