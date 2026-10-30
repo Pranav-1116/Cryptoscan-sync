@@ -21,12 +21,10 @@ python scripts/manage_systems.py create payments-api --scopes PCI-DSS,FIPS
 python scripts/manage_systems.py show payments-api
 ```
 
-## Related seed data
+## Attaching real context
 
-```
-python scripts/seed_network_targets.py
-python scripts/seed_business_processes.py
-```
-
-Network targets, cloud accounts, business processes, and vendors attach
-to systems so blast-radius and executive reports have owners and revenue.
+No sample data ships, and no seeding script exists. Network targets, cloud
+accounts, business processes, owners and vendors are created through the API
+(`/api/v1/network`, `/api/v1/business`, `/api/v1/vendors`) or imported from your
+own inventory export, so blast-radius and executive reports rank the systems you
+actually run.

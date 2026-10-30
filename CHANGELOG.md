@@ -6,6 +6,31 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Removed — every demo/lab surface, so the product reports only your estate (2026-10-30)
+
+Nothing synthetic ships. A demo directory or a seed command forces an operator to
+work out whether the numbers on screen are theirs or invented, and every shipped
+fixture is one more thing to explain in a bank's security review.
+
+- Synthetic banking-estate lab removed (`tools/banking_sandbox/**`,
+  `generate_sandbox.py`) with its two guides
+  (`docs/bank-environment/90-synthetic-banking-estate.md`,
+  `docs/readiness-evidence/load-balancer-sandbox-2026-10-26.md` and its artifact
+  index). The LB addendum keeps its requirements and says the measurements were
+  taken against that lab, not a customer estate.
+- Sample-data scripts removed (`seed_demo`, `seed_test_data`, `seed_business_owners`,
+  `seed_business_processes`, `seed_compliance_rules`, `seed_network_targets`,
+  `polyglot_smoke`) together with the sample applications and certificates under
+  `demo/`. Reference data now comes from real inventory imports or the API.
+- Third-party bank-sandbox probe pack removed (`deploy/bank-sandbox-testpack.json`
+  and `scripts/tls_cbom_probe.py --bank-sandboxes`). `tls_cbom_probe.py` still
+  probes the endpoints an operator names, and `--self-test` still runs offline.
+- Docs that told operators to seed data now say where real data comes from
+  (`docs/admin-guide/system-configuration.md`,
+  `docs/admin-guide/compliance-rule-authoring.md`).
+- New tripwire: `scripts/tests/test_no_demo_surface.py` fails if a demo path,
+  sample-data script, doc reference or demo-credential production boot returns.
+
 ### Fixed — remediation browser scope and uncertain outcomes (2026-10-23)
 
 - Clear private rows/counts/expanded forms/drafts on estate/auth and relevant

@@ -1,8 +1,17 @@
 # Compliance rule authoring
 
 Rules are versioned YAML under `services/policy/rule_definitions/`.
-The engine loads every `*.yaml` at start; `python scripts/seed_compliance_rules.py`
-validates the pack without writing to the database.
+The engine loads every `*.yaml` at start. Validate a pack before shipping it by
+loading it with the real engine, then running the rule suite:
+
+```bash
+.venv/bin/python -c "from policy.engine import PolicyEngine; \
+print(len(PolicyEngine('services/policy/rule_definitions').rules), 'rules loaded')"
+pytest services/policy/tests -q
+```
+
+Nothing is written to the database by either command: rules are code, and the
+engine reads them from the pack on every start.
 
 ## File layout
 

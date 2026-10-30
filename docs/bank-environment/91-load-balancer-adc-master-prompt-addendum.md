@@ -1,6 +1,9 @@
 # Master-prompt addendum — Load balancer / ADC cryptography
 
-**Status: required scope, not an implementation or acceptance receipt.** Append this section to the synthetic banking-estate master prompt. It supplements, rather than replaces, the existing requirements. The earlier implementation and measured limitations are described in [the banking-estate guide](90-synthetic-banking-estate.md) and [readiness record](../readiness-evidence/banking-sandbox-2026-10-26.md).
+**Status: required scope, not an implementation or acceptance receipt.** Append this section to the synthetic banking-estate master prompt. It supplements, rather than replaces, the existing requirements. The synthetic
+banking-estate lab that once implemented this scope has been removed from the
+product: nothing here is implemented or accepted, and the earlier measurements
+were taken against that lab, not against a customer estate.
 
 All existing constraints continue to apply: entirely local synthetic lab, no real bank/customer/production connectivity, no exported private keys or credentials, normal CryptoScan collectors/imports, no core changes merely to pass tests, hidden truth inaccessible to CryptoScan, and no promotion of configuration or simulation to live observation.
 

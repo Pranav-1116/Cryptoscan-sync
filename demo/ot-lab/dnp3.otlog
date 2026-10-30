@@ -1,2 +1,0 @@
-ts=2024-01-15T10:00:00 src=10.0.3.42 dst=10.0.3.1 port=20000 proto=dnp3 sa=false location=Substation-7
-ts=2024-01-15T10:00:01 src=10.0.3.43 dst=10.0.3.1 port=20000 proto=dnp3 sa=true auth=HMAC-SHA256 location=Substation-7

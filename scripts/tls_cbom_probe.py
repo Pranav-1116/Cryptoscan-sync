@@ -20,10 +20,10 @@ Honesty rules, same as the scanners:
   servers (``network_scanner.probing.mock_bank_tls``) — self-signed
   certificates, pinned versions and cipher lists, zero keys, zero
   network — so the pipeline can be verified deterministically;
-* this script proves the tool path, not field coverage of any real bank:
-  the bank sandboxes (Plaid, Open Bank Project, QNB, Emirates NBD,
-  Neotek, …) need their own registrations, credentials and network
-  access, and remain operator-side qualification.
+* this script proves the tool path, not field coverage: probing a third
+  party needs that party's authorisation and network access, which stays
+  operator-side. No target list ships with the product — you name the
+  endpoints you are entitled to probe.
 
 Usage::
 
@@ -110,59 +110,11 @@ def _self_test() -> dict:
     return results[0]
 
 
-def bank_sandbox_targets(pack_path: str) -> list[dict]:
-    """Load the verified bank-sandbox test pack (deploy/bank-sandbox-testpack.json).
-
-    Every entry carries its own verification status; entries are returned
-    as-is so callers (and the BOM's evidence trail) can see what was
-    verified and what was not. Raises ValueError on a malformed pack — a
-    partially-understood pack must not silently probe a wrong host.
-    """
-    with open(pack_path) as fh:
-        pack = json.load(fh)
-    if pack.get("kind") != "cryptoscan-bank-sandbox-testpack":
-        raise ValueError(f"{pack_path}: not a bank-sandbox testpack (kind mismatch)")
-    targets = pack.get("targets") or []
-    for entry in targets:
-        missing = [k for k in ("id", "provider", "portal", "endpoint", "auth_for_api_calls",
-                               "verified", "verified_status") if not entry.get(k)]
-        if missing:
-            raise ValueError(f"{pack_path}: target {entry.get('id')!r} missing {missing}")
-    return targets
-
-
-def run_bank_pack(pack_path: str, *, estate: str) -> dict:
-    """Probe every verified bank-sandbox target and assemble one NBOM.
-
-    From an egress-restricted network every probe will honestly land
-    observed=false (never fabricated); from an open network this captures
-    each sandbox's real TLS handshake — the transport layer the CBOM
-    tool consumes — while the API layer still needs the per-portal keys.
-    """
-    targets = bank_sandbox_targets(pack_path)
-    result = run([t["endpoint"] for t in targets], estate=estate,
-                 scan_ciphers=False, scan_versions=False)
-    # keep each target's verification status next to its probe outcome
-    by_endpoint = {p.get("endpoint"): p for p in result["probes"]}
-    for t in targets:
-        probe = by_endpoint.get(t["endpoint"])
-        if probe is not None:
-            probe["testpack"] = {
-                "id": t["id"], "provider": t["provider"], "portal": t["portal"],
-                "auth_for_api_calls": t["auth_for_api_calls"],
-                "verified": t["verified"], "verified_status": t["verified_status"],
-            }
-    return result
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Live TLS handshake → CycloneDX NBOM probe")
     parser.add_argument("endpoints", nargs="*", help="host:port TLS endpoints to probe")
     parser.add_argument("--self-test", action="store_true",
                         help="probe LOCAL mock-bank TLS servers (no network, no keys)")
-    parser.add_argument("--bank-sandboxes", nargs="?", const="deploy/bank-sandbox-testpack.json",
-                        metavar="PACK", help="probe the web-verified public bank sandbox "
-                        "targets (default pack: deploy/bank-sandbox-testpack.json)")
     parser.add_argument("--estate", default="live-probe", help="estate name in the BOM metadata")
     parser.add_argument("--out", help="write the CycloneDX JSON here (default: stdout)")
     parser.add_argument("--scan-ciphers", action="store_true", help="also probe weak-cipher surface")
@@ -171,13 +123,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.self_test:
         result = _self_test()
-    elif args.bank_sandboxes:
-        result = run_bank_pack(args.bank_sandboxes, estate=args.estate)
     elif args.endpoints:
         result = run(args.endpoints, estate=args.estate,
                      scan_ciphers=args.scan_ciphers, scan_versions=args.scan_versions)
     else:
-        parser.error("give endpoints, --bank-sandboxes or --self-test")
+        parser.error("give endpoints or --self-test")
 
     print(_summary(result), file=sys.stderr)
     document = json.dumps(result["nbom"], indent=2)
