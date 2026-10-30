@@ -178,3 +178,45 @@ PYTHONPATH=. .venv/bin/python scripts/collect_maturity_gaps.py \
 
 Without `--token`, both scripts log in with `--password` / `ADMIN_PASSWORD`; the login
 route is rate-limited, so a burst of runs will get `429` and should wait a minute.
+
+## 7. Troubleshooting a fresh machine
+
+Three failures are common on a clean venv, and each one now names itself instead of
+looking like "the bank has no cryptography".
+
+**`POST /api/v1/cbom/ingest` → 503 `validator_unavailable`.** A pinned dependency is
+missing, so a CycloneDX 1.6 document cannot be judged. The import is refused (nothing is
+stored) with `documents_judged: false` and the exact fix — **not** a 500 and **not** a
+classification of the document as invalid:
+
+```bash
+.venv/bin/pip install -r requirements.txt   # provides rfc3986-validator
+# restart the API afterwards; the connect script then reports imported_assets
+```
+
+If you skip this, `steps.cbom_ingest.failed` lists every document and
+`steps.cbom_ingest.consequence` says what the empty `cbom` layer below it means.
+
+**`POST /api/v1/scans/trigger` → 400 `outside the allowed source roots`.** The scanner
+only reads roots the API process was started with. Point it at the estate:
+
+```bash
+bash scripts/run_dev_stack.sh down
+CRYPTOSCAN_SOURCE_ROOTS="$PWD:$HOME/.cache/bank-lab" bash scripts/run_dev_stack.sh up
+```
+
+The connect script prints that command in `steps.scan.hint` when it hits the 400.
+
+**`login failed (422)` / `no credentials`.** Each fresh shell starts without variables.
+Export the password once, or reuse a token:
+
+```bash
+export ADMIN_PASSWORD='<the password run_dev_stack.sh printed>'
+# or, once:
+TOKEN=$(curl -s -X POST http://127.0.0.1:8010/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}" \
+  | .venv/bin/python -c 'import sys,json;print(json.load(sys.stdin)["token"])')
+```
+
+The login route is rate-limited: a burst of runs gets `429`, so prefer `--token`.

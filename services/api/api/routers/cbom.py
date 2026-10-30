@@ -751,7 +751,26 @@ def ingest_document(
     just produced, so there is exactly one ingestion path: same validation, same
     signature gate, same asset replacement semantics.
     """
-    check = validate_document(bom)
+    try:
+        check = validate_document(bom)
+    except Exception as exc:  # noqa: BLE001 — narrowed immediately below
+        from cbom.cyclonedx16 import ValidationUnavailable
+
+        if not isinstance(exc, ValidationUnavailable):
+            raise
+        # Not a 500 and not a 422: nothing was judged, so nothing is rejected as
+        # invalid and nothing is stored as valid. Name the missing check.
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "validator_unavailable",
+                "reason": str(exc),
+                "documents_judged": False,
+                "documents_stored": False,
+                "fix": "install the pinned dependencies (pip install -r requirements.txt), "
+                       "then re-run the import",
+            },
+        ) from exc
     if not check["ok"]:
         raise HTTPException(status_code=422, detail="; ".join(check["errors"]))
     metadata = bom.get("metadata") or {}

@@ -710,7 +710,19 @@ def connect(
             "/api/v1/scans/trigger", json={"repo_url": target, "branch": "main"}
         )
         if queued.status_code != 202:
-            result["steps"]["scan"] = {"queued": False, "status": queued.status_code, "detail": queued.text[:400]}
+            detail = queued.text[:400]
+            step: dict[str, Any] = {"queued": False, "status": queued.status_code, "detail": detail}
+            if "outside the allowed source roots" in detail:
+                # The scanner only reads roots the API was started with, and this
+                # estate lives outside the repository. Say exactly what to set
+                # rather than leaving a 400 to be decoded.
+                step["hint"] = (
+                    "the API is not allowed to read this estate's source tree. Start it with the "
+                    f"estate as a source root, e.g. CRYPTOSCAN_SOURCE_ROOTS=\"$PWD:{public}\" "
+                    "bash scripts/run_dev_stack.sh down && "
+                    "CRYPTOSCAN_SOURCE_ROOTS=\"$PWD:" + str(public) + "\" bash scripts/run_dev_stack.sh up"
+                )
+            result["steps"]["scan"] = step
         else:
             job_id = queued.json()["job_id"]
             job: dict[str, Any] = {}
@@ -738,6 +750,7 @@ def connect(
     # 2. declared CBOM documents per application ----------------------------- #
     if do_cbom:
         ingested: list[dict[str, Any]] = []
+        hints: list[str] = []
         for doc in _rows(public, "cbom"):
             target = str(doc.get("target") or "")
             document = doc.get("document") or {}
@@ -752,16 +765,32 @@ def connect(
                     "environment": "synthetic-lab",
                 },
             )
+            imported = None if response.status_code != 200 else response.json().get("imported")
             ingested.append({
                 "target": target,
                 "status": response.status_code,
-                "imported": (response.json().get("imported") if response.status_code == 200 else response.text[:200]),
+                "imported": imported if imported is not None else response.text[:200],
             })
+            if response.status_code == 503:
+                detail = response.json().get("detail") if response.content else {}
+                fix = detail.get("fix") if isinstance(detail, dict) else None
+                if fix and fix not in hints:
+                    hints.append(fix)
+        failures = [item for item in ingested if item["status"] != 200]
         result["steps"]["cbom_ingest"] = {
             "documents": len(ingested),
             "imported_assets": sum(item["imported"] for item in ingested if isinstance(item.get("imported"), int)),
-            "failed": [item for item in ingested if item["status"] != 200],
+            "failed": failures,
+            "hint": " ".join(hints) or None,
         }
+        if failures:
+            # A refused import is a state, not a crash: say what it means for the
+            # numbers below so an empty CBOM layer is not read as "the bank has
+            # no cryptography".
+            result["steps"]["cbom_ingest"]["consequence"] = (
+                "no declared CBOM was stored, so the cbom layer and the CBOM coverage count below "
+                "are empty because the import was refused — not because the bank lacks crypto"
+            )
 
     # 3. one estate observation ---------------------------------------------- #
     if do_observe:

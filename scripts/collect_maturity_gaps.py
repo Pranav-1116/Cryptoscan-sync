@@ -266,7 +266,17 @@ def main(argv: list[str] | None = None) -> int:
     api = Api(args.api, args.token)
     if not api.token:
         if not args.password:
-            raise SystemExit("no token: pass --token, or --password / ADMIN_PASSWORD to log in")
+            raise SystemExit(
+                "no credentials. Either export the admin password once and pass it, or reuse a token:\n"
+                "  export ADMIN_PASSWORD='<the password run_dev_stack.sh printed>'\n"
+                "  PYTHONPATH=. .venv/bin/python scripts/collect_maturity_gaps.py --password \"$ADMIN_PASSWORD\" ...\n"
+                "or\n"
+                "  TOKEN=$(curl -s -X POST http://127.0.0.1:8010/api/v1/auth/login -H 'Content-Type: application/json' \\\n"
+                "    -d \"{\\\"username\\\":\\\"admin\\\",\\\"password\\\":\\\"$ADMIN_PASSWORD\\\"}\" \\\n"
+                "    | .venv/bin/python -c 'import sys,json;print(json.load(sys.stdin)[\"token\"])')\n"
+                "  PYTHONPATH=. .venv/bin/python scripts/collect_maturity_gaps.py --token \"$TOKEN\" ...\n"
+                "(each shell in a fresh prompt starts with no variables — set them in the same line or export them)"
+            )
         api.login(args.user, args.password)
 
     caps = api.get("/api/v1/estate/evidence/collect/capabilities")

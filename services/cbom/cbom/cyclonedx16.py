@@ -19,8 +19,35 @@ from typing import Any
 from jsonschema import Draft7Validator, FormatChecker
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT7
-from rfc3986_validator import validate_rfc3986
 from shared_models.algorithm_registry import parse_algorithm
+
+try:  # a URI format rule, not the profile itself
+    from rfc3986_validator import validate_rfc3986
+except ModuleNotFoundError:  # pragma: no cover - exercised by test_cyclonedx_validator_absent
+    validate_rfc3986 = None  # type: ignore[assignment]
+
+
+class ValidationUnavailable(RuntimeError):
+    """The document was not judged: a check the profile needs could not be loaded.
+
+    Raised rather than returning ``ok=False``, because "invalid" and "not
+    evaluated" are different answers. A caller that records the second as the
+    first would reject a sound document, and a caller that records it as valid
+    would accept an unchecked one.
+    """
+
+
+UNAVAILABLE_PACKAGES = {"rfc3986_validator": "rfc3986-validator"}
+
+
+def unavailable_reason() -> str | None:
+    """Why validation cannot run here, or ``None`` when every check is present."""
+    if validate_rfc3986 is None:
+        return (
+            "rfc3986-validator is not installed, so a URI-typed CycloneDX field cannot be "
+            "checked: the document's validity is NOT_EVALUATED, not invalid"
+        )
+    return None
 
 SCHEMA_DIR = Path(__file__).parent / "validators/schema/cyclonedx-1.6"
 # Pinned upstream tag1.6, commit55343ba19dee1785acf1ce9191540d5fd7b590db.
@@ -83,6 +110,9 @@ def _validator() -> Draft7Validator:
 
 def validate_cyclonedx16(bom: Any) -> dict[str, Any]:
     basis = "CYCLONEDX_1_6_OFFICIAL_SCHEMA_AND_REFERENCES"
+    missing = unavailable_reason()
+    if missing:
+        raise ValidationUnavailable(missing)
     errors = []
     try:
         validator = _validator()
