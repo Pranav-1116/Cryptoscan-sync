@@ -28,6 +28,22 @@ fixture is one more thing to explain in a bank's security review.
 - Docs that told operators to seed data now say where real data comes from
   (`docs/admin-guide/system-configuration.md`,
   `docs/admin-guide/compliance-rule-authoring.md`).
+- Remaining lab surfaces removed from the full tree: the sandbox product docs
+  (`products/sandbox/`, `products/connector/` and its `products.connector.run`
+  entry, which imported the deleted lab), the lab CLIs
+  (`scripts/connect_bank_sandbox.py`, `scripts/qualify_tbf.py`,
+  `scripts/qualify_routed_tbf.py`) and their tests
+  (`test_bank_source_manifests.py`, `test_bank_windows_exports.py`). The
+  collector-vocabulary test that imported the lab was rewritten against a real
+  loopback TLS service instead of the synthetic one.
+- Lab documentation and evidence removed: guides 88/89 (disposable and routed
+  TBF), `docs/runbooks/disposable-tbf.md`, `docs/runbooks/routed-tbf.md`,
+  `docs/proposals/fab-demo-script.md`, and the synthetic run bundles
+  `docs/readiness-evidence/{banking-sandbox,disposable-tbf,routed-tbf}-2026-10-26*`
+  and `docs/readiness-evidence/connected-lab-2026-10-26/`.
+- `products/README.md` now describes the single product (CryptoScan) and the
+  boundaries its collectors obey; `products/cryptoscan/README.md` no longer routes
+  the product through the lab connector.
 - New tripwire: `scripts/tests/test_no_demo_surface.py` fails if a demo path,
   sample-data script, doc reference or demo-credential production boot returns.
 

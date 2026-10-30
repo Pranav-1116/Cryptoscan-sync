@@ -346,7 +346,6 @@ crypto engine.
 | Doc | What it covers |
 |---|---|
 | [PoC proposal](proposals/fab-poc.md) | scope, two-container on-prem run, success criteria agreed up front |
-| [Demo script](proposals/fab-demo-script.md) | meeting-ready walkthrough |
 | [Security questionnaire](security-questionnaire.md) | bank procurement answers |
 | `deploy/poc/` | compose stack, env template, day-by-day operator checklist |
 

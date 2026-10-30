@@ -1,56 +1,57 @@
-# Two Products, One Local Connection
+# CryptoScan — the product
 
-This repository contains **two separately runnable products** that exchange only staged public fixtures.
+CryptoScan is one product: it discovers cryptography across your own estate — source code, hosts, containers, network endpoints, vendors — and projects what it finds into six BOMs with correlation, policy and remediation on top.
 
-| Product | Code | Owns | Entry point | Data boundary |
-|---------|------|------|-------------|---------------|
-| **Product 1 — Banking Sandbox** | `tools/banking_sandbox/` | Deterministic synthetic estate generator, `LAB.json`, `manifest.json`, `public/*`, private `control/*` | `generate_sandbox.py`, `tools.banking_sandbox.cli validate/serve/scan/lb-scan/lb-live/drift/failures` | Estate directory passed as `--root`. Writes only there. Never reads `products/cryptoscan/output` or `products/connector/output`. |
-| **Product 2 — CryptoScan** | `services/cbom/`, `services/scanner/`, `services/vendor_intel/`, `services/correlation/`, … | Real scanners (`scanner.registry.language_scanners.scan_file`), six BOM materializers (SBOM, CBOM, TechBOM, HBOM, VBOM, NBOM), correlation and policy engines | `services/*` APIs + `tools.banking_sandbox.connector` as hosted product entry for lab demos | Scan/BOM output directory passed as `--output`. Reads only staged `scanner-inputs` during scan. |
-| **Connector** | `products/connector/` + `tools/banking_sandbox/connector/` | Hosts the isolated scan, translates public fixtures to BOM assembler inputs, writes honest validation | `python -m products.connector.run --estate <ESTATE> --output <CRYPTOSCAN_OUTPUT>` or `python -m tools.banking_sandbox.cli connect --estate <ESTATE> --output <OUTPUT>` | Reads only `public/*` after scan; reads `control/ground_truth` only for the separate operator-side validation step. |
+There is no bundled sample estate. The product reports what it can observe in *your* environment; when a surface has not been observed it says so rather than filling the gap with fixture data.
+
+| Surface | Code | Entry point | Data boundary |
+|---------|------|-------------|---------------|
+| API + console | `services/api/`, `frontend/` | `uvicorn api.main:app` (see `RUN.md`) | Reads the estate database and the configured source roots only. |
+| Static scanner | `services/scanner/` | Scan jobs queued through `POST /api/v1/scans` | Reads the target tree, inside a Landlock/seccomp child when the platform supports it. |
+| Collectors | `services/network_scanner/`, `services/container_scanner/`, `services/devsecops/`, `services/hybrid_collector/` | Collector endpoints and the estate loop | Reads only what the operator points it at: targets, registries, hosts, vendors. |
+| Six BOMs | `services/cbom/`, `services/vendor_intel/`, `services/correlation/` | `/api/v1/bom/*`, `/api/v1/cbom/*`, export endpoints | Built from stored findings and observations, never from a fixture. |
 
 ## Data flow
 
 ```
-[Sandbox] generate → ESTATE/public/*  (public fixtures only)  ↘
-                    ESTATE/control/ground_truth (never staged) → [Connector: validation only]
-                                                        ↓
-                         Connector stages ESTATE/public/source → scanner-inputs
-                         runs scan_file under Landlock+seccomp (oracle denied, socket denied)
-                         → CRYPTOSCAN_OUTPUT/scan/findings.jsonl + metrics.json
-                                                        ↓
-                         Connector builds 6 BOMs from scan outputs + public inventory
-                         via real generators (no truth shortcut)
-                         → CRYPTOSCAN_OUTPUT/boms/{cbom,sbom,techbom,hbom,vbom,nbom}.json
-                                                        ↓
-                         Connector validates (precision/recall + coverage) reading ground truth
-                         outside the scanner → reports/validation.json
-                                                        ↓
-                         Connector renders dashboard → dashboard/index.html
+operator points CryptoScan at a real target (repo, host, registry, endpoint, vendor)
+        ↓
+collector / scanner observes it, and records what it could NOT observe
+        ↓
+findings + evidence rows land in the estate database (one row per observation)
+        ↓
+six BOM projections (SBOM, CBOM, TechBOM, HBOM, VBOM, NBOM) + correlation graph
+        ↓
+policy evaluation, gate decision, migration plan, exports
 ```
 
 ## Honesty invariants
 
-- `UNKNOWN ≠ SAFE` — missing/unobserved stays unknown.
+- `UNKNOWN ≠ SAFE` — a missing or unobserved fact stays unknown, and the collector says which it is.
 - `INSTALLED ≠ USED`, `SUPPORTED ≠ NEGOTIATED`, `CONFIGURED ≠ EXECUTED`, `SBOM ≠ PROOF`.
-- Scanner never sees `control/ground_truth` (Landlock-enforced, `ORACLE-SENTINEL.txt` proof).
-- Validation is a separate operator step that reads truth; it does not feed the scanner.
-- All BOM provenance states whether a component came from `SCANNER_OBSERVED`, `FIXTURE_DERIVED_NOT_LIVE_PROBED`, or `SYNTHETIC_LAB`. No invented SLA or production-capacity claim.
+- No component is attributed a provenance stronger than the observation behind it.
+- An empty result is reported as an empty result plus the reason, never as a pass.
 
-## Quick demo — 10 banks
+## Getting started
 
 ```bash
-# 1. Sandbox generates a lab (Product 1)
-.venv/bin/python generate_sandbox.py --banks 10 --scale small --profile worst-case-bank \
-  --output /tmp/lab-estate-10
+# 1. Configure the instance (fail-closed in production)
+cp .env.production.example .env
 
-# 2. CryptoScan consumes the lab via the connector (Product 2 through the connector)
-.venv/bin/python -m products.connector.run --estate /tmp/lab-estate-10 \
-  --output /tmp/cryptoscan-output-10
+# 2. Start the API
+uvicorn api.main:app --host 0.0.0.0 --port 8000
 
-# 3. Serve the connected output (dashboard and evidence under one origin)
-python -m tools.banking_sandbox.cli serve-output \
-  --output /tmp/cryptoscan-output-10 --host 127.0.0.1 --port 8080
-# → /dashboard/, /boms/, /scan/, /reports/validation.json
+# 3. Create your own estate: applications, assets, certificates, vendors
+curl -X POST http://localhost:8000/api/v1/network \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"cidr": "10.20.0.0/24", "label": "corp-dc"}'
+
+# 4. Scan a repository you own
+curl -X POST http://localhost:8000/api/v1/scans/trigger \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"repo_url": "https://github.com/your-org/your-repo", "branch": "main"}'
 ```
 
-See `products/sandbox/README.md`, `products/cryptoscan/README.md`, `products/connector/README.md`.
+Real context comes from your imports and collectors — see `docs/admin-guide/system-configuration.md`.
+
+See `products/cryptoscan/README.md` for the surface-to-module map.

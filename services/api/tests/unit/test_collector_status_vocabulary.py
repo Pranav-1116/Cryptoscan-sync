@@ -53,45 +53,97 @@ def test_no_target_negotiating_is_a_failed_plane_not_an_empty_one():
     assert package["coverage"][0]["target"] == f"127.0.0.1:{port}"
 
 
-def test_a_partly_reachable_plane_is_partial():
-    """One target that negotiates and one that does not is PARTIAL, not COMPLETE."""
-    pytest.importorskip("network_scanner.probing.active_prober")
-    from tools.banking_sandbox import live_synthetic  # noqa: F401  (sanity: lab present)
-    from pathlib import Path
+def _loopback_tls_service():
+    """A real TLS listener on loopback, carrying a certificate generated here.
 
-    estate = Path.home() / ".cache" / "bank-lab"
-    if not (estate / "LAB.json").is_file():
-        pytest.skip("no generated bank estate in this environment")
-
-    import threading
-    import time
-
-    from tools.banking_sandbox.live_synthetic import _collect_services, _start_one, _synthetic_cert
+    The partial-plane case needs one target that negotiates and one that does
+    not. Nothing synthetic is needed for that: generate a throw-away EC
+    certificate, serve it on 127.0.0.1, and point the collector at it.
+    """
+    import datetime
     import ssl
     import tempfile
+    import threading
+    from pathlib import Path
 
-    root, _meta = live_synthetic.open_estate(estate)
-    services = _collect_services(root, max_services=1)
-    if not services:
-        pytest.skip("the estate declares no live service")
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .sign(key, hashes.SHA256())
+    )
     work = Path(tempfile.mkdtemp(prefix="collect-status-"))
-    service = services[0]
-    cert_pem, key_pem, _ = _synthetic_cert(work, "svc", "svc.lab.invalid", key_type="EC")
-    ready, stop = threading.Event(), threading.Event()
-    port = _closed_port()
-    threading.Thread(
-        target=_start_one,
-        args=(cert_pem, key_pem, ssl.TLSVersion.TLSv1_2, port, ready, stop, "svc"),
-        daemon=True,
-    ).start()
+    cert_path, key_path = work / "cert.pem", work / "key.pem"
+    cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert_path, key_path)
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(4)
+    listener.settimeout(0.2)
+    port = int(listener.getsockname()[1])
+    stop = threading.Event()
+
+    def serve() -> None:
+        while not stop.is_set():
+            try:
+                conn, _ = listener.accept()
+            except (socket.timeout, TimeoutError):
+                continue
+            except OSError:
+                break
+            try:
+                with context.wrap_socket(conn, server_side=True) as tls:
+                    tls.settimeout(1.0)
+                    try:
+                        tls.recv(1)
+                    except (ssl.SSLError, OSError):
+                        pass
+            except (ssl.SSLError, OSError):
+                conn.close()
+
+    threading.Thread(target=serve, daemon=True).start()
+
+    def shutdown() -> None:
+        stop.set()
+        try:
+            listener.close()
+        except OSError:
+            pass
+
+    return port, shutdown
+
+
+def test_a_partly_reachable_plane_is_partial():
+    """One target that negotiates and one that does not is PARTIAL, not COMPLETE."""
+    pytest.importorskip("cryptography")
+    port, shutdown = _loopback_tls_service()
     try:
-        ready.wait(timeout=3.0)
-        time.sleep(0.2)
         package = host_collect.collect_network(
             [f"127.0.0.1:{port}", f"127.0.0.1:{_closed_port()}"], timeout=2.0
         )
     finally:
-        stop.set()
+        shutdown()
 
     assert package["collector"]["collected"] == 1, package["collector"]
     assert package["collector"]["status"] == "PARTIAL"

@@ -32,13 +32,35 @@ FORBIDDEN_PATHS = (
     "scripts/seed_compliance_rules.py",
     "scripts/seed_network_targets.py",
     "scripts/polyglot_smoke.py",
+    "products/sandbox",
+    "products/connector",
+    "scripts/connect_bank_sandbox.py",
+    "scripts/qualify_tbf.py",
+    "scripts/qualify_routed_tbf.py",
+    "tools/disposable_tbf",
+    "tools/routed_tbf",
+    "docs/bank-environment/88-disposable-linux-tbf-qualification.md",
+    "docs/bank-environment/89-routed-tbf-application-and-recovery.md",
     "docs/bank-environment/90-synthetic-banking-estate.md",
+    "docs/runbooks/disposable-tbf.md",
+    "docs/runbooks/routed-tbf.md",
+    "docs/proposals/fab-demo-script.md",
     "docs/readiness-evidence/load-balancer-sandbox-2026-10-26.md",
+    "docs/readiness-evidence/banking-sandbox-2026-10-26.md",
+    "docs/readiness-evidence/banking-sandbox-2026-10-26",
+    "docs/readiness-evidence/disposable-tbf-2026-10-26.md",
+    "docs/readiness-evidence/disposable-tbf-2026-10-26",
+    "docs/readiness-evidence/routed-tbf-2026-10-26.md",
+    "docs/readiness-evidence/routed-tbf-2026-10-26",
+    "docs/readiness-evidence/connected-lab-2026-10-26",
 )
 
 #: modules a product module must never import
 FORBIDDEN_IMPORTS = (
     re.compile(r"^\s*(from|import)\s+tools\.banking_sandbox", re.M),
+    re.compile(r"^\s*(from|import)\s+tools\.disposable_tbf", re.M),
+    re.compile(r"^\s*(from|import)\s+tools\.routed_tbf", re.M),
+    re.compile(r"^\s*(from|import)\s+products\.connector", re.M),
     re.compile(r"^\s*from\s+\.\s*demo\s+import", re.M),
     re.compile(r"^\s*import\s+demo\b", re.M),
 )
@@ -85,8 +107,13 @@ def test_no_sample_data_script_remains_under_scripts():
 
 def test_docs_do_not_point_at_removed_lab_paths():
     stale = []
-    removed = ("tools/banking_sandbox", "generate_sandbox", "seed_demo", "seed_business_owners",
-               "seed_business_processes", "seed_compliance_rules", "seed_network_targets")
+    removed = (
+        "tools/banking_sandbox", "generate_sandbox", "seed_demo", "seed_business_owners",
+        "seed_business_processes", "seed_compliance_rules", "seed_network_targets",
+        "tools/disposable_tbf", "tools/routed_tbf", "connect_bank_sandbox",
+        "qualify_routed_tbf", "qualify_tbf", "products/sandbox", "products/connector",
+        "fab-demo-script", "connected-lab-2026-10-26",
+    )
     for path in (ROOT / "docs").rglob("*.md"):
         text = path.read_text(encoding="utf-8", errors="ignore")
         for needle in removed:
