@@ -154,8 +154,12 @@ def put_runtime_crypto_scope(
 
 
 @router.post("/runtime/crypto-scope/validate")
-def validate_runtime_crypto_scope(body: RuntimeScopeIn):
-    """Validate a scope without saving it."""
+def validate_runtime_crypto_scope(body: RuntimeScopeIn, user: str = Depends(get_current_user)):
+    """Validate a scope without saving it.
+
+    Authenticated like every other scope read: the normalized result names the
+    hosts and the window a scope would open, which is not public information.
+    """
     try:
         normalized = normalize_runtime_scope(body.model_dump(mode="json"))
     except RuntimeScopeViolation as exc:

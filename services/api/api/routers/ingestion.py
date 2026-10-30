@@ -48,6 +48,10 @@ from db.tenancy import current_tenant
 from shared_models import live_estate, release_signature
 from shared_models.estate_graph import build_graph
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/ingestion", tags=["ingestion"])
 
 #: the twin, the change feed and the BOM projections all read this one run kind, so a live
@@ -115,6 +119,7 @@ def trusted_keys() -> list:
         try:
             keys.append(release_signature.load_public_key(entry))
         except Exception:  # noqa: BLE001 — a typo must degrade to "no key", not to "any key"
+            logger.warning("release_public_key_unreadable", exc_info=True)
             continue
     return keys
 

@@ -44,6 +44,10 @@ from typing import Any, Callable, Iterable, Mapping
 
 from shared_models.estate_graph import build_graph, collector_outcome
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 MODEL = "cryptoscan.estate-discovery-job/1"
 #: per-BOM component identities kept in a stored run (enough to diff, not a copy)
 MAX_STORED_BOM_COMPONENTS = 4000
@@ -1128,7 +1132,7 @@ def run(
             try:
                 rollback()
             except Exception:  # noqa: BLE001 — a failed rollback cannot fail the scan either
-                pass
+                logger.debug("estate_discovery_rollback_failed", exc_info=True)
 
     if detection_error:
         payload["change_detail"] = {"error": detection_error}
@@ -1148,8 +1152,8 @@ def run(
         if callable(rollback):
             try:
                 rollback()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001 — recorded, never silent
+                logger.debug("estate_discovery_rollback_failed", exc_info=True)
 
     try:
         if not suppressed:
@@ -1281,4 +1285,5 @@ def previous_report(db: Any, *, tenant_id: str | None = None) -> dict[str, Any] 
             return None
         return (runs[0].result or {}).get("estate_discovery") or None
     except Exception:  # noqa: BLE001 — a missing baseline must not fail a scan
+        logger.warning("estate_discovery_baseline_unreadable", exc_info=True)
         return None

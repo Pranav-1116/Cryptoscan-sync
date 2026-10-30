@@ -59,6 +59,10 @@ from api.security.estate_bom_anchor import AnchorError, create_anchor, list_anch
 from shared_models import attack_patterns, bom_export, estate_twin
 from shared_models.estate_graph import BOM_KINDS, SCHEMA, build_graph
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/estate/evidence", tags=["estate-evidence"])
 
 RUN_KIND = "estate-discovery"
@@ -191,6 +195,7 @@ def _latest_twin_graph_or_none(db: Session) -> Any | None:
     try:
         return _graph_from_run(runs[0])
     except Exception:  # noqa: BLE001 — a corrupt run must not hide the recorded disputes
+        logger.warning("estate_graph_run_unreadable", run_id=getattr(runs[0], "id", None), exc_info=True)
         return None
 
 

@@ -681,8 +681,8 @@ def observe(
         if callable(rollback):
             try:
                 rollback()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001 — recorded, never silent
+                logger.debug("estate_change_feed_rollback_failed", exc_info=True)
         return detection
 
     detection["recorded"] = {

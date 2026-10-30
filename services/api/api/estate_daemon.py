@@ -150,8 +150,8 @@ class EstateDaemon:
             logger.warning("estate_daemon_heartbeat_failed", extra={"error": str(exc)})
             try:
                 db.rollback()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001 — recorded, never silent
+                logger.debug("estate_daemon_rollback_failed", exc_info=True)
 
     # ----------------------------------------------------------------- cycles
     def next_due(self, db: Any) -> tuple[datetime | None, str]:
@@ -221,14 +221,14 @@ class EstateDaemon:
             if session is not None:
                 try:
                     session.rollback()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception:  # noqa: BLE001 — recorded, never silent
+                    logger.debug("estate_daemon_rollback_failed", exc_info=True)
         finally:
             if session is not None:
                 try:
                     session.close()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception:  # noqa: BLE001 — recorded, never silent
+                    logger.debug("estate_daemon_close_failed", exc_info=True)
 
         self.cycles += 1
         self.last_cycle_at = _utc(self._now())
@@ -255,8 +255,8 @@ class EstateDaemon:
             if session is not None:
                 try:
                     session.close()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception:  # noqa: BLE001 — recorded, never silent
+                    logger.debug("estate_daemon_close_failed", exc_info=True)
 
         if self.consecutive_failures >= BACKOFF_AFTER:
             delay = max(delay, BACKOFF_SECONDS)
@@ -277,8 +277,8 @@ class EstateDaemon:
             if session is not None:
                 try:
                     session.close()
-                except Exception:  # noqa: BLE001
-                    pass
+                except Exception:  # noqa: BLE001 — recorded, never silent
+                    logger.debug("estate_daemon_close_failed", exc_info=True)
 
     def run_forever(self, *, max_cycles: int | None = None) -> dict[str, Any]:
         """Run cycles until stopped (or ``max_cycles``, which tests and ``--once`` use)."""
@@ -314,7 +314,8 @@ def _pid() -> int | None:
         import os
 
         return os.getpid()
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — an unavailable pid is recorded, then said
+        logger.warning("estate_daemon_pid_unavailable", exc_info=True)
         return None
 
 

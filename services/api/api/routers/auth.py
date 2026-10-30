@@ -1039,8 +1039,8 @@ def _valid_role_names(db) -> set[str]:
         from api.security.rbac import load_custom_roles_index
 
         names.update(load_custom_roles_index(db).keys())
-    except Exception:  # noqa: BLE001 — no table yet: built-ins only
-        pass
+    except Exception:  # noqa: BLE001 — no table yet: built-ins only, and it says so
+        logger.debug("custom_roles_index_unavailable", exc_info=True)
     return names
 
 

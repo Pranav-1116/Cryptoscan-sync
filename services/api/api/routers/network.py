@@ -33,6 +33,10 @@ from network_scanner.certificates.ocsp_checker import check_ocsp
 from network_scanner.core.scanner import NetworkTlsScanner
 from network_scanner.core.scheduler import due_targets, next_scan_time
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["network"])
 
 
@@ -1238,8 +1242,13 @@ def _scope_status(payload: dict | None) -> dict:
                 exp = exp.replace(tzinfo=timezone.utc)
             if datetime.now(timezone.utc) > exp:
                 return {"state": "EXPIRED", "expired": True, "reason": f"Scope expired at {vu} — re-approve before scanning."}
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001 — an expiry we cannot read is not an approval
+            logger.warning("network_scope_expiry_unreadable", extra={"valid_until": str(vu)})
+            return {
+                "state": "EXPIRED",
+                "expired": True,
+                "reason": f"Scope expiry '{vu}' is unreadable — re-approve before scanning.",
+            }
     return {"state": "APPROVED", "expired": False, "reason": "Scope active — only these exact destinations/ports/protocols/operations will be observed."}
 
 

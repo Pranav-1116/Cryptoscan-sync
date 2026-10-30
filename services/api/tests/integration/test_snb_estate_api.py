@@ -55,10 +55,15 @@ def _make_app(backend: str):
     return app, session, engine
 
 
-def _act_as(client, session, username: str, roles: str = "readonly"):
+def _act_as(client, session, username: str, roles: str = "superadmin"):
     from api.security.session_manager import SessionManager
     from db.repositories.user_repository import UserRepository
 
+    # A platform principal: this estate is one bank's, written by the pipeline
+    # with no tenant stamp, and every read below is a read of that one estate.
+    # A tenant-scoped analyst account would resolve to a tenant whose rows these
+    # are not, and the 403/empty-list that follows would be reported as a product
+    # bug when it is really the test asking for the wrong principal.
     if UserRepository(session).get_by_username(username) is None:
         UserRepository(session).create_user(username, "x", roles=[roles])
         session.commit()
@@ -104,7 +109,7 @@ async def _scenario(tmp_path, app, session):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         # unauthenticated → refused (401/403), never a listing
         assert (await client.get(f"/api/v1/scans/{scan_id}")).status_code in (401, 403)
-        _act_as(client, session, "snb-analyst", roles="readonly")
+        _act_as(client, session, "snb-analyst", roles="superadmin")
 
         # ---- scan detail -------------------------------------------------------------------------------
         detail = await _get(client, f"/api/v1/scans/{scan_id}")

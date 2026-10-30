@@ -96,6 +96,7 @@ async def realtime_stream(
     request: Request,
     channels: str | None = Query(None, max_length=400),
     last_event_id: str | None = Query(None, max_length=64),
+    grant=Depends(stream_grant),
 ) -> StreamingResponse:
     """SSE for one or more channels, scoped to one estate.
 
@@ -106,7 +107,6 @@ async def realtime_stream(
     """
     from api.security.socket_history import visible_event
 
-    grant = await stream_grant(request)
     names = _parse_channels(channels)
     bus = get_event_bus()
 

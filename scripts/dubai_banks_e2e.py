@@ -267,16 +267,35 @@ def run(backend: str = "sqlite", workdir: Path | None = None) -> dict[str, Any]:
         app = create_app()
         app.dependency_overrides[get_db_session] = lambda: (yield session)
 
-        def token(user: str, role: str) -> str:
+        def token(user: str, role: str, *, member_of: str | None = None) -> str:
+            """A signed session for one principal.
+
+            The pipeline writes this group's estate in the platform context, so the
+            analyst who reads it back is a platform operator (``superadmin``) — a
+            tenant-less analyst is refused at the door now, and that refusal read as
+            a missing scan status rather than as a tenancy question. The viewer who
+            must NOT publish a triage is a real tenant member with the readonly role,
+            so the 403 below is RBAC's, not the tenancy gate's.
+            """
             if UserRepository(session).get_by_username(user) is None:
                 UserRepository(session).create_user(user, "x", roles=[role])
                 session.commit()
+            if member_of:
+                from db.models.tenant import Tenant, TenantMembership
+                from db.repositories.tenant_repository import TenantRepository
+
+                if session.get(Tenant, member_of) is None:
+                    session.add(Tenant(id=member_of, name=member_of, slug=member_of))
+                    session.commit()
+                if TenantRepository(session).membership(member_of, user) is None:
+                    session.add(TenantMembership(tenant_id=member_of, username=user, tenant_role="viewer"))
+                    session.commit()
             return SessionManager().create_session(user, roles=[role])
 
         async def readback() -> dict[str, Any]:
             out: dict[str, Any] = {"per_bank": {}, "supervisor": {}}
             async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-                c.headers["Authorization"] = f"Bearer {token('bank-analyst', 'security_analyst')}"
+                c.headers["Authorization"] = f"Bearer {token('bank-analyst', 'superadmin')}"
                 for bank, b in report["banks"].items():
                     sid = b["scan_id"]
                     detail = (await c.get(f"/api/v1/scans/{sid}")).json()
@@ -291,7 +310,7 @@ def run(backend: str = "sqlite", workdir: Path | None = None) -> dict[str, Any]:
                     cas = (await c.get(f"/api/v1/scans/{sid}/cascade", params={"section": "systems"})).json()
                     out["per_bank"][bank] = {"status": detail.get("status"), "findings_via_api": total, "cascade_systems_via_api": sorted(s["system"] for s in cas.get("systems") or [])}
                 # a readonly viewer cannot publish a triage
-                c.headers["Authorization"] = f"Bearer {token('viewer', 'readonly')}"
+                c.headers["Authorization"] = f"Bearer {token('viewer', 'readonly', member_of='group-tenancy')}"
                 any_scan = next(iter(report["banks"].values()))["scan_id"]
                 out["readonly_triage_post_status"] = (await c.post(f"/api/v1/scans/{any_scan}/triage", json={"workbook": {"repo": "x", "findings": []}})).status_code
                 # supervisor view over all banks

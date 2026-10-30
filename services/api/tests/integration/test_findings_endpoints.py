@@ -13,6 +13,8 @@ def _finding(**overrides):
     data = dict(
         id="ev-1",
         scan_id="scan-1",
+        # the model always has it; a record without one belongs to the platform context
+        tenant_id=None,
         algorithm="DES",
         key_size=56,
         mode="ECB",

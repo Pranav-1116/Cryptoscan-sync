@@ -36,6 +36,10 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Mapping
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 SCHEMA = "cryptoscan.realtime/1"
 
 #: the maximum number of unrouted event types remembered for the catalogue. This is a
@@ -266,6 +270,7 @@ def stamp(event_type: str, payload: Mapping[str, Any] | None = None) -> dict[str
             }
         return body
     except Exception:  # noqa: BLE001 — a routing bug must never fail an operation
+        logger.warning("realtime_route_unresolved", exc_info=True)
         return None
 
 
