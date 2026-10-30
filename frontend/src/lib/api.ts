@@ -5471,6 +5471,194 @@ export interface DiscoverySurfaces {
 export const apiDiscoverySurfaces = (): Promise<ApiResult<DiscoverySurfaces>> =>
   _rsGet<DiscoverySurfaces>("/api/v1/estate/evidence/discovery/surfaces");
 
+/* Collector depth — four matrices that answer "how far does discovery actually
+   reach", each computed by the server from the collectors present in this build.
+
+   runtime-depth      installed ≠ executed: which families have call-level
+                      instrumentation, and what the store has actually observed.
+   network-protocols  per-protocol readers, including the protocols with none.
+   windows-collector  layer-by-layer Windows reach, with the server's own verdict
+                      on whether it is a complete collector (it is not).
+   bom-maturity       how deep each of the six BOMs is on the stored snapshot.
+
+   None of these returns a percentage or a score, and the console computes none. */
+export interface CollectorDetectorRef {
+  ref: string;
+  present: boolean;
+  reason?: string | null;
+}
+
+export interface RuntimeDepthPath {
+  id: string;
+  label: string;
+  family: string;
+  depth: string;
+  declared_depth: string;
+  depth_meaning: string;
+  producers: CollectorDetectorRef[];
+  producers_present: number;
+  ingest_only: string[];
+  reads: string;
+  cannot_claim: string;
+  gaps: string[];
+  notes: string[];
+}
+
+export interface RuntimeObserved {
+  state: string;
+  reason: string | null;
+  rows: number | null;
+  invocation_rows?: number;
+  invocation_calls?: number;
+  wire_rows?: number;
+  library_risk_rows?: number;
+  host_count?: number;
+  sampled?: boolean;
+}
+
+export interface RuntimeDepth {
+  schema: string;
+  paths: RuntimeDepthPath[];
+  depths: string[];
+  depth_meaning: Record<string, string>;
+  rollup: {
+    paths: number;
+    by_depth: Record<string, number>;
+    call_level_paths: number;
+    ingest_only_paths: number;
+    absent_paths: number;
+  };
+  observed: RuntimeObserved | null;
+  axiom: string;
+  claim: string;
+  note: string;
+}
+
+export const apiRuntimeDepth = (): Promise<ApiResult<RuntimeDepth>> =>
+  _rsGet<RuntimeDepth>("/api/v1/estate/evidence/discovery/runtime-depth");
+
+export interface NetworkProtocolRow {
+  id: string;
+  label: string;
+  layer: string;
+  strength: string;
+  declared_strength: string;
+  strength_meaning: string;
+  producers: CollectorDetectorRef[];
+  producers_present: number;
+  reads: string;
+  cannot_claim: string;
+  gaps: string[];
+  targets: string[];
+  notes: string[];
+}
+
+export interface NetworkProtocols {
+  schema: string;
+  protocols: NetworkProtocolRow[];
+  strengths: string[];
+  strength_meaning: Record<string, string>;
+  rollup: { protocols: number; by_strength: Record<string, number>; negotiated: number; offered_only: number; absent: number };
+  measured: {
+    state: string;
+    reason?: string | null;
+    run_id?: string | null;
+    projection_id?: string;
+    by_asset_class?: Record<string, { assets: number; with_network_evidence: number }>;
+    note?: string;
+  } | null;
+  claim: string;
+  note: string;
+  port_table?: {
+    ports: Array<{ port: number; protocol: string; label: string; classification: string; source: string; message_layer: string; plaintext_variant: boolean }>;
+    counts: { ports: number; iana: number; convention: number };
+    claim: string;
+  } | null;
+}
+
+export const apiNetworkProtocols = (): Promise<ApiResult<NetworkProtocols>> =>
+  _rsGet<NetworkProtocols>("/api/v1/estate/evidence/discovery/network-protocols");
+
+export interface WindowsLayer {
+  id: string;
+  label: string;
+  state: string;
+  declared_state: string;
+  state_meaning: string;
+  establishes: string;
+  establishes_meaning: string;
+  producers: CollectorDetectorRef[];
+  producers_present: number;
+  reads: string;
+  cannot_claim: string;
+  gaps: string[];
+  requires: string | null;
+  notes: string[];
+}
+
+export interface WindowsCollector {
+  schema: string;
+  layers: WindowsLayer[];
+  states: string[];
+  state_meaning: Record<string, string>;
+  evidence_classes: Record<string, string>;
+  rollup: { layers: number; by_state: Record<string, number>; by_evidence: Record<string, number>; invocation_layers: number; substrate_layers: number };
+  measured: {
+    state: string;
+    reason?: string | null;
+    run_id?: string | null;
+    windows_hosts?: number;
+    windows_hosts_with_evidence?: number;
+  } | null;
+  verdict: { complete_collector: boolean; answer: string; reason: string };
+  claim: string;
+  note: string;
+}
+
+export const apiWindowsCollector = (): Promise<ApiResult<WindowsCollector>> =>
+  _rsGet<WindowsCollector>("/api/v1/estate/evidence/discovery/windows-collector");
+
+export interface BomMaturityRow {
+  kind: string;
+  label: string;
+  question: string;
+  consumes: string;
+  ceiling: string;
+  ceiling_meaning: string;
+  cannot_claim: string;
+  components: number;
+  relationships: number;
+  evidence_ids: number;
+  by_component_depth: Record<string, number>;
+  observed_components: number;
+  configured_components: number;
+  declared_components: number;
+  unbacked_components: number;
+  depth: string;
+  depth_meaning: string;
+  at_ceiling: boolean;
+}
+
+export interface BomMaturity {
+  schema?: string;
+  state?: string;
+  reason?: string;
+  run_id?: string;
+  estate?: string;
+  projection_id?: string;
+  boms: BomMaturityRow[];
+  depths?: string[];
+  depth_meaning?: Record<string, string>;
+  rollup?: { boms: number; by_depth: Record<string, number>; observed: number; at_ceiling: number };
+  deepest?: string[];
+  shallowest?: string[];
+  claim: string;
+  note?: string;
+}
+
+export const apiBomMaturity = (): Promise<ApiResult<BomMaturity>> =>
+  _rsGet<BomMaturity>("/api/v1/estate/evidence/discovery/bom-maturity");
+
 export const apiEstateBoms = (bom?: string): Promise<ApiResult<Record<string, unknown>>> =>
   _rsGet<Record<string, unknown>>(`/api/v1/estate/evidence/boms${bom ? `?bom=${encodeURIComponent(bom)}` : ""}`);
 

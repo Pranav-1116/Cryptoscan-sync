@@ -12,6 +12,7 @@
  *   observed    — what the last discovery run actually collected (or "not observed")
  */
 import React, { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Panel, Badge } from "./ui.jsx";
 import { apiDiscoverySurfaces, type DiscoverySurfaces, type DiscoverySurface } from "../lib/api.js";
 
@@ -204,7 +205,12 @@ export default function SurfaceCoverage() {
         })}
       </div>
 
-      <p style={{ margin: "12px 0 0", fontSize: 10.5, color: "var(--faint)" }}>{doc.note}</p>
+      <p style={{ margin: "12px 0 0", fontSize: 10.5, color: "var(--faint)" }}>
+        {doc.note}{" "}
+        <Link to="/collector-depth" style={{ color: "var(--accent)" }}>
+          How far each collector actually reaches →
+        </Link>
+      </p>
     </Panel>
   );
 }

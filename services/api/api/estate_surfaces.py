@@ -144,22 +144,37 @@ SURFACES: tuple[Surface, ...] = (
         id="windows_host",
         label="Windows hosts",
         planes=("HARDWARE", "STATIC"),
-        kind=KIND_ARTIFACT_PARSER,
+        kind=KIND_LIVE_CONTROL_PLANE,
         maturity=MATURITY_PARTIAL,
-        detectors=("universal_vendor.plugins.os:WindowsPlugin",),
+        detectors=(
+            "universal_vendor.plugins.os:WindowsPlugin",
+            "inventory.windows_cng:collect_registration",
+            "inventory.windows_capi:collect_default_provider",
+            "inventory.windows_certificates:read_certificate",
+            "inventory.windows_listeners:collect_listeners",
+            "inventory.windows_runtime:query_status",
+            "inventory.windows_tpm:collect_device",
+            "inventory.windows_images:collect_images",
+            "inventory.windows_schannel:evaluate",
+        ),
         reads=(
-            "Windows banner/product version, Schannel policy exported by the operator, "
-            "and crypto algorithms named in supplied configuration"
+            "on the host, through the inventory agent: SCM service state, listening sockets, the "
+            "registered CNG algorithms and providers, the default CryptoAPI provider, a named "
+            "machine certificate's public material, TPM presence, and the Schannel protocol/"
+            "cipher-suite policy read from the registry"
         ),
         cannot_claim=(
-            "no registry, CNG/CAPI provider or certificate-store enumeration: the CNG provider "
-            "set and machine key containers are not read, so a host with no exported policy "
-            "is NOT_OBSERVED"
+            "all of this is substrate and configuration — registered providers, bound "
+            "certificates, running services. Not one layer observes a Windows cryptographic "
+            "operation: there is no Schannel/CNG ETW consumer and no CLR instrumentation, so "
+            "'AES-GCM was used by this process' is NOT_OBSERVED on Windows in this build"
         ),
         gaps=(
-            "no CNG/CAPI provider enumeration (registry)",
-            "no machine certificate store read",
-            "no Schannel cipher-suite order capture without an exported policy",
+            "no Schannel/CNG ETW event consumption (the invocation gap)",
+            "no .NET EventPipe/clr profiler instrumentation",
+            "no SCHANNEL registry policy or cipher-suite-order read",
+            "no machine certificate store enumeration (named certificate only)",
+            "no AD CS / Kerberos enctype / LSA policy read",
         ),
     ),
     Surface(

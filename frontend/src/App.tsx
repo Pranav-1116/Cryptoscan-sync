@@ -100,6 +100,7 @@ const VendorDueDiligence = lazy(() => import("./pages/VendorDueDiligence"));
 const WhatIf = lazy(() => import("./pages/WhatIf"));
 const Simulation = lazy(() => import("./pages/Simulation"));
 const DigitalTwin = lazy(() => import("./pages/DigitalTwin"));
+const CollectorDepth = lazy(() => import("./pages/CollectorDepth"));
 const EstateTwin = lazy(() => import("./pages/EstateTwin"));
 
 function PublicEntry({ children, resetKey }: { children: React.ReactNode; resetKey: string }) {
@@ -222,6 +223,7 @@ function RoutedPages() {
       <Route path="/role-dashboard" element={<RoleDashboard />} />
       <Route path="/runtime" element={<Runtime />} />
       <Route path="/scanners" element={<Scanners />} />
+      <Route path="/collector-depth" element={<CollectorDepth />} />
       <Route path="/scope" element={<Scope />} />
       <Route path="/search-results" element={<SearchResults />} />
       <Route path="/sectors" element={<Sectors />} />

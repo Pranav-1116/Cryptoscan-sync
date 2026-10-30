@@ -23,6 +23,7 @@ from api.middleware.request_id_middleware import RequestIDMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
     accuracy,
+    collector_depth,
     software_supply_chain,
     execution_controls,
     assurance,
@@ -511,6 +512,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(runtime.router, prefix=prefix)
     app.include_router(runtime_crypto.router, prefix=prefix)
     app.include_router(estate_graph.router, prefix=prefix)
+    app.include_router(collector_depth.router, prefix=prefix)
     app.include_router(ingestion.router, prefix=prefix)
     app.include_router(scans.router, prefix=prefix)
     app.include_router(accuracy.router, prefix=prefix)

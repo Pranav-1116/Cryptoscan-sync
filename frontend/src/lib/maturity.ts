@@ -44,6 +44,7 @@ export const CAPABILITIES_JSON = {
   "crypto-changes": "ga",
   "dependency-graph": "ga",
   "dev-sec-ops": "ga",
+  "collector-depth": "ga",
   "digital-twin": "ga",
   "estate-twin": "ga",
   "drift": "ga",
@@ -210,6 +211,10 @@ export const CAPABILITY_LIMITS = {
   "dev-sec-ops": {
     "area": "Discovery",
     "limit": "SBOM/container/binary/firmware/mobile/WASM scanning, VEX, licence, gates and correlated binary BOM sidecars; bounded evidence and explicit refusal/partial states."
+  },
+  "collector-depth": {
+    "area": "Discovery",
+    "limit": "Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. Every number is echoed from the API; no percentage or score is computed anywhere."
   },
   "digital-twin": {
     "area": "Intelligence",

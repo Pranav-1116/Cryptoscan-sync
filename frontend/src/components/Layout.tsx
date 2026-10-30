@@ -62,7 +62,17 @@ export const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Discovery",
     items: [
-      { to: "/scanners", label: "Scan", icon: Scan },
+      {
+        // Discovery's own coverage answer sits next to the thing it describes:
+        // what the scanners can reach, per surface, protocol, platform and BOM.
+        to: "/scanners",
+        label: "Scan",
+        icon: Scan,
+        children: [
+          { to: "/scanners", label: "Scanners", icon: Scan },
+          { to: "/collector-depth", label: "Collector depth", icon: Pulse },
+        ],
+      },
       { to: "/assets", label: "Assets", icon: Cube },
       { to: "/dev-sec-ops", label: "Applications", icon: Code },
       { to: "/certificates", label: "Certificates", icon: Certificate },
