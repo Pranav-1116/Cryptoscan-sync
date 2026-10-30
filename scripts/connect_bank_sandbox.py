@@ -751,6 +751,8 @@ def connect(
     if do_cbom:
         ingested: list[dict[str, Any]] = []
         hints: list[str] = []
+        # A substituted check is not a failure, but it must not pass silently.
+        notes: list[str] = []
         for doc in _rows(public, "cbom"):
             target = str(doc.get("target") or "")
             document = doc.get("document") or {}
@@ -766,6 +768,10 @@ def connect(
                 },
             )
             imported = None if response.status_code != 200 else response.json().get("imported")
+            if response.status_code == 200:
+                for note in (response.json().get("validation") or {}).get("warnings") or []:
+                    if note not in notes:
+                        notes.append(note)
             ingested.append({
                 "target": target,
                 "status": response.status_code,
@@ -774,7 +780,8 @@ def connect(
             if response.status_code == 503:
                 detail = response.json().get("detail") if response.content else {}
                 fix = detail.get("fix") if isinstance(detail, dict) else None
-                if fix and fix not in hints:
+                fix = fix or "the API could not judge the document; check the API log for the failing check"
+                if fix not in hints:
                     hints.append(fix)
         failures = [item for item in ingested if item["status"] != 200]
         result["steps"]["cbom_ingest"] = {
@@ -782,6 +789,7 @@ def connect(
             "imported_assets": sum(item["imported"] for item in ingested if isinstance(item.get("imported"), int)),
             "failed": failures,
             "hint": " ".join(hints) or None,
+            "validation_notes": notes or None,
         }
         if failures:
             # A refused import is a state, not a crash: say what it means for the

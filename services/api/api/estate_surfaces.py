@@ -156,6 +156,11 @@ SURFACES: tuple[Surface, ...] = (
             "inventory.windows_tpm:collect_device",
             "inventory.windows_images:collect_images",
             "inventory.windows_schannel:evaluate",
+            # registry-policy reader over an exported subtree: the live job parses
+            # what the host agent exports, and this is the one collector that
+            # establishes a *policy* (Schannel protocol/cipher order) rather than
+            # a registration.
+            "api.windows_artifacts:parse_schannel_registry",
         ),
         reads=(
             "on the host, through the inventory agent: SCM service state, listening sockets, the "
@@ -172,7 +177,9 @@ SURFACES: tuple[Surface, ...] = (
         gaps=(
             "no Schannel/CNG ETW event consumption (the invocation gap)",
             "no .NET EventPipe/clr profiler instrumentation",
-            "no SCHANNEL registry policy or cipher-suite-order read",
+            "no live registry read — Schannel policy is parsed from an exported registry "
+            "subtree, so it describes what the host exported, not what the I/O manager "
+            "will accept on the next handshake",
             "no machine certificate store enumeration (named certificate only)",
             "no AD CS / Kerberos enctype / LSA policy read",
         ),

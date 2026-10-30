@@ -184,17 +184,24 @@ route is rate-limited, so a burst of runs will get `429` and should wait a minut
 Three failures are common on a clean venv, and each one now names itself instead of
 looking like "the bank has no cryptography".
 
-**`POST /api/v1/cbom/ingest` → 503 `validator_unavailable`.** A pinned dependency is
-missing, so a CycloneDX 1.6 document cannot be judged. The import is refused (nothing is
-stored) with `documents_judged: false` and the exact fix — **not** a 500 and **not** a
-classification of the document as invalid:
+**`POST /api/v1/cbom/ingest` → 200, but `steps.cbom_ingest.validation_notes` is set.**
+The importer judges each document with the checks this interpreter can run. If
+`rfc3986-validator` is missing, URI-typed fields fall back to a local RFC 3986 shape check
+and the answer *names the substitution* (`format_checks.uri:
+"LOCAL_RFC3986_SHAPE_CHECK"`, plus a warning). The documents are stored either way —
+one absent format checker must not turn a sound estate into an empty CBOM. To get the
+exact upstream check:
 
 ```bash
 .venv/bin/pip install -r requirements.txt   # provides rfc3986-validator
-# restart the API afterwards; the connect script then reports imported_assets
+# restart the API; format_checks.uri then reads RFC3986_VALIDATOR_PACKAGE
 ```
 
-If you skip this, `steps.cbom_ingest.failed` lists every document and
+**`POST /api/v1/cbom/ingest` → 503 `validator_unavailable`.** Only when validation
+machinery that has no fallback is missing (the pinned schema or `jsonschema`). Nothing is
+judged, nothing is stored, `documents_judged: false`, and the response carries the install
+command. This is **not** a 500 and **not** a verdict that the document is invalid. If you
+skip the fix, `steps.cbom_ingest.failed` lists every document and
 `steps.cbom_ingest.consequence` says what the empty `cbom` layer below it means.
 
 **`POST /api/v1/scans/trigger` → 400 `outside the allowed source roots`.** The scanner

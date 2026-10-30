@@ -21,33 +21,44 @@ from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT7
 from shared_models.algorithm_registry import parse_algorithm
 
-try:  # a URI format rule, not the profile itself
-    from rfc3986_validator import validate_rfc3986
-except ModuleNotFoundError:  # pragma: no cover - exercised by test_cyclonedx_validator_absent
-    validate_rfc3986 = None  # type: ignore[assignment]
+try:  # the upstream URI format rule, when the pinned package is installed
+    from rfc3986_validator import validate_rfc3986 as _upstream_uri_rule
+except ModuleNotFoundError:  # pragma: no cover - covered by the fallback test
+    _upstream_uri_rule = None
+
+# RFC 3986 absolute-URI shape: scheme ":" then no whitespace. The upstream rule
+# is stricter about the URI grammar; this catches the errors a BOM actually
+# carries (a bare name, a path with a space, a missing scheme).
+_LOCAL_URI = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:\S+$")
 
 
-class ValidationUnavailable(RuntimeError):
-    """The document was not judged: a check the profile needs could not be loaded.
+def _local_uri_rule(value: Any, rule: str = "URI") -> bool:  # noqa: ARG001 - upstream signature
+    if not isinstance(value, str):
+        return True
+    return bool(_LOCAL_URI.match(value))
 
-    Raised rather than returning ``ok=False``, because "invalid" and "not
-    evaluated" are different answers. A caller that records the second as the
-    first would reject a sound document, and a caller that records it as valid
-    would accept an unchecked one.
+
+def uri_rule():
+    """(callable, name) for the URI format check this process can run."""
+    if _upstream_uri_rule is not None:
+        return _upstream_uri_rule, "RFC3986_VALIDATOR_PACKAGE"
+    return _local_uri_rule, "LOCAL_RFC3986_SHAPE_CHECK"
+
+
+def uri_check_warning() -> str | None:
+    """A stated substitution, or None when the pinned package is present.
+
+    A missing format checker must not block an import (the operator would read an
+    empty CBOM as "no cryptography"), and it must not pass silently either: the
+    document is judged, with the URI rule named in the result.
     """
-
-
-UNAVAILABLE_PACKAGES = {"rfc3986_validator": "rfc3986-validator"}
-
-
-def unavailable_reason() -> str | None:
-    """Why validation cannot run here, or ``None`` when every check is present."""
-    if validate_rfc3986 is None:
-        return (
-            "rfc3986-validator is not installed, so a URI-typed CycloneDX field cannot be "
-            "checked: the document's validity is NOT_EVALUATED, not invalid"
-        )
-    return None
+    if _upstream_uri_rule is not None:
+        return None
+    return (
+        "rfc3986-validator is not installed: URI-typed fields were checked with the local "
+        "RFC 3986 shape check, not the upstream package. Install the pinned dependencies "
+        "for the exact upstream check"
+    )
 
 SCHEMA_DIR = Path(__file__).parent / "validators/schema/cyclonedx-1.6"
 # Pinned upstream tag1.6, commit55343ba19dee1785acf1ce9191540d5fd7b590db.
@@ -91,9 +102,11 @@ def _validator() -> Draft7Validator:
     # FormatChecker otherwise silently accepts unknown formats when optional
     # packages are absent. JSF algorithm is oneOf(JWA enum, URI), so accepting
     # "HS256" as a URI incorrectly rejects every standard signed document.
+    rule, _name = uri_rule()
+
     @checker.checks("uri")
     def absolute_uri(value):
-        return not isinstance(value, str) or bool(validate_rfc3986(value, rule="URI"))
+        return bool(rule(value, rule="URI")) if _name == "RFC3986_VALIDATOR_PACKAGE" else rule(value)
 
     @checker.checks("date-time")
     def date_time(value):
@@ -110,9 +123,6 @@ def _validator() -> Draft7Validator:
 
 def validate_cyclonedx16(bom: Any) -> dict[str, Any]:
     basis = "CYCLONEDX_1_6_OFFICIAL_SCHEMA_AND_REFERENCES"
-    missing = unavailable_reason()
-    if missing:
-        raise ValidationUnavailable(missing)
     errors = []
     try:
         validator = _validator()
@@ -144,7 +154,10 @@ def validate_cyclonedx16(bom: Any) -> dict[str, Any]:
                         errors.append("compositions: dangling component reference")
     except (OSError, ValueError, TypeError, RecursionError):
         errors.append("official schema unavailable, invalid or integrity check failed")
-    return {"ok": not errors, "errors": errors, "warnings": [], "validation_basis": basis,
+    _rule, rule_name = uri_rule()
+    warning = uri_check_warning()
+    return {"ok": not errors, "errors": errors, "warnings": [warning] if warning else [],
+            "validation_basis": basis, "format_checks": {"uri": rule_name},
             "bank_approved": False, "discovery_completeness_proven": False}
 
 

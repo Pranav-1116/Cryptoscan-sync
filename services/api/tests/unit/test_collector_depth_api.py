@@ -37,8 +37,15 @@ def test_runtime_depth_separates_invocation_from_everything_weaker():
     # configured, not observed: a registered key is not a used key
     assert depths["hsm_provider"] == R.DEPTH_CONFIGURATION
     assert depths["kms_audit"] == R.DEPTH_CONFIGURATION
+    # raised to process/library depth: the mapped libcrypto says the family is
+    # present, and the family's own call-level observation type is still
+    # accepted-but-unproduced
+    for family in ("jvm", "dotnet_windows"):
+        assert depths[family] == R.DEPTH_PROCESS_LIBRARY, family
+        assert R.PATH_INDEX[family].ingest_only, family
+        assert R.PATH_INDEX[family].producers, family
     # accepted by the engine, produced by nobody
-    for family in ("jvm", "dotnet_windows", "go_runtime", "rust_runtime"):
+    for family in ("go_runtime", "rust_runtime"):
         assert depths[family] == R.DEPTH_INGEST_ONLY, family
         assert R.PATH_INDEX[family].ingest_only, family
         assert R.PATH_INDEX[family].producers == (), family
@@ -218,7 +225,7 @@ def test_every_windows_layer_declares_what_it_establishes():
     policy = next(row for row in doc["layers"] if row["id"] == "schannel_policy")
     assert policy["state"] == W.PARTIAL
     assert policy["establishes"] == W.CONFIGURATION
-    assert policy["producers_present"] == 2
+    assert policy["producers_present"] == 3
     assert "policy, not use" in policy["cannot_claim"]
     # reading the policy moved the layer, not the verdict
     assert doc["verdict"]["complete_collector"] is False
@@ -449,6 +456,10 @@ def test_runtime_surface_and_runtime_matrix_agree():
         "cbom.kmip",
         "api.estate_kms",
         "inventory.cloud_kms",
+        # the CLR-on-Windows family reaches the host through the Windows
+        # collectors: mapped libcrypto here, registered providers there
+        "inventory.windows_capi",
+        "inventory.windows_cng",
     }
     assert {ref.split(":", 1)[0] for ref in surface.detectors} == {"runtime.core.collector"}
     # the surface's ceiling is PARTIAL, which is exactly what one call-level
