@@ -160,6 +160,26 @@ def meter_network(db, hosts, *, detail="admitted network TLS collection attempt"
     repo.record_usage(tenant_id, "scan_run", len(hosts), detail=detail)
 
 
+def _admission_host_count(admission) -> int:
+    """How many targets the admission covers, without assuming one key.
+
+    ``admit_network`` reports ``checked_targets``. An admission built by another
+    path — a caller that admits per destination, or a test that injects the gate —
+    may carry only the per-target decisions. Reading the key directly turned that
+    into a ``KeyError`` and a 500 on an otherwise valid observation.
+    """
+    counted = admission.get("checked_targets")
+    if isinstance(counted, int) and not isinstance(counted, bool):
+        return counted
+    decisions = admission.get("decisions")
+    if isinstance(decisions, list):
+        return len(decisions)
+    destinations = admission.get("destinations")
+    if isinstance(destinations, list):
+        return len(destinations)
+    return 0
+
+
 @contextmanager
 def network_run(db, *, user, target, admission, kind="hosts", profile=None):
     with DurableScanRun(
@@ -169,7 +189,7 @@ def network_run(db, *, user, target, admission, kind="hosts", profile=None):
         user=user,
         admission=admission,
         tenant_id=current_tenant(),
-        metadata={"kind": kind, "live": True, "hosts": admission["checked_targets"], "profile": profile or {}},
+        metadata={"kind": kind, "live": True, "hosts": _admission_host_count(admission), "profile": profile or {}},
     ) as run:
         try:
             yield run
