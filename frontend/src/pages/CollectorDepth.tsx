@@ -19,10 +19,12 @@ import { Badge, PageHead, Panel } from "../components/ui";
 import { LiveBadge, useApi } from "../lib/apiUi";
 import {
   apiBomMaturity,
+  apiEstateBomComponents,
   apiNetworkProtocols,
   apiRuntimeDepth,
   apiWindowsCollector,
   type BomMaturity,
+  type EstateBomDocument,
   type NetworkProtocols,
   type RuntimeDepth,
   type WindowsCollector,
@@ -54,6 +56,14 @@ const ESTABLISHES_TONE: Record<string, string> = {
   INVOCATION: "green",
   CONFIGURATION: "amber",
   SUBSTRATE: "slate",
+};
+
+const USAGE_TONE: Record<string, string> = {
+  OBSERVED: "green",
+  NEGOTIATED: "green",
+  CONFIGURED: "amber",
+  SUPPORTED: "slate",
+  DECLARED_ONLY: "slate",
 };
 
 const MATURITY_TONE: Record<string, string> = {
@@ -344,8 +354,96 @@ function WindowsSection() {
   );
 }
 
+/* One BOM's component list, fetched only when the reader asks for it.
+ *
+ * This is the answer to "what is actually inside that depth number": the depth
+ * badge says how deep the *best* component is, and this says which components
+ * stop shallower. Rows are printed as the server labelled them — no state is
+ * inferred here, and an empty list is displayed as the server's own words.
+ */
+function BomComponents({ kind }: { kind: string }) {
+  const read = useApi<EstateBomDocument>(() => apiEstateBomComponents(kind), [kind]);
+  const doc = read.data;
+  if (!doc) {
+    return (
+      <p role="status" style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--amber)" }}>
+        {read.running
+          ? `Reading ${kind} components…`
+          : `${kind} components not read — ${read.detail || read.error || "the control plane did not answer"}.`}
+      </p>
+    );
+  }
+  const rows = doc.components ?? [];
+  if (rows.length === 0) {
+    return (
+      <p role="status" data-testid={`bom-components-empty-${kind}`} style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--amber)" }}>
+        This BOM has no components in the stored observation ({doc.estate ?? "no estate named"}). {doc.question ?? ""}
+      </p>
+    );
+  }
+  const byUsage = rows.reduce<Record<string, number>>((acc, row) => {
+    const key = (row.usage_state || "—").toUpperCase();
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
+  const shown = rows.slice(0, 200);
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        <Badge tone="cyan">{rows.length} components</Badge>
+        {Object.entries(byUsage).map(([state, count]) => (
+          <Badge key={state} tone={USAGE_TONE[state] ?? "slate"}>{state.replace(/_/g, " ")} {count}</Badge>
+        ))}
+        <span className="faint" style={{ fontSize: 10.5 }}>
+          estate {doc.estate ?? "—"} · projection {(doc.projection_id ?? "—").slice(0, 12)}
+        </span>
+      </div>
+      <div style={{ overflowX: "auto", maxHeight: 320, overflowY: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: "var(--faint)" }}>
+              <th style={{ padding: "4px 8px" }}>component</th>
+              <th style={{ padding: "4px 8px" }}>type</th>
+              <th style={{ padding: "4px 8px" }}>usage state</th>
+              <th style={{ padding: "4px 8px" }}>evidence</th>
+              <th style={{ padding: "4px 8px" }}>asset</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((row, index) => (
+              <tr key={row.bom_ref ?? row.artifact_id ?? row.component_id ?? `${kind}-${index}`} style={{ borderTop: "1px solid var(--line)" }}>
+                <td style={{ padding: "4px 8px" }}>
+                  {row.algorithm || row.name || row.component_id || row.bom_ref || "—"}
+                  {row.version ? <span className="faint"> {row.version}</span> : null}
+                </td>
+                <td style={{ padding: "4px 8px", color: "var(--dim)" }}>{row.type ?? "—"}</td>
+                <td style={{ padding: "4px 8px" }}>
+                  {row.usage_state
+                    ? <Badge tone={USAGE_TONE[row.usage_state.toUpperCase()] ?? "slate"}>{row.usage_state.replace(/_/g, " ")}</Badge>
+                    : <span className="faint">—</span>}
+                </td>
+                <td style={{ padding: "4px 8px", color: "var(--dim)" }}>
+                  {row.evidence_type ?? "—"}
+                  {row.evidence_ids?.length ? <span className="faint"> · {row.evidence_ids.length} id(s)</span> : null}
+                </td>
+                <td style={{ padding: "4px 8px", color: "var(--dim)" }}>{row.asset_name ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p style={{ margin: "8px 0 0", fontSize: 10.5, color: "var(--faint)" }}>
+        {rows.length > shown.length
+          ? `Showing ${shown.length} of ${rows.length} components; the rest are in the API response.`
+          : `All ${rows.length} components shown.`} Usage state is the server's: a capability list can never read as use.
+      </p>
+    </div>
+  );
+}
+
 function BomSection() {
   const read = useApi<BomMaturity>(apiBomMaturity, []);
+  const [open, setOpen] = useState<string | null>(null);
   const doc = read.data;
   if (!doc) {
     return (
@@ -404,6 +502,17 @@ function BomSection() {
               ]}
             />
             <Limit text={bom.cannot_claim} />
+            <button
+              type="button"
+              className="btn ghost sm"
+              aria-expanded={open === bom.kind}
+              aria-label={`${open === bom.kind ? "Hide" : "Show"} ${bom.kind} components`}
+              onClick={() => setOpen(open === bom.kind ? null : bom.kind)}
+              style={{ marginTop: 8, fontSize: 11 }}
+            >
+              {open === bom.kind ? "Hide" : "Show"} {bom.kind} components
+            </button>
+            {open === bom.kind && <BomComponents kind={bom.kind} />}
           </div>
         ))}
       </div>

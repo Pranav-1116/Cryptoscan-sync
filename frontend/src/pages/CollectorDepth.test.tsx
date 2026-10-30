@@ -317,6 +317,86 @@ describe("collector depth", () => {
     expect(screen.queryByTestId("bom-CBOM")).toBeNull();
   });
 
+  it("opens a BOM's component list with the server's own usage states", async () => {
+    mockFetch({
+      [RUNTIME]: runtimeDoc(),
+      [NETWORK]: networkDoc(),
+      [WINDOWS]: windowsDoc(),
+      [BOMS]: bomDoc(),
+      "/api/v1/estate/evidence/boms": {
+        schema: "cryptoscan.estate-boms/1",
+        bom: "CBOM",
+        question: "what cryptographic algorithms exist?",
+        estate: "payments-bank",
+        run_id: "run-1",
+        projection_id: "abc123def456",
+        components: [
+          {
+            bom_ref: "crypto://1",
+            artifact_id: "crypto-1",
+            algorithm: "AES-256-GCM",
+            role: "record_protection",
+            type: "CRYPTO_ARTIFACT",
+            usage_state: "NEGOTIATED",
+            evidence_type: "NETWORK_ACTIVE_OBSERVED",
+            evidence_ids: ["ev-1"],
+            asset_name: "payments-bank-app-0",
+          },
+          {
+            bom_ref: "crypto://2",
+            artifact_id: "crypto-2",
+            algorithm: "SHA-256",
+            role: "capability",
+            type: "CRYPTO_ARTIFACT",
+            usage_state: "SUPPORTED",
+            evidence_type: "VENDOR_DECLARED",
+            evidence_ids: [],
+            asset_name: "payments-bank-app-1",
+          },
+        ],
+      },
+    });
+    renderWithProviders(<CollectorDepth />);
+    await userEvent.click(screen.getByRole("button", { name: "Six BOMs" }));
+    await screen.findByTestId("bom-CBOM");
+
+    await userEvent.click(screen.getByRole("button", { name: "Show CBOM components" }));
+
+    const table = await screen.findByText("AES-256-GCM");
+    expect(table).toBeTruthy();
+    expect(screen.getByText("SHA-256")).toBeTruthy();
+    // the state is printed as the server reported it, and the split is counted, not guessed
+    expect(screen.getAllByText("NEGOTIATED").length).toBeGreaterThan(0);
+    expect(screen.getByText(/All 2 components shown/)).toBeTruthy();
+    expect(screen.getByText(/estate payments-bank/)).toBeTruthy();
+  });
+
+  it("prints an empty BOM as empty rather than as an absence of crypto", async () => {
+    mockFetch({
+      [RUNTIME]: runtimeDoc(),
+      [NETWORK]: networkDoc(),
+      [WINDOWS]: windowsDoc(),
+      [BOMS]: bomDoc(),
+      "/api/v1/estate/evidence/boms": {
+        schema: "cryptoscan.estate-boms/1",
+        bom: "VBOM",
+        question: "what do the vendors say?",
+        estate: "payments-bank",
+        run_id: "run-1",
+        components: [],
+      },
+    });
+    renderWithProviders(<CollectorDepth />);
+    await userEvent.click(screen.getByRole("button", { name: "Six BOMs" }));
+    await screen.findByTestId("bom-VBOM");
+
+    await userEvent.click(screen.getByRole("button", { name: "Show VBOM components" }));
+
+    const empty = await screen.findByTestId("bom-components-empty-VBOM");
+    expect(empty.textContent).toContain("no components in the stored observation");
+    expect(empty.textContent).toContain("payments-bank");
+  });
+
   it("says a matrix was not read instead of drawing it empty", async () => {
     offlineFetch();
     renderWithProviders(<CollectorDepth />);

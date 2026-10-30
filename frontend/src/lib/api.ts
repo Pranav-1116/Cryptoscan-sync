@@ -5662,6 +5662,47 @@ export const apiBomMaturity = (): Promise<ApiResult<BomMaturity>> =>
 export const apiEstateBoms = (bom?: string): Promise<ApiResult<Record<string, unknown>>> =>
   _rsGet<Record<string, unknown>>(`/api/v1/estate/evidence/boms${bom ? `?bom=${encodeURIComponent(bom)}` : ""}`);
 
+/* One BOM's components, from the stored observation. The shapes differ per BOM
+ * (a CBOM component carries algorithm/usage_state, an SBOM component a package
+ * name), so the row types stay loose and the page prints what the server sent
+ * rather than filling gaps of its own. */
+export interface EstateBomComponent {
+  bom_ref?: string;
+  artifact_id?: string;
+  component_id?: string;
+  algorithm?: string;
+  name?: string;
+  version?: string | null;
+  type?: string;
+  role?: string | null;
+  usage_state?: string | null;
+  evidence_type?: string | null;
+  asset_name?: string | null;
+  asset_type?: string | null;
+  layer?: string | null;
+  location?: string | null;
+  evidence_ids?: string[];
+}
+
+export interface EstateBomDocument {
+  schema: string;
+  bom: string;
+  question?: string;
+  estate: string | null;
+  run_id: string | null;
+  projection_id?: string;
+  generated_at?: string;
+  components: EstateBomComponent[];
+  relationships?: Array<Record<string, unknown>>;
+  counts?: Record<string, number>;
+  evidence_refs?: Record<string, unknown>;
+  unknowns?: Record<string, unknown>;
+  boundary?: Record<string, unknown>;
+}
+
+export const apiEstateBomComponents = (bom: string): Promise<ApiResult<EstateBomDocument>> =>
+  _rsGet<EstateBomDocument>(`/api/v1/estate/evidence/boms?bom=${encodeURIComponent(bom)}`);
+
 /* Live estate (spec 100): connection state, change-only storage, attack patterns.
  *
  * The screen behind these calls must not turn a quiet estate into a green one: the
