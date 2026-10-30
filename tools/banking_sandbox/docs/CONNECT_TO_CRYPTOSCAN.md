@@ -136,27 +136,47 @@ matrices change only because a producer now exists:
 | Windows | `collectors=["windows"]` — parses the host's own `reg export` / `Get-TlsCipherSuite` / `Get-ChildItem Cert:` exports | `CONFIGURED` only: an enabled Schannel protocol is permitted, not negotiated |
 | unequal six-BOM maturity | `/estate/evidence/discovery/bom-maturity` | each BOM's depth and how many components rest on observed vs configured vs declared evidence |
 
-The bank ships **real TLS listeners** for its sampled services, so the network gap can be
-closed with live handshakes rather than a fixture:
+The bank ships **real TLS listeners** for its sampled services, and a set of Windows
+exports in the three formats Windows writes. Both are inputs a collector can be handed,
+so all three gaps close with measured evidence rather than a fixture that is merely
+described:
 
 ```bash
 # 1. the bank's own services, live on loopback (serial numbers are never reused)
-PYTHONPATH=. .venv/bin/python -m tools.banking_sandbox.cli live-daemon \
-  --estate /home/user/.cache/bank-lab --port-base 21000 --max-services 20
+python -m tools.banking_sandbox.cli live-daemon \
+  --estate ~/.cache/bank-lab --port-base 21000 --max-services 20
 
-# 2. handshake every listener, merge the evidence into the stored bank observation
-PYTHONPATH=. .venv/bin/python scripts/collect_maturity_gaps.py \
-  --token "$TOKEN" --network --targets 127.0.0.1:21000-21015 --estate bank-0001
+# 2. Windows exports for the bank's server tier (SCHANNEL.reg, Get-TlsCipherSuite,
+#    machine certificate store) — derived from the bank's declared assets
+python -m tools.banking_sandbox.windows_exports \
+  --estate ~/.cache/bank-lab --out ~/.cache/bank-lab/public/windows/BANK-WIN-01
+
+# 3. one command: connect, then hand the collectors their inputs
+python scripts/connect_bank_sandbox.py --estate ~/.cache/bank-lab \
+  --runtime --live-targets 127.0.0.1:21000-21019 \
+  --windows-artifacts ~/.cache/bank-lab/public/windows/BANK-WIN-01
 ```
 
-Measured result on this build (before → after that one command):
+Measured result on this build (one run, `steps.collection` in the JSON):
 
 ```
-BOM       before            after
-CBOM      CONFIGURED        OBSERVED      (16 endpoints negotiated)
-NBOM      CONFIGURED        OBSERVED
-SBOM/TECHBOM/HBOM/VBOM unchanged — a handshake establishes nothing about them
+step 4 · collection    runtime  54 processes, 3 mapping libcrypto, 23 listening endpoints
+                       network  20 targets, 20 negotiated, 0 failed
+                       windows  18 policy records, 5 cipher suites, 12 certificates, 0 refused
+                       +78 assets, +97 evidence → 280 assets / 746 evidence / 533 relationships
+
+BOM       before            after             what moved
+CBOM      CONFIGURED        OBSERVED          a cipher suite negotiated on the wire
+NBOM      CONFIGURED        OBSERVED          the protocol version that was accepted
+SBOM      DECLARED_ONLY     OBSERVED          libcrypto mapped by a running process
+HBOM      DECLARED_ONLY     CONFIGURED        the Windows host's exported policy
+TECHBOM   CONFIGURED        CONFIGURED        already its ceiling
+VBOM      DECLARED_ONLY     DECLARED_ONLY     already its ceiling — no producer claims more
 ```
+
+Six-BOM counts after the run: `CBOM 259, HBOM 12, NBOM 83, SBOM 55, TECHBOM 70, VBOM 23`
+— the same estate with the observation alone, before any collection, is
+`CBOM 199, HBOM 10, NBOM 40, SBOM 54, TECHBOM 68, VBOM 23`.
 
 Two honest consequences, visible in the console:
 
@@ -168,16 +188,18 @@ Two honest consequences, visible in the console:
   row is the bank's declaration (`actual_negotiation_executed: false`), and a probe of a
   lab listener does not rewrite what the bank declared.
 
-Runtime is collected for the host it runs on, so run it as its own estate rather than
-merging this machine into the bank's:
+Runtime is collected for the host it runs on. Merging this machine into the bank's estate
+is allowed (`--runtime` above does exactly that) and the resulting host asset is named
+after the machine it ran on, not after a bank host: the bank declares no host identities,
+so none is invented.
 
 ```bash
-PYTHONPATH=. .venv/bin/python scripts/collect_maturity_gaps.py \
-  --token "$TOKEN" --runtime --estate local-host --no-merge
+# runtime as its own estate, when you do not want this machine inside the bank's graph
+python scripts/collect_maturity_gaps.py --runtime --estate local-host --no-merge
 ```
 
-Without `--token`, both scripts log in with `--password` / `ADMIN_PASSWORD`; the login
-route is rate-limited, so a burst of runs will get `429` and should wait a minute.
+Both scripts log in with `--password` / `ADMIN_PASSWORD` when no `--token` is given; the
+login route is rate-limited, so a burst of runs will get `429` and should wait a minute.
 
 ## 7. Troubleshooting a fresh machine
 

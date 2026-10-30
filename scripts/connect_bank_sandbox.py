@@ -33,6 +33,11 @@ Usage::
 
     .venv/bin/python scripts/connect_bank_sandbox.py --estate /home/user/.cache/bank-lab
     .venv/bin/python scripts/connect_bank_sandbox.py --estate ... --skip-scan   # observation only
+
+    # and then hand the collectors the inputs the maturity gaps were waiting for
+    .venv/bin/python scripts/connect_bank_sandbox.py --estate ... \
+        --runtime --live-targets 127.0.0.1:21000-21019 \
+        --windows-artifacts ~/.cache/bank-lab/public/windows/BANK-WIN-01
 """
 
 from __future__ import annotations
@@ -698,6 +703,9 @@ def connect(
     do_scan: bool = True,
     do_cbom: bool = True,
     do_observe: bool = True,
+    live_targets: list[str] | None = None,
+    windows_artifacts: list[str] | None = None,
+    do_runtime: bool = False,
 ) -> dict[str, Any]:
     public = estate / "public"
     result: dict[str, Any] = {"schema": SCHEMA, "estate": str(estate), "api": api, "steps": {}}
@@ -818,9 +826,58 @@ def connect(
             "detail": None if response.status_code < 400 else body,
         }
 
-    # 4. read back what product 2 now knows ---------------------------------- #
+    # 4. hand the collectors the inputs they were waiting for ---------------- #
+    collectors = [name for name, wanted in (
+        ("runtime", do_runtime), ("network", bool(live_targets)), ("windows", bool(windows_artifacts)),
+    ) if wanted]
+    if collectors:
+        result["steps"]["collection"] = _collect(
+            connection,
+            collectors=collectors,
+            targets=list(live_targets or []),
+            artifacts=list(windows_artifacts or []),
+        )
+
+    # 5. read back what product 2 now knows ---------------------------------- #
     result["output"] = _read_back(connection)
     return result
+
+
+def _collect(connection, *, collectors: list[str], targets: list[str],
+             artifacts: list[str]) -> dict[str, Any]:
+    """Run the host collectors through their one door and report what moved.
+
+    This is the step the maturity gaps were waiting for: runtime wants a host to
+    look at, network wants targets to handshake, windows wants exported
+    artefacts. Each collector labels what it establishes, so a configuration
+    read can never be mistaken for an observation.
+    """
+    response = connection.post(
+        "/api/v1/estate/evidence/collect",
+        json={"collectors": collectors, "targets": targets, "artifacts": artifacts, "merge": True},
+    )
+    body = response.json() if response.content else {}
+    if response.status_code >= 400:
+        detail = body.get("detail") if isinstance(body, dict) else None
+        return {"status": response.status_code, "ran": False,
+                "detail": detail or str(response.text)[:300]}
+    maturity = body.get("bom_maturity") or {}
+    return {
+        "status": response.status_code,
+        "ran": True,
+        "collectors": body.get("collectors"),
+        "run_id": body.get("run_id"),
+        "projection_id": body.get("projection_id"),
+        "merged_into_stored_observation": body.get("merged_into_stored_observation"),
+        "added": body.get("counts"),
+        "depth_before": maturity.get("before"),
+        "depth_after": maturity.get("after"),
+        "depth_changed": maturity.get("changed"),
+        "note": (
+            "depth is the strongest evidence class behind each BOM. A handshake lifts CBOM/NBOM "
+            "to OBSERVED; an exported Windows policy stops at CONFIGURED and says so"
+        ),
+    }
 
 
 def _read_back(connection) -> dict[str, Any]:
@@ -859,6 +916,13 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--skip-scan", action="store_true", help="do not run the source scan")
     parser.add_argument("--skip-cbom", action="store_true", help="do not import declared CBOM documents")
     parser.add_argument("--skip-observe", action="store_true", help="do not post the estate observation")
+    parser.add_argument("--runtime", action="store_true",
+                        help="also run the runtime collector on this host (processes, mapped libraries, listeners)")
+    parser.add_argument("--live-targets", action="append", default=[], metavar="HOST:PORT[-PORT]",
+                        help="targets for the network collector; repeatable, ranges expand "
+                             "(e.g. 127.0.0.1:21000-21019)")
+    parser.add_argument("--windows-artifacts", action="append", default=[], metavar="PATH",
+                        help="exported Windows artefacts for the windows collector; repeatable")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     estate = args.estate.resolve(strict=True)
@@ -874,9 +938,41 @@ def main(argv: Iterable[str] | None = None) -> int:
         do_scan=not args.skip_scan,
         do_cbom=not args.skip_cbom,
         do_observe=not args.skip_observe,
+        live_targets=_expand_targets(args.live_targets),
+        windows_artifacts=_expand_artifacts(args.windows_artifacts),
+        do_runtime=args.runtime,
     )
     print(json.dumps(value, sort_keys=True, indent=2))
     return 0
+
+
+def _expand_artifacts(values: Iterable[str]) -> list[str]:
+    """A directory means "every export in it"; a file is passed through as named."""
+    resolved: list[str] = []
+    for value in values:
+        path = Path(str(value)).expanduser()
+        if path.is_dir():
+            resolved.extend(str(item) for item in sorted(path.iterdir()) if item.is_file())
+        else:
+            resolved.append(str(path))
+    return resolved
+
+
+def _expand_targets(values: Iterable[str]) -> list[str]:
+    """Expand ``host:start-end`` into individual targets; leave the rest as given."""
+    resolved: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if not text:
+            continue
+        host, _, port = text.rpartition(":")
+        if host and "-" in port:
+            first, _, last = port.partition("-")
+            if first.isdigit() and last.isdigit() and int(last) >= int(first):
+                resolved.extend(f"{host}:{number}" for number in range(int(first), int(last) + 1))
+                continue
+        resolved.append(text)
+    return resolved
 
 
 if __name__ == "__main__":
