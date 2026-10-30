@@ -1,6 +1,7 @@
 """Synthetic TC success/failure branches. Native kernel result is separately disclosed."""
 
 import json
+import os
 from types import SimpleNamespace
 import pytest
 from inventory import linux_traffic_drill as core
@@ -8,12 +9,22 @@ from shared.shared_models.tests.test_linux_traffic_control import authorization
 from shared_models.host_collection import digest
 
 
+def _fake_stat(ino: int) -> os.stat_result:
+    """A complete stat result: pytest's own file reads go through ``os.stat``.
+
+    Patching the real ``os.stat`` with a bare namespace used to break the
+    runner itself (``linecache`` reads ``st_size``/``st_mtime`` while reporting),
+    which crashed the worker instead of failing this test.
+    """
+    return os.stat_result((0o100644, ino, 0, 1, 0, 0, 0, 0, 0, 0))
+
+
 def setup_child(monkeypatch):
     auth = authorization()
     monkeypatch.setattr(core, "context", lambda: (auth.expected_parent_boot_id, 3, 2))
     monkeypatch.setattr(core.os, "geteuid", lambda: 0)
-    monkeypatch.setattr(core.os, "fstat", lambda fd: SimpleNamespace(st_ino=1 if fd == 10 else 5))
-    monkeypatch.setattr(core.os, "stat", lambda path: SimpleNamespace(st_ino=6))
+    monkeypatch.setattr(core.os, "fstat", lambda fd: _fake_stat(1 if fd == 10 else 5))
+    monkeypatch.setattr(core.os, "stat", lambda path: _fake_stat(6))
     monkeypatch.setattr(core, "tool_pin", lambda *a, **kw: None)
     monkeypatch.setattr(core.time, "sleep", lambda _: None)
     return auth
