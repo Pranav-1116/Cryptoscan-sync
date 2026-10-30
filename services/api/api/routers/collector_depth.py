@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api import (
@@ -31,7 +32,7 @@ try:  # the reader lives in the network scanner service
     from network_scanner.probing import port_protocols
 except ImportError:  # pragma: no cover - service not on the path
     port_protocols = None  # type: ignore[assignment]
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_roles
 
 router = APIRouter(prefix="/estate/evidence", tags=["estate-evidence"])
 
@@ -67,7 +68,8 @@ def runtime_depth_matrix(
     families the engine *could* accept observations from but no collector here
     produces.
     """
-    return runtime_depth.registry(observed=runtime_depth.observe(db))
+    _run, graph, _reason = _graph(db)
+    return runtime_depth.registry(observed=runtime_depth.observe(db, graph))
 
 
 @router.get("/discovery/network-protocols")
@@ -199,6 +201,231 @@ def bom_maturity_matrix(
             ),
         }
     return {"run_id": run.id, **bom_maturity.measure(graph)}
+
+
+# --------------------------------------------------------------------------- #
+# collect: run a collector here and project the six BOMs from the result
+# --------------------------------------------------------------------------- #
+class CollectRequest(BaseModel):
+    """What to collect, from where, and into which estate."""
+
+    collectors: list[str] = Field(
+        default_factory=lambda: ["runtime"],
+        description="any of runtime | network | windows",
+        max_length=3,
+    )
+    estate: str | None = Field(
+        default=None,
+        max_length=160,
+        description="estate to write into; default: the newest stored observation's estate",
+    )
+    merge: bool = Field(
+        default=True,
+        description="merge into the newest stored observation (true) or store this collection alone",
+    )
+    scope: str | None = Field(default=None, max_length=160)
+    proc_base: str = Field(default="/proc", max_length=200)
+    trace_argv: list[str] | None = Field(
+        default=None,
+        max_length=64,
+        description="optional command to run under the LD_PRELOAD shim (INVOCATION evidence)",
+    )
+    trace_timeout: float = Field(default=120.0, ge=1.0, le=900.0)
+    targets: list[str] = Field(default_factory=list, max_length=200)
+    timeout: float = Field(default=5.0, ge=0.5, le=60.0)
+    artifacts: list[str] = Field(default_factory=list, max_length=500)
+    windows_host: str | None = Field(default=None, max_length=200)
+
+
+def _run_collectors(body: CollectRequest) -> list[dict[str, Any]]:
+    from api import host_collect
+
+    unknown = [name for name in body.collectors if name not in {"runtime", "network", "windows"}]
+    if unknown:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "unknown_collector", "reason": f"unsupported: {', '.join(unknown)}",
+                    "expected": ["runtime", "network", "windows"]},
+        )
+    if "network" in body.collectors and not body.targets:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "no_targets",
+                    "reason": "the network collector needs the targets to handshake; an empty "
+                              "target list would look like an estate with no endpoints"},
+        )
+    if "windows" in body.collectors and not body.artifacts:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "no_artifacts",
+                    "reason": "the Windows collector reads exported artefacts; naming none would "
+                              "look like a host with no policy"},
+        )
+    packages: list[dict[str, Any]] = []
+    for name in body.collectors:
+        if name == "runtime":
+            packages.append(host_collect.collect_runtime(
+                proc_base=body.proc_base,
+                trace_argv=body.trace_argv,
+                trace_timeout=body.trace_timeout,
+            ))
+        elif name == "network":
+            packages.append(host_collect.collect_network(body.targets, timeout=body.timeout))
+        else:
+            packages.append(host_collect.collect_windows(body.artifacts, host=body.windows_host))
+    return packages
+
+
+@router.get("/collect/capabilities")
+def collect_capabilities(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Which collectors can run from this process, and what each one establishes."""
+    from api import host_collect
+    from api.routers import estate_graph
+
+    caps = host_collect.capabilities()
+    try:
+        run = estate_graph._latest_run(db)
+        graph = estate_graph._graph_from_run(run)
+    except Exception as exc:  # noqa: BLE001 — no snapshot is a state, not a failure
+        detail = getattr(exc, "detail", None)
+        reason = str(detail.get("reason") if isinstance(detail, dict) else detail or exc)
+        caps["target_estate"] = {"state": "NO_OBSERVATION", "reason": reason, "estate": None}
+        return caps
+    caps["target_estate"] = {
+        "state": "OBSERVED",
+        "estate": graph.estate,
+        "scope": graph.scope,
+        "run_id": run.id,
+        "projection_id": graph.fingerprint(),
+        "assets": len(graph.assets()),
+        "evidence": len(graph.evidence()),
+    }
+    return caps
+
+
+@router.post("/collect")
+def collect_now(
+    body: CollectRequest,
+    user: str = Depends(require_roles("admin", "auditor", "security_analyst", "superadmin")),
+    db: Session = Depends(get_db_session),
+):
+    """Run the named collectors and re-project the six BOMs from the merged evidence.
+
+    The collectors run **here**, in this API process, against this host (and the
+    targets/artefacts named). Nothing is simulated: a target that refuses the
+    handshake records that, and no evidence is invented for it.
+    """
+    from api import bom_maturity, host_collect
+    from api.routers import estate_graph
+    from shared_models.estate_graph import build_graph
+
+    packages = _run_collectors(body)
+
+    payload, estate = host_collect.latest_payload(db)
+    if body.merge and payload is not None:
+        base = payload
+    else:
+        base = None
+    estate_name = body.estate or estate or "local-collect"
+    merged = host_collect.merge_payload(base, packages, estate=estate_name)
+    if body.scope:
+        merged["scope"] = body.scope
+
+    # before: the depth each BOM had on the stored snapshot (if any)
+    before: dict[str, Any] | None = None
+    if base is not None:
+        try:
+            before = bom_maturity.measure(build_graph({
+                "estate": base.get("estate"),
+                "scope": base.get("scope"),
+                "assets": base.get("assets") or [],
+                "evidence": base.get("evidence") or [],
+                "relationships": base.get("relationships") or [],
+                "collectors": base.get("collectors") or [],
+                "coverage": base.get("coverage") or [],
+            }))
+        except ValueError:
+            before = None
+
+    request = estate_graph.EstateDiscoverRequest(
+        estate=estate_name,
+        scope=merged.get("scope"),
+        inventory_id="host-collect",
+        assets=merged.get("assets") or [],
+        evidence=merged.get("evidence") or [],
+        relationships=merged.get("relationships") or [],
+        collectors=merged.get("collectors") or [],
+        coverage=merged.get("coverage") or [],
+        include_boms=True,
+        persist=True,
+    )
+    try:
+        result = estate_graph.run_discovery(db, user, request)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "collection_rejected", "reason": str(exc),
+                    "stored": False,
+                    "note": "a collector produced an edge the estate engine refuses; nothing was "
+                            "written and the offending fact is named above"},
+        ) from exc
+
+    after_graph = build_graph({
+        "estate": estate_name,
+        "scope": merged.get("scope"),
+        "assets": merged.get("assets") or [],
+        "evidence": merged.get("evidence") or [],
+        "relationships": merged.get("relationships") or [],
+        "collectors": merged.get("collectors") or [],
+        "coverage": merged.get("coverage") or [],
+    })
+    after = bom_maturity.measure(after_graph)
+
+    def _depths(document: dict[str, Any] | None) -> dict[str, str]:
+        if not document:
+            return {}
+        return {row["kind"]: row["depth"] for row in document.get("boms") or []}
+
+    before_depths = _depths(before)
+    after_depths = _depths(after)
+    return {
+        "schema": "cryptoscan.collect-result/1",
+        "estate": estate_name,
+        "merged_into_stored_observation": base is not None,
+        "run_id": result.get("run_id"),
+        "projection_id": after.get("projection_id"),
+        "collectors": [
+            {"id": package["id"], **package["summary"]} for package in packages
+        ],
+        "counts": {
+            "assets": len(merged.get("assets") or []),
+            "evidence": len(merged.get("evidence") or []),
+            "relationships": len(merged.get("relationships") or []),
+            "added_assets": sum(len(package.get("assets") or []) for package in packages),
+            "added_evidence": sum(len(package.get("evidence") or []) for package in packages),
+        },
+        "detection": result.get("detection"),
+        "bom_maturity": {
+            "before": before_depths or None,
+            "after": after_depths,
+            "changed": {kind: {"before": before_depths.get(kind), "after": depth}
+                        for kind, depth in after_depths.items()
+                        if before_depths.get(kind) != depth},
+            "note": (
+                "depth is the strongest evidence class behind each BOM's components. A collector "
+                "that established configuration cannot lift a BOM to OBSERVED, and this does not "
+                "pretend otherwise"
+            ),
+        },
+        "coverage": result.get("coverage"),
+        "note": (
+            "the collectors ran in this API process against this host, the named targets and the "
+            "named artefacts. Everything they produced is in the stored observation named above"
+        ),
+    }
 
 
 __all__ = ["router"]

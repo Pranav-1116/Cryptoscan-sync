@@ -30,6 +30,7 @@ TLS_LIBRARY_PATTERNS: tuple[tuple[str, str], ...] = (
     ("boringssl", r"libboringssl(?:-dynamic)?\.so"),
     ("libressl", r"libressl-crypto\.so(?:\.(?P<version>[\d.]+))?"),
     ("java", r"libjvm\.so"),
+    ("dotnet", r"libcoreclr\.so|libclrjit\.so"),
     ("go-crypto", r"/usr/local/go/|/usr/lib/go"),
 )
 

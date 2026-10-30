@@ -36,6 +36,7 @@ export const CAPABILITIES_JSON = {
   "certificates": "ga",
   "cloud": "ga",
   "cmdb": "ga",
+  "collector-depth": "ga",
   "command-center": "ga",
   "compliance": "ga",
   "crypto": "ga",
@@ -44,10 +45,9 @@ export const CAPABILITIES_JSON = {
   "crypto-changes": "ga",
   "dependency-graph": "ga",
   "dev-sec-ops": "ga",
-  "collector-depth": "ga",
   "digital-twin": "ga",
-  "estate-twin": "ga",
   "drift": "ga",
+  "estate-twin": "ga",
   "evidence": "ga",
   "executive": "ga",
   "findings": "ga",
@@ -180,6 +180,10 @@ export const CAPABILITY_LIMITS = {
     "area": "Discovery",
     "limit": "CMDB import/resolution; ServiceNow mapping is field-tested with one schema."
   },
+  "collector-depth": {
+    "area": "Discovery",
+    "limit": "Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. Every number is echoed from the API; no percentage or score is computed anywhere."
+  },
   "command-center": {
     "area": "Overview",
     "limit": "Reads the live stats/summary endpoints; empty until a scan runs."
@@ -212,21 +216,17 @@ export const CAPABILITY_LIMITS = {
     "area": "Discovery",
     "limit": "SBOM/container/binary/firmware/mobile/WASM scanning, VEX, licence, gates and correlated binary BOM sidecars; bounded evidence and explicit refusal/partial states."
   },
-  "collector-depth": {
-    "area": "Discovery",
-    "limit": "Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. Every number is echoed from the API; no percentage or score is computed anywhere."
-  },
   "digital-twin": {
     "area": "Intelligence",
     "limit": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations."
   },
-  "estate-twin": {
-    "area": "Intelligence",
-    "limit": "Walks the twin's own chain over one stored snapshot: estate, assets, relationships, crypto graph, evidence graph, history, impact and simulation. Each link reports POPULATED, EMPTY, NOT_EVALUATED or AWAITING_INPUT as the server measured it, and a link the server could not read is never drawn as empty; it needs a stored discovery run and computes no score of its own."
-  },
   "drift": {
     "area": "Intelligence",
     "limit": "Baseline approval + drift events + CI gate; 15 test files."
+  },
+  "estate-twin": {
+    "area": "Intelligence",
+    "limit": "Walks the twin's own chain over one stored snapshot: estate, assets, relationships, crypto graph, evidence graph, history, impact and simulation. Each link reports POPULATED, EMPTY, NOT_EVALUATED or AWAITING_INPUT as the server measured it, and a link the server could not read is never drawn as empty; it needs a stored discovery run and computes no score of its own."
   },
   "evidence": {
     "area": "Governance",

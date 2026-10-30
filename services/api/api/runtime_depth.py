@@ -123,12 +123,13 @@ PATHS: tuple[RuntimePath, ...] = (
         id="jvm",
         label="JVM applications (JCE, BouncyCastle)",
         family="Java virtual machine",
-        depth=DEPTH_INGEST_ONLY,
-        producers=(),
+        depth=DEPTH_PROCESS_LIBRARY,
+        producers=("runtime.agent.process_discovery:scan_processes",),
         ingest_only=("JVM_JCE",),
         reads=(
-            "nothing in this build. The runtime engine accepts JVM_JCE observations and maps them to "
-            "crypto events, but no Java agent ships here to produce them"
+            "that a JVM process exists and which native crypto libraries it maps (libjvm plus "
+            "libcrypto/libssl when the JVM loads a native provider). The JCE call itself is not "
+            "observed: the engine accepts JVM_JCE observations and no Java agent here produces them"
         ),
         cannot_claim=(
             "a JVM application's crypto is not observed by this platform today. Static analysis of "
@@ -144,12 +145,17 @@ PATHS: tuple[RuntimePath, ...] = (
         id="dotnet_windows",
         label=".NET / Windows CNG applications",
         family="CLR on Windows",
-        depth=DEPTH_INGEST_ONLY,
-        producers=(),
+        depth=DEPTH_PROCESS_LIBRARY,
+        producers=(
+            "runtime.agent.process_discovery:scan_processes",
+            "inventory.windows_capi:collect_default_provider",
+            "inventory.windows_cng:collect_registration",
+        ),
         ingest_only=("DOTNET_CNG",),
         reads=(
-            "nothing at the call level. The Windows candidate reads the *default CNG provider*, "
-            "registered CNG algorithms and certificates — provider state, not invocation"
+            "that a CLR process exists and which native crypto libraries it maps, plus the *default "
+            "CNG provider*, registered CNG algorithms and certificates — process and provider "
+            "state, never an invocation"
         ),
         cannot_claim=(
             "a registered algorithm is not a call and a default provider is not a use. Without ETW "
@@ -309,7 +315,7 @@ def _row(path: RuntimePath) -> dict[str, Any]:
 SAMPLE_CAP = 5000
 
 
-def observe(db: Any) -> dict[str, Any]:
+def observe(db: Any, graph: Any | None = None) -> dict[str, Any]:
     """What the runtime store actually holds, classified by observation depth.
 
     The three kinds this platform stores are *not* interchangeable:
@@ -360,6 +366,10 @@ def observe(db: Any) -> dict[str, Any]:
         if hostname:
             hosts.add(str(hostname))
 
+    estate = _estate_observations(graph)
+    if estate and estate.get("invocation_evidence"):
+        invocation = max(invocation, 1)
+
     if invocation:
         state, reason = "INVOCATION_OBSERVED", None
     elif rows:
@@ -368,6 +378,15 @@ def observe(db: Any) -> dict[str, Any]:
             (
                 "the store holds only wire and library evidence — no process has been traced, so no "
                 "algorithm invocation is known. This is not a statement that none ran"
+            ),
+        )
+    elif estate and estate.get("state") == "OBSERVED":
+        state, reason = (
+            "ESTATE_OBSERVATION_ONLY",
+            (
+                "the estate observation holds runtime evidence (process/library or endpoint) but the "
+                "agent finding feed is empty, so no per-call detail exists here. Depth below is what "
+                "the estate measured; INVOCATION stays a capability"
             ),
         )
     else:
@@ -387,6 +406,47 @@ def observe(db: Any) -> dict[str, Any]:
         "library_risk_rows": library,
         "hosts": sorted(hosts)[:50],
         "host_count": len(hosts),
+        "estate": estate,
+        "note": (
+            "two stores are read: the runtime finding feed (agent submissions) and the estate "
+            "observation (/ingestion/observations). A row in either is evidence; neither is a "
+            "statement that every process was instrumented"
+        ),
+    }
+
+
+def _estate_observations(graph: Any | None) -> dict[str, Any] | None:
+    """Runtime evidence the stored estate observation carries, if there is one."""
+    if graph is None:
+        return None
+    invocation = process_library = other = 0
+    calls = 0
+    hosts: set[str] = set()
+    for record in graph.evidence():
+        if str(record.get("evidence_type")) != "RUNTIME_OBSERVED":
+            continue
+        facts = record.get("facts") or {}
+        kind = str(facts.get("evidence_kind") or "").upper()
+        if kind == "INVOCATION" or facts.get("function"):
+            invocation += 1
+            calls += int(facts.get("observations") or 1)
+        elif kind == "PROCESS_LIBRARY":
+            process_library += 1
+        else:
+            other += 1
+        if facts.get("hostname"):
+            hosts.add(str(facts["hostname"]))
+    return {
+        "state": "OBSERVED" if (invocation or process_library or other) else "NO_RUNTIME_EVIDENCE",
+        "invocation_evidence": invocation,
+        "invocation_calls": calls,
+        "process_library_evidence": process_library,
+        "other_runtime_evidence": other,
+        "hosts": sorted(hosts)[:50],
+        "note": (
+            "process-library evidence says a library was mapped by a running process; only "
+            "INVOCATION evidence says a call was counted"
+        ),
     }
 
 

@@ -846,8 +846,11 @@ class EstateGraph:
             if not algorithm and not facts.get("protocol"):
                 # A capability list ("this library supports AES-128, AES-256, RSA")
                 # is cryptographic content too. It is expanded here so capability
-                # appears on its own plane instead of silently vanishing, and it is
-                # forced to SUPPORTED because a declared list can never be use.
+                # appears on its own plane instead of silently vanishing. It can
+                # never be use: the strongest state a list may claim is the one its
+                # own evidence supports — a configured list is CONFIGURED, an
+                # unqualified declaration is SUPPORTED.
+                capability_state = _capability_state(record["evidence_type"], facts)
                 for supported in _supported_algorithms(facts):
                     artifacts.append(
                         {
@@ -862,7 +865,7 @@ class EstateGraph:
                             "mode": None,
                             "curve": None,
                             "layer": record["layer"],
-                            "usage_state": "SUPPORTED",
+                            "usage_state": capability_state,
                             "evidence_type": record["evidence_type"],
                             "confidence": record["confidence"],
                             "evidence_ids": [record["evidence_id"]],
@@ -1345,6 +1348,17 @@ def _usage_state(evidence_type: str, facts: Mapping[str, Any]) -> str:
     if evidence_type == "CONFIGURED":
         return "CONFIGURED"
     return "SUPPORTED"
+
+
+def _capability_state(evidence_type: str, facts: Mapping[str, Any]) -> str:
+    """The strongest honest state for a *capability list*.
+
+    Usage states that assert use (``OBSERVED``, ``NEGOTIATED``) are refused here: a
+    list of what something can do is never evidence that it did it. Everything else
+    follows the evidence class.
+    """
+    state = _usage_state(evidence_type, facts)
+    return "SUPPORTED" if state in {"OBSERVED", "NEGOTIATED"} else state
 
 
 def _supported_algorithms(facts: Mapping[str, Any]) -> list[str]:

@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**87 shipped surfaces, all supported.** The navigation carries no maturity
+**89 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -49,6 +49,7 @@ role-guarded actions.
 | `/certificates` | Discovery | Certificate inventory + expiry from network and source scans. |
 | `/cloud` | Discovery | Read-only AWS/Azure/GCP estate scan; 15k LOC, 25 test files. Needs credentials to show data. |
 | `/cmdb` | Discovery | CMDB import/resolution; ServiceNow mapping is field-tested with one schema. |
+| `/collector-depth` | Discovery | Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. Every number is echoed from the API; no percentage or score is computed anywhere. |
 | `/dev-sec-ops` | Discovery | SBOM/container/binary/firmware/mobile/WASM scanning, VEX, licence, gates and correlated binary BOM sidecars; bounded evidence and explicit refusal/partial states. |
 | `/hardware` | Discovery | HSM/TPM/firmware plugins exist (ADR-014); live hardware collection needs vendor access and has a short field history. |
 | `/live-environment` | Discovery | Live environment roll-up of runtime + network. |
@@ -81,6 +82,7 @@ role-guarded actions.
 | `/dependency-graph` | Intelligence | Same graph engine as /graph. |
 | `/digital-twin` | Intelligence | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
 | `/drift` | Intelligence | Baseline approval + drift events + CI gate; 15 test files. |
+| `/estate-twin` | Intelligence | Walks the twin's own chain over one stored snapshot: estate, assets, relationships, crypto graph, evidence graph, history, impact and simulation. Each link reports POPULATED, EMPTY, NOT_EVALUATED or AWAITING_INPUT as the server measured it, and a link the server could not read is never drawn as empty; it needs a stored discovery run and computes no score of its own. |
 | `/findings` | Intelligence | Policy-evaluated findings with evidence links. |
 | `/graph` | Intelligence | Neo4j dependency graph is optional at runtime (in-process engine is the fallback and the tenant-isolated path); 3.2k+ LOC. Edge management API with provenance (source/created_by/confidence/last_verified), discovered-edge adoption (scanner cascade + graph snapshots → operator approval), declared crypto↔hardware and vendor-of-vendor linkage, and asset-level blast radius (shared asset → union over every using system) are live with tenant-scoped tests; scale evidence on real Neo4j estates is still open. |
 | `/hbom` | Intelligence | Hardware BOM view over the Technology BOM; depends on hardware scan coverage. |

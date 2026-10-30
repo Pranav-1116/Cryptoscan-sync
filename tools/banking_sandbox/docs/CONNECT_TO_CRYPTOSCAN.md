@@ -123,3 +123,58 @@ evidence is refused by the estate engine, not silently kept).
   `actual_execution: false`; the console shows those as configured, not negotiated.
 * Static findings prove the algorithm is **present in code**, not that it ran.
 * A duplicate run is `NO_CHANGE`, not a second estate. The bridge reports which happened.
+
+## 6. Closing the four maturity gaps against the bank (measured)
+
+The connection above describes the bank. These three steps **measure** it, and the
+matrices change only because a producer now exists:
+
+| gap | producer | what it establishes |
+|---|---|---|
+| network discovery | `POST /estate/evidence/collect` `collectors=["network"]` — real TLS handshakes from the `network_scanner` prober | `NETWORK_ACTIVE_OBSERVED` → `usage_state: NEGOTIATED` per endpoint, plus the certificate it presented |
+| runtime discovery | same endpoint, `collectors=["runtime"]` — `runtime.agent.process_discovery` over `/proc`, optionally under the `LD_PRELOAD` shim | a mapped library is `PROCESS_LIBRARY` (`SUPPORTED`, never "used"); a traced call is `INVOCATION` (`OBSERVED`) |
+| Windows | `collectors=["windows"]` — parses the host's own `reg export` / `Get-TlsCipherSuite` / `Get-ChildItem Cert:` exports | `CONFIGURED` only: an enabled Schannel protocol is permitted, not negotiated |
+| unequal six-BOM maturity | `/estate/evidence/discovery/bom-maturity` | each BOM's depth and how many components rest on observed vs configured vs declared evidence |
+
+The bank ships **real TLS listeners** for its sampled services, so the network gap can be
+closed with live handshakes rather than a fixture:
+
+```bash
+# 1. the bank's own services, live on loopback (serial numbers are never reused)
+PYTHONPATH=. .venv/bin/python -m tools.banking_sandbox.cli live-daemon \
+  --estate /home/user/.cache/bank-lab --port-base 21000 --max-services 20
+
+# 2. handshake every listener, merge the evidence into the stored bank observation
+PYTHONPATH=. .venv/bin/python scripts/collect_maturity_gaps.py \
+  --token "$TOKEN" --network --targets 127.0.0.1:21000-21015 --estate bank-0001
+```
+
+Measured result on this build (before → after that one command):
+
+```
+BOM       before            after
+CBOM      CONFIGURED        OBSERVED      (16 endpoints negotiated)
+NBOM      CONFIGURED        OBSERVED
+SBOM/TECHBOM/HBOM/VBOM unchanged — a handshake establishes nothing about them
+```
+
+Two honest consequences, visible in the console:
+
+* the probed endpoints are **new** `NETWORK_ENDPOINT` assets at `127.0.0.1:210xx`. The
+  bank never declared a mapping from its own endpoint ids to those listeners, so none is
+  asserted; a declared bank endpoint stays `CONFIGURED` until something negotiates with
+  *it*.
+* the bank's own coverage row still reads `bank handshakes NOT_ATTEMPTED`, because that
+  row is the bank's declaration (`actual_negotiation_executed: false`), and a probe of a
+  lab listener does not rewrite what the bank declared.
+
+Runtime is collected for the host it runs on, so run it as its own estate rather than
+merging this machine into the bank's:
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/collect_maturity_gaps.py \
+  --token "$TOKEN" --runtime --estate local-host --no-merge
+```
+
+Without `--token`, both scripts log in with `--password` / `ADMIN_PASSWORD`; the login
+route is rate-limited, so a burst of runs will get `429` and should wait a minute.

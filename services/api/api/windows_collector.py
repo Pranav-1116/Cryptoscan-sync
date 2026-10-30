@@ -226,6 +226,7 @@ LAYERS: tuple[Layer, ...] = (
         producers=(
             "inventory.windows_schannel:evaluate",
             "inventory.windows_schannel:collect",
+            "api.windows_artifacts:parse_schannel_registry",
         ),
         reads=(
             "the host's Schannel policy from the registry: per protocol and role, whether it is "
@@ -243,7 +244,10 @@ LAYERS: tuple[Layer, ...] = (
             "no per-application Schannel settings (an app can pin its own version)",
             "no Windows-version-specific default policy reproduced",
         ),
-        requires="a registry read on the Windows host",
+        requires=(
+            "a registry read on the Windows host, or a `reg export` of the SCHANNEL tree parsed "
+            "off-host by /estate/evidence/collect (collectors=windows)"
+        ),
     ),
     Layer(
         id="schannel_events",
