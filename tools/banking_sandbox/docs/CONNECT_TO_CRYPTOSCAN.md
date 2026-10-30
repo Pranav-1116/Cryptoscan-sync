@@ -201,6 +201,48 @@ python scripts/collect_maturity_gaps.py --runtime --estate local-host --no-merge
 Both scripts log in with `--password` / `ADMIN_PASSWORD` when no `--token` is given; the
 login route is rate-limited, so a burst of runs will get `429` and should wait a minute.
 
+### Dependencies: two sources, and the one that was silent
+
+`GET /technology-bom` reports `dependency_count: 220` for the bank — 100 `contains`
+(application → library), 100 `depends_on` (application → package), 20 `deployed_as`
+(application → image). All 220 come from the **estate observation**, i.e. from what
+the bank declares it runs.
+
+The static scan reported `direct_package_dependencies: 0`, and the reason was not a
+missing parser: `scanner.analysis.dependency_inventory` reads `requirements.txt`,
+`package.json`, `pom.xml`, `go.mod`, `Cargo.toml`, `composer.json`, `Gemfile`,
+`packages.config` and lockfiles — and the bank's source tree contains none of them.
+`public/source/<bank>/manifests.jsonl` is data *about* manifests, so nothing parsed
+it. Zero was true, and useless.
+
+`tools/banking_sandbox.source_manifests` writes the manifests the lab declares, one
+per application, in its own ecosystem's format:
+
+```bash
+python -m tools.banking_sandbox.source_manifests \
+  --estate ~/.cache/bank-lab --out ~/.cache/bank-lab/public/source-manifests
+
+curl -s -X POST http://127.0.0.1:8010/api/v1/scans/trigger \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"repo_url":"local://'"$HOME"'/.cache/bank-lab/public/source-manifests"}'
+```
+
+Measured on this build (14 manifests, 70 declared dependencies, 6 applications
+skipped with a stated reason — C, C++ and two custom languages have no ecosystem
+this lab emits):
+
+```
+scan of public/source              direct_package_dependencies  0   crypto_bearing_packages 0
+scan of public/source-manifests    direct_package_dependencies 45   crypto_bearing_packages 6
+                                   package_dependencies 45, crypto_dependency_paths 6
+                                   ecosystems: cargo, go, maven, npm, nuget, packagist, pypi, rubygems
+```
+
+A listed package is a **declared** dependency: not a proven import, and not proof of
+the installed version. The cascade report keeps those apart
+(`libraries_declared_but_unused` / `libraries_used_but_undeclared`), and every file
+written here carries the `SYNTHETIC-BANK-LAB` marker.
+
 ## 7. Troubleshooting a fresh machine
 
 Three failures are common on a clean venv, and each one now names itself instead of
