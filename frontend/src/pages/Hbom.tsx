@@ -357,7 +357,7 @@ export default function Hbom() {
                     <td><span className="mono" style={{ fontWeight: 700, fontSize: 12 }}>{c.asset_id}</span></td>
                     <td><span className="mono" style={{ fontSize: 11 }}>{c.name}</span></td>
                     <td><Badge tone="violet">{c.device_type}</Badge></td>
-                    <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{(c.firmware?.details as any)?.version || "—"}</span></td>
+                    <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{typeof c.firmware?.details === "string" ? c.firmware.details : ((c.firmware?.details as any)?.version || "—")}</span></td>
                     <td><span style={{ display: "flex", gap: 4 }}>{c.security_modules?.hsm ? <Badge tone="green">HSM</Badge> : null}{c.security_modules?.tpm ? <Badge tone="green">TPM</Badge> : null}{!c.security_modules?.hsm && !c.security_modules?.tpm ? <span style={{ color: "var(--faint)", fontSize: 11 }}>—</span> : null}</span></td>
                     <td><span className="mono" style={{ fontSize: 11, color: "var(--dim)" }}>{c.evidence?.agent_id || (fromObservation(c, estateSource) ? "no agent (imported)" : "—")}</span></td>
                     <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{c.evidence?.last_seen ? new Date(c.evidence.last_seen).toLocaleDateString() : "—"}</span></td>
