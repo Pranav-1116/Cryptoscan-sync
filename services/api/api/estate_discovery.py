@@ -330,17 +330,142 @@ def collect_static(db: Any, *, page_size: int = 500) -> dict[str, Any]:
                 "layer_note": "a static hit proves the algorithm is present in code, not that it is used at runtime",
             },
         })
+    # The software half of the same plane: the packages and crypto libraries the
+    # newest completed scan's manifest/lockfile pass declared. Without them the
+    # SBOM projection of this graph stayed empty even after a scan had found the
+    # application's dependencies — the same rows the Technology BOM now shows.
+    from api import software_inventory as _software
+
+    software = _software.latest_scan_software(db)
+    software_assets, software_evidence, software_edges = _software_plane(software)
+    assets.extend(software_assets)
+    evidence.extend(software_evidence)
     status_note = None
     if total and len(rows) < total:
         status_note = f"read {len(rows)} of {int(total)} static assets (page limit)"
+    if software.get("components"):
+        counts = software.get("counts") or {}
+        summary = (
+            f"plus {counts.get('packages', 0)} declared package(s) and "
+            f"{counts.get('libraries', 0)} crypto library row(s) from scan {software.get('scan_id')} "
+            f"({software.get('target')})"
+        )
+        status_note = f"{status_note}; {summary}" if status_note else summary
     return {
         "plane": "STATIC",
         "expected": int(total),
         "collected": len(rows),
         "assets": assets,
         "evidence": evidence,
+        "relationships": software_edges,
         "note": status_note,
     }
+
+
+def _software_plane(software: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """SBOM assets, evidence and edges from one software inventory (§6/§11).
+
+    A declared package is ``CONFIGURED`` evidence on a PACKAGE asset — the manifest
+    says it, nothing more. An edge exists only where a lockfile stated the
+    parent/child pair, with basis ``CONFIGURATION`` and the child's own record as
+    its evidence, so an unresolved subtree produces no edge at all.
+    """
+    from shared_models.estate_graph import asset_id as canonical_asset_id
+    from shared_models.estate_graph import content_evidence_id
+
+    assets: list[dict[str, Any]] = []
+    evidence: list[dict[str, Any]] = []
+    relationships: list[dict[str, Any]] = []
+    scan_id = software.get("scan_id")
+    evidence_by_coordinate: dict[str, str] = {}
+    ref_by_coordinate: dict[str, str] = {}
+
+    for row in software.get("components") or []:
+        kind = "LIBRARY" if row.get("component_type") == "library" else "PACKAGE"
+        if kind == "LIBRARY":
+            identity = {"name": row.get("name"), "version": row.get("version"), "path": None}
+        else:
+            identity = {
+                "name": row.get("name"),
+                "version": row.get("version"),
+                "ecosystem": row.get("ecosystem"),
+            }
+        target = canonical_asset_id(kind, identity, name=str(row.get("name") or "unknown"))
+        facts = {
+            "dependency": row.get("name"),
+            "module": "package" if kind == "PACKAGE" else "library",
+            "version": row.get("version"),
+            "ecosystem": row.get("ecosystem"),
+            "declared_in": row.get("declared_in"),
+            "origin": row.get("origin"),
+            "dependency_type": row.get("dependency_type"),
+            "direct": row.get("direct"),
+            "algorithms": list(row.get("algorithms") or []),
+            "crypto_bearing": bool(row.get("crypto_bearing")),
+            "declared_but_unused": bool(row.get("declared_but_unused")),
+            "used_but_undeclared": bool(row.get("used_but_undeclared")),
+            "scan_id": scan_id,
+            "note": (
+                "a declared dependency is a build fact from the manifest that names it, never "
+                "proof that the library is installed, loaded or used"
+            ),
+        }
+        evidence_id = content_evidence_id(
+            "CONFIGURED", target, facts, "APPLICATION", "software_inventory", "static:software-inventory"
+        )
+        assets.append({
+            "ref": target,
+            "type": kind,
+            "name": row.get("name") or "unknown",
+            "identity": identity,
+            "location": row.get("declared_in"),
+            "source": "software_inventory",
+            "attributes": {
+                "ecosystem": row.get("ecosystem"),
+                "version": row.get("version"),
+                "origin": row.get("origin"),
+                "declared_in": row.get("declared_in"),
+                "manifests": row.get("manifests") or [],
+                "dependency_type": row.get("dependency_type"),
+                "direct": row.get("direct"),
+                "crypto_bearing": bool(row.get("crypto_bearing")),
+                "algorithms": list(row.get("algorithms") or []),
+                "declared_but_unused": bool(row.get("declared_but_unused")),
+                "used_but_undeclared": bool(row.get("used_but_undeclared")),
+                "scan_id": scan_id,
+            },
+        })
+        evidence.append({
+            "source": "software_inventory",
+            "collector": "static:software-inventory",
+            "evidence_type": "CONFIGURED",
+            "target": target,
+            "layer": "APPLICATION",
+            "facts": facts,
+        })
+        evidence_by_coordinate[str(row.get("coordinate"))] = evidence_id
+        ref_by_coordinate[str(row.get("coordinate"))] = target
+
+    for edge in software.get("edges") or []:
+        target_coordinate = str(edge.get("target"))
+        source_coordinate = str(edge.get("source"))
+        source_ref = ref_by_coordinate.get(source_coordinate)
+        target_ref = ref_by_coordinate.get(target_coordinate)
+        if not source_ref or not target_ref or target_coordinate not in evidence_by_coordinate:
+            continue
+        relationships.append({
+            "subject": source_ref,
+            "predicate": "depends_on",
+            "object": target_ref,
+            "basis": "CONFIGURATION",
+            "evidence_ids": [evidence_by_coordinate[target_coordinate]],
+            "attributes": {
+                "edge_type": edge.get("type"),
+                "basis_note": "the lockfile states this parent/child dependency; an unstated one is not drawn",
+                "scan_id": scan_id,
+            },
+        })
+    return assets, evidence, relationships
 
 
 def collect_pki(db: Any, *, limit: int = 2000) -> dict[str, Any]:

@@ -39,6 +39,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_auditor
 from cbom.hbom import (
+    SOURCE_ESTATE_OBSERVATION,
     generate_hbom,
     hbom_hash_matches,
     to_cyclonedx,
@@ -54,12 +55,31 @@ router = APIRouter(prefix="/hbom", tags=["hbom"])
 
 
 def _estate_document(db: Session) -> dict:
-    """Regenerate the unified estate HBOM from persisted rows."""
+    """Regenerate the unified estate HBOM from persisted rows.
+
+    Two admitted sources, deduplicated by ``asset_id``: the live hardware inventory and
+    the newest stored estate observation. The document says which of them each component
+    came from, so an imported device is never mistaken for an agent-fingerprinted one.
+    """
+    from api.estate_bom_sources import hardware_rows
     from api.routers.techbom import _environment_of
 
-    rows = db.query(HardwareAsset).order_by(HardwareAsset.asset_id).all()
+    rows = [row.state_dict() for row in db.query(HardwareAsset).order_by(HardwareAsset.asset_id).all()]
+    known = {str(row.get("asset_id") or "") for row in rows}
+    observed = [row for row in hardware_rows(db) if row["asset_id"] not in known]
+    sources = [SOURCE_ESTATE_OBSERVATION] if observed else []
+    notes = []
+    if observed:
+        notes.append(
+            f"{len(observed)} device(s) come from the stored estate observation, not from the "
+            "live agent; each carries the observation's evidence ids and is declared, not "
+            "fingerprinted."
+        )
     return generate_hbom(
-        [row.state_dict() for row in rows], environment=_environment_of(db)
+        [*rows, *observed],
+        environment=_environment_of(db),
+        sources=sources,
+        notes=notes,
     )
 
 

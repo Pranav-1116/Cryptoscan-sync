@@ -222,3 +222,51 @@ def test_hash_check_detects_mutation():
     assert hbom_hash_matches(tampered, doc["content_hash"]) is False
     # recomputing over the mutated document yields a different address
     assert compute_hbom_hash(tampered) != doc["content_hash"]
+
+
+def test_additional_sources_are_recorded_and_hashed():
+    """A second admitted source must be visible AND inside the content hash.
+
+    An observation-imported device is still a device, but a reader has to be able to
+    tell it apart from an agent fingerprint. The source lands in ``metadata.sources``,
+    the note in ``metadata.notes``, and both change the content hash.
+    """
+    from cbom.hbom import SOURCE_ESTATE_OBSERVATION
+
+    observed = dict(ROW_A)
+    observed["asset_id"] = "hardware:abc123"
+    observed["source"] = SOURCE_ESTATE_OBSERVATION
+    observed["evidence_history"] = ["ev-1", "ev-2"]
+
+    plain = generate_hbom([ROW_A], environment="bank-0001")
+    extended = generate_hbom(
+        [ROW_A, observed],
+        environment="bank-0001",
+        sources=[SOURCE_ESTATE_OBSERVATION],
+        notes=["1 device(s) come from the stored estate observation."],
+    )
+
+    assert extended["metadata"]["sources"] == [
+        "live hardware inventory (hardware_assets)",
+        SOURCE_ESTATE_OBSERVATION,
+    ]
+    assert "1 device(s) come from the stored estate observation." in extended["metadata"]["notes"]
+    assert extended["content_hash"] != plain["content_hash"]
+    assert hbom_hash_matches(extended, extended["content_hash"])
+
+    by_id = {component["asset_id"]: component for component in extended["components"]}
+    assert by_id["hardware:abc123"]["evidence"]["source"] == SOURCE_ESTATE_OBSERVATION
+    assert by_id["hardware:abc123"]["evidence"]["evidence_ids"] == ["ev-1", "ev-2"]
+    # the live row keeps its own source: one document, two admitted provenances
+    assert by_id["hw-hsm-1"]["evidence"]["source"] == "live hardware inventory (hardware_assets)"
+
+
+def test_duplicate_sources_collapse():
+    from cbom.hbom import SOURCE_ESTATE_OBSERVATION
+
+    document = generate_hbom(
+        [ROW_A],
+        environment="bank-0001",
+        sources=[SOURCE_ESTATE_OBSERVATION, SOURCE_ESTATE_OBSERVATION],
+    )
+    assert document["metadata"]["sources"].count(SOURCE_ESTATE_OBSERVATION) == 1

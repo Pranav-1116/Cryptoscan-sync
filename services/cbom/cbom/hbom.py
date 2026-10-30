@@ -45,6 +45,12 @@ HBOM_GENERATOR = "cryptoscan-hbom-generator/1.0"
 #: The one admitted source of estate rows today (the DB is the truth).
 SOURCE_LIVE_HARDWARE_INVENTORY = "live hardware inventory (hardware_assets)"
 
+#: Hardware a stored estate observation (``/ingestion/observations``) carries. It is a
+#: second admitted source because an imported or discovered estate records real devices
+#: that never pass through the live agent — dropping them made the HBOM read empty on an
+#: estate whose HARDWARE and HSM assets were already established with evidence.
+SOURCE_ESTATE_OBSERVATION = "estate observation (HARDWARE/HSM assets)"
+
 _DEPENDENCY_NOTE = (
     "No collector records hardware-to-system dependency edges yet; "
     "dependencies are empty by declaration, not by omission."
@@ -149,7 +155,7 @@ def _component(state: dict[str, Any]) -> dict[str, Any]:
             "last_change": state.get("last_change"),
         },
         "evidence": {
-            "source": SOURCE_LIVE_HARDWARE_INVENTORY,
+            "source": str(state.get("source") or SOURCE_LIVE_HARDWARE_INVENTORY),
             "agent_id": state.get("agent_id"),
             "first_seen": _iso(state.get("first_seen")),
             "last_seen": _iso(state.get("last_seen")),
@@ -166,6 +172,8 @@ def generate_hbom(
     *,
     environment: str,
     as_of: Optional[str] = None,
+    sources: Iterable[str] = (),
+    notes: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Build the unified estate HBOM document.
 
@@ -176,6 +184,10 @@ def generate_hbom(
         as_of: explicit anchor. When omitted, the latest observation in
             the rows is used (see :func:`anchor_as_of`). Never a wall
             clock: identical estates must hash identically.
+        sources: additional admitted sources beyond the live hardware
+            inventory, recorded in ``metadata.sources`` so a reader always
+            knows where a component came from.
+        notes: additional declarative notes, appended verbatim.
 
     Returns:
         The complete document including its ``content_hash``.
@@ -197,12 +209,14 @@ def generate_hbom(
             device_types.get(component["device_type"], 0) + 1
         )
 
-    notes = [_DEPENDENCY_NOTE]
+    extra_sources = [str(item) for item in sources if str(item or "").strip()]
+    document_notes = [_DEPENDENCY_NOTE]
     if not components:
-        notes.append(
+        document_notes.append(
             "No hardware assets are persisted for this environment yet — "
             "the HBOM is empty, not fabricated."
         )
+    document_notes.extend(str(item) for item in notes if str(item or "").strip())
     anchor = as_of if as_of is not None else anchor_as_of(states)
 
     document: dict[str, Any] = {
@@ -216,8 +230,8 @@ def generate_hbom(
             "hsm_count": len(hsm_ids),
             "tpm_count": len(tpm_ids),
             "device_types": dict(sorted(device_types.items())),
-            "sources": [SOURCE_LIVE_HARDWARE_INVENTORY],
-            "notes": notes,
+            "sources": list(dict.fromkeys([SOURCE_LIVE_HARDWARE_INVENTORY, *extra_sources])),
+            "notes": document_notes,
         },
         "components": components,
         "hsm_fleet": {"count": len(hsm_ids), "asset_ids": hsm_ids},

@@ -3,12 +3,21 @@ import { Link } from "react-router-dom";
 import { Panel, Badge, Bar, Ring } from "../components/ui";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useChannelRefresh } from "../lib/realtime.js";
-import { apiLiveBom, LiveBomResponse, apiHbomEstate, apiHbomPin, apiHbomSnapshot, apiHbomSnapshots, apiHbomSnapshotDiff, HbomEstateDocument, HbomSnapshotMeta, HbomSnapshotDiff } from "../lib/api.js";
+import { apiLiveBom, LiveBomResponse, apiHbomEstate, apiHbomPin, apiHbomSnapshot, apiHbomSnapshots, apiHbomSnapshotDiff, HbomEstateDocument, HbomEstateComponent, HbomSnapshotMeta, HbomSnapshotDiff } from "../lib/api.js";
 import { IconCertificate, IconCrypto, IconHardware, IconTarget, IconClock, IconSecurity, IconInfo, IconWarn, IconSearch } from "../components/icons";
 
 /* HBOM — two honest surfaces visualized:
    1. Live-scan BOM (hardware a scan-run happened to see)
    2. Unified estate HBOM — ONE document over every persisted hardware row, content-addressed and pinnable */
+
+// Provenance of an HBOM row: devices imported by a stored estate observation are
+// declared, not fingerprinted by an agent, and the table must not blur the two.
+const observationSource = (doc: HbomEstateDocument | null): string | null => {
+  const direct = (doc?.metadata?.sources ?? []).find((item) => item.startsWith("estate observation"));
+  return direct ?? null;
+};
+const fromObservation = (component: HbomEstateComponent, source: string | null): boolean =>
+  Boolean(source) && component.evidence?.source === source;
 
 export default function Hbom() {
   const res = usePollingApi(apiLiveBom, 8000, [], { channels: ["crypto", "estate"] });
@@ -95,6 +104,7 @@ export default function Hbom() {
   }
 
   const meta = estateDoc?.metadata;
+  const estateSource = observationSource(estateDoc);
   // "not read" is not "zero": every estate figure below is gated on the estate
   // document actually having been returned. The two invented normalisers that
   // used to sit in the bars (/100, /80, /50, /40, /12) are gone — a bar now only
@@ -321,7 +331,7 @@ export default function Hbom() {
         <div style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}><span style={{ width: 8, height: 8, borderRadius: 99, background: "var(--green)" }} /> Unified Estate HBOM</h3>
-            <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--dim)" }}>ONE document over every persisted hardware_assets row · per-asset identity + evidence refs · <span style={{ color: "var(--green)" }}>SHA-256 {estateDoc ? estateDoc.content_hash.slice(0, 12) : "—"}…</span></p>
+            <p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--dim)" }}>ONE document over the persisted hardware inventory and the newest stored estate observation · per-asset identity + evidence refs · <span style={{ color: "var(--green)" }}>SHA-256 {estateDoc ? estateDoc.content_hash.slice(0, 12) : "—"}…</span></p>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
             {estateLive && <LiveBadge source="live" label="LIVE" />}
@@ -349,9 +359,9 @@ export default function Hbom() {
                     <td><Badge tone="violet">{c.device_type}</Badge></td>
                     <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{(c.firmware?.details as any)?.version || "—"}</span></td>
                     <td><span style={{ display: "flex", gap: 4 }}>{c.security_modules?.hsm ? <Badge tone="green">HSM</Badge> : null}{c.security_modules?.tpm ? <Badge tone="green">TPM</Badge> : null}{!c.security_modules?.hsm && !c.security_modules?.tpm ? <span style={{ color: "var(--faint)", fontSize: 11 }}>—</span> : null}</span></td>
-                    <td><span className="mono" style={{ fontSize: 11, color: "var(--dim)" }}>{c.evidence?.agent_id || "—"}</span></td>
+                    <td><span className="mono" style={{ fontSize: 11, color: "var(--dim)" }}>{c.evidence?.agent_id || (fromObservation(c, estateSource) ? "no agent (imported)" : "—")}</span></td>
                     <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{c.evidence?.last_seen ? new Date(c.evidence.last_seen).toLocaleDateString() : "—"}</span></td>
-                    <td><Badge tone="slate">{c.evidence?.evidence_ids?.length ?? 0} refs</Badge></td>
+                    <td><span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}><Badge tone={fromObservation(c, estateSource) ? "amber" : "slate"}>{c.evidence?.evidence_ids?.length ?? 0} refs</Badge>{fromObservation(c, estateSource) ? <Badge tone="amber">imported</Badge> : null}</span></td>
                   </tr>
                 ))}
               </tbody>
@@ -359,7 +369,9 @@ export default function Hbom() {
             {!estateDoc.components.length && <div style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>No hardware assets persisted for this environment — empty, not fabricated</div>}
           </div>
         )}
-        {estateDoc && <div style={{ padding: "10px 16px", background: "var(--bg-2)", borderTop: "1px solid var(--line)", fontSize: 11, color: "var(--dim)", display: "flex", gap: 8, flexWrap: "wrap" }}><span>Sources: {meta?.sources?.join(", ") || "—"}</span><span style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>NOT TechBOM hardware layer · NOT live engine memory</span></div>}
+        {estateDoc && <div style={{ padding: "10px 16px", background: "var(--bg-2)", borderTop: "1px solid var(--line)", fontSize: 11, color: "var(--dim)", display: "flex", gap: 8, flexWrap: "wrap" }}><span>Sources: {meta?.sources?.join(", ") || "—"}</span>
+          {(meta?.notes ?? []).map((note) => <span key={note} style={{ color: "var(--dim)" }}>{note}</span>)}
+          <span style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>NOT TechBOM hardware layer · NOT live engine memory</span></div>}
       </div>
 
       {/* Pinned snapshots */}

@@ -43,6 +43,11 @@ def empty_inventory() -> dict[str, Any]:
         "certificates": [],   # certificates -> CBOM evidence
         "vendors": [],        # vendor inventory -> VBOM
         "dependencies": [],   # relationship edges (graph)
+        # packages and crypto libraries a scan's manifest/lockfile pass declared ->
+        # SBOM. Kept separate from ``applications`` because an application is a
+        # system and a package is a coordinate: collapsing them would report one
+        # as the other.
+        "software": [],
         "scan": {},           # scan metadata (id, completed_at, scanners)
     }
 
@@ -57,14 +62,18 @@ from cbom.component_registry import (
     app_component as _app_component,
     crypto_layer_component as _crypto_component,
     hardware_component as _hardware_component,
+    software_component as _software_component,
     vendor_component as _vendor_component,
 )
 
-_LAYER_BUILDERS = {
-    "sbom": ("applications", _app_component),
-    "cbom": ("crypto", _crypto_component),
-    "hbom": ("hardware", _hardware_component),
-    "vendor": ("vendors", _vendor_component),
+#: layer -> the inventory collections that feed it, each with its own builder.
+#: The SBOM layer has two: the applications the estate registers, and the
+#: packages/libraries a scan's manifest pass declared.
+_LAYER_BUILDERS: dict[str, tuple[tuple[str, Any], ...]] = {
+    "sbom": (("applications", _app_component), ("software", _software_component)),
+    "cbom": (("crypto", _crypto_component),),
+    "hbom": (("hardware", _hardware_component),),
+    "vendor": (("vendors", _vendor_component),),
 }
 
 
@@ -116,13 +125,13 @@ def materialize_technology_bom(
     layer_counts: dict[str, int] = {}
     all_components: list[dict[str, Any]] = []
 
-    for layer, (collection, builder) in _LAYER_BUILDERS.items():
-        rows = inv.get(collection) or []
+    for layer, sources in _LAYER_BUILDERS.items():
         comps = []
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            comps.append(builder(row))
+        for collection, builder in sources:
+            for row in inv.get(collection) or []:
+                if not isinstance(row, dict):
+                    continue
+                comps.append(builder(row))
         layers[layer] = {"components": comps, "count": len(comps)}
         layer_counts[layer] = len(comps)
         all_components.extend(comps)

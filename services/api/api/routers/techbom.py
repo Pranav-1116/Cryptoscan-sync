@@ -83,14 +83,83 @@ def _gather_inventory(db: Session, *, limit: int = 2000) -> dict[str, Any]:
                for v in db.execute(select(Vendor).limit(limit)).scalars().all()]
     certs = [{"fingerprint": c.fingerprint_sha256, "subject": c.subject} for c in
              db.execute(select(Certificate).limit(limit)).scalars().all()]
-    deps = [[str(a), str(b)] for a, b in
-            db.execute(select(SystemDependency.parent_id, SystemDependency.child_id)
-                       .limit(limit)).all()]
+    deps: list = [[str(a), str(b)] for a, b in
+                  db.execute(select(SystemDependency.parent_id, SystemDependency.child_id)
+                             .limit(limit)).all()]
+    # The software half of the SBOM: packages and crypto libraries the newest
+    # completed scan's manifest/lockfile pass declared. Without this the SBOM
+    # counted registered systems and reported "0 dependencies" right after a scan
+    # that had found ten of them.
+    software_rows, software = _software_inventory(db, limit=limit)
+    deps.extend(software.get("edges") or [])
+    # The estate observation half: hardware and vendors an imported or discovered
+    # estate established with evidence. Without it an estate whose devices and
+    # suppliers were imported read as "0 hardware, 0 vendors" while its own six-BOM
+    # projection counted them — two views of one estate disagreeing.
+    from api.estate_bom_sources import hardware_rows, software_edges, vendor_rows
+
+    known_hardware = {str(row.get("asset_id") or "") for row in hardware}
+    observed_hardware = [row for row in hardware_rows(db)
+                         if str(row.get("asset_id") or "") not in known_hardware]
+    known_vendors = {str(row.get("name") or "").lower() for row in vendors}
+    observed_vendors = [row for row in vendor_rows(db)
+                        if str(row.get("name") or "").lower() not in known_vendors]
+    known_edges = {tuple(str(x) for x in (dep if isinstance(dep, (list, tuple)) else ()))
+                   for dep in deps}
+    observed_edges = [edge for edge in software_edges(db) if tuple(edge) not in known_edges]
+    deps.extend(observed_edges)
+    hardware = [*hardware, *observed_hardware]
+    vendors = [*vendors, *observed_vendors]
     return {
         "applications": apps, "crypto": crypto, "hardware": hardware,
         "vendors": vendors, "certificates": certs, "dependencies": deps,
-        "scan": {"collected_at": datetime.now(timezone.utc).isoformat()},
+        "software": software_rows,
+        "scan": {
+            "collected_at": datetime.now(timezone.utc).isoformat(),
+            "software": {
+                "schema": software.get("schema"),
+                "state": software.get("state"),
+                "scan_id": software.get("scan_id"),
+                "target": software.get("target"),
+                "completed_at": (software.get("completed_at").isoformat()
+                                 if hasattr(software.get("completed_at"), "isoformat")
+                                 else software.get("completed_at")),
+                "counts": software.get("counts"),
+                "note": software.get("note"),
+            },
+            # what the stored estate observation added to this BOM, so a hardware or
+            # vendor row is never mistaken for a live-agent fingerprint
+            "estate_observation": {
+                "hardware": len(observed_hardware),
+                "vendors": len(observed_vendors),
+                "dependency_edges": len(observed_edges),
+                "source": (
+                    "estate observation (HARDWARE/HSM/VENDOR assets, SBOM edges)"
+                    if (observed_hardware or observed_vendors or observed_edges) else None
+                ),
+                "note": (
+                    "hardware, vendor and dependency rows added from the newest stored "
+                    "estate observation; declared/imported evidence, not live-agent "
+                    "fingerprints"
+                    if (observed_hardware or observed_vendors or observed_edges)
+                    else "no stored estate observation contributed rows to this BOM"
+                ),
+            },
+        },
     }
+
+
+def _software_inventory(db: Session, *, limit: int = 2000) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """SBOM software rows from the newest completed scan that stored a cascade.
+
+    A deployment with no such scan gets an empty list and a state of
+    ``NO_SCAN``/``NO_CASCADE`` — never a fabricated package list.
+    """
+    from api import software_inventory
+
+    inventory = software_inventory.latest_scan_software(db)
+    rows = list(inventory.get("components") or [])[:limit]
+    return rows, inventory
 
 
 def _libraries(c: CryptoAsset) -> str:

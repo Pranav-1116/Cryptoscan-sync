@@ -117,6 +117,54 @@ describe("HBOM page", () => {
     expect(screen.getByText(/No HBOM yet/i)).toBeTruthy();
   });
 
+  it("marks a device that came from a stored estate observation, not from an agent", async () => {
+    const observationSource = "estate observation (HARDWARE/HSM assets)";
+    const mixed = {
+      ...estateDoc,
+      metadata: {
+        ...estateDoc.metadata,
+        component_count: 3,
+        hsm_count: 2,
+        sources: ["live hardware inventory (hardware_assets)", observationSource],
+        notes: [
+          "No collector records hardware-to-system dependency edges yet.",
+          "1 device(s) come from the stored estate observation, not from the live agent; each carries the observation's evidence ids and is declared, not fingerprinted.",
+        ],
+      },
+      components: [
+        ...estateDoc.components,
+        {
+          "bom-ref": "hw:hardware:abc123", asset_id: "hardware:abc123", name: "SYNTHETIC-Vendor-000 LAB-0",
+          manufacturer: "SYNTHETIC-Vendor-000", model: "LAB-0", device_type: "payment-hsm",
+          identity: { serial_reference: null, hardware_revision: null,
+                      current_fingerprint: null, previous_fingerprint: null },
+          firmware: { details: "1.0-SYNTHETIC", last_checked: null },
+          security_modules: { hsm: { declared_only: true } },
+          capabilities: null, crypto_capabilities: ["AES-256"],
+          risk: { score: null, level: null, last_change: null },
+          evidence: { source: observationSource, agent_id: null, first_seen: null,
+                      last_seen: null, last_verified: null, last_crypto_check: null,
+                      evidence_ids: ["ev-o1", "ev-o2", "ev-o3"] },
+        },
+      ],
+    };
+    mockFetch({
+      "/api/v1/live-scan/bom": emptyLiveBom,
+      "/api/v1/hbom": mixed,
+      "/api/v1/hbom/snapshots": { snapshots: [], count: 0, note: "" },
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Unified Estate HBOM")).toBeTruthy());
+    // the imported row says so, in the row and in the document's notes
+    expect(await screen.findByText("imported")).toBeTruthy();
+    expect(screen.getByText("no agent (imported)")).toBeTruthy();
+    expect(screen.getByText(/declared, not fingerprinted/)).toBeTruthy();
+    // and the agent-fingerprinted row is left alone: exactly one imported badge
+    expect(screen.getAllByText("imported")).toHaveLength(1);
+    expect(screen.getByText("agent-dc-1")).toBeTruthy();
+  });
+
   it("renders an honest empty estate — no fabricated components", async () => {
     const empty = {
       ...estateDoc,

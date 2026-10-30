@@ -33,6 +33,18 @@ export default function Sbom() {
   const namedComponents = components.filter((c) => String(c.supplier || "").trim()).length;
   const namedShare = components.length ? namedComponents / components.length : null;
   const vendorCount = state?.components_by_layer?.vendor ?? null;
+  // What the newest stored estate observation contributed to this BOM. It is a
+  // separate, declared source: an imported bank estate has hardware, vendors and
+  // dependency edges without a live agent ever touching it, and each count below
+  // is only drawn when the backend reported it.
+  const observation = (state?.scan?.estate_observation ?? null) as
+    | { hardware?: number; vendors?: number; dependency_edges?: number; source?: string | null; note?: string }
+    | null;
+  const observationHardware = observation?.hardware ?? null;
+  const observationVendors = observation?.vendors ?? null;
+  const observationEdges = observation?.dependency_edges ?? null;
+  const observationActive = Boolean(observation?.source)
+    && [observationHardware, observationVendors, observationEdges].some((value) => (value ?? 0) > 0);
   const pctOfEstate = total && estateTotal ? total / estateTotal : null;
   const ringTone = total ? "violet" as const : "slate" as const;
 
@@ -56,7 +68,20 @@ export default function Sbom() {
             <span className="kicker" style={{ fontSize: 10 }}>CONTENT-ADDRESSED</span>
             <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>snapshot {fmtSnapshotId(state?.snapshot_id).slice(0, 16)} · v{state?.state_version ?? 0}</span>
+            {state?.dependency_count != null && (
+              <>
+                <span style={{ color: "var(--line-strong)" }}>·</span>
+                <span style={{ fontSize: 11, color: "var(--dim)" }}>{state.dependency_count} dependency edges</span>
+              </>
+            )}
           </div>
+          {observationActive && (
+            <p data-testid="sbom-estate-observation" style={{ margin: "10px 0 0", fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
+              <Badge tone="amber">ESTATE OBSERVATION</Badge>{" "}
+              {observationHardware ?? 0} hardware · {observationVendors ?? 0} vendor · {observationEdges ?? 0} dependency edges come from the{" "}
+              {observation?.source} — declared/imported evidence, not agent fingerprints. {observation?.note}
+            </p>
+          )}
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>

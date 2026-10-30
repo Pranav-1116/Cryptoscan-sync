@@ -57,6 +57,42 @@ def app_component(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def software_component(row: dict[str, Any]) -> dict[str, Any]:
+    """A package or crypto library a scan declared — an SBOM component.
+
+    Two fields carry the honesty of this row: ``origin`` says whether the scanner
+    saw the library referenced by code or only by a manifest, and
+    ``declared_not_installed`` states that a coordinate in a manifest is a build
+    declaration, not an installed package. Neither is a guess: both come from the
+    scan's own cascade report.
+    """
+    kind = str(row.get("component_type") or "package")
+    ecosystem = str(row.get("ecosystem") or "")
+    name = row.get("name") or "unknown"
+    version = row.get("version") or "unknown"
+    coordinate = str(row.get("coordinate") or (f"{ecosystem}/{name}" if ecosystem else f"{kind}/{name}"))
+    return {
+        "type": "library" if kind == "library" else "package",
+        "name": name,
+        "version": version,
+        "supplier": ecosystem or "declared",
+        "asset": coordinate,
+        "environment": "",
+        "criticality": "crypto" if row.get("crypto_bearing") else "",
+        "bom-ref": f"{kind}:{coordinate}",
+        "ecosystem": ecosystem or None,
+        "origin": row.get("origin") or "MANIFEST_DECLARED",
+        "declared_in": row.get("declared_in"),
+        "dependency_type": row.get("dependency_type"),
+        "direct": row.get("direct"),
+        "algorithms": list(row.get("algorithms") or []),
+        "declared_but_unused": bool(row.get("declared_but_unused")),
+        "used_but_undeclared": bool(row.get("used_but_undeclared")),
+        "crypto_bearing": bool(row.get("crypto_bearing")),
+        "declared_not_installed": True,
+    }
+
+
 def crypto_layer_component(row: dict[str, Any]) -> dict[str, Any]:
     from shared_models.import_provenance import project_import_provenance
     row = project_import_provenance(row)
