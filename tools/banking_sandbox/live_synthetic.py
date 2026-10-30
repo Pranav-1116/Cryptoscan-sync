@@ -294,7 +294,8 @@ def run_live(estate: Path, output: Path, port_base: int = 21000, max_services: i
             pass
 
 
-def run_daemon(estate: Path, port_base: int = 21000, max_services: int = 20) -> dict[str, Any]:
+def run_daemon(estate: Path, port_base: int = 21000, max_services: int = 20,
+               dashboard_port: int = 8090) -> dict[str, Any]:
     """Start live listeners forever (for preview). Returns handle info; blocking."""
     estate = Path(estate).resolve(strict=True)
     root, meta = open_estate(estate)
@@ -317,8 +318,10 @@ def run_daemon(estate: Path, port_base: int = 21000, max_services: int = 20) -> 
         ready.wait(timeout=2.0)
         print(f"[live] {cn} ({svc.get('bank_id')}) on 127.0.0.1:{port} san={san} key={key_type} ver={ver}", flush=True)
 
-    # serve a tiny live index on 8081 as well
-    def serve_index():
+    # serve a tiny live index too — but only if the port is actually ours. A busy
+    # dashboard port is a cosmetic problem: the TLS services are the point, and a
+    # traceback from a background thread reads like the daemon failed.
+    def index_server():
         from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
         import functools
         tmp = Path(tempfile.mkdtemp(prefix="live-index-"))
@@ -329,9 +332,27 @@ def run_daemon(estate: Path, port_base: int = 21000, max_services: int = 20) -> 
 {"".join(f"<tr><td>{s.get('bank_id')}</td><td>{s.get('endpoint_id') or s.get('app_id')}</td><td>{port_base+i}</td><td>{s.get('sni') or (s.get('endpoint_id') or '')+'.lab.invalid'}</td></tr>" for i,s in enumerate(services))}
 </table><p>Probe: <code>openssl s_client -connect 127.0.0.1:{port_base} -servername bank-0001.lab.invalid -quiet</code> or use <code>services/network_scanner/probing/tls_handshaker.handshake</code>.</p></body></html>"""
         (tmp/"index.html").write_text(html)
-        ThreadingHTTPServer(("0.0.0.0", 8090), functools.partial(SimpleHTTPRequestHandler, directory=str(tmp))).serve_forever()
-    threading.Thread(target=serve_index, daemon=True).start()
-    print(f"[live] dashboard on 0.0.0.0:8090", flush=True)
+        # bind in this thread so "address in use" is caught here, not in a thread
+        return ThreadingHTTPServer(("0.0.0.0", dashboard_port),
+                                   functools.partial(SimpleHTTPRequestHandler, directory=str(tmp)))
+
+    if not dashboard_port:
+        print("[live] index page disabled (--dashboard-port 0)", flush=True)
+        server = None
+    else:
+        try:
+            server = index_server()
+        except OSError as exc:
+            print(
+                f"[live] no index page: 0.0.0.0:{dashboard_port} is not available ({exc.strerror or exc}). "
+                f"The {len(services)} TLS services above are running; pass --dashboard-port to serve the index "
+                f"elsewhere, or 0 to disable it",
+                flush=True,
+            )
+            server = None
+    if server is not None:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        print(f"[live] dashboard on 0.0.0.0:{dashboard_port}", flush=True)
     try:
         while True:
             time.sleep(3600)

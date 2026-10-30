@@ -346,7 +346,9 @@ def collect_runtime(
         "target": f"processes on {host_name}",
         "expected": inventory.get("total_processes_scanned"),
         "collected": inventory.get("process_count"),
-        "status": "COMPLETE" if inventory.get("total_processes_scanned") else "NO_TARGET",
+        # The estate engine's vocabulary, not a word of our own: nothing scanned is a
+        # failed collection, and it must reach the coverage row as one.
+        "status": "COMPLETE" if inventory.get("total_processes_scanned") else "FAILED",
         "note": "same-user processes are readable without privilege; other users' maps are not",
         "impact": None if inventory.get("processes_with_tls_libraries") else
                   "no process on this host maps a crypto library this collector recognises",
@@ -528,13 +530,32 @@ def collect_network(
             "produces no evidence at all and is listed with its reason"
         ),
     }
+    # all targets negotiated -> COMPLETE; some -> PARTIAL; none but targets were
+    # named -> FAILED (the plane's inventory is unknown, not empty); no targets at
+    # all -> NOT_ATTEMPTED. Each of those is a coverage fact, never an absence.
+    if results and observed == len(results):
+        status = "COMPLETE"
+    elif observed:
+        status = "PARTIAL"
+    elif results:
+        status = "FAILED"
+    else:
+        status = "NOT_ATTEMPTED"
     collector = {
         "plane": "NETWORK",
-        "status": "COMPLETE" if observed else ("NO_TARGET" if results else "NOT_ATTEMPTED"),
+        "status": status,
         "expected": len(results),
         "collected": observed,
         "reason": "active TLS handshake per target",
-        "impact": None if observed else "no handshake completed, so no negotiated cryptography",
+        "impact": (
+            None if status == "COMPLETE"
+            else (
+                f"no handshake completed on any of the {len(results)} named targets: this plane's "
+                "inventory is unknown, not empty"
+                if status == "FAILED"
+                else "some targets did not negotiate; they are NOT_OBSERVED, not empty"
+            )
+        ),
     }
     return _package_dict(package, collector=collector, coverage=coverage, summary=summary)
 

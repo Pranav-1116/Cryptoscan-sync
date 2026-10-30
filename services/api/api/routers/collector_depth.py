@@ -362,13 +362,25 @@ def collect_now(
         include_boms=True,
         persist=True,
     )
+    collector_reports = [{"id": package["id"], **package["summary"]} for package in packages]
     try:
         result = estate_graph.run_discovery(db, user, request)
+    except HTTPException as exc:
+        # The engine refused the payload after the collectors had already run.
+        # Carry their reports out with the refusal: without them the caller sees a
+        # rule violation but not which targets failed or why.
+        if exc.status_code == 422 and isinstance(exc.detail, dict):
+            exc.detail = {**exc.detail, "collectors": collector_reports}
+        raise
     except ValueError as exc:
         raise HTTPException(
             status_code=422,
             detail={"error": "collection_rejected", "reason": str(exc),
                     "stored": False,
+                    # The collectors already ran. Returning only the engine's
+                    # complaint hides which targets failed and why, so carry their
+                    # own reports out with the refusal.
+                    "collectors": collector_reports,
                     "note": "a collector produced an edge the estate engine refuses; nothing was "
                             "written and the offending fact is named above"},
         ) from exc

@@ -454,6 +454,11 @@ def collector_outcome(
 ) -> dict[str, Any]:
     """A collector's own result — a failure is a coverage fact, not an absence (§15)."""
     state = str(status or "UNKNOWN").upper()
+    # ``NO_TARGET`` is the coverage vocabulary's word for "named targets, no
+    # result". It is a failed collection, not an unknown one: accepting it keeps
+    # an older payload storable while saying the same thing.
+    if state == "NO_TARGET":
+        state = "FAILED"
     if state not in {"COMPLETE", "PARTIAL", "FAILED", "NOT_ATTEMPTED", "UNKNOWN"}:
         raise ValueError(f"unknown collector status {status!r}")
     expected, collected = max(0, int(expected)), max(0, int(collected))

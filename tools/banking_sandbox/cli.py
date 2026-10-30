@@ -42,6 +42,8 @@ def main():
     s.add_argument("--estate", type=Path, required=True)
     s.add_argument("--port-base", type=int, default=21000)
     s.add_argument("--max-services", type=int, default=20)
+    s.add_argument("--dashboard-port", type=int, default=8090,
+                   help="port for the small index page; 0 disables it")
     s = sub.add_parser("realbanks")
     s.add_argument("--estate", type=Path, required=True)
     s.add_argument("--host", default="127.0.0.1")
@@ -103,7 +105,8 @@ def main():
     elif a.command == "live-daemon":
         from tools.banking_sandbox.live_synthetic import run_daemon
 
-        return run_daemon(a.estate, port_base=a.port_base, max_services=a.max_services)
+        return run_daemon(a.estate, port_base=a.port_base, max_services=a.max_services,
+                          dashboard_port=a.dashboard_port)
     elif a.command == "realbanks":
         from tools.banking_sandbox.realbanks import render, serve
 

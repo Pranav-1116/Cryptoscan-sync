@@ -704,12 +704,16 @@ def connect(
     do_cbom: bool = True,
     do_observe: bool = True,
     live_targets: list[str] | None = None,
+    do_preflight: bool = True,
     windows_artifacts: list[str] | None = None,
     do_runtime: bool = False,
 ) -> dict[str, Any]:
     public = estate / "public"
     result: dict[str, Any] = {"schema": SCHEMA, "estate": str(estate), "api": api, "steps": {}}
     connection = _client(api, user, password)
+    # Progress goes to stderr so the JSON on stdout stays machine-readable. A run
+    # takes ~15s with the collectors, and silence for that long reads as a hang.
+    _say(f"connected to {api} as {user}")
 
     # 1. product 2 scans product 1's source tree ----------------------------- #
     if do_scan and (public / "source").is_dir():
@@ -733,6 +737,7 @@ def connect(
             result["steps"]["scan"] = step
         else:
             job_id = queued.json()["job_id"]
+            _say(f"scan queued: job {job_id} (the static pipeline runs asynchronously)")
             job: dict[str, Any] = {}
             for _ in range(120):
                 job = connection.get(f"/api/v1/jobs/{job_id}").json()
@@ -761,6 +766,7 @@ def connect(
         hints: list[str] = []
         # A substituted check is not a failure, but it must not pass silently.
         notes: list[str] = []
+        _say("importing declared CBOM documents ...")
         for doc in _rows(public, "cbom"):
             target = str(doc.get("target") or "")
             document = doc.get("document") or {}
@@ -777,6 +783,7 @@ def connect(
             )
             imported = None if response.status_code != 200 else response.json().get("imported")
             if response.status_code == 200:
+                _say(f"cbom import {len(ingested) + 1}/21 ok ({imported} asset(s))")
                 for note in (response.json().get("validation") or {}).get("warnings") or []:
                     if note not in notes:
                         notes.append(note)
@@ -810,6 +817,7 @@ def connect(
 
     # 3. one estate observation ---------------------------------------------- #
     if do_observe:
+        _say("posting one estate observation ...")
         observation = build_observation(estate)
         response = connection.post("/api/v1/ingestion/observations", json=observation)
         body = response.json() if response.content else {}
@@ -830,7 +838,24 @@ def connect(
     collectors = [name for name, wanted in (
         ("runtime", do_runtime), ("network", bool(live_targets)), ("windows", bool(windows_artifacts)),
     ) if wanted]
+    if live_targets and do_preflight:
+        unreachable = _preflight(live_targets)
+        result["steps"]["preflight"] = {
+            "targets": len(live_targets),
+            "unreachable": unreachable,
+            "note": (
+                "a TCP connect from this shell, not evidence: it says whether the listener is "
+                "there, never what it negotiated"
+            ),
+        }
+        if len(unreachable) == len(live_targets):
+            _say(f"none of the {len(live_targets)} targets accepts a TCP connection — the TLS "
+                 f"services are not listening (check the live-daemon), so the network collector "
+                 f"will record FAILED, not empty")
+
     if collectors:
+        _say(f"running collectors: {', '.join(collectors)}"
+             + (f" against {len(live_targets or [])} target(s)" if live_targets else ""))
         result["steps"]["collection"] = _collect(
             connection,
             collectors=collectors,
@@ -839,8 +864,38 @@ def connect(
         )
 
     # 5. read back what product 2 now knows ---------------------------------- #
+    _say("reading back what CryptoScan now knows ...")
     result["output"] = _read_back(connection)
     return result
+
+
+def _preflight(targets: list[str], timeout: float = 0.6) -> list[dict[str, str]]:
+    """Which targets accept a TCP connection from this shell, and why not.
+
+    Not evidence — a listener that answers a connect() has told us nothing about
+    what it negotiates. It exists so a mistyped port or a daemon that never
+    started is visible before the run, instead of arriving as twenty rows of
+    FAILED in a collector report.
+    """
+    import socket
+
+    unreachable: list[dict[str, str]] = []
+    for target in targets:
+        host, _, port = str(target).rpartition(":")
+        try:
+            with socket.create_connection((host or "127.0.0.1", int(port)), timeout=timeout):
+                continue
+        except (OSError, ValueError) as exc:
+            unreachable.append({"target": str(target), "error": str(exc)})
+    if unreachable:
+        _say(f"{len(unreachable)}/{len(targets)} target(s) do not accept a TCP connection")
+        for row in unreachable[:5]:
+            _say(f"  {row['target']}: {row['error']}")
+    return unreachable
+
+
+def _say(message: str) -> None:
+    print(f"[connect] {message}", file=sys.stderr, flush=True)
 
 
 def _collect(connection, *, collectors: list[str], targets: list[str],
@@ -859,6 +914,16 @@ def _collect(connection, *, collectors: list[str], targets: list[str],
     body = response.json() if response.content else {}
     if response.status_code >= 400:
         detail = body.get("detail") if isinstance(body, dict) else None
+        # The collectors ran before the engine refused the payload; their own
+        # reports are the only place the per-target failure is visible.
+        reports = (detail or {}).get("collectors") if isinstance(detail, dict) else None
+        for report in reports or []:
+            if report.get("collector") == "network":
+                failed = [row for row in report.get("results") or [] if not row.get("observed")]
+                for row in failed[:5]:
+                    _say(f"network {row.get('target')} failed: {row.get('error')}")
+                if len(failed) > 5:
+                    _say(f"... {len(failed) - 5} more failing target(s)")
         return {"status": response.status_code, "ran": False,
                 "detail": detail or str(response.text)[:300]}
     maturity = body.get("bom_maturity") or {}
@@ -921,6 +986,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--live-targets", action="append", default=[], metavar="HOST:PORT[-PORT]",
                         help="targets for the network collector; repeatable, ranges expand "
                              "(e.g. 127.0.0.1:21000-21019)")
+    parser.add_argument("--no-preflight", action="store_true",
+                        help="skip the TCP reachability check on --live-targets")
     parser.add_argument("--windows-artifacts", action="append", default=[], metavar="PATH",
                         help="exported Windows artefacts for the windows collector; repeatable")
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -939,6 +1006,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         do_cbom=not args.skip_cbom,
         do_observe=not args.skip_observe,
         live_targets=_expand_targets(args.live_targets),
+        do_preflight=not args.no_preflight,
         windows_artifacts=_expand_artifacts(args.windows_artifacts),
         do_runtime=args.runtime,
     )
