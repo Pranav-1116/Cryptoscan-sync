@@ -81,7 +81,17 @@ def client(monkeypatch):
         }
 
     monkeypatch.setattr(NetworkTlsScanner, "scan_hosts", fake_scan)
-    monkeypatch.setattr(network_router, "admit_network", lambda targets, **kwargs: {"decision": "PERMITTED", "targets": list(targets)})
+    # The admission the run ledger records carries the host count; a stub without it
+    # is the drift test_network_crypto_budget_passive exists to catch.
+    monkeypatch.setattr(
+        network_router,
+        "admit_network",
+        lambda targets, **kwargs: {
+            "decision": "PERMITTED",
+            "targets": list(targets),
+            "checked_targets": len(targets),
+        },
+    )
     monkeypatch.setattr(network_router, "meter_network", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         network_router,
