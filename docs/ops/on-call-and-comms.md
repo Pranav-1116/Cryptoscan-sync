@@ -9,6 +9,10 @@ severity model: who is called, in what order, and how fast external
 parties hear from us. Keep it current — a stale roster is the most common
 incident-response failure mode.
 
+First response procedure: [on-call triage](../runbooks/oncall-triage.md).
+The objectives and enforced limits being paged on:
+[service objectives and limits](slo-and-limits.md).
+
 ## 1. On-call roster
 
 Rotation: [ORG: e.g. weekly, rotating Monday 06:00 UTC; tool: PagerDuty /

@@ -2,6 +2,21 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# SLO recording rules and paging alerts. These live here, not in the API,
+# because an alert raised by the process being monitored cannot survive that
+# process failing.
+rule_files:
+  - /etc/prometheus/rules/alerts.yml
+  # Drop the line above and uncomment these to run from a checkout:
+  # - alerts.yml
+
+# Uncomment once Alertmanager is running; without it, alerts evaluate and go
+# nowhere, which is its own kind of silent outage.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]
+
 scrape_configs:
   - job_name: cryptoscan-api
     metrics_path: /metrics

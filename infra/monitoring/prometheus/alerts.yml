@@ -1,0 +1,153 @@
+# Prometheus rules for the CryptoScan API.
+#
+# Why this file exists: the API already evaluates self-alerts in-process and
+# serves them from /ops/alerts. That is useful for a human looking at the
+# console, and useless as paging: when the process is down, deadlocked, or
+# failing every request, the component that would raise the alert is the one
+# that is broken. These rules live in Prometheus, outside the system they
+# watch, and are evaluated on scraped metrics.
+#
+# Metric contract (services/api/api/middleware/observability_middleware.py and
+# services/observability/observability/metrics.py):
+#   http_requests_total{method,status}            counter, every response
+#   http_server_errors_total{method}              counter, 5xx only
+#   http_request_duration_seconds{class,method}   histogram, milliseconds in seconds
+#   up{job="cryptoscan-api"}                      Prometheus scrape health
+#
+# Thresholds mirror DEFAULT_SLOS in services/observability/observability/metrics.py
+# (availability 0.999, p99 500 ms, error rate 1%). scripts/tests/test_monitoring_rules.py
+# fails if they drift apart from the application's own SLO definitions.
+groups:
+  - name: cryptoscan-slo-recording
+    interval: 30s
+    rules:
+      # Error ratio over 5m, used by both the alert and the dashboard.
+      - record: cryptoscan:http_error_ratio:rate5m
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_requests_total[5m])), 1e-9)
+      - record: cryptoscan:http_error_ratio:rate1h
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[1h]))
+          /
+          clamp_min(sum(rate(http_requests_total[1h])), 1e-9)
+      - record: cryptoscan:http_request_rate:rate5m
+        expr: sum(rate(http_requests_total[5m]))
+      # Availability over the SLO window: 1 - (server errors / all requests).
+      - record: cryptoscan:availability:ratio1h
+        expr: 1 - cryptoscan:http_error_ratio:rate1h
+      - record: cryptoscan:latency_p99_seconds:rate5m
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          )
+
+  - name: cryptoscan-slo-alerts
+    rules:
+      # ── the alert that works when the API does not ──────────────────────
+      - alert: CryptoscanApiDown
+        expr: up{job="cryptoscan-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: cryptoscan-api
+        annotations:
+          summary: "CryptoScan API is not being scraped"
+          description: >-
+            Prometheus cannot scrape {{ $labels.instance }}. Either the process is
+            down or the whole tier is unavailable. This is the alert that must
+            fire when nothing inside the API can.
+          runbook_url: docs/runbooks/oncall-triage.md
+
+      - alert: CryptoscanScrapeTargetMissing
+        expr: absent(up{job="cryptoscan-api"})
+        for: 10m
+        labels:
+          severity: critical
+          service: cryptoscan-api
+        annotations:
+          summary: "CryptoScan scrape target vanished from Prometheus"
+          description: >-
+            No series for the API exists at all, so no other rule here can fire.
+            Usually a Prometheus reload or configuration change, which is itself
+            an outage of monitoring.
+          runbook_url: docs/runbooks/oncall-triage.md
+
+      # ── error budget ────────────────────────────────────────────────────
+      # 0.999 availability over 1h leaves 0.1% of requests. A 14.4x burn rate
+      # (1.44% error ratio) exhausts the hour's budget in ~5 minutes.
+      - alert: CryptoscanAvailabilityBudgetBurnHigh
+        expr: cryptoscan:http_error_ratio:rate1h > 0.0144
+        for: 5m
+        labels:
+          severity: critical
+          service: cryptoscan-api
+        annotations:
+          summary: "CryptoScan is burning the availability budget 14x too fast"
+          description: >-
+            Error ratio {{ $value | humanizePercentage }} over the last hour against
+            a 99.9% target (0.1% budget). At this rate the monthly budget is gone in
+            about two days. Check /readyz, the database, and the last deployment.
+          runbook_url: docs/runbooks/oncall-triage.md
+
+      - alert: CryptoscanServerErrorRate
+        expr: cryptoscan:http_error_ratio:rate5m > 0.01
+        for: 10m
+        labels:
+          severity: high
+          service: cryptoscan-api
+        annotations:
+          summary: "CryptoScan 5xx rate above 1%"
+          description: >-
+            {{ $value | humanizePercentage }} of requests returned 5xx over 5 minutes.
+            Sustained, this is a user-visible failure even while the process is up.
+          runbook_url: docs/runbooks/oncall-triage.md
+
+      # ── latency ─────────────────────────────────────────────────────────
+      - alert: CryptoscanLatencyP99High
+        expr: cryptoscan:latency_p99_seconds:rate5m > 0.5
+        for: 15m
+        labels:
+          severity: high
+          service: cryptoscan-api
+        annotations:
+          summary: "CryptoScan p99 latency above the 500 ms SLO"
+          description: >-
+            p99 is {{ $value | humanizeDuration }}. Slow queries and a saturated
+            worker pool look the same from here: check database wait time and the
+            running-job count before scaling the API.
+          runbook_url: docs/runbooks/oncall-triage.md
+
+      # ── traffic anomalies ───────────────────────────────────────────────
+      - alert: CryptoscanNoTraffic
+        expr: |
+          sum(rate(http_requests_total[10m])) == 0
+          and
+          up{job="cryptoscan-api"} == 1
+        for: 15m
+        labels:
+          severity: high
+          service: cryptoscan-api
+        annotations:
+          summary: "CryptoScan is up but serving no requests"
+          description: >-
+            The process scrapes fine and has answered nothing for 15 minutes. That
+            is a routing, ingress or client problem, and it is invisible to
+            availability and error-rate alerts because they have no denominator.
+          runbook_url: docs/runbooks/oncall-triage.md
+
+      - alert: CryptoscanRateLimitStorm
+        expr: sum(rate(http_requests_total{status="429"}[5m])) > 10
+        for: 10m
+        labels:
+          severity: medium
+          service: cryptoscan-api
+        annotations:
+          summary: "Sustained 429s: a client is being throttled"
+          description: >-
+            {{ $value | humanize }} rejections/second for 10 minutes. Either a
+            misbehaving integration or real capacity pressure — check per-identity
+            limits in api/middleware/rate_limit.py before raising them.
+          runbook_url: docs/runbooks/oncall-triage.md

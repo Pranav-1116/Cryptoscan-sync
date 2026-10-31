@@ -107,7 +107,7 @@ def find_binaries(explicit: str | None = None) -> tuple[Path, str]:
 
         bundled = Path(pgserver.__file__).parent / "pginstall" / "bin"
         candidates.append((bundled, "pgserver bundled distribution"))
-    except Exception:  # pragma: no cover - pgserver is optional
+    except ImportError:  # pragma: no cover - pgserver is optional
         pass
     pg_config = shutil.which("pg_config")
     if pg_config:
