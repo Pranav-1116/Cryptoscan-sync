@@ -452,8 +452,23 @@ def frontend_calls() -> list[Call]:
     return calls
 
 
+#: The two shipped command-line entry points. They were outside every caller scan
+#: until now: `scripts/` and `integrations/` were walked, and the CLIs that an
+#: operator actually runs were not. ``cli.py`` is the in-process operator path and
+#: builds no URLs; ``cli_remote.py`` is the bank-facing HTTP client and is exactly
+#: the kind of caller this scan exists for.
+CLI_SOURCES: tuple[str, ...] = (
+    "services/api/api/cli_remote.py",
+    "services/api/api/cli.py",
+)
+
+
 def script_calls() -> list[Call]:
     calls: list[Call] = []
+    for name in CLI_SOURCES:
+        path = ROOT / name
+        if path.exists():
+            calls.extend(_python_calls(path))
     for directory in ("scripts", "integrations"):
         base = ROOT / directory
         if not base.exists():

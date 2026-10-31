@@ -7,6 +7,11 @@
 > The controlled shipping collection adapter remains **local-source/v1**; broader
 > collector scenarios below need separate qualification. Guides **56–58** retain
 > Preview external-assurance, operating-duty and bounded payments-pilot contracts.
+>
+> **Path-level verification:** [guide 100](100-broken-path-audit.md) records the five
+> checks that decide whether a route is *broken* (exists, does not work) versus
+> *missing* (never built), the defects those checks found, and what they still
+> cannot see. It is a measurement, not an assurance claim.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

@@ -816,8 +816,11 @@ docs/bank-environment/                  ← docs/bank
 The entry point is `cryptoscan = "api.cli:main"`. Moving the tree would touch imports and CI
 for a naming preference, and renames are the kind of change that produces a diff nobody can
 review against behaviour. The boundary that matters — **client code cannot reach collector
-code** — is enforced by module structure (`cli_remote.py` imports no estate/discovery module),
-not by directory names. If the tree is reorganised later, this table is the mapping.
+code** — is enforced by module structure (`cli_remote.py` imports no estate, discovery, router
+or database module; the only non-stdlib names it imports are `shared_models.release_signature`,
+`cryptography` and `yaml`, each for an operation that runs on the operator's own machine), and
+by `scripts/tests/test_cli_architecture_boundary.py`, which fails if that stops being true. It
+is not enforced by directory names. If the tree is reorganised later, this table is the mapping.
 
 ---
 
@@ -903,6 +906,7 @@ approximating an answer.
 |---|---|---|
 | `services/api/tests/unit/test_cli_control_plane.py` | 104 | unconfigured client refuses before a connection; `--dry-run` posts only a preflight; `scan --target` without a revision never reaches the server; refusals exit 3 with the closest route; 401 → 1 with the login hint; 5xx → 2 and "do not treat it as an empty result"; `doctor` reports `NOT_OBSERVED` for a silent probe; `twin status` never opens a local database; the session token is never echoed and is stored `0600`; both credentials are sent when configured; the assurance reads print what they read and refuse the three wrong readings |
 | `services/api/tests/unit/test_cli_onprem_boundary.py` | 1 | the installed CLI never opens the local database: the bank-API commands are the only path |
+| `scripts/tests/test_cli_architecture_boundary.py` | 14 | the split is now actually enforced: `cli_remote.py` imports nothing outside the standard library plus the three documented dependencies (no `db`, no routers, no estate, no `session_factory`), the local CLI keeps its injected session factory, the remote CLI is imported by the parser but not by the route layer, both CLI files are inside the route contract (61 literal paths, 0 unknown), and every `cryptoscan …` line in this document is a command some parser defines |
 | `services/api/tests/unit/test_release_manifest.py` | 9 | generator refuses an empty manifest; `verify-installation` accepts generator output; a tampered file is a mismatch; a signature is `VALID` only against a caller-supplied key |
 | `test_estate_twin_cli.py`, `test_estate_kubernetes_cli.py`, `test_network_collect_cli.py` | 55 | the pre-existing in-process commands still behave after the merge |
 
