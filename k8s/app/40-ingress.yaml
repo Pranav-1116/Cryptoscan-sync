@@ -4,13 +4,44 @@ metadata:
   name: cryptoscan
   namespace: cryptoscan
   annotations:
+    # ── TLS ──────────────────────────────────────────────────────────────
+    # TLS is terminated here, at the ingress controller. The API itself
+    # speaks plain HTTP on the pod network and is not exposed outside the
+    # cluster (see 21-api-service.yaml: ClusterIP).
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305"
+    nginx.ingress.kubernetes.io/ssl-prefer-server-ciphers: "false"
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+
+    # ── request limits and timeouts ──────────────────────────────────────
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
-    # Optional: lock down to your IP ranges
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # The controller appends the address it observed to X-Forwarded-For and
+    # sets X-Forwarded-Proto: that is what the API's TRUSTED_PROXY_COUNT=1 rule
+    # reads (see 10-configmap.yaml). Do NOT enable use-forwarded-headers on the
+    # controller: inbound X-Forwarded-For is then preserved and client-supplied
+    # entries survive, so the trusted hop count would have to become 2.
+
+    # ── optional operator controls ───────────────────────────────────────
+    # cert-manager: uncomment and install a ClusterIssuer to replace the
+    # manually provisioned secret below.
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # Lock down to your office/VPN ranges:
     # nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
 spec:
   ingressClassName: nginx
   tls:
     - hosts: ["cryptoscan.example.com"]
+      # Must exist in the cryptoscan namespace before the ingress is applied:
+      #   kubectl -n cryptoscan create secret tls cryptoscan-tls \
+      #     --cert=fullchain.pem --key=privkey.pem
+      # Renewal is the operator's job (or cert-manager's).
       secretName: cryptoscan-tls
   rules:
     - host: cryptoscan.example.com

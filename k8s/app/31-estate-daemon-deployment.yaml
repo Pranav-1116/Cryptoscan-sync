@@ -27,6 +27,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+      automountServiceAccountToken: false
       containers:
         - name: estate-daemon
           image: cryptoscan-api:v1.0.0
@@ -49,8 +50,17 @@ spec:
               memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
+            # The daemon writes its snapshot/registry state under
+            # /var/lib/cryptoscan/telecom and its scratch work under /tmp; both
+            # are mounted below, so the image layer stays read-only.
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: telecom
+              mountPath: /var/lib/cryptoscan/telecom
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             # Liveness is the heartbeat, not "the process exists": a daemon whose
             # loops have stalled should be restarted, and a fresh process writes a
@@ -74,6 +84,15 @@ spec:
             periodSeconds: 60
             timeoutSeconds: 20
             failureThreshold: 3
+      volumes:
+        # The registry snapshot must survive a restart, so it is a PVC rather
+        # than an emptyDir; the daemon re-reads it on boot.
+        - name: telecom
+          persistentVolumeClaim:
+            claimName: cryptoscan-telecom
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
       # A run in flight finishes before the pod goes away; the heartbeat records
       # STOPPED so a clean restart is not mistaken for a crash.
       terminationGracePeriodSeconds: 300

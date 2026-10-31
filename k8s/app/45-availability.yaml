@@ -1,0 +1,73 @@
+# Availability and blast-radius controls for the API tier.
+#
+# The API Deployment runs 2 replicas; without these two objects a node drain
+# still takes both pods down at once, and any pod in the cluster can reach the
+# API directly, bypassing the ingress (and the TLS/auth edge it provides).
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cryptoscan-api
+  namespace: cryptoscan
+spec:
+  # Voluntary disruptions (node drain, cluster upgrade) must leave one API pod
+  # serving. minAvailable=1 with replicas=2 means a drain proceeds one pod at a
+  # time; it blocks rather than takes the API offline.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: cryptoscan-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cryptoscan-worker
+  namespace: cryptoscan
+spec:
+  # The worker may legitimately run at 0 during a drain — scan jobs are queued
+  # and resumed — so the budget only asserts that a drain is intentional.
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app: cryptoscan-worker
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: cryptoscan-api-ingress
+  namespace: cryptoscan
+spec:
+  podSelector:
+    matchLabels:
+      app: cryptoscan-api
+  policyTypes:
+    - Ingress
+  ingress:
+    # Health probes come from the kubelet on the node, which is not a pod and
+    # has no pod labels. Most CNIs (Calico, Cilium with host-policy off) exempt
+    # node/kubelet traffic; if yours does not, add the node CIDR as an ipBlock
+    # here or readiness will fail and the pods will never join the Service:
+    #   - from: [{ipBlock: {cidr: <node/pod-cidr>}}]
+    # The ingress-controller and monitoring namespaces are the only in-cluster
+    # callers the API needs.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8010
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8010
+    - from:
+        - podSelector:
+            matchLabels:
+              app: cryptoscan-worker
+      ports:
+        - protocol: TCP
+          port: 8010

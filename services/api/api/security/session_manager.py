@@ -18,10 +18,35 @@ from api.config.settings import get_settings
 
 
 class SessionManager:
+    """Mint and validate HMAC-signed sessions.
+
+    Verification accepts ``SECRET_KEY`` plus any key still listed in
+    ``SECRET_KEY_PREVIOUS``; signing only ever uses the current key. That is what
+    makes a rotation a rotation and not a mass logout: for the overlap window a
+    token minted before the change keeps validating, and every token minted after
+    it carries the new key — so clearing the previous entry ends the overlap
+    exactly once, on purpose.
+    """
+
     def __init__(self, secret: str | None = None, ttl_seconds: int | None = None):
         settings = get_settings()
         self.secret = (secret or settings.SECRET_KEY).encode()
         self.ttl = ttl_seconds or int(settings.SESSION_EXPIRE_HOURS * 3600)
+        if secret is not None:
+            # An explicit key (a test, a migration tool) means exactly one key:
+            # silently accepting the deployment's previous keys would make the
+            # argument a lie.
+            self.previous_secrets: tuple[bytes, ...] = ()
+        else:
+            self.previous_secrets = tuple(
+                part.strip().encode()
+                for part in (getattr(settings, "SECRET_KEY_PREVIOUS", "") or "").split(",")
+                if part.strip() and part.strip() != (settings.SECRET_KEY or "").strip()
+            )
+
+    @property
+    def verification_secrets(self) -> tuple[bytes, ...]:
+        return (self.secret, *self.previous_secrets)
 
     def create_session(self, username: str, **kwargs) -> str:
         now = time.time()
@@ -86,9 +111,18 @@ class SessionManager:
     def _decode(self, token: str) -> dict | None:
         try:
             raw, sig = token.split(".", 1)
-            expected = hmac.new(self.secret, raw.encode(), hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(sig, expected):
+            matched = None
+            for index, key in enumerate(self.verification_secrets):
+                expected = hmac.new(key, raw.encode(), hashlib.sha256).hexdigest()
+                if hmac.compare_digest(sig, expected):
+                    matched = index
+                    break
+            if matched is None:
                 return None
+            if matched:
+                # Signed by a retired key: valid during the overlap, visible in
+                # the log so an operator can see the window actually closing.
+                logger.info("session_accepted_with_previous_secret_key", extra={"previous_key_index": matched})
             pad = "=" * (-len(raw) % 4)
             data = json.loads(urlsafe_b64decode(raw + pad).decode())
             if time.time() > data.get("expires_at", 0):

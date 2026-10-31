@@ -1,0 +1,15 @@
+# Snapshot/registry storage for the estate daemon. It holds the last observed
+# estate state and the telecom registry the daemon reconciles against, so it
+# must outlive the pod (an emptyDir would silently reset drift baselines).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cryptoscan-telecom
+  namespace: cryptoscan
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+  # Set to your cluster's StorageClass, or delete to use the default class.
+  # storageClassName: standard

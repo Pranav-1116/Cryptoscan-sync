@@ -18,6 +18,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+      automountServiceAccountToken: false
       containers:
         - name: worker
           image: cryptoscan-worker:v1.0.0
@@ -37,8 +38,21 @@ spec:
               memory: 2Gi
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: workspaces
+              mountPath: /tmp/cryptoscan-workspaces
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: workspaces
+          emptyDir:
+            sizeLimit: 20Gi
       # Scans clone repos and can spike CPU; give the pod a generous termination
       # grace period so in-flight pipelines can finish.
       terminationGracePeriodSeconds: 120

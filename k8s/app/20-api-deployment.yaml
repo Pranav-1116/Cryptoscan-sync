@@ -7,6 +7,14 @@ metadata:
     app: cryptoscan-api
 spec:
   replicas: 2
+  # Rolling update that never dips below the replica count: a second pod is
+  # ready before the first is removed, so an update does not become an outage.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 10
   selector:
     matchLabels:
       app: cryptoscan-api
@@ -18,8 +26,38 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
+        # The image does not need to touch the API server.
+        enableServiceLinks: false
+      # No service-account token in the pod: the API authenticates to nothing
+      # in the cluster.
+      automountServiceAccountToken: false
+      # Long enough for an in-flight scan response to finish; the app drains
+      # on SIGTERM.
+      terminationGracePeriodSeconds: 30
+      # Spread replicas across nodes/zones so one node loss is not a full
+      # outage (ScheduleAnyway: prefer the spread, do not refuse to schedule on
+      # a single-node cluster).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: cryptoscan-api
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: cryptoscan-api
       containers:
         - name: api
+          # TEMPLATE ONLY: this tag is not approved for `kubectl apply`.
+          # Render an immutable release first:
+          #   python3 scripts/pin_release_images.py --registry <reg> \
+          #     --api-digest <sha256> --worker-digest <sha256> \
+          #     --neo4j-digest <sha256> --out dist/k8s-release
+          # and apply the rendered directory, which pins every image by digest.
           image: cryptoscan-api:v1.0.0
           imagePullPolicy: IfNotPresent
           ports:
@@ -60,6 +98,21 @@ spec:
               memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false   # workspaces dir is written
+            # Python is told not to write bytecode (PYTHONDONTWRITEBYTECODE=1 in
+            # the image) and the only runtime writes go to the emptyDir mounts
+            # below, so the root filesystem can be read-only.
+            readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: workspaces
+              mountPath: /tmp/cryptoscan-workspaces
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: workspaces
+          emptyDir:
+            sizeLimit: 2Gi

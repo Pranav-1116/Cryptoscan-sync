@@ -49,4 +49,11 @@ EXPOSE 8010
 HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=8 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3).status==200 else 1)"
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8010", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# Forwarded headers are resolved ONCE, in the application
+# (api.security.client_ip), against an explicit proxy boundary described by
+# TRUSTED_PROXY_COUNT + TRUSTED_PROXY_CIDRS. uvicorn's --proxy-headers would
+# rewrite the ASGI client address from X-Forwarded-For for ANY peer, which
+# silently defeats that boundary: the CIDR check would then read the
+# client-supplied value instead of the socket peer. Leave it off; configure
+# TRUSTED_PROXY_* in the deployment instead.
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8010"]

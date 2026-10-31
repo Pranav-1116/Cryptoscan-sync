@@ -41,6 +41,22 @@ def slo_status(request: Request, user: str = Depends(get_current_user)):
     return compute_slo(registry.window_events())
 
 
+@router.get("/signing")
+def signing_status(user: str = Depends(require_auditor)):
+    """Which backend signs evidence reports, and whether it can sign right now.
+
+    Auditor-only: a report signature is a compliance artefact, and a deployment
+    that has quietly stopped being able to sign is a finding, not an internal
+    detail. The probe signs a fixed string through the real backend, so an
+    expired KMS token or an unplugged HSM shows up here instead of in a bank's
+    rejection of an unsigned report.
+    """
+    from api.config.settings import get_settings
+    from api.security.signing_backend import signer_status
+
+    return signer_status(get_settings())
+
+
 @router.get("/alerts")
 def self_alerts(request: Request, user: str = Depends(get_current_user),
                 db=Depends(get_db_session)):

@@ -123,9 +123,9 @@ services:
       - 0.0.0.0
       - --port
       - "8010"
-      - --proxy-headers
-      - --forwarded-allow-ips
-      - "*"
+      # NO --proxy-headers: one authority decides the client IP
+      # (api.security.client_ip) using TRUSTED_PROXY_COUNT/CIDRS, and uvicorn's
+      # rewrite-from-any-peer would quietly bypass it.
       - --workers
       - "2"
       # The structured http_request logger (LoggingMiddleware) records

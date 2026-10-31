@@ -552,13 +552,15 @@ def _maybe_sign_report(report: dict) -> dict:
     if not signing_key:
         return report
     try:
+        from api.security.signing_backend import report_signer_from_settings
         from reporting.signing import sign_report
 
-        return sign_report(
-            report,
-            signing_key,
-            key_id=(getattr(settings, "REPORT_SIGNING_KEY_ID", "") or "").strip() or None,
-        )
+        key_id = (getattr(settings, "REPORT_SIGNING_KEY_ID", "") or "").strip() or None
+        signer = report_signer_from_settings(settings)
+        if signer is not None:
+            # HSM / KMS / Vault: the key never enters this process.
+            return sign_report(report, None, key_id=key_id, signer=signer)
+        return sign_report(report, signing_key, key_id=key_id)
     except Exception:
         logger.warning("report_signing_failed", exc_info=True)
         report["signature"] = {"alg": None, "error": "signing failed — see server logs"}

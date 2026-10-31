@@ -7,10 +7,59 @@ data:
   ENVIRONMENT: "production"
   LOG_LEVEL: "INFO"
   DOCS_ENABLED: "false"
-  NEO4J_URI: ""            # set to bolt://neo4j.neo4j.svc:7687 to enable the graph
+  # Production refuses to boot with neither a deployment profile nor a graph
+  # URI, because "no graph and no profile" is an ambiguous deployment. This
+  # reference install is Kubernetes with external PostgreSQL/Redis and local
+  # source scanning; the graph is the optional extra (k8s/neo4j/). To enable
+  # the graph instead: set NEO4J_URI to bolt://cryptoscan-neo4j:7687, set a
+  # NEO4J_PASSWORD of 24+ characters in the Secret, and DELETE this profile.
+  CRYPTOSCAN_DEPLOYMENT_PROFILE: "kubernetes-external-services/local-source-v1"
+  NEO4J_URI: ""
   NEO4J_DATABASE: "neo4j"
   SCAN_JOB_QUEUE_KEY: "cryptoscan:jobs:queue"
   MAX_CONCURRENT_JOBS: "4"
   SESSION_EXPIRE_HOURS: "24"
   LOGIN_MAX_FAILURES: "8"
   LOGIN_LOCKOUT_SECONDS: "900"
+
+  # ── request boundary ───────────────────────────────────────────────────
+  # The API refuses to boot in production without an explicit host allow-list
+  # and an explicit CORS origin list (see validate_runtime_settings).
+  # REPLACE the hostname with your own before applying.
+  TRUSTED_HOSTS: '["cryptoscan.example.com"]'
+  CORS_ORIGINS: "https://cryptoscan.example.com"
+
+  # Client-IP resolution. One nginx ingress hop sits in front of the API and
+  # appends the address it observed, so the client is entry -1.
+  # TRUSTED_PROXY_CIDRS must be the POD CIDR of your ingress controller (ask
+  # your cluster: `kubectl -n ingress-nginx get pods -o wide` and compare with
+  # `kubectl cluster-info dump | grep -i pod-cidr`). 10.244.0.0/16 is the
+  # k3s/Calico default and is only a starting point — a wrong value fails safe
+  # (the socket address wins), never open.
+  # If your controller runs with `use-forwarded-headers: true`, raise
+  # TRUSTED_PROXY_COUNT to 2: there is then one more header you own.
+  TRUSTED_PROXY_COUNT: "1"
+  TRUSTED_PROXY_CIDRS: "10.244.0.0/16"
+
+  # Realtime event tailer heartbeat, seconds. Must be > 0 in production.
+  EVENT_TAILER_SECONDS: "2"
+
+  # ── single-organisation on-prem install ───────────────────────────────
+  # A bank runs one organisation on one installation. With this enabled, an
+  # account created by the administrator is attached to that organisation on
+  # first request (recorded in the tenant provision log as
+  # onprem:auto-membership) instead of meeting "No tenant membership → 403"
+  # with no owner to ask. The default role is read-only; raising it needs
+  # ONPREM_AUTO_MEMBERSHIP_ADMIN_ACK=true. Turn this OFF for a multi-tenant or
+  # self-serve deployment.
+  ONPREM_SINGLE_ORG: "true"
+  ONPREM_DEFAULT_ORG_SLUG: "bank"          # REPLACE with your organisation slug
+  ONPREM_DEFAULT_ORG_NAME: "Bank"          # REPLACE with your organisation name
+  ONPREM_AUTO_MEMBERSHIP_ROLE: "viewer"
+
+  # ── runtime paths ─────────────────────────────────────────────────────
+  # The container runs with a read-only root filesystem; these are the only
+  # paths it writes.
+  HOME: "/tmp"
+  WORKSPACE_BASE_PATH: "/tmp/cryptoscan-workspaces"
+  CRYPTOSCAN_SOURCE_ROOTS: "/app:/tmp/cryptoscan-workspaces"

@@ -166,10 +166,34 @@ def verify_bytes(data: bytes, signature_b64: str, public_key_pem: str | Path) ->
 
 
 def sign_report(
-    report: dict[str, Any], private_key_pem: str | Path, *, key_id: str | None = None
+    report: dict[str, Any],
+    private_key_pem: str | Path | None = None,
+    *,
+    key_id: str | None = None,
+    signer: Any = None,
 ) -> dict[str, Any]:
-    """Attach a detached PKI signature covering the canonical report body."""
-    signature = sign_bytes(canonical_body(report), private_key_pem)
+    """Attach a detached PKI signature covering the canonical report body.
+
+    Two ways in, one output shape: a PEM (path or inline text) as before, or a
+    ``signer`` object with ``sign(bytes) -> bytes`` — the seam an HSM or KMS
+    backend plugs into (``api.security.signing_backend``). The signing happens
+    wherever the key lives; this function only decides what the report says
+    about it.
+    """
+    if signer is not None:
+        signature = {
+            "alg": str(getattr(signer, "alg", "RS256")),
+            "value": _b64url(signer.sign(canonical_body(report))),
+            "backend": (
+                signer.describe() if hasattr(signer, "describe") else type(signer).__name__
+            ),
+        }
+        if key_id is None and hasattr(signer, "key_id"):
+            key_id = signer.key_id()
+    else:
+        if private_key_pem is None:
+            raise SigningError("sign_report needs a private key or a signer")
+        signature = sign_bytes(canonical_body(report), private_key_pem)
     signature["key_id"] = key_id
     signature["covers"] = "canonical JSON of the report without the signature member"
     signature["verify"] = (

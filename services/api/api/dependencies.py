@@ -472,6 +472,78 @@ def get_tenant_context(
         yield ctx
 
 
+def _attach_to_install_org(db: Session, user: str) -> TenantContext | None:
+    """Attach a memberless user to the install's single organisation.
+
+    A bank runs one organisation on one installation. Before this, an account the
+    administrator created met "No tenant membership — ask your organization owner
+    for an invite" on first login, with no owner to ask: the install had an admin
+    and no organisation. ``ONPREM_SINGLE_ORG`` makes that install provision its
+    organisation on first use and attach the account at the configured role
+    (viewer by default — read everything, change nothing).
+
+    Returns ``None`` when the behaviour is off, so the caller's 403 stays the
+    answer for multi-organisation and SaaS deployments. Membership is created
+    once; a second request finds the row and takes the normal path.
+
+    The acting user is *not* invented: the membership records
+    ``actor="onprem:auto-membership"`` in the tenant's provision log, so the
+    grant is attributable in an audit even though no human clicked it.
+    """
+    settings = _get_settings()
+    if not bool(getattr(settings, "ONPREM_SINGLE_ORG", False)):
+        return None
+    from db.repositories.tenant_repository import TenantRepository, TenantError
+
+    slug = (getattr(settings, "ONPREM_DEFAULT_ORG_SLUG", "") or "default").strip() or "default"
+    role = (getattr(settings, "ONPREM_AUTO_MEMBERSHIP_ROLE", "viewer") or "viewer").strip().lower()
+    repo = TenantRepository(db)
+
+    tenant = repo.get_by_slug(slug)
+    if tenant is None:
+        tenant = repo.create(
+            name=(getattr(settings, "ONPREM_DEFAULT_ORG_NAME", "") or slug),
+            slug=slug,
+            created_by="onprem:bootstrap",
+        )
+        tenant = repo.get(tenant.id) if tenant is not None else None
+        db.commit()
+        if tenant is None:  # pragma: no cover - the row was just created
+            return None
+        logger.info("onprem_install_org_created", extra={"slug": slug, "tenant_id": tenant.id})
+
+    if tenant.status == "SUSPENDED":
+        # A suspended organisation stays suspended: auto-membership is a
+        # convenience for the first login, not a way around a suspension.
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="This organization is suspended — contact platform support",
+        )
+
+    if repo.membership(tenant.id, user) is None:
+        try:
+            repo.add_member(tenant.id, user, role, actor="onprem:auto-membership")
+            db.commit()
+        except TenantError:
+            # A concurrent first request won the race; read what it wrote.
+            db.rollback()
+            if repo.membership(tenant.id, user) is None:
+                raise
+        logger.info(
+            "onprem_auto_membership_granted",
+            extra={"username": user, "tenant_id": tenant.id, "tenant_role": role},
+        )
+
+    return TenantContext(
+        username=user,
+        tenant_id=tenant.id,
+        tenant_role=role,
+        is_platform_admin=False,
+        plan=tenant.plan,
+        tenant_status=tenant.status,
+    )
+
+
 def _resolve_tenant_context(
     request: Request,
     user: str,
@@ -535,6 +607,10 @@ def _resolve_tenant_context(
     memberships = repo.memberships_of(user)
     if not memberships:
         from db.repositories.user_repository import UserRepository
+
+        attached = _attach_to_install_org(db, user)
+        if attached is not None:
+            return attached
 
         if UserRepository(db).get_by_username(user) is None and not _get_settings().is_production:
             # Affirmatively absent non-production legacy principal only.

@@ -46,6 +46,13 @@ class APISettings(BaseSettings):
     DOCS_ENABLED: bool | None = None
 
     SECRET_KEY: str = "dev-cryptoscan-secret-key-change-in-production-32"
+    # Key rotation overlap (§ operational): sessions are HMAC-signed with
+    # SECRET_KEY. Rotating it without an overlap logs every user out mid-shift,
+    # so the previous key(s) stay ACCEPTED (never used to sign) until
+    # SECRET_KEY_PREVIOUS is cleared. Comma-separated, oldest last; the
+    # rotation script rewrites both values and the audit refuses a stale entry
+    # that equals the current key.
+    SECRET_KEY_PREVIOUS: str = ""
 
     # Offline licensing (advanced/73 P0#1, round 31): HMAC-signed license
     # document — inline JSON or a file path. LICENSE_REQUIRED=off keeps
@@ -63,6 +70,22 @@ class APISettings(BaseSettings):
     VAULT_KV_MOUNT: str = "secret"
     VAULT_TIMEOUT_SECONDS: float = 5.0
     VAULT_PROVIDERS_DISABLED: bool = False  # kill-switch: inline values only
+
+    # On-premises single-organisation installs: a bank runs ONE organisation,
+    # and an account the admin creates must not meet "no tenant membership" on
+    # first login. When enabled, a user with no membership is attached to the
+    # install's organisation at the configured role (default: viewer — read
+    # everything, change nothing until an admin grants more). Off by default,
+    # because on a multi-organisation or SaaS deployment the same behaviour
+    # would be a privilege grant nobody asked for, and self-serve signup would
+    # fill the bank's organisation with strangers.
+    ONPREM_SINGLE_ORG: bool = False
+    ONPREM_DEFAULT_ORG_SLUG: str = "default"
+    ONPREM_DEFAULT_ORG_NAME: str = "Default organisation"
+    ONPREM_AUTO_MEMBERSHIP_ROLE: str = "viewer"
+    # Granting admin/owner automatically is a bigger decision than attaching a
+    # reader, so it needs a second, explicit acknowledgement.
+    ONPREM_AUTO_MEMBERSHIP_ADMIN_ACK: bool = False
 
     # Trusted reverse-proxy boundary (§4.8, round 70): forwarded headers
     # are honored only when the declared topology says a proxy you own
@@ -99,9 +122,11 @@ class APISettings(BaseSettings):
     OPA_POLICY_PATH: str = "cryptoscan/allow"
     OPA_TIMEOUT_SECONDS: float = 3.0
 
-    # PKI report signing (W55-56): optional path to an RSA private key (PEM).
-    # When set, /scans/{id}/report carries a real RS256 signature; when unset
-    # the signature stays null — we never downgrade to HMAC-and-call-it-signed.
+    # PKI report signing (W55-56): an RSA private key — a PEM path, inline PEM,
+    # or a key reference to an HSM/KMS (aws-kms://…, vault://transit/…,
+    # pkcs11://…; see api.security.signing_backend). When set, the report
+    # carries a real RS256 signature; when unset the signature stays null — we
+    # never downgrade to HMAC-and-call-it-signed.
     REPORT_SIGNING_KEY: str = ""
     REPORT_SIGNING_KEY_ID: str = ""
     # OIDC SSO (verification side, bring-your-own-IdP): off until OIDC_ISSUER is set.
@@ -281,6 +306,22 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
     secret = (settings.SECRET_KEY or "").strip()
     if len(secret) < 32 or secret in WEAK_SECRET_KEYS:
         errors.append("SECRET_KEY must be a unique value of at least 32 characters")
+    previous = [part.strip() for part in (settings.SECRET_KEY_PREVIOUS or "").split(",") if part.strip()]
+    if previous:
+        if secret in previous:
+            # An "overlap" that contains the current key is a no-op that hides
+            # a rotation nobody performed.
+            errors.append("SECRET_KEY_PREVIOUS must not contain the current SECRET_KEY")
+        weak_previous = [key for key in previous if len(key) < 32 or key in WEAK_SECRET_KEYS]
+        if weak_previous:
+            errors.append("SECRET_KEY_PREVIOUS entries must each be at least 32 characters")
+        if len(previous) > 3:
+            errors.append(
+                "SECRET_KEY_PREVIOUS carries more than 3 rotations; retire the oldest "
+                "(every retained key is a key an attacker can still forge sessions with)"
+            )
+        if len(set(previous)) != len(previous):
+            errors.append("SECRET_KEY_PREVIOUS contains a duplicate entry")
     if not settings.ADMIN_PASSWORD_HASH:
         # A plaintext ADMIN_PASSWORD cannot authenticate in production at all
         # (verify_password refuses the non-PBKDF2 fallback there), so reject it
@@ -302,9 +343,16 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
 
         try:
             validate_realtime_redis(settings)
-        except (RedisConfigurationError, ValueError):
+        except (RedisConfigurationError, ValueError) as exc:
+            # The validator knows exactly which rule failed (TLS, the default
+            # ACL user, Sentinel endpoints). Collapsing that into one sentence
+            # sent operators hunting the wrong setting, so the specific reason
+            # is carried into the boot refusal.
+            detail = str(exc).strip()
             errors.append(
-                "Realtime Redis requires verified TLS, dedicated ACL credentials and a valid Sentinel configuration"
+                "Realtime Redis requires verified TLS, dedicated ACL credentials and a valid "
+                "Sentinel configuration"
+                + (f" — {detail}" if detail else "")
             )
     if float(settings.EVENT_TAILER_SECONDS or 0) <= 0:
         errors.append("EVENT_TAILER_SECONDS must be greater than zero in production")
@@ -316,6 +364,60 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
     metrics_token = (settings.METRICS_TOKEN or "").strip()
     if len(metrics_token) < 32:
         errors.append("METRICS_TOKEN must be a unique value of at least 32 characters")
+
+    # On-prem single-organisation auto-membership: safe for one bank's own
+    # installation, unsafe the moment the deployment serves several tenants or
+    # lets users sign themselves up.
+    if settings.ONPREM_SINGLE_ORG:
+        role = (settings.ONPREM_AUTO_MEMBERSHIP_ROLE or "").strip().lower()
+        if role not in {"viewer", "member", "admin", "owner"}:
+            errors.append(
+                "ONPREM_AUTO_MEMBERSHIP_ROLE must be viewer, member, admin or owner"
+            )
+        if role in {"admin", "owner"} and not settings.ONPREM_AUTO_MEMBERSHIP_ADMIN_ACK:
+            errors.append(
+                "ONPREM_AUTO_MEMBERSHIP_ROLE of admin/owner requires "
+                "ONPREM_AUTO_MEMBERSHIP_ADMIN_ACK=true"
+            )
+        import os
+
+        signup = os.environ.get("CRYPTOSCAN_SAAS_SIGNUP", "").strip().lower() in {"1", "true", "yes", "on"}
+        if signup:
+            errors.append(
+                "ONPREM_SINGLE_ORG cannot be combined with CRYPTOSCAN_SAAS_SIGNUP: "
+                "self-serve signup would join strangers to the bank's organisation"
+            )
+        if not (settings.ONPREM_DEFAULT_ORG_SLUG or "").strip():
+            errors.append("ONPREM_DEFAULT_ORG_SLUG must name the install's organisation")
+
+    # The forwarded-header boundary is only as good as the pair of values that
+    # describe it. A CIDR list with COUNT=0 is a configuration nobody honors; a
+    # COUNT with no CIDR list trusts X-Forwarded-For from ANY peer, which is the
+    # direct-connection spoof; and 0.0.0.0/0 is the same hole spelled out.
+    proxy_count = int(settings.TRUSTED_PROXY_COUNT or 0)
+    proxy_cidrs = [part.strip() for part in (settings.TRUSTED_PROXY_CIDRS or "").split(",") if part.strip()]
+    if proxy_cidrs and proxy_count < 1:
+        errors.append(
+            "TRUSTED_PROXY_COUNT must be at least 1 when TRUSTED_PROXY_CIDRS is set "
+            "(a proxy allow-list that is never consulted is worse than none)"
+        )
+    if proxy_count >= 1 and not proxy_cidrs:
+        errors.append(
+            "TRUSTED_PROXY_CIDRS must name the proxy network when TRUSTED_PROXY_COUNT >= 1 "
+            "(otherwise any client that can reach the API may write its own X-Forwarded-For)"
+        )
+    if proxy_count < 0:
+        errors.append("TRUSTED_PROXY_COUNT cannot be negative")
+    import ipaddress
+
+    for cidr in proxy_cidrs:
+        try:
+            network = ipaddress.ip_network(cidr, strict=False)
+        except ValueError:
+            errors.append(f"TRUSTED_PROXY_CIDRS entry {cidr!r} is not a valid network")
+            continue
+        if network.prefixlen == 0:
+            errors.append(f"TRUSTED_PROXY_CIDRS must not trust every address ({cidr})")
 
     # These are independent HMAC/API-key boundaries. Do not let production
     # silently use a development secret when one integration is unused.

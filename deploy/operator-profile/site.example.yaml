@@ -21,6 +21,20 @@ data:
   CRYPTOSCAN_EVIDENCE_DESTINATION: REPLACE_DESTINATION
   CRYPTOSCAN_STATIC_SCAN_MODE: container
   CRYPTOSCAN_SOURCE_ROOTS: /approved-source
+  # Client-IP boundary: one ingress hop appends the address it observed, and
+  # only peers inside the ingress controller's pod network may do so. Without
+  # these two, api.security.client_ip falls back to the socket peer, which
+  # behind an ingress is the controller — every login rate limit and API-key IP
+  # allowlist would then collapse into one shared bucket.
+  TRUSTED_PROXY_COUNT: "1"
+  TRUSTED_PROXY_CIDRS: REPLACE_INGRESS_POD_CIDR
+  # One bank, one organisation, one installation: an account the administrator
+  # creates joins REPLACE_ORG_SLUG on first request at the read-only role,
+  # recorded as actor onprem:auto-membership in the tenant provision log.
+  ONPREM_SINGLE_ORG: "true"
+  ONPREM_DEFAULT_ORG_SLUG: REPLACE_ORG_SLUG
+  ONPREM_DEFAULT_ORG_NAME: REPLACE_ORG_NAME
+  ONPREM_AUTO_MEMBERSHIP_ROLE: viewer
   REDIS_CA_CERTS: /site-ca/redis-ca.pem
   PGSSLROOTCERT: /site-ca/postgres-ca.pem
   SSL_CERT_FILE: /site-ca/organization-ca.pem
@@ -31,7 +45,14 @@ metadata:
   name: cryptoscan-api
   namespace: cryptoscan
 spec:
-  replicas: 1
+  # Two replicas with a rolling update that never dips below the count: one
+  # node drain or pod restart is not an API outage (see the PodDisruptionBudget
+  # at the end of this file).
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  minReadySeconds: 10
   selector:
     matchLabels: {app: cryptoscan-api}
   template:
@@ -39,6 +60,9 @@ spec:
       labels: {app: cryptoscan-api}
     spec:
       securityContext: {runAsNonRoot: true, runAsUser: 10001}
+      # The API needs no Kubernetes API access.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
       containers:
         - name: api
           image: REPLACE_REGISTRY/cryptoscan-api@sha256:REPLACE_ACTUAL_API_DIGEST
@@ -53,6 +77,7 @@ spec:
           volumeMounts:
             - {name: site-ca, mountPath: /site-ca, readOnly: true}
             - {name: source, mountPath: /approved-source, readOnly: true}
+            - {name: scratch, mountPath: /tmp}
           readinessProbe:
             httpGet:
               path: /readyz
@@ -67,12 +92,20 @@ spec:
           resources:
             requests: {cpu: 250m, memory: 256Mi}
             limits: {cpu: "1", memory: 1Gi}
-          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            # The image is built with PYTHONDONTWRITEBYTECODE=1 and the API's
+            # only runtime writes go to /tmp (scratch, below), so the image
+            # layer stays read-only: a compromised process cannot persist.
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
       volumes:
         - name: site-ca
           secret: {secretName: cryptoscan-ca}
         - name: source
           persistentVolumeClaim: {claimName: approved-source}
+        - name: scratch
+          emptyDir: {sizeLimit: 512Mi}
 ---
 apiVersion: v1
 kind: Service
@@ -95,6 +128,7 @@ spec:
       # Dedicated, reviewed worker node. Docker daemon control is root-equivalent;
       # never share this node/runtime with untrusted tenants or expose it to parser.
       nodeSelector: {cryptoscan-isolation: dedicated}
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -138,20 +172,32 @@ apiVersion: apps/v1
 kind: Deployment
 metadata: {name: cryptoscan-frontend, namespace: cryptoscan}
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
   selector:
     matchLabels: {app: cryptoscan-frontend}
   template:
     metadata:
       labels: {app: cryptoscan-frontend}
     spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true}
       containers:
         - name: frontend
           image: REPLACE_REGISTRY/cryptoscan-frontend@sha256:REPLACE_ACTUAL_FRONTEND_DIGEST
           ports: [{containerPort: 3003}]
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
           securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
           readinessProbe:
             httpGet: {path: /, port: 3003}
+          livenessProbe:
+            httpGet: {path: /, port: 3003}
+            initialDelaySeconds: 10
+            periodSeconds: 20
 ---
 apiVersion: v1
 kind: Service
@@ -162,7 +208,20 @@ spec:
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
-metadata: {name: cryptoscan, namespace: cryptoscan}
+metadata:
+  name: cryptoscan
+  namespace: cryptoscan
+  annotations:
+    # TLS terminates at the ingress; the frontend/API speak plain HTTP on the
+    # cluster network only.
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/hsts: "true"
+    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
+    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
 spec:
   ingressClassName: REPLACE_INGRESS_CLASS
   tls:
@@ -178,3 +237,38 @@ spec:
               service:
                 name: cryptoscan-frontend
                 port: {number: 3003}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: cryptoscan-api, namespace: cryptoscan}
+spec:
+  # A node drain during a cluster upgrade must leave one API pod serving; the
+  # drain waits rather than taking the API offline.
+  minAvailable: 1
+  selector:
+    matchLabels: {app: cryptoscan-api}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: cryptoscan-frontend, namespace: cryptoscan}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: cryptoscan-frontend}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: cryptoscan-frontend-ingress, namespace: cryptoscan}
+spec:
+  # Only the ingress controller may reach the operator console. The API and
+  # worker are not exposed here: nothing outside the cluster calls them.
+  podSelector:
+    matchLabels: {app: cryptoscan-frontend}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: REPLACE_INGRESS_NAMESPACE
+      ports:
+        - {protocol: TCP, port: 3003}
