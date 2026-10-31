@@ -59,7 +59,7 @@ a minute; they are not part of the hermetic gate.
 
 | Measurement | Value | Meaning |
 |---|---|---|
-| Served routes | **1134 paths / 1248 operations** | Read from the app's own OpenAPI document, not from a list |
+| Served routes | **1135 paths / 1249 operations** | Read from the app's own OpenAPI document, not from a list |
 | Console calls resolved | **637 → 0 unknown, 0 wrong verbs** | Every URL the browser builds exists, with the verb it uses |
 | CLI / script calls resolved | **315 → 0 unknown** | Now includes the two shipped CLI files, which no scan read before |
 | Router modules enumerated | **120 modules, 1246 routes, 0 unmounted HTTP routes** | The two WebSocket routes are the only ones outside the schema, by design |
@@ -69,10 +69,10 @@ a minute; they are not part of the hermetic gate.
 | Columns in the database that no model maps | **16** | Residue from withdrawn writers; enumerated in check 5 |
 | Routes quoted as proof that are not served | **0 of 8 hints** | Every "check at"/"measured by" route resolves, and accepts GET or POST |
 | Console pages | **90 / 0 orphans** | Every page file is routed or embedded by a page the router reaches, transitively |
-| Operations executed on a live server | **1248 / 1248, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
+| Operations executed on a live server | **1249 / 1249, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
 | Operations that refused an anonymous caller | **1212 protected of 1212, 36 public** | Everything outside the session gate's declared public surface (health, docs, login/SSO, machine-signed webhooks) |
 | Role-gated operations proven both ways | **306 admitted with the role, 273 refused without it** | Read from the dependency tree, then asked of the running server |
-| Operations with a response schema that holds | **91 validated / 91 declared** | The other 1157 declare nothing (`§5`, limit a) |
+| Operations with a response schema that holds | **94 validated / 94 declared** | The other 1155 declare nothing (`§5`, limit a) |
 | Model ↔ migrated-schema nullability | **0 disagreements, both directions** | At revision 0121 it was 148 columns the model treats as required and the database accepts as NULL, and 9 the reverse |
 
 ---
@@ -188,8 +188,8 @@ wrong. Each limit below records what has since been proven, what proved it, and
 what is still open — the list is the same list, moved forward, not a new claim.
 
 * **(a) Response correctness.** *Proven:* every operation that declares a 2xx JSON
-  schema — **91 of 1248** — is called on a live server and its body validated
-  against that schema (check 9). *Still open:* the other 1157 declare no response
+  schema — **94 of 1249** — is called on a live server and its body validated
+  against that schema (check 9). *Still open:* the other 1155 declare no response
   model, and their payload shape is asserted only by their TypeScript interface
   and, for seven payload families, by
   `scripts/tests/test_console_payload_contract.py` — a route returning the right
@@ -204,7 +204,7 @@ what is still open — the list is the same list, moved forward, not a new claim
   processes, business owners, the backup routes) were typed in this pass.
 
 * **(b) A live request for every route.** *Closed for execution and for write
-  bodies.* All **1248** operations are executed against uvicorn over a real
+  bodies.* All **1249** operations are executed against uvicorn over a real
   PostgreSQL at the migration tip: **0 returned 5xx**, **0 failed at the transport
   layer** (check 8). The first sweep sent `{}`, which proves a route is mounted and
   its dependencies resolve but answers `422` before the handler runs. A second

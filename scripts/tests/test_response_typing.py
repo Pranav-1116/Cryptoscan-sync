@@ -20,8 +20,8 @@ import pytest
 
 import response_typing
 
-#: Measured when the inventory was written (91 of 1248 typed). Grows only.
-MIN_TYPED_OPERATIONS = 91
+#: Measured when the inventory was written (94 of 1249 typed). Grows only.
+MIN_TYPED_OPERATIONS = 94
 
 
 @pytest.fixture(scope="module")
@@ -71,7 +71,7 @@ def test_the_inventory_does_not_claim_routes_that_are_now_typed(untyped, recorde
 
 def test_the_untyped_surface_does_not_grow(untyped, recorded):
     assert len(untyped) == len(recorded)
-    assert len(untyped) <= 1157, (
+    assert len(untyped) <= 1155, (
         f"{len(untyped)} operations declare no response model; the recorded inventory holds "
-        "1157. This may only go down."
+        "1155. This may only go down."
     )

@@ -231,8 +231,11 @@ def collect_runtime(db: Any, *, limit: int = 5) -> dict[str, Any]:
     from db.tenancy import current_tenant
 
     rows = ScanRunRepository(db).list_runs(limit=limit, target_kind="runtime-crypto", owner=current_tenant())
+    from api import estate_runtime_edges
+
     assets: list[dict[str, Any]] = []
     evidence: list[dict[str, Any]] = []
+    observations: list[dict[str, Any]] = []
     seen_assets: set[str] = set()
     seen_events: set[str] = set()
     events_total = 0
@@ -262,7 +265,19 @@ def collect_runtime(db: Any, *, limit: int = 5) -> dict[str, Any]:
                     "source": "runtime_agent",
                     "attributes": {"attribution_level": event.get("attribution_level")},
                 })
+            # the ref is how a relationship cites this record: the content-addressed
+            # evidence id is only knowable once the asset id is (build_graph resolves it)
+            evidence_ref = f"runtime:{event_id or len(evidence)}"
+            observations.append({
+                "app_ref": ref,
+                "evidence_ref": evidence_ref,
+                "provider": event.get("crypto_provider") or event.get("library"),
+                "algorithm": event.get("algorithm"),
+                "operation": event.get("operation"),
+                "key_size": event.get("key_size"),
+            })
             evidence.append({
+                "ref": evidence_ref,
                 "source": "runtime_agent",
                 "collector": "runtime:crypto-events",
                 "evidence_type": "RUNTIME_OBSERVED",
@@ -283,13 +298,23 @@ def collect_runtime(db: Any, *, limit: int = 5) -> dict[str, Any]:
                     ),
                 },
             })
+    graph_edges = estate_runtime_edges.build(observations)
+    assets.extend(graph_edges["assets"])
+    note = None if events_total else "no runtime crypto event is stored (NOT_OBSERVED, not 'no crypto')"
+    if events_total and not graph_edges["relationships"]:
+        note = (
+            "runtime events are stored but none names both an algorithm and the process "
+            "that used it, so no crypto edge can be claimed"
+        )
     return {
         "plane": "RUNTIME",
         "expected": events_total,
         "collected": len(evidence),
         "assets": assets,
         "evidence": evidence,
-        "note": None if events_total else "no runtime crypto event is stored (NOT_OBSERVED, not 'no crypto')",
+        "relationships": graph_edges["relationships"],
+        "crypto_edges": graph_edges["summary"],
+        "note": note,
     }
 
 

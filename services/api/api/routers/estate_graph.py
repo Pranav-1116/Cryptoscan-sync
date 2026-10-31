@@ -57,7 +57,7 @@ from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
 from api.security import anchor_export
 from api.security.estate_bom_anchor import AnchorError, create_anchor, list_anchors, verify_anchor
-from shared_models import attack_patterns, bom_export, estate_twin
+from shared_models import attack_patterns, bom_export, estate_twin, estate_chain
 from shared_models.estate_graph import BOM_KINDS, SCHEMA, build_graph
 
 import logging
@@ -1125,6 +1125,120 @@ def estate_twin_chain_read(
             simulations_error=simulations_error,
             simulation_limit=100,
         ),
+    }
+
+
+class PathHopOut(BaseModel):
+    """One hop the walk took, with the evidence that established it."""
+
+    index: int
+    subject: str
+    predicate: str
+    object: str
+    basis: str | None = None
+    evidence_ids: list[str] = Field(default_factory=list)
+    confidence: str | None = None
+    usage_state: str | None = None
+    from_type: str | None = None
+    to_type: str | None = None
+
+
+class PathStopOut(BaseModel):
+    """The hop the walk could not take, and why. Never a silently shorter path."""
+
+    at: str | None = None
+    expected: str | None = None
+    predicate: str | None = None
+    to_type: str | None = None
+    reason: str | None = None
+    refused_basis: str | None = None
+    refused_evidence_ids: list[str] = Field(default_factory=list)
+    available_predicates: list[str] = Field(default_factory=list)
+    branch_count: int | None = None
+
+
+class TwinPathOut(BaseModel):
+    """An evidence-backed path, or a precise statement of where it stops."""
+
+    model_config = {"populate_by_name": True}
+
+    schema_: str = Field(alias="schema")
+    run_id: str
+    start: str
+    status: str = Field(
+        description="COMPLETE | NO_EDGE | NO_ASSET | REFUSED_EDGE | PATTERN_EXHAUSTED"
+    )
+    complete: bool
+    hops: list[PathHopOut] = Field(default_factory=list)
+    stop: PathStopOut | None = None
+    rendered: str
+    weakest_confidence: str | None = None
+    hop_count: int
+    requires_runtime_observation: bool = Field(
+        description=(
+            "true when any `uses*` hop rests on configuration rather than a runtime "
+            "observation — a complete path is not automatically an executed one"
+        )
+    )
+    unobserved_hop_indexes: list[int] = Field(
+        default_factory=list,
+        description="which hops are configuration claims rather than observations",
+    )
+    pattern: list[str] = Field(default_factory=list, description="the hop pattern actually walked")
+
+
+@router.get("/twin/path", response_model=TwinPathOut)
+def estate_twin_path(
+    asset: str = Query(..., min_length=1, max_length=200, description="asset id or exact asset name"),
+    pattern: str = Query(
+        default="crypto-path",
+        max_length=400,
+        description=(
+            "a named pattern (crypto-path | crypto-usage) or a hop list such as "
+            "runs_on:CONTAINER,runs_on:CLUSTER,uses_crypto_library:LIBRARY"
+        ),
+    ),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Walk one evidence-backed path through the twin, and stop where the evidence stops.
+
+    This is the chain the twin exists for — application → container → cluster →
+    library → algorithm → load balancer → HSM — asked of *this* estate rather than
+    asserted in a diagram. Every hop carries the evidence ids that established it;
+    the first hop the evidence cannot carry is returned as ``stop`` with the
+    graph's own reason, so a six-link answer to a seven-link question says so.
+    """
+    try:
+        hops = estate_chain.parse_pattern(pattern)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "unwalkable_pattern", "reason": str(exc)[:400]},
+        ) from exc
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    asset_id, candidates = estate_chain.resolve_asset(graph, asset)
+    if asset_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "asset_not_resolved",
+                "reason": (
+                    "no asset with that id or exact name in this snapshot; names are not "
+                    "unique, so an ambiguous name is listed rather than guessed"
+                ),
+                "candidates": candidates[:20],
+            },
+        )
+    doc = estate_chain.trace(graph, asset_id, hops)
+    unobserved = estate_chain.unobserved_use_hops(doc)
+    return {
+        **doc,
+        "run_id": run.id,
+        "requires_runtime_observation": bool(unobserved),
+        "unobserved_hop_indexes": unobserved,
+        "pattern": [str(hop.describe()) for hop in hops],
     }
 
 

@@ -739,6 +739,16 @@ class EstateGraph:
             )
         if not entry.get("evidence_ids"):
             return "no evidence attached — a relationship without evidence is an assumption"
+        # An edge citing an id the graph does not hold is worse than an edge with no
+        # evidence: it *looks* cited. `verify` could never reproduce it, and a reader
+        # following the trail finds nothing at the end of it.
+        missing = [item for item in entry["evidence_ids"] if item not in self._evidence]
+        if missing:
+            shown = ", ".join(missing[:3]) + ("…" if len(missing) > 3 else "")
+            return (
+                f"{len(missing)} cited evidence record(s) are not in this graph ({shown}) — "
+                "an edge cannot cite evidence nobody holds"
+            )
         if entry["predicate"] in USE_PREDICATES and basis not in USAGE_BASES:
             return (
                 f"basis {basis} cannot establish *use*: without configuration, a PKCS#11/KMS "
@@ -1735,8 +1745,10 @@ def build_graph(payload: Mapping[str, Any]) -> EstateGraph:
             f"unknown asset reference {text!r} — declare it in `assets` (with a ref/name) or pass its asset_id"
         )
 
+    evidence_refs: dict[str, str] = {}
+
     for record in payload.get("evidence") or []:
-        graph.add_evidence(
+        added = graph.add_evidence(
             make_evidence(
                 source=str(record.get("source") or "unknown"),
                 evidence_type=str(record.get("evidence_type") or "UNKNOWN"),
@@ -1750,6 +1762,20 @@ def build_graph(payload: Mapping[str, Any]) -> EstateGraph:
                 raw_reference=record.get("raw_reference"),
             )
         )
+        # A collector cannot compute a content-addressed evidence id for an asset whose
+        # canonical id it does not know. It can label the record, and a relationship can
+        # cite the label; the resolution happens here, where the id exists.
+        if record.get("ref"):
+            label = str(record["ref"])
+            if label in evidence_refs and evidence_refs[label] != added:
+                raise ValueError(f"two evidence records share the ref {label!r}")
+            evidence_refs[label] = added
+
+    def resolve_evidence(value: Any) -> str:
+        text = str(value or "")
+        if text in evidence_refs:
+            return evidence_refs[text]
+        return text
 
     for relationship in payload.get("relationships") or []:
         graph.assert_relationship(
@@ -1757,7 +1783,13 @@ def build_graph(payload: Mapping[str, Any]) -> EstateGraph:
             str(relationship.get("predicate") or ""),
             resolve(relationship.get("object")),
             basis=relationship.get("basis"),
-            evidence_ids=[str(item) for item in relationship.get("evidence_ids") or []],
+            evidence_ids=[
+                resolve_evidence(item)
+                for item in (
+                    list(relationship.get("evidence_ids") or [])
+                    + list(relationship.get("evidence_refs") or [])
+                )
+            ],
             confidence=relationship.get("confidence"),
             attributes=relationship.get("attributes"),
         )

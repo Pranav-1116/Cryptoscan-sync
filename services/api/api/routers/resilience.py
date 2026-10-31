@@ -118,6 +118,19 @@ def retention_plan(body: RetentionRequest,
     return bk.apply_retention(body.backups, policy=body.policy)
 
 
+class BackupCreateOut(BaseModel):
+    """What a completed backup produced, and where it was persisted.
+
+    ``plaintext_sha256`` is a digest over the *pre-encryption* dump computed by the
+    backup engine. It is a checksum, not a copy: nothing here reconstructs the
+    plaintext, and the ciphertext is never returned.
+    """
+
+    manifest: dict[str, Any]
+    storage_key: str
+    plaintext_sha256: str | None = None
+
+
 class BackupCreateRequest(BaseModel):
     database_id: str
     engine: str = "reference"
@@ -148,7 +161,7 @@ def _real_backend(engine: str):
         pg_bin=os.environ.get("PG_BIN", ""))
 
 
-@router.post("/backup/create")
+@router.post("/backup/create", response_model=BackupCreateOut)
 def backup_create(body: BackupCreateRequest, db: Session = Depends(get_db_session),
                   user: str = Depends(require_roles("admin", "superadmin"))):
     """Create a REAL encrypted, signed backup via pg_dump/neo4j-admin and persist
@@ -278,6 +291,18 @@ class BackupKeyInfoOut(BaseModel):
     manifest_signature: str
 
 
+class BackupListOut(BaseModel):
+    """/backup/list — the manifests the store holds.
+
+    The envelope is typed; each manifest is the *store's* own record (``backup_id``,
+    ``engine``, ``database_id``, ``sequence``, ``created_at``, digest, signature), so it
+    stays ``dict`` for the same reason ``BackupRunOut.results`` does: the store owns
+    that shape, and a copy declared here would drift from it silently.
+    """
+
+    backups: list[dict[str, Any]]
+
+
 class BackupRunRequest(BaseModel):
     databases: list[BackupDatabaseConfig] = Field(
         ..., description="[{database_id, engine, interval_hours}]", min_length=1
@@ -342,7 +367,7 @@ def _backup_storage():
     return _BACKUP_STORE
 
 
-@router.get("/backup/list")
+@router.get("/backup/list", response_model=BackupListOut)
 def backup_list(user: str = Depends(require_roles("admin", "auditor", "superadmin"))):
     return {"backups": _backup_storage().list_manifests()}
 
