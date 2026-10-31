@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 832 |
+| session | 834 |
 | role | 306 |
 | permission | 71 |
 | tenant-role | 12 |
 
-**1221** operations; **294** of them change state with nothing but the session gate — the exact list, with the policy
+**1223** operations; **295** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -30,7 +30,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `assurance` | 46 |
 | `network` | 31 |
 | `collection` | 27 |
-| `estate` | 23 |
+| `estate` | 24 |
 | `migrations` | 13 |
 | `cbom` | 11 |
 | `vendors` | 10 |
@@ -213,6 +213,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/estate/evidence/schedules` | `api.routers.estate_graph.estate_schedule_create` |
 | DELETE | `/api/v1/estate/evidence/schedules/{identifier}` | `api.routers.estate_graph.estate_schedule_delete` |
 | PATCH | `/api/v1/estate/evidence/schedules/{identifier}` | `api.routers.estate_graph.estate_schedule_toggle` |
+| POST | `/api/v1/estate/evidence/simulation/engine/run` | `api.routers.estate_graph.engine_simulation_run` |
 | POST | `/api/v1/estate/evidence/simulation/plan` | `api.routers.estate_graph.simulation_plan` |
 | POST | `/api/v1/estate/evidence/simulation/run` | `api.routers.estate_graph.simulation_run` |
 | POST | `/api/v1/estate/evidence/tick` | `api.routers.estate_graph.estate_tick` |

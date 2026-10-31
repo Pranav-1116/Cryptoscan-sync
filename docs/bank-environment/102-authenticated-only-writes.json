@@ -734,6 +734,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/estate/evidence/simulation/engine/run",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/estate/evidence/simulation/plan",
       "reason": "operator surface: every signed-in operator inspects and curates the estate"
     },

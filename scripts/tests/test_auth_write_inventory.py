@@ -78,7 +78,9 @@ def test_every_recorded_reason_is_a_decision(rows):
 def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     """The number itself, so a shrink is noticed even when the diff looks fine."""
     assert len(rows) == len(recorded)
-    assert len(rows) <= 294, (
+    # 295: the generic simulation engine's run endpoint (POST, computes over stored
+    # evidence and writes nothing) joins the operator surface under /api/v1/estate.
+    assert len(rows) <= 295, (
         f"{len(rows)} authenticated-only writes; the recorded inventory holds 347. "
         "This count may only go down (a route gained a role) without a regeneration."
     )

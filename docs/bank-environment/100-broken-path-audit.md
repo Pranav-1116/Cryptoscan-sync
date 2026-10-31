@@ -59,21 +59,21 @@ a minute; they are not part of the hermetic gate.
 
 | Measurement | Value | Meaning |
 |---|---|---|
-| Served routes | **1137 paths / 1251 operations** | Read from the app's own OpenAPI document, not from a list |
+| Served routes | **1139 paths / 1253 operations** | Read from the app's own OpenAPI document, not from a list |
 | Console calls resolved | **637 → 0 unknown, 0 wrong verbs** | Every URL the browser builds exists, with the verb it uses |
 | CLI / script calls resolved | **315 → 0 unknown** | Now includes the two shipped CLI files, which no scan read before |
 | Router modules enumerated | **120 modules, 1246 routes, 0 unmounted HTTP routes** | The two WebSocket routes are the only ones outside the schema, by design |
-| Console operations with a response model (current) | **95 typed / 1251 (7.6%)** | Superseded the 40/605 figure below when four families were typed; see `103-untyped-response-operations.json` |
+| Console operations with a response model (current) | **97 typed / 1253 (7.7%)** | Superseded the 40/605 figure below when four families were typed; see `103-untyped-response-operations.json` |
 | Console operations with a response model | **40 typed / 605 (6.6%)** | The TypeScript interface *is* the contract for the other 93% |
 | ORM tables without a migration | **0** | Nothing the models read is missing from the migrated schema |
 | Model columns without a migration | **0** | — |
 | Columns in the database that no model maps | **16** | Residue from withdrawn writers; enumerated in check 5 |
 | Routes quoted as proof that are not served | **0 of 8 hints** | Every "check at"/"measured by" route resolves, and accepts GET or POST |
 | Console pages | **90 / 0 orphans** | Every page file is routed or embedded by a page the router reaches, transitively |
-| Operations executed on a live server | **1251 / 1251, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
+| Operations executed on a live server | **1253 / 1253, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
 | Operations that refused an anonymous caller | **1212 protected of 1212, 36 public** | Everything outside the session gate's declared public surface (health, docs, login/SSO, machine-signed webhooks) |
 | Role-gated operations proven both ways | **306 admitted with the role, 273 refused without it** | Read from the dependency tree, then asked of the running server |
-| Operations with a response schema that holds | **95 validated / 95 declared** | The other 1156 declare nothing (`§5`, limit a) |
+| Operations with a response schema that holds | **97 validated / 97 declared** | The other 1156 declare nothing (`§5`, limit a) |
 | Model ↔ migrated-schema nullability | **0 disagreements, both directions** | At revision 0121 it was 148 columns the model treats as required and the database accepts as NULL, and 9 the reverse |
 
 ---
@@ -329,9 +329,20 @@ Correlation does not model causality, does not rank by likelihood, and never rea
   supplied, two rules, and subjects joined onto assets by declared keys with ambiguity
   refused. Per-plane blind spots remain in the register; what D does not do — causality,
   likelihood ranking, incident declaration — is permanent by design, not unfinished.
-- **E (generic simulation engine)** — simulation is still per-question (PQC planning,
-  twin scenarios), not one engine that can run a subject-modification-recompute cycle
-  over any BOM. Not started.
+- **E (generic simulation engine)** — **the engine exists**:
+  `shared_models/simulation_engine.py` runs `baseline → apply(changes) → recompute →
+  delta` over any estate view, with scenarios as plain data (a callable is refused),
+  pluggable models (a test registers a new one at run time with no engine change), and
+  refusals returned rather than swallowed (a change naming an asset the estate does not
+  hold makes `complete: false`, it does not silently simulate a smaller change).
+  Four models across three domains ship: `shor_vulnerable` (crypto), `blast_radius`
+  (graph), `stranded_dependents` (graph, against the baseline) and `crypto_coverage`.
+  Served at `POST /estate/evidence/simulation/engine/run` and
+  `GET /estate/evidence/simulation/engine/models`, with four example scenarios
+  spanning CRYPTO, HSM, LOAD_BALANCER and LIBRARY subjects. *Still open:* the PQC
+  planner and the twin's scenario kinds still have their own code paths and have not
+  been re-expressed as scenario documents, so "one engine" is true of the new surface
+  and not yet of the old ones.
 - **F (synthetic bank validation at 10/50/100/150 banks)** — the corpus and the
   accuracy harness exist; the four-point scale curve with precision, recall, false
   positives and negatives, coverage, memory, database growth and ingestion rate is not
@@ -365,7 +376,7 @@ what is still open — the list is the same list, moved forward, not a new claim
   processes, business owners, the backup routes) were typed in this pass.
 
 * **(b) A live request for every route.** *Closed for execution and for write
-  bodies.* All **1251** operations are executed against uvicorn over a real
+  bodies.* All **1253** operations are executed against uvicorn over a real
   PostgreSQL at the migration tip: **0 returned 5xx**, **0 failed at the transport
   layer** (check 8). The first sweep sent `{}`, which proves a route is mounted and
   its dependencies resolve but answers `422` before the handler runs. A second

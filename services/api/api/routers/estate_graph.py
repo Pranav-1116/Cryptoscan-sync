@@ -2013,6 +2013,105 @@ def collector_depth_helper(db: Session):
     return _graph(db)
 
 
+# -- the generic simulation engine: a subject, a change, a recompute --------- #
+
+
+class EngineSimulationRequest(BaseModel):
+    """A scenario document. Data only: no callables, no server-side code paths."""
+
+    scenario: dict = Field(
+        description=(
+            "a `cryptoscan.simulation-scenario/1` document — id, modifications "
+            "(REMOVE | REPLACE | ADD | DISABLE), and the models to evaluate. See "
+            "`GET /estate/evidence/simulation/models` for the models this build registers"
+        )
+    )
+
+
+class SimulationModelOut(BaseModel):
+    id: str
+    label: str
+    metric: str
+    reads: list[str]
+    higher_is_worse: bool
+
+
+class SimulationModelsOut(BaseModel):
+    schema: str
+    models: list[SimulationModelOut]
+    ops: list[str]
+    examples: list[dict]
+    note: str
+
+
+class SimulationDeltaOut(BaseModel):
+    model: str
+    metric: str
+    before: float
+    after: float
+    change: float
+    unit: str
+    direction: str
+    evidence_ids: list[str]
+
+
+class SimulationRunOut(BaseModel):
+    schema: str
+    scenario: dict
+    models: list[SimulationModelOut]
+    baseline: dict
+    projected: dict
+    delta: list[SimulationDeltaOut]
+    modifications: dict
+    complete: bool
+    note: str
+
+
+@router.get("/simulation/engine/models", response_model=SimulationModelsOut)
+def simulation_models(
+    user: str = Depends(get_current_user),
+) -> SimulationModelsOut:
+    """The questions this engine can answer, and the operations a scenario may use."""
+    from shared_models import simulation_engine
+
+    return SimulationModelsOut(**simulation_engine.catalogue())
+
+
+@router.post("/simulation/engine/run", response_model=SimulationRunOut)
+def engine_simulation_run(
+    body: EngineSimulationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> SimulationRunOut:
+    """Run one scenario against the stored estate: baseline, projection, delta.
+
+    A scenario is data, so what it can ask is bounded by the registered models — the
+    request cannot introduce a computation. A modification naming something this estate
+    does not hold is refused and returned as refused: the projection never quietly
+    describes a smaller change than the one that was asked for.
+    """
+    from shared_models import simulation_engine
+
+    _run_row, graph, reason = collector_depth_helper(db)
+    if graph is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_estate_discovery",
+                "reason": reason or "no stored discovery run — a simulation needs a baseline",
+            },
+        )
+    view = simulation_engine.View.from_graph(graph)
+    try:
+        result = simulation_engine.run(body.scenario, view)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_scenario", "reason": str(exc)},
+        ) from exc
+    return SimulationRunOut(**result)
+
+
 # -- attack planes: the eleven evidence planes a correlation may draw on ----- #
 
 
