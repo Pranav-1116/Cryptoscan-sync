@@ -21,7 +21,7 @@ rather than an opinion.
 | # | Blocker | Grade | What proves what is proven | The gap that keeps it open |
 |---|---|---|---|---|
 | 1 | End-to-end production qualification | **BLOCKED** | 1,255 operations executed on uvicorn + PostgreSQL (guide 100 §5b); 20/20 collector families have code (105) | no data-path test per collector: collector → agent → API → evidence → DB → Twin → BOM → UI |
-| 2 | Worker / job architecture | **PARTIAL** | `111-job-contract.md`: 9/9 properties proven by drill | no retry-after-failure or backoff; cancellation is a checkpoint boundary; concurrency is per process |
+| 2 | Worker / job architecture | **PARTIAL** | `111-job-contract.md`: 9/9 properties proven by drill, now including retry-after-failure with backoff, jitter and a dead-letter ceiling | cancellation is a checkpoint boundary (a running stage is not interrupted); concurrency is per process; no backlog measurement |
 | 3 | PostgreSQL production qualification | **PARTIAL** | 125 migrations at tip, applied and swept on real PG; PITR/backup/failover drills exist as scripts | no partitioning, no 1M-row or concurrent-write measurement, drills not executed here |
 | 4 | Evidence durability | **PARTIAL** | guide 112: 8 of 9 tampering attacks detected on a real stored scan; the Twin now verifies before projecting; export/audit/rescan/host-evidence already enforced | the scan manifest is unsigned — a full rewrite (payload + chain + manifest) verifies PASS; that needs a signing key or an off-site anchor |
 | 5 | Complete authorization model | **PARTIAL** | 1,225 operations in the authorization register; approvals carry a typed contract | per-collector target authority is not uniform; the five questions are answered by different mechanisms per family |
@@ -56,15 +56,15 @@ ingest → evidence rows with a verified chain → graph → Twin projection →
 component, asserting the *count and identity* of what arrives, for at least the
 five families a bank starts with (network TLS, static code, cloud, PKI, runtime).
 
-## 2. Worker / job architecture — **PARTIAL**
+## 2. Worker / job architecture — **PARTIAL** (retry added this pass)
 
 **Proven** (guide 111, nine properties, each by an executed drill):
 
 | Property | Observed |
 |---|---|
 | job queue | one claim, job moves under a lease, second pop gets nothing, ack releases |
-| worker | peak concurrency = `max_workers`; a raising handler is reported `False`, slot released |
-| retry | orphan requeued, redelivered with `attempts=1`, bounded by `max_redeliveries` |
+| worker | peak concurrency = `max_workers`; a raising handler is reported `False`, slot released, and the failure hook runs |
+| retry | lost job requeued with `attempts=1`; **transient failure scheduled with backoff and promoted when due**; `ValueError`, an exhausted budget and a controlled job all dead-letter or refuse |
 | timeout | lease expiry recovers; RUNNING row past 90 m → `FAILED`; expired deadline → `ExecutionDenied` at the next checkpoint |
 | cancellation | cancelled row denied at the next checkpoint; the same call on a RUNNING row gets past it |
 | idempotency | outbox publishes once; duplicate row refused by unique key; duplicate delivery refused at SQL claim |
@@ -72,23 +72,41 @@ five families a bank starts with (network TLS, static code, cloud, PKI, runtime)
 | recovery | killed consumer's job requeued and completed by the next consumer |
 | concurrency | `max_workers=1, queue_limit=1` → third submit blocks until a slot frees |
 
-**Not proven, and this is the honest part.**
+**What changed this pass: retry-after-failure.** Previously a handler that
+raised was logged, reported `False` and **acked** — so a connection reset and a
+malformed payload had the same outcome, one lost observation. `retry_policy.py`
+now classifies the failure and schedules the retry:
 
-- **There is no retry-after-failure.** A handler that raises is logged, reported
-  `False` and **acked**; the queue retries only when a *worker* is lost. A
-  transient collector error is therefore a failed job, not a retried one, and
-  there is no backoff, jitter or retry budget on the job itself.
-- **Cancellation is a checkpoint, not a signal.** A stage already running runs to
-  the end of that stage; nothing interrupts a stage that never returns.
-- **Concurrency is per process.** `WorkerPool` bounds admittance in one worker;
-  there is no cluster-wide admission budget in these drills (the execution
-  budgets exist for approvals, which is a different axis).
-- Nothing here was measured with a backlog of thousands, or two workers racing on
-  the same row.
+- **Transient** (`ConnectionError`, `TimeoutError`, `BlockingIOError`, and
+  SQLAlchemy `OperationalError`/`InterfaceError` *except* syntax/undefined-column
+  errors) → exponential backoff with jitter, capped, re-published to a Redis
+  sorted set scored by due time and promoted by the maintenance sweep.
+- **Permanent** (`ValueError`, `KeyError`, `TypeError`, `PermissionError`,
+  `FileNotFoundError`, …) → dead-lettered immediately. A retry would fail
+  identically three times and only delay the operator finding out.
+- **Unrecognised** → terminal by default. Retrying something we do not
+  understand multiplies an incident instead of reporting it.
+- **Controlled execution → never retried here.** Those attempts hold an
+  approval, a lease and a fence; `decide(controlled=True)` refuses and says why,
+  because re-queuing would bypass the operator reconciliation that exists for
+  exactly that case.
 
-**What closes it.** Retry-with-backoff for retryable failures (a classifier on the
-error, a per-job retry budget, jitter, and a row state that says "will retry at
-T"), then the same drills re-run against a real Redis with a backlog.
+Two details that keep the retry honest rather than merely present:
+
+- **A reaper cannot republish a job that is only waiting out a backoff.**
+  `queued_job_ids()` includes the retry set; otherwise the DB sweep would see a
+  delayed job as lost and publish a second copy — one job becoming two.
+- **The retry carries the original payload string**, not a reconstruction, so a
+  field this worker does not read is not silently dropped on the way back.
+
+**Still open.** Cancellation remains a checkpoint boundary: a stage already
+running finishes, and a stage that never returns is not interrupted. Concurrency
+is bounded per process, not across the cluster. Nothing here ran against a real
+Redis restart or a backlog of thousands — the drills use fakeredis, and a retry
+can wait up to one maintenance interval past its backoff.
+
+**What closes it.** A cooperative cancel token checked inside long stages, a
+cluster-wide admission budget, and one backlog run against a real Redis.
 
 ## 3. PostgreSQL production qualification — **PARTIAL**
 
@@ -268,9 +286,10 @@ either given a screen or explicitly declared API-only.
 1. ~~**Evidence durability (#4)**~~ — **done this pass** (guide 112): twin
    enforcement added, nine attacks executed, the unsigned-manifest boundary
    stated rather than hidden. The residual is one signature, not an audit.
-2. **Worker retry (#2)** — one gap inside an otherwise proven contract, and it is
-   the difference between "a transient failure is a failed job" and "a transient
-   failure is retried".
+2. ~~**Worker retry (#2)**~~ — **done this pass**: transient failures are now
+   retried with backoff and jitter, permanent ones are not, and controlled jobs
+   are excluded by name. Remaining in #2: cooperative cancellation inside a
+   stage, cluster-wide admission, and a real-Redis backlog run.
 3. **End-to-end per family (#1)** — the first five collector families, because
    everything else is a component claim until a payload travels the whole chain.
 4. **Bank-scale measurement (#6)** — one measured run at 100k/1M/5M; it will find

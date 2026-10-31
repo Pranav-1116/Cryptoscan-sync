@@ -92,12 +92,20 @@ def test_a_failing_check_is_broken_and_keeps_what_was_observed(monkeypatch):
     assert row["observations"]["second_pop"] == "q1"
 
 
-def test_the_retry_row_says_what_it_does_not_cover():
-    """A handler failure is not retried; the report must say so, not imply it."""
+def test_the_retry_row_proves_retry_after_failure_and_states_its_scope():
+    """A transient failure is retried, a permanent one is not — and the row says
+    where the retry lives and which jobs it deliberately excludes."""
     report = contract.measure(["retry", "worker"])
     by_item = {row["item"]: row for row in report["rows"]}
-    assert "not retry-after-failure" in by_item["retry"]["limit"]
-    assert "ack-and-move-on" in by_item["worker"]["limit"]
+    observations = by_item["retry"]["observations"]
+    assert observations["retry_action"] == "RETRY"
+    assert observations["retry_promoted"] == 1
+    assert observations["permanent_action"] == "DEAD_LETTER"
+    assert observations["exhausted_action"] == "DEAD_LETTER"
+    assert observations["controlled_action"] == "NEVER"
+    assert "maintenance interval" in by_item["retry"]["limit"]
+    assert "operator reconciliation" in by_item["retry"]["limit"]
+    assert "pool only guarantees the hook runs" in by_item["worker"]["limit"]
 
 
 def test_render_md_marks_every_verdict_visibly():

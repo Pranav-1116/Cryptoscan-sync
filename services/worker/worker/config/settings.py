@@ -39,6 +39,9 @@ class WorkerSettings(BaseSettings):
     # job-path hardening (see worker/core/job_consumer.py, job_reaper.py)
     JOB_LEASE_TTL_SECONDS: int = 60
     JOB_MAX_REDELIVERIES: int = 3
+    # Attempts per job for a *transient* failure, distinct from redeliveries after
+    # worker loss. 1 disables retry-after-failure without disabling recovery.
+    JOB_MAX_ATTEMPTS: int = 3
     JOB_RUNNING_TIMEOUT_MINUTES: int = 90
     JOB_QUEUED_TIMEOUT_MINUTES: int = 10
     CLEANUP_WORKSPACE: bool = True

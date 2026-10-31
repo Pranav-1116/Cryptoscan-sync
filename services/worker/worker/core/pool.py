@@ -45,12 +45,17 @@ class PoolStats:
 class WorkerPool:
     """Run job handlers on `max_workers` threads with backpressure."""
 
-    def __init__(self, handler: Callable[[ScanJob], object], max_workers: int = 2, queue_limit: int = 100):
+    def __init__(self, handler: Callable[[ScanJob], object], max_workers: int = 2, queue_limit: int = 100,
+                 on_failure: Callable[[ScanJob, BaseException], None] | None = None):
         if max_workers < 1:
             raise ValueError("max_workers must be >= 1")
         if queue_limit < 0:
             raise ValueError("queue_limit must be >= 0")
         self.handler = handler
+        #: called once per handler exception, on the worker thread, after the
+        #: failure is logged and before the slot is released. Retry scheduling
+        #: lives here so the pool stays a scheduler of threads, not of policy.
+        self.on_failure = on_failure
         self.max_workers = max_workers
         self._semaphore = threading.Semaphore(max_workers + queue_limit)
         self._executor = ThreadPoolExecutor(
@@ -133,8 +138,15 @@ class WorkerPool:
             result = self.handler(job)
             ok = result is not False
             return ok
-        except Exception:
+        except Exception as exc:
             logger.exception("job_execution_failed", extra={"job_id": job.job_id})
+            # A failure hook must never turn a contained failure into a crash:
+            # the job is already failed, and raising here would lose the slot.
+            if self.on_failure is not None:
+                try:
+                    self.on_failure(job, exc)
+                except Exception:  # noqa: BLE001 — policy errors are logged, not propagated
+                    logger.exception("job_failure_hook_failed", extra={"job_id": job.job_id})
             return False
         finally:
             # BaseException interruptions still propagate through the Future.

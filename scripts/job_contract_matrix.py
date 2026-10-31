@@ -94,6 +94,27 @@ def _queued_job(session: Any, *, status: str = "QUEUED") -> Any:
     return job
 
 
+def _descriptor(job_id: str, *, attempts: int = 0, controlled: bool = False) -> Any:
+    """The queue-side view of a job, as the retry hook receives it."""
+    class _Job:
+        pass
+
+    job = _Job()
+    job.job_id = job_id
+    job.target_repo = "https://example/contract.git"
+    job.target_branch = "main"
+    job.target_commit = None
+    job.triggered_by = "contract"
+    job.job_type = "MANUAL"
+    job.system_id = None
+    job.tenant_id = "tenant-a"
+    job.scan_id = None
+    job.attempts = attempts
+    job.raw = None
+    job.progress = {"execution_control": {"approval_id": "a1"}} if controlled else {}
+    return job
+
+
 def _attempt(session: Any, job: Any, *, deadline_minutes: float = 60.0) -> Any:
     from db.models.execution_control import ExecutionAttempt
 
@@ -198,9 +219,9 @@ def drill_worker(run: Run) -> tuple[str, str | None]:
              "released. It is NOT retried — the worker acks it and moves on.")
     return ("peak concurrency equals max_workers; a raising handler is reported to the submitter as "
             "False (logged, not raised) and releases its slot; saturation clears",
-            "in-process ThreadPoolExecutor. A handler failure is ack-and-move-on: the row is marked "
-            "failed by the executor and the queue does not retry it. Retry exists only for worker "
-            "loss, so a transient collector error is a failed job, not a retried one")
+            "in-process ThreadPoolExecutor. The pool still reports a handler failure as False and "
+            "releases the slot; whether that failure is retried is policy, and the policy is "
+            "`retry_policy`'s (see the `retry` row) — the pool only guarantees the hook runs")
 
 
 def drill_retry(run: Run) -> tuple[str, str | None]:
@@ -221,15 +242,57 @@ def drill_retry(run: Run) -> tuple[str, str | None]:
     run.check(again is not None and again.job_id == "r1", "the requeued job was not redelivered")
     run.check(again.attempts == 1, f"the redelivery counted attempts={again.attempts}, expected 1")
 
+    # (b) retry after *failure*: a transient error is scheduled, a permanent one is not.
+    from worker.core import retry_policy
+
+    server2 = fakeredis.FakeServer()
+    retrying = _consumer(server2, "retrying")
+    scheduled = retry_policy.handle_failure(
+        consumer=retrying,
+        job=_descriptor("f1", attempts=0),
+        exc=ConnectionResetError("peer went away"),
+        max_attempts=3,
+    )
+    queued_now = retrying.redis_client.llen(QUEUE)
+    waiting = retrying.redis_client.zcard(retrying.retry_key)
+    promoted_early = retrying.promote_due()
+    promoted_due = retrying.promote_due(now=time.time() + 10**6)
+    run.check(scheduled.action == "RETRY", f"a transient failure was not scheduled ({scheduled.action})")
+    run.check(queued_now == 0, "a retry was put straight back on the queue, ignoring its backoff")
+    run.check(waiting == 1, "the retry was not written to the delayed set")
+    run.check(promoted_early == 0, "a retry ran before its backoff elapsed")
+    run.check(promoted_due == 1, "a due retry was never promoted")
+
+    permanent = retry_policy.handle_failure(
+        consumer=_consumer(fakeredis.FakeServer(), "permanent"),
+        job=_descriptor("f2", attempts=0), exc=ValueError("malformed payload"), max_attempts=3)
+    exhausted = retry_policy.handle_failure(
+        consumer=_consumer(fakeredis.FakeServer(), "exhausted"),
+        job=_descriptor("f3", attempts=2), exc=TimeoutError("slow"), max_attempts=3)
+    controlled = retry_policy.handle_failure(
+        consumer=_consumer(fakeredis.FakeServer(), "controlled"),
+        job=_descriptor("f4", attempts=0, controlled=True), exc=ConnectionResetError("reset"))
+    run.check(permanent.action == "DEAD_LETTER", "a malformed payload was retried")
+    run.check(exhausted.action == "DEAD_LETTER", "an exhausted job was retried again")
+    run.check(controlled.action == "NEVER", "a controlled job was retried automatically")
+
     run.see(requeued=stats.get("requeued"), attempts_after_redelivery=again.attempts,
-            max_redeliveries=recoverer.max_redeliveries)
-    run.note("attempts increments on redelivery, so retry is bounded rather than infinite")
-    return (f"orphan requeued ({stats.get('requeued')}) and redelivered with attempts=1, bounded by "
-            f"max_redeliveries={recoverer.max_redeliveries}",
-            "this is redelivery after worker loss, not retry-after-failure: a job whose handler "
-            "raises is reported False and acked (see `worker`), so there is no exponential backoff, no "
-            "retry budget on the job itself and no retry of a transient collector error. The attempt "
-            "counter lives in the queue payload; the SQL row's own policy was not exercised")
+            max_redeliveries=recoverer.max_redeliveries,
+            retry_action=scheduled.action, retry_delay_seconds=round(scheduled.delay_seconds, 2),
+            retry_waiting=waiting, retry_promoted=promoted_due,
+            permanent_action=permanent.action, exhausted_action=exhausted.action,
+            controlled_action=controlled.action)
+    run.note("a lost job is redelivered (attempts+1); a transient failure is delayed and promoted; "
+             "a permanent failure, an exhausted budget and a controlled job are not retried")
+    return (f"lost job requeued and redelivered with attempts=1 (max_redeliveries="
+            f"{recoverer.max_redeliveries}); transient failure scheduled "
+            f"{scheduled.delay_seconds:.1f}s out and promoted when due; ValueError, an exhausted "
+            "budget and a controlled job all dead-letter/refuse instead",
+            "the retry lives in Redis (a sorted set scored by due time) and is promoted by the "
+            "worker's maintenance sweep, so a retry can wait up to one maintenance interval past its "
+            "backoff. The controller path is deliberately excluded: a controlled job's attempt holds "
+            "an approval and a lease, and re-queuing it would bypass operator reconciliation. "
+            "Retries are not deduplicated against a job that is still running elsewhere")
 
 
 def drill_timeout(run: Run) -> tuple[str, str | None]:
@@ -555,7 +618,8 @@ PROPERTIES: tuple[dict[str, str], ...] = (
                                      "and only dropped on acknowledgement"},
     {"item": "worker", "promise": "handlers run, concurrency honours max_workers, a failure "
                                   "does not leak a slot"},
-    {"item": "retry", "promise": "a job lost with its worker is redelivered, with the attempt counted"},
+    {"item": "retry", "promise": "a job lost with its worker, or failed transiently, is retried "
+                                  "with the attempt counted; a permanent failure is not"},
     {"item": "timeout", "promise": "a job that stops progressing is timed out, not stuck forever"},
     {"item": "cancellation", "promise": "a cancelled job stops before its next stage runs"},
     {"item": "idempotency", "promise": "duplicate publication or delivery cannot execute twice"},

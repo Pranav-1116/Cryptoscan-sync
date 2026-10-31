@@ -1,7 +1,7 @@
 {
   "schema": "cryptoscan.job-contract/1",
   "version": "job-contract/1.0",
-  "generated_at": "2026-10-31T17:22:03.364787+00:00",
+  "generated_at": "2026-10-31T17:36:55.368015+00:00",
   "properties": 9,
   "expected_properties": 9,
   "proven": 9,
@@ -20,7 +20,7 @@
         "lease_written": true,
         "second_pop": null,
         "processing_after_ack": 0,
-        "drill_seconds": 0.42
+        "drill_seconds": 0.36
       },
       "reason": null,
       "limit": "fakeredis; the ordering guarantee (BLMOVE left\u2192right) is exercised against the real client only on a bank host, and a claim is not exactly-once execution"
@@ -39,21 +39,28 @@
         "drill_seconds": 0.2
       },
       "reason": null,
-      "limit": "in-process ThreadPoolExecutor. A handler failure is ack-and-move-on: the row is marked failed by the executor and the queue does not retry it. Retry exists only for worker loss, so a transient collector error is a failed job, not a retried one"
+      "limit": "in-process ThreadPoolExecutor. The pool still reports a handler failure as False and releases the slot; whether that failure is retried is policy, and the policy is `retry_policy`'s (see the `retry` row) \u2014 the pool only guarantees the hook runs"
     },
     {
       "item": "retry",
-      "promise": "a job lost with its worker is redelivered, with the attempt counted",
+      "promise": "a job lost with its worker, or failed transiently, is retried with the attempt counted; a permanent failure is not",
       "verdict": "PROVEN",
-      "behavior": "orphan requeued (1) and redelivered with attempts=1, bounded by max_redeliveries=3",
+      "behavior": "lost job requeued and redelivered with attempts=1 (max_redeliveries=3); transient failure scheduled 26.0s out and promoted when due; ValueError, an exhausted budget and a controlled job all dead-letter/refuse instead",
       "observations": {
         "requeued": 1,
         "attempts_after_redelivery": 1,
         "max_redeliveries": 3,
+        "retry_action": "RETRY",
+        "retry_delay_seconds": 26.03,
+        "retry_waiting": 1,
+        "retry_promoted": 1,
+        "permanent_action": "DEAD_LETTER",
+        "exhausted_action": "DEAD_LETTER",
+        "controlled_action": "NEVER",
         "drill_seconds": 0.01
       },
       "reason": null,
-      "limit": "this is redelivery after worker loss, not retry-after-failure: a job whose handler raises is reported False and acked (see `worker`), so there is no exponential backoff, no retry budget on the job itself and no retry of a transient collector error. The attempt counter lives in the queue payload; the SQL row's own policy was not exercised"
+      "limit": "the retry lives in Redis (a sorted set scored by due time) and is promoted by the worker's maintenance sweep, so a retry can wait up to one maintenance interval past its backoff. The controller path is deliberately excluded: a controlled job's attempt holds an approval and a lease, and re-queuing it would bypass operator reconciliation. Retries are not deduplicated against a job that is still running elsewhere"
     },
     {
       "item": "timeout",
@@ -64,7 +71,7 @@
         "lease_recovered": 1,
         "db_failed_running": 1,
         "checkpoint_denied": "Execution lease is absent, fenced or expired",
-        "drill_seconds": 0.92
+        "drill_seconds": 0.82
       },
       "reason": null,
       "limit": "the three timeouts are checked at different layers and none of them interrupts a handler already inside a stage \u2014 a stage that never returns still occupies its worker"
@@ -77,7 +84,7 @@
       "observations": {
         "cancelled_outcome": "Execution lease is absent, fenced or expired",
         "running_outcome": "Execution authority was revoked",
-        "drill_seconds": 0.33
+        "drill_seconds": 0.3
       },
       "reason": null,
       "limit": "cancellation is a checkpoint boundary, not a signal: work already inside a stage runs to the end of that stage, and a stage that never returns is not interrupted"

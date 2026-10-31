@@ -484,8 +484,8 @@ def render_markdown(report: dict) -> str:
     )
     add(
         f"| Job/worker contract properties | {_job_contract_cell()} "
-        "| `docs/bank-environment/111-job-contract.md` | that a retried job is retried after a "
-        "*failure*: the contract retries worker loss, not handler errors |"
+        "| `docs/bank-environment/111-job-contract.md` | that a retry survives a Redis restart, "
+        "or that a stage already running is interrupted by a cancellation |"
     )
     add(
         f"| Failure modes with an executed drill | {_failure_matrix_cell()} "

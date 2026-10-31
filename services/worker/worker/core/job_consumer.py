@@ -25,7 +25,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from queue import Empty, Queue
 from typing import Callable
 
@@ -133,6 +133,11 @@ class JobConsumer:
     def dead_letter_key(self) -> str:
         return f"{self.queue_name}:dead"
 
+    @property
+    def retry_key(self) -> str:
+        """Jobs waiting out their backoff, scored by the wall clock they are due."""
+        return f"{self.queue_name}:retry"
+
     def _processing_prefix(self) -> str:
         return f"{self.queue_name}:processing:"
 
@@ -186,6 +191,58 @@ class JobConsumer:
             self.redis_client.lrem(self.processing_key, 1, job.raw)
         except Exception as exc:
             logger.warning("job_ack_failed", extra={"job_id": job.job_id, "error": str(exc)})
+
+    def enqueue_delayed(self, payload: dict, delay_seconds: float) -> bool:
+        """Schedule a retry for later. Returns False when it could only be dropped.
+
+        A delayed retry is not an acknowledgement of success: the job keeps its
+        attempt count, and the payload records when it is due so an operator
+        reading the queue can tell "waiting out a backoff" from "stuck".
+        """
+        body = json.loads(json.dumps(payload, default=str))
+        body["_retry_due_at"] = (datetime.now(timezone.utc) + timedelta(seconds=max(0.0, delay_seconds))).isoformat()
+        serialised = json.dumps(body, default=str)
+        if self.redis_client is None:
+            # Development fallback: no cross-process delivery, and the caller is
+            # told so rather than believing a retry was scheduled.
+            if not self.allow_memory_fallback:
+                raise RuntimeError("Redis unavailable: a delayed retry cannot be scheduled")
+            time.sleep(min(max(0.0, delay_seconds), 0.05))
+            _MEMORY_QUEUE.put(serialised)
+            return True
+        due = time.time() + max(0.0, delay_seconds)
+        self.redis_client.zadd(self.retry_key, {serialised: due})
+        return True
+
+    def promote_due(self, *, now: float | None = None) -> int:
+        """Move retries whose backoff has elapsed back onto the queue.
+
+        ``zrangebyscore`` + ``zrem`` per member, removing before pushing: a
+        crash between the two loses one retry (the DB reaper's QUEUED-row sweep
+        republishes it) rather than publishing the same retry twice.
+        """
+        if self.redis_client is None:
+            return 0
+        due = time.time() if now is None else float(now)
+        try:
+            members = self.redis_client.zrangebyscore(self.retry_key, 0, due)
+        except Exception as exc:
+            logger.warning("retry_promotion_failed", extra={"error": str(exc)})
+            return 0
+        promoted = 0
+        for member in members:
+            try:
+                removed = self.redis_client.zrem(self.retry_key, member)
+            except Exception as exc:
+                logger.warning("retry_promotion_failed", extra={"error": str(exc)})
+                return promoted
+            if not removed:
+                continue  # another worker promoted it first
+            self.redis_client.rpush(self.queue_name, member)
+            promoted += 1
+        if promoted:
+            logger.info("job_retries_promoted", extra={"promoted": promoted})
+        return promoted
 
     def recover_orphans(self) -> dict:
         """Requeue jobs left in the processing lists of workers whose lease expired.
@@ -242,7 +299,12 @@ class JobConsumer:
         return stats
 
     def queued_job_ids(self) -> set[str]:
-        """job_ids currently in the queue or in any processing list (for the DB reaper)."""
+        """job_ids in the queue, in a processing list, or waiting out a backoff.
+
+        The retry set is included deliberately: a reaper that cannot see a
+        delayed retry would treat it as lost and republish it, which is how one
+        job becomes two.
+        """
         ids: set[str] = set()
         if self.redis_client is None:
             return ids
@@ -258,6 +320,14 @@ class JobConsumer:
                             extra={"error_type": type(payload_exc).__name__},
                         )
                         continue
+            for raw in self.redis_client.zrange(self.retry_key, 0, -1):
+                try:
+                    ids.add(str(json.loads(raw).get("job_id")))
+                except (TypeError, ValueError) as payload_exc:
+                    logger.warning(
+                        "queued_job_payload_invalid",
+                        extra={"error_type": type(payload_exc).__name__, "set": "retry"},
+                    )
         except Exception as exc:
             logger.warning("queued_ids_failed", extra={"error": str(exc)})
         return ids
@@ -346,6 +416,7 @@ class JobConsumer:
         while not self._stop.is_set():
             if self.maintenance_due():
                 self.recover_orphans()
+                self.promote_due()
                 if self.on_maintenance:
                     try:
                         self.on_maintenance()

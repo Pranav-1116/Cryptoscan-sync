@@ -11,6 +11,7 @@ from worker.config.settings import Settings
 from worker.core.job_consumer import JobConsumer, ScanJob
 from worker.core.job_executor import JobExecutor
 from worker.core.pool import WorkerPool
+from worker.core.retry_policy import DEFAULT_MAX_ATTEMPTS, handle_failure
 
 logger = logging.getLogger("cryptoscan-worker")
 
@@ -71,7 +72,28 @@ class Worker:
         )
         executor = JobExecutor()
         concurrency = max(1, int(getattr(self.settings, "MAX_CONCURRENT_JOBS", 1)))
-        self.pool = WorkerPool(handler=executor.execute, max_workers=concurrency)
+        max_attempts = int(getattr(self.settings, "JOB_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS))
+        consumer = self.consumer
+
+        def _fail_row(job_id: str, reason: str) -> None:
+            with SessionLocal() as session:
+                fail_job(session, job_id, reason)
+
+        def _on_failure(job: ScanJob, exc: BaseException) -> None:
+            """A failed job is retried only when the failure is transient.
+
+            Controlled jobs are never retried here: their attempt holds an
+            approval and a lease, and `recover_expired` plus operator
+            reconciliation own that path. The pool acks the job either way, so
+            a retry has to be published from this hook, before the slot is
+            released — `retry_policy.handle_failure` does both, and returns the
+            decision so the log says why.
+            """
+            handle_failure(consumer=consumer, job=job, exc=exc,
+                           max_attempts=max_attempts, fail_row=_fail_row)
+
+        self.pool = WorkerPool(handler=executor.execute, max_workers=concurrency,
+                               on_failure=_on_failure)
         logger.info(
             "cryptoscan_worker_pool",
             extra={"max_concurrent_jobs": concurrency, "worker_id": self.consumer.worker_id},
