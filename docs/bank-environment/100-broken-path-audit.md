@@ -217,6 +217,15 @@ what is still open — the list is the same list, moved forward, not a new claim
   purpose (guide 98 §4), it is tested, and it is not evidence that the remote
   equivalents exist.
 
+* **One measured slow path, not fixed.** `GET
+  /api/v1/findings/detectors/labeled-calibration` runs the 842-file labeled
+  accuracy corpus inside the request: 1.9 s of scanning here, plus the scanner
+  registry import on a cold API process, and 6.9–10 s observed against a live
+  server. It is cached per process afterwards (`lru_cache`), so the cost is paid
+  once per worker — but it is paid by a reader, on a `GET`, on a thread that
+  could have served another request. Precomputing it at build time and serving
+  the stored report is the fix; it is not done here.
+
 * **The live sweep is one deployment shape.** One server process, one PostgreSQL,
   no Redis, no cloud credentials, no HSM. A route that needs any of those answers
   from a configuration guard (`503`) or an honest empty result, and the sweep

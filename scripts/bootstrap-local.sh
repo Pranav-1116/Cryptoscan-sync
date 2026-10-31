@@ -32,8 +32,11 @@ docker compose up -d --build
 echo "waiting for API health…"
 ok=0
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:${NGINX_HTTP_PORT}/health" >/dev/null 2>&1 \
-    || curl -fsS "http://127.0.0.1:${NGINX_HTTP_PORT}/api/v1/health" >/dev/null 2>&1; then
+  # /healthz is the liveness route the app serves at the root (the /health
+  # path exists too); /api/v1/health never existed, so the second probe could
+  # not succeed and the wait was really a 120 s sleep with a misleading error.
+  if curl -fsS "http://127.0.0.1:${NGINX_HTTP_PORT}/healthz" >/dev/null 2>&1 \
+    || curl -fsS "http://127.0.0.1:${NGINX_HTTP_PORT}/api/v1/healthz" >/dev/null 2>&1; then
     ok=1
     break
   fi

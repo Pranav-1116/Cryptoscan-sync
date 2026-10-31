@@ -425,11 +425,13 @@ status() {
   fi
   if listening "$API_PORT" && listening "$CONSOLE_PORT"; then
     local code
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$CONSOLE_PORT/api/v1/health" || true)"
+    # /api/v1/health does not exist; the probe always printed "not healthy, or
+    # proxy broken" even on a working stack. /api/v1/healthz is the real route.
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:$CONSOLE_PORT/api/v1/healthz" || true)"
     case "$code" in
-      200) echo "proxy        /api/v1/health via console → 200 (backend reachable)" ;;
-      401) echo "proxy        /api/v1/health via console → 401 (backend reachable, auth required: this is a working proxy)" ;;
-      *)   echo "proxy        /api/v1/health via console → ${code:-no answer} (backend reachable but not healthy, or proxy broken)" ;;
+      200) echo "proxy        /api/v1/healthz via console → 200 (backend reachable)" ;;
+      401) echo "proxy        /api/v1/healthz via console → 401 (backend reachable, auth required: this is a working proxy)" ;;
+      *)   echo "proxy        /api/v1/healthz via console → ${code:-no answer} (backend reachable but not healthy, or proxy broken)" ;;
     esac
   fi
 }

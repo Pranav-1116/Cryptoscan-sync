@@ -65,12 +65,24 @@ _RELAXED = (
 )
 
 
+def _alter(table: str, column: str, *, nullable: bool) -> None:
+    """Batch mode: SQLite has no ALTER COLUMN, and the chain must run there too.
+
+    `alembic upgrade head` is how a bank's database is built, but SQLite is a
+    supported deployment for single-node installs and the whole test suite builds
+    its schema by running this chain — batch mode rebuilds the table on SQLite and
+    emits a plain ALTER on PostgreSQL.
+    """
+    with op.batch_alter_table(table) as batch:
+        batch.alter_column(column, existing_type=None, nullable=nullable)
+
+
 def upgrade() -> None:
     for table, column in _RELAXED:
-        op.alter_column(table, column, existing_type=None, nullable=True)
+        _alter(table, column, nullable=True)
 
 
 def downgrade() -> None:
     for table, column in _RELAXED:
         op.execute(f"DELETE FROM {table} WHERE {column} IS NULL")
-        op.alter_column(table, column, existing_type=None, nullable=False)
+        _alter(table, column, nullable=False)

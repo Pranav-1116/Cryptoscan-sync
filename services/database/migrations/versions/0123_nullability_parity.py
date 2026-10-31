@@ -189,11 +189,17 @@ _STRICTEN = (
 )
 
 
+def _alter(table: str, column: str, *, nullable: bool) -> None:
+    """Batch mode: SQLite has no ALTER COLUMN, and the chain must run there too."""
+    with op.batch_alter_table(table) as batch:
+        batch.alter_column(column, existing_type=None, nullable=nullable)
+
+
 def upgrade() -> None:
     for table, column in _STRICTEN:
-        op.alter_column(table, column, existing_type=None, nullable=False)
+        _alter(table, column, nullable=False)
 
 
 def downgrade() -> None:
     for table, column in _STRICTEN:
-        op.alter_column(table, column, existing_type=None, nullable=True)
+        _alter(table, column, nullable=True)
