@@ -23,6 +23,15 @@
 > by running its drill: `PROVEN`, `BROKEN`, or `UNPROVEN` — the last meaning no drill
 > could run, which is not a pass. Both are served read-only at
 > `GET /api/v1/estate/evidence/validation/{scale-curve,failure-matrix}`.
+>
+> **Not production-ready, and measured as such:** [guide 110](110-production-readiness-blockers.md)
+> grades the eight production blockers against artifacts that exist here —
+> **2 of 8 blocked, 6 partial, 0 proven** — and names the one increment that
+> moves each grade. The job/worker contract it leans on is
+> [guide 111](111-job-contract.md): nine properties, each proven by a drill, with
+> the properties that are *not* provided (retry after a handler failure,
+> interruption of a running stage, cluster-wide admission) stated in the report
+> rather than omitted.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

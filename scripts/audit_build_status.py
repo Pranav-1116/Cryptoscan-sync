@@ -366,6 +366,23 @@ def _scale_curve_cell() -> str:
             "probes agreed")
 
 
+def _job_contract_cell() -> str:
+    """The job/worker contract, read from the drills' own artifact."""
+    document = _load_artifact("111-job-contract.json")
+    if not document:
+        return "**not measured** — `scripts/job_contract_matrix.py` has not been run"
+    proven = int(document.get("proven") or 0)
+    total = int(document.get("expected_properties") or 9)
+    broken = int(document.get("broken") or 0)
+    unproven = int(document.get("unproven") or 0)
+    cell = f"**{proven} / {total} proven** by an executed drill"
+    if broken:
+        cell += f", **{broken} BROKEN**"
+    if unproven:
+        cell += f", {unproven} unproven (not passes)"
+    return cell
+
+
 def _failure_matrix_cell() -> str:
     """The nine failure modes, read from the drills' own artifact."""
     document = _load_artifact("109-failure-matrix.json")
@@ -439,6 +456,11 @@ def render_markdown(report: dict) -> str:
         "| `docs/bank-environment/108-scale-curve.md` | that a bank's real estate scores the "
         "same: the corpus is generated from this repository's own vocabulary, so it is a "
         "regression curve, not an accuracy estimate |"
+    )
+    add(
+        f"| Job/worker contract properties | {_job_contract_cell()} "
+        "| `docs/bank-environment/111-job-contract.md` | that a retried job is retried after a "
+        "*failure*: the contract retries worker loss, not handler errors |"
     )
     add(
         f"| Failure modes with an executed drill | {_failure_matrix_cell()} "

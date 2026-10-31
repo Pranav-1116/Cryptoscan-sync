@@ -1,0 +1,148 @@
+{
+  "schema": "cryptoscan.job-contract/1",
+  "version": "job-contract/1.0",
+  "generated_at": "2026-10-31T17:22:03.364787+00:00",
+  "properties": 9,
+  "expected_properties": 9,
+  "proven": 9,
+  "broken": 0,
+  "unproven": 0,
+  "complete": true,
+  "rows": [
+    {
+      "item": "job_queue",
+      "promise": "a published job is delivered to exactly one consumer, and only dropped on acknowledgement",
+      "verdict": "PROVEN",
+      "behavior": "enqueue \u2192 one claim, job moves to the processing list under a lease, a second pop gets nothing, ack releases it",
+      "observations": {
+        "queue_after_claim": 0,
+        "processing_after_claim": 1,
+        "lease_written": true,
+        "second_pop": null,
+        "processing_after_ack": 0,
+        "drill_seconds": 0.42
+      },
+      "reason": null,
+      "limit": "fakeredis; the ordering guarantee (BLMOVE left\u2192right) is exercised against the real client only on a bank host, and a claim is not exactly-once execution"
+    },
+    {
+      "item": "worker",
+      "promise": "handlers run, concurrency honours max_workers, a failure does not leak a slot",
+      "verdict": "PROVEN",
+      "behavior": "peak concurrency equals max_workers; a raising handler is reported to the submitter as False (logged, not raised) and releases its slot; saturation clears",
+      "observations": {
+        "max_concurrent": 2,
+        "max_workers": 2,
+        "handler_failure_reported_as": false,
+        "handler_failure_raised": false,
+        "slot_recovered": true,
+        "drill_seconds": 0.2
+      },
+      "reason": null,
+      "limit": "in-process ThreadPoolExecutor. A handler failure is ack-and-move-on: the row is marked failed by the executor and the queue does not retry it. Retry exists only for worker loss, so a transient collector error is a failed job, not a retried one"
+    },
+    {
+      "item": "retry",
+      "promise": "a job lost with its worker is redelivered, with the attempt counted",
+      "verdict": "PROVEN",
+      "behavior": "orphan requeued (1) and redelivered with attempts=1, bounded by max_redeliveries=3",
+      "observations": {
+        "requeued": 1,
+        "attempts_after_redelivery": 1,
+        "max_redeliveries": 3,
+        "drill_seconds": 0.01
+      },
+      "reason": null,
+      "limit": "this is redelivery after worker loss, not retry-after-failure: a job whose handler raises is reported False and acked (see `worker`), so there is no exponential backoff, no retry budget on the job itself and no retry of a transient collector error. The attempt counter lives in the queue payload; the SQL row's own policy was not exercised"
+    },
+    {
+      "item": "timeout",
+      "promise": "a job that stops progressing is timed out, not stuck forever",
+      "verdict": "PROVEN",
+      "behavior": "silent worker's lease expires \u2192 job recovered; RUNNING row past 90m \u2192 FAILED; expired deadline \u2192 ExecutionDenied at the next checkpoint",
+      "observations": {
+        "lease_recovered": 1,
+        "db_failed_running": 1,
+        "checkpoint_denied": "Execution lease is absent, fenced or expired",
+        "drill_seconds": 0.92
+      },
+      "reason": null,
+      "limit": "the three timeouts are checked at different layers and none of them interrupts a handler already inside a stage \u2014 a stage that never returns still occupies its worker"
+    },
+    {
+      "item": "cancellation",
+      "promise": "a cancelled job stops before its next stage runs",
+      "verdict": "PROVEN",
+      "behavior": "cancelled job \u2192 ExecutionDenied('Execution lease is absent, fenced or expired') at the next checkpoint; the identical call on a RUNNING job gets past that check",
+      "observations": {
+        "cancelled_outcome": "Execution lease is absent, fenced or expired",
+        "running_outcome": "Execution authority was revoked",
+        "drill_seconds": 0.33
+      },
+      "reason": null,
+      "limit": "cancellation is a checkpoint boundary, not a signal: work already inside a stage runs to the end of that stage, and a stage that never returns is not interrupted"
+    },
+    {
+      "item": "idempotency",
+      "promise": "duplicate publication or delivery cannot execute twice",
+      "verdict": "PROVEN",
+      "behavior": "outbox dispatch publishes once and returns False afterwards; a duplicate row is refused by the unique key; a duplicate delivery is refused at the SQL claim",
+      "observations": {
+        "dispatches": 1,
+        "first_dispatch": true,
+        "second_dispatch": false,
+        "duplicate_row_refused": true,
+        "duplicate_claim_refusal": "Job is no longer queued",
+        "drill_seconds": 0.16
+      },
+      "reason": null,
+      "limit": "this is at-least-once publication with a claim fence, not exactly-once execution: a crash between publish and ack may duplicate a message, which the claim then refuses"
+    },
+    {
+      "item": "dead_letter",
+      "promise": "past the retry budget a job is set aside with a reason",
+      "verdict": "PROVEN",
+      "behavior": "past max_redeliveries \u2192 dead letter with reason 'job redelivered 2 times after worker loss; giving up'; queue empty, no requeue",
+      "observations": {
+        "dead_lettered": 1,
+        "reason": "job redelivered 2 times after worker loss; giving up",
+        "dead_letter_list": 1,
+        "queue": 0,
+        "drill_seconds": 0.01
+      },
+      "reason": null,
+      "limit": "the dead-letter list is not drained by anything here: a job there needs an operator, and nothing in this drill proves someone is told"
+    },
+    {
+      "item": "recovery",
+      "promise": "after a crash the work is picked up and finished",
+      "verdict": "PROVEN",
+      "behavior": "a killed consumer's job is requeued and completed by the next consumer, leaving the processing list empty",
+      "observations": {
+        "processed": [
+          "rec1"
+        ],
+        "processing_after": 0,
+        "drill_seconds": 0.0
+      },
+      "reason": null,
+      "limit": "the crash is simulated by deleting the lease; the process is not actually killed here (scripts/queue_kill9_drill.py does that)"
+    },
+    {
+      "item": "concurrency",
+      "promise": "admission is bounded and over-submission is refused or blocked",
+      "verdict": "PROVEN",
+      "behavior": "max_workers=1 + queue_limit=1 \u2192 the third submit blocks until a slot frees, then runs; no admitted work is left behind",
+      "observations": {
+        "max_workers": 1,
+        "queue_limit": 1,
+        "third_submit_blocked": true,
+        "third_submit_completed": true,
+        "admitted_after_shutdown": 0,
+        "drill_seconds": 0.4
+      },
+      "reason": null,
+      "limit": "backpressure is per worker process; there is no cross-worker admission budget in this drill, and a blocked submitter is not visible to an operator"
+    }
+  ]
+}

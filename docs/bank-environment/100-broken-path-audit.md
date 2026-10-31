@@ -407,6 +407,13 @@ Correlation does not model causality, does not rank by likelihood, and never rea
   specified under that fault; it does not mean the deployment is configured,
   monitored, or observed.
 
+Gap **G** is not the end of the story: [guide 110](110-production-readiness-blockers.md)
+grades the eight **production** blockers (end-to-end qualification, worker/job
+architecture, PostgreSQL qualification, evidence durability, the authorization
+model, bank-scale performance, observability, frontend hardening) the same way —
+against artifacts that exist, with the unproven part named. Two are blocked, six
+are partial, none is proven.
+
 ---
 
 ## 5. What this audit does **not** prove
