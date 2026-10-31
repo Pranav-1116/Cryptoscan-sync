@@ -16,7 +16,7 @@ from sqlalchemy import DateTime, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
-from db.tenancy import TenantScoped
+from db.tenancy import TenantOwned
 
 # Tenant plans. Limits are policy — pinned by api tests via
 # api.security.tenancy (the api-side pure engine mirrors this catalog by
@@ -42,7 +42,7 @@ class Tenant(BaseModel):
     suspend_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
-class TenantMembership(BaseModel, TenantScoped):
+class TenantMembership(BaseModel, TenantOwned):
     __tablename__ = "tenant_memberships"
     __table_args__ = (
         UniqueConstraint("tenant_id", "username", name="uq_tenant_member"),
@@ -53,7 +53,7 @@ class TenantMembership(BaseModel, TenantScoped):
     tenant_role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
 
 
-class TenantUsageEvent(BaseModel, TenantScoped):
+class TenantUsageEvent(BaseModel, TenantOwned):
     """Append-only per-tenant metering trail (plan enforcement + billing input).
 
     kind is a meter name (e.g. "scan_run", "target_create", "member_create");
@@ -69,7 +69,7 @@ class TenantUsageEvent(BaseModel, TenantScoped):
     detail: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 
-class TenantProvisionEvent(BaseModel, TenantScoped):
+class TenantProvisionEvent(BaseModel, TenantOwned):
     """Audit trail for tenant lifecycle (signup, suspend, restore, plan change).
 
     The platform-wide audit log stays actor/action-shaped; this gives the SaaS
@@ -84,7 +84,7 @@ class TenantProvisionEvent(BaseModel, TenantScoped):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
-class TenantInvite(BaseModel, TenantScoped):
+class TenantInvite(BaseModel, TenantOwned):
     """A pending invitation to join a tenant.
 
     The raw token is shown ONCE at creation (like API keys) and only its

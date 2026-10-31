@@ -103,6 +103,21 @@ class TenantScoped:
             _TENANT_TABLES.add(str(name))
 
 
+class TenantOwned(TenantScoped):
+    """Mixin: the row exists *because* of a tenant, so it must name one.
+
+    ``TenantScoped`` allows a NULL ``tenant_id`` and calls that the platform
+    estate — correct for assets, findings, snapshots and anything discovered once
+    and shared. It is wrong for rows that cannot mean anything without an owner: a
+    membership, an invitation, a metering event. The database already refuses
+    NULL for those columns; without this class the ORM would still build the
+    INSERT and the caller would get a 500 instead of a clear validation error at
+    the edge where the mistake was made.
+    """
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+
+
 def scoped_tables() -> frozenset[str]:
     """Names of every table whose model inherits :class:`TenantScoped`."""
     return frozenset(_TENANT_TABLES)

@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 import hashlib
+import hmac
 import json
 import os
 import time
@@ -20,18 +21,26 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import desc
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_admin
+from api.dependencies import require_auditor as _require_auditor
 from db.models.compliance_record import ComplianceAttestation, ComplianceEvidencePack
 from db.tenancy import filtered_get
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
 
-def _require_admin(user: str = Depends(get_current_user)) -> str:
-
-    if user != "admin":
-        raise HTTPException(status_code=403, detail="Requires role: admin")
-    return user
+#: Every route below is administrative. The gate used to be
+#:
+#:     if user != "admin": raise HTTPException(403, ...)
+#:
+#: which compared the *username* to the literal string "admin". A provisioned
+#: superadmin under any other name was refused (five endpoints, 403 on a live
+#: server), and an account named "admin" was admitted whatever its roles were —
+#: a permission bug in one direction and a privilege-escalation hole in the other.
+#: `require_admin` reads the roles the identity actually holds, freshly, from the
+#: user record. The name is kept as an alias so existing dependency overrides and
+#: imports keep resolving to the real gate rather than to a stale copy of it.
+_require_admin = require_admin
 
 
 @router.get("/evidence")
@@ -367,30 +376,41 @@ def retention_policy(user: str = Depends(get_current_user), db=Depends(get_db_se
 AUDITOR_SCOPES = {"evidence": "/compliance/audit/evidence", "retention": "/compliance/retention"}
 
 
-def require_auditor(request: Request) -> str:
-    """Auditor access: dedicated ``X-Auditor-Key`` matching AUDITOR_API_KEY,
-    or an admin session. Fail-closed in production without the key."""
+def require_auditor(
+    request: Request,
+    user: str = Depends(get_current_user),
+    db=Depends(get_db_session),
+) -> str:
+    """Auditor access: the dedicated ``X-Auditor-Key``, or an auditor/admin role.
+
+    Two credential classes, both explicit:
+
+    * the key in ``X-Auditor-Key`` lets an external auditor read the surface
+      without a product account. It is compared in constant time, and in
+      production it is mandatory — no key configured means no auditor access,
+      never "anything goes".
+    * a signed-in identity whose *roles* include auditor or admin. The previous
+      implementation re-tested the username against "admin", so a provisioned
+      superadmin reached this endpoint unauthenticated-in-effect (it returned
+      without any credential check when no key was set) while a named auditor
+      was refused.
+    """
     key = request.headers.get("x-auditor-key")
     expected = os.environ.get("AUDITOR_API_KEY")
-    if expected and key and key == expected:
+    if expected and key and hmac.compare_digest(key, expected):
         return "auditor"
-    if os.environ.get("ENVIRONMENT", "").lower() in {"production"}:
+    if not expected and os.environ.get("ENVIRONMENT", "").lower() in {"production"}:
         raise HTTPException(status_code=401, detail="auditor key required")
-    from api.dependencies import get_optional_user
-
-    user = get_optional_user(request)
-    if user != "admin":
-        raise HTTPException(status_code=401, detail="auditor access requires X-Auditor-Key or admin session")
-    return "admin"
+    return _require_auditor(request=request, user=user, db=db)
 
 
 @router.get("/audit/evidence")
-def audit_evidence(request: Request, db=Depends(get_db_session)):
-    require_auditor(request)
-    return evidence(request, user="admin", db=db)
+def audit_evidence(request: Request, user: str = Depends(require_auditor), db=Depends(get_db_session)):
+    """Read the live evidence pack through the auditor credential class."""
+    return evidence(request, user=user, db=db)
 
 
 @router.get("/audit/retention")
-def audit_retention(request: Request, db=Depends(get_db_session)):
-    require_auditor(request)
+def audit_retention(user: str = Depends(require_auditor), db=Depends(get_db_session)):
+    """Read the retention policy through the auditor credential class."""
     return retention_policy(db=db)

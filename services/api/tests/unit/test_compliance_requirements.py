@@ -28,7 +28,18 @@ from db.models.compliance_record import ComplianceAttestation, ComplianceEvidenc
 NOW = datetime(2026, 10, 13, tzinfo=timezone.utc)
 
 
-def _make_app(user: str = "admin"):
+def _make_app(user: str = "admin", roles: list[str] | None = None):
+    """An app, its database, and a *real* credential for ``user``.
+
+    These endpoints used to be gated by a comparison against the literal string
+    "admin", so overriding ``get_current_user`` was enough to authenticate. The
+    gate is now the shared role check, which reads the roles from the user record
+    and refuses a request that carries no credential at all — deliberately, even
+    when ``get_current_user`` is overridden (see ``require_roles``). So the
+    fixture provisions the user and mints a signed session, and every request
+    sends it. The override stays: it keeps the identity the app sees equal to the
+    identity the test named.
+    """
     import os
 
     os.environ.setdefault("ENVIRONMENT", "test")
@@ -39,10 +50,20 @@ def _make_app(user: str = "admin"):
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
+
+    from api.security.passwords import hash_password
+    from api.security.session_manager import SessionManager
+    from db.repositories.user_repository import UserRepository
+
+    granted = roles if roles is not None else ["superadmin"]
+    token = SessionManager().create_session(user, roles=granted)
+    UserRepository(session).create_user(user, hash_password("compliance-password-1"), roles=granted)
+    session.commit()
+
     app = create_app()
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db_session] = lambda: (yield session)
-    return app, session, engine
+    return app, session, engine, {"Authorization": f"Bearer {token}"}
 
 
 def _pack_payload(statuses: dict[str, str], *, age_days: float = 0.0) -> dict:
@@ -85,8 +106,8 @@ ALL_PASS = {
 
 @pytest.mark.asyncio
 async def test_no_pinned_pack_reports_no_evidence_never_a_score():
-    app, session, engine = _make_app()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    app, session, engine, headers = _make_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
         res = await c.get("/api/v1/compliance/requirements")
         assert res.status_code == 200, res.text
         body = res.json()
@@ -100,9 +121,9 @@ async def test_no_pinned_pack_reports_no_evidence_never_a_score():
 
 @pytest.mark.asyncio
 async def test_register_maps_evidence_gap_expiry_and_sign_off():
-    app, session, engine = _make_app()
+    app, session, engine, headers = _make_app()
     seeded = _seed_pack(session, ALL_PASS, age_days=100)  # 90d windows expire
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
         # reviewer signs the 365-day retention requirement over the pinned pack
         signed = await c.post(
             "/api/v1/compliance/attestations",
@@ -149,9 +170,9 @@ async def test_register_maps_evidence_gap_expiry_and_sign_off():
 
 @pytest.mark.asyncio
 async def test_fresh_passing_pack_without_signatures_awaits_sign_off():
-    app, session, engine = _make_app()
+    app, session, engine, headers = _make_app()
     _seed_pack(session, ALL_PASS, age_days=0)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
         res = await c.get("/api/v1/compliance/requirements")
         rows = {r["requirement"]: r for r in res.json()["requirements"]}
         for req_id in ("SOC2-CC6.1", "SOC2-CC7.2", "RETENTION-WORM"):
@@ -164,9 +185,9 @@ async def test_fresh_passing_pack_without_signatures_awaits_sign_off():
 
 @pytest.mark.asyncio
 async def test_pinned_pack_served_verbatim_with_integrity_self_check():
-    app, session, engine = _make_app()
+    app, session, engine, headers = _make_app()
     seeded = _seed_pack(session, ALL_PASS)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
         res = await c.get(f"/api/v1/compliance/evidence/packs/{seeded['pack_id']}")
         assert res.status_code == 200
         body = res.json()
@@ -196,8 +217,8 @@ async def test_pinned_pack_served_verbatim_with_integrity_self_check():
 
 @pytest.mark.asyncio
 async def test_signing_an_unpinned_pack_is_refused():
-    app, session, engine = _make_app()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    app, session, engine, headers = _make_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
         res = await c.post(
             "/api/v1/compliance/attestations",
             json={"scope": "SOC2-CC6.1", "signed_by": "ciso@example.com", "pack_sha256": "f" * 64},
@@ -209,7 +230,7 @@ async def test_signing_an_unpinned_pack_is_refused():
 
 @pytest.mark.asyncio
 async def test_tampered_attestation_signature_counts_as_invalid_not_signed():
-    app, session, engine = _make_app()
+    app, session, engine, headers = _make_app()
     seeded = _seed_pack(session, ALL_PASS)
     session.add(
         ComplianceAttestation(
@@ -223,7 +244,7 @@ async def test_tampered_attestation_signature_counts_as_invalid_not_signed():
         )
     )
     session.commit()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
         res = await c.get("/api/v1/compliance/requirements")
         rows = {r["requirement"]: r for r in res.json()["requirements"]}
         cc61 = rows["SOC2-CC6.1"]
@@ -239,8 +260,8 @@ async def test_tampered_attestation_signature_counts_as_invalid_not_signed():
 
 @pytest.mark.asyncio
 async def test_snapshot_endpoint_pins_the_live_pack():
-    app, session, engine = _make_app()
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    app, session, engine, headers = _make_app()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
         res = await c.post("/api/v1/compliance/evidence/packs")
         assert res.status_code == 200, res.text
         body = res.json()
@@ -262,8 +283,11 @@ async def test_snapshot_endpoint_pins_the_live_pack():
 
 @pytest.mark.asyncio
 async def test_non_admin_cannot_pin_or_sign():
-    app, session, engine = _make_app(user="auditor")
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+    # a provisioned auditor: authenticated, but not one of the roles the write
+    # endpoints require — the case the old username gate got wrong in both
+    # directions (it admitted the *name* "admin" and refused everyone else)
+    app, session, engine, headers = _make_app(user="auditor", roles=["auditor"])
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
         assert (await c.post("/api/v1/compliance/evidence/packs")).status_code == 403
         assert (
             await c.post(
@@ -272,4 +296,28 @@ async def test_non_admin_cannot_pin_or_sign():
             )
         ).status_code == 403
         assert (await c.get("/api/v1/compliance/requirements")).status_code == 403
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_the_admin_gate_reads_the_role_not_the_username():
+    """The regression this file exists to prevent.
+
+    `_require_admin` compared the username to the literal "admin", so a
+    provisioned superadmin under any other name was refused (403 on five
+    endpoints on a live server) and an account *named* "admin" was admitted
+    whatever its roles were. Both directions are asserted, because a fix that
+    only widens access is how a permission bug becomes an escalation bug.
+    """
+    app, session, engine, headers = _make_app(user="ops-superadmin", roles=["superadmin"])
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
+        assert (await c.get("/api/v1/compliance/requirements")).status_code == 200
+        assert (await c.get("/api/v1/compliance/evidence")).status_code == 200
+    session.close()
+    engine.dispose()
+
+    app, session, engine, headers = _make_app(user="admin", roles=["readonly"])
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t", headers=headers) as c:
+        assert (await c.get("/api/v1/compliance/requirements")).status_code == 403
+        assert (await c.get("/api/v1/compliance/evidence")).status_code == 403
     engine.dispose()

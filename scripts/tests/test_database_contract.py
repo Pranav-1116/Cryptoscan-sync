@@ -131,6 +131,17 @@ def _models():
     return Base
 
 
+def _live_nullability(engine) -> dict[str, dict[str, bool]]:
+    """Column name → whether the *database* requires a value."""
+    from sqlalchemy import inspect
+
+    inspector = inspect(engine)
+    return {
+        table: {c["name"]: bool(c["nullable"]) for c in inspector.get_columns(table)}
+        for table in inspector.get_table_names()
+    }
+
+
 def _live_schema(engine) -> tuple[set[str], dict[str, set[str]]]:
     from sqlalchemy import inspect
 
@@ -186,6 +197,142 @@ class TestTheMigratedSchemaMatchesTheModels:
             "columns exist in the database but no model maps them. Either a model dropped a "
             f"column without a migration, or new residue was introduced: {new}"
         )
+
+
+#: Columns the model declares NOT NULL, has no Python-side default for, and the
+#: database nevertheless accepts as NULL. Empty, and it must stay empty: 0122 and
+#: 0123 brought the two schemas into exact agreement. A new entry here means a
+#: migration loosened a column the model refuses, or a model gained a NOT NULL
+#: column over a table whose migration was already written — fix the migration.
+KNOWN_LOOSE_COLUMNS: set[str] = set()
+
+
+class TestTheMigratedSchemaEnforcesWhatTheModelsDeclare:
+    """A column can exist in both places and still disagree.
+
+    ``test_every_orm_column_exists`` compares names. A model that declares
+    ``nullable=True`` over a column the migration created ``NOT NULL`` passes that
+    test and then fails in production — the ORM happily builds the INSERT the
+    database rejects. This is not hypothetical: it is how ``hbom_snapshots``'
+    pin endpoint returned 500 on a live server for every estate-wide pin (no
+    tenant is active outside a tenancy request, so ``tenant_id`` was NULL).
+
+    Two directions, judged differently:
+
+    * **model allows NULL, database refuses it** — always a defect. The write is
+      rejected at runtime with a 500 the model never predicted. Must be empty.
+    * **model refuses NULL, database allows it** — only a defect when the model
+      has no Python-side default, because then a writer can leave the column out
+      and the database will store a NULL the code promised could not exist. Where
+      the model does supply a default, the ORM always writes a value, so those are
+      tolerated and pinned in ``KNOWN_LOOSE_COLUMNS`` — which is now empty.
+    """
+
+    def test_a_model_may_not_allow_a_null_the_database_refuses(self, migrated):
+        live = _live_nullability(migrated)
+        drift: list[str] = []
+        for table in _models().metadata.sorted_tables:
+            live_table = live.get(table.name)
+            if live_table is None:
+                continue  # reported by test_every_orm_table_exists
+            for column in table.columns:
+                enforced = live_table.get(column.name)
+                if enforced is None:
+                    continue  # reported by test_every_orm_column_exists
+                if column.nullable and not enforced:
+                    drift.append(f"{table.name}.{column.name}")
+        assert drift == [], (
+            "the model allows NULL and the migrated database refuses it, so an ORM "
+            "insert the application considers valid is a 500 at runtime (create_all "
+            "hides this). Either relax the column in a migration or tighten the "
+            "model: " + ", ".join(sorted(drift))
+        )
+
+    def test_a_database_null_must_be_unreachable_from_the_model(self, migrated):
+        live = _live_nullability(migrated)
+        loose: set[str] = set()
+        for table in _models().metadata.sorted_tables:
+            live_table = live.get(table.name)
+            if live_table is None:
+                continue
+            for column in table.columns:
+                enforced = live_table.get(column.name)
+                if enforced is None or not enforced:
+                    continue  # absent, or the database already refuses NULL
+                if column.nullable:
+                    continue  # the first test owns that direction
+                if column.default is None and column.server_default is None:
+                    loose.add(f"{table.name}.{column.name}")
+        new = sorted(loose - KNOWN_LOOSE_COLUMNS)
+        assert new == [], (
+            "the database accepts NULL for a column the model declares NOT NULL and "
+            "supplies no default for, so a writer that omits it stores a NULL the "
+            f"code promised could not exist: {new}"
+        )
+        stale = sorted(KNOWN_LOOSE_COLUMNS - loose)
+        assert stale == [], f"KNOWN_LOOSE_COLUMNS entries that no longer drift: {stale}"
+
+
+class TestPlatformScopeWritesOnTheMigratedSchema:
+    """Rows that belong to no tenant must be writable on the real schema.
+
+    ``TenantScoped`` documents NULL ``tenant_id`` as "the platform estate": an
+    installation with no tenancy, or a collector that produces one answer for the
+    whole estate. Several tables disagreed with that in the migration chain — the
+    columns were ``NOT NULL`` — and because every other test builds its schema
+    with ``create_all``, nothing noticed until a live server answered
+    ``POST /api/v1/hbom/snapshot`` with 500 (``null value in column "tenant_id"``).
+    These tests write exactly the rows those endpoints write.
+    """
+
+    def test_an_estate_hbom_pin_persists(self, migrated):
+        from datetime import datetime, timezone
+
+        from sqlalchemy.orm import Session
+
+        from db.models.hbom_snapshot import HbomSnapshot
+
+        with Session(migrated) as db:
+            row = HbomSnapshot(
+                environment="production",
+                content_hash="a" * 64,
+                format="json",
+                generator="api",
+                payload={"bomFormat": "HBOM", "components": []},
+                component_count=0,
+                created_by="contract-test",
+                snapshotted_at=datetime.now(timezone.utc),
+            )
+            db.add(row)
+            db.commit()  # the write that used to raise on PostgreSQL
+            assert row.id
+
+    def test_a_platform_advisory_persists(self, migrated):
+        from sqlalchemy.orm import Session
+
+        from db.models.threat_advisory import AlgorithmAdvisory
+
+        with Session(migrated) as db:
+            row = AlgorithmAdvisory(
+                advisory_id="CVE-CONTRACT-1",
+                source="contract-feed",
+                advisory_type="DEPRECATION",
+                algorithm="RSA-2048",
+                severity="HIGH",
+            )
+            db.add(row)
+            db.commit()
+            assert row.id
+
+    def test_the_network_inventory_persists_without_a_tenant(self, migrated):
+        from sqlalchemy.orm import Session
+
+        from db.models.network_topology import TopologyEdge, TopologyNode
+
+        with Session(migrated) as db:
+            db.add(TopologyNode(name="contract-node", kind="host"))
+            db.add(TopologyEdge(from_name="contract-node", to_name="contract-node-2", relation="PROXIES_TO"))
+            db.commit()
 
 
 def _payload() -> dict:
