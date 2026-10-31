@@ -1,0 +1,565 @@
+{
+  "measured_at": "2026-10-31T17:06:57.671257+00:00",
+  "notes": [
+    "estates are synthetic, generated from public standards; a score here is a score on this corpus",
+    "crypto and relationship precision/recall are measured against planted answers, not against the graph",
+    "planted refusals (co-location, inference, evidence nobody recorded) are scored separately: 100% precision is trivial on a corpus of only true edges",
+    "database growth is the row count the persistence layer writes, validated once against a real SQLite write at the smallest scale"
+  ],
+  "rows": [
+    {
+      "accuracy": {
+        "correlation": {
+          "agreement": {
+            "detected": 10,
+            "expected": 10,
+            "missed": 0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "spurious": 0
+          },
+          "contradiction": {
+            "detected": 7,
+            "expected": 7,
+            "missed": 0,
+            "recall": 1.0
+          },
+          "events": 10,
+          "facts": 27,
+          "note": "the corpus plants one probe subject per bank that two planes describe, and a third that records it absent when the bank runs an HSM. This is where scale could bite without any single fact being wrong",
+          "seconds": 0.0014,
+          "subjects": {
+            "ambiguous": 0,
+            "resolved": 37,
+            "state": "RESOLVED",
+            "unresolved": 0
+          }
+        },
+        "crypto": {
+          "expected": 61,
+          "f1": 1.0,
+          "false_negative_examples": [],
+          "false_negatives": 0,
+          "false_positive_examples": [],
+          "false_positives": 0,
+          "found": 61,
+          "precision": 1.0,
+          "recall": 1.0,
+          "true_positives": 61,
+          "unit": "asset+algorithm pairs"
+        },
+        "relationships": {
+          "established": 191,
+          "expected": 191,
+          "f1": 1.0,
+          "false_negative_examples": [],
+          "false_negatives": 0,
+          "false_positive_examples": [],
+          "false_positives": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "refusals": {
+            "expected": 20,
+            "note": "co-location, an inference and an edge citing evidence nobody recorded must all be refused; a corpus of only true edges would report 100% precision for any engine",
+            "rate": 1.0,
+            "refused": 20,
+            "wrongly_accepted": 0,
+            "wrongly_accepted_examples": []
+          },
+          "true_positives": 191,
+          "unit": "subject+predicate+object"
+        }
+      },
+      "banks": 10,
+      "database": {
+        "bytes_on_disk": 4182016,
+        "matches_projection": true,
+        "note": "written through `api.estate_observations.sync` into a throwaway SQLite database; the observation table holds one row per asserted fact, so it matches the projection minus the evidence records, which live in their own table",
+        "observations_projected": 722,
+        "observations_written": 722,
+        "rows_projected": 793,
+        "seconds": 0.2513
+      },
+      "estate": {
+        "assets": 145,
+        "banks": 10,
+        "evidence": 71,
+        "expected_conflicts": 11,
+        "note": "synthetic estates written from public standards \u2014 not any bank's inventory, and no number derived from them describes a real institution",
+        "planted_crypto": 61,
+        "planted_edges": 191,
+        "refused_edges": 20,
+        "relationships": 191,
+        "schema": "cryptoscan.synthetic-estate/1",
+        "seed": 7,
+        "unobserved_assets": 5
+      },
+      "evidence": {
+        "arrived": 71,
+        "blind_spot": {
+          "examples": [
+            "bank000-card-processing",
+            "bank000-clearing-adapter",
+            "bank002-open-banking-hub",
+            "bank003-card-processing",
+            "bank007-open-banking-hub"
+          ],
+          "note": "assets in the corpus with no evidence at all. They must NOT appear in the findings \u2014 a corpus where everything is observed cannot measure a dark asset",
+          "unobserved_assets": 5
+        },
+        "conflicts": {
+          "agrees": true,
+          "detected": 11,
+          "expected": 11,
+          "field_conflicts": 19,
+          "note": "two planes reporting different algorithms for one asset is a conflict, not a winner: both facts are held and the disagreement is reported"
+        },
+        "correct": true,
+        "coverage": {
+          "asset_coverage": 0.413793,
+          "assets": 145,
+          "assets_known_to_graph": 125,
+          "assets_with_evidence": 60,
+          "evidence_types": 4,
+          "graph_coverage": 0.862069,
+          "types": [
+            "CERTIFICATE_OBSERVED",
+            "CONFIGURED",
+            "RUNTIME_OBSERVED",
+            "STATIC_OBSERVED"
+          ]
+        },
+        "establishment_citations_absent": 0,
+        "missing": 0,
+        "missing_examples": [],
+        "note": "reproducible means: rebuild the graph from the same rows and the fingerprint is identical \u2014 an evidence id that changed between runs would make verify meaningless",
+        "planted": 71,
+        "reproducible": true,
+        "unresolvable_refs": 0
+      },
+      "performance": {
+        "assets_per_second": 83410.9,
+        "evidence_per_second": 40842.6,
+        "ingest_seconds": 0.0017,
+        "note": "peak RSS is the process high-water mark, so it only rises across scales",
+        "peak_rss_mb": 33.0,
+        "relationships_per_second": 109872.3,
+        "scoring_seconds": 0.006,
+        "total_seconds": 0.0164
+      }
+    },
+    {
+      "accuracy": {
+        "correlation": {
+          "agreement": {
+            "detected": 50,
+            "expected": 50,
+            "missed": 0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "spurious": 0
+          },
+          "contradiction": {
+            "detected": 30,
+            "expected": 30,
+            "missed": 0,
+            "recall": 1.0
+          },
+          "events": 50,
+          "facts": 130,
+          "note": "the corpus plants one probe subject per bank that two planes describe, and a third that records it absent when the bank runs an HSM. This is where scale could bite without any single fact being wrong",
+          "seconds": 0.0051,
+          "subjects": {
+            "ambiguous": 0,
+            "resolved": 180,
+            "state": "RESOLVED",
+            "unresolved": 0
+          }
+        },
+        "crypto": {
+          "expected": 309,
+          "f1": 1.0,
+          "false_negative_examples": [],
+          "false_negatives": 0,
+          "false_positive_examples": [],
+          "false_positives": 0,
+          "found": 309,
+          "precision": 1.0,
+          "recall": 1.0,
+          "true_positives": 309,
+          "unit": "asset+algorithm pairs"
+        },
+        "relationships": {
+          "established": 914,
+          "expected": 914,
+          "f1": 1.0,
+          "false_negative_examples": [],
+          "false_negatives": 0,
+          "false_positive_examples": [],
+          "false_positives": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "refusals": {
+            "expected": 100,
+            "note": "co-location, an inference and an edge citing evidence nobody recorded must all be refused; a corpus of only true edges would report 100% precision for any engine",
+            "rate": 1.0,
+            "refused": 100,
+            "wrongly_accepted": 0,
+            "wrongly_accepted_examples": []
+          },
+          "true_positives": 914,
+          "unit": "subject+predicate+object"
+        }
+      },
+      "banks": 50,
+      "database": {
+        "rows_projected": 3925
+      },
+      "estate": {
+        "assets": 710,
+        "banks": 50,
+        "evidence": 359,
+        "expected_conflicts": 62,
+        "note": "synthetic estates written from public standards \u2014 not any bank's inventory, and no number derived from them describes a real institution",
+        "planted_crypto": 309,
+        "planted_edges": 914,
+        "refused_edges": 100,
+        "relationships": 914,
+        "schema": "cryptoscan.synthetic-estate/1",
+        "seed": 7,
+        "unobserved_assets": 21
+      },
+      "evidence": {
+        "arrived": 359,
+        "blind_spot": {
+          "examples": [
+            "bank000-card-processing",
+            "bank000-clearing-adapter",
+            "bank002-open-banking-hub",
+            "bank003-card-processing",
+            "bank007-open-banking-hub"
+          ],
+          "note": "assets in the corpus with no evidence at all. They must NOT appear in the findings \u2014 a corpus where everything is observed cannot measure a dark asset",
+          "unobserved_assets": 21
+        },
+        "conflicts": {
+          "agrees": true,
+          "detected": 62,
+          "expected": 62,
+          "field_conflicts": 120,
+          "note": "two planes reporting different algorithms for one asset is a conflict, not a winner: both facts are held and the disagreement is reported"
+        },
+        "correct": true,
+        "coverage": {
+          "asset_coverage": 0.41831,
+          "assets": 710,
+          "assets_known_to_graph": 620,
+          "assets_with_evidence": 297,
+          "evidence_types": 4,
+          "graph_coverage": 0.873239,
+          "types": [
+            "CERTIFICATE_OBSERVED",
+            "CONFIGURED",
+            "RUNTIME_OBSERVED",
+            "STATIC_OBSERVED"
+          ]
+        },
+        "establishment_citations_absent": 0,
+        "missing": 0,
+        "missing_examples": [],
+        "note": "reproducible means: rebuild the graph from the same rows and the fingerprint is identical \u2014 an evidence id that changed between runs would make verify meaningless",
+        "planted": 359,
+        "reproducible": true,
+        "unresolvable_refs": 0
+      },
+      "performance": {
+        "assets_per_second": 79194.8,
+        "evidence_per_second": 40043.6,
+        "ingest_seconds": 0.009,
+        "note": "peak RSS is the process high-water mark, so it only rises across scales",
+        "peak_rss_mb": 94.9,
+        "relationships_per_second": 101949.4,
+        "scoring_seconds": 0.0162,
+        "total_seconds": 0.084
+      }
+    },
+    {
+      "accuracy": {
+        "correlation": {
+          "agreement": {
+            "detected": 100,
+            "expected": 100,
+            "missed": 0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "spurious": 0
+          },
+          "contradiction": {
+            "detected": 68,
+            "expected": 68,
+            "missed": 0,
+            "recall": 1.0
+          },
+          "events": 100,
+          "facts": 268,
+          "note": "the corpus plants one probe subject per bank that two planes describe, and a third that records it absent when the bank runs an HSM. This is where scale could bite without any single fact being wrong",
+          "seconds": 0.0105,
+          "subjects": {
+            "ambiguous": 0,
+            "resolved": 368,
+            "state": "RESOLVED",
+            "unresolved": 0
+          }
+        },
+        "crypto": {
+          "expected": 633,
+          "f1": 1.0,
+          "false_negative_examples": [],
+          "false_negatives": 0,
+          "false_positive_examples": [],
+          "false_positives": 0,
+          "found": 633,
+          "precision": 1.0,
+          "recall": 1.0,
+          "true_positives": 633,
+          "unit": "asset+algorithm pairs"
+        },
+        "relationships": {
+          "established": 1868,
+          "expected": 1868,
+          "f1": 1.0,
+          "false_negative_examples": [],
+          "false_negatives": 0,
+          "false_positive_examples": [],
+          "false_positives": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "refusals": {
+            "expected": 200,
+            "note": "co-location, an inference and an edge citing evidence nobody recorded must all be refused; a corpus of only true edges would report 100% precision for any engine",
+            "rate": 1.0,
+            "refused": 200,
+            "wrongly_accepted": 0,
+            "wrongly_accepted_examples": []
+          },
+          "true_positives": 1868,
+          "unit": "subject+predicate+object"
+        }
+      },
+      "banks": 100,
+      "database": {
+        "rows_projected": 8027
+      },
+      "estate": {
+        "assets": 1450,
+        "banks": 100,
+        "evidence": 733,
+        "expected_conflicts": 124,
+        "note": "synthetic estates written from public standards \u2014 not any bank's inventory, and no number derived from them describes a real institution",
+        "planted_crypto": 633,
+        "planted_edges": 1868,
+        "refused_edges": 200,
+        "relationships": 1868,
+        "schema": "cryptoscan.synthetic-estate/1",
+        "seed": 7,
+        "unobserved_assets": 40
+      },
+      "evidence": {
+        "arrived": 733,
+        "blind_spot": {
+          "examples": [
+            "bank000-card-processing",
+            "bank000-clearing-adapter",
+            "bank002-open-banking-hub",
+            "bank003-card-processing",
+            "bank007-open-banking-hub"
+          ],
+          "note": "assets in the corpus with no evidence at all. They must NOT appear in the findings \u2014 a corpus where everything is observed cannot measure a dark asset",
+          "unobserved_assets": 40
+        },
+        "conflicts": {
+          "agrees": true,
+          "detected": 124,
+          "expected": 124,
+          "field_conflicts": 242,
+          "note": "two planes reporting different algorithms for one asset is a conflict, not a winner: both facts are held and the disagreement is reported"
+        },
+        "correct": true,
+        "coverage": {
+          "asset_coverage": 0.42,
+          "assets": 1450,
+          "assets_known_to_graph": 1275,
+          "assets_with_evidence": 609,
+          "evidence_types": 4,
+          "graph_coverage": 0.87931,
+          "types": [
+            "CERTIFICATE_OBSERVED",
+            "CONFIGURED",
+            "RUNTIME_OBSERVED",
+            "STATIC_OBSERVED"
+          ]
+        },
+        "establishment_citations_absent": 0,
+        "missing": 0,
+        "missing_examples": [],
+        "note": "reproducible means: rebuild the graph from the same rows and the fingerprint is identical \u2014 an evidence id that changed between runs would make verify meaningless",
+        "planted": 733,
+        "reproducible": true,
+        "unresolvable_refs": 0
+      },
+      "performance": {
+        "assets_per_second": 75406.4,
+        "evidence_per_second": 38119.2,
+        "ingest_seconds": 0.0192,
+        "note": "peak RSS is the process high-water mark, so it only rises across scales",
+        "peak_rss_mb": 99.3,
+        "relationships_per_second": 97144.2,
+        "scoring_seconds": 0.0335,
+        "total_seconds": 0.2094
+      }
+    },
+    {
+      "accuracy": {
+        "correlation": {
+          "agreement": {
+            "detected": 150,
+            "expected": 150,
+            "missed": 0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "spurious": 0
+          },
+          "contradiction": {
+            "detected": 99,
+            "expected": 99,
+            "missed": 0,
+            "recall": 1.0
+          },
+          "events": 150,
+          "facts": 399,
+          "note": "the corpus plants one probe subject per bank that two planes describe, and a third that records it absent when the bank runs an HSM. This is where scale could bite without any single fact being wrong",
+          "seconds": 0.0184,
+          "subjects": {
+            "ambiguous": 0,
+            "resolved": 549,
+            "state": "RESOLVED",
+            "unresolved": 0
+          }
+        },
+        "crypto": {
+          "expected": 948,
+          "f1": 1.0,
+          "false_negative_examples": [],
+          "false_negatives": 0,
+          "false_positive_examples": [],
+          "false_positives": 0,
+          "found": 948,
+          "precision": 1.0,
+          "recall": 1.0,
+          "true_positives": 948,
+          "unit": "asset+algorithm pairs"
+        },
+        "relationships": {
+          "established": 2782,
+          "expected": 2782,
+          "f1": 1.0,
+          "false_negative_examples": [],
+          "false_negatives": 0,
+          "false_positive_examples": [],
+          "false_positives": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "refusals": {
+            "expected": 300,
+            "note": "co-location, an inference and an edge citing evidence nobody recorded must all be refused; a corpus of only true edges would report 100% precision for any engine",
+            "rate": 1.0,
+            "refused": 300,
+            "wrongly_accepted": 0,
+            "wrongly_accepted_examples": []
+          },
+          "true_positives": 2782,
+          "unit": "subject+predicate+object"
+        }
+      },
+      "banks": 150,
+      "database": {
+        "rows_projected": 11979
+      },
+      "estate": {
+        "assets": 2161,
+        "banks": 150,
+        "evidence": 1098,
+        "expected_conflicts": 185,
+        "note": "synthetic estates written from public standards \u2014 not any bank's inventory, and no number derived from them describes a real institution",
+        "planted_crypto": 948,
+        "planted_edges": 2782,
+        "refused_edges": 300,
+        "relationships": 2782,
+        "schema": "cryptoscan.synthetic-estate/1",
+        "seed": 7,
+        "unobserved_assets": 60
+      },
+      "evidence": {
+        "arrived": 1098,
+        "blind_spot": {
+          "examples": [
+            "bank000-card-processing",
+            "bank000-clearing-adapter",
+            "bank002-open-banking-hub",
+            "bank003-card-processing",
+            "bank007-open-banking-hub"
+          ],
+          "note": "assets in the corpus with no evidence at all. They must NOT appear in the findings \u2014 a corpus where everything is observed cannot measure a dark asset",
+          "unobserved_assets": 60
+        },
+        "conflicts": {
+          "agrees": true,
+          "detected": 185,
+          "expected": 185,
+          "field_conflicts": 355,
+          "note": "two planes reporting different algorithms for one asset is a conflict, not a winner: both facts are held and the disagreement is reported"
+        },
+        "correct": true,
+        "coverage": {
+          "asset_coverage": 0.42249,
+          "assets": 2161,
+          "assets_known_to_graph": 1894,
+          "assets_with_evidence": 913,
+          "evidence_types": 4,
+          "graph_coverage": 0.876446,
+          "types": [
+            "CERTIFICATE_OBSERVED",
+            "CONFIGURED",
+            "RUNTIME_OBSERVED",
+            "STATIC_OBSERVED"
+          ]
+        },
+        "establishment_citations_absent": 0,
+        "missing": 0,
+        "missing_examples": [],
+        "note": "reproducible means: rebuild the graph from the same rows and the fingerprint is identical \u2014 an evidence id that changed between runs would make verify meaningless",
+        "planted": 1098,
+        "reproducible": true,
+        "unresolvable_refs": 0
+      },
+      "performance": {
+        "assets_per_second": 74996.9,
+        "evidence_per_second": 38105.8,
+        "ingest_seconds": 0.0288,
+        "note": "peak RSS is the process high-water mark, so it only rises across scales",
+        "peak_rss_mb": 104.3,
+        "relationships_per_second": 96548.6,
+        "scoring_seconds": 0.061,
+        "total_seconds": 0.2949
+      }
+    }
+  ],
+  "scales": [
+    10,
+    50,
+    100,
+    150
+  ],
+  "schema": "cryptoscan.scale-curve/1",
+  "seed": 7
+}

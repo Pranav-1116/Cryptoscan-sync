@@ -10,7 +10,7 @@
 >
 > **Path-level verification:** [guide 100](100-broken-path-audit.md) records the nine
 > checks that decide whether a route is *broken* (exists, does not work) versus
-> *missing* (never built) — including a sweep that calls every one of the 1253
+> *missing* (never built) — including a sweep that calls every one of the 1254
 > operations on a live server — the defects those checks found, and what they still
 > cannot see. It is a measurement, not an assurance claim.
 

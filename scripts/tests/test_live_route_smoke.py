@@ -22,7 +22,7 @@ place — and then asks every operation in the schema for an answer:
 Four things make this possible without weakening the product:
 
 1. The rate limiter allots 600 requests/minute per identity, and the sweep is
-   ~1253 operations. The fixture creates several equally privileged identities
+   ~1254 operations. The fixture creates several equally privileged identities
    and shards the work, so the limiter keeps its production numbers and each
    identity stays inside its own window.
 2. Sessions are minted directly through `SessionManager` and persisted, because
@@ -716,7 +716,7 @@ class TestResponseBodiesMatchTheDeclaredContract:
         ]
         typed = [item for item in operations if _declared_json(spec, item[1], item[0])]
         assert len(operations) >= 1200
-        #: Measured 97 of 1253 (7.7%) when the cloud-account inventory, the backup
+        #: Measured 98 of 1254 (7.8%) when the cloud-account inventory, the backup
         #: family, the business process/owner family and the process/system link
         #: were given `response_model`, plus `/backup/create`, `/backup/list` and the
         #: twin path. The gap is §5's limit (a): the remaining
@@ -725,7 +725,7 @@ class TestResponseBodiesMatchTheDeclaredContract:
         #: typing a route is the only way to raise it, and dropping one is the only
         #: way to trip it. `scripts/tests/test_response_typing.py` keeps the exact
         #: list, so a *new* untyped route is a build failure too.
-        assert len(typed) >= 95, (
+        assert len(typed) >= 96, (
             f"{len(typed)} of {len(operations)} operations declare a response schema; this was "
             "94 — a typed route lost its model"
         )
