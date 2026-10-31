@@ -1,0 +1,200 @@
+{
+  "schema": "cryptoscan.failure-matrix/1",
+  "version": "failure-matrix/1.0",
+  "generated_at": "2026-10-31T17:13:47.258500+00:00",
+  "modes": 9,
+  "expected_modes": 9,
+  "proven": 9,
+  "broken": 0,
+  "unproven": 0,
+  "complete": true,
+  "rows": [
+    {
+      "mode": "api",
+      "what_breaks": "the API stops answering (database accepts, never replies)",
+      "expected": "503 in 4.00s with 'no answer within 4.0s'; liveness stayed up",
+      "verdict": "PROVEN",
+      "behavior": "503 in 4.00s with 'no answer within 4.0s'; liveness stayed up",
+      "observations": {
+        "readiness_status": 503,
+        "readiness_seconds": 4.0,
+        "readiness_budget_seconds": 4.0,
+        "liveness_seconds": 0.0,
+        "readiness_body": {
+          "status": "not_ready",
+          "database": "no answer within 4.0s (unreachable, not refused)"
+        },
+        "drill_seconds": 4.97
+      },
+      "reason": null,
+      "limit": "the stalled probe thread is only released when the driver's own timeout expires; the endpoint stops waiting for it, so a probe-heavy interval can still leave orphaned threads"
+    },
+    {
+      "mode": "database",
+      "what_breaks": "PostgreSQL is lost and a backup must be restored",
+      "expected": "valid restore; 4 altered artifacts refused (ciphertext-corrupt, manifest-tampered, wrong-encryption-key, wrong-signing-secret)",
+      "verdict": "PROVEN",
+      "behavior": "valid restore; 4 altered artifacts refused (ciphertext-corrupt, manifest-tampered, wrong-encryption-key, wrong-signing-secret)",
+      "observations": {
+        "restored": true,
+        "refusals": [
+          "ciphertext-corrupt",
+          "manifest-tampered",
+          "wrong-encryption-key",
+          "wrong-signing-secret"
+        ],
+        "refusal_reasons": {
+          "manifest-tampered": "manifest signature verification failed \u2014 refusing to restore",
+          "wrong-signing-secret": "manifest signature verification failed \u2014 refusing to restore",
+          "ciphertext-corrupt": "ciphertext hash does not match manifest (corrupt/tampered)",
+          "wrong-encryption-key": "decryption failed (wrong key or corrupt archive)"
+        },
+        "wal_applied": false,
+        "drill_seconds": 0.02
+      },
+      "reason": null,
+      "limit": "the backend is an in-process fake, so this proves the integrity gate, not that a real pg_restore refuses a corrupt dump (see scripts/pitr_drill.py and postgres_drill.py)"
+    },
+    {
+      "mode": "worker",
+      "what_breaks": "a worker is killed holding a job",
+      "expected": "orphan requeued and redelivered with attempts=1; stale RUNNING row FAILED, fresh one left",
+      "verdict": "PROVEN",
+      "behavior": "orphan requeued and redelivered with attempts=1; stale RUNNING row FAILED, fresh one left",
+      "observations": {
+        "orphan_requeued": 1,
+        "redelivered_attempts": 1,
+        "db_failed_running": 1,
+        "fresh_row_status": "RUNNING",
+        "drill_seconds": 0.47
+      },
+      "reason": null,
+      "limit": "Redis here is fakeredis and the lease loss is simulated by deleting the key; the actual SIGKILL is scripts/queue_kill9_drill.py (see the queue row)"
+    },
+    {
+      "mode": "collector",
+      "what_breaks": "a collector errors or has no credentials",
+      "expected": "raise \u2192 FAILED + 'inventory is UNKNOWN, no absence of crypto may be inferred'; no credentials \u2192 NOT_ATTEMPTED; healthy \u2192 COMPLETE",
+      "verdict": "PROVEN",
+      "behavior": "raise \u2192 FAILED + 'inventory is UNKNOWN, no absence of crypto may be inferred'; no credentials \u2192 NOT_ATTEMPTED; healthy \u2192 COMPLETE",
+      "observations": {
+        "failed_status": "FAILED",
+        "failed_reason": "RuntimeError: connection reset by peer",
+        "failed_assets": 0,
+        "not_attempted_status": "NOT_ATTEMPTED",
+        "complete_status": "COMPLETE",
+        "drill_seconds": 0.0
+      },
+      "reason": null,
+      "limit": "the collector is injected, so this proves the runner's status mapping, not any one vendor API's error behaviour"
+    },
+    {
+      "mode": "agent",
+      "what_breaks": "the agent's submission to the API fails",
+      "expected": "transport raises \u2192 {ok: false, error: 'api unreachable'}, no exception escapes; next submit ok: true",
+      "verdict": "PROVEN",
+      "behavior": "transport raises \u2192 {ok: false, error: 'api unreachable'}, no exception escapes; next submit ok: true",
+      "observations": {
+        "failed_result": {
+          "ok": "False",
+          "skipped": "False",
+          "error": "api unreachable"
+        },
+        "recovered": true,
+        "unconfigured": "no_api_url",
+        "drill_seconds": 0.0
+      },
+      "reason": null,
+      "limit": "the transport is injected and the agent has no local spool, so findings produced during the outage are dropped rather than replayed \u2014 that is the observed behaviour, not a retry"
+    },
+    {
+      "mode": "network",
+      "what_breaks": "an endpoint is unreachable or black-holed",
+      "expected": "black-holed endpoint \u2192 UNKNOWN/NO_RESPONSE in 1.61s; closed port \u2192 UNKNOWN in 0.00s",
+      "verdict": "PROVEN",
+      "behavior": "black-holed endpoint \u2192 UNKNOWN/NO_RESPONSE in 1.61s; closed port \u2192 UNKNOWN in 0.00s",
+      "observations": {
+        "blackhole_detected": "UNKNOWN",
+        "blackhole_method": "NO_RESPONSE",
+        "blackhole_seconds": 1.61,
+        "blackhole_attempts": [
+          "TLS_CLIENT_HELLO"
+        ],
+        "refused_detected": "UNKNOWN",
+        "refused_seconds": 0.0,
+        "drill_seconds": 1.7
+      },
+      "reason": null,
+      "limit": "no packet loss or asymmetric routing is simulated; the bounded timeouts are the production ones scaled down"
+    },
+    {
+      "mode": "storage",
+      "what_breaks": "the backup volume is corrupt or unwritable",
+      "expected": "roundtrip from disk OK; corrupt artifact refused; unwritable path raised and the schedule did not advance",
+      "verdict": "PROVEN",
+      "behavior": "roundtrip from disk OK; corrupt artifact refused; unwritable path raised and the schedule did not advance",
+      "observations": {
+        "files": [
+          "postgres__proddb__bk-75a5c0e71c57-1-20261031T171346.570431+0000.enc",
+          "postgres__proddb__bk-75a5c0e71c57-1-20261031T171346.570431+0000.manifest.json"
+        ],
+        "restored": true,
+        "corrupt_artifact_refused": "ciphertext hash does not match manifest (corrupt/tampered)",
+        "failed_write_raised": "the backup volume is not writable at this path",
+        "drill_seconds": 0.01
+      },
+      "reason": null,
+      "limit": "the volume is a local temp directory, not the mounted production volume or an S3-compatible sink"
+    },
+    {
+      "mode": "certificate_expiry",
+      "what_breaks": "a certificate in the estate expires",
+      "expected": "expiry computed from not_after: -1d EXPIRED, \u22647d CRITICAL, \u226430d SOON, else VALID, no not_after \u2192 UNKNOWN; expired certificate lands in the NBOM as critical",
+      "verdict": "PROVEN",
+      "behavior": "expiry computed from not_after: -1d EXPIRED, \u22647d CRITICAL, \u226430d SOON, else VALID, no not_after \u2192 UNKNOWN; expired certificate lands in the NBOM as critical",
+      "observations": {
+        "expiry_statuses": {
+          "expired": "EXPIRED",
+          "critical": "EXPIRING_CRITICAL",
+          "soon": "EXPIRING_SOON",
+          "valid": "VALID",
+          "not_yet_valid": "NOT_YET_VALID",
+          "no_expiry": "UNKNOWN"
+        },
+        "days_until_expiry": {
+          "7d23h": 7,
+          "8d1h": 8,
+          "30d23h": 30,
+          "31d1h": 31
+        },
+        "flooring_note": "days_until_expiry floors: 7d23h remaining reads 7 and is CRITICAL",
+        "nbom_contains_expiry_finding": true,
+        "drill_seconds": 0.01
+      },
+      "reason": null,
+      "limit": "expiry is evaluated at observation time from the certificate's own not_after; no clock skew or timezone-shifted issuer is simulated, and nothing here renews or rotates"
+    },
+    {
+      "mode": "queue",
+      "what_breaks": "Redis drops out or a job is SIGKILLed mid-run",
+      "expected": "enqueue during a Redis outage raised in 0.00s; SIGKILL drill PASS (orphan requeued, redelivered with attempts=1)",
+      "verdict": "PROVEN",
+      "behavior": "enqueue during a Redis outage raised in 0.00s; SIGKILL drill PASS (orphan requeued, redelivered with attempts=1)",
+      "observations": {
+        "redis_outage_refused": "Redis unavailable during startup and memory fallback is disabled: Error 111 connecting to ",
+        "refuse_seconds": 0.0,
+        "kill9_result": "PASS",
+        "kill9_requeued": 1,
+        "redelivered": {
+          "job_id": "drill-job",
+          "attempts": 1,
+          "t_plus_s": 0.0
+        },
+        "kill9_seconds": 0.67,
+        "drill_seconds": 0.68
+      },
+      "reason": null,
+      "limit": "the SIGKILL drill runs against fakeredis; the real-Redis invocation (REDIS_URL=redis://\u2026 python scripts/queue_kill9_drill.py) is a bank-host step and was not executed here"
+    }
+  ]
+}

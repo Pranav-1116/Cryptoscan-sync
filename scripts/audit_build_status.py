@@ -331,6 +331,58 @@ def build_report() -> dict:
     }
 
 
+_DOCS = Path(__file__).resolve().parents[1] / "docs" / "bank-environment"
+
+
+def _load_artifact(name: str) -> dict | None:
+    """Read a measured artifact, or None when it has not been generated."""
+    try:
+        return json.loads((_DOCS / name).read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def _scale_curve_cell() -> str:
+    """The measured scale curve, read from the harness's own artifact."""
+    document = _load_artifact("107-scale-curve.json")
+    rows = (document or {}).get("rows") or []
+    if not rows:
+        return "**not measured** — `scripts/scale_bank_curve.py` has not been run"
+    accuracies = [
+        row["accuracy"][family][key]
+        for row in rows
+        for family in ("crypto", "relationships")
+        for key in ("precision", "recall", "f1")
+    ]
+    refusals = [row["accuracy"]["relationships"]["refusals"] for row in rows]
+    correlation = [row["accuracy"]["correlation"] for row in rows]
+    worst = min(accuracies) if accuracies else 0.0
+    refused = sum(int(item.get("refused") or 0) for item in refusals)
+    expected_refusals = sum(int(item.get("expected") or 0) for item in refusals)
+    probes = sum(int(item.get("agreement", {}).get("expected") or 0) for item in correlation)
+    detected = sum(int(item.get("agreement", {}).get("detected") or 0) for item in correlation)
+    return (f"**measured** at {len(rows)} scales — every precision/recall/F1 >= {worst:.3f}, "
+            f"{refused}/{expected_refusals} refusals refused, {detected}/{probes} correlation "
+            "probes agreed")
+
+
+def _failure_matrix_cell() -> str:
+    """The nine failure modes, read from the drills' own artifact."""
+    document = _load_artifact("109-failure-matrix.json")
+    if not document:
+        return "**not measured** — `scripts/failure_matrix.py` has not been run"
+    proven = int(document.get("proven") or 0)
+    total = int(document.get("expected_modes") or 9)
+    broken = int(document.get("broken") or 0)
+    unproven = int(document.get("unproven") or 0)
+    cell = f"**{proven} / {total} proven** by an executed drill"
+    if broken:
+        cell += f", **{broken} BROKEN**"
+    if unproven:
+        cell += f", {unproven} unproven (not passes)"
+    return cell
+
+
 def render_markdown(report: dict) -> str:
     lines: list[str] = []
     add = lines.append
@@ -370,7 +422,7 @@ def render_markdown(report: dict) -> str:
     )
     add("")
 
-    add("## The four numbers")
+    add("## The measured numbers")
     add("")
     add("| Measure | Value | What it means | What it does **not** mean |")
     add("|---|---|---|---|")
@@ -381,6 +433,17 @@ def render_markdown(report: dict) -> str:
         f"| Endpoints reachable from the console | **{report['endpoints_with_ui']}** "
         f"({report['ui_percent']}%) | a URL for it exists in `frontend/src` | built. An endpoint with no "
         "screen is a capability an operator cannot use, not a broken one |"
+    )
+    add(
+        f"| Synthetic-bank scale curve (10/50/100/150) | {_scale_curve_cell()} "
+        "| `docs/bank-environment/108-scale-curve.md` | that a bank's real estate scores the "
+        "same: the corpus is generated from this repository's own vocabulary, so it is a "
+        "regression curve, not an accuracy estimate |"
+    )
+    add(
+        f"| Failure modes with an executed drill | {_failure_matrix_cell()} "
+        "| `docs/bank-environment/109-failure-matrix.md` | that the deployment is configured, "
+        "monitored or observed — these are in-process drills, not a chaos run |"
     )
     add(
         f"| Endpoints referenced by a test | **{report['endpoints_tested']}** "

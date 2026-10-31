@@ -24,6 +24,7 @@ from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
     accuracy,
     collector_depth,
+    failure_matrix,
     scale_validation,
     software_supply_chain,
     execution_controls,
@@ -524,6 +525,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(estate_graph.router, prefix=prefix)
     app.include_router(collector_depth.router, prefix=prefix)
     app.include_router(scale_validation.router, prefix=prefix)
+    app.include_router(failure_matrix.router, prefix=prefix)
     app.include_router(ingestion.router, prefix=prefix)
     app.include_router(scans.router, prefix=prefix)
     app.include_router(accuracy.router, prefix=prefix)

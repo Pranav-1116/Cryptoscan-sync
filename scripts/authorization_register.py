@@ -2,7 +2,7 @@
 
 Guide 100 §5 limit (c) says the audit proves enforcement of what a route
 *declares*, and does not assert that any particular session-only route should have
-declared a role — "deciding that is a policy question per route". 1218 of the 1254
+declared a role — "deciding that is a policy question per route". 1219 of the 1255
 operations are behind the session gate with no role requirement. This module is the
 first half of deciding: it reads the route tree and says, for each operation, which
 kind of authority guard is actually in its dependency closure —

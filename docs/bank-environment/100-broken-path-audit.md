@@ -59,18 +59,18 @@ a minute; they are not part of the hermetic gate.
 
 | Measurement | Value | Meaning |
 |---|---|---|
-| Served routes | **1140 paths / 1254 operations** | Read from the app's own OpenAPI document, not from a list |
+| Served routes | **1141 paths / 1255 operations** | Read from the app's own OpenAPI document, not from a list |
 | Console calls resolved | **637 → 0 unknown, 0 wrong verbs** | Every URL the browser builds exists, with the verb it uses |
 | CLI / script calls resolved | **315 → 0 unknown** | Now includes the two shipped CLI files, which no scan read before |
 | Router modules enumerated | **120 modules, 1246 routes, 0 unmounted HTTP routes** | The two WebSocket routes are the only ones outside the schema, by design |
-| Console operations with a response model (current) | **98 typed / 1254 (7.8%)** | Superseded the 40/605 figure below when four families were typed; see `103-untyped-response-operations.json` |
+| Console operations with a response model (current) | **99 typed / 1255 (7.9%)** | Superseded the 40/605 figure below when four families were typed; see `103-untyped-response-operations.json` |
 | Console operations with a response model | **40 typed / 605 (6.6%)** | The TypeScript interface *is* the contract for the other 93% |
 | ORM tables without a migration | **0** | Nothing the models read is missing from the migrated schema |
 | Model columns without a migration | **0** | — |
 | Columns in the database that no model maps | **16** | Residue from withdrawn writers; enumerated in check 5 |
 | Routes quoted as proof that are not served | **0 of 8 hints** | Every "check at"/"measured by" route resolves, and accepts GET or POST |
 | Console pages | **90 / 0 orphans** | Every page file is routed or embedded by a page the router reaches, transitively |
-| Operations executed on a live server | **1254 / 1254, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
+| Operations executed on a live server | **1255 / 1255, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
 | Operations that refused an anonymous caller | **1212 protected of 1212, 36 public** | Everything outside the session gate's declared public surface (health, docs, login/SSO, machine-signed webhooks) |
 | Role-gated operations proven both ways | **306 admitted with the role, 273 refused without it** | Read from the dependency tree, then asked of the running server |
 | Operations with a response schema that holds | **98 validated / 98 declared** | The other 1156 declare nothing (`§5`, limit a) |
@@ -365,9 +365,47 @@ Correlation does not model causality, does not rank by likelihood, and never rea
   makes this a *regression* curve — it catches a join that stops resolving, a refusal
   that stops refusing, or an evidence id that stops reproducing as the estate grows. It
   is not an adversarial accuracy estimate; that needs a bank's real exports.
-- **G (HA / disaster recovery)** — drills exist per failure (worker recovery, queue
-  kill-9, PITR, region), but there is no single failure-mode matrix that names a
-  deterministic recovery behaviour for all nine modes the vision lists. Not started.
+- **G (HA / disaster recovery)** — **a matrix now exists, and every row was
+  executed**: `docs/bank-environment/109-failure-matrix.json` and `.md`, produced by
+  `scripts/failure_matrix.py` and served at
+  `GET /estate/evidence/validation/failure-matrix`. Nine modes, and each row's
+  verdict comes from running the code that is supposed to survive the fault with the
+  fault injected — never from reading it. `PROVEN` means the drill ran and every
+  check passed; `BROKEN` means it ran and the system misbehaved; `UNPROVEN` means the
+  drill could not run here or does not exist, and is *not* a pass. The harness has
+  three verdicts and no fourth, so a mode nobody could exercise shows up as a hole
+  rather than as white space.
+
+  | Mode | What breaks | Observed behaviour | Verdict |
+  |---|---|---|---|
+  | `api` | database accepts the connection, never answers | readiness **503 in 4.00s** ("no answer within 4.0s"), liveness answered in **0ms** | PROVEN |
+  | `database` | PostgreSQL lost, restore from backup | valid restore; **4** altered artifacts refused before reaching the backend | PROVEN |
+  | `worker` | worker killed holding a job | orphan requeued and redelivered with `attempts=1`; stale `RUNNING` row `FAILED`, fresh one untouched | PROVEN |
+  | `collector` | collector errors / has no credentials | raise → `FAILED` + "inventory is UNKNOWN, no absence of crypto may be inferred"; no creds → `NOT_ATTEMPTED`; healthy → `COMPLETE` | PROVEN |
+  | `agent` | the agent cannot submit to the API | transport raises → `{ok: false, error: …}`, no exception escapes, next submit succeeds | PROVEN |
+  | `network` | endpoint black-holed / port closed | `UNKNOWN` with method `NO_RESPONSE` in **1.61s**; closed port `UNKNOWN`; the port guess is never reported as a detection | PROVEN |
+  | `storage` | backup volume corrupt / unwritable | disk roundtrip OK; bit-flipped artifact refused; unwritable path raised and the schedule did not advance | PROVEN |
+  | `certificate_expiry` | a certificate expires | `EXPIRED` / `EXPIRING_CRITICAL` / `EXPIRING_SOON` / `VALID` boundaries from `not_after`, missing `not_after` → `UNKNOWN` (not `VALID`); the expired certificate lands in the NBOM as critical | PROVEN |
+  | `queue` | Redis outage / SIGKILL mid-job | enqueue during an outage **raised** instead of accepting; SIGKILL drill `PASS`, orphan requeued | PROVEN |
+
+  Each row carries its own **`limit`**, and the report repeats them: the database
+  backend is an in-process fake (so it proves the integrity gate, not that `pg_restore`
+  refuses a corrupt dump), the SIGKILL drill runs against fakeredis (the real-Redis
+  invocation is a bank-host step), the agent has no local spool (findings produced
+  during an outage are dropped, not replayed), storage is a temp directory rather than
+  the mounted volume, and the network drill scales the production timeouts down. The
+  endpoint enforces the same discipline: **409** for a report missing one of the nine
+  modes, duplicating one, or marking a row `PROVEN` with no observations or no
+  observed behaviour — a green tick with nothing behind it is refused rather than
+  served.
+
+  *Still open — and this is the real gap, not the table.* These are nine targeted
+  drills, not a chaos run against a bank's estate: nothing here injects two failures
+  at once, nothing exercises a real PostgreSQL failover, PITR, region failover or
+  network partition (those remain one-shot scripts in `scripts/`, run on a host), and
+  nothing proves a human is paged. A `PROVEN` row means the code path behaves as
+  specified under that fault; it does not mean the deployment is configured,
+  monitored, or observed.
 
 ---
 
@@ -378,7 +416,7 @@ wrong. Each limit below records what has since been proven, what proved it, and
 what is still open — the list is the same list, moved forward, not a new claim.
 
 * **(a) Response correctness.** *Proven:* every operation that declares a 2xx JSON
-  schema — **94 of 1250** — is called on a live server and its body validated
+  schema — **99 of 1255** — is called on a live server and its body validated
   against that schema (check 9). *Still open:* the other 1156 declare no response
   model, and their payload shape is asserted only by their TypeScript interface
   and, for seven payload families, by
@@ -394,7 +432,7 @@ what is still open — the list is the same list, moved forward, not a new claim
   processes, business owners, the backup routes) were typed in this pass.
 
 * **(b) A live request for every route.** *Closed for execution and for write
-  bodies.* All **1254** operations are executed against uvicorn over a real
+  bodies.* All **1255** operations are executed against uvicorn over a real
   PostgreSQL at the migration tip: **0 returned 5xx**, **0 failed at the transport
   layer** (check 8). The first sweep sent `{}`, which proves a route is mounted and
   its dependencies resolve but answers `422` before the handler runs. A second
@@ -429,17 +467,17 @@ what is still open — the list is the same list, moved forward, not a new claim
   route tree, not from a second list.
 
   *The classification is now written down.* `scripts/authorization_register.py`
-  walks the same tree and, for all **1218** served operations, records which
+  walks the same tree and, for all **1225** served operations, records which
   authority guard is actually in the dependency closure: **306** require a role,
   **71** a permission from the RBAC catalog (`hardware.ingest`, …), **12** a
-  tenant role, and **829** nothing beyond a session —
+  tenant role, and **836** nothing beyond a session —
   `docs/bank-environment/101-authorization-register.md` is that register, and
   `scripts/tests/test_authorization_register.py` (check 11) pins it: the gated
   counts may only grow and any `DELETE` that is neither guarded nor named in the
   reviewed list fails the build.
 
   *The per-route decision is now recorded.* `scripts/auth_write_inventory.py`
-  writes every write operation that is neither public nor role-gated — **294** of
+  writes every write operation that is neither public nor role-gated — **295** of
   them — into `docs/bank-environment/102-authenticated-only-writes.json`, each with
   the policy reason for its prefix ("operator surface: estate curation",
   "machine-signed: HMAC, not a session role", "self-service: the caller's own
@@ -449,7 +487,7 @@ what is still open — the list is the same list, moved forward, not a new claim
   partition the write surface.
 
   *Still open:* an entry says "authenticated-only is intended for this family", not
-  "this specific route could not be abused". Six of the 294 are deletions that
+  "this specific route could not be abused". Six of the 295 are deletions that
   mirror an equally session-only create on the same registry — gating one means
   deciding the policy for the whole family, which is a product decision this audit
   deliberately does not take. What has changed is that the decision is now written

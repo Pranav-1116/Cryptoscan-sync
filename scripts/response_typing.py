@@ -1,6 +1,6 @@
 """The list of operations that declare no response model, kept as a ratchet.
 
-Guide 100 §5 (a): the API has 1254 operations and only a handful declare what they
+Guide 100 §5 (a): the API has 1255 operations and only a handful declare what they
 return. Everything else hands back ``dict``, which means FastAPI validates nothing
 and the console's TypeScript interface is a hand-written claim rather than a checked
 contract. Closing that gap is `response_model=` on the routers, one at a time.
