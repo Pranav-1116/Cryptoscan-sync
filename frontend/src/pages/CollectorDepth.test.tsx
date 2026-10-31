@@ -10,6 +10,7 @@ const RUNTIME = "/api/v1/estate/evidence/discovery/runtime-depth";
 const NETWORK = "/api/v1/estate/evidence/discovery/network-protocols";
 const WINDOWS = "/api/v1/estate/evidence/discovery/windows-collector";
 const BOMS = "/api/v1/estate/evidence/discovery/bom-maturity";
+const MATURITY = "/api/v1/estate/evidence/discovery/maturity";
 
 const runtimeDoc = (overrides: Record<string, unknown> = {}) => ({
   schema: "cryptoscan.runtime-depth/1",
@@ -281,6 +282,68 @@ describe("collector depth", () => {
     // the SCM candidate says what it is, not what it is not
     expect(screen.getByTestId("windows-layer-service_inventory").textContent).toContain("establishes substrate");
     expect(screen.getByTestId("windows-layer-schannel_events").textContent).toContain("the Windows invocation gap");
+  });
+
+  it("prints the register's states and its missing work, not a score", async () => {
+    mockFetch({
+      [RUNTIME]: runtimeDoc(),
+      [NETWORK]: networkDoc(),
+      [WINDOWS]: windowsDoc(),
+      [BOMS]: bomDoc(),
+      [MATURITY]: {
+        schema: "cryptoscan.maturity-register/1",
+        areas: [
+          {
+            id: "NETWORK_DISCOVERY",
+            label: "Network discovery",
+            state: "PARTIAL",
+            summary: "TLS is a handshake reader; MQ has no reader at all.",
+            surfaces: [
+              {
+                id: "TLS",
+                label: "TLS",
+                state: "SUBSTANTIAL",
+                state_meaning: "a collector reads this surface from a source of truth",
+                collector: "services/network_scanner/",
+                note: "completed-handshake reader",
+                missing: [],
+              },
+              {
+                id: "MQ",
+                label: "Message queues",
+                state: "ABSENT",
+                state_meaning: "nothing reads this surface",
+                collector: null,
+                note: "no reader exists in this build",
+                missing: ["AMQP/MQTT/Kafka readers"],
+              },
+            ],
+            missing: ["message-queue readers", "passive traffic coverage"],
+            measured_by: ["/estate/evidence/discovery/network-protocols"],
+            claim: "Each protocol is reported with the reader that exists, or as absent.",
+          },
+        ],
+        claims: {
+          may_claim: "an evidence-driven framework across surfaces, stating where coverage stops",
+          may_not_claim: ["CryptoScan discovers every cryptographic asset in any bank environment."],
+          why: "a completeness claim over an estate the product has not seen",
+        },
+      },
+    });
+    renderWithProviders(<CollectorDepth />);
+    await userEvent.click(screen.getByRole("button", { name: "Maturity" }));
+
+    const tls = await screen.findByTestId("surface-TLS");
+    expect(tls.textContent).toContain("SUBSTANTIAL");
+    expect(tls.textContent).toContain("services/network_scanner/");
+
+    const mq = screen.getByTestId("surface-MQ");
+    expect(mq.textContent).toContain("ABSENT");
+    expect(mq.textContent).toContain("no collector in this build");
+    expect(mq.textContent).toContain("AMQP/MQTT/Kafka readers");
+
+    expect(screen.getByText(/every cryptographic asset in any bank environment/i)).toBeTruthy();
+    expect(screen.getByText(/message-queue readers/i)).toBeTruthy();
   });
 
   it("reports BOM depth against each BOM's own ceiling", async () => {

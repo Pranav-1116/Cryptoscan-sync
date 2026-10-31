@@ -21,6 +21,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from shared_models import maturity_register
+
 from api import (
     bom_maturity,
     network_protocols,
@@ -54,6 +56,21 @@ def _graph(db: Session) -> tuple[Any, dict[str, Any] | None, str | None]:
             return None, None, str(detail.get("reason") or detail.get("error") or exc)
         return None, None, str(exc)
     return run, _graph_from_run(run), None
+
+
+@router.get("/discovery/maturity")
+def maturity(
+    user: str = Depends(get_current_user),
+):
+    """Where each capability reaches: what exists, what is missing, what proves it.
+
+    Static like the four matrices around it, and for the same reason: this is a
+    statement about the build, not about an estate. The measured half lives on
+    the per-surface routes (/discovery/runtime-depth and friends); this route
+    says which of those surfaces is allowed to be read as complete, and which is
+    not.
+    """
+    return maturity_register.register()
 
 
 @router.get("/discovery/runtime-depth")

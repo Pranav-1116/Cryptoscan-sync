@@ -5659,6 +5659,41 @@ export interface BomMaturity {
 export const apiBomMaturity = (): Promise<ApiResult<BomMaturity>> =>
   _rsGet<BomMaturity>("/api/v1/estate/evidence/discovery/bom-maturity");
 
+/* Where each capability reaches, surface by surface. States, not scores: a
+ * SUBSTANTIAL surface may have nothing left to list, every other state must name
+ * what is missing — the server rejects its own register if it does not. */
+export interface MaturitySurface {
+  id: string;
+  label: string;
+  state: string;
+  state_meaning: string;
+  collector: string | null;
+  note: string;
+  missing: string[];
+}
+
+export interface MaturityArea {
+  id: string;
+  label: string;
+  state: string;
+  summary: string;
+  surfaces: MaturitySurface[];
+  missing: string[];
+  measured_by: string[];
+  claim: string;
+}
+
+export interface MaturityRegister {
+  schema?: string;
+  areas: MaturityArea[];
+  claims: { may_claim: string; may_not_claim: string[]; why: string };
+  routes?: string[];
+  note?: string;
+}
+
+export const apiMaturityRegister = (): Promise<ApiResult<MaturityRegister>> =>
+  _rsGet<MaturityRegister>("/api/v1/estate/evidence/discovery/maturity");
+
 export const apiEstateBoms = (bom?: string): Promise<ApiResult<Record<string, unknown>>> =>
   _rsGet<Record<string, unknown>>(`/api/v1/estate/evidence/boms${bom ? `?bom=${encodeURIComponent(bom)}` : ""}`);
 

@@ -49,6 +49,7 @@ from api import (
     estate_simulation_store,
     estate_surfaces,
     estate_twin_chain,
+    estate_twin_history,
     estate_twin_store,
 )
 from api.dependencies import get_current_user, get_db_session
@@ -1028,6 +1029,16 @@ class TwinImpactRequest(BaseModel):
     depth: int = Field(default=3, ge=1, le=6)
 
 
+class TwinImpactAsOfRequest(TwinImpactRequest):
+    """A blast radius asked of a stored evidence state, and of now.
+
+    ``snapshot`` is a snapshot id, projection id or row id — the version whose
+    radius was signed off, or the one an auditor is asking about.
+    """
+
+    snapshot: str = Field(max_length=120, description="snapshot id, projection id or row id")
+
+
 class TwinSimulationRequest(BaseModel):
     """A scenario applied to a *copy* of the twin — never to the live estate."""
 
@@ -1053,6 +1064,12 @@ class TwinSimulationRequest(BaseModel):
     )
 
     model_config = {"populate_by_name": True}
+
+
+class TwinSimulationAsOfRequest(TwinSimulationRequest):
+    """Re-run one scenario against a stored evidence state and against now."""
+
+    snapshot: str = Field(max_length=120, description="snapshot id, projection id or row id")
 
 
 @router.get("/twin")
@@ -1647,6 +1664,91 @@ def simulation_runs(
 
 
 # -- simulation history (quarantined) --------------------------------------- #
+
+
+@router.post("/twin/impact-as-of")
+def estate_twin_impact_as_of(
+    body: TwinImpactAsOfRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Blast radius at a stored evidence state, at now, and the drift between them.
+
+    The stored graph is rebuilt from the snapshot payload, never from the live
+    run: a snapshot is a statement about the evidence at that moment, and reading
+    it through today's run would silently answer a different question.
+    """
+    row = estate_twin_store.get_snapshot(db, body.snapshot, tenant_id=current_tenant())
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_snapshot",
+                "reason": (
+                    f"no twin snapshot matches {body.snapshot!r} for this tenant. Captured snapshots "
+                    "are listed at /estate/evidence/twin/snapshots"
+                ),
+            },
+        )
+    run = _latest_run(db)
+    current_graph = _graph_from_run(run)
+    historical_graph = estate_twin_store.graph_from_row(row)
+    selector = {
+        key: value
+        for key, value in body.model_dump(exclude={"depth", "snapshot"}).items()
+        if value not in (None, "")
+    }
+    result = estate_twin_history.compare_impact(
+        current_graph,
+        historical_graph,
+        selector,
+        depth=body.depth,
+        as_of=estate_twin_store.public(row),
+    )
+    return {"run_id": run.id, "snapshot": estate_twin_store.public(row), **result}
+
+
+@router.post("/twin/simulate-as-of")
+def estate_twin_simulate_as_of(
+    body: TwinSimulationAsOfRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Re-run one scenario against a stored evidence state and against now.
+
+    Answers whether a plan reviewed against older evidence still matches the
+    estate, still reaches the same assets, and still changes the same BOMs. It
+    persists nothing: a drift comparison is not a new scenario result.
+    """
+    row = estate_twin_store.get_snapshot(db, body.snapshot, tenant_id=current_tenant())
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_snapshot",
+                "reason": f"no twin snapshot matches {body.snapshot!r} for this tenant",
+            },
+        )
+    run = _latest_run(db)
+    current_graph = _graph_from_run(run)
+    historical_graph = estate_twin_store.graph_from_row(row)
+    scenario = {
+        "kind": body.kind,
+        "from": body.from_,
+        "to": body.to,
+        "key_size": body.key_size,
+        "targets": body.targets or [],
+        "label": body.label,
+    }
+    if estate_simulation.mode_of(body.kind) == "CASCADE":
+        scenario["depth"] = body.depth
+    result = estate_twin_history.compare_simulation(
+        current_graph,
+        historical_graph,
+        scenario,
+        as_of=estate_twin_store.public(row),
+    )
+    return {"run_id": run.id, "snapshot": estate_twin_store.public(row), **result}
 
 
 @router.get("/twin/simulations")

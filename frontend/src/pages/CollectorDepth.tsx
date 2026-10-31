@@ -20,11 +20,14 @@ import { LiveBadge, useApi } from "../lib/apiUi";
 import {
   apiBomMaturity,
   apiEstateBomComponents,
+  apiMaturityRegister,
   apiNetworkProtocols,
   apiRuntimeDepth,
   apiWindowsCollector,
   type BomMaturity,
   type EstateBomDocument,
+  type MaturityRegister,
+  type MaturitySurface,
   type NetworkProtocols,
   type RuntimeDepth,
   type WindowsCollector,
@@ -64,6 +67,17 @@ const USAGE_TONE: Record<string, string> = {
   CONFIGURED: "amber",
   SUPPORTED: "slate",
   DECLARED_ONLY: "slate",
+};
+
+/* Register states, not scores. Only SUBSTANTIAL reads green: everything else is
+ * a named gap, and the missing list beside it is the point of the page. */
+const REGISTER_TONE: Record<string, string> = {
+  SUBSTANTIAL: "green",
+  PARTIAL: "amber",
+  CANDIDATE: "amber",
+  FOUNDATION: "slate",
+  IMPORT_ONLY: "slate",
+  ABSENT: "red",
 };
 
 const MATURITY_TONE: Record<string, string> = {
@@ -520,13 +534,110 @@ function BomSection() {
   );
 }
 
+function SurfaceRow({ surface }: { surface: MaturitySurface }) {
+  return (
+    <div
+      data-testid={`surface-${surface.id}`}
+      style={{ border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "10px 12px", background: "var(--panel-2)" }}
+    >
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <b style={{ fontSize: 13 }}>{surface.label}</b>
+        <Badge tone={REGISTER_TONE[surface.state] ?? "slate"}>{surface.state.replace(/_/g, " ")}</Badge>
+        {surface.collector ? (
+          <span className="faint" style={{ fontSize: 11, fontFamily: "var(--mono)" }}>{surface.collector}</span>
+        ) : (
+          <span className="faint" style={{ fontSize: 11 }}>no collector in this build</span>
+        )}
+      </div>
+      <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{surface.note}</p>
+      {surface.missing.length > 0 && (
+        <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 11.5, color: "var(--amber)" }}>
+          {surface.missing.map((gap) => (
+            <li key={gap}>{gap}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function MaturitySection() {
+  const read = useApi<MaturityRegister>(apiMaturityRegister, []);
+  const doc = read.data;
+  if (!doc) {
+    return (
+      <Panel title="Maturity register" sub="where each capability reaches, and where it stops">
+        <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--amber)" }}>
+          {read.running
+            ? "Reading the maturity register…"
+            : `Register not read — ${read.detail || read.error || "the control plane did not answer"}.`}
+        </p>
+      </Panel>
+    );
+  }
+  return (
+    <>
+      <Panel title="What the product may claim" sub={doc.claims.why}>
+        <div style={{ border: "1px solid var(--green)", borderRadius: "var(--r)", padding: "10px 12px", background: "var(--panel-2)" }}>
+          <Badge tone="green">may claim</Badge>
+          <p style={{ margin: "6px 0 0", fontSize: 12.5 }}>{doc.claims.may_claim}</p>
+        </div>
+        <div style={{ marginTop: 10, border: "1px solid var(--red)", borderRadius: "var(--r)", padding: "10px 12px", background: "var(--panel-2)" }}>
+          <Badge tone="red">may not claim</Badge>
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12.5 }}>
+            {doc.claims.may_not_claim.map((claim) => (
+              <li key={claim}>{claim}</li>
+            ))}
+          </ul>
+        </div>
+      </Panel>
+
+      {doc.areas.map((area) => (
+        <Panel
+          key={area.id}
+          title={area.label}
+          sub={area.summary}
+          right={<Badge tone={REGISTER_TONE[area.state] ?? "slate"}>{area.state.replace(/_/g, " ")}</Badge>}
+        >
+          <div style={{ display: "grid", gap: 8 }}>
+            {area.surfaces.map((surface) => (
+              <SurfaceRow key={surface.id} surface={surface} />
+            ))}
+          </div>
+          {area.missing.length > 0 && (
+            <div style={{ marginTop: 10 }}>
+              <div className="faint" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                Still missing in this area
+              </div>
+              <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 11.5, color: "var(--amber)" }}>
+                {area.missing.map((gap) => (
+                  <li key={gap}>{gap}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{area.claim}</p>
+          <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {area.measured_by.map((route) => (
+              <span key={route} style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>
+                {route}
+              </span>
+            ))}
+          </div>
+        </Panel>
+      ))}
+    </>
+  );
+}
+
 export default function CollectorDepth() {
-  const [tab, setTab] = useState<"runtime" | "network" | "windows" | "boms">("runtime");
+  const [tab, setTab] = useState<"runtime" | "network" | "windows" | "boms" | "maturity">("runtime");
   const tabs: Array<{ id: typeof tab; label: string }> = [
     { id: "runtime", label: "Runtime" },
     { id: "network", label: "Network" },
     { id: "windows", label: "Windows" },
     { id: "boms", label: "Six BOMs" },
+    { id: "maturity", label: "Maturity" },
   ];
   return (
     <>
@@ -562,6 +673,7 @@ export default function CollectorDepth() {
       {tab === "network" && <NetworkSection />}
       {tab === "windows" && <WindowsSection />}
       {tab === "boms" && <BomSection />}
+      {tab === "maturity" && <MaturitySection />}
     </>
   );
 }
