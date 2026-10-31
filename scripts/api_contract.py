@@ -54,6 +54,29 @@ class Call:
 
 
 _SPEC: dict | None = None
+_APP = None
+
+
+def application():
+    """The application object, built once per process.
+
+    Building a second app in the same process is not guaranteed to produce the
+    same tree (routers register modules at import time), so the schema and the
+    route objects — including the role each route requires — must come from one
+    instance.
+    """
+    global _APP
+    if _APP is None:
+        import sys
+
+        for extra in ("shared/shared_models", "services/api"):
+            candidate = str(ROOT / extra)
+            if candidate not in sys.path:
+                sys.path.insert(0, candidate)
+        from api.main import create_app  # noqa: PLC0415
+
+        _APP = create_app()
+    return _APP
 
 
 def openapi_spec() -> dict:
@@ -65,15 +88,7 @@ def openapi_spec() -> dict:
     """
     global _SPEC
     if _SPEC is None:
-        import sys
-
-        for extra in ("shared/shared_models", "services/api"):
-            candidate = str(ROOT / extra)
-            if candidate not in sys.path:
-                sys.path.insert(0, candidate)
-        from api.main import create_app  # noqa: PLC0415
-
-        _SPEC = create_app().openapi()
+        _SPEC = application().openapi()
     return _SPEC
 
 
@@ -85,7 +100,6 @@ def _schema_operations() -> dict[str, set[str]]:
         candidate = str(ROOT / extra)
         if candidate not in sys.path:
             sys.path.insert(0, candidate)
-    from api.main import create_app  # noqa: PLC0415
 
     operations: dict[str, set[str]] = {}
     for path, item in openapi_spec()["paths"].items():

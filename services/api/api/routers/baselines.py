@@ -180,7 +180,10 @@ def dismiss_proposed_baseline(
 ):
     """Dismiss a proposal the auditor rejects (audited — it is a decision
     about the trust anchor, same as approving it)."""
-    row = baselines.get(baseline_id)
+    # `get` does not exist on the repository — this line raised AttributeError,
+    # so the endpoint answered 500 on every call, including for a real id. The
+    # proposal could be listed and approved but never dismissed.
+    row = baselines.get_by_id(baseline_id)
     if row is None or row.status != "PROPOSED":
         raise HTTPException(status_code=404, detail="No such PROPOSED baseline")
     row.status = "REJECTED"

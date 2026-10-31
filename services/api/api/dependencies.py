@@ -416,6 +416,12 @@ def require_roles(*allowed: str):
             detail=f"Requires one of roles: {', '.join(allowed)}",
         )
 
+    # Introspection for the live audit (scripts/tests/test_live_route_smoke.py):
+    # the role requirement is otherwise a closure and invisible to a reader of
+    # the route table, so "which principal may call this?" could only be answered
+    # by reading the router source. The live test asks every gated route with a
+    # principal that holds the role and one that does not.
+    dependency.allowed_roles = tuple(allowed)
     return dependency
 
 
