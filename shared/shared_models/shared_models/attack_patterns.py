@@ -19,6 +19,24 @@ What it refuses to do:
   blind are reported as *unattributable*, not as suspicious change on their own;
 * **it does not read the clock to fill a window.** When ``now`` is not supplied the newest
   event anchors the window, so the same stored events always correlate the same way.
+
+A change feed is one plane. ``plane_facts`` adds the others — what the static inventory,
+the runtime observer, the network probe, the certificate store, the HSM, the KMS, the
+identity resolver, the config detector, the SBOM, the CBOM and the temporal baseline say
+about the *same subject*. Two rules read them, and both are deliberately weaker than they
+could be:
+
+* ``MULTI_PLANE_AGREEMENT`` — a change landed on a subject that two or more independent
+  planes describe. Agreement raises review priority; it says nothing about intent, because
+  planes agreeing is what a correct estate looks like.
+* ``PLANE_CONTRADICTION`` — one plane witnesses the subject and another records it absent.
+  That is a finding about the *evidence*, not about the estate: one collector is reading a
+  narrower scope or an earlier moment. It is reported at the same level as agreement and
+  never as a compromise.
+
+The plane vocabulary lives in ``attack_planes``; this module refuses facts from a plane it
+does not know, and counts them as ``unrecognised_plane_facts`` rather than dropping them
+silently.
 """
 
 from __future__ import annotations
@@ -58,6 +76,33 @@ LEVELS: dict[int, dict[str, str]] = {
         ),
     },
 }
+
+#: The planes a correlation may draw on. The ids match ``attack_planes.PLANES``, and the
+#: order is the order the product vision names them in.
+PLANES: tuple[str, ...] = (
+    "STATIC",
+    "RUNTIME",
+    "NETWORK",
+    "CERTIFICATE",
+    "HSM",
+    "KMS",
+    "IDENTITY",
+    "CONFIGURATION",
+    "SBOM",
+    "CBOM",
+    "TEMPORAL",
+)
+
+#: Planes that are a *projection* of other planes rather than an independent witness. A
+#: CBOM entry is built from static/runtime evidence, so letting it corroborate the plane it
+#: was built from would count one source twice and manufacture agreement. Facts from a
+#: derived plane are still recorded and cited; they never satisfy the two-witness rule.
+DERIVED_PLANES: tuple[str, ...] = ("CBOM",)
+
+#: What a plane fact can assert. Two values only, on purpose: a plane either witnessed the
+#: subject or recorded it absent. Anything richer would be a verdict this layer must not
+#: reach, and would make the two rules above unfalsifiable.
+FACT_RELATIONS: tuple[str, ...] = ("OBSERVED", "ABSENT")
 
 #: change kinds that mean "this plane stopped seeing as much as it did"
 COVERAGE_KINDS = ("COVERAGE_DEGRADED", "EVIDENCE_LOST")
@@ -297,6 +342,7 @@ def correlate(
     now: datetime | None = None,
     collectors_by_evidence: Mapping[str, str] | None = None,
     collectors_by_subject: Mapping[str, Iterable[str]] | None = None,
+    plane_facts: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Group the changes inside one window into patterns, with their level and their gaps.
 
@@ -323,6 +369,8 @@ def correlate(
     patterns.extend(_crypto_patterns(in_window))
     patterns.extend(_code_patterns(in_window))
     patterns.extend(_burst_pattern(in_window))
+    facts, unrecognised = _plane_facts(plane_facts)
+    patterns.extend(_plane_patterns(in_window, facts))
     patterns.extend(_correlated(patterns, in_window))
 
     by_evidence = {str(key): str(value) for key, value in (collectors_by_evidence or {}).items() if value}
@@ -333,7 +381,16 @@ def correlate(
         # "who saw this", not "who saw anything in the window"
         pattern["corroboration"] = _corroboration(pattern["signals"], by_evidence, by_subject)
 
-    patterns.sort(key=lambda item: (-item["level"], item["name"], item["pattern_id"]))
+    for pattern in patterns:
+        # which planes stand behind this pattern: from its own plane_evidence when a rule
+        # built it, otherwise from the facts that name its subjects
+        if "planes" not in pattern:
+            subjects = set(pattern.get("subjects") or [])
+            pattern["planes"] = sorted(
+                {fact["plane"] for fact in facts if fact["subject"] in subjects}
+            )
+
+    patterns.sort(key=lambda item: (-item["level"], item["name"], pattern["pattern_id"]))
     by_level: dict[str, int] = {}
     for pattern in patterns:
         key = str(pattern["level"])
@@ -351,6 +408,38 @@ def correlate(
         "by_level": by_level,
         "highest_level": max((p["level"] for p in patterns), default=0),
         "level_definitions": {str(level): definition for level, definition in LEVELS.items()},
+        "planes": {
+            "vocabulary": list(PLANES),
+            "facts_considered": len(facts),
+            "unrecognised_plane_facts": unrecognised,
+            "by_plane": {
+                plane: sum(1 for fact in facts if fact["plane"] == plane) for plane in PLANES
+            },
+            "subjects_described": len({fact["subject"] for fact in facts}),
+            "subjects_corroborated": len(
+                {
+                    subject
+                    for subject, bucket in _planes_by_subject(facts).items()
+                    if len(
+                        {
+                            fact["plane"]
+                            for fact in bucket["OBSERVED"]
+                            if fact["plane"] not in DERIVED_PLANES
+                        }
+                    )
+                    >= 2
+                }
+            ),
+            "derived_planes": list(DERIVED_PLANES),
+            "patterns_with_two_or_more_planes": len(
+                [pattern for pattern in patterns if len(pattern.get("planes") or []) >= 2]
+            ),
+            "note": (
+                "plane facts are what each non-change plane asserts about a subject. Two rules read "
+                "them — MULTI_PLANE_AGREEMENT and PLANE_CONTRADICTION — and neither raises a level "
+                "above SUSPICIOUS_ACTIVITY"
+            ),
+        },
         "corroboration": {
             "evidence_mapped": len(by_evidence),
             "subjects_mapped": len(by_subject),
@@ -366,6 +455,194 @@ def correlate(
         ),
         "limits": LIMITS,
     }
+
+
+def _plane_facts(raw: Iterable[Mapping[str, Any]] | None) -> tuple[list[dict[str, Any]], int]:
+    """Normalise plane facts, and count the ones from a plane this engine does not know.
+
+    An unrecognised plane is not folded into a known one: a fact from ``"SIEM"`` is not
+    evidence from ``"NETWORK"``, and silently relabelling it is how a correlation engine
+    starts inventing corroboration.
+    """
+    facts: list[dict[str, Any]] = []
+    unrecognised = 0
+    for item in raw or ():
+        if not isinstance(item, Mapping):
+            continue
+        plane = str(item.get("plane") or "").strip().upper()
+        subject = str(item.get("subject") or "").strip()
+        relation = str(item.get("relation") or "OBSERVED").strip().upper()
+        if plane not in PLANES or not subject:
+            unrecognised += 1
+            continue
+        if relation not in FACT_RELATIONS:
+            unrecognised += 1
+            continue
+        facts.append(
+            {
+                "plane": plane,
+                "subject": subject,
+                "relation": relation,
+                "statement": str(item.get("statement") or "").strip(),
+                "evidence_ids": [str(value) for value in (item.get("evidence_ids") or []) if value],
+                "collector": str(item.get("collector") or "").strip(),
+            }
+        )
+    return facts, unrecognised
+
+
+def _planes_by_subject(facts: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, list[dict[str, Any]]]]:
+    """subject → {"OBSERVED": [facts], "ABSENT": [facts]}."""
+    index: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    for fact in facts:
+        bucket = index.setdefault(fact["subject"], {"OBSERVED": [], "ABSENT": []})
+        bucket[fact["relation"]].append(fact)  # type: ignore[index]
+    return index
+
+
+def _plane_fact_view(fact: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "plane": fact["plane"],
+        "relation": fact["relation"],
+        "statement": fact.get("statement") or "",
+        "collector": fact.get("collector") or "",
+        "evidence_ids": list(fact.get("evidence_ids") or []),
+    }
+
+
+def _plane_patterns(
+    signals: list[Mapping[str, Any]],
+    facts: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Two rules over the non-change planes: agreement and contradiction.
+
+    Both are built from *independent* planes only — two facts from the same plane on the
+    same subject corroborate nothing, because that plane is one witness.
+    """
+    out: list[dict[str, Any]] = []
+    if not facts:
+        return out
+    index = _planes_by_subject(facts)
+    changed_subjects = {
+        str(signal.get("subject") or "").strip() for signal in signals if signal.get("subject")
+    }
+
+    # --- contradiction: one plane witnesses what another records as absent ---
+    for subject, bucket in sorted(index.items()):
+        observed = [fact for fact in bucket["OBSERVED"]]
+        absent = [fact for fact in bucket["ABSENT"]]
+        witnessed = {fact["plane"] for fact in observed}
+        missing_planes = {fact["plane"] for fact in absent}
+        if not observed or not absent or not (witnessed - missing_planes):
+            continue
+        witnesses = sorted(witnessed - missing_planes)
+        out.append(
+            _pattern(
+                "PLANE_CONTRADICTION",
+                2,
+                [
+                    {
+                        "event_id": None,
+                        "run_id": None,
+                        "kind": "PLANE_FACT",
+                        "severity": "",
+                        "subject": subject,
+                        "detail": f"{', '.join(witnesses)} witnessed it; "
+                        f"{', '.join(sorted(missing_planes))} recorded it absent",
+                        "evidence_ids": sorted(
+                            {
+                                evidence
+                                for fact in observed + absent
+                                for evidence in fact.get("evidence_ids") or []
+                            }
+                        ),
+                        "at": None,
+                    }
+                ],
+                why=(
+                    "one plane holds evidence for this subject and another records it as absent. "
+                    "Two collectors disagree about the same asset — that is a fact about what can "
+                    "be evidenced, and it is exactly the state in which a change goes unattributed"
+                ),
+                next_action=(
+                    "read both planes' evidence ids for this subject and find the scope or the moment "
+                    "they differ on before treating either as the estate's state"
+                ),
+                extra_not_proven=[
+                    "the two planes may be describing different scopes, different moments, or "
+                    "different definitions of the same subject",
+                    "a disagreement is not a compromise: neither plane is accusing the other",
+                ],
+                extra={
+                    "subjects": [subject],
+                    "planes": sorted(witnessed | missing_planes),
+                    "plane_evidence": {
+                        "observed": [_plane_fact_view(fact) for fact in observed],
+                        "absent": [_plane_fact_view(fact) for fact in absent],
+                    },
+                },
+            )
+        )
+
+    # --- agreement: a change on a subject that several planes describe ------
+    for subject in sorted(changed_subjects):
+        bucket = index.get(subject)
+        if not bucket:
+            continue
+        all_witnesses = sorted({fact["plane"] for fact in bucket["OBSERVED"]})
+        witnesses = [plane for plane in all_witnesses if plane not in DERIVED_PLANES]
+        if len(witnesses) < 2:
+            continue
+        changed = [signal for signal in signals if str(signal.get("subject") or "").strip() == subject]
+        facts_for_subject = [fact for fact in bucket["OBSERVED"]]
+        out.append(
+            _pattern(
+                "MULTI_PLANE_AGREEMENT",
+                2,
+                list(changed)
+                + [
+                    {
+                        "event_id": changed[0].get("event_id") if changed else None,
+                        "run_id": None,
+                        "kind": "PLANE_FACT",
+                        "severity": "",
+                        "subject": subject,
+                        "detail": f"{len(witnesses)} planes describe this subject: {', '.join(witnesses)}",
+                        "evidence_ids": sorted(
+                            {
+                                evidence
+                                for fact in facts_for_subject
+                                for evidence in fact.get("evidence_ids") or []
+                            }
+                        ),
+                        "at": None,
+                    }
+                ],
+                why=(
+                    f"a change landed on a subject that {len(witnesses)} independent planes describe "
+                    f"({', '.join(witnesses)}). The change is not one collector's artefact, and the "
+                    "planes that describe it can be read against each other"
+                ),
+                next_action=(
+                    "walk the subject across those planes in the twin — a change one plane reports and "
+                    "the others do not is the case worth reading first"
+                ),
+                extra_not_proven=[
+                    "independent planes agreeing is also what a correct estate looks like; agreement "
+                    "raises review priority, not suspicion of intent",
+                ],
+                extra={
+                    "subjects": [subject],
+                    "planes": all_witnesses,
+                    "independent_planes": witnesses,
+                    "derived_planes": [
+                        plane for plane in all_witnesses if plane in DERIVED_PLANES
+                    ],
+                    "plane_evidence": {"observed": [_plane_fact_view(fact) for fact in facts_for_subject]},
+                },
+            )
+        )
+    return out
 
 
 def _collection_patterns(signals: list[Mapping[str, Any]]) -> list[dict[str, Any]]:

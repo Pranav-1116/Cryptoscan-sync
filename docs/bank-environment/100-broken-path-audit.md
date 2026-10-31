@@ -59,21 +59,21 @@ a minute; they are not part of the hermetic gate.
 
 | Measurement | Value | Meaning |
 |---|---|---|
-| Served routes | **1136 paths / 1250 operations** | Read from the app's own OpenAPI document, not from a list |
+| Served routes | **1137 paths / 1251 operations** | Read from the app's own OpenAPI document, not from a list |
 | Console calls resolved | **637 → 0 unknown, 0 wrong verbs** | Every URL the browser builds exists, with the verb it uses |
 | CLI / script calls resolved | **315 → 0 unknown** | Now includes the two shipped CLI files, which no scan read before |
 | Router modules enumerated | **120 modules, 1246 routes, 0 unmounted HTTP routes** | The two WebSocket routes are the only ones outside the schema, by design |
-| Console operations with a response model (current) | **94 typed / 1250 (7.5%)** | Superseded the 40/605 figure below when four families were typed; see `103-untyped-response-operations.json` |
+| Console operations with a response model (current) | **95 typed / 1251 (7.6%)** | Superseded the 40/605 figure below when four families were typed; see `103-untyped-response-operations.json` |
 | Console operations with a response model | **40 typed / 605 (6.6%)** | The TypeScript interface *is* the contract for the other 93% |
 | ORM tables without a migration | **0** | Nothing the models read is missing from the migrated schema |
 | Model columns without a migration | **0** | — |
 | Columns in the database that no model maps | **16** | Residue from withdrawn writers; enumerated in check 5 |
 | Routes quoted as proof that are not served | **0 of 8 hints** | Every "check at"/"measured by" route resolves, and accepts GET or POST |
 | Console pages | **90 / 0 orphans** | Every page file is routed or embedded by a page the router reaches, transitively |
-| Operations executed on a live server | **1250 / 1250, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
+| Operations executed on a live server | **1251 / 1251, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
 | Operations that refused an anonymous caller | **1212 protected of 1212, 36 public** | Everything outside the session gate's declared public surface (health, docs, login/SSO, machine-signed webhooks) |
 | Role-gated operations proven both ways | **306 admitted with the role, 273 refused without it** | Read from the dependency tree, then asked of the running server |
-| Operations with a response schema that holds | **94 validated / 94 declared** | The other 1156 declare nothing (`§5`, limit a) |
+| Operations with a response schema that holds | **95 validated / 95 declared** | The other 1156 declare nothing (`§5`, limit a) |
 | Model ↔ migrated-schema nullability | **0 disagreements, both directions** | At revision 0121 it was 148 columns the model treats as required and the database accepts as NULL, and 9 the reverse |
 
 ---
@@ -269,6 +269,59 @@ edges, which is why §4a and this section are read together.
 
 ---
 
+## 4b. Attack correlation across the eleven planes
+
+`docs/bank-environment/106-attack-correlation-planes.md` is generated from
+`shared_models/attack_planes.py`, and each plane is measured on two axes that fail
+differently:
+
+| Axis | How it is measured | What failure means |
+|---|---|---|
+| **reading** | run `attack_patterns.correlate` with a canonical fact from the plane | the rule exists in prose and nothing consumes the fact |
+| **supply** | import the `module:attribute` that would produce the fact | the rule can never fire on a real estate |
+
+Measured now: **11 planes, 11 read, 11 supplied, 0 blind**, and **10 independent
+witnesses** — the CBOM is a projection of other planes' evidence, so it is cited but
+never counted as a second witness. Without that distinction, one source would
+corroborate itself and every BOM-backed estate would look multi-plane.
+
+Two rules join the planes on the subject a change names, and both stop at level 2:
+
+- `MULTI_PLANE_AGREEMENT` — a change landed on a subject that two or more independent
+  planes describe. Agreement is also what a correct estate looks like, so it raises
+  review priority and never suspicion of intent.
+- `PLANE_CONTRADICTION` — one plane holds evidence for a subject and another records it
+  absent. That is a finding about the evidence, not about the estate: a scope or a moment
+  differs. Neither plane is accusing the other.
+
+Facts from a plane the engine does not know are counted as `unrecognised_plane_facts`
+rather than relabelled, because *"a fact from the SIEM is a fact from the network"* is how
+a correlator manufactures corroboration. The served register is
+`GET /estate/evidence/threat/planes`; the change feed it joins is
+`GET /estate/evidence/threat/patterns`.
+
+*Still open:* correlation joins planes **on subject**, so it is only as good as subject
+resolution — two collectors naming one asset differently will not be joined, and the
+current mapping is by collector prefix, not by a resolved asset id. It does not model
+causality, does not rank by likelihood, and never reaches `SECURITY_INCIDENT`.
+
+### Remaining gaps D–G, stated
+
+- **D (correlation depth)** — the plane layer above is what exists. Per-plane blind
+  spots are in the register; subject resolution across planes is the next real limit.
+- **E (generic simulation engine)** — simulation is still per-question (PQC planning,
+  twin scenarios), not one engine that can run a subject-modification-recompute cycle
+  over any BOM. Not started.
+- **F (synthetic bank validation at 10/50/100/150 banks)** — the corpus and the
+  accuracy harness exist; the four-point scale curve with precision, recall, false
+  positives and negatives, coverage, memory, database growth and ingestion rate is not
+  measured, and no number for it appears anywhere in this repository.
+- **G (HA / disaster recovery)** — drills exist per failure (worker recovery, queue
+  kill-9, PITR, region), but there is no single failure-mode matrix that names a
+  deterministic recovery behaviour for all nine modes the vision lists. Not started.
+
+---
+
 ## 5. What this audit does **not** prove
 
 Stated as limits, because each one is a place where a working path could still be
@@ -292,7 +345,7 @@ what is still open — the list is the same list, moved forward, not a new claim
   processes, business owners, the backup routes) were typed in this pass.
 
 * **(b) A live request for every route.** *Closed for execution and for write
-  bodies.* All **1250** operations are executed against uvicorn over a real
+  bodies.* All **1251** operations are executed against uvicorn over a real
   PostgreSQL at the migration tip: **0 returned 5xx**, **0 failed at the transport
   layer** (check 8). The first sweep sent `{}`, which proves a route is mounted and
   its dependencies resolve but answers `422` before the handler runs. A second

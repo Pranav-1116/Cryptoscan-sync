@@ -20,8 +20,8 @@ import pytest
 
 import response_typing
 
-#: Measured when the inventory was written (94 of 1250 typed). Grows only.
-MIN_TYPED_OPERATIONS = 94
+#: Measured when the inventory was written (95 of 1251 typed). Grows only.
+MIN_TYPED_OPERATIONS = 95
 
 
 @pytest.fixture(scope="module")

@@ -2006,6 +2006,88 @@ def estate_twin_graph_load(
     return {"run_id": run.id, **result}
 
 
+# -- attack planes: the eleven evidence planes a correlation may draw on ----- #
+
+
+class AttackPlaneProducerOut(BaseModel):
+    ref: str
+    present: bool
+    reason: str | None = None
+
+
+class AttackPlaneMeasurementOut(BaseModel):
+    status: str
+    facts_accepted: int
+    corroborates: bool
+    patterns_citing_plane: list[str]
+    reason: str
+    probe_statement: str
+
+
+class AttackPlaneOut(BaseModel):
+    id: str
+    label: str
+    reading: str
+    supply: str
+    consumed: bool
+    independent: bool
+    corroborates: bool
+    correlated: bool
+    asserts: str
+    blind_spot: str
+    producers: list[AttackPlaneProducerOut]
+    producers_present: int
+    producers_declared: int
+    measurement: AttackPlaneMeasurementOut
+    missing: list[str]
+
+
+class AttackPlaneBlindOut(BaseModel):
+    id: str
+    why: str
+
+
+class AttackPlaneCountsOut(BaseModel):
+    planes: int
+    consumed: int
+    supplied: int
+    correlated: int
+    corroborating: int
+    blind: int
+
+
+class AttackPlaneRegister(BaseModel):
+    schema: str
+    planes: list[AttackPlaneOut]
+    vocabulary: list[str]
+    vocabulary_matches: bool
+    counts: AttackPlaneCountsOut
+    consumed: list[str]
+    supplied: list[str]
+    correlated: list[str]
+    corroborating: list[str]
+    blind: list[AttackPlaneBlindOut]
+    derived_planes: list[str]
+    claim: str
+    note: str
+
+
+@router.get("/threat/planes", response_model=AttackPlaneRegister)
+def estate_threat_planes(
+    user: str = Depends(get_current_user),
+) -> AttackPlaneRegister:
+    """Which of the eleven evidence planes a correlation can actually draw on.
+
+    Two axes, measured and reported separately because they fail differently: whether the
+    shipped correlator **cites** a fact from the plane (measured by running it), and whether
+    a collector here can **supply** one (measured by importing the producer). A plane that
+    is one without the other is named as blind rather than counted as coverage.
+    """
+    from shared_models import attack_planes
+
+    return AttackPlaneRegister(**attack_planes.register())
+
+
 # -- attack patterns over the change feed (spec 100, live mode) --------------- #
 
 
@@ -2049,14 +2131,29 @@ def estate_threat_patterns(
             if collector not in known:
                 known.append(collector)
 
+    # The other planes, joined on the subjects the change feed names. A collector's facts
+    # are a witness only for the plane that collector belongs to; two collectors from one
+    # plane still count as one source, and a projected plane (CBOM) never counts at all.
+    from shared_models import attack_planes
+
+    subjects = {
+        str(change.get("subject") or "").strip()
+        for event in events
+        for change in event.get("changes") or []
+        if change.get("subject")
+    }
+    plane_facts = attack_planes.facts_from_records(records, subjects=subjects) if subjects else []
+
     result = attack_patterns.correlate(
         events,
         window_seconds=window_seconds,
         collectors_by_evidence=collectors_by_evidence,
         collectors_by_subject=collectors_by_subject,
+        plane_facts=plane_facts,
     )
     result["estate"] = events[0].get("estate") if events else None
     result["source"] = "/api/v1/estate/evidence/changes"
+    result["plane_source"] = "/api/v1/estate/evidence/correlation/planes"
     result["summary"] = attack_patterns.summarise(result["patterns"])
     return result
 
