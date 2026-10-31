@@ -125,6 +125,27 @@ The separate C shim initializes OpenSSL metadata lookup before the first
 intercepted EVP call, so a one-call process can retain available cipher/digest
 metadata. That does not establish complete runtime coverage or authorize collection.
 
+**Two native stacks, and only two.** The shim interposes 19 symbols: 14 in
+libcrypto/libssl (`EVP_*`, `SSL_CTX_set_min_proto_version` /
+`set_max_proto_version` / `set_cipher_list` / `set_ciphersuites`) and 5 in
+libgnutls (`gnutls_cipher_init`, `gnutls_hash_init`, `gnutls_hmac_init`,
+`gnutls_handshake`, `gnutls_priority_set_direct`). GnuTLS is interposed because
+wget, exim, cups, libvirt and many distro builds of curl and PHP link libgnutls
+and **no** libcrypto — before it, those processes produced no observation at all,
+and silence read the same as inactivity. GnuTLS algorithm names come from the
+library's own getters through `dlsym`, so the shim carries no table that could
+drift from the library it traces.
+
+The list is read from the C source (`runtime.agent.preload_trace.hook_symbols`),
+served as `shim` on `/estate/evidence/discovery/runtime-depth`, and compared
+against `nm -D` on the compiled object — a hook that disappears from the shim
+degrades its runtime-depth row to `ABSENT` on its own.
+
+What this still does not see: Go's `crypto/tls`, `ring`/`rustls`, the JVM's JCE,
+the CLR's CNG, statically linked OpenSSL, and any process not started under
+`LD_PRELOAD`. Those families stay at `INGEST_ONLY` or below, and the matrix says
+so per family rather than presenting the two stacks as native coverage.
+
 The console runtime page is the authenticated **`/runtime` deep link**, not an
 “Operate” sidebar section. There are six current sidebar sections; use the
 [navigation reference](../../docs/NAVIGATION-FEATURE-REFERENCE.md).

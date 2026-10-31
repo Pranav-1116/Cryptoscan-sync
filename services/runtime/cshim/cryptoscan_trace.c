@@ -86,6 +86,29 @@ static void trace_init(void) {
     sym_EVP_CIPHER_CTX_get_key_length = (fn_ctx_keylen)dlsym(RTLD_NEXT, "EVP_CIPHER_CTX_get_key_length");
 }
 
+/* Escape a value destined for a JSON string field. Policy strings and priority
+   strings are user-supplied and may contain quotes or backslashes; pasting them
+   into the line unescaped would corrupt the record and the parser would drop it
+   as malformed — silently losing the very evidence the hook exists to collect. */
+static void json_str(char *dst, size_t cap, const char *src) {
+    size_t out = 0;
+    if (!cap) return;
+    dst[0] = '\0';
+    if (!src) return;
+    for (; *src && out + 2 < cap; src++) {
+        unsigned char c = (unsigned char)*src;
+        if (c == '"' || c == '\\') {
+            dst[out++] = '\\';
+            dst[out++] = (char)c;
+        } else if (c < 0x20 || c == 0x7f) {
+            dst[out++] = ' ';
+        } else {
+            dst[out++] = (char)c;
+        }
+    }
+    dst[out] = '\0';
+}
+
 static void trace_line(const char *function, const char *algorithm,
                        const char *mode, long key_size, const char *extra) {
     if (getenv("CRYPTOSCAN_TRACE_DISABLE")) return;
@@ -281,8 +304,155 @@ int SSL_CTX_set_cipher_list(SSL_CTX *ctx, const char *str) {
     static int (*real)(SSL_CTX *, const char *) = NULL;
     if (!real) real = (void *)dlsym(RTLD_NEXT, "SSL_CTX_set_cipher_list");
     int rc = real(ctx, str);
-    char extra[1024];
-    snprintf(extra, sizeof(extra), ",\"cipher_list\":\"%s\"", str ? str : "");
+    char extra[1024], escaped[768];
+    json_str(escaped, sizeof(escaped), str);
+    snprintf(extra, sizeof(extra), ",\"cipher_list\":\"%s\"", escaped);
     trace_line("SSL_CTX_set_cipher_list", "TLS", NULL, 0, extra);
+    return rc;
+}
+
+/* TLS 1.3 suites are configured through a *different* setter than TLS 1.2 and
+   below: a process that only calls set_ciphersuites was recorded as having set
+   no cipher policy at all. */
+int SSL_CTX_set_ciphersuites(SSL_CTX *ctx, const char *str) {
+    static int (*real)(SSL_CTX *, const char *) = NULL;
+    if (!real) real = (void *)dlsym(RTLD_NEXT, "SSL_CTX_set_ciphersuites");
+    if (!real) return 0;
+    int rc = real(ctx, str);
+    char extra[1024], escaped[768];
+    json_str(escaped, sizeof(escaped), str);
+    snprintf(extra, sizeof(extra), ",\"ciphersuites\":\"%s\"", escaped);
+    trace_line("SSL_CTX_set_ciphersuites", "TLS", NULL, 0, extra);
+    return rc;
+}
+
+/* ====================================================================== */
+/* GnuTLS — a second native TLS stack, hooked at the same level           */
+/* ====================================================================== */
+/*
+ * OpenSSL is the stack a bank's C services usually link, but not the only one:
+ * wget, exim, cups, libvirt, gnome-keyring, MariaDB's TLS, many distro builds of
+ * curl and PHP all link libgnutls and link **no** libcrypto at all. Before this
+ * section a perfectly observable process using GnuTLS produced nothing, and
+ * "nothing observed" then read the same as "nothing ran".
+ *
+ * Same rule as the OpenSSL hooks: forward every argument untouched, never read
+ * key material. The key buffer handed to gnutls_cipher_init / gnutls_hmac_init
+ * is measured (`key->size`, `keylen`) and never dereferenced past its length.
+ *
+ * Enums in GnuTLS are small integers, so algorithm names come from the stack's
+ * own getters through dlsym — the shim carries no GnuTLS table that could drift
+ * from the library it is tracing. Every getter is optional: an older libgnutls
+ * simply yields an empty name, never a guessed one.
+ */
+
+typedef struct gnutls_datum_st {
+    unsigned int size;
+    unsigned char *data;
+} gnutls_datum_t;
+
+static const char *(*sym_gnutls_cipher_get_name)(int) = NULL;
+static const char *(*sym_gnutls_hash_get_name)(int) = NULL;
+static const char *(*sym_gnutls_mac_get_name)(int) = NULL;
+static const char *(*sym_gnutls_protocol_get_name)(int) = NULL;
+static const char *(*sym_gnutls_kx_get_name)(int) = NULL;
+static int (*sym_gnutls_cipher_get)(void *) = NULL;
+static int (*sym_gnutls_protocol_get_version)(void *) = NULL;
+static int (*sym_gnutls_kx_get)(void *) = NULL;
+
+static void gnutls_meta_init(void) {
+    if (sym_gnutls_cipher_get_name) return;
+    sym_gnutls_cipher_get_name =
+        (const char *(*)(int))dlsym(RTLD_NEXT, "gnutls_cipher_get_name");
+    sym_gnutls_hash_get_name = (const char *(*)(int))dlsym(RTLD_NEXT, "gnutls_hash_get_name");
+    sym_gnutls_mac_get_name = (const char *(*)(int))dlsym(RTLD_NEXT, "gnutls_mac_get_name");
+    sym_gnutls_protocol_get_name =
+        (const char *(*)(int))dlsym(RTLD_NEXT, "gnutls_protocol_get_name");
+    sym_gnutls_kx_get_name = (const char *(*)(int))dlsym(RTLD_NEXT, "gnutls_kx_get_name");
+    sym_gnutls_cipher_get = (int (*)(void *))dlsym(RTLD_NEXT, "gnutls_cipher_get");
+    sym_gnutls_protocol_get_version =
+        (int (*)(void *))dlsym(RTLD_NEXT, "gnutls_protocol_get_version");
+    sym_gnutls_kx_get = (int (*)(void *))dlsym(RTLD_NEXT, "gnutls_kx_get");
+}
+
+/* Forwarding to a NULL pointer is not an option: if the symbol cannot be
+   resolved the call returns a documented GnuTLS error (-64,
+   GNUTLS_E_UNIMPLEMENTED_FEATURE) instead of pretending it succeeded. */
+#define GNUTLS_UNRESOLVED (-64)
+
+int gnutls_priority_set_direct(void *session, const char *priorities, const char **err_pos) {
+    static int (*real)(void *, const char *, const char **) = NULL;
+    if (!real) real = (void *)dlsym(RTLD_NEXT, "gnutls_priority_set_direct");
+    if (!real) return GNUTLS_UNRESOLVED;
+    int rc = real(session, priorities, err_pos);
+    char extra[1024], escaped[768];
+    json_str(escaped, sizeof(escaped), priorities);
+    snprintf(extra, sizeof(extra), ",\"priority\":\"%s\",\"priority_accepted\":%s",
+             escaped, rc == 0 ? "true" : "false");
+    trace_line("gnutls_priority_set_direct", "GnuTLS", NULL, 0, extra);
+    return rc;
+}
+
+int gnutls_handshake(void *session) {
+    static int (*real)(void *) = NULL;
+    if (!real) real = (void *)dlsym(RTLD_NEXT, "gnutls_handshake");
+    if (!real) return GNUTLS_UNRESOLVED;
+    int rc = real(session);
+    /* Only a completed handshake has a negotiated suite. Reading the getters
+       after a failed or interrupted handshake would report the default
+       "unknown" cipher as if it were negotiated. */
+    if (rc == 0) {
+        gnutls_meta_init();
+        const char *cipher = sym_gnutls_cipher_get_name && sym_gnutls_cipher_get
+                                 ? sym_gnutls_cipher_get_name(sym_gnutls_cipher_get(session))
+                                 : NULL;
+        const char *proto = sym_gnutls_protocol_get_name && sym_gnutls_protocol_get_version
+                                ? sym_gnutls_protocol_get_name(sym_gnutls_protocol_get_version(session))
+                                : NULL;
+        const char *kx = sym_gnutls_kx_get_name && sym_gnutls_kx_get
+                             ? sym_gnutls_kx_get_name(sym_gnutls_kx_get(session))
+                             : NULL;
+        char extra[512], ep[192], ek[192];
+        json_str(ep, sizeof(ep), proto);
+        json_str(ek, sizeof(ek), kx);
+        snprintf(extra, sizeof(extra), ",\"tls_version\":\"%s\",\"key_exchange\":\"%s\"", ep, ek);
+        trace_line("gnutls_handshake", cipher ? cipher : "GnuTLS", NULL, 0, extra);
+    }
+    return rc;
+}
+
+int gnutls_cipher_init(void **handle, int cipher, const gnutls_datum_t *key,
+                       const gnutls_datum_t *iv) {
+    static int (*real)(void **, int, const gnutls_datum_t *, const gnutls_datum_t *) = NULL;
+    if (!real) real = (void *)dlsym(RTLD_NEXT, "gnutls_cipher_init");
+    if (!real) return GNUTLS_UNRESOLVED;
+    int rc = real(handle, cipher, key, iv);
+    gnutls_meta_init();
+    const char *name = sym_gnutls_cipher_get_name ? sym_gnutls_cipher_get_name(cipher) : NULL;
+    /* the key *length* only — the key itself is never read */
+    long keylen = key ? (long)key->size : 0;
+    trace_line("gnutls_cipher_init", name, NULL, keylen, NULL);
+    return rc;
+}
+
+int gnutls_hash_init(void **dig, int algorithm) {
+    static int (*real)(void **, int) = NULL;
+    if (!real) real = (void *)dlsym(RTLD_NEXT, "gnutls_hash_init");
+    if (!real) return GNUTLS_UNRESOLVED;
+    int rc = real(dig, algorithm);
+    gnutls_meta_init();
+    const char *name = sym_gnutls_hash_get_name ? sym_gnutls_hash_get_name(algorithm) : NULL;
+    trace_line("gnutls_hash_init", name, NULL, 0, NULL);
+    return rc;
+}
+
+int gnutls_hmac_init(void **dig, int algorithm, const void *key, size_t keylen) {
+    static int (*real)(void **, int, const void *, size_t) = NULL;
+    if (!real) real = (void *)dlsym(RTLD_NEXT, "gnutls_hmac_init");
+    if (!real) return GNUTLS_UNRESOLVED;
+    int rc = real(dig, algorithm, key, keylen);
+    gnutls_meta_init();
+    const char *name = sym_gnutls_mac_get_name ? sym_gnutls_mac_get_name(algorithm) : NULL;
+    trace_line("gnutls_hmac_init", name, NULL, (long)keylen, NULL);
     return rc;
 }

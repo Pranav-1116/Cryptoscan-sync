@@ -47,7 +47,35 @@ _TLS_FUNCTIONS = {
     "SSL_CTX_set_min_proto_version",
     "SSL_CTX_set_max_proto_version",
     "SSL_CTX_set_cipher_list",
+    "SSL_CTX_set_ciphersuites",
+    "gnutls_priority_set_direct",
+    "gnutls_handshake",
 }
+
+#: extra JSON fields the parser carries into a finding, per function. A hook can
+#: record more than an algorithm name (a TLS version, a priority string); the
+#: parser has to know to carry it, or the field is written and thrown away.
+_EXTRA_FIELDS: dict[str, tuple[str, ...]] = {
+    "SSL_CTX_set_min_proto_version": ("tls_min_version",),
+    "SSL_CTX_set_max_proto_version": ("tls_max_version",),
+    "SSL_CTX_set_cipher_list": ("cipher_list",),
+    "SSL_CTX_set_ciphersuites": ("ciphersuites",),
+    "gnutls_priority_set_direct": ("priority", "priority_accepted"),
+    "gnutls_handshake": ("tls_version", "key_exchange"),
+}
+
+#: Which crypto stack each interposed symbol belongs to. The point of naming it
+#: is the GnuTLS half: a process that links libgnutls and no libcrypto used to
+#: produce nothing at all, and "nothing observed" read the same as "nothing ran".
+HOOK_FAMILIES: dict[str, str] = {
+    "openssl": "libcrypto/libssl (EVP_*, SSL_CTX_*)",
+    "gnutls": "libgnutls (gnutls_*)",
+}
+
+
+def hook_family(symbol: str) -> str:
+    """The crypto stack an interposed symbol belongs to."""
+    return "gnutls" if symbol.startswith("gnutls_") else "openssl"
 
 
 # Why the last ensure_shim() returned None. A compile failure used to be
@@ -64,7 +92,14 @@ def ensure_shim() -> Path | None:
     """
     global LAST_SHIM_ERROR
     if SHIM_SO.exists():
-        return SHIM_SO
+        # A cached .so older than its source is the wrong artifact: it would be
+        # loaded, seen to exist, and silently miss every hook added since. That
+        # is how a tracer reports "not observed" for a stack it now supports.
+        try:
+            if SHIM_SO.stat().st_mtime >= SHIM_C.stat().st_mtime:
+                return SHIM_SO
+        except OSError:
+            pass
     cc = shutil.which("gcc") or shutil.which("cc")
     if cc is None:
         LAST_SHIM_ERROR = "no C compiler on PATH (looked for gcc, cc)"
@@ -132,10 +167,49 @@ def parse_trace_log(log_path: str | Path) -> list[dict[str, Any]]:
         )
         entry["observation_count"] += 1
         if function in _TLS_FUNCTIONS:
-            for field in ("tls_min_version", "tls_max_version", "cipher_list"):
+            for field in _EXTRA_FIELDS.get(function, ()):
                 if row.get(field) is not None:
                     entry["extra"][field] = row[field]
     return list(grouped.values())
+
+
+def hook_symbols(source: str | Path | None = None) -> tuple[str, ...]:
+    """The symbols the shim actually interposes, read from the C source.
+
+    Every interposed definition is a top-level ``int <symbol>(`` in the shim. This
+    parses the shipped source rather than a hand-kept list, so a hook that is
+    deleted from the C file disappears from the coverage report in the same
+    commit — the report cannot claim a hook that no longer exists.
+
+    ``services/runtime/tests/test_preload_trace.py`` confirms the parse against
+    ``nm -D`` on the compiled object, so this is a reading of the artifact and
+    not a guess about it.
+    """
+    import re
+
+    path = Path(source) if source is not None else SHIM_C
+    text = path.read_text(encoding="utf-8", errors="replace")
+    return tuple(sorted({m.group(1) for m in re.finditer(r"^int ([A-Za-z_][A-Za-z0-9_]*)\(", text, re.M)}))
+
+
+def shim_coverage(source: str | Path | None = None) -> dict[str, Any]:
+    """Which crypto stacks the tracer can see, measured from the shim source."""
+    symbols = hook_symbols(source)
+    by_family: dict[str, list[str]] = {family: [] for family in HOOK_FAMILIES}
+    for symbol in symbols:
+        by_family.setdefault(hook_family(symbol), []).append(symbol)
+    return {
+        "schema": "cryptoscan.shim-coverage/1",
+        "source": str(Path(source) if source is not None else SHIM_C),
+        "symbols": by_family,
+        "counts": {family: len(items) for family, items in by_family.items()},
+        "total": len(symbols),
+        "note": (
+            "these are the symbols the shim interposes. A process that links a stack not listed "
+            "here — Go's own crypto/tls, ring/rustls, the JVM's JCE, a statically linked OpenSSL — "
+            "produces no observation, and that silence is not evidence of no use"
+        ),
+    }
 
 
 def trace_command(

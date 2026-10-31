@@ -52,6 +52,68 @@ def test_runtime_depth_separates_invocation_from_everything_weaker():
     assert depths["interpreted"] == R.DEPTH_ABSENT
 
 
+def test_the_gnutls_row_is_gated_on_hooks_that_exist_in_the_shim():
+    """A second native stack is a real capability only if the C shim carries it.
+
+    The GnuTLS row claims INVOCATION, which the shim can only support by
+    interposing GnuTLS symbols. This asserts the gate is wired: the row names
+    hooks, and the shipped shim source contains every one of them.
+    """
+    from runtime.agent.preload_trace import hook_symbols
+
+    row = R.PATH_INDEX["gnutls_native"]
+    assert row.depth == R.DEPTH_INVOCATION
+    assert row.requires_hooks
+    assert set(row.requires_hooks) <= set(hook_symbols())
+    served = {item["id"]: item for item in R.registry()["paths"]}
+    assert served["gnutls_native"]["depth"] == R.DEPTH_INVOCATION
+    assert served["gnutls_native"]["notes"] == []
+
+
+def test_a_missing_hook_downgrades_the_stack_by_itself(monkeypatch):
+    """Delete the hook from the shim and the claim collapses — no one to remind."""
+    from runtime.agent import preload_trace
+
+    real = preload_trace.hook_symbols
+    monkeypatch.setattr(
+        preload_trace,
+        "hook_symbols",
+        lambda source=None: tuple(s for s in real(source) if s != "gnutls_cipher_init"),
+    )
+    row = R._row(R.PATH_INDEX["gnutls_native"])
+    assert row["declared_depth"] == R.DEPTH_INVOCATION
+    assert row["depth"] == R.DEPTH_ABSENT
+    assert any("gnutls_cipher_init" in note for note in row["notes"])
+
+
+def test_an_unreadable_shim_degrades_rather_than_asserting_hooks(monkeypatch):
+    from runtime.agent import preload_trace
+
+    def broken(source=None):
+        raise OSError("shim source missing")
+
+    monkeypatch.setattr(preload_trace, "hook_symbols", broken)
+    row = R._row(R.PATH_INDEX["gnutls_native"])
+    assert row["depth"] == R.DEPTH_ABSENT
+    coverage = R.shim()
+    assert coverage["state"] == "NOT_EVALUATED"
+    assert coverage["reason"].startswith("shim source unreadable")
+    assert coverage["total"] is None
+
+
+def test_the_served_matrix_states_which_stacks_are_visible():
+    doc = R.registry()
+    coverage = doc["shim"]
+    assert coverage["schema"] == "cryptoscan.shim-coverage/1"
+    assert coverage["counts"]["gnutls"] >= 5
+    assert coverage["counts"]["openssl"] >= 10
+    assert "not listed here" in coverage["note"] or "produce no observation" in coverage["note"]
+    # Go and Rust are still below call level, and the rows say why rather than
+    # disappearing from the matrix
+    depths = {row["id"]: row["depth"] for row in doc["paths"]}
+    assert depths["go_runtime"] == depths["rust_runtime"] == R.DEPTH_INGEST_ONLY
+
+
 def test_every_declared_runtime_producer_resolves():
     absent = [
         (row["id"], producer["ref"], producer.get("reason"))
@@ -80,7 +142,11 @@ def test_every_family_states_what_it_cannot_claim():
 
 def test_runtime_registry_claims_nothing_beyond_the_observed_families():
     doc = R.registry()
-    assert doc["rollup"]["call_level_paths"] == 1
+    # Two call-level stacks, not one: the shim interposes libcrypto *and*
+    # libgnutls, and both rows are gated on the symbols actually present in the
+    # C source. Two stacks is still two ELF loaders — the JVM, the CLR, Go, Rust
+    # and the interpreted runtimes stay below invocation level.
+    assert doc["rollup"]["call_level_paths"] == 2
     assert "installed is not" in doc["axiom"].lower() or "OpenSSL installed" in doc["axiom"]
     assert "not a statement that every process" in doc["claim"]
 
@@ -462,11 +528,11 @@ def test_runtime_surface_and_runtime_matrix_agree():
         "inventory.windows_cng",
     }
     assert {ref.split(":", 1)[0] for ref in surface.detectors} == {"runtime.core.collector"}
-    # the surface's ceiling is PARTIAL, which is exactly what one call-level
-    # family out of eight means
+    # the surface's ceiling is PARTIAL: two call-level stacks out of nine
+    # families, both of them dynamically linked ELF, is not deep coverage
     assert surface.maturity == S.MATURITY_PARTIAL
     call_level = [row.id for row in R.PATHS if row.depth == R.DEPTH_INVOCATION]
-    assert call_level == ["openssl_native"]
+    assert call_level == ["openssl_native", "gnutls_native"]
     assert "no eBPF/uprobe capture in this build" in surface.gaps
 
 

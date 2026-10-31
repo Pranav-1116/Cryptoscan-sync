@@ -5516,6 +5516,15 @@ export interface RuntimeObserved {
   sampled?: boolean;
 }
 
+export interface RuntimeShimCoverage {
+  schema: string;
+  source: string;
+  symbols: Record<string, string[]>;
+  counts: Record<string, number>;
+  total: number;
+  note: string;
+}
+
 export interface RuntimeDepth {
   schema: string;
   paths: RuntimeDepthPath[];
@@ -5529,6 +5538,11 @@ export interface RuntimeDepth {
     absent_paths: number;
   };
   observed: RuntimeObserved | null;
+  /* The interposed symbols the tracer carries, read from the C source. The
+   * gnutls half is why this exists: it decides whether the GnuTLS row's
+   * INVOCATION claim is real in *this* build, so the console can say which
+   * stacks are visible instead of describing the design. */
+  shim?: RuntimeShimCoverage;
   axiom: string;
   claim: string;
   note: string;

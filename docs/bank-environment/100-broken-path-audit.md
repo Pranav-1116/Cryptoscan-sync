@@ -222,12 +222,30 @@ and library→algorithm on the `RUNTIME_OBSERVATION` basis, and refuses to fill 
 no named provider means no library edge (counted as `events_without_provider`), and
 a traced provider name is never given an invented version.
 
-*Still open, and measured by* `/discovery/runtime-depth`: call-level observation
-exists for **native OpenSSL only** (`openssl_native` = INVOCATION); **JVM** and
-**.NET** reach PROCESS_LIBRARY, **Go** and **Rust** are INGEST_ONLY, and interpreted
-languages are ABSENT. An always-on observer injected into a running process does not
-exist; the shim observes a process that is launched under it, inside an approved
-scope.
+The observer now interposes **two native stacks**: libcrypto/libssl (14 symbols)
+and libgnutls (5 symbols — cipher, hash and hmac init, handshake, priority
+setting). GnuTLS was not a completeness exercise: wget, exim, cups, libvirt and
+many distro builds of curl and PHP link libgnutls and no libcrypto, so those
+processes previously produced nothing and the absence read as inactivity. The
+GnuTLS half is proven end to end against a stand-in library
+(`test_gnutls_calls_are_forwarded_and_their_metadata_recorded`): the call is
+forwarded with its arguments, the algorithm name comes from the library's own
+getter, the key *length* is recorded, and the key bytes appear nowhere in the log.
+
+That list is not a claim; it is a reading. `hook_symbols()` parses the shipped C
+source, `/discovery/runtime-depth` serves it as `shim`, and a test compares it with
+`nm -D` on the compiled object. A row whose hooks are missing from the shim
+degrades to `ABSENT` by itself.
+
+*Still open, and measured by* `/discovery/runtime-depth`: **JVM** and **.NET**
+reach PROCESS_LIBRARY, **Go** and **Rust** are INGEST_ONLY, and interpreted
+languages are ABSENT. The reason is structural, not a missing hook: Go's
+`crypto/tls` and `ring`/`rustls` are statically linked and resolve no dynamic
+symbol, so symbol interposition cannot reach them — a Go binary built with cgo
+against system OpenSSL *is* caught by the openssl hooks instead. What remains
+missing there is a linkage pre-flight (deciding which of the two a binary is
+before a run), and an always-on observer: the shim still sees only a process
+launched under it, inside an approved scope.
 
 ### C. Relationship discovery — the chain is walkable end to end
 

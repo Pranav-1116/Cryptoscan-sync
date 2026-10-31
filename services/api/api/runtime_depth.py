@@ -82,10 +82,17 @@ class RuntimePath:
     cannot_claim: str
     ingest_only: tuple[str, ...] = ()
     gaps: tuple[str, ...] = ()
+    #: interposed symbols the shim must actually carry for this row's depth to
+    #: be true. Measured from the shipped C source, not asserted here.
+    requires_hooks: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.depth not in DEPTHS:
             raise ValueError(f"unknown depth {self.depth!r}")
+        if self.requires_hooks and self.depth != DEPTH_INVOCATION:
+            raise ValueError(
+                f"{self.id}: requires_hooks only qualifies an INVOCATION row, got {self.depth}"
+            )
 
 
 #: The families a bank's production estate actually runs. Order is by how much
@@ -105,8 +112,12 @@ PATHS: tuple[RuntimePath, ...] = (
         ingest_only=("OPENSSL_TRACE",),
         reads=(
             "one record per EVP_* call in a process started under the LD_PRELOAD shim: function, "
-            "algorithm, mode, key size and call count, plus the libraries each process maps"
+            "algorithm, mode, key size and call count, plus the libraries each process maps. "
+            "TLS policy is read from both setters — `SSL_CTX_set_cipher_list` (TLS 1.2 and below) "
+            "and `SSL_CTX_set_ciphersuites` (TLS 1.3) — because a process that configures only "
+            "TLS 1.3 suites used to record no cipher policy at all"
         ),
+        requires_hooks=("EVP_CipherInit_ex", "EVP_DigestInit_ex", "SSL_CTX_set_min_proto_version"),
         cannot_claim=(
             "the shim hooks dynamically resolved symbols. A statically linked binary, a Go or Rust "
             "binary carrying its own TLS stack, a JVM/CLR that reaches crypto through native "
@@ -117,6 +128,41 @@ PATHS: tuple[RuntimePath, ...] = (
             "no eBPF/uprobe capture, so long-running services cannot be observed without a restart",
             "no provider-level (OpenSSL 3 provider dispatch) instrumentation below the EVP entry point",
             "no memory or key-material inspection, by policy",
+        ),
+    ),
+    RuntimePath(
+        id="gnutls_native",
+        label="Native processes (GnuTLS)",
+        family="ELF / dynamically linked",
+        depth=DEPTH_INVOCATION,
+        producers=(
+            "runtime.agent.preload_trace:trace_command",
+            "runtime.agent.preload_trace:parse_trace_log",
+            "runtime.agent.crypto_events:observations_from_trace",
+        ),
+        requires_hooks=(
+            "gnutls_cipher_init",
+            "gnutls_hash_init",
+            "gnutls_hmac_init",
+            "gnutls_handshake",
+            "gnutls_priority_set_direct",
+        ),
+        reads=(
+            "the same call-level record for a second TLS stack: `gnutls_cipher_init`, "
+            "`gnutls_hash_init` and `gnutls_hmac_init` per operation, the negotiated cipher, "
+            "protocol and key exchange after a completed `gnutls_handshake`, and the priority "
+            "string passed to `gnutls_priority_set_direct`. Algorithm names come from GnuTLS's "
+            "own getters, so the shim carries no table that could drift from the library"
+        ),
+        cannot_claim=(
+            "this covers processes that link libgnutls dynamically. It says nothing about a "
+            "GnuTLS-linked application that was started without the shim, and nothing about the "
+            "TLS libraries a process bundles into itself"
+        ),
+        gaps=(
+            "no X.509-level hook (`gnutls_certificate_verify_peers*`) — a verified chain is a "
+            "policy outcome this tracer does not record",
+            "no hook for GnuTLS's own PRNG or key-generation entry points",
         ),
     ),
     RuntimePath(
@@ -182,11 +228,16 @@ PATHS: tuple[RuntimePath, ...] = (
         cannot_claim=(
             "Go's crypto is statically linked and does not resolve libcrypto symbols, so the shim "
             "produces no evidence for it. Wire-level observation of its listeners is the only "
-            "runtime evidence available for these services"
+            "runtime evidence available for these services. The exception is a Go binary built "
+            "with cgo against the system OpenSSL: that one *does* resolve libcrypto symbols and is "
+            "caught by the openssl hooks — which is why this row is about the runtime, not the "
+            "language"
         ),
         gaps=(
             "no uprobe on crypto/tls handshake symbols",
             "no `GODEBUG`-based trace consumption",
+            "no linkage pre-flight: nothing here inspects a Go binary before a run to say whether "
+            "it is statically linked (invisible to the shim) or cgo-linked to libcrypto (visible)",
         ),
     ),
     RuntimePath(
@@ -202,9 +253,16 @@ PATHS: tuple[RuntimePath, ...] = (
         ),
         cannot_claim=(
             "rustls and ring are statically linked in typical builds, so neither symbol "
-            "interposition nor the LD_PRELOAD shim sees them"
+            "interposition nor the LD_PRELOAD shim sees them. A service built against the "
+            "`openssl` crate instead links the system libcrypto and *is* observed by the openssl "
+            "hooks — the crate choice decides observability, not the language"
         ),
-        gaps=("no uprobe instrumentation", "no tracing-subscriber integration"),
+        gaps=(
+            "no uprobe instrumentation",
+            "no tracing-subscriber integration",
+            "no linkage pre-flight, so which of those two builds a service is cannot be decided "
+            "before a run",
+        ),
     ),
     RuntimePath(
         id="interpreted",
@@ -280,11 +338,32 @@ PATHS: tuple[RuntimePath, ...] = (
 PATH_INDEX = {path.id: path for path in PATHS}
 
 
+def _missing_hooks(path: RuntimePath) -> list[str]:
+    """Which interposed symbols this row needs are absent from the shipped shim."""
+    if not path.requires_hooks:
+        return []
+    try:
+        from runtime.agent.preload_trace import hook_symbols
+
+        available = set(hook_symbols())
+    except Exception:  # an unreadable shim is not a shim carrying the hook
+        return list(path.requires_hooks)
+    return [symbol for symbol in path.requires_hooks if symbol not in available]
+
+
 def _row(path: RuntimePath) -> dict[str, Any]:
     producers = [{"ref": ref, **resolve_detector(ref)} for ref in path.producers]
     present = [item for item in producers if item["present"]]
     depth = path.depth
     notes: list[str] = []
+    missing_hooks = _missing_hooks(path)
+    if missing_hooks:
+        depth = DEPTH_ABSENT
+        notes.append(
+            "the tracer does not interpose "
+            + ", ".join(missing_hooks)
+            + ", so this row's call-level claim has nothing behind it"
+        )
     if depth == DEPTH_INVOCATION and not present:
         # The claim of call-level observation collapses the moment its producer
         # is missing: report the truth about this build, not the design intent.
@@ -308,6 +387,23 @@ def _row(path: RuntimePath) -> dict[str, Any]:
         "gaps": list(path.gaps),
         "notes": notes,
     }
+
+
+def shim() -> dict[str, Any]:
+    """What the tracer can see, read from the shim source rather than asserted."""
+    try:
+        from runtime.agent.preload_trace import shim_coverage
+
+        return shim_coverage()
+    except Exception as exc:
+        return {
+            "schema": "cryptoscan.shim-coverage/1",
+            "state": "NOT_EVALUATED",
+            "reason": f"shim source unreadable: {type(exc).__name__}: {exc}"[:240],
+            "symbols": {},
+            "counts": {},
+            "total": None,
+        }
 
 
 #: rows scanned to classify the store. The matrix reports that it sampled
@@ -469,6 +565,7 @@ def registry(observed: Mapping[str, Any] | None = None) -> dict[str, Any]:
             "absent_paths": by_depth.get(DEPTH_ABSENT, 0),
         },
         "observed": dict(observed) if observed is not None else None,
+        "shim": shim(),
         "axiom": (
             "OpenSSL installed is not AES-256 executed. A mapped library, a registered provider, a "
             "negotiated TLS session and a counted EVP_* call are four different facts, and only the "
@@ -500,4 +597,5 @@ __all__ = [
     "SCHEMA",
     "observe",
     "registry",
+    "shim",
 ]
