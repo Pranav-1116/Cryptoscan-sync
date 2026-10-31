@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, Index
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -16,6 +16,16 @@ class EvidenceRecord(BaseModel, TenantScoped):
     __table_args__ = (
         Index("ix_evidence_scan_chain", "scan_id", "chain_position"),
         Index("ix_evidence_scan_status", "scan_id", "compliance_status"),
+        # Declared here because the migration chain creates them: a create_all
+        # database (SQLite, dev) otherwise accepts rows a bank's PostgreSQL
+        # rejects — a negative chain position, an unknown confidence, a status
+        # the policy engine never writes.
+        CheckConstraint("chain_position >= 0", name="evidence_chain_position_check"),
+        CheckConstraint("confidence IN ('HIGH', 'MEDIUM', 'LOW')", name="evidence_confidence_check"),
+        CheckConstraint(
+            "compliance_status IN ('PENDING', 'PASS', 'WARN', 'FAIL')",
+            name="ck_compliance_status",
+        ),
     )
 
     scan_id: Mapped[str] = mapped_column(

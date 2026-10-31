@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
+from sqlalchemy import CheckConstraint, JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -13,6 +13,9 @@ from db.tenancy import TenantScoped
 
 class VerificationLog(BaseModel, TenantScoped):
     __tablename__ = "verification_log"
+    __table_args__ = (
+        CheckConstraint("result IN ('PASS', 'FAIL', 'PARTIAL')", name="ck_verification_result"),
+    )
 
     scan_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True

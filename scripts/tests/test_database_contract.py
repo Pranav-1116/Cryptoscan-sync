@@ -273,6 +273,244 @@ class TestTheMigratedSchemaEnforcesWhatTheModelsDeclare:
         assert stale == [], f"KNOWN_LOOSE_COLUMNS entries that no longer drift: {stale}"
 
 
+#: CHECK constraints the migrations create that no model declares. One entry:
+#: the column it guards (`normalization_status`) is itself unmapped residue, so
+#: there is no model attribute to attach it to. Everything else is declared on
+#: the model, so `create_all` and `alembic upgrade head` agree about which rows
+#: the database will accept.
+KNOWN_UNDECLARED_CHECKS = {"evidence_records.ck_normalization_status"}
+
+
+class TestCheckConstraintsMatchTheModels:
+    """A CHECK the database enforces and the model does not is silent asymmetry.
+
+    `create_all` installations (SQLite, every test) then accept rows a migrated
+    PostgreSQL rejects, and the first writer to produce one gets a `CheckViolation`
+    nobody tested. `scans.status` had exactly that shape: the model defaults to
+    `QUEUED`, the constraint permitted everything but `QUEUED`, and only a bank's
+    database could fail.
+    """
+
+    def test_every_model_declared_check_exists_in_the_migrated_schema(self, migrated):
+        from sqlalchemy import inspect
+
+        inspector = inspect(migrated)
+        missing: list[str] = []
+        for table in _models().metadata.sorted_tables:
+            wanted = {
+                constraint.name
+                for constraint in table.constraints
+                if type(constraint).__name__ == "CheckConstraint" and constraint.name
+            }
+            if not wanted:
+                continue
+            live = {c["name"] for c in inspector.get_check_constraints(table.name)}
+            for name in sorted(wanted - live):
+                missing.append(f"{table.name}.{name}")
+        assert missing == [], (
+            "the model declares CHECK constraints the migrated database does not "
+            f"enforce, so create_all and a real install disagree: {missing}"
+        )
+
+    def test_the_undeclared_checks_are_the_known_set(self, migrated):
+        from sqlalchemy import inspect
+
+        inspector = inspect(migrated)
+        declared: dict[str, set[str]] = {
+            table.name: {
+                constraint.name
+                for constraint in table.constraints
+                if type(constraint).__name__ == "CheckConstraint" and constraint.name
+            }
+            for table in _models().metadata.sorted_tables
+        }
+        undeclared = {
+            f"{table}.{check['name']}"
+            for table in inspector.get_table_names()
+            for check in inspector.get_check_constraints(table)
+            if check["name"] not in declared.get(table, set())
+        }
+        assert sorted(undeclared - KNOWN_UNDECLARED_CHECKS) == [], (
+            "CHECK constraints in the database that no model declares — a "
+            "create_all install accepts rows a migrated one rejects: "
+            + ", ".join(sorted(undeclared - KNOWN_UNDECLARED_CHECKS))
+        )
+
+
+class TestEveryMappedTableCanBeRead:
+    """Every one of the 155 mapped tables is actually selectable on the migrated schema.
+
+    The name and nullability checks above compare the two schemas. They do not
+    prove the ORM can *read* a table: a column whose database type the dialect
+    cannot decode, an enum value the model rejects, a server-side default that
+    returns something the type does not accept, or a relationship that joins on a
+    column the migration never created all survive a schema comparison and fail
+    on the first `SELECT`.
+
+    So each mapped table gets one real round trip on PostgreSQL: insert a row
+    built from the model's own defaults (skipping columns the database fills),
+    read it back through the ORM, and delete it. Tables that need a foreign key
+    the test cannot invent are read with an empty `SELECT` instead — the goal is
+    the read path, not a full fixture for every table.
+    """
+
+    def test_every_mapped_table_is_selectable(self, migrated):
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        models = _models()
+        unreadable: list[str] = []
+        with Session(migrated) as db:
+            for table in models.metadata.sorted_tables:
+                model = None
+                for mapper in models.registry.mappers:
+                    if mapper.local_table is table:
+                        model = mapper.class_
+                        break
+                try:
+                    if model is not None:
+                        db.execute(select(model).limit(1)).all()
+                    else:  # a table with no mapped class (association tables)
+                        db.execute(select(table).limit(1)).all()
+                except Exception as error:  # noqa: BLE001 - the message is the finding
+                    unreadable.append(f"{table.name}: {type(error).__name__}: {str(error)[:200]}")
+        assert unreadable == [], (
+            "tables the ORM cannot select on the migrated schema:\n  " + "\n  ".join(unreadable)
+        )
+
+    def test_every_mapped_table_survives_a_write_and_read_back(self, migrated):
+        """Insert a row the schema will accept, read it back, remove it.
+
+        The row is built from the model's own columns: a value for every column
+        that is required and has no default, of the type the column declares. A
+        table that cannot take that row is a real finding — either the model
+        declares a constraint the migration does not (or the reverse), or a
+        column type the dialect cannot round-trip. Tables needing a foreign key
+        to an existing row are skipped by name and listed, not silently dropped.
+        """
+        from sqlalchemy import select
+        from sqlalchemy.orm import Session
+
+        models = _models()
+        failures: list[str] = []
+        skipped: list[str] = []
+        written = 0
+        with Session(migrated) as db:
+            for table in models.metadata.sorted_tables:
+                if _needs_a_parent(table):
+                    skipped.append(table.name)
+                    continue
+                model = None
+                for mapper in models.registry.mappers:
+                    if mapper.local_table is table:
+                        model = mapper.class_
+                        break
+                if model is None:
+                    continue
+                try:
+                    # The savepoint is rolled back rather than deleted: several
+                    # tables refuse deletes on purpose (append-only assurance and
+                    # evidence history), and that refusal is a feature, not a
+                    # finding.
+                    with db.begin_nested():
+                        row = model(**_required_values(table))
+                        db.add(row)
+                        db.flush()
+                        identifier = getattr(row, "id", None)
+                        if identifier is not None:
+                            found = db.execute(select(model).where(model.id == identifier)).scalar_one()
+                            assert found is not None
+                        raise _RollbackSafepoint
+                    written += 1
+                except _RollbackSafepoint:
+                    written += 1
+                except Exception as error:  # noqa: BLE001
+                    failures.append(f"{table.name}: {type(error).__name__}: {str(error).splitlines()[0][:200]}")
+            db.rollback()
+        assert written >= 90, (
+            f"only {written} tables were exercised with a write (skipped {len(skipped)} "
+            f"needing a parent row); the synthesis is not reaching the schema"
+        )
+        assert failures == [], (
+            "tables the ORM cannot write and read back on the migrated schema:\n  "
+            + "\n  ".join(failures)
+        )
+
+
+#: Tables whose first row cannot exist without a row in another table this test
+#: does not build. Kept deliberately short: every entry is a table whose read
+#: path goes unexercised here.
+PARENT_REQUIRED = {
+    # user_id is required and refers to a provisioned account; MFA is enrolled
+    # against a user that already exists
+    "mfa_recovery_codes",
+}
+
+
+class _RollbackSafepoint(Exception):
+    """Unwinds the per-table savepoint after a successful write and read-back."""
+
+
+def _needs_a_parent(table) -> bool:
+    """True when a required column is a foreign key the test cannot invent."""
+    if table.name in PARENT_REQUIRED:
+        return True
+    for column in table.columns:
+        if column.nullable or column.default is not None or column.server_default is not None:
+            continue
+        if column.foreign_keys:
+            return True
+        if column.name in {"id", "created_at", "updated_at"}:
+            continue
+    return False
+
+
+def _value_for(column):
+    """A value the column will accept, chosen from its declared type."""
+    import datetime as _dt
+    import uuid as _uuid
+
+    kind = str(column.type).upper()
+    name = column.name.lower()
+    if name == "scope_key":
+        # Every scoped table enforces `scope_key = CASE WHEN tenant_id IS NULL
+        # THEN 'platform' ELSE 'tenant:' || tenant_id END`, and this row is
+        # written on the platform estate.
+        return "platform"
+    if kind.startswith(("VARCHAR", "STRING", "TEXT", "CHAR")):
+        width = getattr(column.type, "length", None)
+        value = f"contract-{name}"
+        return value[: width] if isinstance(width, int) and width else value
+    if kind.startswith(("INT", "BIGINT", "SMALLINT", "NUMERIC", "FLOAT", "REAL", "DOUBLE", "DECIMAL")):
+        return 1
+    if kind.startswith(("DATETIME", "TIMESTAMP", "DATE")):
+        return _dt.datetime.now(_dt.timezone.utc)
+    if kind.startswith("BOOLEAN"):
+        return False
+    if kind.startswith(("JSON", "JSONB")):
+        return {}
+    if kind.startswith("UUID"):
+        return _uuid.uuid4()
+    if kind.startswith(("BYTEA", "BLOB", "LARGEBINARY", "BINARY")):
+        return b"contract"
+    if "ENUM" in kind:
+        members = list(getattr(column.type, "enums", []) or [])
+        return members[0] if members else "contract"
+    return "contract"
+
+
+def _required_values(table) -> dict:
+    """Constructor kwargs for the columns the database will not fill in."""
+    values = {}
+    for column in table.columns:
+        if column.nullable or column.default is not None or column.server_default is not None:
+            continue
+        if column.name == "id":
+            continue
+        values[column.key] = _value_for(column)
+    return values
+
+
 class TestPlatformScopeWritesOnTheMigratedSchema:
     """Rows that belong to no tenant must be writable on the real schema.
 

@@ -5,15 +5,35 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import DateTime, JSON, String, Text
+from sqlalchemy import CheckConstraint, DateTime, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
 from db.tenancy import TenantScoped
 
 
+#: The statuses this model writes. `QUEUED` is the default a scan is created
+#: with, so the database constraint has to permit it: for two years the migrated
+#: schema allowed only RUNNING/COMPLETED/FAILED/CANCELLED while every writer
+#: created QUEUED rows, and `create_all` never made the constraint, so only a
+#: bank's PostgreSQL could fail — on the first scan. Migration 0124 fixes the
+#: deployed constraint; this declaration keeps the two in step from now on.
+SCAN_STATUSES = ("QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED")
+SCAN_TARGET_TYPES = ("GIT_REPOSITORY", "LOCAL_DIRECTORY", "ARCHIVE")
+
+
 class Scan(BaseModel, TenantScoped):
     __tablename__ = "scans"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN (" + ", ".join(f"'{s}'" for s in SCAN_STATUSES) + ")",
+            name="scans_status_check",
+        ),
+        CheckConstraint(
+            "target_type IN (" + ", ".join(f"'{s}'" for s in SCAN_TARGET_TYPES) + ")",
+            name="scans_target_type_check",
+        ),
+    )
 
     scan_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     scan_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
