@@ -25,7 +25,7 @@ rather than an opinion.
 | 3 | PostgreSQL production qualification | **PARTIAL** | 125 migrations at tip, applied and swept on real PG; PITR/backup/failover drills exist as scripts | no partitioning, no 1M-row or concurrent-write measurement, drills not executed here |
 | 4 | Evidence durability | **PARTIAL** | guide 112: 8 of 9 tampering attacks detected on a real stored scan; the Twin now verifies before projecting; export/audit/rescan/host-evidence already enforced | the scan manifest is unsigned — a full rewrite (payload + chain + manifest) verifies PASS; that needs a signing key or an off-site anchor |
 | 5 | Complete authorization model | **PARTIAL** | 1,225 operations in the authorization register; approvals carry a typed contract | per-collector target authority is not uniform; the five questions are answered by different mechanisms per family |
-| 6 | Performance at bank scale | **BLOCKED** | 150 banks / 2,161 assets / 2,782 edges, ingest 0.029 s (108) | 100k assets, 1M observations, millions of relationships, continuous ingestion: not measured |
+| 6 | Performance at bank scale | **PARTIAL** (measured this pass) | `114-scale-qualification.md`: 100k assets / 1M facts measured; 479 assets/s to the 20k request cap; five of seven reads under 1 s at 100k/1M | ingest is capped at 20,000 assets per request, slicing an estate retires the earlier slices, and the observation summary still takes 1.2 s at 1M facts |
 | 7 | Observability | **PARTIAL** | `/metrics` (dependency, scanner-family, scan-duration), healthz/readyz, Prometheus alerts, Grafana dashboards | no tracing; no evidence-health, coverage-health or agent-health metric; alerts not exercised |
 | 8 | Frontend production hardening | **PARTIAL** | 600 of 1,255 endpoints reachable from the console; 96 frontend test files | authorization-aware views, large-graph handling, realtime consistency: not audited at page level |
 
@@ -254,26 +254,53 @@ curation") rather than per-route proof.
 five questions × the mechanism that enforces it — generated from the code, with
 any cell that is not enforced printed as `NOT ENFORCED`.
 
-## 6. Performance at bank scale — **BLOCKED**
+## 6. Performance at bank scale — **PARTIAL** (measured this pass)
 
-**Proven.** 10/50/100/150 synthetic banks: 2,161 assets, 1,098 evidence rows,
-2,782 relationships, ingest **0.029 s**, peak RSS **104 MB**, accuracy 1.000
-against a planted key, refusals 300/300, correlation 150/150 (guide 108). Ingest
-is linear across the 15× range.
+**Proven — measured, not extrapolated.** `scripts/scale_qualification.py`
+regenerates `114-scale-qualification.{json,md}`: a hundred thousand assets and a
+million facts, measured on this machine, 2 pass · 3 fail · 1 unproven.
 
-**Not proven — and this is the blocker.** The largest measured estate is
-**2,161 assets**. The review asks for **100k+ assets, 1M+ observations,
-millions of relationships, under continuous ingestion**. That is roughly **46×**
-the assets and **3 orders of magnitude** the observation count; the linear
-extrapolation (≈1.3 s ingest, ≈5 GB) is arithmetic, not a measurement, and the
-graph queries, the Twin projection and the BOM builds are not linear by
-construction. `scripts/load_test.py`, `perf_benchmark.py` and
-`operator_loop_drill.py` exist but were not run at that scale here.
+| Property | Verdict | What was measured |
+|---|---|---|
+| ingest ceiling | **FAIL** | one discovery request carries at most **20,000 assets** (and 100,000 evidence records); 100k is refused at the model with a 422 before collection runs |
+| ingest throughput | **PASS** | 479 assets/s at 20k (2.09 ms/asset, 43.8 s), peak RSS **1.19 GB**; a linear projection puts 100k at **3.5 min** |
+| read paths at 100k/1M | **FAIL** | catalogue page 27 ms, asset detail 26 ms, history 2.6 ms, why 5 ms, evidence 1.5 ms, catalogue summary 27 ms — and observation summary **1.2 s**, over the 1 s budget |
+| continuous ingestion | **PASS** | four observations of a 2,000-asset estate: 1.7× the first round's cost, exactly 2,000 new fact rows per round, the CURRENT set flat |
+| slicing a capped estate | **FAIL** | two 10,000-asset slices leave 10,000 **ACTIVE** and 10,000 **STALE**: the second slice's graph does not contain the first |
+| BOM projection at 100k | **UNPROVEN** | no graph of that size can be built through the API, so the projection is measured only at the cap |
 
-**What closes it.** One measured run at 100k assets / 1M observations /
-5M relationships — ingest time, peak RSS, p95 of the Twin and BOM builds, and the
-query plans for the hot reads — with the numbers in an artifact like 108, and the
-first place it stops being linear named rather than smoothed.
+**Two things were fixed because the drill found them.** At a million facts the
+per-asset reads ran linear in the estate — `history` 1.53 s, `why` 1.42 s —
+because the planner drove the single-column tenant index and filtered afterwards.
+A composite `(tenant_id, asset_id)` index (migration 0126) took them to **2.6 ms
+and 5 ms**; the drill measures the same reads with the index dropped (182 ms) so
+the claim is a measurement rather than a comment. `estate_observations.summary`
+aggregated a million ORM rows in Python (**21.6 s**); it now aggregates in SQL
+(**1.2 s** — better, still over budget).
+
+**Not proven — the gap that keeps this open.** First, the ingest path cannot
+*reach* bank scale: 20,000 assets per request is the ceiling, and the estate-wide
+graph means slicing is not a workaround — it retires whichever slice came first.
+Second, **relationships** are not modelled in this drill at all: the review asked
+for millions of edges, and the synthetic estate has none, so the edge table's
+behaviour at 5M rows is unmeasured. Third, the observation summary is still over
+budget at 1M facts, and it is the console's first request. Fourth, this is
+SQLite on one machine: no PostgreSQL, no concurrent writers, no pool. Fifth, the
+synthetic estate is regular — a bank has a long tail (one asset with 40k edges)
+that this drill does not model.
+
+**A defect the drill found.** Every round of continuous ingestion reports
+`verdict: NO_CHANGE` while listing 50 `ASSET_CHANGED` claims and the headline
+"the two observations are identical": the verdict comes from the BOM and
+coverage comparison, the claims from the twin's asset comparison. A metadata-only
+movement is therefore listed and denied in the same response. Reported in the
+artifact; not fixed here.
+
+**What closes it.** A streaming or partitioned ingest that does not rebuild the
+estate from one payload (or an explicit per-slice merge that does not stale the
+others), the same drill with 5M relationships, the summary read brought under
+budget at 1M facts, and one run of this drill against PostgreSQL with a
+concurrent writer.
 
 ## 7. Observability — **PARTIAL**
 
@@ -330,8 +357,11 @@ either given a screen or explicitly declared API-only.
    with counts and identities asserted, and the harness fails when a hop lies.
    Remaining in #1: the other 15 families, and one run against a real
    deployment.
-4. **Bank-scale measurement (#6)** — one measured run at 100k/1M/5M; it will find
-   the first non-linearity, and that finding is worth more than the table.
+4. ~~**Bank-scale measurement (#6)**~~ — **done this pass** (guide 114): 100k
+   assets and 1M facts measured, and it found what the plan predicted — the
+   ingest cap, not throughput, is what stops a bank estate. Two reads were fixed
+   on the way (composite index, SQL aggregation). Remaining in #6: relationships
+   at 5M, a streaming ingest, and a PostgreSQL run with a concurrent writer.
 5. **PostgreSQL qualification (#3)**, **per-collector authority (#5)**,
    **observability gaps (#7)**, **frontend audit (#8)** — in that order, each
    with the artifact named above.

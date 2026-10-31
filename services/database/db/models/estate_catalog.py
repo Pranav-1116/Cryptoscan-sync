@@ -205,6 +205,10 @@ class EstateObservationRecord(BaseModel, TenantScoped):
     __table_args__ = (
         Index("ix_estate_observations_tenant_obs", "tenant_id", "observation_id", unique=True),
         Index("ix_estate_observations_asset_fact", "asset_id", "fact_type"),
+        # every per-asset read filters tenant and asset together (history, why, the
+        # twin's detail); without this the planner drives the tenant index and walks
+        # the whole tenant to find ten rows — 1.5 s at a million facts, measured
+        Index("ix_estate_observations_tenant_asset", "tenant_id", "asset_id"),
     )
 
     observation_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
