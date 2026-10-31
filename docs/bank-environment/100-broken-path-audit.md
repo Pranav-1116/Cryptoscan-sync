@@ -6,16 +6,17 @@ end — separately from "is a path *missing*?" — a capability that was never b
 The first is a defect; the second is a boundary. Confusing them is how a product
 ends up claiming completeness.
 
-Nothing here says the platform has zero broken paths. What it says is: the seven
-tests below were run, here is what they saw, here is what they would have caught,
+Nothing here says the platform has zero broken paths. What it says is: the nine
+checks below were run, here is what they saw, here is what they would have caught,
 and here is the part they still cannot see.
 
 ---
 
-## 1. The seven checks
+## 1. The nine checks
 
 Each check is a test, runnable on its own. Every one of them was written because
-reading the tree turned up an inconsistency that no test covered.
+reading the tree turned up an inconsistency that no test covered, or because
+running the product turned up a defect that reading the tree could not.
 
 | # | Check | File | What a failure means |
 |---|---|---|---|
@@ -26,6 +27,8 @@ reading the tree turned up an inconsistency that no test covered.
 | 5 | Models and the *migrated* schema agree, and Twin/CLI read paths run on it | `scripts/tests/test_database_contract.py` | Every test passes on `create_all` while the first read in a bank raises |
 | 6 | Every route quoted as evidence ("check at", "measured by") is served | `scripts/tests/test_evidence_route_hints.py` | The product tells a reader how to verify a claim, and that route 404s |
 | 7 | Every console page is reachable from the router | `scripts/tests/test_frontend_surface.py` | A page ships, its tests pass, and no URL renders it |
+| 8 | Every operation is executed against a **live server** | `scripts/tests/test_live_route_smoke.py` | A handler raises, a dependency cannot resolve, a column is missing — the first thing a bank sees |
+| 9 | Every operation that declares a response schema returns that schema | same file | The route answers `200` and the body is not what the contract promised |
 
 ```bash
 export PYTHONPATH="scripts:shared/shared_models:services/api:shared/shared_config:$PYTHONPATH"
@@ -36,10 +39,15 @@ export PYTHONPATH="scripts:shared/shared_models:services/api:shared/shared_confi
     scripts/tests/test_database_contract.py \
     scripts/tests/test_evidence_route_hints.py \
     scripts/tests/test_frontend_surface.py -q
+
+# checks 8 and 9 start a real server: opt in, ~60 s
+CRYPTOSCAN_LIVE_SMOKE=1 .venv/bin/python -m pytest scripts/tests/test_live_route_smoke.py -q
 ```
 
-Check 5 needs a PostgreSQL binary; it uses `pgserver`'s unpacked PostgreSQL on a
-unix socket and skips (loudly, via `importorskip`) when that is unavailable.
+Checks 5, 8 and 9 need a PostgreSQL binary; they use `pgserver`'s unpacked
+PostgreSQL on a unix socket and skip (loudly, via `importorskip`) when that is
+unavailable. Checks 8 and 9 are opt-in because they start uvicorn and take about
+a minute; they are not part of the hermetic gate.
 
 ---
 
@@ -57,6 +65,11 @@ unix socket and skips (loudly, via `importorskip`) when that is unavailable.
 | Columns in the database that no model maps | **16** | Residue from withdrawn writers; enumerated in check 5 |
 | Routes quoted as proof that are not served | **0 of 8 hints** | Every "check at"/"measured by" route resolves, and accepts GET or POST |
 | Console pages | **90 / 0 orphans** | Every page file is routed or embedded by a page the router reaches, transitively |
+| Operations executed on a live server | **1248 / 1248, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
+| Operations that refused an anonymous caller | **1212 protected of 1212, 36 public** | Everything outside the session gate's declared public surface (health, docs, login/SSO, machine-signed webhooks) |
+| Role-gated operations proven both ways | **306 admitted with the role, 273 refused without it** | Read from the dependency tree, then asked of the running server |
+| Operations with a response schema that holds | **81 validated / 81 declared** | The other 1167 declare nothing (`§5`, limit a) |
+| Model ↔ migrated-schema nullability | **0 disagreements, both directions** | At revision 0121 it was 148 columns the model treats as required and the database accepts as NULL, and 9 the reverse |
 
 ---
 
@@ -96,9 +109,32 @@ and did not work; none was hypothetical.
 5. **No test had ever run the migration chain.** Every database test in this tree
    builds its schema from `Base.metadata.create_all`, which reads the same models
    the code does — so a model column with no migration passes every test and fails
-   the first time a bank reads it. Check 5 now runs all 121 migrations on a real
+   the first time a bank reads it. Check 5 now runs all 123 migrations on a real
    PostgreSQL and drives the twin store and `cryptoscan twin assets` against the
    result.
+
+6. **The migration chain and the models disagreed about NULL, and nothing asked.**
+   `POST /api/v1/hbom/snapshot` answered `500` on a live server for every
+   estate-wide pin: `hbom_snapshots.tenant_id` was `NOT NULL` in the migration
+   while the model declared it nullable, because a pin outside a tenancy request
+   has no tenant. `create_all` builds from the model, so every test passed. An
+   exact nullability comparison over all 155 mapped tables found 148 columns the
+   model treats as required and the database accepted as NULL (a NULL that no
+   reader expects, writable by any caller that leaves the field out) and 9 the
+   reverse. Migrations 0122 and 0123 close both directions; four tenant-plane
+   tables that must name an owner now use `TenantOwned` instead of being relaxed.
+
+7. **Five compliance endpoints checked the username, not the role.** The gate was
+   `if user != "admin": 403`. A provisioned superadmin under any other name was
+   refused; an account *named* `admin` was admitted whatever its roles were. The
+   auditor surface repeated the check and compared `X-Auditor-Key` with `==`.
+   Found by the live sweep's authorization check, not by reading the router.
+
+8. **A baselines endpoint called a repository method that does not exist.**
+   `DELETE /api/v1/baselines/{baseline_id}/proposal` called `baselines.get(...)`;
+   `BaselineRepository` has `get_by_id`. Every call raised `AttributeError` and
+   answered `500`, so a clean-scan proposal could be listed and approved but never
+   dismissed. Found by executing the route, not by importing it.
 
 ---
 
@@ -129,31 +165,62 @@ not reversible in a running installation), not a prerequisite for any path here.
 ## 5. What this audit does **not** prove
 
 Stated as limits, because each one is a place where a working path could still be
-wrong:
+wrong. Each limit below records what has since been proven, what proved it, and
+what is still open — the list is the same list, moved forward, not a new claim.
 
-* **Route existence is not response correctness.** 93% of the operations the
-  console calls declare no response model, so nothing but
-  `scripts/tests/test_console_payload_contract.py` (7 payload families) checks the
-  shape of what comes back. A route that returns the wrong fields for a page
-  outside those families would pass every check here.
-* **No request was executed against a live server for every route.** Checks 1–2
-  are structural: they compare the caller's URL with the router table. They prove
-  the route is registered and the verb is accepted; they do not prove the handler
-  returns `200` with a valid body for a real tenant and a real credential.
-* **Authorization is inventoried, not proven per route.** A separate test asserts
-  that every route declares an authentication dependency. It does not prove each
-  route's role set is the right one.
-* **The database contract covers the Twin store and the catalogue read path**
-  (`twin assets`), not every one of the 155 mapped tables' read paths.
+* **(a) Response correctness.** *Proven:* every operation that declares a 2xx JSON
+  schema — **81 of 1248** — is called on a live server and its body validated
+  against that schema (check 9). *Still open:* the other 1167 declare no response
+  model. Their payload shape is asserted only by their TypeScript interface and,
+  for seven payload families, by `scripts/tests/test_console_payload_contract.py`.
+  A route returning the right fields in the wrong nesting for a page outside those
+  families would still pass. Closing this is typing work on the routers, one
+  `response_model=` at a time, and the count is pinned in check 9 so it can only
+  grow.
+
+* **(b) A live request for every route.** *Closed for execution.* All **1248**
+  operations are executed against uvicorn over a real PostgreSQL at the migration
+  tip: **0 returned 5xx**, **0 failed at the transport layer** (check 8). What this
+  does *not* prove: the request carries an empty body, so a handler that needs a
+  valid body either answers `422` before running, or runs against its all-optional
+  default path. A handler that is only reachable with a populated body is exercised
+  for its dependencies and its response envelope, not for its business logic.
+
+* **(c) Authorization per route.** *Proven per gated route.* Every route whose
+  dependency tree carries a `require_roles` requirement — **306 operations** — is
+  asked with a principal that holds the role (admitted, never `401`/`403`) and with
+  one that does not (**273** of them, refused). The requirements are read from the
+  route tree, not from a second list. *Still open:* `1212` operations are behind
+  the session gate but carry **no** role requirement — authenticated-only is a
+  deliberate design for most of them, and this audit does not assert that any
+  particular one of them should have had a role. Deciding that is a policy
+  question per route; the test proves enforcement of what is declared, not the
+  correctness of the declaration.
+
+* **(d) The database contract over all tables.** *Closed for schema parity.* All
+  **155** mapped tables and every mapped column are compared with the migrated
+  schema for existence, orphan tables, unmapped columns, and nullability in both
+  directions (0 disagreements; the residue that remains is the 16 known legacy
+  columns in §4). Platform-scope writes (`hbom_snapshots`, `algorithm_advisories`,
+  topology) are executed against the migrated schema rather than assumed. *Still
+  open:* the *read* paths of every table are not driven — the twin store and
+  `cryptoscan twin assets` are. A table whose model matches the schema and whose
+  query is wrong is invisible here. The live sweep covers whichever of those reads
+  are exposed over HTTP.
+
 * **The CLI boundary is a static import check.** It proves `cli_remote.py` cannot
   reach the estate modules; it does not prove a handler in `cli.py` that *is*
   allowed to reach them returns the right answer for every subcommand.
+
 * **`twin` subcommands outside `REMOTE_TWIN_COMMANDS`** still run in-process and
   refuse without an explicit PostgreSQL estate. That is a legacy shape retained on
   purpose (guide 98 §4), it is tested, and it is not evidence that the remote
   equivalents exist.
 
----
+* **The live sweep is one deployment shape.** One server process, one PostgreSQL,
+  no Redis, no cloud credentials, no HSM. A route that needs any of those answers
+  from a configuration guard (`503`) or an honest empty result, and the sweep
+  accepts neither as proof that the integrated path works.
 
 ## 6. The missingness axis, for contrast
 

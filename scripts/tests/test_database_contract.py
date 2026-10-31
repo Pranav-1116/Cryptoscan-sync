@@ -425,7 +425,7 @@ class TestTheOperatorCliReadsTheMigratedDatabase:
         os.environ.setdefault("SECRET_KEY", "test-secret-key-for-sessions-min-32-chars")
         os.environ.setdefault("ALLOW_SQLITE", "true")
 
-        from sqlalchemy.orm import Session, sessionmaker
+        from sqlalchemy.orm import sessionmaker
 
         from api import cli
 
