@@ -149,9 +149,13 @@ def _recovery_harness(root: Path) -> tuple[bool, str]:
         "scripts/db_restore.sh",
         "scripts/backup_drill.py",
         "scripts/backup_evidence.py",
+        "scripts/pitr_drill.py",
         "docs/admin-guide/backup-restore.md",
     )
-    return _contains(root, paths, ("sha256", "restore", "backup", "verify"), "backup/restore and evidence harness")
+    return _contains(
+        root, paths, ("sha256", "restore", "backup", "verify", "point-in-time"),
+        "backup/restore and evidence harness",
+    )
 
 
 def _release_controls(root: Path) -> tuple[bool, str]:

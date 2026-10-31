@@ -61,6 +61,53 @@ credential handling or DBA-native tooling and inspect redaction boundaries.
   `verify_evidence_chain.py --scan-id ID --json` for the stored-chain verdict too;
   valid chain alone is not whole-site completeness or current proof eligibility.
 
+## Point-in-time recovery (the restore you actually need after damage)
+
+A nightly dump answers "can we get back to last night". The question after a bad
+migration, a wrong `DELETE`, or a corrupted table is "can we get back to
+*two minutes before* that", and only physical backup plus archived WAL answers
+it.
+
+`scripts/pitr_drill.py` rehearses that path end to end on real PostgreSQL
+binaries (no Docker, no privileges, unix socket only) and asserts the outcome
+rather than reporting that commands ran:
+
+```bash
+python scripts/pitr_drill.py --evidence evidence/pitr-$(date +%F).json
+```
+
+What it does, in order: `initdb` a throwaway primary with `archive_mode=on`, take
+a `pg_basebackup` and verify it with `pg_verifybackup`, write the data that must
+survive and record a recovery target, write the "damage" that must not survive,
+force a WAL switch and wait until the target segment is **in the archive**, stop
+the primary with `immediate` (a node loss, not a clean shutdown), then restore
+into a new data directory with `recovery_target_time` and
+`recovery_target_action=promote`.
+
+It passes only if all of these hold: the pre-target rows are present, the
+post-target rows are absent (audit rows included), the instance is out of
+recovery, it moved to a new timeline, and it accepts writes. The JSON report also
+records measured RTO (disaster → first query), the discarded window
+(target → disaster), the base-backup manifest SHA-256, and the PostgreSQL
+binaries used.
+
+Two operational lessons the drill encodes, both learned by watching the drill
+fail:
+
+- **`archive_command` must be atomic.** `cp %p %f` publishes a partially written
+  segment under its final name; an ungraceful stop during the copy leaves it
+  there, and the next restore dies with `archive file ... has wrong size`. Copy
+  to `%f.partial` and `mv` into place.
+- **Wait for the WAL, do not assume it.** A restore started before the target
+  segment reaches the archive looks like a corrupt archive. Poll for the exact
+  segment (`pg_walfile_name(target_lsn)`) before you stop the primary.
+
+The drill's evidence is about the mechanism and these binaries. It is not
+evidence about a bank's storage, WAL retention, encryption at rest or measured
+RPO/RTO — re-run it against the real cluster, archive the server logs with the
+report, and have the numbers reviewed. For a streaming-standby promotion instead
+of a restore, see `scripts/postgres_drill.py`.
+
 ## Schedules, retention and objectives
 
 The earlier daily-02:30/35-day cron example is not a bank policy. No destructive
