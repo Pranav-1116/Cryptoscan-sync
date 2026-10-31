@@ -20,7 +20,7 @@ rather than an opinion.
 
 | # | Blocker | Grade | What proves what is proven | The gap that keeps it open |
 |---|---|---|---|---|
-| 1 | End-to-end production qualification | **BLOCKED** | 1,255 operations executed on uvicorn + PostgreSQL (guide 100 §5b); 20/20 collector families have code (105) | no data-path test per collector: collector → agent → API → evidence → DB → Twin → BOM → UI |
+| 1 | End-to-end production qualification | **PARTIAL** (five families added this pass) | `113-golden-path.md`: 5/5 families, 35/35 hops, one payload walked collector → API → evidence → DB → Twin → BOM → console with counts and identities asserted at each hop | 15 of the 20 collector families still have no data-path test; the collectors' *inputs* are fixtures, not a bank's network |
 | 2 | Worker / job architecture | **PARTIAL** | `111-job-contract.md`: 9/9 properties proven by drill, now including retry-after-failure with backoff, jitter and a dead-letter ceiling | cancellation is a checkpoint boundary (a running stage is not interrupted); concurrency is per process; no backlog measurement |
 | 3 | PostgreSQL production qualification | **PARTIAL** | 125 migrations at tip, applied and swept on real PG; PITR/backup/failover drills exist as scripts | no partitioning, no 1M-row or concurrent-write measurement, drills not executed here |
 | 4 | Evidence durability | **PARTIAL** | guide 112: 8 of 9 tampering attacks detected on a real stored scan; the Twin now verifies before projecting; export/audit/rescan/host-evidence already enforced | the scan manifest is unsigned — a full rewrite (payload + chain + manifest) verifies PASS; that needs a signing key or an off-site anchor |
@@ -34,7 +34,7 @@ increment that would move its grade.
 
 ---
 
-## 1. End-to-end production qualification — **BLOCKED**
+## 1. End-to-end production qualification — **PARTIAL** (five families added this pass)
 
 **Proven.** Every one of the **1,255** operations is executed against uvicorn on
 a migrated PostgreSQL with **0 × 5xx** and 0 transport failures (guide 100,
@@ -42,19 +42,54 @@ check 8), and **581** mutation-safe writes are executed with synthesised,
 schema-valid bodies (check 10). The collector register (guide 105) lists **20/20
 families with code**, 14 of them production adapters.
 
-**Not proven.** That any of that composes into a *data path*. What the sweep
-shows is that each endpoint answers; it says nothing about whether a runtime
-observation from the agent lands in the evidence table, becomes a graph fact,
-reaches the Twin, and changes the BOM's component count — for each collector
-family. The synthetic estate (108) exercises the graph→evidence→BOM half of that
-chain, and the estate observation sync (`estate_observations.fact_rows`) is the
-join between the two; neither is driven from a real collector's payload in a
-test.
+That was, as the review said, a set of component claims. This pass adds the
+composition: `scripts/golden_path.py`, regenerating `113-golden-path.{json,md}`,
+walks one payload per family through **seven hops** —
 
-**What closes it.** A per-family golden-path test: a captured collector payload →
-ingest → evidence rows with a verified chain → graph → Twin projection → BOM
-component, asserting the *count and identity* of what arrives, for at least the
-five families a bank starts with (network TLS, static code, cloud, PKI, runtime).
+| Hop | What is asserted |
+|---|---|
+| `collect` | the collector's own output: asset count, evidence count, every evidence record naming an asset it emitted |
+| `api` | `run_discovery` persists a run and the graph holds **exactly** the assets and evidence records the collector sent, plus each family's "must not become OBSERVED" rule |
+| `evidence` | rows are content-addressed, distinct, non-empty, carry facts, and the collector's targets resolve to catalogue identities one-for-one |
+| `db` | catalogue asset rows equal the collector's count; the family's planted fact is `CURRENT` in the observation store |
+| `twin` | the catalogue lists the assets, each with detail, and the twin's history carries the family's fact type |
+| `bom` | the family's BOM contains a component matching the planted identity, and all six BOMs share one projection id |
+| `ui` | the console has a client function, a caller and a rendered test for each endpoint the earlier hops read |
+
+**Result: 5 / 5 families, 35 / 35 hops**, for runtime, static, network TLS, PKI
+and cloud. The collector code is real in every row — `collect_runtime` runs the
+agent's process/library/endpoint collector against a `/proc` fixture,
+`collect_cloud` runs against an injected AWS control plane, and the other three
+run the API's `collect_static` / `collect_network` / `collect_pki` over rows
+written in the scanners' own payload shape.
+
+The suite that guards it (`scripts/tests/test_golden_path.py`, 21 tests) is half
+negative controls, because a path that cannot fail proves nothing: dropping one
+asset, promising four assets, replacing the collector with an empty one, and
+removing the planted identity from the BOM are each asserted to turn the family
+red. `SKIPPED` is not a pass — an empty collector fails the family even though
+six hops were never reached.
+
+**A defect the path found, reported not hidden.** Both static-code assets reach
+the catalogue named by a raw UUID (`bcd8a12f-…`) while their location is
+`src/pay/Sign.java`. Identity resolution is unaffected — the BOM component and
+the evidence row are correct — but a reader of the Twin or the console sees a
+row identifier where an application name belongs. `113-golden-path.md` lists it
+under "Defects this path exposes".
+
+**Not proven — the gap that keeps this open.** Five families are not twenty. The
+inputs are fixtures rather than a bank's network: no live TLS handshake, no
+injected agent on a real host, no real AWS account. Each family runs on its own
+empty database, so cross-plane identity merging, conflict resolution and change
+detection are still covered only by their own suites, not by this path. The UI
+hop proves a caller and a rendered test exist for the endpoints — it does not
+render this payload in a browser. And the path runs on SQLite in-memory, so it
+proves composition, not production persistence.
+
+**What closes it.** The remaining 15 collector families on the same harness
+(kubernetes, cmdb, kms, hsm, hardware, vendor, the passive and watch planes),
+then the same path once against a real deployment: live scanner, real agent,
+PostgreSQL, and the console reading the run it just triggered.
 
 ## 2. Worker / job architecture — **PARTIAL** (retry added this pass)
 
@@ -290,8 +325,11 @@ either given a screen or explicitly declared API-only.
    retried with backoff and jitter, permanent ones are not, and controlled jobs
    are excluded by name. Remaining in #2: cooperative cancellation inside a
    stage, cluster-wide admission, and a real-Redis backlog run.
-3. **End-to-end per family (#1)** — the first five collector families, because
-   everything else is a component claim until a payload travels the whole chain.
+3. ~~**End-to-end per family (#1), first five families**~~ — **done this pass**
+   (guide 113): runtime, static, network TLS, PKI and cloud each walk 7/7 hops
+   with counts and identities asserted, and the harness fails when a hop lies.
+   Remaining in #1: the other 15 families, and one run against a real
+   deployment.
 4. **Bank-scale measurement (#6)** — one measured run at 100k/1M/5M; it will find
    the first non-linearity, and that finding is worth more than the table.
 5. **PostgreSQL qualification (#3)**, **per-collector authority (#5)**,

@@ -1,0 +1,1098 @@
+{
+  "schema": "cryptoscan.golden-path/1",
+  "version": "golden-path/1.0",
+  "generated_at": "2026-10-31T17:58:28.952447+00:00",
+  "tenant": "tenant-golden-path",
+  "families": 5,
+  "expected_families": 5,
+  "families_passed": 5,
+  "stages_total": 35,
+  "stages_passed": 35,
+  "complete": true,
+  "rows": [
+    {
+      "family": "runtime",
+      "plane": "RUNTIME",
+      "transport": "the agent's collect_runtime over a fake /proc tree",
+      "verdict": "PASS",
+      "stages_passed": 7,
+      "stages_total": 7,
+      "failed_stages": [],
+      "skipped_stages": [],
+      "stages": [
+        {
+          "stage": "collect",
+          "verdict": "PASS",
+          "detail": "3 assets, 3 evidence records, every record names its asset",
+          "observations": {
+            "assets": 3,
+            "evidence": 3,
+            "relationships": 2,
+            "asset_names": [
+              "e2b.local",
+              "openssl",
+              "e2b.local:443"
+            ],
+            "evidence_types": [
+              "CONFIGURED",
+              "RUNTIME_OBSERVED"
+            ],
+            "every_evidence_record_has_its_asset": true
+          }
+        },
+        {
+          "stage": "api",
+          "verdict": "PASS",
+          "detail": "one run persisted (3518ce53), 3 assets and 3 evidence records survived normalisation unchanged",
+          "observations": {
+            "run_id": "3518ce53-530e-4826-ba94-1c1e78876683",
+            "projection_id": "e09bdd7ceaa0698ddfc2f8d91851c0d6",
+            "assets": 3,
+            "evidence": 3,
+            "bom_counts": {
+              "SBOM": 1,
+              "CBOM": 0,
+              "HBOM": 1,
+              "NBOM": 1,
+              "VBOM": 0,
+              "TECHBOM": 1
+            },
+            "crypto_usage_states": {
+              "SUPPORTED": 0,
+              "CONFIGURED": 0,
+              "NEGOTIATED": 0,
+              "OBSERVED": 0
+            }
+          }
+        },
+        {
+          "stage": "evidence",
+          "verdict": "PASS",
+          "detail": "3 content-addressed evidence rows, each naming the collector's target and carrying its facts (10 keys)",
+          "observations": {
+            "evidence_rows": 3,
+            "evidence_types": [
+              "CONFIGURED",
+              "RUNTIME_OBSERVED"
+            ],
+            "evidence_ids": [
+              "ev-55fd7e1059ecf1bc",
+              "ev-7a7ac17c13505346",
+              "ev-f3ee918474e1ebde"
+            ],
+            "targets": [
+              "host:08dd0561f569afb5a50f7532",
+              "library:d2e70e825d3aacfc49c6d146",
+              "network_endpoint:744180a2a69ddc1a59f301e4"
+            ],
+            "collector_targets": 3,
+            "fact_keys": [
+              "evidence_kind",
+              "hostname",
+              "library",
+              "listening",
+              "mapped_by",
+              "note",
+              "process",
+              "processes_scanned",
+              "processes_with_tls_libraries",
+              "transport"
+            ]
+          }
+        },
+        {
+          "stage": "db",
+          "verdict": "PASS",
+          "detail": "3 catalogue assets and 22 CURRENT facts, including attribute:process=nginx",
+          "observations": {
+            "asset_rows": 3,
+            "current_facts": 22,
+            "fact_types": [
+              "asset_type",
+              "attribute:kernel_threads_skipped",
+              "attribute:listening_processes",
+              "attribute:mapped_by_processes",
+              "attribute:process",
+              "attribute:processes_with_tls_libraries",
+              "attribute:risk_status",
+              "attribute:source",
+              "attribute:total_processes_scanned",
+              "attribute:transport",
+              "attribute:version",
+              "attribute:version_source",
+              "location",
+              "name",
+              "relationship:CONTAINS",
+              "relationship:EXPOSES"
+            ],
+            "fact_checked": {
+              "fact_type": "attribute:process",
+              "value": "nginx",
+              "matched": 1
+            }
+          }
+        },
+        {
+          "stage": "twin",
+          "verdict": "PASS",
+          "detail": "3 assets readable with detail; 22 facts of history across them",
+          "observations": {
+            "twin_assets": 3,
+            "history_facts": 22,
+            "history_fact_types": [
+              "asset_type",
+              "attribute:kernel_threads_skipped",
+              "attribute:listening_processes",
+              "attribute:mapped_by_processes",
+              "attribute:process",
+              "attribute:processes_with_tls_libraries",
+              "attribute:risk_status",
+              "attribute:source",
+              "attribute:total_processes_scanned",
+              "attribute:transport"
+            ]
+          }
+        },
+        {
+          "stage": "bom",
+          "verdict": "PASS",
+          "detail": "SBOM carries 1 of 1 components matching the planted identity, and all six BOMs share one projection id",
+          "observations": {
+            "bom": "SBOM",
+            "components": 1,
+            "counts": {
+              "SBOM": 1,
+              "CBOM": 0,
+              "HBOM": 1,
+              "NBOM": 1,
+              "VBOM": 0,
+              "TECHBOM": 1
+            },
+            "all_boms_share_snapshot": true,
+            "matched": 1
+          }
+        },
+        {
+          "stage": "ui",
+          "verdict": "PASS",
+          "detail": "all 3 endpoints have a console client, a caller (CollectorDepth.tsx, DigitalTwinPanel.tsx, EstatePanel.tsx) and a rendered test; this payload is not rendered here",
+          "observations": {
+            "catalog": {
+              "path": "/api/v1/estate/evidence/catalog/assets",
+              "client_symbols": [
+                "apiEstateCatalogAsset"
+              ],
+              "callers": [
+                "frontend/src/components/DigitalTwinPanel.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 1
+            },
+            "boms": {
+              "path": "/api/v1/estate/evidence/boms",
+              "client_symbols": [
+                "apiEstateBomAnchor",
+                "apiEstateBomAnchorVerify",
+                "apiEstateBomComponents",
+                "apiEstateBoms"
+              ],
+              "callers": [
+                "frontend/src/components/EstatePanel.tsx",
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 2,
+              "test_count": 9
+            },
+            "bom-components": {
+              "path": "/api/v1/estate/evidence/boms?bom=",
+              "client_symbols": [
+                "apiEstateBomComponents"
+              ],
+              "callers": [
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 9
+            }
+          }
+        }
+      ],
+      "defects": []
+    },
+    {
+      "family": "static",
+      "plane": "STATIC",
+      "transport": "the API's collect_static over crypto_assets rows the static scanner writes",
+      "verdict": "PASS",
+      "stages_passed": 7,
+      "stages_total": 7,
+      "failed_stages": [],
+      "skipped_stages": [],
+      "stages": [
+        {
+          "stage": "collect",
+          "verdict": "PASS",
+          "detail": "2 assets, 2 evidence records, every record names its asset",
+          "observations": {
+            "assets": 2,
+            "evidence": 2,
+            "relationships": 0,
+            "asset_names": [
+              "26fede90-2cdc-46f0-82a6-d712d988f25e",
+              "27406a29-fcb5-48bf-b7ad-7ff53cef5af9"
+            ],
+            "evidence_types": [
+              "STATIC_OBSERVED"
+            ],
+            "every_evidence_record_has_its_asset": true
+          }
+        },
+        {
+          "stage": "api",
+          "verdict": "PASS",
+          "detail": "one run persisted (e552b8bf), 2 assets and 2 evidence records survived normalisation unchanged",
+          "observations": {
+            "run_id": "e552b8bf-31d3-4dcf-8b5f-7bac88b32f05",
+            "projection_id": "87d8beceef92ff3f9a90338e4ba321d9",
+            "assets": 2,
+            "evidence": 2,
+            "bom_counts": {
+              "SBOM": 0,
+              "CBOM": 2,
+              "HBOM": 0,
+              "NBOM": 0,
+              "VBOM": 0,
+              "TECHBOM": 2
+            },
+            "crypto_usage_states": {
+              "SUPPORTED": 2,
+              "CONFIGURED": 0,
+              "NEGOTIATED": 0,
+              "OBSERVED": 0
+            }
+          }
+        },
+        {
+          "stage": "evidence",
+          "verdict": "PASS",
+          "detail": "2 content-addressed evidence rows, each naming the collector's target and carrying its facts (8 keys)",
+          "observations": {
+            "evidence_rows": 2,
+            "evidence_types": [
+              "STATIC_OBSERVED"
+            ],
+            "evidence_ids": [
+              "ev-0d70eebc88daacc0",
+              "ev-36cf680fd5865a84"
+            ],
+            "targets": [
+              "application:9fed93b7621bb29ac2d0129e",
+              "application:c7ea579b9ff411e1d0305bc4"
+            ],
+            "collector_targets": 2,
+            "fact_keys": [
+              "algorithm",
+              "confidence",
+              "file_path",
+              "key_size",
+              "layer_note",
+              "mode",
+              "purpose",
+              "usage_state_hint"
+            ]
+          }
+        },
+        {
+          "stage": "db",
+          "verdict": "PASS",
+          "detail": "2 catalogue assets and 18 CURRENT facts, including crypto:algorithm=RSA",
+          "observations": {
+            "asset_rows": 2,
+            "current_facts": 18,
+            "fact_types": [
+              "asset_type",
+              "attribute:algorithm",
+              "attribute:file_path",
+              "crypto:algorithm",
+              "crypto:evidence_type",
+              "crypto:key_size",
+              "crypto:usage_state",
+              "location",
+              "name"
+            ],
+            "fact_checked": {
+              "fact_type": "crypto:algorithm",
+              "value": "RSA",
+              "matched": 1
+            }
+          }
+        },
+        {
+          "stage": "twin",
+          "verdict": "PASS",
+          "detail": "2 assets readable with detail; 18 facts of history across them",
+          "observations": {
+            "twin_assets": 2,
+            "history_facts": 18,
+            "history_fact_types": [
+              "asset_type",
+              "attribute:algorithm",
+              "attribute:file_path",
+              "crypto:algorithm",
+              "crypto:evidence_type",
+              "crypto:key_size",
+              "crypto:usage_state",
+              "location",
+              "name"
+            ]
+          }
+        },
+        {
+          "stage": "bom",
+          "verdict": "PASS",
+          "detail": "CBOM carries 1 of 2 components matching the planted identity, and all six BOMs share one projection id",
+          "observations": {
+            "bom": "CBOM",
+            "components": 2,
+            "counts": {
+              "SBOM": 0,
+              "CBOM": 2,
+              "HBOM": 0,
+              "NBOM": 0,
+              "VBOM": 0,
+              "TECHBOM": 2
+            },
+            "all_boms_share_snapshot": true,
+            "matched": 1
+          }
+        },
+        {
+          "stage": "ui",
+          "verdict": "PASS",
+          "detail": "all 3 endpoints have a console client, a caller (CollectorDepth.tsx, DigitalTwinPanel.tsx, EstatePanel.tsx) and a rendered test; this payload is not rendered here",
+          "observations": {
+            "catalog": {
+              "path": "/api/v1/estate/evidence/catalog/assets",
+              "client_symbols": [
+                "apiEstateCatalogAsset"
+              ],
+              "callers": [
+                "frontend/src/components/DigitalTwinPanel.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 1
+            },
+            "boms": {
+              "path": "/api/v1/estate/evidence/boms",
+              "client_symbols": [
+                "apiEstateBomAnchor",
+                "apiEstateBomAnchorVerify",
+                "apiEstateBomComponents",
+                "apiEstateBoms"
+              ],
+              "callers": [
+                "frontend/src/components/EstatePanel.tsx",
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 2,
+              "test_count": 9
+            },
+            "bom-components": {
+              "path": "/api/v1/estate/evidence/boms?bom=",
+              "client_symbols": [
+                "apiEstateBomComponents"
+              ],
+              "callers": [
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 9
+            }
+          }
+        }
+      ],
+      "defects": [
+        {
+          "id": "asset-named-by-raw-identifier",
+          "family": "static",
+          "asset_id": "application:9fed93b7621bb29ac2d0129e",
+          "detail": "the catalogue names this asset '26fede90-2cdc-46f0-82a6-d712d988f25e' while its location is 'src/pay/Bulk.java' \u2014 a reader sees a row identifier where an application name belongs",
+          "severity": "identity-quality",
+          "affects": "Twin and console labels; identity resolution is unaffected"
+        },
+        {
+          "id": "asset-named-by-raw-identifier",
+          "family": "static",
+          "asset_id": "application:c7ea579b9ff411e1d0305bc4",
+          "detail": "the catalogue names this asset '27406a29-fcb5-48bf-b7ad-7ff53cef5af9' while its location is 'src/pay/Sign.java' \u2014 a reader sees a row identifier where an application name belongs",
+          "severity": "identity-quality",
+          "affects": "Twin and console labels; identity resolution is unaffected"
+        }
+      ]
+    },
+    {
+      "family": "network_tls",
+      "plane": "NETWORK",
+      "transport": "the API's collect_network over a network scan run the TLS scanner writes",
+      "verdict": "PASS",
+      "stages_passed": 7,
+      "stages_total": 7,
+      "failed_stages": [],
+      "skipped_stages": [],
+      "stages": [
+        {
+          "stage": "collect",
+          "verdict": "PASS",
+          "detail": "1 assets, 1 evidence records, every record names its asset",
+          "observations": {
+            "assets": 1,
+            "evidence": 1,
+            "relationships": 0,
+            "asset_names": [
+              "payments.bank.example:443"
+            ],
+            "evidence_types": [
+              "NETWORK_ACTIVE_OBSERVED"
+            ],
+            "every_evidence_record_has_its_asset": true
+          }
+        },
+        {
+          "stage": "api",
+          "verdict": "PASS",
+          "detail": "one run persisted (ebb540d4), 1 assets and 1 evidence records survived normalisation unchanged",
+          "observations": {
+            "run_id": "ebb540d4-ee36-4e05-9211-df3414b77f56",
+            "projection_id": "d3e44bedcef03741836fa56cf2e6cc09",
+            "assets": 1,
+            "evidence": 1,
+            "bom_counts": {
+              "SBOM": 0,
+              "CBOM": 1,
+              "HBOM": 0,
+              "NBOM": 1,
+              "VBOM": 0,
+              "TECHBOM": 0
+            },
+            "crypto_usage_states": {
+              "SUPPORTED": 0,
+              "CONFIGURED": 0,
+              "NEGOTIATED": 1,
+              "OBSERVED": 0
+            }
+          }
+        },
+        {
+          "stage": "evidence",
+          "verdict": "PASS",
+          "detail": "1 content-addressed evidence rows, each naming the collector's target and carrying its facts (9 keys)",
+          "observations": {
+            "evidence_rows": 1,
+            "evidence_types": [
+              "NETWORK_ACTIVE_OBSERVED"
+            ],
+            "evidence_ids": [
+              "ev-15e8f05eddf67641"
+            ],
+            "targets": [
+              "network_endpoint:20a62da08c15a15ea448b7c6"
+            ],
+            "collector_targets": 1,
+            "fact_keys": [
+              "certificate_fingerprint_sha256",
+              "cipher_suite",
+              "decomposition",
+              "layer_note",
+              "mutual_tls",
+              "network_evidence_id",
+              "policy_issues",
+              "protocol",
+              "tls_version"
+            ]
+          }
+        },
+        {
+          "stage": "db",
+          "verdict": "PASS",
+          "detail": "1 catalogue assets and 11 CURRENT facts, including attribute:protocol=TLS",
+          "observations": {
+            "asset_rows": 1,
+            "current_facts": 11,
+            "fact_types": [
+              "asset_type",
+              "attribute:evidence_type",
+              "attribute:limitations",
+              "attribute:observation_status",
+              "attribute:port",
+              "attribute:protocol",
+              "crypto:evidence_type",
+              "crypto:protocol",
+              "crypto:usage_state",
+              "location",
+              "name"
+            ],
+            "fact_checked": {
+              "fact_type": "attribute:protocol",
+              "value": "TLS",
+              "matched": 1
+            }
+          }
+        },
+        {
+          "stage": "twin",
+          "verdict": "PASS",
+          "detail": "1 assets readable with detail; 11 facts of history across them",
+          "observations": {
+            "twin_assets": 1,
+            "history_facts": 11,
+            "history_fact_types": [
+              "asset_type",
+              "attribute:evidence_type",
+              "attribute:limitations",
+              "attribute:observation_status",
+              "attribute:port",
+              "attribute:protocol",
+              "crypto:evidence_type",
+              "crypto:protocol",
+              "crypto:usage_state",
+              "location"
+            ]
+          }
+        },
+        {
+          "stage": "bom",
+          "verdict": "PASS",
+          "detail": "NBOM carries 1 of 1 components matching the planted identity, and all six BOMs share one projection id",
+          "observations": {
+            "bom": "NBOM",
+            "components": 1,
+            "counts": {
+              "SBOM": 0,
+              "CBOM": 1,
+              "HBOM": 0,
+              "NBOM": 1,
+              "VBOM": 0,
+              "TECHBOM": 0
+            },
+            "all_boms_share_snapshot": true,
+            "matched": 1
+          }
+        },
+        {
+          "stage": "ui",
+          "verdict": "PASS",
+          "detail": "all 3 endpoints have a console client, a caller (CollectorDepth.tsx, DigitalTwinPanel.tsx, EstatePanel.tsx) and a rendered test; this payload is not rendered here",
+          "observations": {
+            "catalog": {
+              "path": "/api/v1/estate/evidence/catalog/assets",
+              "client_symbols": [
+                "apiEstateCatalogAsset"
+              ],
+              "callers": [
+                "frontend/src/components/DigitalTwinPanel.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 1
+            },
+            "boms": {
+              "path": "/api/v1/estate/evidence/boms",
+              "client_symbols": [
+                "apiEstateBomAnchor",
+                "apiEstateBomAnchorVerify",
+                "apiEstateBomComponents",
+                "apiEstateBoms"
+              ],
+              "callers": [
+                "frontend/src/components/EstatePanel.tsx",
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 2,
+              "test_count": 9
+            },
+            "bom-components": {
+              "path": "/api/v1/estate/evidence/boms?bom=",
+              "client_symbols": [
+                "apiEstateBomComponents"
+              ],
+              "callers": [
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 9
+            }
+          }
+        }
+      ],
+      "defects": []
+    },
+    {
+      "family": "pki",
+      "plane": "PKI",
+      "transport": "the API's collect_pki over certificate inventory rows",
+      "verdict": "PASS",
+      "stages_passed": 7,
+      "stages_total": 7,
+      "failed_stages": [],
+      "skipped_stages": [],
+      "stages": [
+        {
+          "stage": "collect",
+          "verdict": "PASS",
+          "detail": "1 assets, 1 evidence records, every record names its asset",
+          "observations": {
+            "assets": 1,
+            "evidence": 1,
+            "relationships": 0,
+            "asset_names": [
+              "CN=payments.bank.example"
+            ],
+            "evidence_types": [
+              "CERTIFICATE_OBSERVED"
+            ],
+            "every_evidence_record_has_its_asset": true
+          }
+        },
+        {
+          "stage": "api",
+          "verdict": "PASS",
+          "detail": "one run persisted (64b7a75b), 1 assets and 1 evidence records survived normalisation unchanged",
+          "observations": {
+            "run_id": "64b7a75b-3fff-4d85-ae65-d5afe39bea1d",
+            "projection_id": "a6063ddab375d38c9d83c7f0b6efec08",
+            "assets": 1,
+            "evidence": 1,
+            "bom_counts": {
+              "SBOM": 0,
+              "CBOM": 1,
+              "HBOM": 0,
+              "NBOM": 0,
+              "VBOM": 0,
+              "TECHBOM": 0
+            },
+            "crypto_usage_states": {
+              "SUPPORTED": 0,
+              "CONFIGURED": 0,
+              "NEGOTIATED": 0,
+              "OBSERVED": 0
+            }
+          }
+        },
+        {
+          "stage": "evidence",
+          "verdict": "PASS",
+          "detail": "1 content-addressed evidence rows, each naming the collector's target and carrying its facts (10 keys)",
+          "observations": {
+            "evidence_rows": 1,
+            "evidence_types": [
+              "CERTIFICATE_OBSERVED"
+            ],
+            "evidence_ids": [
+              "ev-476f06255da0a79c"
+            ],
+            "targets": [
+              "certificate:b3cb727df2e153441f64d932"
+            ],
+            "collector_targets": 1,
+            "fact_keys": [
+              "days_until_expiry",
+              "expiry_status",
+              "fingerprint_sha256",
+              "is_self_signed",
+              "issuer",
+              "layer_note",
+              "not_after",
+              "public_key_algorithm",
+              "public_key_size",
+              "subject"
+            ]
+          }
+        },
+        {
+          "stage": "db",
+          "verdict": "PASS",
+          "detail": "1 catalogue assets and 6 CURRENT facts, including attribute:issuer=CN=Bank Issuing CA",
+          "observations": {
+            "asset_rows": 1,
+            "current_facts": 6,
+            "fact_types": [
+              "asset_type",
+              "attribute:expiry_status",
+              "attribute:issuer",
+              "attribute:not_after",
+              "location",
+              "name"
+            ],
+            "fact_checked": {
+              "fact_type": "attribute:issuer",
+              "value": "CN=Bank Issuing CA",
+              "matched": 1
+            }
+          }
+        },
+        {
+          "stage": "twin",
+          "verdict": "PASS",
+          "detail": "1 assets readable with detail; 6 facts of history across them",
+          "observations": {
+            "twin_assets": 1,
+            "history_facts": 6,
+            "history_fact_types": [
+              "asset_type",
+              "attribute:expiry_status",
+              "attribute:issuer",
+              "attribute:not_after",
+              "location",
+              "name"
+            ]
+          }
+        },
+        {
+          "stage": "bom",
+          "verdict": "PASS",
+          "detail": "CBOM carries 1 of 1 components matching the planted identity, and all six BOMs share one projection id",
+          "observations": {
+            "bom": "CBOM",
+            "components": 1,
+            "counts": {
+              "SBOM": 0,
+              "CBOM": 1,
+              "HBOM": 0,
+              "NBOM": 0,
+              "VBOM": 0,
+              "TECHBOM": 0
+            },
+            "all_boms_share_snapshot": true,
+            "matched": 1
+          }
+        },
+        {
+          "stage": "ui",
+          "verdict": "PASS",
+          "detail": "all 3 endpoints have a console client, a caller (CollectorDepth.tsx, DigitalTwinPanel.tsx, EstatePanel.tsx) and a rendered test; this payload is not rendered here",
+          "observations": {
+            "catalog": {
+              "path": "/api/v1/estate/evidence/catalog/assets",
+              "client_symbols": [
+                "apiEstateCatalogAsset"
+              ],
+              "callers": [
+                "frontend/src/components/DigitalTwinPanel.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 1
+            },
+            "boms": {
+              "path": "/api/v1/estate/evidence/boms",
+              "client_symbols": [
+                "apiEstateBomAnchor",
+                "apiEstateBomAnchorVerify",
+                "apiEstateBomComponents",
+                "apiEstateBoms"
+              ],
+              "callers": [
+                "frontend/src/components/EstatePanel.tsx",
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 2,
+              "test_count": 9
+            },
+            "bom-components": {
+              "path": "/api/v1/estate/evidence/boms?bom=",
+              "client_symbols": [
+                "apiEstateBomComponents"
+              ],
+              "callers": [
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 9
+            }
+          }
+        }
+      ],
+      "defects": []
+    },
+    {
+      "family": "cloud",
+      "plane": "CLOUD",
+      "transport": "collect_cloud over an injected AWS control plane (ELBv2 TLS policy)",
+      "verdict": "PASS",
+      "stages_passed": 7,
+      "stages_total": 7,
+      "failed_stages": [],
+      "skipped_stages": [],
+      "stages": [
+        {
+          "stage": "collect",
+          "verdict": "PASS",
+          "detail": "2 assets, 2 evidence records, every record names its asset",
+          "observations": {
+            "assets": 2,
+            "evidence": 2,
+            "relationships": 1,
+            "asset_names": [
+              "payments",
+              "arn:aws:acm:eu-west-1:1:certificate/abc"
+            ],
+            "evidence_types": [
+              "CONFIGURED"
+            ],
+            "every_evidence_record_has_its_asset": true
+          }
+        },
+        {
+          "stage": "api",
+          "verdict": "PASS",
+          "detail": "one run persisted (a4e23cf2), 2 assets and 2 evidence records survived normalisation unchanged",
+          "observations": {
+            "run_id": "a4e23cf2-516e-4a9c-9349-55ffa7067ed2",
+            "projection_id": "4ec5a495c0d9d03872e38e094e193bce",
+            "assets": 2,
+            "evidence": 2,
+            "bom_counts": {
+              "SBOM": 0,
+              "CBOM": 1,
+              "HBOM": 0,
+              "NBOM": 1,
+              "VBOM": 0,
+              "TECHBOM": 0
+            },
+            "crypto_usage_states": {
+              "SUPPORTED": 0,
+              "CONFIGURED": 0,
+              "NEGOTIATED": 0,
+              "OBSERVED": 0
+            }
+          }
+        },
+        {
+          "stage": "evidence",
+          "verdict": "PASS",
+          "detail": "2 content-addressed evidence rows, each naming the collector's target and carrying its facts (10 keys)",
+          "observations": {
+            "evidence_rows": 2,
+            "evidence_types": [
+              "CONFIGURED"
+            ],
+            "evidence_ids": [
+              "ev-8f5834e674159345",
+              "ev-b2d1a3d309e1963a"
+            ],
+            "targets": [
+              "load_balancer:6e1101ff8a51f6544c3ebfe8"
+            ],
+            "collector_targets": 1,
+            "fact_keys": [
+              "certificate_arns",
+              "claim",
+              "dns_name",
+              "lb_type",
+              "listener_protocol",
+              "minimum_tls_version_declared",
+              "plaintext_listener",
+              "port",
+              "scheme",
+              "ssl_policy"
+            ]
+          }
+        },
+        {
+          "stage": "db",
+          "verdict": "PASS",
+          "detail": "2 catalogue assets and 12 CURRENT facts, including attribute:type=application",
+          "observations": {
+            "asset_rows": 2,
+            "current_facts": 12,
+            "fact_types": [
+              "asset_type",
+              "attribute:arn",
+              "attribute:provider",
+              "attribute:region",
+              "attribute:scheme",
+              "attribute:type",
+              "name",
+              "relationship:USES"
+            ],
+            "fact_checked": {
+              "fact_type": "attribute:type",
+              "value": "application",
+              "matched": 1
+            }
+          }
+        },
+        {
+          "stage": "twin",
+          "verdict": "PASS",
+          "detail": "2 assets readable with detail; 12 facts of history across them",
+          "observations": {
+            "twin_assets": 2,
+            "history_facts": 12,
+            "history_fact_types": [
+              "asset_type",
+              "attribute:arn",
+              "attribute:provider",
+              "attribute:region",
+              "attribute:scheme",
+              "attribute:type",
+              "name",
+              "relationship:USES"
+            ]
+          }
+        },
+        {
+          "stage": "bom",
+          "verdict": "PASS",
+          "detail": "NBOM carries 1 of 1 components matching the planted identity, and all six BOMs share one projection id",
+          "observations": {
+            "bom": "NBOM",
+            "components": 1,
+            "counts": {
+              "SBOM": 0,
+              "CBOM": 1,
+              "HBOM": 0,
+              "NBOM": 1,
+              "VBOM": 0,
+              "TECHBOM": 0
+            },
+            "all_boms_share_snapshot": true,
+            "matched": 1
+          }
+        },
+        {
+          "stage": "ui",
+          "verdict": "PASS",
+          "detail": "all 3 endpoints have a console client, a caller (CollectorDepth.tsx, DigitalTwinPanel.tsx, EstatePanel.tsx) and a rendered test; this payload is not rendered here",
+          "observations": {
+            "catalog": {
+              "path": "/api/v1/estate/evidence/catalog/assets",
+              "client_symbols": [
+                "apiEstateCatalogAsset"
+              ],
+              "callers": [
+                "frontend/src/components/DigitalTwinPanel.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 1
+            },
+            "boms": {
+              "path": "/api/v1/estate/evidence/boms",
+              "client_symbols": [
+                "apiEstateBomAnchor",
+                "apiEstateBomAnchorVerify",
+                "apiEstateBomComponents",
+                "apiEstateBoms"
+              ],
+              "callers": [
+                "frontend/src/components/EstatePanel.tsx",
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 2,
+              "test_count": 9
+            },
+            "bom-components": {
+              "path": "/api/v1/estate/evidence/boms?bom=",
+              "client_symbols": [
+                "apiEstateBomComponents"
+              ],
+              "callers": [
+                "frontend/src/pages/CollectorDepth.tsx"
+              ],
+              "tests": [
+                "frontend/src/components/DigitalTwinPanel.test.tsx",
+                "frontend/src/components/EstateSchedulePanel.test.tsx",
+                "frontend/src/components/SurfaceCoverage.test.tsx"
+              ],
+              "caller_count": 1,
+              "test_count": 9
+            }
+          }
+        }
+      ],
+      "defects": []
+    }
+  ],
+  "defects": [
+    {
+      "id": "asset-named-by-raw-identifier",
+      "family": "static",
+      "asset_id": "application:9fed93b7621bb29ac2d0129e",
+      "detail": "the catalogue names this asset '26fede90-2cdc-46f0-82a6-d712d988f25e' while its location is 'src/pay/Bulk.java' \u2014 a reader sees a row identifier where an application name belongs",
+      "severity": "identity-quality",
+      "affects": "Twin and console labels; identity resolution is unaffected"
+    },
+    {
+      "id": "asset-named-by-raw-identifier",
+      "family": "static",
+      "asset_id": "application:c7ea579b9ff411e1d0305bc4",
+      "detail": "the catalogue names this asset '27406a29-fcb5-48bf-b7ad-7ff53cef5af9' while its location is 'src/pay/Sign.java' \u2014 a reader sees a row identifier where an application name belongs",
+      "severity": "identity-quality",
+      "affects": "Twin and console labels; identity resolution is unaffected"
+    }
+  ],
+  "limits": [
+    "The collector code is real, but the input it reads is not a bank's: /proc is a fixture, the AWS transport is injected, and the static/network/PKI rows are written in the scanner's own shape rather than produced by running the scanner.",
+    "The UI stage proves a console caller and a rendered test exist for the endpoints the earlier hops read. It does not render this payload, and no browser was involved.",
+    "Each family runs on its own empty SQLite database, so this is five single-family paths, not one estate where the families interact (identity merging across planes, conflicts, and change detection are covered by their own suites).",
+    "Only the five families a first deployment runs are here. Kubernetes, CMDB, KMS, HSM, hardware and vendor planes are not part of this path."
+  ]
+}
