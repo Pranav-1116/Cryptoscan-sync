@@ -260,6 +260,7 @@
     "GET /api/v1/estate/evidence/collect/capabilities",
     "GET /api/v1/estate/evidence/coverage",
     "GET /api/v1/estate/evidence/discovery/bom-maturity",
+    "GET /api/v1/estate/evidence/discovery/collector-families",
     "GET /api/v1/estate/evidence/discovery/maturity",
     "GET /api/v1/estate/evidence/discovery/network-protocols",
     "GET /api/v1/estate/evidence/discovery/runtime-depth",

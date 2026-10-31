@@ -14,7 +14,8 @@ A status report that says "90% complete" is a feeling. These are the only four t
 
 | Measure | Value | What it means | What it does **not** mean |
 |---|---|---|---|
-| API endpoints served | **1249** | routes in the generated OpenAPI document | — |
+| API endpoints served | **1250** |
+| Collector families with code (measured by import) | **20 / 20** — 14 production (`105-collector-family-register.md`) | routes in the generated OpenAPI document | — |
 | Endpoints reachable from the console | **600** (48.1%) | a URL for it exists in `frontend/src` | built. An endpoint with no screen is a capability an operator cannot use, not a broken one |
 | Endpoints referenced by a test | **781** (62.6%) | the path appears in a test file | tested well, or tested at all beyond a smoke call |
 | Self-declared limits | **65** in 51 files (8 abstract/gap raises, 19 TODO comments, 38 self-described stubs/approximations) | admissions found in comments and docstrings | that any of them is a defect. Most are honest labels; the list is here so they can be judged one by one |

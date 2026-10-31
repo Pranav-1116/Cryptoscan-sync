@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-31:
-**1135 paths, 1249 operations** across 114 tagged groups.
+**1136 paths, 1250 operations** across 114 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 **3 route(s) in this schema are withdrawn and answer `410 Gone`** — see [Withdrawn routes](#withdrawn-routes) before integrating with anything named there.

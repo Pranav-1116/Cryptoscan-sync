@@ -7,6 +7,8 @@ that exists in this build rather than from a hand-written claim:
 * ``/discovery/network-protocols``  which protocols can we read, per protocol?
 * ``/discovery/windows-collector``  how far does the Windows candidate actually reach?
 * ``/discovery/bom-maturity``       how deep is each of the six BOMs on this estate?
+* ``/discovery/collector-families`` which of the twenty collector families exist, and which
+                                    can collect unattended
 
 The measured half of each route is optional by design: a fresh install has no
 estate graph and no runtime observations, and the routes say ``NOT_OBSERVED``
@@ -21,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from shared_models import maturity_register
+from shared_models import collector_families, maturity_register
 
 from api import (
     bom_maturity,
@@ -71,6 +73,25 @@ def maturity(
     not.
     """
     return maturity_register.register()
+
+
+@router.get("/discovery/collector-families")
+def collector_family_matrix(
+    user: str = Depends(get_current_user),
+):
+    """Every collector family the vision names, and what this build actually reaches.
+
+    The status of each row is *computed by importing its entrypoints*, so a family
+    cannot be reported shipped without code behind it, and a family whose code only
+    parses data an operator supplies is reported as exactly that — real code, no
+    unattended collection. ``production`` requires all three: the entrypoints import,
+    the collector reads the system itself (not a file), and it reads the customer's
+    estate rather than this platform's own.
+
+    This is a statement about the build, not about an estate, so it needs no
+    discovery run. It is not a coverage or maturity score.
+    """
+    return collector_families.register()
 
 
 @router.get("/discovery/runtime-depth")

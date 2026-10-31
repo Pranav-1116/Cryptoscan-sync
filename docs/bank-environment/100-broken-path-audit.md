@@ -59,20 +59,21 @@ a minute; they are not part of the hermetic gate.
 
 | Measurement | Value | Meaning |
 |---|---|---|
-| Served routes | **1135 paths / 1249 operations** | Read from the app's own OpenAPI document, not from a list |
+| Served routes | **1136 paths / 1250 operations** | Read from the app's own OpenAPI document, not from a list |
 | Console calls resolved | **637 → 0 unknown, 0 wrong verbs** | Every URL the browser builds exists, with the verb it uses |
 | CLI / script calls resolved | **315 → 0 unknown** | Now includes the two shipped CLI files, which no scan read before |
 | Router modules enumerated | **120 modules, 1246 routes, 0 unmounted HTTP routes** | The two WebSocket routes are the only ones outside the schema, by design |
+| Console operations with a response model (current) | **94 typed / 1250 (7.5%)** | Superseded the 40/605 figure below when four families were typed; see `103-untyped-response-operations.json` |
 | Console operations with a response model | **40 typed / 605 (6.6%)** | The TypeScript interface *is* the contract for the other 93% |
 | ORM tables without a migration | **0** | Nothing the models read is missing from the migrated schema |
 | Model columns without a migration | **0** | — |
 | Columns in the database that no model maps | **16** | Residue from withdrawn writers; enumerated in check 5 |
 | Routes quoted as proof that are not served | **0 of 8 hints** | Every "check at"/"measured by" route resolves, and accepts GET or POST |
 | Console pages | **90 / 0 orphans** | Every page file is routed or embedded by a page the router reaches, transitively |
-| Operations executed on a live server | **1249 / 1249, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
+| Operations executed on a live server | **1250 / 1250, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
 | Operations that refused an anonymous caller | **1212 protected of 1212, 36 public** | Everything outside the session gate's declared public surface (health, docs, login/SSO, machine-signed webhooks) |
 | Role-gated operations proven both ways | **306 admitted with the role, 273 refused without it** | Read from the dependency tree, then asked of the running server |
-| Operations with a response schema that holds | **94 validated / 94 declared** | The other 1155 declare nothing (`§5`, limit a) |
+| Operations with a response schema that holds | **94 validated / 94 declared** | The other 1156 declare nothing (`§5`, limit a) |
 | Model ↔ migrated-schema nullability | **0 disagreements, both directions** | At revision 0121 it was 148 columns the model treats as required and the database accepts as NULL, and 9 the reverse |
 
 ---
@@ -181,6 +182,75 @@ not reversible in a running installation), not a prerequisite for any path here.
 
 ---
 
+## 4a. The three capability gaps, as measured now
+
+The vision names three gaps. Each is answered below by the artifact that measures
+it, and each answer states what is **still** missing, because a gap that is
+"closed" in prose is the failure mode this repository refuses.
+
+### A. Collector families — measured, not claimed
+
+`docs/bank-environment/105-collector-family-register.md` is generated from
+`shared_models/collector_families.py`, and every status in it is computed by
+**importing the family's declared entrypoints**. A family cannot be reported
+shipped without code behind it. Of the twenty families the vision names:
+
+| Measure | Count |
+|---|---|
+| Families in the register | **20** |
+| Shipped (entrypoints import) | **20** |
+| Production (shipped, live, **estate** scope) | **14** |
+
+The six that are not production are named rather than implied:
+**load balancers** and **network devices** (the parsers exist; nothing fetches the
+config — records are imported), **message queues** (one MQTT record analyser, no
+broker collector at all), **backup** (it protects *this platform's* database, not a
+bank's backup estate), **legacy** (RACF/RACDCERT exports and COBOL source, not a
+running CICS region) and **vendor** (a plugin framework and signatures, not
+connectors). *Still open:* writing those six collectors, and the depth limits each
+shipped row already states — a Kubernetes collector that reads Ingress blocks is
+configuration evidence, not negotiated TLS.
+
+### B. Runtime observation — the chain is now producible, and still narrow
+
+The observer is an `LD_PRELOAD` shim over libcrypto's `EVP_*`/`SSL_CTX_*` calls,
+recording the operation, algorithm, mode and key size and **never** key bytes, IVs
+or plaintext. What was missing was the last hop into the graph: a traced call became
+an evidence record and a crypto artefact, and never an edge.
+`api/estate_runtime_edges.py` now emits application→library, application→algorithm
+and library→algorithm on the `RUNTIME_OBSERVATION` basis, and refuses to fill gaps:
+no named provider means no library edge (counted as `events_without_provider`), and
+a traced provider name is never given an invented version.
+
+*Still open, and measured by* `/discovery/runtime-depth`: call-level observation
+exists for **native OpenSSL only** (`openssl_native` = INVOCATION); **JVM** and
+**.NET** reach PROCESS_LIBRARY, **Go** and **Rust** are INGEST_ONLY, and interpreted
+languages are ABSENT. An always-on observer injected into a running process does not
+exist; the shim observes a process that is launched under it, inside an approved
+scope.
+
+### C. Relationship discovery — the chain is walkable end to end
+
+`shared_models/estate_chain.py` walks a pattern of hops over **established** edges
+and reports the hop it could not take, with the graph's own refusal reason. It keeps
+a frontier so the vision's shape is expressible (the application runs on a container
+*and* terminates TLS at a load balancer), every hop carries the evidence ids that
+established it, `weakest_hop` names the link that sets the strength, and
+`unobserved_use_hops` marks hops that rest on configuration rather than an
+observation — so "installed ≠ executed" survives the walk.
+
+`GET /estate/evidence/twin/path` serves it from the stored snapshot, by asset id or
+exact name (an ambiguous name is refused with candidates rather than guessed). It is
+proven end to end in `test_estate_runtime_edges.py`: an approved runtime scope →
+ingested events → the `RUNTIME` plane → a stored discovery → a walk that returns
+`payments-api —uses_crypto_library→ OpenSSL —uses_algorithm→ AES-256-GCM` with both
+hops on `RUNTIME_OBSERVATION`.
+
+*Still open:* the chain is only as complete as the collectors that produced its
+edges, which is why §4a and this section are read together.
+
+---
+
 ## 5. What this audit does **not** prove
 
 Stated as limits, because each one is a place where a working path could still be
@@ -188,8 +258,8 @@ wrong. Each limit below records what has since been proven, what proved it, and
 what is still open — the list is the same list, moved forward, not a new claim.
 
 * **(a) Response correctness.** *Proven:* every operation that declares a 2xx JSON
-  schema — **94 of 1249** — is called on a live server and its body validated
-  against that schema (check 9). *Still open:* the other 1155 declare no response
+  schema — **94 of 1250** — is called on a live server and its body validated
+  against that schema (check 9). *Still open:* the other 1156 declare no response
   model, and their payload shape is asserted only by their TypeScript interface
   and, for seven payload families, by
   `scripts/tests/test_console_payload_contract.py` — a route returning the right
@@ -204,7 +274,7 @@ what is still open — the list is the same list, moved forward, not a new claim
   processes, business owners, the backup routes) were typed in this pass.
 
 * **(b) A live request for every route.** *Closed for execution and for write
-  bodies.* All **1249** operations are executed against uvicorn over a real
+  bodies.* All **1250** operations are executed against uvicorn over a real
   PostgreSQL at the migration tip: **0 returned 5xx**, **0 failed at the transport
   layer** (check 8). The first sweep sent `{}`, which proves a route is mounted and
   its dependencies resolve but answers `422` before the handler runs. A second

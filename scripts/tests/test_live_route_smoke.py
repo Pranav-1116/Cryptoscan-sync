@@ -716,7 +716,7 @@ class TestResponseBodiesMatchTheDeclaredContract:
         ]
         typed = [item for item in operations if _declared_json(spec, item[1], item[0])]
         assert len(operations) >= 1200
-        #: Measured 94 of 1249 (7.5%) when the cloud-account inventory, the backup
+        #: Measured 94 of 1250 (7.5%) when the cloud-account inventory, the backup
         #: family, the business process/owner family and the process/system link
         #: were given `response_model`, plus `/backup/create`, `/backup/list` and the
         #: twin path. The gap is §5's limit (a): the remaining
