@@ -5676,16 +5676,35 @@ export interface MaturityArea {
   id: string;
   label: string;
   state: string;
+  /* OPERATIONAL / CANDIDATE / FOUNDATION — what may be said about the area,
+   * kept separate from its coverage state. */
+  readiness: string;
+  readiness_meaning: string;
   summary: string;
   surfaces: MaturitySurface[];
   missing: string[];
   measured_by: string[];
   claim: string;
+  /* Sentences a deck is not allowed to make about this area. */
+  must_not_be_presented_as: string[];
+}
+
+/* The five capabilities that may be demonstrated but not sold as operational. */
+export interface CapabilityBoundary {
+  id: string;
+  area: string;
+  capability: string;
+  status: string;
+  says: string;
+  not_operational: string;
+  what_is_real: string;
+  check_at: string;
 }
 
 export interface MaturityRegister {
   schema?: string;
   areas: MaturityArea[];
+  boundaries?: CapabilityBoundary[];
   claims: { may_claim: string; may_not_claim: string[]; why: string };
   routes?: string[];
   note?: string;
@@ -5693,6 +5712,40 @@ export interface MaturityRegister {
 
 export const apiMaturityRegister = (): Promise<ApiResult<MaturityRegister>> =>
   _rsGet<MaturityRegister>("/api/v1/estate/evidence/discovery/maturity");
+
+/* The ten scenarios a bank expects an enterprise simulation engine to answer,
+ * each with what this build can and cannot compute. Scenarios are not a
+ * checklist of simulations performed: an ABSENT row is absent. */
+export interface EnterpriseSimulationCoverage {
+  engine: string;
+  scenario: string;
+  present?: boolean;
+}
+
+export interface EnterpriseSimulationScenario {
+  id: string;
+  label: string;
+  status: string;
+  status_meaning: string;
+  covered_by: EnterpriseSimulationCoverage[];
+  cannot: string[];
+  requires: string[];
+  note: string;
+}
+
+export interface EnterpriseSimulationCatalogue {
+  schema?: string;
+  statuses: Record<string, string>;
+  scenarios: EnterpriseSimulationScenario[];
+  rollup: Record<string, number>;
+  executable?: Record<string, string[]>;
+  unresolved?: string[];
+  cannot_claim: string[];
+  note?: string;
+}
+
+export const apiSimulationScenarios = (): Promise<ApiResult<EnterpriseSimulationCatalogue>> =>
+  _rsGet<EnterpriseSimulationCatalogue>("/api/v1/estate/evidence/twin/simulation-scenarios");
 
 export const apiEstateBoms = (bom?: string): Promise<ApiResult<Record<string, unknown>>> =>
   _rsGet<Record<string, unknown>>(`/api/v1/estate/evidence/boms${bom ? `?bom=${encodeURIComponent(bom)}` : ""}`);

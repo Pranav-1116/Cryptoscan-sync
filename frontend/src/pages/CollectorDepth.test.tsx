@@ -11,6 +11,7 @@ const NETWORK = "/api/v1/estate/evidence/discovery/network-protocols";
 const WINDOWS = "/api/v1/estate/evidence/discovery/windows-collector";
 const BOMS = "/api/v1/estate/evidence/discovery/bom-maturity";
 const MATURITY = "/api/v1/estate/evidence/discovery/maturity";
+const SIMULATION = "/api/v1/estate/evidence/twin/simulation-scenarios";
 
 const runtimeDoc = (overrides: Record<string, unknown> = {}) => ({
   schema: "cryptoscan.runtime-depth/1",
@@ -297,6 +298,8 @@ describe("collector depth", () => {
             id: "NETWORK_DISCOVERY",
             label: "Network discovery",
             state: "PARTIAL",
+            readiness: "CANDIDATE",
+            readiness_meaning: "code exercises real inputs but is not admitted as a production capability",
             summary: "TLS is a handshake reader; MQ has no reader at all.",
             surfaces: [
               {
@@ -321,6 +324,19 @@ describe("collector depth", () => {
             missing: ["message-queue readers", "passive traffic coverage"],
             measured_by: ["/estate/evidence/discovery/network-protocols"],
             claim: "Each protocol is reported with the reader that exists, or as absent.",
+            must_not_be_presented_as: ["Complete network crypto coverage across an enterprise."],
+          },
+        ],
+        boundaries: [
+          {
+            id: "HSM_OPERATIONS",
+            area: "HARDWARE_HSM",
+            capability: "HSM",
+            status: "FOUNDATION",
+            says: "The HSM model is metadata. It is not proof of actual HSM cryptographic operations.",
+            not_operational: "proof that a key operation ran inside an HSM",
+            what_is_real: "a PKCS#11 seam for signing and certificate relationships",
+            check_at: "/estate/evidence/discovery/maturity",
           },
         ],
         claims: {
@@ -344,6 +360,72 @@ describe("collector depth", () => {
 
     expect(screen.getByText(/every cryptographic asset in any bank environment/i)).toBeTruthy();
     expect(screen.getByText(/message-queue readers/i)).toBeTruthy();
+
+    // what may be said about the area, printed next to what it covers
+    expect(screen.getByTestId("readiness-NETWORK_DISCOVERY").textContent).toBe("CANDIDATE");
+
+    // the boundaries are met before the coverage numbers, and they are not softened
+    const hsm = screen.getByTestId("boundary-HSM_OPERATIONS");
+    expect(screen.getByTestId("boundary-status-HSM_OPERATIONS").textContent).toBe("FOUNDATION");
+    expect(hsm.textContent).toContain("not proof of actual HSM cryptographic operations");
+    expect(hsm.textContent).toContain("proof that a key operation ran inside an HSM");
+    expect(hsm.textContent).toContain("/estate/evidence/discovery/maturity");
+    const mayNot = screen.getByTestId("maynot-NETWORK_DISCOVERY");
+    expect(mayNot.textContent).toContain("must not be presented as");
+    expect(mayNot.textContent).toContain("Complete network crypto coverage across an enterprise.");
+  });
+
+  it("says the simulation engine is scenario-specific, not generic", async () => {
+    mockFetch({
+      [RUNTIME]: runtimeDoc(),
+      [NETWORK]: networkDoc(),
+      [WINDOWS]: windowsDoc(),
+      [BOMS]: bomDoc(),
+      [SIMULATION]: {
+        schema: "cryptoscan.enterprise-simulation-scenarios/1",
+        statuses: {},
+        scenarios: [
+          {
+            id: "PQC_MIGRATION",
+            label: "PQC migration",
+            status: "EXISTS",
+            status_meaning: "a scenario computes this today over collected evidence",
+            covered_by: [{ engine: "agility", scenario: "pqc_migration", present: true }],
+            cannot: [],
+            requires: [],
+            note: "",
+          },
+          {
+            id: "TRUST_COMPROMISE",
+            label: "Trust compromise",
+            status: "ABSENT",
+            status_meaning: "nothing computes this",
+            covered_by: [],
+            cannot: ["no CA hierarchy is modelled, so a compromised intermediate CA cannot be traced"],
+            requires: ["a PKI hierarchy model"],
+            note: "",
+          },
+        ],
+        rollup: { scenarios: 10, EXISTS: 1, PARTIAL: 7, ABSENT: 2 },
+        unresolved: [],
+        cannot_claim: ["A generic enterprise simulation engine that answers arbitrary what-if questions across every crypto failure mode."],
+        note: "PARTIAL and ABSENT are the boundary of an evidence-driven engine.",
+      },
+    });
+    renderWithProviders(<CollectorDepth />);
+    await userEvent.click(screen.getByRole("button", { name: "Simulation" }));
+
+    const pqc = await screen.findByTestId("simulation-PQC_MIGRATION");
+    expect(pqc.textContent).toBe("EXISTS");
+    expect(screen.getByText("agility/pqc_migration")).toBeTruthy();
+
+    const trust = screen.getByTestId("simulation-TRUST_COMPROMISE");
+    expect(trust.textContent).toBe("ABSENT");
+    // an absent scenario names its gap and its missing dependency — it is not softened
+    expect(screen.getByText(/compromised intermediate CA cannot be traced/)).toBeTruthy();
+    expect(screen.getByText(/a PKI hierarchy model/)).toBeTruthy();
+    expect(screen.getByText(/generic enterprise simulation engine/i)).toBeTruthy();
+    expect(screen.getByText(/1 computed · 7 partial · 2 absent/)).toBeTruthy();
   });
 
   it("reports BOM depth against each BOM's own ceiling", async () => {

@@ -115,6 +115,27 @@ role-guarded actions.
 | `/search-results` | Overview | Cross-inventory search. |
 | `/timeline` | Overview | Estate timeline; aggregates several beta sources. |
 
+## Capability boundaries — five things this build does not do
+
+Every surface above is supported; none of them is complete. These five are the
+capabilities that get described as if they were operational, so they are stated
+here in the same words the API and the console use. Source:
+`shared_models/capability_boundaries.py`, which a test pins to the maturity
+register (`GET /api/v1/estate/evidence/discovery/maturity`).
+
+| Capability | What is real | May not be presented as | Check at |
+|---|---|---|---|
+| **Windows collector** (`CANDIDATE`) — Windows support is a candidate implementation, not a production collector: no universal Windows admission and no complete collector. | candidate collectors for OS/uninstall/file/SCM, public certificates, process/module inventory and TPM device info, with the server's own layer-by-layer NO | a production Windows cryptographic collector, or complete Windows SBOM, NBOM, HBOM, VBOM and TechBOM coverage | `/estate/evidence/discovery/windows-collector` |
+| **Hardware discovery** (`FOUNDATION`) — Hardware discovery is partial: it walks synthetic and metadata paths, so the product does not perform complete hardware discovery. | a vendor/model/firmware catalogue and plugin seam, fed where a vendor exposes metadata and by synthetic paths where it does not | complete hardware discovery across a bank estate | `/estate/evidence/discovery/maturity` |
+| **HSM** (`FOUNDATION`) — The HSM model is metadata — vendor, model, firmware, algorithm capability, key metadata and certificate relationships. It is not proof of actual HSM cryptographic operations. | a PKCS#11 seam for signing, and metadata plus certificate relationships for the assets that depend on a custodian | proof that a key operation ran inside an HSM, or key custody and key-use assurance | `/estate/evidence/discovery/maturity` |
+| **Runtime crypto** (`CANDIDATE`) — Runtime discovery establishes process, binary, library and service metadata. That does not establish that a process actually invoked AES-256-GCM, and the platform never presents the two as the same fact. | processes, libraries, listeners, services, packages, certificates and configuration, each carrying the evidence class that produced it | proof of which algorithms a process executed | `/estate/evidence/discovery/runtime-depth` |
+| **Simulation** (`FOUNDATION`) — The simulation foundation is real for PQC migration. The generic enterprise engine — TLS downgrade, certificate compromise, HSM failure, KMS failure, crypto-library compromise, supply-chain compromise, trust compromise, service compromise and custom scenario — is not fully implemented, and the product says which of them compute and which do not. | ten deterministic scenarios and three cascades over collected evidence, plus a per-scenario statement of what each one cannot see | a generic enterprise simulation engine that answers arbitrary what-if questions across every crypto failure mode | `/estate/evidence/twin/simulation-scenarios` |
+
+Read that table the way an operator would: each row names the artifact that
+exists, and then the sentence the artifact does not entitle anyone to. Where a
+capability is `FOUNDATION`, nothing is collected from a bank's estate at all —
+the model and the seam exist, and that is the whole of it.
+
 ## Retired sidebar entries
 
 These used to appear in the navigation but had no page behind them (they

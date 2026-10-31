@@ -23,13 +23,16 @@ import {
   apiMaturityRegister,
   apiNetworkProtocols,
   apiRuntimeDepth,
+  apiSimulationScenarios,
   apiWindowsCollector,
   type BomMaturity,
   type EstateBomDocument,
+  type CapabilityBoundary,
   type MaturityRegister,
   type MaturitySurface,
   type NetworkProtocols,
   type RuntimeDepth,
+  type EnterpriseSimulationCatalogue,
   type WindowsCollector,
 } from "../lib/api";
 
@@ -77,6 +80,20 @@ const REGISTER_TONE: Record<string, string> = {
   CANDIDATE: "amber",
   FOUNDATION: "slate",
   IMPORT_ONLY: "slate",
+  ABSENT: "red",
+};
+
+/* Readiness is about what may be said, not how much is covered. A candidate
+ * collector reads real facts and is still not something to run a bank on. */
+const READINESS_TONE: Record<string, string> = {
+  OPERATIONAL: "green",
+  CANDIDATE: "amber",
+  FOUNDATION: "slate",
+};
+
+const SIMULATION_TONE: Record<string, string> = {
+  EXISTS: "green",
+  PARTIAL: "amber",
   ABSENT: "red",
 };
 
@@ -561,6 +578,42 @@ function SurfaceRow({ surface }: { surface: MaturitySurface }) {
   );
 }
 
+/* The five boundaries, in the product's own words. Rendered above the register
+ * because a reader should meet the limits before the coverage numbers. */
+function BoundariesPanel({ rows }: { rows: CapabilityBoundary[] }) {
+  return (
+    <Panel
+      title="Five capabilities this build does not present as operational"
+      sub="each row names the artifact that exists, and what it does not entitle anyone to"
+    >
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map((row) => (
+          <div
+            key={row.id}
+            data-testid={`boundary-${row.id}`}
+            style={{ border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "10px 12px", background: "var(--panel-2)" }}
+          >
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              <b style={{ fontSize: 13 }}>{row.capability}</b>
+              <span data-testid={`boundary-status-${row.id}`}>
+                <Badge tone={READINESS_TONE[row.status] ?? "slate"}>{row.status}</Badge>
+              </span>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{row.check_at}</span>
+            </div>
+            <p style={{ margin: "6px 0 0", fontSize: 12 }}>{row.says}</p>
+            <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--green)" }}>
+              real: {row.what_is_real}
+            </p>
+            <p style={{ margin: "4px 0 0", fontSize: 11.5, color: "var(--red)" }}>
+              not: {row.not_operational}
+            </p>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
 function MaturitySection() {
   const read = useApi<MaturityRegister>(apiMaturityRegister, []);
   const doc = read.data;
@@ -577,6 +630,7 @@ function MaturitySection() {
   }
   return (
     <>
+      {doc.boundaries && doc.boundaries.length > 0 && <BoundariesPanel rows={doc.boundaries} />}
       <Panel title="What the product may claim" sub={doc.claims.why}>
         <div style={{ border: "1px solid var(--green)", borderRadius: "var(--r)", padding: "10px 12px", background: "var(--panel-2)" }}>
           <Badge tone="green">may claim</Badge>
@@ -596,10 +650,33 @@ function MaturitySection() {
         <Panel key={area.id} title={area.label} sub={area.summary}>
           <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
             <Badge tone={REGISTER_TONE[area.state] ?? "slate"}>{area.state.replace(/_/g, " ")}</Badge>
+            <span data-testid={`readiness-${area.id}`}>
+              <Badge tone={READINESS_TONE[area.readiness] ?? "slate"}>{area.readiness}</Badge>
+            </span>
             <span className="faint" style={{ fontSize: 11 }}>
               {area.surfaces.length} surfaces · {area.missing.length} open items
             </span>
           </div>
+          <p style={{ margin: "0 0 10px", fontSize: 11.5, color: "var(--dim)" }}>{area.readiness_meaning}</p>
+          {area.must_not_be_presented_as.length > 0 && (
+            <div
+              data-testid={`maynot-${area.id}`}
+              style={{
+                border: "1px solid var(--red)",
+                borderRadius: "var(--r)",
+                padding: "8px 12px",
+                background: "var(--panel-2)",
+                marginBottom: 10,
+              }}
+            >
+              <Badge tone="red">must not be presented as</Badge>
+              <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 11.5, color: "var(--red)" }}>
+                {area.must_not_be_presented_as.map((sentence) => (
+                  <li key={sentence}>{sentence}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div style={{ display: "grid", gap: 8 }}>
             {area.surfaces.map((surface) => (
               <SurfaceRow key={surface.id} surface={surface} />
@@ -631,14 +708,94 @@ function MaturitySection() {
   );
 }
 
+function SimulationSection() {
+  const read = useApi<EnterpriseSimulationCatalogue>(apiSimulationScenarios, []);
+  const doc = read.data;
+  if (!doc) {
+    return (
+      <Panel title="Simulation scenarios" sub="what the engine can compute, and what it cannot">
+        <p role="status" style={{ margin: 0, fontSize: 12.5, color: "var(--amber)" }}>
+          {read.running
+            ? "Reading the scenario catalogue…"
+            : `Catalogue not read — ${read.detail || read.error || "the control plane did not answer"}.`}
+        </p>
+      </Panel>
+    );
+  }
+  const unresolved = doc.unresolved ?? [];
+  return (
+    <>
+      <Panel
+        title="Simulation is scenario-specific"
+        sub={`${doc.rollup.scenarios} scenarios · ${doc.rollup.EXISTS ?? 0} computed · ${doc.rollup.PARTIAL ?? 0} partial · ${doc.rollup.ABSENT ?? 0} absent`}
+      >
+        <div
+          style={{ border: "1px solid var(--red)", borderRadius: "var(--r)", padding: "10px 12px", background: "var(--panel-2)" }}
+        >
+          <Badge tone="red">may not claim</Badge>
+          <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12.5 }}>
+            {doc.cannot_claim.map((sentence) => (
+              <li key={sentence}>{sentence}</li>
+            ))}
+          </ul>
+        </div>
+        {doc.note && <p style={{ margin: "8px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{doc.note}</p>}
+        {unresolved.length > 0 && (
+          <p role="alert" style={{ margin: "8px 0 0", fontSize: 12, color: "var(--red)" }}>
+            The catalogue advertises {unresolved.length} scenario(s) this build does not execute:{" "}
+            {unresolved.join(", ")}.
+          </p>
+        )}
+      </Panel>
+
+      {doc.scenarios.map((row) => (
+        <Panel key={row.id} title={row.label} sub={row.status_meaning}>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <span data-testid={`simulation-${row.id}`}>
+              <Badge tone={SIMULATION_TONE[row.status] ?? "slate"}>{row.status}</Badge>
+            </span>
+            {row.covered_by.length === 0 ? (
+              <span className="faint" style={{ fontSize: 11 }}>nothing computes this</span>
+            ) : (
+              row.covered_by.map((entry) => (
+                <span
+                  key={`${entry.engine}-${entry.scenario}`}
+                  style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}
+                >
+                  {entry.engine}/{entry.scenario}
+                  {entry.present === false ? " (missing)" : ""}
+                </span>
+              ))
+            )}
+          </div>
+          {row.cannot.length > 0 && (
+            <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 11.5, color: "var(--amber)" }}>
+              {row.cannot.map((gap) => (
+                <li key={gap}>{gap}</li>
+              ))}
+            </ul>
+          )}
+          {row.requires.length > 0 && (
+            <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--dim)" }}>
+              needs: {row.requires.join("; ")}
+            </p>
+          )}
+          {row.note && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{row.note}</p>}
+        </Panel>
+      ))}
+    </>
+  );
+}
+
 export default function CollectorDepth() {
-  const [tab, setTab] = useState<"runtime" | "network" | "windows" | "boms" | "maturity">("runtime");
+  const [tab, setTab] = useState<"runtime" | "network" | "windows" | "boms" | "maturity" | "simulation">("runtime");
   const tabs: Array<{ id: typeof tab; label: string }> = [
     { id: "runtime", label: "Runtime" },
     { id: "network", label: "Network" },
     { id: "windows", label: "Windows" },
     { id: "boms", label: "Six BOMs" },
     { id: "maturity", label: "Maturity" },
+    { id: "simulation", label: "Simulation" },
   ];
   return (
     <>
@@ -675,6 +832,7 @@ export default function CollectorDepth() {
       {tab === "windows" && <WindowsSection />}
       {tab === "boms" && <BomSection />}
       {tab === "maturity" && <MaturitySection />}
+      {tab === "simulation" && <SimulationSection />}
     </>
   );
 }

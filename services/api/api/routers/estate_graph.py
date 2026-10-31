@@ -1751,6 +1751,37 @@ def estate_twin_simulate_as_of(
     return {"run_id": run.id, "snapshot": estate_twin_store.public(row), **result}
 
 
+@router.get("/twin/simulation-scenarios")
+def estate_twin_simulation_scenarios(
+    user: str = Depends(get_current_user),
+):
+    """The ten enterprise scenarios, and which of them this build can actually compute.
+
+    ``covered_by`` names the concrete scenario ids; they are resolved against the
+    two engines here rather than trusted, so a row that advertises a scenario the
+    build does not have comes back with ``unresolved`` set instead of a silent
+    EXISTS.
+    """
+    from agility.twin_scenarios import SCENARIOS as AGILITY_SCENARIOS
+    from shared_models import enterprise_scenarios
+    from shared_models.estate_twin import SIMULATION_KINDS
+
+    executable = {
+        enterprise_scenarios.AGILITY: set(AGILITY_SCENARIOS),
+        enterprise_scenarios.TWIN: set(SIMULATION_KINDS),
+    }
+    document = enterprise_scenarios.catalogue()
+    unresolved: list[str] = []
+    for row in document["scenarios"]:
+        for entry in row["covered_by"]:
+            if entry["scenario"] not in executable.get(entry["engine"], set()):
+                unresolved.append(f"{row['id']}: {entry['engine']}/{entry['scenario']}")
+            entry["present"] = entry["scenario"] in executable.get(entry["engine"], set())
+    document["executable"] = {engine: sorted(ids) for engine, ids in executable.items()}
+    document["unresolved"] = unresolved
+    return document
+
+
 @router.get("/twin/simulations")
 def estate_twin_simulations(
     limit: int = Query(default=20, ge=1, le=100),

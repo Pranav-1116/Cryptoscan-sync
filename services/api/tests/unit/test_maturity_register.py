@@ -13,7 +13,9 @@ These tests pin the four properties that make the register evidence:
   empty missing list is a completeness claim, and only ``SUBSTANTIAL`` may make
   one;
 * the six BOM kinds are the six the projection engine actually has, so a new BOM
-  cannot be added there and left out of the honesty table.
+  cannot be added there and left out of the honesty table;
+* nothing outside ``SUBSTANTIAL`` is presented as operational — candidate and
+  foundation areas carry the sentence they must not be sold with.
 
 Plus the claims themselves: the overclaims the product must not make are listed
 in ``may_not_claim`` and appear nowhere else in the register.
@@ -162,7 +164,9 @@ def test_the_route_serves_the_register_and_requires_authentication():
         "RUNTIME_DISCOVERY",
         "NETWORK_DISCOVERY",
         "WINDOWS",
+        "HARDWARE_HSM",
         "BOM_PROJECTIONS",
+        "SIMULATION_ENGINE",
     }
 
 
@@ -172,3 +176,34 @@ def test_no_state_is_a_percentage_or_a_score():
     for area in document["areas"]:
         assert not re.search(r"\d+\s?%", str(area["state"]))
         assert area["state"].isupper()
+
+
+def test_operational_words_are_pinned_per_area():
+    """A bank may only be told OPERATIONAL where the build cannot beat it."""
+    document = _register()
+    readiness = {area["id"]: area["readiness"] for area in document["areas"]}
+    assert readiness["WINDOWS"] == mr.CANDIDATE_READINESS
+    assert readiness["HARDWARE_HSM"] == mr.FOUNDATION_READINESS
+    assert readiness["SIMULATION_ENGINE"] == mr.FOUNDATION_READINESS
+    for area in document["areas"]:
+        if area["readiness"] == mr.OPERATIONAL:
+            assert not area["must_not_be_presented_as"]
+        else:
+            assert area["must_not_be_presented_as"], area["id"]
+
+
+def test_the_stub_sentences_are_in_the_register():
+    """The five capability limits the product must say about itself."""
+    document = _register()
+    text = repr(document)
+    for phrase in (
+        "candidate",  # Windows collector
+        "not proof of actual",  # HSM operations
+        "metadata",  # hardware and runtime
+        "generic enterprise simulation",
+    ):
+        assert phrase in text.lower(), phrase
+    simulation = next(a for a in document["areas"] if a["id"] == "SIMULATION_ENGINE")
+    assert simulation["state"] == mr.FOUNDATION
+    assert any("generic enterprise simulation engine" in s.lower()
+               for s in simulation["must_not_be_presented_as"])

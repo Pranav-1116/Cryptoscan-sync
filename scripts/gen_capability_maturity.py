@@ -21,6 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "shared" / "shared_models"))
 
+from shared_models.capability_boundaries import STATEMENTS as BOUNDARY_STATEMENTS  # noqa: E402
 from shared_models.capability_maturity import (  # noqa: E402
     CAPABILITIES, RETIRED_NAV_ROUTES, TIERS, counts,
 )
@@ -110,6 +111,29 @@ def render_doc() -> str:
     for slug, entry in sorted(CAPABILITIES.items(), key=lambda kv: (kv[1]["area"], kv[0])):
         lines.append(f"| `/{slug}` | {entry['area']} | {entry['why']} |")
     lines += [
+        "",
+        "## Capability boundaries — five things this build does not do",
+        "",
+        "Every surface above is supported; none of them is complete. These five are the",
+        "capabilities that get described as if they were operational, so they are stated",
+        "here in the same words the API and the console use. Source:",
+        "`shared_models/capability_boundaries.py`, which a test pins to the maturity",
+        "register (`GET /api/v1/estate/evidence/discovery/maturity`).",
+        "",
+        "| Capability | What is real | May not be presented as | Check at |",
+        "|---|---|---|---|",
+    ]
+    for row in BOUNDARY_STATEMENTS:
+        lines.append(
+            f"| **{row['capability']}** (`{row['status']}`) — {row['says']} "
+            f"| {row['what_is_real']} | {row['not_operational']} | `{row['check_at']}` |"
+        )
+    lines += [
+        "",
+        "Read that table the way an operator would: each row names the artifact that",
+        "exists, and then the sentence the artifact does not entitle anyone to. Where a",
+        "capability is `FOUNDATION`, nothing is collected from a bank's estate at all —",
+        "the model and the seam exist, and that is the whole of it.",
         "",
         "## Retired sidebar entries",
         "",

@@ -27,6 +27,8 @@ Every state below was set by reading the code in this tree, not from a roadmap.
 
 from __future__ import annotations
 
+from . import capability_boundaries
+
 SCHEMA = "cryptoscan.maturity-register/1"
 
 SUBSTANTIAL = "SUBSTANTIAL"
@@ -43,6 +45,26 @@ STATE_MEANING = {
     FOUNDATION: "models and seams exist; no collection path reaches this surface yet",
     IMPORT_ONLY: "facts arrive only through an approved file import",
     ABSENT: "nothing reads this surface",
+}
+
+#: Whether a bank may be told this is operational. Deliberately separate from the
+#: coverage state: a surface can be honestly ``SUBSTANTIAL`` in coverage and still
+#: not be something to run a bank on (a candidate collector reads real facts and is
+#: still not admitted), and a ``FOUNDATION`` is never operational whatever it models.
+OPERATIONAL = "OPERATIONAL"
+CANDIDATE_READINESS = "CANDIDATE"
+FOUNDATION_READINESS = "FOUNDATION"
+
+READINESS_MEANING = {
+    OPERATIONAL: "may be presented as a working capability of this build, with its stated limits",
+    CANDIDATE_READINESS: (
+        "code exercises real inputs but is not admitted as a production capability — present it as "
+        "a candidate and say what it does not do"
+    ),
+    FOUNDATION_READINESS: (
+        "models and seams only: no collection or computation reaches a bank's estate, so it must not "
+        "be presented as a capability at all"
+    ),
 }
 
 #: States that must name their remaining work. Only a substantial surface may
@@ -332,141 +354,286 @@ ROUTES: tuple[str, ...] = (
     "/estate/evidence/twin/impact-as-of",
     "/estate/evidence/twin/simulate",
     "/estate/evidence/twin/simulate-as-of",
+    "/estate/evidence/twin/simulation-scenarios",
     "/estate/evidence/twin/why",
 )
+
+
+def _area(
+    identifier: str,
+    label: str,
+    state: str,
+    *,
+    readiness: str,
+    summary: str,
+    surfaces: list[dict],
+    missing: tuple[str, ...],
+    measured_by: tuple[str, ...],
+    claim: str,
+    must_not_be_presented_as: tuple[str, ...] = (),
+) -> dict:
+    """One area, with the words a sales deck is not allowed to use about it."""
+    if state not in STATE_MEANING:
+        raise ValueError(f"{identifier}: unknown state {state!r}")
+    if readiness not in READINESS_MEANING:
+        raise ValueError(f"{identifier}: unknown readiness {readiness!r}")
+    if readiness != OPERATIONAL and not must_not_be_presented_as:
+        raise ValueError(
+            f"{identifier}: readiness {readiness} must say what it must not be presented as"
+        )
+    return {
+        "id": identifier,
+        "label": label,
+        "state": state,
+        "readiness": readiness,
+        "readiness_meaning": READINESS_MEANING[readiness],
+        "summary": summary,
+        "surfaces": surfaces,
+        "missing": list(missing),
+        "measured_by": list(measured_by),
+        "claim": claim,
+        "must_not_be_presented_as": list(must_not_be_presented_as),
+    }
 
 
 def register() -> dict:
     """The whole register, in the order a reader should meet it."""
     areas = (
-        {
-            "id": "DIGITAL_TWIN",
-            "label": "Digital Twin",
-            "state": PARTIAL,
-            "summary": (
+        _area(
+            "DIGITAL_TWIN", "Digital Twin", PARTIAL,
+            readiness=OPERATIONAL,
+            summary=(
                 "Estate → assets → relationships → crypto graph → evidence graph → history → impact → "
                 "simulation. Every link exists and reports where it stops; relationship inference and "
                 "per-fact history are the thin links."
             ),
-            "surfaces": list(TWIN_SURFACES),
-            "missing": (
+            surfaces=list(TWIN_SURFACES),
+            missing=(
                 "relationship discovery beyond approved mappings and collected evidence",
                 "per-fact history over time, rather than per-evidence-state snapshots",
                 "business-criticality weighting in the impact radius",
             ),
-            "measured_by": ("/estate/evidence/twin", "/estate/evidence/twin/impact-as-of"),
-            "claim": (
+            measured_by=("/estate/evidence/twin", "/estate/evidence/twin/impact-as-of"),
+            claim=(
                 "The twin answers, per link, what it holds for a real estate right now, and refuses to "
                 "call an unread store empty."
             ),
-        },
-        {
-            "id": "STATIC_DISCOVERY",
-            "label": "Static crypto discovery",
-            "state": PARTIAL,
-            "summary": (
+        ),
+        _area(
+            "STATIC_DISCOVERY", "Static crypto discovery", PARTIAL,
+            readiness=CANDIDATE_READINESS,
+            summary=(
                 "Twelve infrastructure surfaces with a real collector on some of them and a stated gap "
                 "on the rest. Linux is the deepest; Windows is a candidate, not a collector."
             ),
-            "surfaces": list(STATIC_SURFACES),
-            "missing": (
+            surfaces=list(STATIC_SURFACES),
+            missing=(
                 "Windows CNG/CAPI provider metadata and native admission",
                 "live HSM partition enumeration",
                 "column-level database encryption inventory",
                 "native legacy-system collectors",
             ),
-            "measured_by": ("/estate/evidence/discovery/windows-collector",),
-            "claim": (
+            measured_by=("/estate/evidence/discovery/windows-collector",),
+            claim=(
                 "Coverage is per surface: each row names its collector and what that collector does "
                 "not read."
             ),
-        },
-        {
-            "id": "RUNTIME_DISCOVERY",
-            "label": "Runtime discovery",
-            "state": PARTIAL,
-            "summary": (
+            must_not_be_presented_as=(
+                "A complete cryptographic inventory of a bank estate.",
+                "Full static coverage on every infrastructure surface.",
+            ),
+        ),
+        _area(
+            "RUNTIME_DISCOVERY", "Runtime discovery", PARTIAL,
+            readiness=CANDIDATE_READINESS,
+            summary=(
                 "Processes, libraries, listeners, services, packages, certificates and configuration are "
                 "observed. Algorithm invocation is not: installed is never reported as executed."
             ),
-            "surfaces": list(RUNTIME_FAMILIES),
-            "missing": (
+            surfaces=list(RUNTIME_FAMILIES),
+            missing=(
                 "call-level evidence for every crypto provider",
                 "kernel-level observation",
             ),
-            "measured_by": ("/estate/evidence/discovery/runtime-depth",),
-            "claim": "Runtime facts carry the evidence class that produced them, and configuration is never promoted to execution.",
-        },
-        {
-            "id": "NETWORK_DISCOVERY",
-            "label": "Network discovery",
-            "state": PARTIAL,
-            "summary": (
+            measured_by=("/estate/evidence/discovery/runtime-depth",),
+            claim=(
+                "Runtime facts carry the evidence class that produced them, and configuration is never "
+                "promoted to execution."
+            ),
+            must_not_be_presented_as=(
+                "Proof of which algorithms a process executed.",
+                "Runtime crypto observability across every application.",
+            ),
+        ),
+        _area(
+            "NETWORK_DISCOVERY", "Network discovery", PARTIAL,
+            readiness=CANDIDATE_READINESS,
+            summary=(
                 "TLS is a completed-handshake reader. SSH and IPsec are offer readers. Message queues, "
                 "service mesh, passive capture and proprietary financial protocols have no reader."
             ),
-            "surfaces": list(NETWORK_PROTOCOLS),
-            "missing": (
+            surfaces=list(NETWORK_PROTOCOLS),
+            missing=(
                 "SSH session-level observation",
                 "IPsec child-SA reading",
                 "message-queue and service-mesh readers",
                 "passive traffic coverage",
                 "multi-hop correlation",
             ),
-            "measured_by": ("/estate/evidence/discovery/network-protocols",),
-            "claim": "Each protocol is reported with the reader that exists, or as absent.",
-        },
-        {
-            "id": "WINDOWS",
-            "label": "Windows",
-            "state": CANDIDATE,
-            "summary": (
+            measured_by=("/estate/evidence/discovery/network-protocols",),
+            claim="Each protocol is reported with the reader that exists, or as absent.",
+            must_not_be_presented_as=(
+                "Complete network crypto coverage across an enterprise.",
+                "Session-level visibility of SSH, IPsec or messaging traffic.",
+            ),
+        ),
+        _area(
+            "WINDOWS", "Windows", CANDIDATE,
+            readiness=CANDIDATE_READINESS,
+            summary=(
                 "Candidate collectors for OS/uninstall/file/SCM, public certificates, process/module "
                 "inventory and TPM device info. No universal Windows admission, no complete collector."
             ),
-            "surfaces": [surface for surface in STATIC_SURFACES if surface["id"] == "WINDOWS"],
-            "missing": (
+            surfaces=[surface for surface in STATIC_SURFACES if surface["id"] == "WINDOWS"],
+            missing=(
                 "CNG/CAPI provider metadata",
                 "TLS listener attribution",
                 "native execution and security review",
                 "universal job/materializer admission",
             ),
-            "measured_by": ("/estate/evidence/discovery/windows-collector",),
-            "claim": "The server's own answer to 'is this a complete Windows collector' is NO.",
-        },
-        {
-            "id": "BOM_PROJECTIONS",
-            "label": "Six BOM projections",
-            "state": PARTIAL,
-            "summary": (
+            measured_by=("/estate/evidence/discovery/windows-collector",),
+            claim="The server's own answer to 'is this a complete Windows collector' is NO.",
+            must_not_be_presented_as=(
+                "A production Windows cryptographic collector.",
+                "Complete Windows SBOM, NBOM, HBOM, VBOM or TechBOM coverage.",
+            ),
+        ),
+        _area(
+            "HARDWARE_HSM", "Hardware and HSM", FOUNDATION,
+            readiness=FOUNDATION_READINESS,
+            summary=(
+                "Vendor/model/firmware/algorithm-capability metadata, a PKCS#11 seam for signing, and "
+                "candidate inputs. Nothing here observes or proves an operation performed inside an HSM."
+            ),
+            surfaces=[
+                surface for surface in STATIC_SURFACES if surface["id"] in {"HSM", "KMS"}
+            ] + [
+                _surface(
+                    "HARDWARE_INVENTORY", "Hardware inventory", FOUNDATION,
+                    collector="services/universal_vendor/universal_vendor",
+                    note=(
+                        "metadata-oriented: catalogue and plugin reads where a vendor exposes them, with "
+                        "synthetic/metadata paths standing in for vendor-specific collection"
+                    ),
+                    missing=(
+                        "vendor-specific live enumeration per HSM/KMS family",
+                        "firmware attestation",
+                        "key-use audit-log ingestion",
+                    ),
+                )
+            ],
+            missing=(
+                "live partition/slot enumeration per vendor",
+                "key-use attestation from the HSM audit log",
+                "complete hardware discovery across a bank's real estate",
+            ),
+            measured_by=("/estate/evidence/discovery/maturity",),
+            claim=(
+                "The hardware model is metadata — vendor, model, firmware, algorithm capability, key "
+                "metadata and certificate relationships. It is not proof of actual cryptographic "
+                "operations performed in the device."
+            ),
+            must_not_be_presented_as=(
+                "Proof of actual HSM cryptographic operations.",
+                "Complete hardware discovery across a bank estate.",
+                "Key custody or key-use assurance.",
+            ),
+        ),
+        _area(
+            "BOM_PROJECTIONS", "Six BOM projections", PARTIAL,
+            readiness=OPERATIONAL,
+            summary=(
                 "One projection engine, six depths. CBOM and SBOM are fed by collectors that read a "
                 "source of truth; HBOM and VBOM depend on planes most estates do not expose."
             ),
-            "surfaces": list(BOM_STATES),
-            "missing": (
+            surfaces=list(BOM_STATES),
+            missing=(
                 "HBOM firmware attestation",
                 "VBOM CVE feed ingestion",
                 "NBOM multi-hop correlation",
             ),
-            "measured_by": ("/estate/evidence/discovery/bom-maturity",),
-            "claim": "Each BOM states the deepest evidence class behind its components; the depths are not equal and are not presented as equal.",
-        },
+            measured_by=("/estate/evidence/discovery/bom-maturity",),
+            claim=(
+                "Each BOM states the deepest evidence class behind its components; the depths are not "
+                "equal and are not presented as equal."
+            ),
+        ),
+        _area(
+            "SIMULATION_ENGINE", "Simulation engine", FOUNDATION,
+            readiness=FOUNDATION_READINESS,
+            summary=(
+                "Ten deterministic scenarios plus three cascade models compute over collected evidence. "
+                "The generic enterprise engine — trust compromise, artifact-level supply chain, custom "
+                "scenarios — is not implemented, and each absent scenario says why."
+            ),
+            surfaces=[
+                _surface(
+                    "SIMULATION_BUILTIN", "Built-in scenarios", PARTIAL,
+                    collector="services/agility/agility/twin_scenarios.py",
+                    note="ten scenarios over the stored twin: PQC migration, protocol floor, cert expiry, key rotation, custodian outage, vendor compromise, compliance, attack path, drift",
+                    missing=(
+                        "mechanism-level models (PKI hierarchy, KMS grants, artifact provenance)",
+                        "custom scenario authoring",
+                    ),
+                ),
+                _surface(
+                    "SIMULATION_GENERIC", "Generic enterprise simulation", ABSENT,
+                    collector=None,
+                    note="no engine generalises over arbitrary crypto failure modes",
+                    missing=(
+                        "trust compromise (CA hierarchy)",
+                        "artifact-level supply chain",
+                        "custom scenario language",
+                    ),
+                ),
+            ],
+            missing=(
+                "trust-compromise model over a CA hierarchy",
+                "artifact-level supply-chain provenance",
+                "operator-authored custom scenarios",
+            ),
+            measured_by=("/estate/evidence/twin/simulation-scenarios",),
+            claim=(
+                "Simulation is scenario-specific: each scenario states whether it computes the question "
+                "or only approximates it topologically."
+            ),
+            must_not_be_presented_as=(
+                "A generic enterprise simulation engine.",
+                "A complete model of every crypto failure mode.",
+            ),
+        ),
     )
     return {
         "schema": SCHEMA,
         "areas": list(areas),
         "claims": dict(CLAIMS),
+        "boundaries": capability_boundaries.statements(),
         "routes": list(ROUTES),
         "note": (
             "States are set by reading this build, not from a roadmap. An area that is not SUBSTANTIAL "
             "always lists what is missing; an empty missing list on a partial area would be a claim, "
-            "and the test rejects it."
+            "and the test rejects it. Readiness is separate from coverage: a candidate collector reads "
+            "real facts and is still not something to run a bank on."
         ),
     }
 
 
 __all__ = [
     "ABSENT",
+    "CANDIDATE_READINESS",
+    "FOUNDATION_READINESS",
+    "OPERATIONAL",
+    "READINESS_MEANING",
     "BOM_STATES",
     "CANDIDATE",
     "CLAIMS",
