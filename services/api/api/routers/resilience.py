@@ -243,12 +243,49 @@ def backup_restore(body: BackupRestoreRequest, db: Session = Depends(get_db_sess
     return out
 
 
+class BackupConfigOut(BaseModel):
+    """What the config endpoint stored — ids, not the whole config."""
+
+    ok: bool
+    configured: int
+    databases: list[str]
+
+
+class BackupRetentionOut(BaseModel):
+    kept: int
+    purged: int
+    deleted_keys: list[str] = []
+
+
+class BackupRunOut(BaseModel):
+    """The scheduled-backup report.
+
+    Top level is typed; each entry in `results` is the engine's own result dict
+    (a failed backup carries an `error`, a skipped one a reason), so it stays
+    `dict` rather than pretending to a fixed shape it does not have.
+    """
+
+    ran: int
+    skipped: int
+    results: list[dict[str, Any]]
+    retention: BackupRetentionOut | None = None
+    stored_backups: int
+
+
+class BackupKeyInfoOut(BaseModel):
+    persistent_key_configured: bool
+    algorithm: str
+    manifest_signature: str
+
+
 class BackupRunRequest(BaseModel):
-    databases: list[dict] = Field(..., description="[{database_id, engine, interval_hours}]")
+    databases: list[BackupDatabaseConfig] = Field(
+        ..., description="[{database_id, engine, interval_hours}]", min_length=1
+    )
     apply_retention: bool = True
 
 
-@router.post("/backup/run-scheduled")
+@router.post("/backup/run-scheduled", response_model=BackupRunOut)
 def backup_run_scheduled(body: BackupRunRequest, db: Session = Depends(get_db_session),
                          user: str = Depends(require_roles("admin", "superadmin"))):
     """Run due backups across Postgres/Neo4j via REAL subprocess runners
@@ -267,8 +304,8 @@ def backup_run_scheduled(body: BackupRunRequest, db: Session = Depends(get_db_se
     def backend_for(engine: str):
         return _real_backend(engine)  # real subprocess pg_dump / neo4j-admin
 
-    configs = [bj.BackupConfig(database_id=c["database_id"], engine=c.get("engine", "postgres"),
-                               interval_hours=c.get("interval_hours", 24.0))
+    configs = [bj.BackupConfig(database_id=c.database_id, engine=c.engine,
+                               interval_hours=c.interval_hours)
                for c in body.databases]
     # run each config; a missing tool / unreachable DB is reported honestly as a
     # failed result rather than a fake success.
@@ -349,11 +386,26 @@ def backup_sweep(body: BackupSweepRequest, db: Session = Depends(get_db_session)
     return out
 
 
+class BackupDatabaseConfig(BaseModel):
+    """One scheduled backup target.
+
+    Typed rather than `dict`: with a free-form object the endpoint accepted
+    `[{}]`, read `c["database_id"]` and answered 500 `KeyError`. A caller's
+    malformed entry has to be a 422, and the schema is where that belongs.
+    """
+
+    database_id: str = Field(..., min_length=1, max_length=200)
+    engine: str = Field(default="postgres", max_length=40)
+    interval_hours: float = Field(default=24.0, gt=0, le=24 * 365)
+
+
 class BackupConfigRequest(BaseModel):
-    databases: list[dict] = Field(..., description="[{database_id, engine, interval_hours}]")
+    databases: list[BackupDatabaseConfig] = Field(
+        ..., description="[{database_id, engine, interval_hours}]", min_length=1
+    )
 
 
-@router.post("/backup/config")
+@router.post("/backup/config", response_model=BackupConfigOut)
 def backup_config(body: BackupConfigRequest, db: Session = Depends(get_db_session),
                   user: str = Depends(require_roles("admin", "superadmin"))):
     """Persist the scheduled-backup configuration in app_settings."""
@@ -361,8 +413,8 @@ def backup_config(body: BackupConfigRequest, db: Session = Depends(get_db_sessio
     from governance import backup_jobs as bj
 
     repo = SettingsRepository(db)
-    configs = [bj.BackupConfig(database_id=c["database_id"], engine=c.get("engine", "postgres"),
-                               interval_hours=float(c.get("interval_hours", 24.0)))
+    configs = [bj.BackupConfig(database_id=c.database_id, engine=c.engine,
+                               interval_hours=c.interval_hours)
                for c in body.databases]
     bsched.save_configs(repo, configs, by=user)
     db.commit()
@@ -370,7 +422,7 @@ def backup_config(body: BackupConfigRequest, db: Session = Depends(get_db_sessio
             "databases": [c.database_id for c in configs]}
 
 
-@router.get("/backup/encryption-key-info")
+@router.get("/backup/encryption-key-info", response_model=BackupKeyInfoOut)
 def backup_key_info(user: str = Depends(require_roles("admin", "superadmin"))):
     """Reports whether a persistent backup key is configured (never returns it)."""
     return {"persistent_key_configured": bool(os.environ.get("BACKUP_ENCRYPTION_KEY")),

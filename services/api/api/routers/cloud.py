@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, get_job_repository, require_admin
@@ -50,11 +52,51 @@ class CloudOrgDiscoverRequest(BaseModel):
 
 
 class CloudAccountCreate(BaseModel):
+    """A cloud account the inventory tracks.
+
+    The bounds are the columns' bounds. Without them a provider name longer than
+    `cloud_accounts.cloud_provider` (varchar 20) reached the INSERT and came back
+    as a 500 `StringDataRightTruncation` — a caller's typo reported as a server
+    fault. The enum is the set the scanners can actually authenticate against.
+    """
+
+    # A Literal rather than a validator on `str`: the accepted set then appears in
+    # the OpenAPI schema as an enum, so clients (and the contract tests) can see
+    # it instead of discovering it as a 422.
+    cloud_provider: Literal["AWS", "AZURE", "GCP"] = Field(..., examples=["AWS"])
+    account_identifier: str = Field(..., max_length=200, min_length=1)
+    role_arn: str | None = Field(default=None, max_length=500)
+    regions: list[str] | None = None
+    enabled: bool = True
+
+    @field_validator("cloud_provider", mode="before")
+    @classmethod
+    def _upper(cls, value: object) -> object:
+        return value.strip().upper() if isinstance(value, str) else value
+
+
+class CloudAccountOut(BaseModel):
+    """One row of the cloud account inventory, as `to_dict()` renders it.
+
+    Declaring it means the console's `CloudAccount` interface and the API's own
+    schema are the same fact, and a column that disappears from `to_dict()`
+    becomes a schema change instead of a silent `undefined` in the page.
+    """
+
+    id: str
     cloud_provider: str
     account_identifier: str
     role_arn: str | None = None
-    regions: list[str] | None = None
     enabled: bool = True
+    regions: list[str] | None = None
+    extra: dict[str, Any] | None = None
+    tenant_id: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class CloudAccountsOut(BaseModel):
+    accounts: list[CloudAccountOut]
 
 
 def _queued_payload(queued):
@@ -80,16 +122,16 @@ def scan_cloud(body: CloudScanRequest, user: str = Depends(get_current_user)):
     return CloudScanner(live=body.live).scan_filesystem(body.path)
 
 
-@router.get("/accounts")
+@router.get("/accounts", response_model=CloudAccountsOut)
 def list_accounts(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     rows = IntelligenceRepository(db).list_cloud_accounts()
     return {"accounts": [row.to_dict() for row in rows]}
 
 
-@router.post("/accounts")
+@router.post("/accounts", response_model=CloudAccountOut)
 def create_account(body: CloudAccountCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     row = IntelligenceRepository(db).create_cloud_account(
-        cloud_provider=body.cloud_provider.upper(),
+        cloud_provider=body.cloud_provider,
         account_identifier=body.account_identifier,
         role_arn=body.role_arn,
         regions=body.regions,

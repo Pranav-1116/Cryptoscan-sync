@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import desc, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from db.models.hardware_live import HardwareAgentRow, HardwareAsset, HardwareEventRow
@@ -45,14 +46,21 @@ class HardwareRepository(BaseRepository[HardwareAsset]):
     # ── assets ────────────────────────────────────────────────────────
 
     def upsert_asset(self, state: dict[str, Any]) -> HardwareAsset:
-        """Persist a live state dict (HardwareState.to_dict) as the truth."""
+        """Persist a live state dict (HardwareState.to_dict) as the truth.
+
+        Get-or-create is not atomic. Two agents announcing the same brand-new
+        asset at the same moment both find nothing and both INSERT; the loser
+        gets a ``UniqueViolation`` on ``ix_hardware_assets_asset_id`` and the
+        caller's perfectly valid event 500s. The insert therefore runs inside a
+        savepoint: if it loses the race, only that INSERT is rolled back and the
+        winner's committed row is re-read and updated instead.
+        """
         asset_id = str(state.get("asset_id") or "")
         row = self.session.execute(
             select(HardwareAsset).where(HardwareAsset.asset_id == asset_id)
         ).scalar_one_or_none()
         if row is None:
-            row = HardwareAsset(asset_id=asset_id)
-            self.session.add(row)
+            row = self._insert_asset(asset_id)
         row.agent_id = state.get("agent_id")
         row.manufacturer = str(state.get("manufacturer") or "")
         row.model = str(state.get("model") or "")
@@ -79,6 +87,19 @@ class HardwareRepository(BaseRepository[HardwareAsset]):
         if state.get("risk_level") is not None:
             row.risk_level = str(state["risk_level"])
         self.session.flush()
+        return row
+
+    def _insert_asset(self, asset_id: str) -> HardwareAsset:
+        """Insert a new asset, or return the row a concurrent insert created."""
+        try:
+            with self.session.begin_nested():
+                row = HardwareAsset(asset_id=asset_id)
+                self.session.add(row)
+                self.session.flush()
+        except IntegrityError:
+            row = self.get_asset(asset_id)
+            if row is None:
+                raise
         return row
 
     def get_asset(self, asset_id: str) -> Optional[HardwareAsset]:

@@ -44,6 +44,18 @@ class LinkBody(BaseModel):
     role: str | None = "PRIMARY"
 
 
+class SystemBusinessProcessOut(BaseModel):
+    """The link row, as `to_dict()` renders it."""
+
+    id: str
+    system_id: str
+    process_id: str
+    role: str | None = None
+    tenant_id: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
 class VendorCreate(BaseModel):
     name: str
     criticality: str | None = None
@@ -383,10 +395,23 @@ def create_process(body: ProcessCreate, user: str = Depends(get_current_user), d
     return IntelligenceRepository(db).create_process(**body.model_dump()).to_dict()
 
 
-@router.post("/business/processes/{process_id}/systems")
+@router.post("/business/processes/{process_id}/systems", response_model=SystemBusinessProcessOut)
 def link_process(
     process_id: str, body: LinkBody, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
 ):
+    """Link a system to a business process.
+
+    Both ends are checked first. Without the check an unknown `system_id` reached
+    the INSERT and came back as a 500 `ForeignKeyViolation` — a caller's typo
+    reported as a server fault, and the audit trail said nothing about it.
+    """
+    from db.models.business_process import BusinessProcess
+    from db.models.system import System
+
+    if db.get(System, body.system_id) is None:
+        raise HTTPException(status_code=404, detail=f"No such system: {body.system_id}")
+    if db.get(BusinessProcess, process_id) is None:
+        raise HTTPException(status_code=404, detail=f"No such business process: {process_id}")
     return IntelligenceRepository(db).link_process(body.system_id, process_id, body.role).to_dict()
 
 

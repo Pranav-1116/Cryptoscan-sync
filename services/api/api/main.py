@@ -225,6 +225,15 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                     AuthService(session=session).bootstrap_admin()
             except Exception:
                 logger.warning("admin_bootstrap_skipped", exc_info=True)
+        # Pay the lazy-import bill on the boot path: the first request to a route
+        # that imports its engine inside the handler would otherwise pay it, and
+        # two such requests racing can trip CPython's import-lock deadlock. Skipped
+        # under pytest: an in-process test client would pay for it per app, and the
+        # live smoke server (which is not a TestClient) still warms properly.
+        if not _under_test():
+            from api.startup_imports import warm as warm_imports
+
+            warm_imports()
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
         tailer_task = None
         telemetry_task = None

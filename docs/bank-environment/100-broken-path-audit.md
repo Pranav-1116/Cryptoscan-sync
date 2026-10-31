@@ -29,6 +29,8 @@ running the product turned up a defect that reading the tree could not.
 | 7 | Every console page is reachable from the router | `scripts/tests/test_frontend_surface.py` | A page ships, its tests pass, and no URL renders it |
 | 8 | Every operation is executed against a **live server** | `scripts/tests/test_live_route_smoke.py` | A handler raises, a dependency cannot resolve, a column is missing — the first thing a bank sees |
 | 9 | Every operation that declares a response schema returns that schema | same file | The route answers `200` and the body is not what the contract promised |
+| 10 | Every write operation accepts a body that matches its own request schema | same file | The handler is only reachable with a populated body, so `{}` proves nothing about it |
+| 11 | Every operation's authority is classified, and every destructive route is guarded or reviewed | `scripts/tests/test_authorization_register.py` | A new state-changing route ships open to any signed-in caller |
 
 ```bash
 export PYTHONPATH="scripts:shared/shared_models:services/api:shared/shared_config:$PYTHONPATH"
@@ -44,7 +46,7 @@ export PYTHONPATH="scripts:shared/shared_models:services/api:shared/shared_confi
 CRYPTOSCAN_LIVE_SMOKE=1 .venv/bin/python -m pytest scripts/tests/test_live_route_smoke.py -q
 ```
 
-Checks 5, 8 and 9 need a PostgreSQL binary; they use `pgserver`'s unpacked
+Checks 5 and 8–10 need a PostgreSQL binary; they use `pgserver`'s unpacked
 PostgreSQL on a unix socket and skip (loudly, via `importorskip`) when that is
 unavailable. Checks 8 and 9 are opt-in because they start uvicorn and take about
 a minute; they are not part of the hermetic gate.
@@ -68,7 +70,7 @@ a minute; they are not part of the hermetic gate.
 | Operations executed on a live server | **1248 / 1248, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
 | Operations that refused an anonymous caller | **1212 protected of 1212, 36 public** | Everything outside the session gate's declared public surface (health, docs, login/SSO, machine-signed webhooks) |
 | Role-gated operations proven both ways | **306 admitted with the role, 273 refused without it** | Read from the dependency tree, then asked of the running server |
-| Operations with a response schema that holds | **81 validated / 81 declared** | The other 1167 declare nothing (`§5`, limit a) |
+| Operations with a response schema that holds | **87 validated / 87 declared** | The other 1161 declare nothing (`§5`, limit a) |
 | Model ↔ migrated-schema nullability | **0 disagreements, both directions** | At revision 0121 it was 148 columns the model treats as required and the database accepts as NULL, and 9 the reverse |
 
 ---
@@ -169,8 +171,8 @@ wrong. Each limit below records what has since been proven, what proved it, and
 what is still open — the list is the same list, moved forward, not a new claim.
 
 * **(a) Response correctness.** *Proven:* every operation that declares a 2xx JSON
-  schema — **81 of 1248** — is called on a live server and its body validated
-  against that schema (check 9). *Still open:* the other 1167 declare no response
+  schema — **87 of 1248** — is called on a live server and its body validated
+  against that schema (check 9). *Still open:* the other 1161 declare no response
   model. Their payload shape is asserted only by their TypeScript interface and,
   for seven payload families, by `scripts/tests/test_console_payload_contract.py`.
   A route returning the right fields in the wrong nesting for a page outside those
@@ -178,24 +180,57 @@ what is still open — the list is the same list, moved forward, not a new claim
   `response_model=` at a time, and the count is pinned in check 9 so it can only
   grow.
 
-* **(b) A live request for every route.** *Closed for execution.* All **1248**
-  operations are executed against uvicorn over a real PostgreSQL at the migration
-  tip: **0 returned 5xx**, **0 failed at the transport layer** (check 8). What this
-  does *not* prove: the request carries an empty body, so a handler that needs a
-  valid body either answers `422` before running, or runs against its all-optional
-  default path. A handler that is only reachable with a populated body is exercised
-  for its dependencies and its response envelope, not for its business logic.
+* **(b) A live request for every route.** *Closed for execution and for write
+  bodies.* All **1248** operations are executed against uvicorn over a real
+  PostgreSQL at the migration tip: **0 returned 5xx**, **0 failed at the transport
+  layer** (check 8). The first sweep sent `{}`, which proves a route is mounted and
+  its dependencies resolve but answers `422` before the handler runs. A second
+  sweep (**check 10**) therefore synthesises a body from each operation's own
+  request schema — **496 of 567** write operations declare one — and executes the
+  **581** mutation-safe writes (session killers and global switches excluded)
+  against the throw-away database: **0 returned 5xx**; the only 5xx is
+  `POST /resilience/backup/create`'s deliberate `503` naming a missing `pg_dump`,
+  which is exempted only when its body says so.
+
+  It paid for itself immediately. `BackupConfigRequest`/`BackupRunRequest` declared
+  `databases: list[dict]`, so there was no schema to synthesise from and no reader
+  of the contract could see that the handler does `c["database_id"]` — the
+  documented body `[{}]` was a `500 KeyError`. `POST /cloud/accounts` accepted a
+  provider longer than its `varchar(20)` column (`500` truncation), and
+  `POST /business/processes/{id}/systems` inserted an unchecked `system_id`
+  (`500` foreign-key violation). All three are now caller errors (`422`) or
+  `404`s. A fourth was not a body problem at all: `POST /hardware/events/batch`
+  could lose the atomic get-or-create race on `ix_hardware_assets_asset_id` and
+  500 on a valid event; the insert now runs in a savepoint and adopts the winner's
+  row.
+
+  *Still open:* the synthesised body is schema-valid, not semantically meaningful —
+  it proves the handler does not crash on its own contract, not that it computes
+  the right answer. Where a body is a free-form `dict` the synthesizer still has
+  nothing to work from, which is why the ratchet is to type them.
 
 * **(c) Authorization per route.** *Proven per gated route.* Every route whose
   dependency tree carries a `require_roles` requirement — **306 operations** — is
   asked with a principal that holds the role (admitted, never `401`/`403`) and with
   one that does not (**273** of them, refused). The requirements are read from the
-  route tree, not from a second list. *Still open:* `1212` operations are behind
-  the session gate but carry **no** role requirement — authenticated-only is a
-  deliberate design for most of them, and this audit does not assert that any
-  particular one of them should have had a role. Deciding that is a policy
-  question per route; the test proves enforcement of what is declared, not the
-  correctness of the declaration.
+  route tree, not from a second list.
+
+  *The classification is now written down.* `scripts/authorization_register.py`
+  walks the same tree and, for all **1218** served operations, records which
+  authority guard is actually in the dependency closure: **306** require a role,
+  **71** a permission from the RBAC catalog (`hardware.ingest`, …), **12** a
+  tenant role, and **829** nothing beyond a session —
+  `docs/bank-environment/101-authorization-register.md` is that register, and
+  `scripts/tests/test_authorization_register.py` (check 11) pins it: the gated
+  counts may only grow, the **290** session-only *writes* may only shrink, and any
+  `DELETE` that is neither guarded nor named in the reviewed list fails the build.
+
+  *Still open:* the register makes the question tractable, it does not answer it.
+  290 writes remain open to any signed-in operator. Six of them are deletions —
+  removing a graph edge, an export schedule, a group entity, an expired vendor
+  profile — and each simply mirrors the equally session-only create for the same
+  registry, so gating the delete means deciding the policy for the whole family.
+  That is a product decision this audit deliberately does not take.
 
 * **(d) The database contract over all tables.** *Closed for schema parity.* All
   **155** mapped tables and every mapped column are compared with the migrated

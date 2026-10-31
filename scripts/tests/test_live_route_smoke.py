@@ -34,7 +34,11 @@ Four things make this possible without weakening the product:
    runs for any route with required fields, so the sweep exercises dependency
    resolution and validation without performing hundreds of real mutations. The
    routes that do execute (all-optional bodies) are ordered last, and the handful
-   that flip a global switch are named below.
+   that flip a global switch are named below. A 422 proves the route is mounted —
+   it says nothing about the handler, so a **second** sweep (below) sends each
+   write a body synthesised from its own request schema and asserts no 5xx. That
+   one really does mutate the throw-away database, which is why the session
+   killers and global switches are still excluded.
 4. Each test message quotes the operation, the status and the first bytes of the
    body, because "1 failed" is not a finding anyone can act on.
 
@@ -102,6 +106,14 @@ SESSION_KILLERS = (
 )
 
 CONSOLE_OPERATIONS = 605
+
+
+#: Operations that answer 503 on a host without an external binary — the body
+#: names the missing tool, which is the honest answer, not a defect. They are
+#: exempted from the body sweep only on a 503 that says so; a 500 there is still
+#: a failure. Installing `pg_dump` to make a test green would hide the fact that
+#: the feature degrades honestly.
+UNAVAILABLE_ON_THIS_HOST = frozenset({"POST /api/v1/resilience/backup/create"})
 
 
 def _operations() -> list[tuple[str, str]]:
@@ -248,19 +260,24 @@ def _request(base: str, method: str, path: str, token: str | None, *, body=None,
         return f"{type(error).__name__}: {error}", b""
 
 
-def _sweep(live, operations, token_for, *, retry_429: bool = True):
-    """Run ``operations`` sharded across identities; return {item: (status, body)}."""
+def _sweep(live, operations, token_for, *, retry_429: bool = True, body_for=None):
+    """Run ``operations`` sharded across identities; return {item: (status, body)}.
+
+    ``body_for(method, path)`` supplies each request body; without it every write
+    gets the empty object described in the module docstring.
+    """
     results: dict[tuple[str, str], tuple[int | str, bytes]] = {}
 
     def run(indexed):
         index, (method, path) = indexed
         token = token_for(index)
-        status, payload = _request(live["base"], method, _concrete(path), token)
+        body = body_for(method, path) if body_for else None
+        status, payload = _request(live["base"], method, _concrete(path), token, body=body)
         if status == 429 and retry_429:
             # One identity can exceed its own 60 s window during a long shard.
             # Waiting once is enough; the production limit is not relaxed.
             time.sleep(2.0)
-            status, payload = _request(live["base"], method, _concrete(path), token)
+            status, payload = _request(live["base"], method, _concrete(path), token, body=body)
         return (method, path), (status, payload)
 
     debug = os.environ.get("CRYPTOSCAN_SMOKE_DEBUG") == "1"
@@ -306,6 +323,13 @@ def live():
     os.environ["THREAT_INTEL_FEED_SECRET"] = "live-smoke-feed-secret"
     os.environ["ALERT_CHATOPS_SECRET"] = "live-smoke-chatops-secret"
     os.environ["STRIPE_WEBHOOK_SECRET"] = "live-smoke-stripe-secret"
+    # Two registries are file-backed and default to `<cwd>/config`. The body sweep
+    # deliberately performs real writes, so without these overrides it would edit
+    # the checkout it is testing (it did: `contract-*` rows landed in
+    # `config/group_entities.json`). Point every runtime write at the temp dir.
+    os.environ["CRYPTOSCAN_HOME"] = work
+    os.environ["CRYPTOSCAN_GROUP_ENTITIES"] = str(Path(work) / "group_entities.json")
+    os.environ["CRYPTOSCAN_FIPS_REGISTRY"] = str(Path(work) / "fips_certificates.json")
 
     env = dict(os.environ)
     env["PYTHONPATH"] = ":".join(str(ROOT / extra) for extra in (
@@ -459,6 +483,76 @@ class TestEveryOperationAnswers:
         )
 
 
+class TestWritesAcceptTheirOwnSchema:
+    """The empty-body sweep stops at validation; this one gets past it.
+
+    A 422 proves a route is mounted and its dependencies resolve. It does not
+    prove the handler works — for a long time every write in this file was sent
+    `{}`, so a handler that raised `KeyError` on its own request payload (it was
+    declared `list[dict]`, so there was no schema to synthesise from) still
+    answered 500 in production and 422 here. `api_payloads.request_body` builds a
+    body that satisfies the operation's declared schema, which is the only way to
+    reach the handler.
+
+    This sweep performs real mutations against the throw-away database, so the
+    routes that end our session or flip a global switch stay excluded, as above.
+    """
+
+    def test_no_write_operation_server_errors_on_a_schema_shaped_body(self, live):
+        import api_contract
+        import api_payloads
+
+        spec = api_contract.openapi_spec()
+
+        def body_for(method: str, path: str):
+            try:
+                return api_payloads.request_body(spec, path, method)
+            except Exception:  # noqa: BLE001 - an unreadable schema is a finding below
+                return None
+
+        operations = [
+            item
+            for item in _order(_operations())
+            if item[0] not in READ
+            and not any(marker in item[1] for marker in SESSION_KILLERS)
+            and not any(marker in item[1] for marker in GLOBAL_SWITCHES)
+        ]
+        assert len(operations) >= 500, f"only {len(operations)} write operations swept"
+        synthesised = [1 for method, path in operations if body_for(method, path) is not None]
+        assert len(synthesised) >= 400, (
+            f"only {len(synthesised)} of {len(operations)} writes declared a request schema — "
+            "the sweep cannot reach the handler for the rest"
+        )
+
+        tokens = [live["mint"](["superadmin"]) for _ in range(6)]
+        results = _sweep(live, operations, lambda index: tokens[index % len(tokens)], body_for=body_for)
+
+        def exempt(item, status, payload) -> bool:
+            """A declared environment-dependent route, refusing for the stated reason."""
+            return (
+                f"{item[0]} {item[1]}" in UNAVAILABLE_ON_THIS_HOST
+                and status == 503
+                and b"not installed" in payload
+            )
+
+        failures = [
+            f"{method} {path} -> {status} {payload[:200]!r}"
+            for (method, path), (status, payload) in sorted(results.items())
+            if isinstance(status, int) and status >= 500
+            and not exempt((method, path), status, payload)
+        ]
+        unexecuted = [
+            f"{method} {path} -> {status}"
+            for (method, path), (status, _payload) in sorted(results.items())
+            if not isinstance(status, int)
+        ]
+        assert failures == [], (
+            "write operations that crash on a body that matches their own schema:\n  "
+            + "\n  ".join(failures)
+        )
+        assert unexecuted == [], "operations that never answered:\n  " + "\n  ".join(unexecuted)
+
+
 class TestAnonymousCallersAreRefused:
     def test_every_operation_refuses_an_unauthenticated_caller(self, live):
         operations = [item for item in _order(_operations()) if not _gate_public(_concrete(item[1]))]
@@ -580,7 +674,7 @@ class TestResponseBodiesMatchTheDeclaredContract:
             for method in methods
             if _declared_json(spec, path, method)
         ]
-        assert len(operations) >= 70, (
+        assert len(operations) >= 80, (
             f"only {len(operations)} operations declare a 2xx JSON schema — the typed "
             "surface shrank or the schema walk is broken"
         )
@@ -622,12 +716,15 @@ class TestResponseBodiesMatchTheDeclaredContract:
         ]
         typed = [item for item in operations if _declared_json(spec, item[1], item[0])]
         assert len(operations) >= 1200
-        #: Measured 81 of 1248 when this was written (6.5%). The gap is §5's
-        #: limit (a): the remaining 93.5% are validated by nothing but their
-        #: console interface, and this test records that rather than hiding it.
-        assert len(typed) >= 75, (
+        #: Measured 87 of 1248 (7.0%) when the cloud-account inventory, the
+        #: backup family and the process/system link were given `response_model`.
+        #: The gap is §5's limit (a): the remaining 93% are validated by nothing
+        #: but their console interface, and this test records that rather than
+        #: hiding it. The floor only moves up — typing a route is the only way to
+        #: raise it, and dropping one is the only way to trip it.
+        assert len(typed) >= 85, (
             f"{len(typed)} of {len(operations)} operations declare a response schema; this was "
-            "81 — a typed route lost its model"
+            "87 — a typed route lost its model"
         )
 
 

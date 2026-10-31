@@ -74,6 +74,29 @@ def test_upsert_updates_existing(session):
     assert repo.count_assets() == 1
 
 
+def test_upsert_recovers_from_a_lost_insert_race(session):
+    """Two agents announcing the same new asset must not 500 on the unique index.
+
+    The get-or-create in ``upsert_asset`` is not atomic, so the loser of the race
+    hits ``ix_hardware_assets_asset_id``. It should adopt the winner's row and
+    carry on updating it — including its own state — rather than raise.
+    """
+    repo = HardwareRepository(session)
+    repo.upsert_asset(_state("srv-9", manufacturer="Dell"))
+    session.commit()
+
+    # Force the losing path directly: the row exists, but the caller believes it
+    # does not (exactly the state a concurrent INSERT leaves behind).
+    row = repo._insert_asset("srv-9")
+    assert row.asset_id == "srv-9"
+    assert repo.count_assets() == 1
+
+    updated = repo.upsert_asset(_state("srv-9", manufacturer="HPE"))
+    session.commit()
+    assert updated.manufacturer == "HPE"
+    assert repo.count_assets() == 1
+
+
 def test_list_assets_by_agent(session):
     repo = HardwareRepository(session)
     repo.upsert_asset(_state("a", agent_id="edge-1"))
