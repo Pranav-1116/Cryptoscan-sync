@@ -366,6 +366,26 @@ def _scale_curve_cell() -> str:
             "probes agreed")
 
 
+def _evidence_integrity_cell() -> str:
+    """The evidence tamper matrix, read from the drill's own artifact."""
+    document = _load_artifact("112-evidence-integrity.json")
+    if not document:
+        return "**not measured** — `scripts/evidence_integrity_drill.py` has not been run"
+    detected = int(document.get("attacks_detected") or 0)
+    total = int(document.get("attacks_total") or 0)
+    undetectable = int(document.get("attacks_undetectable_by_design") or 0)
+    missed = int(document.get("attacks_undetected") or 0)
+    enforcing = int(document.get("read_paths_enforcing") or 0)
+    points = int(document.get("read_paths_total") or 0)
+    cell = (f"**{detected} / {total}** tampering attacks detected, {enforcing}/{points} "
+            "enforcement points reject")
+    if undetectable:
+        cell += f", {undetectable} undetectable by design"
+    if missed:
+        cell += f", **{missed} MISSED**"
+    return cell
+
+
 def _job_contract_cell() -> str:
     """The job/worker contract, read from the drills' own artifact."""
     document = _load_artifact("111-job-contract.json")
@@ -456,6 +476,11 @@ def render_markdown(report: dict) -> str:
         "| `docs/bank-environment/108-scale-curve.md` | that a bank's real estate scores the "
         "same: the corpus is generated from this repository's own vocabulary, so it is a "
         "regression curve, not an accuracy estimate |"
+    )
+    add(
+        f"| Evidence tampering detected | {_evidence_integrity_cell()} "
+        "| `docs/bank-environment/112-evidence-integrity.md` | tamper *proof*: the scan manifest "
+        "is unsigned, so a full rewrite verifies PASS |"
     )
     add(
         f"| Job/worker contract properties | {_job_contract_cell()} "

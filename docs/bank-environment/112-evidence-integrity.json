@@ -1,0 +1,200 @@
+{
+  "schema": "cryptoscan.evidence-integrity/1",
+  "version": "evidence-integrity/1.0",
+  "generated_at": "2026-10-31T17:30:18.854879+00:00",
+  "records_per_scan": 6,
+  "attacks": [
+    {
+      "attack": "none",
+      "description": "control \u2014 nothing altered, the chain must read PASS",
+      "expected": "PASS",
+      "observed": "PASS",
+      "verdict": "CONTROL_OK",
+      "control": true,
+      "consumers": {
+        "verifier": "PASS",
+        "scan_verify_route": "PASS",
+        "twin": "PASS",
+        "pack": "PASS"
+      }
+    },
+    {
+      "attack": "payload_tamper",
+      "description": "the finding body is edited, hashes untouched",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verdict": "DETECTED",
+      "control": false,
+      "consumers": {
+        "verifier": "FAIL",
+        "scan_verify_route": "FAIL",
+        "twin": "FAIL",
+        "pack": "PASS"
+      }
+    },
+    {
+      "attack": "content_hash_rewrite",
+      "description": "the content hash is replaced to match a tampered body",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verdict": "DETECTED",
+      "control": false,
+      "consumers": {
+        "verifier": "FAIL",
+        "scan_verify_route": "FAIL",
+        "twin": "FAIL",
+        "pack": "FAIL"
+      }
+    },
+    {
+      "attack": "chain_link_rewrite",
+      "description": "a chain link is rewritten in place",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verdict": "DETECTED",
+      "control": false,
+      "consumers": {
+        "verifier": "FAIL",
+        "scan_verify_route": "FAIL",
+        "twin": "FAIL",
+        "pack": "FAIL"
+      }
+    },
+    {
+      "attack": "delete_middle",
+      "description": "a record is deleted from the middle",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verdict": "DETECTED",
+      "control": false,
+      "consumers": {
+        "verifier": "FAIL",
+        "scan_verify_route": "FAIL",
+        "twin": "FAIL",
+        "pack": "FAIL"
+      }
+    },
+    {
+      "attack": "delete_tail",
+      "description": "the last record is deleted",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verdict": "DETECTED",
+      "control": false,
+      "consumers": {
+        "verifier": "FAIL",
+        "scan_verify_route": "FAIL",
+        "twin": "FAIL",
+        "pack": "PASS"
+      }
+    },
+    {
+      "attack": "reorder",
+      "description": "two records swap positions",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verdict": "DETECTED",
+      "control": false,
+      "consumers": {
+        "verifier": "FAIL",
+        "scan_verify_route": "FAIL",
+        "twin": "FAIL",
+        "pack": "FAIL"
+      }
+    },
+    {
+      "attack": "append_forged",
+      "description": "a forged record is appended with a consistent link",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verdict": "DETECTED",
+      "control": false,
+      "consumers": {
+        "verifier": "FAIL",
+        "scan_verify_route": "FAIL",
+        "twin": "FAIL",
+        "pack": "PASS"
+      }
+    },
+    {
+      "attack": "manifest_absent",
+      "description": "the manifest anchor is removed",
+      "expected": "UNVERIFIABLE",
+      "observed": "UNVERIFIABLE",
+      "verdict": "DETECTED",
+      "control": false,
+      "consumers": {
+        "verifier": "UNVERIFIABLE",
+        "scan_verify_route": "UNVERIFIABLE",
+        "twin": "UNVERIFIED",
+        "pack": "PASS"
+      }
+    },
+    {
+      "attack": "delete_tail_and_rebuild_manifest",
+      "description": "the tail is deleted and the manifest rewritten to match",
+      "expected": "UNDETECTABLE_BY_DESIGN",
+      "observed": "PASS",
+      "verdict": "UNDETECTABLE",
+      "control": false,
+      "consumers": {
+        "verifier": "PASS",
+        "scan_verify_route": "PASS",
+        "twin": "PASS",
+        "pack": "PASS"
+      }
+    }
+  ],
+  "attacks_detected": 8,
+  "attacks_total": 9,
+  "attacks_undetectable_by_design": 1,
+  "attacks_undetected": 0,
+  "control_ok": true,
+  "read_paths": [
+    {
+      "path": "verifier",
+      "surface": "verify_stored_scan (export, audit, rescan, host-evidence)",
+      "clean": "PASS",
+      "payload_tamper": "FAIL",
+      "verdict": "DETECTED",
+      "enforcement_point": true,
+      "note": "the chain and manifest are recomputed from the stored payload"
+    },
+    {
+      "path": "scan_verify_route",
+      "surface": "GET /scans/{id}/verify",
+      "clean": "PASS",
+      "payload_tamper": "FAIL",
+      "verdict": "DETECTED",
+      "enforcement_point": true,
+      "note": "the same verifier behind the route"
+    },
+    {
+      "path": "twin",
+      "surface": "digital-twin snapshot",
+      "clean": "PASS",
+      "payload_tamper": "FAIL",
+      "verdict": "DETECTED",
+      "enforcement_point": true,
+      "note": "the twin reports chain status before projecting evidence as fact"
+    },
+    {
+      "path": "pack",
+      "surface": "build_evidence_pack",
+      "clean": "PASS",
+      "payload_tamper": "PASS",
+      "verdict": "UNDETECTED",
+      "enforcement_point": false,
+      "note": "the pack ships stored commitments; it is not an enforcement point on its own"
+    }
+  ],
+  "read_paths_enforcing": 3,
+  "read_paths_total": 3,
+  "complete": true,
+  "limits": [
+    "The scan manifest is an unsigned hash over record ids: it catches truncation only while the attacker does not rewrite it. Deleting a record and re-anchoring the manifest verifies PASS, so the anchor needs a signature or an off-site copy to survive an attacker with write access to the scans table.",
+    "No signing key and no off-site anchor: an attacker with write access to the whole scan (payload, content hashes, chain, manifest) can produce a self-consistent forgery that this scheme cannot distinguish from the original.",
+    "The pack carries the stored commitments, not the payload it claims they cover; it is a transport, not a verifier. Enforcement is `verify_stored_scan` at the route.",
+    "A tombstoned (soft-deleted) record stays in the chain by design, so retraction does not read as deletion \u2014 that is covered by the disposition path, not this one."
+  ]
+}

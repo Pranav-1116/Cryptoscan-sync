@@ -20,6 +20,7 @@ an action; nothing here applies, deploys or re-keys anything.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -78,6 +79,83 @@ def _split_endpoint(endpoint: str) -> tuple[str, str]:
         return host, port
     return endpoint, ""
 
+
+
+#: how many of the snapshot's scans are chain-verified per read. Verifying every
+#: scan of a 20k-row estate is not a read-path cost a console page should pay;
+#: the report says when it stopped, rather than implying it checked everything.
+EVIDENCE_INTEGRITY_SCANS = 200
+
+
+def _evidence_integrity(db: Session, rows: list[Any]) -> dict[str, Any]:
+    """Verify the evidence chain behind this snapshot before it is read as fact.
+
+    The whole point of the hash chain is that evidence corruption does not
+    become twin corruption. Verification already existed — at ingest, at pack
+    export, at the audit/rescan/host-evidence reads — but not on this path, so
+    a finding whose stored payload no longer matched its committed hash was
+    projected into the twin as though nothing had happened.
+
+    Each distinct scan behind the snapshot is verified with the same
+    ``verify_stored_scan`` the export uses, so a twin answer can never disagree
+    with an export verdict. Bounded, and honest about the bound.
+    """
+    from db.models.scan import Scan
+    from evidence.verification.stored_scan import verify_stored_scan
+
+    scan_ids = sorted({str(row.scan_id) for row in rows if getattr(row, "scan_id", None)})
+    checked = scan_ids[:EVIDENCE_INTEGRITY_SCANS]
+    failed: list[dict[str, Any]] = []
+    unverifiable: list[str] = []
+    passed = 0
+    for scan_id in checked:
+        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        if scan is None:
+            unverifiable.append(scan_id)
+            continue
+        records = (
+            db.query(EvidenceRecord)
+            .filter(EvidenceRecord.scan_id == scan_id)
+            .order_by(EvidenceRecord.chain_position)
+            .all()
+        )
+        verdict = verify_stored_scan(scan, records)
+        if verdict["result"] == "PASS":
+            passed += 1
+        elif verdict["result"] == "FAIL":
+            failed.append({"scan_id": scan_id, "errors": verdict["errors"][:10],
+                           "records": verdict["records"]})
+        else:
+            unverifiable.append(scan_id)
+
+    if failed:
+        result = "FAIL"
+    elif passed and not unverifiable and len(checked) == len(scan_ids):
+        result = "PASS"
+    elif passed:
+        # Some scans verified, some could not be, or the cap stopped the check:
+        # PARTIAL is the honest answer, never PASS with a footnote.
+        result = "PARTIAL"
+    else:
+        result = "UNVERIFIED"
+    return {
+        "result": result,
+        "scans_total": len(scan_ids),
+        "scans_checked": len(checked),
+        "scans_passed": passed,
+        "scans_failed": len(failed),
+        "scans_unverifiable": len(unverifiable),
+        "failures": failed[:20],
+        "unverifiable_scan_ids": unverifiable[:20],
+        "checked_limit": EVIDENCE_INTEGRITY_SCANS,
+        "truncated": len(scan_ids) > len(checked),
+        "note": ("Evidence is verified against the hash chain and the scan manifest "
+                 "before the twin reads it. FAIL means stored evidence no longer matches "
+                 "the commitment it was written with: the twin's evidence-derived numbers "
+                 "are not trustworthy until it is reconciled. UNVERIFIED means the scans "
+                 "carry no manifest or were never completed, so there was nothing to "
+                 "verify against — an absence of proof, not a proof of integrity."),
+    }
 
 def _snapshot(db: Session) -> dict:
     """Adapt ORM rows into the engine's plain-dict estate snapshot.
@@ -442,6 +520,7 @@ def _snapshot(db: Session) -> dict:
             for sv in system_vendors
         ],
         "evidence": evidence,
+        "evidence_integrity": _evidence_integrity(db, evidence_rows),
         "evidence_algorithm_counts": evidence_algorithm_counts,
         "dependencies": dependencies,
         "dependency_source": dependency_source,
@@ -495,6 +574,7 @@ def digital_twin_overview(user: str = Depends(get_current_user),
         # evidence list carries one row per linked system for per-system
         # attribution, and a record linked to two systems is still one record.
         "evidence_records": len({e.get("id") for e in snapshot["evidence"]}),
+        "evidence_integrity": snapshot.get("evidence_integrity"),
         "dependency_edges": len(snapshot["dependencies"]),
         "dependency_source": snapshot.get("dependency_source"),
         "network_endpoints": len(endpoints),

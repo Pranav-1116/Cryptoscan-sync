@@ -32,6 +32,12 @@
 > the properties that are *not* provided (retry after a handler failure,
 > interruption of a running stage, cluster-wide admission) stated in the report
 > rather than omitted.
+>
+> **Evidence integrity, attacked** — [guide 112](112-evidence-integrity.md) applies nine
+> tampering attacks to a real stored scan: **8 detected, 1 undetectable by design**
+> (the scan manifest is unsigned, so an attacker who rewrites payload, chain *and*
+> manifest verifies PASS). The Twin now verifies the evidence chain before projecting
+> it — that was the path from evidence corruption to Twin corruption, and it was open.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

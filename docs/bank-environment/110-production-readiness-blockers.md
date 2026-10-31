@@ -23,7 +23,7 @@ rather than an opinion.
 | 1 | End-to-end production qualification | **BLOCKED** | 1,255 operations executed on uvicorn + PostgreSQL (guide 100 §5b); 20/20 collector families have code (105) | no data-path test per collector: collector → agent → API → evidence → DB → Twin → BOM → UI |
 | 2 | Worker / job architecture | **PARTIAL** | `111-job-contract.md`: 9/9 properties proven by drill | no retry-after-failure or backoff; cancellation is a checkpoint boundary; concurrency is per process |
 | 3 | PostgreSQL production qualification | **PARTIAL** | 125 migrations at tip, applied and swept on real PG; PITR/backup/failover drills exist as scripts | no partitioning, no 1M-row or concurrent-write measurement, drills not executed here |
-| 4 | Evidence durability | **PARTIAL** | content hash + append-only chain hash, verified at ingest, at pack export and on datalake/stream reads | nothing enforces chain verification when the Twin or a BOM reads rows; no corruption-injection test |
+| 4 | Evidence durability | **PARTIAL** | guide 112: 8 of 9 tampering attacks detected on a real stored scan; the Twin now verifies before projecting; export/audit/rescan/host-evidence already enforced | the scan manifest is unsigned — a full rewrite (payload + chain + manifest) verifies PASS; that needs a signing key or an off-site anchor |
 | 5 | Complete authorization model | **PARTIAL** | 1,225 operations in the authorization register; approvals carry a typed contract | per-collector target authority is not uniform; the five questions are answered by different mechanisms per family |
 | 6 | Performance at bank scale | **BLOCKED** | 150 banks / 2,161 assets / 2,782 edges, ingest 0.029 s (108) | 100k assets, 1M observations, millions of relationships, continuous ingestion: not measured |
 | 7 | Observability | **PARTIAL** | `/metrics` (dependency, scanner-family, scan-duration), healthz/readyz, Prometheus alerts, Grafana dashboards | no tracing; no evidence-health, coverage-health or agent-health metric; alerts not exercised |
@@ -113,7 +113,7 @@ lock-wait measurement on the hot tables, pool exhaustion behaviour, a 1M-row
 evidence table with the retention job, and the PITR/failover drills executed on
 a host with the output attached.
 
-## 4. Evidence durability — **PARTIAL**
+## 4. Evidence durability — **PARTIAL** (moved this pass)
 
 **Proven.** Evidence rows carry `content_hash`, `chain_position`, `chain_hash`
 and `previous_hash`; the chain is computed at ingest and verified at chain
@@ -124,17 +124,54 @@ gapless and the chain is verifiable from genesis — the comment in the pipeline
 explains why the obvious alternative (a unique index) would abort a load
 mid-chain.
 
-**Not proven.** That a *tampered or corrupted row* is refused on every read path.
-The Twin, the BOM projections and the graph facts read evidence columns directly;
-none of them verifies the chain. So the failure the review describes — evidence
-corruption propagating into Twin/BOM/intelligence — is prevented **at write and
-export time**, not at every read. There is also no corruption-injection test: no
-drill flips a stored hash and shows the system refusing to project from it.
+**Proven by attack, now** (guide 112, `scripts/evidence_integrity_drill.py`).
+Nine tampering attacks against a real stored scan, each applied to a fresh
+database and graded by execution:
 
-**What closes it.** A `tamper` drill (flip a chain row → show
-`verify_chain` returns False → show the Twin/BOM path refuses or marks the
-evidence unverified) plus a verification report on the read paths. This is the
-cheapest of the eight to close and the most consequential.
+| Attack | Verifier | Verdict |
+|---|---|---|
+| control — nothing altered | PASS | CONTROL_OK |
+| payload tamper (body edited, hashes untouched) | FAIL | DETECTED |
+| content hash rewritten to match a tampered body | FAIL | DETECTED |
+| chain link rewritten in place | FAIL | DETECTED |
+| record deleted from the middle | FAIL | DETECTED |
+| **last record deleted** | FAIL | DETECTED |
+| two records reordered | FAIL | DETECTED |
+| forged record appended with a consistent link | FAIL | DETECTED |
+| manifest anchor removed | UNVERIFIABLE | DETECTED |
+| tail deleted **and the manifest rewritten** | PASS | UNDETECTABLE by design |
+
+Two details from that table are the reason it was worth building:
+
+- **Deleting the tail is caught by the manifest, not the chain.** The surviving
+  prefix still recomputes correctly, so a chain-only verifier would pass it; the
+  scan manifest (a hash over the record ids) is what notices. The drill asserts
+  both facts, so the test cannot be satisfied by the wrong mechanism.
+- **The manifest is unsigned, so an attacker who can rewrite it wins.** That row
+  is graded `UNDETECTABLE` and listed in the report's limits, not quietly
+  dropped: the missing control is a signature (or an off-site copy of the
+  anchor), and until it exists "tamper-proof" is a claim this build cannot make.
+
+**Proven by execution: the Twin now refuses tampered evidence.** Verification
+existed at ingest, export, audit, rescan and host-evidence, but the twin
+projected evidence rows into its snapshot **without checking them** — the exact
+path from evidence corruption to Twin corruption. `_evidence_integrity` in
+`api/routers/digital_twin.py` now verifies each scan behind the snapshot with
+the same `verify_stored_scan` the export uses, bounded (200 scans per read),
+and reports `PASS` / `PARTIAL` / `FAIL` / `UNVERIFIED` with the failing scan ids
+in the payload. Three of the four consumers are enforcement points and all
+three reject a payload tamper; the fourth (`build_evidence_pack`) ships the
+stored commitments and is a transport, not a verifier.
+
+**Still open.** The unsigned anchor (above). The pack is not an enforcement
+point by design. The store is SQLite written by the harness, so PostgreSQL
+constraint behaviour under the same attacks is not shown. And nothing here
+covers a reader outside these four paths.
+
+**What closes it.** Sign the scan manifest with a key the API does not hold at
+write time (an HSM-backed or governance-key signature, verified on read), and
+keep an off-site copy of the anchor so a rewrite of the scans table is
+detectable. That moves the last row from `UNDETECTABLE` to `DETECTED`.
 
 ## 5. Complete authorization model — **PARTIAL**
 
@@ -228,9 +265,9 @@ either given a screen or explicitly declared API-only.
 
 ## The order I would take them
 
-1. **Evidence durability (#4)** — the cheapest to close and the one the review
-   calls the source of truth. A tamper drill plus read-path verification turns a
-   `PARTIAL` into a `PROVEN` and protects every layer above it.
+1. ~~**Evidence durability (#4)**~~ — **done this pass** (guide 112): twin
+   enforcement added, nine attacks executed, the unsigned-manifest boundary
+   stated rather than hidden. The residual is one signature, not an audit.
 2. **Worker retry (#2)** — one gap inside an otherwise proven contract, and it is
    the difference between "a transient failure is a failed job" and "a transient
    failure is retried".
