@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-29:
-**1120 paths, 1234 operations** across 114 tagged groups.
+Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-31:
+**1134 paths, 1248 operations** across 114 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 Current [execution, SSH and replay contracts](execution-and-replay.md) describe
@@ -739,8 +739,17 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/estate/evidence/changes/detect` | Estate Changes Detect |
 | `GET` | `/api/v1/estate/evidence/changes/{identifier}` | Estate Change |
 | `POST` | `/api/v1/estate/evidence/changes/{identifier}/acknowledge` | Estate Change Acknowledge |
+| `POST` | `/api/v1/estate/evidence/collect` | Collect Now |
+| `GET` | `/api/v1/estate/evidence/collect/capabilities` | Collect Capabilities |
 | `GET` | `/api/v1/estate/evidence/coverage` | Estate Coverage |
 | `POST` | `/api/v1/estate/evidence/discover` | Estate Discover |
+| `GET` | `/api/v1/estate/evidence/discovery/bom-maturity` | Bom Maturity Matrix |
+| `GET` | `/api/v1/estate/evidence/discovery/maturity` | Maturity |
+| `GET` | `/api/v1/estate/evidence/discovery/network-protocols` | Network Protocol Matrix |
+| `GET` | `/api/v1/estate/evidence/discovery/runtime-depth` | Runtime Depth Matrix |
+| `GET` | `/api/v1/estate/evidence/discovery/surfaces` | Estate Discovery Surfaces |
+| `GET` | `/api/v1/estate/evidence/discovery/surfaces/{surface_id}` | Estate Discovery Surface |
+| `GET` | `/api/v1/estate/evidence/discovery/windows-collector` | Windows Matrix |
 | `GET` | `/api/v1/estate/evidence/drift` | Estate Drift View |
 | `GET` | `/api/v1/estate/evidence/evidence/records` | Estate Evidence Records |
 | `GET` | `/api/v1/estate/evidence/evidence/records/{evidence_id}` | Estate Evidence Record |
@@ -767,6 +776,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/estate/evidence/twin` | Estate Twin Overview |
 | `GET` | `/api/v1/estate/evidence/twin/algorithm/{name}` | Estate Twin Algorithm |
 | `GET` | `/api/v1/estate/evidence/twin/assets/{ref}` | Estate Twin Asset |
+| `GET` | `/api/v1/estate/evidence/twin/chain` | Estate Twin Chain Read |
 | `GET` | `/api/v1/estate/evidence/twin/compare` | Estate Twin Compare |
 | `GET` | `/api/v1/estate/evidence/twin/completeness` | Estate Twin Completeness |
 | `GET` | `/api/v1/estate/evidence/twin/conflicts` | Estate Twin Conflicts |
@@ -776,6 +786,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/estate/evidence/twin/graph/traversal` | Estate Twin Graph Traversal |
 | `POST` | `/api/v1/estate/evidence/twin/graph/verify` | Estate Twin Graph Verify |
 | `POST` | `/api/v1/estate/evidence/twin/impact` | Estate Twin Impact |
+| `POST` | `/api/v1/estate/evidence/twin/impact-as-of` | Estate Twin Impact As Of |
 | `GET` | `/api/v1/estate/evidence/twin/intel` | Estate Twin Intel |
 | `GET` | `/api/v1/estate/evidence/twin/lifecycle` | Estate Twin Lifecycle |
 | `GET` | `/api/v1/estate/evidence/twin/placement` | Estate Twin Placement |
@@ -784,6 +795,8 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/estate/evidence/twin/remediation/reconcile` | Estate Twin Reconcile |
 | `GET` | `/api/v1/estate/evidence/twin/search` | Estate Twin Search |
 | `POST` | `/api/v1/estate/evidence/twin/simulate` | Estate Twin Simulate |
+| `POST` | `/api/v1/estate/evidence/twin/simulate-as-of` | Estate Twin Simulate As Of |
+| `GET` | `/api/v1/estate/evidence/twin/simulation-scenarios` | Estate Twin Simulation Scenarios |
 | `GET` | `/api/v1/estate/evidence/twin/simulations` | Estate Twin Simulations |
 | `GET` | `/api/v1/estate/evidence/twin/simulations/{identifier}` | Estate Twin Simulation |
 | `GET` | `/api/v1/estate/evidence/twin/snapshot` | Estate Twin Snapshot |
@@ -1275,6 +1288,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/ops/capacity/forecast` | Capacity Forecast |
 | `GET` | `/api/v1/ops/evidence/chain-status` | Evidence Chain Status |
 | `GET` | `/api/v1/ops/metrics` | Prometheus Metrics |
+| `GET` | `/api/v1/ops/signing` | Signing Status |
 | `GET` | `/api/v1/ops/slo` | Slo Status |
 | `GET` | `/api/v1/ops/traces` | Recent Traces |
 
