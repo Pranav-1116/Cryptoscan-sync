@@ -104,7 +104,7 @@ The 2025–2026 guidance is unusually concrete:
 
 | What the guidance asks a bank to show | How the bank does it today | How the product does it |
 |---|---|---|
-| Complete cryptographic inventory | Spread across Venafi (certs), HSM consoles, cloud consoles, spreadsheets | One normalized CBOM: source + network + containers + cloud + HSM + vendor/supply-chain → CycloneDX 1.5/1.7 output, 68 plugin families |
+| Complete cryptographic inventory | Spread across Venafi (certs), HSM consoles, cloud consoles, spreadsheets | One normalized CBOM projection over source + network + containers + cloud + HSM + vendor/supply-chain → CycloneDX 1.5/1.7 output, 68 plugin families. Coverage is per surface and **not** complete: each collector states what it does not read in [CAPABILITY-MATURITY.md](../CAPABILITY-MATURITY.md#capability-boundaries--five-things-this-build-does-not-do) |
 | Evidence for every finding | Screenshots + manual exports | **SHA-256 evidence chain**, tamper-evident packs/transfers, chain verification built in |
 | "Which certs/keys are quantum-vulnerable?" | Vendor-by-vendor manual review | Versioned, evidence-backed PQC DB (§22) — `PQC_SUPPORTED/HYBRID/PARTIALLY/ROADMAP/NOT_SUPPORTED/UNKNOWN`, never inferred from product names |
 | "When must we migrate and what's priority?" | Analyst judgment | Lifecycle DB + `migration_priority()`: legacy + PQC-required + EOS → HIGH; live PQC monitor with migration impact scoring |
