@@ -37,6 +37,14 @@ RUN set -eux; \
         | sort -u > "$SITE_DIR/cryptoscan.pth"; \
     cat "$SITE_DIR/cryptoscan.pth"
 
+# Precompute the labeled-calibration report the API serves. Without it the first
+# request for GET /api/v1/findings/detectors/labeled-calibration scans all 842
+# labelled corpus files on a worker thread (6.9-10 s measured cold, once per
+# process). The build fails loudly if the corpus cannot be scored, which is the
+# point: an image whose calibration is unknown should not ship silently.
+RUN python scripts/build_labeled_calibration.py \
+        --out /app/data/accuracy/labeled-calibration.json
+
 # Scanner workspace: the live/universal scanners clone/extract scan targets
 # here. It must exist and be writable by the unprivileged user, and it is an
 # allow-listed source root for the target-validation (SSRF/traversal) guard.

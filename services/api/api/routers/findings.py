@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from functools import lru_cache
@@ -327,20 +330,107 @@ def detector_scorecards(
     return result
 
 
+REPO_ROOT = Path(__file__).resolve().parents[4]
+
+#: Where the precomputed calibration lives. Overridable so an image build can put
+#: it anywhere and a test can point at its own copy.
+CALIBRATION_ARTIFACT_ENV = "ACCURACY_LABELED_CALIBRATION"
+DEFAULT_CALIBRATION_ARTIFACT = REPO_ROOT / "data" / "accuracy" / "labeled-calibration.json"
+
+logger = logging.getLogger(__name__)
+
+
+def _calibration_artifact_path() -> Path:
+    override = os.environ.get(CALIBRATION_ARTIFACT_ENV)
+    return Path(override) if override else DEFAULT_CALIBRATION_ARTIFACT
+
+
+def _load_calibration_artifact(path: Path) -> dict | None:
+    """The stored report, or None when it is absent, unreadable or stale.
+
+    Staleness is decided by a fingerprint over the corpus definition and the
+    benchmark that scores it. A report that describes a corpus this tree no
+    longer ships is worse than no report: it reads as a current measurement.
+    """
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        logger.warning("labeled_calibration_artifact_unreadable", extra={"path": str(path), "error_type": type(error).__name__})
+        return None
+    expected = _calibration_fingerprint()
+    if payload.get("input_fingerprint") != expected:
+        logger.info("labeled_calibration_artifact_stale", extra={"path": str(path)})
+        return None
+    return payload
+
+
+def _calibration_fingerprint() -> str:
+    """SHA-256 over the corpus definition and the benchmark (`build_labeled_calibration`)."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    for relative in ("services/scanner/tests/accuracy/corpus.py", "scripts/accuracy_benchmark.py"):
+        digest.update(relative.encode())
+        source = REPO_ROOT / relative
+        digest.update(source.read_bytes() if source.exists() else b"<missing>")
+    return digest.hexdigest()
+
+
+def _write_calibration_artifact(path: Path, payload: dict) -> None:
+    """Best effort: a read-only image still serves, it just recomputes next time."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(path.suffix + ".tmp")
+        temporary.write_text(json.dumps(payload))
+        temporary.replace(path)
+    except OSError as error:
+        logger.warning("labeled_calibration_artifact_not_written", extra={"path": str(path), "error_type": type(error).__name__})
+
+
 @lru_cache(maxsize=1)
 def _corpus_benchmark() -> tuple:
-    """Run the labeled accuracy corpus once per process (hermetic, deterministic)."""
+    """The labeled accuracy report: from the artifact, or computed once per process.
+
+    Computing it means scanning all 842 labelled files with the production
+    scanner — 2 s here, 6.9–10 s measured against a live server on a cold process
+    — on the request thread. `scripts/build_labeled_calibration.py` writes the
+    same report ahead of time; this reads it, and only falls back to computing
+    (then stores the result for the other workers) when there is none.
+    """
+    path = _calibration_artifact_path()
+    stored = _load_calibration_artifact(path)
+    if stored is not None:
+        return (stored,)
+
     import importlib.util
     import sys
-    from pathlib import Path
 
-    bench = Path(__file__).resolve().parents[4] / "scripts" / "accuracy_benchmark.py"
+    bench = REPO_ROOT / "scripts" / "accuracy_benchmark.py"
     spec = importlib.util.spec_from_file_location("accuracy_benchmark_runtime", bench)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["accuracy_benchmark_runtime"] = mod
     spec.loader.exec_module(mod)
     report = mod.run()
-    return (report,)
+    payload = {
+        "schema": "cryptoscan.labeled-calibration/1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "input_fingerprint": _calibration_fingerprint(),
+        "corpus_overall": report.get("overall"),
+        "cases": [
+            {
+                "language": case.get("language"),
+                "file": case.get("file"),
+                "category": case.get("category"),
+                "expected": case.get("expected") or [],
+                "reports": case.get("reports") or [],
+            }
+            for case in (report.get("cases") or [])
+        ],
+    }
+    _write_calibration_artifact(path, payload)
+    return (payload,)
 
 
 @router.get("/findings/detectors/labeled-calibration")
@@ -365,7 +455,12 @@ def labeled_detector_calibration(
 
     report = _corpus_benchmark()[0]
     calibration = labeled_detector_metrics(report.get("cases") or [])
-    calibration["corpus_overall"] = report.get("overall")
+    calibration["corpus_overall"] = report.get("corpus_overall") or report.get("overall")
+    calibration["report"] = {
+        "generated_at": report.get("generated_at"),
+        "cases": len(report.get("cases") or []),
+        "source": "precomputed" if report.get("schema") else "computed",
+    }
     return calibration
 
 
