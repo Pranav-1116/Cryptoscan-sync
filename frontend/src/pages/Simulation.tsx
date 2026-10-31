@@ -312,6 +312,12 @@ export default function Simulation() {
             failure</b> to see what a stopped asset reaches, wave by wave. Preview first; every run is
             measured against one projection id and stored quarantined.
           </p>
+          <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--faint)", maxWidth: 700 }}>
+            These are ten fixed scenarios and three cascades, not a general simulation engine: trust
+            compromise and operator-authored scenarios have no model in this build. The per-scenario
+            status — and what each one cannot see — is under{" "}
+            <Link to="/collector-depth">Collector depth → Simulation</Link>.
+          </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           {catalog && <LiveBadge source={catalog.source} label={catalog.source === "live" ? "LIVE TWIN" : "BACKEND OFFLINE"} />}
