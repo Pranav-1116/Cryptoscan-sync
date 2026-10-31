@@ -44,6 +44,47 @@ class LinkBody(BaseModel):
     role: str | None = "PRIMARY"
 
 
+class BusinessProcessOut(BaseModel):
+    """A business process row, as `to_dict()` renders it, plus its linked systems."""
+
+    id: str
+    name: str
+    description: str | None = None
+    process_type: str | None = None
+    revenue_daily: float | None = None
+    customer_count: int | None = None
+    sla_uptime: float | None = None
+    executive_sponsor: str | None = None
+    data_classifications: list[str] | None = None
+    extra: dict[str, Any] | None = None
+    tenant_id: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    system_ids: list[str] = []
+
+
+class BusinessProcessesOut(BaseModel):
+    processes: list[BusinessProcessOut]
+
+
+class BusinessOwnerOut(BaseModel):
+    """A business owner row, as `to_dict()` renders it."""
+
+    id: str
+    name: str
+    email: str | None = None
+    role: str | None = None
+    department: str | None = None
+    escalation_contact: str | None = None
+    tenant_id: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+
+
+class BusinessOwnersOut(BaseModel):
+    owners: list[BusinessOwnerOut]
+
+
 class SystemBusinessProcessOut(BaseModel):
     """The link row, as `to_dict()` renders it."""
 
@@ -287,7 +328,7 @@ def assign_vendor_ownership(
     }
 
 
-@router.get("/business/processes")
+@router.get("/business/processes", response_model=BusinessProcessesOut)
 def list_processes(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     intel = IntelligenceRepository(db)
     rows = []
@@ -390,7 +431,7 @@ def business_impact_by_algorithm(
     }
 
 
-@router.post("/business/processes")
+@router.post("/business/processes", response_model=BusinessProcessOut)
 def create_process(body: ProcessCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     return IntelligenceRepository(db).create_process(**body.model_dump()).to_dict()
 
@@ -415,12 +456,12 @@ def link_process(
     return IntelligenceRepository(db).link_process(body.system_id, process_id, body.role).to_dict()
 
 
-@router.get("/business/owners")
+@router.get("/business/owners", response_model=BusinessOwnersOut)
 def list_owners(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     return {"owners": [row.to_dict() for row in IntelligenceRepository(db).list_owners()]}
 
 
-@router.post("/business/owners")
+@router.post("/business/owners", response_model=BusinessOwnerOut)
 def create_owner(body: OwnerCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     return IntelligenceRepository(db).create_owner(**body.model_dump()).to_dict()
 

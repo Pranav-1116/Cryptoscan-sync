@@ -1,0 +1,1476 @@
+{
+  "schema": "cryptoscan.authenticated-only-writes/1",
+  "why": "Every write operation behind the session gate with no role requirement. Regenerate with `python scripts/auth_write_inventory.py --write` after a deliberate decision; the test fails when this list and the application disagree.",
+  "operations": [
+    {
+      "method": "POST",
+      "path": "/api/v1/anomaly/analyze",
+      "reason": "operator surface: anomaly review"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/adapters",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/assurance/adapters/{identifier}",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/adapters/{identifier}/qualifications",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/evidence-blobs",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/findings/{identifier}/assessments",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/assignments",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/assignments/{identifier}/acknowledge",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/assignments/{identifier}/exercises",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/assignments/{identifier}/review-exercise",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/engagements",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/engagements/{identifier}/approve",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/engagements/{identifier}/reports",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/engagements/{identifier}/withdraw",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/findings/{identifier}/approve",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/findings/{identifier}/plan",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/findings/{identifier}/report-complete",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/pilots",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/assurance/launch/pilots/{identifier}",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/pilots/{identifier}/accept",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/launch/pilots/{identifier}/technical-review",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/redis-measurements/{identifier}/review",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/redis-objectives",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/assurance/redis-objectives/{identifier}",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/redis-objectives/{identifier}/measurements",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/registers",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/assurance/registers/{identifier}",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/assurance/registers/{identifier}/observations/{target_id}",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/regressions/{identifier}/results",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/relationships",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/relationships/{identifier}/approve",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/remediation-changes",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/remediation-changes/{identifier}/approve",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/remediation-changes/{identifier}/report-complete",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/remediation-changes/{identifier}/revoke",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/remediation-changes/{identifier}/verify",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/remediation-tasks",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/samples",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/samples/{identifier}/approve",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/samples/{identifier}/regressions",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/samples/{identifier}/repeat",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/samples/{identifier}/reviews",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/signers",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/assurance/signers/{identifier}",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/supplier-evidence",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/supplier-evidence/{identifier}/approve",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/assurance/supplier-evidence/{identifier}/reject",
+      "reason": "operator surface: assurance scope, approvals and evidence intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout",
+      "reason": "self-service or session lifecycle: the caller acts on their own account"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/auth/me",
+      "reason": "self-service or session lifecycle: the caller acts on their own account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/me/password",
+      "reason": "self-service or session lifecycle: the caller acts on their own account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/me/sessions/revoke",
+      "reason": "self-service or session lifecycle: the caller acts on their own account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/disable",
+      "reason": "self-service or session lifecycle: the caller acts on their own account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/enable",
+      "reason": "self-service or session lifecycle: the caller acts on their own account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/mfa/enroll",
+      "reason": "self-service or session lifecycle: the caller acts on their own account"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automation/blast-radius",
+      "reason": "operator surface: automation rules and runners"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automation/health/platform",
+      "reason": "operator surface: automation rules and runners"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automation/risk/recalculate",
+      "reason": "operator surface: automation rules and runners"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automation/schedule",
+      "reason": "operator surface: automation rules and runners"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/automation/select-scanners",
+      "reason": "operator surface: automation rules and runners"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/banking/fips/registry",
+      "reason": "operator surface: group entity registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/banking/group/entities",
+      "reason": "operator surface: group entity registry"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/banking/group/entities/{code}",
+      "reason": "operator surface: group entity registry"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/banking/group/systems/{system_id}/entity",
+      "reason": "operator surface: group entity registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/banking/hsm/parse",
+      "reason": "operator surface: group entity registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/banking/iso20022/parse",
+      "reason": "operator surface: group entity registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/banking/mainframe/analyze",
+      "reason": "operator surface: group entity registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/banking/mainframe/ingest",
+      "reason": "operator surface: group entity registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/business/owners",
+      "reason": "operator surface: business process and owner registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/business/processes",
+      "reason": "operator surface: business process and owner registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/business/processes/{process_id}/systems",
+      "reason": "operator surface: business process and owner registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/assess",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/custom",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/diff",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/legacy-assets/{asset_id}/assign",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/nbom",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/nbom/cascade",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/scan-uncovered",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/system/{system_id}/mixed-review",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/system/{system_id}/mixed-review/approve",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/validate",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/verify",
+      "reason": "operator surface: CBOM assembly over estate data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/certificates/{cert_id}/revocation",
+      "reason": "operator surface: certificate estate writes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ci/gate",
+      "reason": "machine-signed: CI hook with its own credential"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cloud-scans",
+      "reason": "operator surface: cloud scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cloud-scans/",
+      "reason": "operator surface: cloud scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cloud/accounts",
+      "reason": "operator surface: cloud account inventory and scans"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cloud/accounts/{account_id}/inventory",
+      "reason": "operator surface: cloud account inventory and scans"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cloud/inventory",
+      "reason": "operator surface: cloud account inventory and scans"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cloud/orgs/discover",
+      "reason": "operator surface: cloud account inventory and scans"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cloud/orgs/scan",
+      "reason": "operator surface: cloud account inventory and scans"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cloud/scan",
+      "reason": "operator surface: cloud account inventory and scans"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/jobs",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/jobs/{identifier}/complete",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/jobs/{identifier}/handoff",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/jobs/{job_id}/cancel",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/jobs/{job_id}/enqueue",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/metadata-drift",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/jobs",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/jobs/{identifier}/cancel",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/jobs/{identifier}/handoff",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/jobs/{identifier}/intake",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/jobs/{identifier}/truth",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/jobs/{identifier}/truth/approve",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/targets",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/collection/oci/targets/{identifier}",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/targets/{identifier}/authorize",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/oci/targets/{identifier}/revoke",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/qualification/campaigns",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/qualification/campaigns/{identifier}/artifacts",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/qualification/campaigns/{identifier}/assignments",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/qualification/campaigns/{identifier}/freeze",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/qualification/campaigns/{identifier}/reviews",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/qualification/campaigns/{identifier}/withdraw",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/snapshots",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/targets",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/collection/targets/{identifier}",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/targets/{identifier}/authorize",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collection/targets/{identifier}/revoke",
+      "reason": "operator surface: collection targets, jobs and handoffs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/connectors/sdk/validate",
+      "reason": "operator surface: connector configuration"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/container-scans",
+      "reason": "operator surface: container scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/container-scans/",
+      "reason": "operator surface: container scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/container-scans/scan",
+      "reason": "operator surface: container scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/container/sbom",
+      "reason": "operator surface: container image inventory"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/container/scan",
+      "reason": "operator surface: container image inventory"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/control/agents/heartbeat",
+      "reason": "operator surface: control plane actions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/control/events/enqueue",
+      "reason": "operator surface: control plane actions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/control/safe-scan/evaluate",
+      "reason": "operator surface: control plane actions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ct-scans",
+      "reason": "operator surface: certificate transparency scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ct-scans/",
+      "reason": "operator surface: certificate transparency scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ct-scans/scan",
+      "reason": "operator surface: certificate transparency scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/datalake/verify/{batch_pk}",
+      "reason": "operator surface: datalake export"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/digital-twin/simulate",
+      "reason": "operator surface: twin scenario runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/digital-twin/snapshot",
+      "reason": "operator surface: twin scenario runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/enterprise/compliance/evaluate",
+      "reason": "operator surface: enterprise inventory"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/enterprise/integrations/siem/export",
+      "reason": "operator surface: enterprise inventory"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/campaigns",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/boms/anchor",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/boms/anchor/export",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/boms/anchor/verify",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/changes/detect",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/changes/{identifier}/acknowledge",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/discover",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/scan",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/schedules",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/estate/evidence/schedules/{identifier}",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/estate/evidence/schedules/{identifier}",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/simulation/plan",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/simulation/run",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/tick",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/graph/load",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/graph/verify",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/impact",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/impact-as-of",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/remediate",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/remediation/reconcile",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/simulate",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/simulate-as-of",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/snapshots",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/evidence-pack/verify",
+      "reason": "operator surface: evidence pack assembly"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/exceptions",
+      "reason": "operator surface: exception workflow (tenant-scoped by the request)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/exceptions/expire-due",
+      "reason": "operator surface: exception workflow (tenant-scoped by the request)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/exceptions/{exception_id}/approve",
+      "reason": "operator surface: exception workflow (tenant-scoped by the request)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/exceptions/{exception_id}/reject",
+      "reason": "operator surface: exception workflow (tenant-scoped by the request)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/exceptions/{exception_id}/review",
+      "reason": "operator surface: exception workflow (tenant-scoped by the request)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/exceptions/{exception_id}/revoke",
+      "reason": "operator surface: exception workflow (tenant-scoped by the request)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/governance/requests",
+      "reason": "operator surface: governance records"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/graph/edges/adopt",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/graph/hardware-links",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/graph/hardware-links/{asset_id}/{hardware_asset_id}",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/graph/migration-plan",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/graph/simulate",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/graph/snapshot",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/graph/sync",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/graph/vendor-edges",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/graph/vendor-edges/{parent_vendor_id}/{child_vendor_id}",
+      "reason": "operator surface: graph curation of the estate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/host-evidence/approvals",
+      "reason": "operator surface: explicit approval -> imported snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/host-evidence/approvals/{approval_id}/associations",
+      "reason": "operator surface: explicit approval -> imported snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/host-evidence/approvals/{approval_id}/associations/{identifier}/retract",
+      "reason": "operator surface: explicit approval -> imported snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/host-evidence/approvals/{approval_id}/associations/{identifier}/review",
+      "reason": "operator surface: explicit approval -> imported snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/host-evidence/approvals/{approval_id}/intake",
+      "reason": "operator surface: explicit approval -> imported snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/hsm-scans",
+      "reason": "operator surface: HSM scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/hsm-scans/",
+      "reason": "operator surface: HSM scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/hsm-scans/scan",
+      "reason": "operator surface: HSM scan runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ingestion/live/compact",
+      "reason": "machine-signed: collector ingestion with its own credential"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ingestion/observations",
+      "reason": "machine-signed: collector ingestion with its own credential"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/jobs/{job_id}/retry",
+      "reason": "operator surface: background job lifecycle"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/marketplace/plugins/{plugin_pk}/evaluate",
+      "reason": "operator surface: marketplace catalogue actions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/from-scan",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/migrations/tasks/{task_id}",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/tasks/{task_id}/complete",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/tasks/{task_id}/rollback",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/tasks/{task_id}/start",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/migrations/{project_id}",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/{project_id}/dependencies/auto",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/{project_id}/execute/advance",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/{project_id}/milestones",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/{project_id}/sync",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/{project_id}/tasks",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/migrations/{project_id}/tasks/{task_id}/dependencies",
+      "reason": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network-scans",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network-scans/",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/alerts/dispatch",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/cloud-correlate",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-correlate",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-estate-risk",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-evidence/anchor/verify",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-nbom",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-observe",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-passive",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-path",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-probe",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-risk",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/network/crypto-scope",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-scope/import",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/crypto-scope/validate",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/device-inventory",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/discover",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/network/inventory",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/inventory/configuration/drift",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/inventory/discover",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/inventory/topology/validate",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/inventory/validate",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/ipsec-observe",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/kubernetes-correlate",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/message-layer-observe",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/metrics",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/run-due",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/scan",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/scan-path",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/scan/drift",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/ssh-scan",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/network/targets",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ot/metrics",
+      "reason": "operator surface: OT/ICS capture analysis and ingestion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ot/safety/authorize",
+      "reason": "operator surface: OT/ICS capture analysis and ingestion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ot/scan",
+      "reason": "operator surface: OT/ICS capture analysis and ingestion"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/quantum/mosca",
+      "reason": "operator surface: quantum readiness"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remediation/fix-branch",
+      "reason": "operator surface: remediation tasks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/remediation/tasks",
+      "reason": "operator surface: remediation tasks"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/report/verify",
+      "reason": "operator surface: report generation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/repos",
+      "reason": "operator surface: repository configuration"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/resource-monitoring/captures",
+      "reason": "operator surface: monitored resource targets"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/resource-monitoring/plans",
+      "reason": "operator surface: monitored resource targets"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/resource-monitoring/plans/{identifier}/approve",
+      "reason": "operator surface: monitored resource targets"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/resource-monitoring/plans/{identifier}/revoke",
+      "reason": "operator surface: monitored resource targets"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/resource-monitoring/traffic-proposals",
+      "reason": "operator surface: monitored resource targets"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/runtime/crypto-drift",
+      "reason": "operator surface: runtime depth inspection"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/runtime/crypto-events",
+      "reason": "operator surface: runtime depth inspection"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/runtime/crypto-risk",
+      "reason": "operator surface: runtime depth inspection"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/runtime/crypto-scope",
+      "reason": "operator surface: runtime depth inspection"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/runtime/crypto-scope/validate",
+      "reason": "operator surface: runtime depth inspection"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/runtime/network-correlation",
+      "reason": "operator surface: runtime depth inspection"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/saas/billing/checkout",
+      "reason": "tenant-scoped: authority is the tenant role, enforced in the handler"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/scans/runtime-findings",
+      "reason": "operator surface: scans are started by any signed-in operator"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sectors/compliance-map",
+      "reason": "operator surface: sector reference data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sectors/context",
+      "reason": "operator surface: sector reference data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/sectors/criticality",
+      "reason": "operator surface: sector reference data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/security/gate",
+      "reason": "operator surface: security posture and policy intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/security/intelligence/chain",
+      "reason": "operator surface: security posture and policy intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/security/intelligence/correlate",
+      "reason": "operator surface: security posture and policy intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/security/intelligence/identity/resolve",
+      "reason": "operator surface: security posture and policy intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/security/intelligence/schedule",
+      "reason": "operator surface: security posture and policy intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/security/intelligence/state",
+      "reason": "operator surface: security posture and policy intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/security/profiles/resolve",
+      "reason": "operator surface: security posture and policy intake"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/stream/ingest",
+      "reason": "operator surface: live stream subscriptions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/systems",
+      "reason": "operator surface: system registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/systems/import",
+      "reason": "operator surface: system registry"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/systems/{system_id}",
+      "reason": "operator surface: system registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/systems/{system_id}/agility/recalculate",
+      "reason": "operator surface: system registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/systems/{system_id}/agility/simulate",
+      "reason": "operator surface: system registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/systems/{system_id}/assets",
+      "reason": "operator surface: system registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/systems/{system_id}/dependencies",
+      "reason": "operator surface: system registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/systems/{system_id}/scan",
+      "reason": "operator surface: system registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/technology-bom/cascade",
+      "reason": "operator surface: BOM export schedules"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/technology-bom/export-schedules",
+      "reason": "operator surface: BOM export schedules"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/technology-bom/export-schedules/run-due",
+      "reason": "operator surface: BOM export schedules"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/technology-bom/export-schedules/{schedule_id}",
+      "reason": "operator surface: BOM export schedules"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/technology-bom/export-schedules/{schedule_id}",
+      "reason": "operator surface: BOM export schedules"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/technology-bom/export-schedules/{schedule_id}/run",
+      "reason": "operator surface: BOM export schedules"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/technology-bom/snapshot",
+      "reason": "operator surface: BOM export schedules"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/traffic-control/preflight-requests/{identifier}/captures",
+      "reason": "operator surface: traffic control policies"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/traffic-control/proposals/{identifier}/preflight-requests",
+      "reason": "operator surface: traffic control policies"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/traffic-control/validations",
+      "reason": "operator surface: traffic control policies"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/traffic-control/validations/{identifier}/approve",
+      "reason": "operator surface: traffic control policies"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/vendors",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/vendors/{vendor_id}",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/vendors/{vendor_id}/api-scan",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/vendors/{vendor_id}/cbom",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/vendors/{vendor_id}/docs",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/vendors/{vendor_id}/profile",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/vendors/{vendor_id}/profile",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/vendors/{vendor_id}/profile/evidence",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/vendors/{vendor_id}/profile/validate",
+      "reason": "operator surface: vendor and profile registry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/vendors/{vendor_id}/questionnaire",
+      "reason": "operator surface: vendor and profile registry"
+    }
+  ]
+}

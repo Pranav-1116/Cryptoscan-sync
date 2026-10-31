@@ -716,15 +716,17 @@ class TestResponseBodiesMatchTheDeclaredContract:
         ]
         typed = [item for item in operations if _declared_json(spec, item[1], item[0])]
         assert len(operations) >= 1200
-        #: Measured 87 of 1248 (7.0%) when the cloud-account inventory, the
-        #: backup family and the process/system link were given `response_model`.
-        #: The gap is §5's limit (a): the remaining 93% are validated by nothing
-        #: but their console interface, and this test records that rather than
-        #: hiding it. The floor only moves up — typing a route is the only way to
-        #: raise it, and dropping one is the only way to trip it.
-        assert len(typed) >= 85, (
+        #: Measured 91 of 1248 (7.3%) when the cloud-account inventory, the backup
+        #: family, the business process/owner family and the process/system link
+        #: were given `response_model`. The gap is §5's limit (a): the remaining
+        #: 92.7% are validated by nothing but their console interface, and this
+        #: test records that rather than hiding it. The floor only moves up —
+        #: typing a route is the only way to raise it, and dropping one is the only
+        #: way to trip it. `scripts/tests/test_response_typing.py` keeps the exact
+        #: list, so a *new* untyped route is a build failure too.
+        assert len(typed) >= 88, (
             f"{len(typed)} of {len(operations)} operations declare a response schema; this was "
-            "87 — a typed route lost its model"
+            "91 — a typed route lost its model"
         )
 
 

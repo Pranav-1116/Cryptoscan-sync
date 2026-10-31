@@ -34,6 +34,8 @@ REGISTER = Path(__file__).resolve().parents[2] / "docs/bank-environment/101-auth
 #: it, which is also session-only. Gating these means deciding a role policy for
 #: the whole family, which is a product decision, not a bug fix. Anything that
 #: appears here must be named deliberately; a new entry fails the test until it is.
+#: `scripts/tests/test_auth_write_inventory.py` is the same fact for *every* method,
+#: with the policy reason recorded per prefix.
 REVIEWED_SESSION_ONLY_DELETES = frozenset({
     "/api/v1/banking/group/entities/{code}",
     "/api/v1/estate/evidence/schedules/{identifier}",
@@ -48,7 +50,7 @@ REVIEWED_SESSION_ONLY_DELETES = frozenset({
 MIN_ROLE_GATED = 306
 MIN_PERMISSION_GATED = 71
 MIN_TENANT_ROLE_GATED = 12
-MAX_SESSION_ONLY_WRITES = 290
+MAX_SESSION_ONLY_WRITES = 294
 
 
 @pytest.fixture(scope="module")

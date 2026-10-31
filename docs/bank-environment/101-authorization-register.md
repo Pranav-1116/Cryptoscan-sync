@@ -16,37 +16,36 @@ API enforces, not what a document claims.
 | permission | 71 |
 | tenant-role | 12 |
 
-**1218** operations; **290** of them change state with nothing but the session gate.
+**1218** operations; **294** of them change state with nothing but the session gate — the exact list, with the policy
+reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
 
-These are the routes guide 100 §5 (c) leaves as a policy question: a signed-in
-operator with any role can call them. The count is pinned by
-`scripts/tests/test_authorization_register.py`; it may only go down.
+These are the routes that hold no role requirement. Each one is recorded with
+the reason it holds none in `102-authenticated-only-writes.json`; the count is
+pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 
 | Area | Session-only writes |
 |---|---|
-| `assurance` | 31 |
+| `assurance` | 46 |
 | `network` | 31 |
+| `collection` | 27 |
 | `estate` | 23 |
-| `collection` | 21 |
-| `auth` | 13 |
 | `migrations` | 13 |
 | `cbom` | 11 |
 | `vendors` | 10 |
 | `graph` | 9 |
 | `banking` | 8 |
 | `systems` | 8 |
+| `auth` | 7 |
 | `security` | 7 |
 | `technology-bom` | 7 |
-| `webhooks` | 7 |
 | `cloud` | 6 |
 | `exceptions` | 6 |
 | `runtime` | 6 |
 | `automation` | 5 |
 | `host-evidence` | 5 |
 | `resource-monitoring` | 5 |
-| `saas` | 4 |
 | `traffic-control` | 4 |
 | `business` | 3 |
 | `container-scans` | 3 |
@@ -64,7 +63,6 @@ operator with any role can call them. The count is pinned by
 | `remediation` | 2 |
 | `anomaly` | 1 |
 | `certificates` | 1 |
-| `chatops` | 1 |
 | `ci` | 1 |
 | `connectors` | 1 |
 | `datalake` | 1 |
@@ -75,6 +73,7 @@ operator with any role can call them. The count is pinned by
 | `quantum` | 1 |
 | `report` | 1 |
 | `repos` | 1 |
+| `saas` | 1 |
 | `scans` | 1 |
 | `stream` | 1 |
 

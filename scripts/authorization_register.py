@@ -113,13 +113,19 @@ def register() -> list[dict]:
 
 
 def summary(rows: list[dict]) -> dict:
+    # The session-only *write* list has one owner: `auth_write_inventory`, which
+    # also records the policy reason and excludes public paths. Deriving it twice
+    # gave two numbers for the same fact (290 here, 347 there), and a register that
+    # contradicts the inventory is worse than no register.
+    import auth_write_inventory
+
     kinds = Counter()
     unwritten = Counter()
     for row in rows:
         label = "+".join(sorted(row["guards"])) or "session"
         kinds[label] += 1
-        if not row["guards"] and row["method"] in WRITE_METHODS:
-            unwritten[_area(row["path"])] += 1
+    for entry in auth_write_inventory.inventory():
+        unwritten[_area(entry["path"])] += 1
     return {
         "operations": len(rows),
         "by_authority": dict(sorted(kinds.items(), key=lambda item: -item[1])),
@@ -156,13 +162,14 @@ def markdown(rows: list[dict]) -> str:
     lines += [
         "",
         f"**{counts['operations']}** operations; **{counts['session_only_writes']}** of them "
-        "change state with nothing but the session gate.",
+        "change state with nothing but the session gate — the exact list, with the policy",
+        "reason for each, is `102-authenticated-only-writes.json`.",
         "",
         "## Session-only writes, by area",
         "",
-        "These are the routes guide 100 §5 (c) leaves as a policy question: a signed-in",
-        "operator with any role can call them. The count is pinned by",
-        "`scripts/tests/test_authorization_register.py`; it may only go down.",
+        "These are the routes that hold no role requirement. Each one is recorded with",
+        "the reason it holds none in `102-authenticated-only-writes.json`; the count is",
+        "pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.",
         "",
         "| Area | Session-only writes |",
         "|---|---|",

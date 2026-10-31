@@ -676,3 +676,161 @@ class TestTheOperatorCliReadsTheMigratedDatabase:
             code = cli.main(["twin", "assets"], session_factory=lambda: factory())
         assert code == cli.EXIT_OK, f"twin assets failed on a migrated database: {out.getvalue()[-1500:]}"
         assert out.getvalue().strip(), "twin assets printed nothing"
+
+
+#: Methods whose name says "this reads", used to pick what to drive below. A
+#: deny-list would silently skip `archive_*`/`prune_*` readers; an allow-list errs
+#: toward driving fewer methods, which is the safe direction for a test that
+#: executes code against a live database.
+READ_METHOD_PREFIXES = (
+    "list", "get", "find", "count", "latest", "search", "exists", "has",
+    "by", "for", "all", "read", "summary", "lookup", "resolve",
+)
+
+#: Methods that are read-shaped by name but write (or shell out to a tool).
+NOT_A_READ = frozenset({"get_or_create", "get_or_upsert", "resolve_id"})
+
+
+#: Unannotated parameters that are obviously a point in time. Passing a string to
+#: one of these compares a `text` with a `timestamp` and PostgreSQL rejects it,
+#: which would be a finding about the test, not about the repository.
+TEMPORAL_NAMES = frozenset({
+    "after", "before", "since", "until", "cutoff", "as_of", "now", "when",
+    "started", "finished", "created", "updated",
+})
+
+
+def _is_temporal(name: str) -> bool:
+    return name in TEMPORAL_NAMES or name.endswith(("_at", "_ts", "_time", "_date"))
+
+
+def _placeholder(annotation) -> tuple[bool, object]:
+    """(can-supply, value) for one annotated parameter."""
+    import datetime as _dt
+    import uuid as _uuid
+
+    text = str(annotation)
+    if text in {"<class 'inspect._empty'>", "inspect._empty"}:
+        return False, None
+    if "None" in text and "|" in text:
+        return True, None  # Optional[...] — every reader must cope with absence
+    if "datetime" in text:
+        return True, _dt.datetime.now(_dt.timezone.utc)
+    if "uuid" in text.lower():
+        return True, _uuid.uuid4()
+    if "bool" in text:
+        return True, False
+    if "int" in text or "float" in text:
+        return True, 0
+    if "dict" in text or "Mapping" in text:
+        return True, {}
+    if "list" in text or "Sequence" in text or "set" in text:
+        return True, []
+    if "str" in text:
+        return True, "contract-missing"
+    return False, None
+
+
+def _repository_reads() -> list[tuple[type, str]]:
+    """(repository class, method name) for every read-shaped public method."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    import db.repositories as package
+    from db.repositories.base_repository import BaseRepository
+
+    found: list[tuple[type, str]] = []
+    for info in pkgutil.iter_modules(package.__path__):
+        module = importlib.import_module(f"{package.__name__}.{info.name}")
+        for _, member in inspect.getmembers(module, inspect.isclass):
+            if not issubclass(member, BaseRepository) or member is BaseRepository:
+                continue
+            if member.__module__ != module.__name__:
+                continue  # imported into this module, not defined by it
+            for name, method in inspect.getmembers(member, inspect.isfunction):
+                if name.startswith("_") or name in NOT_A_READ:
+                    continue
+                if not name.startswith(READ_METHOD_PREFIXES):
+                    continue
+                found.append((member, name))
+    return sorted(found, key=lambda item: (item[0].__name__, item[1]))
+
+
+class TestRepositoryReadsOnTheMigratedSchema:
+    """The read *methods*, not just the tables, run against the real schema.
+
+    ``TestEveryMappedTableCanBeRead`` proves a bare ``SELECT`` works per table. It
+    does not prove the queries the application actually issues do: a repository
+    that filters on a column the migration never created, orders by a column with
+    a different type, or joins a relationship whose foreign key disagrees raises
+    only when the method runs.
+
+    Every public read-shaped method of every repository is therefore called on the
+    migrated schema with placeholder arguments. A method that needs a real id
+    returns ``None`` or an empty list — which is the point: the query is parsed,
+    planned and executed by PostgreSQL. ``SQLAlchemyError`` is a finding; a method
+    that cannot be called with placeholder arguments is counted, not failed.
+    """
+
+    def test_every_repository_read_runs_on_the_migrated_schema(self, migrated):
+        import inspect
+
+        from sqlalchemy.exc import SQLAlchemyError
+        from sqlalchemy.orm import Session
+
+        reads = _repository_reads()
+        assert len(reads) >= 100, f"only {len(reads)} repository read methods found — the walk is broken"
+
+        failures: list[str] = []
+        skipped: list[str] = []
+        driven = 0
+        with Session(migrated) as db:
+            for repository, name in reads:
+                method = getattr(repository(db), name)
+                signature = inspect.signature(method)
+                kwargs = {}
+                usable = True
+                for parameter_name, parameter in signature.parameters.items():
+                    if parameter_name == "self" or parameter.kind in (parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD):
+                        continue
+                    if parameter.default is not parameter.empty:
+                        continue  # let the default apply
+                    can_supply, value = _placeholder(parameter.annotation)
+                    if not can_supply and _is_temporal(parameter_name):
+                        import datetime as _dt
+
+                        can_supply, value = True, _dt.datetime.now(_dt.timezone.utc)
+                    if not can_supply and parameter.annotation is inspect.Parameter.empty:
+                        # An unannotated required argument is an id or a lookup key
+                        # in every repository here; passing one that does not exist
+                        # still executes the query, which is what is being checked.
+                        can_supply, value = True, "contract-missing"
+                    if not can_supply:
+                        usable = False
+                        break
+                    kwargs[parameter_name] = value
+                if not usable:
+                    skipped.append(f"{repository.__name__}.{name}")
+                    continue
+                try:
+                    with db.begin_nested():
+                        method(**kwargs)
+                except SQLAlchemyError as error:
+                    failures.append(f"{repository.__name__}.{name}: {type(error).__name__}: {str(error)[:300]}")
+                except Exception as error:  # noqa: BLE001 - needs real data, not a schema fault
+                    skipped.append(f"{repository.__name__}.{name}: {type(error).__name__}")
+                else:
+                    driven += 1
+        assert failures == [], (
+            "repository reads that fail on the migrated schema:\n  " + "\n  ".join(sorted(failures))
+        )
+        #: 95 of 118 ran when this was written. The 23 that did not need an argument
+        #: shape the placeholder builder refuses to invent (a list of objects, a
+        #: credential). The floor is pinned so a change that stops reaching the
+        #: methods is a failure, not a quieter test.
+        assert driven >= 90, (
+            f"only {driven} repository reads actually ran ({len(skipped)} skipped: "
+            + ", ".join(sorted(skipped)[:10]) + ") — the placeholder arguments are not "
+            "reaching the methods"
+        )

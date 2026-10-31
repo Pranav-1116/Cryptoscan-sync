@@ -31,6 +31,8 @@ running the product turned up a defect that reading the tree could not.
 | 9 | Every operation that declares a response schema returns that schema | same file | The route answers `200` and the body is not what the contract promised |
 | 10 | Every write operation accepts a body that matches its own request schema | same file | The handler is only reachable with a populated body, so `{}` proves nothing about it |
 | 11 | Every operation's authority is classified, and every destructive route is guarded or reviewed | `scripts/tests/test_authorization_register.py` | A new state-changing route ships open to any signed-in caller |
+| 12 | Every operation that declares no response model is on a recorded list, and the list may only shrink | `scripts/tests/test_response_typing.py` | A new route returns `dict` by default and joins the unvalidated majority |
+| 13 | Every write route is role-gated or recorded as authenticated-only with a reason | `scripts/tests/test_auth_write_inventory.py` | A new state-changing route silently chooses "no role" |
 
 ```bash
 export PYTHONPATH="scripts:shared/shared_models:services/api:shared/shared_config:$PYTHONPATH"
@@ -70,7 +72,7 @@ a minute; they are not part of the hermetic gate.
 | Operations executed on a live server | **1248 / 1248, 0 × 5xx, 0 unanswered** | uvicorn over the migrated database, six privileged identities, 24 in flight |
 | Operations that refused an anonymous caller | **1212 protected of 1212, 36 public** | Everything outside the session gate's declared public surface (health, docs, login/SSO, machine-signed webhooks) |
 | Role-gated operations proven both ways | **306 admitted with the role, 273 refused without it** | Read from the dependency tree, then asked of the running server |
-| Operations with a response schema that holds | **87 validated / 87 declared** | The other 1161 declare nothing (`§5`, limit a) |
+| Operations with a response schema that holds | **91 validated / 91 declared** | The other 1157 declare nothing (`§5`, limit a) |
 | Model ↔ migrated-schema nullability | **0 disagreements, both directions** | At revision 0121 it was 148 columns the model treats as required and the database accepts as NULL, and 9 the reverse |
 
 ---
@@ -186,9 +188,11 @@ wrong. Each limit below records what has since been proven, what proved it, and
 what is still open — the list is the same list, moved forward, not a new claim.
 
 * **(a) Response correctness.** *Proven:* every operation that declares a 2xx JSON
-  schema — **87 of 1248** — is called on a live server and its body validated
-  against that schema (check 9). *Still open:* the other 1161 declare no response
-  model. Their payload shape is asserted only by their TypeScript interface and,
+  schema — **91 of 1248** — is called on a live server and its body validated
+  against that schema (check 9). *Still open:* the other 1157 declare no response
+  model. The list is pinned exactly in
+  `docs/bank-environment/103-untyped-response-operations.json`, so a new route that
+  returns `dict` fails the build instead of widening the gap (check 12). Their payload shape is asserted only by their TypeScript interface and,
   for seven payload families, by `scripts/tests/test_console_payload_contract.py`.
   A route returning the right fields in the wrong nesting for a page outside those
   families would still pass. Closing this is typing work on the routers, one
@@ -237,15 +241,25 @@ what is still open — the list is the same list, moved forward, not a new claim
   tenant role, and **829** nothing beyond a session —
   `docs/bank-environment/101-authorization-register.md` is that register, and
   `scripts/tests/test_authorization_register.py` (check 11) pins it: the gated
-  counts may only grow, the **290** session-only *writes* may only shrink, and any
-  `DELETE` that is neither guarded nor named in the reviewed list fails the build.
+  counts may only grow and any `DELETE` that is neither guarded nor named in the
+  reviewed list fails the build.
 
-  *Still open:* the register makes the question tractable, it does not answer it.
-  290 writes remain open to any signed-in operator. Six of them are deletions —
-  removing a graph edge, an export schedule, a group entity, an expired vendor
-  profile — and each simply mirrors the equally session-only create for the same
-  registry, so gating the delete means deciding the policy for the whole family.
-  That is a product decision this audit deliberately does not take.
+  *The per-route decision is now recorded.* `scripts/auth_write_inventory.py`
+  writes every write operation that is neither public nor role-gated — **294** of
+  them — into `docs/bank-environment/102-authenticated-only-writes.json`, each with
+  the policy reason for its prefix ("operator surface: estate curation",
+  "machine-signed: HMAC, not a session role", "self-service: the caller's own
+  account", …). Check 13 requires that list to equal the application's, so a new
+  unguarded write fails the build until someone regenerates it and states a reason.
+  The **286** role-gated writes are pinned separately; together the two sets
+  partition the write surface.
+
+  *Still open:* an entry says "authenticated-only is intended for this family", not
+  "this specific route could not be abused". Six of the 294 are deletions that
+  mirror an equally session-only create on the same registry — gating one means
+  deciding the policy for the whole family, which is a product decision this audit
+  deliberately does not take. What has changed is that the decision is now written
+  down, reviewable, and enforced against regressions.
 
 * **(d) The database contract over all tables.** *Closed for schema parity.* All
   **155** mapped tables and every mapped column are compared with the migrated
@@ -253,10 +267,16 @@ what is still open — the list is the same list, moved forward, not a new claim
   directions (0 disagreements; the residue that remains is the 16 known legacy
   columns in §4). Platform-scope writes (`hbom_snapshots`, `algorithm_advisories`,
   topology) are executed against the migrated schema rather than assumed. *Still
-  open:* the *read* paths of every table are not driven — the twin store and
-  `cryptoscan twin assets` are. A table whose model matches the schema and whose
-  query is wrong is invisible here. The live sweep covers whichever of those reads
-  are exposed over HTTP.
+  open:* a table whose model matches the schema and whose *query* is wrong is
+  invisible to a schema comparison. The queries are now driven too: the twin store
+  and `cryptoscan twin assets`, and — check 5 — every public read-shaped method of
+  every repository (**95 of 118**) is executed against the migrated schema with
+  placeholder arguments, so a filter on a column that does not exist, an `ORDER BY`
+  on a column with the wrong type, or a join whose foreign key disagrees fails
+  here rather than in a bank. The 23 that are not driven need an argument shape the
+  placeholder builder refuses to invent (a list of objects, a credential); the
+  floor is pinned so that number cannot grow quietly. The live sweep covers
+  whichever of those reads are exposed over HTTP.
 
 * **The CLI boundary is a static import check.** It proves `cli_remote.py` cannot
   reach the estate modules; it does not prove a handler in `cli.py` that *is*
