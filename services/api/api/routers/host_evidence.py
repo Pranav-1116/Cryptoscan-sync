@@ -7,7 +7,9 @@ attested host identity, production scanner execution or whole-system coverage.
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -29,6 +31,8 @@ from shared_models.safe_finding import safe_finding
 from shared_models.host_associations import AssociationProposal, AssociationDecision, TargetType
 
 from shared_models.collector_identity import CollectorIdentityPolicy, CollectorAttestation, verify_collector
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/host-evidence", tags=["host-evidence"])
 
@@ -267,8 +271,16 @@ def intake(
             },
         )
         db.commit()
-    except IntegrityError:
+    except IntegrityError as error:
         db.rollback()
+        # Only *this* claim is a race between two callers. Every other integrity
+        # failure (a check the schema enforces, a missing row) used to be reported
+        # here as a concurrency hint, which sends an operator looking for a
+        # duplicate receipt that does not exist — that is how a `CheckViolation` on
+        # `scans_target_type_check` was once served as a 409.
+        if "unique" not in str(error).lower() and "duplicate" not in str(error).lower():
+            logger.error("host_intake_integrity_failure", extra={"error": str(error)})
+            raise
         raise HTTPException(
             409, "Concurrent approval consumption; inspect the existing receipt, do not retry blindly"
         ) from None

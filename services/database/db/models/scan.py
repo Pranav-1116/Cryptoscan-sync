@@ -19,7 +19,11 @@ from db.tenancy import TenantScoped
 #: bank's PostgreSQL could fail — on the first scan. Migration 0124 fixes the
 #: deployed constraint; this declaration keeps the two in step from now on.
 SCAN_STATUSES = ("QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED")
-SCAN_TARGET_TYPES = ("GIT_REPOSITORY", "LOCAL_DIRECTORY", "ARCHIVE")
+#: `HOST_SNAPSHOT_IMPORT` is not a scan of anything: it is the row the host-evidence
+#: intake writes so the evidence it appends is traceable to an import. Migration 0001
+#: omitted it, so on a migrated PostgreSQL the first host import raised a
+#: `CheckViolation` that the route reported as a 409. Migration 0125 adds it.
+SCAN_TARGET_TYPES = ("GIT_REPOSITORY", "LOCAL_DIRECTORY", "ARCHIVE", "HOST_SNAPSHOT_IMPORT")
 
 
 class Scan(BaseModel, TenantScoped):

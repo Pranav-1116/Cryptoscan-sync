@@ -138,6 +138,21 @@ and did not work; none was hypothetical.
    answered `500`, so a clean-scan proposal could be listed and approved but never
    dismissed. Found by executing the route, not by importing it.
 
+9. **Two `CHECK` constraints rejected rows the application writes.** The migrated
+   schema's `scans_status_check` allowed `RUNNING/COMPLETED/FAILED/CANCELLED` while
+   `Scan.status` defaults to `QUEUED` — every scan insert was a `CheckViolation` on
+   a migrated PostgreSQL, and invisible everywhere else because `create_all` only
+   creates the constraints the *model* declares, and the model declared none of
+   them (migration 0124). The same comparison then caught
+   `scans_target_type_check`, which allowed the three tree-scan types but not
+   `HOST_SNAPSHOT_IMPORT` — the type the host-evidence intake writes for the row
+   that anchors an imported snapshot. That import answered
+   `409 Concurrent approval consumption` because the route translated *every*
+   `IntegrityError` into a concurrency hint (migration 0125; the route now reports
+   only a genuine uniqueness race as 409 and logs the rest). Both defects are
+   found by declaring the constraints on the models in `db/models/scan.py`, so a
+   `create_all` database and a migrated one reject the same rows.
+
 ---
 
 ## 4. What is classified as residue, and stayed
