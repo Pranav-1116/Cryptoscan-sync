@@ -593,12 +593,13 @@ function MaturitySection() {
       </Panel>
 
       {doc.areas.map((area) => (
-        <Panel
-          key={area.id}
-          title={area.label}
-          sub={area.summary}
-          right={<Badge tone={REGISTER_TONE[area.state] ?? "slate"}>{area.state.replace(/_/g, " ")}</Badge>}
-        >
+        <Panel key={area.id} title={area.label} sub={area.summary}>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <Badge tone={REGISTER_TONE[area.state] ?? "slate"}>{area.state.replace(/_/g, " ")}</Badge>
+            <span className="faint" style={{ fontSize: 11 }}>
+              {area.surfaces.length} surfaces · {area.missing.length} open items
+            </span>
+          </div>
           <div style={{ display: "grid", gap: 8 }}>
             {area.surfaces.map((surface) => (
               <SurfaceRow key={surface.id} surface={surface} />

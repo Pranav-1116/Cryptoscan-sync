@@ -182,7 +182,7 @@ export const CAPABILITY_LIMITS = {
   },
   "collector-depth": {
     "area": "Discovery",
-    "limit": "Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. Every number is echoed from the API; no percentage or score is computed anywhere."
+    "limit": "Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. A fifth tab prints the maturity register: six areas and ~40 surfaces, each naming its collector, the work still missing and the route that proves it, plus the claims the product may and may not make. Every number is echoed from the API; no percentage or score is computed anywhere."
   },
   "command-center": {
     "area": "Overview",

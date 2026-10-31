@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.tenant-isolation-audit/1",
-  "captured_at": "2026-10-31T04:36:41.961911+00:00",
+  "captured_at": "2026-10-31T05:25:45.374363+00:00",
   "scoped_tables": 141,
   "platform_scope_tables": 14,
   "justified": [
@@ -9,6 +9,7 @@
     "services/database/db/models/control_plane.py:249: BenchmarkDataset (cp_benchmark_datasets) \u2014 global ground-truth catalog shared by all deployments;",
     "services/database/db/models/control_plane.py:263: BenchmarkCase (cp_benchmark_cases) \u2014 global ground-truth catalog shared by all deployments;",
     "services/database/db/models/control_plane.py:278: BenchmarkRun (cp_benchmark_runs) \u2014 platform quality telemetry about scanner performance,",
+    "services/database/db/models/estate_daemon.py:34: EstateDaemon (estate_daemons) \u2014 per-process liveness of the installation's estate daemons, not a tenant record",
     "services/database/db/models/execution_control.py:32: ExecutionBudget (execution_budgets) \u2014 internal cross-estate provider and estate reservation",
     "services/database/db/models/monitor.py:53: MonitorLease (monitor_leases) \u2014 worker leader-lease coordination table (exactly-one",
     "services/database/db/models/p2.py:32: PluginPackage (plugin_packages) \u2014 global plugin catalog (versions, signatures); a shared",
@@ -22,7 +23,7 @@
     "services/api/api/middleware/auth_middleware.py:192",
     "services/api/api/routers/audit_export.py:45",
     "services/api/api/routers/execution_controls.py:290",
-    "services/database/db/repositories/execution_control.py:283",
+    "services/database/db/repositories/execution_control.py:287",
     "services/database/db/repositories/execution_outbox.py:22",
     "services/database/db/repositories/execution_outbox.py:51",
     "services/database/db/repositories/execution_outbox.py:62",
@@ -30,12 +31,7 @@
     "services/worker/worker/core/queued_authority.py:45",
     "services/worker/worker/core/queued_authority.py:62"
   ],
-  "violations": [
-    "services/database/db/models/estate_daemon.py:33: model EstateDaemon (table 'estate_daemons') is not TenantScoped and carries no '# platform-scope:' justification",
-    "services/api/api/estate_schedule.py:498: direct db.get(EstateScheduleRun, ...) bypasses tenant SELECT criteria; use db.tenancy.filtered_get",
-    "services/database/db/repositories/execution_control.py:92: direct session.get(ApiKey, ...) bypasses tenant SELECT criteria; use db.tenancy.filtered_get",
-    "services/worker/worker/monitor/network_collection.py:186: direct db.get(MonitorTarget, ...) bypasses tenant SELECT criteria; use db.tenancy.filtered_get"
-  ],
+  "violations": [],
   "registry_available": true,
   "registry_warning": null
 }
