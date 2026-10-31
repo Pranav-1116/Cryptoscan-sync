@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, ValidationError
 
 from api.security.network_collection import admit_network, checked_hosts, persist_network
+from sqlalchemy import select
 from db.repositories.job_repository import JobRepository
 from db.models.monitor import MonitorTarget
 from db.models.tenant import Tenant
@@ -183,7 +184,15 @@ class Execution:
 
     def before_phase(self, phase, *, execution_range=None):
         owner = current_tenant()
-        target = self.db.get(MonitorTarget, self.target_id, populate_existing=True)
+        # populate_existing=True is deliberate: this re-read exists to detect a
+        # concurrent change of owner or target authority, so it must bypass the
+        # identity map. It must not bypass the tenant filter, which is why the
+        # load is a filtered SELECT rather than db.get().
+        target = self.db.execute(
+            select(MonitorTarget)
+            .where(MonitorTarget.id == self.target_id)
+            .execution_options(populate_existing=True)
+        ).scalars().first()
         tenant = self.db.get(Tenant, owner, populate_existing=True) if owner is not None else None
         if (
             target is None

@@ -16,6 +16,7 @@ import secrets
 
 from sqlalchemy import func, select, update
 from db.models.base import utcnow
+from db.tenancy import filtered_get
 from db.models.execution_control import (
     EstateExecutionPolicy, ScanApproval, ExecutionBudget, ExecutionAttempt, ExecutionOutbox,
 )
@@ -89,7 +90,10 @@ def authenticated_principal(session, *, username=None, token=None, key_id=None, 
     common = {"v": 2, "path": path, "method": method, "request_id": request_id,
               "client_ip": client_ip}
     if key_id is not None:
-        row = session.get(ApiKey, key_id)
+        # Authentication runs inside platform_scope() (the tenant is what we are
+        # about to learn), but the load still goes through the filtered path so
+        # this stays correct if the call site ever moves inside a tenant scope.
+        row = filtered_get(session, ApiKey, key_id)
         if row is None or not row.is_active_key:
             raise ExecutionDenied("Credential is no longer active")
         return {**common, "kind": "api_key", "id": row.id, "credential_id": row.id,

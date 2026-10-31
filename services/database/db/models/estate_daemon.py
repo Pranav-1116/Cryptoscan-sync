@@ -30,8 +30,15 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models.base import BaseModel
 
 
+# platform-scope: per-process liveness of the installation's estate daemons, not a tenant record
 class EstateDaemon(BaseModel):
-    """The last known heartbeat of one estate daemon process."""
+    """The last known heartbeat of one estate daemon process.
+
+    Platform-scoped on purpose: one row per daemon process (unique by worker
+    name), no tenant column to scope on, and no bank data — state, version,
+    cycle counters and timestamps. The estate records the daemon reads and
+    writes are tenant-scoped themselves.
+    """
 
     __tablename__ = "estate_daemons"
 

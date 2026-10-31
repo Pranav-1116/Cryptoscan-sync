@@ -1,23 +1,23 @@
 {
   "schema": "cryptoscan.engineering-gate/1",
-  "captured_at": "2026-10-16T17:22:43.183458+00:00",
+  "captured_at": "2026-10-31T04:36:35.247296+00:00",
   "checks": [
     {
       "check": "exception inventory",
       "status": "PASS",
-      "detail": "0 unresolved production handlers; 0 unresolved test/harness handlers; inventory=5",
+      "detail": "0 unresolved production handlers; 0 unresolved test/harness handlers; inventory=4",
       "findings": [],
       "nonproduction_findings": [],
       "unresolved": 0,
       "production_unresolved": 0,
       "test_harness_unresolved": 0,
-      "allowlisted": 5,
+      "allowlisted": 4,
       "allowlist": "/home/user/CryproScan/config/exception-allowlist.json"
     },
     {
       "check": "X-API-Key route coverage",
       "status": "PASS",
-      "detail": "decorated routes=896; auth-covered-or-exempt=896; uncovered=0",
+      "detail": "decorated routes=1220; auth-covered-or-exempt=1220; uncovered=0",
       "findings": []
     },
     {
@@ -28,22 +28,29 @@
     },
     {
       "check": "tenant isolation audit",
-      "status": "PASS",
-      "detail": "115 scoped tables; 12 justified platform-scope tables; 1 platform_scope() sites; violations=0",
-      "violations": []
+      "status": "FAIL",
+      "detail": "141 scoped tables; 14 justified platform-scope tables; 10 platform_scope() sites; violations=4",
+      "violations": [
+        "services/database/db/models/estate_daemon.py:33: model EstateDaemon (table 'estate_daemons') is not TenantScoped and carries no '# platform-scope:' justification",
+        "services/api/api/estate_schedule.py:498: direct db.get(EstateScheduleRun, ...) bypasses tenant SELECT criteria; use db.tenancy.filtered_get",
+        "services/database/db/repositories/execution_control.py:92: direct session.get(ApiKey, ...) bypasses tenant SELECT criteria; use db.tenancy.filtered_get",
+        "services/worker/worker/monitor/network_collection.py:186: direct db.get(MonitorTarget, ...) bypasses tenant SELECT criteria; use db.tenancy.filtered_get"
+      ]
     },
     {
       "check": "production image immutable digests",
       "status": "SKIP",
-      "detail": "3 mutable template references; render a release and supply --release-manifests before approval",
+      "detail": "4 mutable template references; render a release and supply --release-manifests before approval",
       "references": [
-        "k8s/app/20-api-deployment.yaml:23:image: cryptoscan-api:v1.0.0",
-        "k8s/app/30-worker-deployment.yaml:23:image: cryptoscan-worker:v1.0.0",
+        "k8s/app/20-api-deployment.yaml:61:image: cryptoscan-api:v1.0.0",
+        "k8s/app/30-worker-deployment.yaml:24:image: cryptoscan-worker:v1.0.0",
+        "k8s/app/31-estate-daemon-deployment.yaml:33:image: cryptoscan-api:v1.0.0",
         "k8s/neo4j/statefulset.yaml:20:image: neo4j:5.26-community"
       ],
       "image_references": [
         "cryptoscan-api:v1.0.0",
         "cryptoscan-worker:v1.0.0",
+        "cryptoscan-api:v1.0.0",
         "neo4j:5.26-community"
       ]
     },

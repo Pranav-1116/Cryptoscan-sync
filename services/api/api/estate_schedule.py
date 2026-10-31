@@ -29,6 +29,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from db.tenancy import filtered_get
 from db.models.estate_schedule import EstateSchedule, EstateScheduleRun
 
 DEFAULT_LEASE_SECONDS = 900
@@ -495,7 +496,10 @@ def tick(
             # a raised run can leave the session mid-transaction; roll back before
             # recording the failure, or the record itself would be unwritable
             db.rollback()
-            run_row = db.get(EstateScheduleRun, run_row.id) or run_row
+            # Re-read through the tenant filter: a rolled-back session may have
+            # dropped the row, and an unfiltered identity-map get would happily
+            # return another tenant's run for a recycled id.
+            run_row = filtered_get(db, EstateScheduleRun, run_row.id) or run_row
             run_row.status = "ERROR"
             run_row.verdict = "ERROR"
             run_row.detail = f"{type(exc).__name__}: {exc}"[:800]
