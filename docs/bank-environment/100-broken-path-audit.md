@@ -190,14 +190,18 @@ what is still open — the list is the same list, moved forward, not a new claim
 * **(a) Response correctness.** *Proven:* every operation that declares a 2xx JSON
   schema — **91 of 1248** — is called on a live server and its body validated
   against that schema (check 9). *Still open:* the other 1157 declare no response
-  model. The list is pinned exactly in
-  `docs/bank-environment/103-untyped-response-operations.json`, so a new route that
-  returns `dict` fails the build instead of widening the gap (check 12). Their payload shape is asserted only by their TypeScript interface and,
-  for seven payload families, by `scripts/tests/test_console_payload_contract.py`.
-  A route returning the right fields in the wrong nesting for a page outside those
-  families would still pass. Closing this is typing work on the routers, one
-  `response_model=` at a time, and the count is pinned in check 9 so it can only
-  grow.
+  model, and their payload shape is asserted only by their TypeScript interface
+  and, for seven payload families, by
+  `scripts/tests/test_console_payload_contract.py` — a route returning the right
+  fields in the wrong nesting for a page outside those families would still pass.
+
+  What has changed is that the gap can now only shrink. The exact list is
+  `docs/bank-environment/103-untyped-response-operations.json`; check 12 requires
+  it to equal the application's, so a **new** route that returns `dict` fails the
+  build until someone writes it down, and a typed route left on the list fails
+  until it is removed. Closing the gap itself is still typing work on the routers,
+  one `response_model=` at a time — four families (cloud accounts, business
+  processes, business owners, the backup routes) were typed in this pass.
 
 * **(b) A live request for every route.** *Closed for execution and for write
   bodies.* All **1248** operations are executed against uvicorn over a real
