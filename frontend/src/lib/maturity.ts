@@ -182,7 +182,7 @@ export const CAPABILITY_LIMITS = {
   },
   "collector-depth": {
     "area": "Discovery",
-    "limit": "Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. A fifth tab prints the maturity register: six areas and ~40 surfaces, each naming its collector, the work still missing and the route that proves it, plus the claims the product may and may not make. Every number is echoed from the API; no percentage or score is computed anywhere."
+    "limit": "Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. A fifth tab prints the maturity register: eight areas and ~46 surfaces, each carrying a readiness (OPERATIONAL, CANDIDATE or FOUNDATION) beside its coverage state, the collector behind it, the work still missing and the route that proves it, plus the claims the product may and may not make and the five capabilities it does not present as operational. A sixth tab prints the simulation boundary: the ten enterprise scenarios an engine is asked for, with EXISTS/PARTIAL/ABSENT, the scenario ids that implement each row, and what each cannot compute. Every number is echoed from the API; no percentage or score is computed anywhere."
   },
   "command-center": {
     "area": "Overview",
@@ -218,7 +218,7 @@ export const CAPABILITY_LIMITS = {
   },
   "digital-twin": {
     "area": "Intelligence",
-    "limit": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations."
+    "limit": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and GET /estate/evidence/twin/simulation-scenarios states which of the ten scenarios compute and what each cannot see."
   },
   "drift": {
     "area": "Intelligence",
@@ -426,7 +426,7 @@ export const CAPABILITY_LIMITS = {
   },
   "simulation": {
     "area": "Intelligence",
-    "limit": "What-if workspace over the estate twin with two families and ten questions: seven scenarios that edit an evidence fact on a copy (replace, retire, disable a protocol, upgrade, remove a component, resize a key, replace everything Shor-vulnerable) and three cascades that walk a failure outward from seeds (asset unavailable, crypto compromise, algorithm breaks everywhere), each previewed before it runs so nothing is read as a finding before it is known to reach something, each re-projecting or explicitly not re-projecting the six BOMs, each reporting the live projection id unchanged, and each stored quarantined against the evidence state it was computed from; scenarios change evidence facts and cascades travel established edges only \u2014 neither models configuration, traffic, redundancy, approvals or a deployment plan."
+    "limit": "What-if workspace over the estate twin with two families and ten questions: seven scenarios that edit an evidence fact on a copy (replace, retire, disable a protocol, upgrade, remove a component, resize a key, replace everything Shor-vulnerable) and three cascades that walk a failure outward from seeds (asset unavailable, crypto compromise, algorithm breaks everywhere), each previewed before it runs so nothing is read as a finding before it is known to reach something, each re-projecting or explicitly not re-projecting the six BOMs, each reporting the live projection id unchanged, and each stored quarantined against the evidence state it was computed from; scenarios change evidence facts and cascades travel established edges only \u2014 neither models configuration, traffic, redundancy, approvals or a deployment plan. This is not a generic enterprise simulation engine: trust compromise and custom scenarios have no model at all."
   },
   "supervision": {
     "area": "Governance",
@@ -466,7 +466,7 @@ export const CAPABILITY_LIMITS = {
   },
   "what-if": {
     "area": "Intelligence",
-    "limit": "Scenario simulation over the inventory; scenarios are fixed templates today."
+    "limit": "Scenario simulation over the inventory; scenarios are fixed templates today, and a question that is not one of them is answered as not modelled rather than approximated."
   }
 } as const;
 

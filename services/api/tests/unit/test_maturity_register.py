@@ -168,6 +168,15 @@ def test_the_route_serves_the_register_and_requires_authentication():
         "BOM_PROJECTIONS",
         "SIMULATION_ENGINE",
     }
+    # The five boundaries ship with the register, so a console that reads only
+    # this route still has the sentences it must not lose.
+    assert [row["id"] for row in served["boundaries"]] == [
+        "WINDOWS_COLLECTOR",
+        "HARDWARE_DISCOVERY",
+        "HSM_OPERATIONS",
+        "RUNTIME_INVOCATION",
+        "SIMULATION_ENGINE",
+    ]
 
 
 def test_no_state_is_a_percentage_or_a_score():
