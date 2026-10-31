@@ -6,16 +6,16 @@ end — separately from "is a path *missing*?" — a capability that was never b
 The first is a defect; the second is a boundary. Confusing them is how a product
 ends up claiming completeness.
 
-Nothing here says the platform has zero broken paths. What it says is: the five
+Nothing here says the platform has zero broken paths. What it says is: the six
 tests below were run, here is what they saw, here is what they would have caught,
 and here is the part they still cannot see.
 
 ---
 
-## 1. The five checks
+## 1. The six checks
 
-Each check is a test, runnable on its own. Every one of them was written because a
-manual reading of the tree found a real inconsistency.
+Each check is a test, runnable on its own. Every one of them was written because
+reading the tree turned up an inconsistency that no test covered.
 
 | # | Check | File | What a failure means |
 |---|---|---|---|
@@ -24,6 +24,7 @@ manual reading of the tree found a real inconsistency.
 | 3 | The bank-facing CLI speaks only HTTP | `scripts/tests/test_cli_architecture_boundary.py` | The CLI becomes a second front door that bypasses authorisation and tenancy |
 | 4 | The withdrawn transfer family is refused and documented as refused | `scripts/tests/test_offline_transfer_path.py` | An integrator builds against a route that answers `410` |
 | 5 | Models and the *migrated* schema agree, and Twin/CLI read paths run on it | `scripts/tests/test_database_contract.py` | Every test passes on `create_all` while the first read in a bank raises |
+| 6 | Every route quoted as evidence ("check at", "measured by") is served | `scripts/tests/test_evidence_route_hints.py` | The product tells a reader how to verify a claim, and that route 404s |
 
 ```bash
 export PYTHONPATH="scripts:shared/shared_models:services/api:shared/shared_config:$PYTHONPATH"
@@ -31,7 +32,8 @@ export PYTHONPATH="scripts:shared/shared_models:services/api:shared/shared_confi
     scripts/tests/test_router_reachability.py \
     scripts/tests/test_cli_architecture_boundary.py \
     scripts/tests/test_offline_transfer_path.py \
-    scripts/tests/test_database_contract.py -q
+    scripts/tests/test_database_contract.py \
+    scripts/tests/test_evidence_route_hints.py -q
 ```
 
 Check 5 needs a PostgreSQL binary; it uses `pgserver`'s unpacked PostgreSQL on a
@@ -51,6 +53,7 @@ unix socket and skips (loudly, via `importorskip`) when that is unavailable.
 | ORM tables without a migration | **0** | Nothing the models read is missing from the migrated schema |
 | Model columns without a migration | **0** | — |
 | Columns in the database that no model maps | **16** | Residue from withdrawn writers; enumerated in check 5 |
+| Routes quoted as proof that are not served | **0 of 8 hints** | Every "check at"/"measured by" route resolves, and accepts GET or POST |
 
 ---
 
