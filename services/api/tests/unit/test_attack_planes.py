@@ -266,6 +266,10 @@ async def test_the_planes_register_is_served(authenticated_client):
     assert payload["counts"]["correlated"] == payload["counts"]["planes"]
     row = payload["planes"][0]
     assert row["asserts"] and row["blind_spot"] and row["measurement"]["patterns_citing_plane"]
+    # the subject-resolution probe rides on the same payload, so the console cannot
+    # render "11 planes correlated" without the join that makes correlation possible
+    assert payload["resolution"]["state"] == "MERGED"
+    assert payload["resolution"]["refuses_ambiguity"] is True
 
 
 def test_the_committed_register_matches_a_fresh_render():
@@ -284,3 +288,15 @@ def test_the_committed_register_matches_a_fresh_render():
         "the committed correlation-plane register does not match this build — regenerate "
         "and read the diff"
     )
+
+
+def test_the_register_proves_subjects_are_joined_before_planes_are():
+    """Plane agreement is worthless if four spellings of one host stay four subjects."""
+    document = attack_planes.register()
+    resolution = document["resolution"]
+    assert resolution["state"] == "MERGED"
+    assert resolution["assets"] == ["HOST-payments"]
+    assert resolution["merges_all_spellings"] is True
+    assert resolution["refuses_ambiguity"] is True
+    assert set(resolution["refusal_candidates"]) == {"HOST-a", "HOST-b"}
+    assert len(resolution["schemes"]) == 4

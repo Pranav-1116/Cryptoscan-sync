@@ -307,6 +307,65 @@ def measure(plane: Plane, *, now: datetime | None = None) -> dict[str, Any]:
     }
 
 
+#: Two assets that a real estate would hold, with the spellings its collectors use.
+_PROBE_IDENTITIES: tuple[dict[str, Any], ...] = (
+    {
+        "asset_id": "HOST-payments",
+        "name": "payments-api",
+        "identity": {
+            "hostname": "alb-payments-01",
+            "ip": "10.0.3.4",
+            "spiffe_id": "spiffe://bank.example/ns/payments/sa/api",
+        },
+    },
+    {"asset_id": "HOST-auth", "name": "auth-api", "identity": {"hostname": "alb-auth-01"}},
+)
+
+
+def _resolution_probe() -> dict[str, Any]:
+    """Join four spellings of one host — and check that a collision is refused.
+
+    Correlation is only as good as the name the planes agree on, so the resolution
+    layer is measured here the same way the planes are: run it, and report what it did.
+    """
+    from .subject_resolution import AMBIGUOUS, RESOLVED, SubjectIndex
+
+    index = SubjectIndex.from_assets(_PROBE_IDENTITIES)
+    spellings = (
+        "alb-payments-01",
+        "payments-api",
+        "10.0.3.4:443",
+        "spiffe://bank.example/ns/payments/sa/api",
+    )
+    resolutions = [index.resolve(subject) for subject in spellings]
+    assets = {item.asset_id for item in resolutions if item.status == RESOLVED}
+    schemes = {item.scheme for item in resolutions if item.status == RESOLVED}
+
+    collide = SubjectIndex.from_assets(
+        [
+            {"asset_id": "HOST-a", "name": "payments", "identity": {"hostname": "payments-a"}},
+            {"asset_id": "HOST-b", "name": "payments", "identity": {"hostname": "payments-b"}},
+        ]
+    )
+    refusal = collide.resolve("payments")
+
+    merged = len(assets) == 1 and len(resolutions) == len(spellings)
+    return {
+        "state": "MERGED" if merged and refusal.status == AMBIGUOUS else "FAILED",
+        "spellings": list(spellings),
+        "assets": sorted(assets),
+        "schemes": sorted(scheme or "" for scheme in schemes),
+        "merges_all_spellings": merged,
+        "refuses_ambiguity": refusal.status == AMBIGUOUS,
+        "refusal_candidates": list(refusal.candidates),
+        "note": (
+            "keys are declared by assets and matched exactly; a key two assets claim is refused "
+            "rather than resolved by preference, because picking one of two owners is how a "
+            "correlator invents agreement between two hosts"
+        ),
+    }
+
+
 def register(*, now: datetime | None = None) -> dict[str, Any]:
     """The eleven-plane matrix, measured against the shipped correlator."""
     rows: list[dict[str, Any]] = []
@@ -375,6 +434,7 @@ def register(*, now: datetime | None = None) -> dict[str, Any]:
             "counts are of rows in that state"
         ),
         "derived_planes": [row["id"] for row in rows if not row["independent"]],
+        "resolution": _resolution_probe(),
         "note": (
             "correlation joins planes on the subject a change names. It does not model causality, "
             "does not rank by likelihood and never reaches SECURITY_INCIDENT. A derived plane "

@@ -300,15 +300,35 @@ a correlator manufactures corroboration. The served register is
 `GET /estate/evidence/threat/planes`; the change feed it joins is
 `GET /estate/evidence/threat/patterns`.
 
-*Still open:* correlation joins planes **on subject**, so it is only as good as subject
-resolution — two collectors naming one asset differently will not be joined, and the
-current mapping is by collector prefix, not by a resolved asset id. It does not model
-causality, does not rank by likelihood, and never reaches `SECURITY_INCIDENT`.
+### Joining on a subject that is one asset
+
+Four collectors name one host four ways — `alb-payments-01` (host inventory),
+`payments-api` (runtime process), `10.0.3.4:443` (network probe),
+`spiffe://bank.example/ns/payments/sa/api` (identity). Before `subject_resolution`, those
+were four subjects and no cross-plane agreement could fire; merging them by similarity
+instead would have joined two different hosts, which is worse.
+
+`shared_models/subject_resolution.py` matches **only keys an asset declares** (its id,
+name, hostname, address, DNS name, SPIFFE id, certificate serial), after spelling
+normalisation (case, port suffix, trailing dot). There is no fuzzy score and no
+first-label trimming. A key claimed by two assets is `AMBIGUOUS` and is left ungrouped —
+picking the likelier owner is how a correlator invents agreement.
+
+Measured by a probe in the register (`resolution` on the served payload): four spellings
+merge onto one asset across four schemes, and a colliding key is refused with both
+candidates named.
+
+*Still open in D:* the resolver only knows the names the stored graph declares, so a
+plane whose subject is not an asset name stays ungrouped (reported, not guessed).
+Correlation does not model causality, does not rank by likelihood, and never reaches
+`SECURITY_INCIDENT`.
 
 ### Remaining gaps D–G, stated
 
-- **D (correlation depth)** — the plane layer above is what exists. Per-plane blind
-  spots are in the register; subject resolution across planes is the next real limit.
+- **D (correlation depth)** — **done as far as this build goes**: eleven planes read and
+  supplied, two rules, and subjects joined onto assets by declared keys with ambiguity
+  refused. Per-plane blind spots remain in the register; what D does not do — causality,
+  likelihood ranking, incident declaration — is permanent by design, not unfinished.
 - **E (generic simulation engine)** — simulation is still per-question (PQC planning,
   twin scenarios), not one engine that can run a subject-modification-recompute cycle
   over any BOM. Not started.

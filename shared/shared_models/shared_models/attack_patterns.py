@@ -37,6 +37,12 @@ could be:
 The plane vocabulary lives in ``attack_planes``; this module refuses facts from a plane it
 does not know, and counts them as ``unrecognised_plane_facts`` rather than dropping them
 silently.
+
+Joining on a *subject* means the subject has to be one asset. ``subject_index`` maps the
+names the collectors use (``alb-payments-01``, ``payments.bank.example:443``,
+``spiffe://bank.example/ns/payments/sa/api``) onto the asset that declares them, by exact
+key equality and nothing else. A subject claimed by two assets is left ungrouped and
+reported — never assigned to the likelier one.
 """
 
 from __future__ import annotations
@@ -343,6 +349,7 @@ def correlate(
     collectors_by_evidence: Mapping[str, str] | None = None,
     collectors_by_subject: Mapping[str, Iterable[str]] | None = None,
     plane_facts: Iterable[Mapping[str, Any]] | None = None,
+    subject_index: Any | None = None,
 ) -> dict[str, Any]:
     """Group the changes inside one window into patterns, with their level and their gaps.
 
@@ -370,6 +377,34 @@ def correlate(
     patterns.extend(_code_patterns(in_window))
     patterns.extend(_burst_pattern(in_window))
     facts, unrecognised = _plane_facts(plane_facts)
+
+    # Resolve every name the planes use onto the asset that declares it, so four
+    # spellings of one host are one subject. Without an index nothing is merged: the
+    # grouping key stays the raw subject and an estate with no graph behaves exactly as
+    # it did before a resolver existed. A subject two assets claim is dropped from the
+    # grouping and reported, never assigned to the likelier owner.
+    resolutions: list[Any] = []
+    ambiguous: list[dict[str, Any]] = []
+    if subject_index is not None:
+        from .subject_resolution import AMBIGUOUS
+
+        for signal in in_window:
+            resolution = subject_index.resolve(signal.get("subject"))
+            resolutions.append(resolution)
+            signal["group"] = resolution.key
+            if resolution.status == AMBIGUOUS:
+                ambiguous.append(resolution.as_dict())
+        kept: list[dict[str, Any]] = []
+        for fact in facts:
+            resolution = subject_index.resolve(fact["subject"])
+            resolutions.append(resolution)
+            if resolution.status == AMBIGUOUS:
+                ambiguous.append(resolution.as_dict())
+                continue
+            fact["group"] = resolution.key
+            kept.append(fact)
+        facts = kept
+
     patterns.extend(_plane_patterns(in_window, facts))
     patterns.extend(_correlated(patterns, in_window))
 
@@ -408,6 +443,7 @@ def correlate(
         "by_level": by_level,
         "highest_level": max((p["level"] for p in patterns), default=0),
         "level_definitions": {str(level): definition for level, definition in LEVELS.items()},
+        "subjects": _subject_block(subject_index, resolutions, ambiguous, in_window, facts),
         "planes": {
             "vocabulary": list(PLANES),
             "facts_considered": len(facts),
@@ -492,12 +528,26 @@ def _plane_facts(raw: Iterable[Mapping[str, Any]] | None) -> tuple[list[dict[str
 
 
 def _planes_by_subject(facts: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, list[dict[str, Any]]]]:
-    """subject → {"OBSERVED": [facts], "ABSENT": [facts]}."""
+    """group → {"OBSERVED": [facts], "ABSENT": [facts]}.
+
+    The group is the resolved asset when a subject index mapped the name, and the raw
+    subject otherwise — so an estate with no index behaves exactly as it did before one
+    existed, rather than silently merging like-named hosts.
+    """
     index: dict[str, dict[str, list[dict[str, Any]]]] = {}
     for fact in facts:
-        bucket = index.setdefault(fact["subject"], {"OBSERVED": [], "ABSENT": []})
+        group = str(fact.get("group") or fact["subject"])
+        bucket = index.setdefault(group, {"OBSERVED": [], "ABSENT": []})
         bucket[fact["relation"]].append(fact)  # type: ignore[index]
     return index
+
+
+def _group_subjects(facts: Iterable[Mapping[str, Any]], group: str) -> list[str]:
+    return sorted({str(fact["subject"]) for fact in facts if str(fact.get("group") or fact["subject"]) == group})
+
+
+def _group_asset(group: str) -> str | None:
+    return group[len("asset:"):] if group.startswith("asset:") else None
 
 
 def _plane_fact_view(fact: Mapping[str, Any]) -> dict[str, Any]:
@@ -523,12 +573,14 @@ def _plane_patterns(
     if not facts:
         return out
     index = _planes_by_subject(facts)
-    changed_subjects = {
-        str(signal.get("subject") or "").strip() for signal in signals if signal.get("subject")
+    changed_groups = {
+        str(signal.get("group") or signal.get("subject") or "").strip()
+        for signal in signals
+        if signal.get("subject")
     }
 
     # --- contradiction: one plane witnesses what another records as absent ---
-    for subject, bucket in sorted(index.items()):
+    for group, bucket in sorted(index.items()):
         observed = [fact for fact in bucket["OBSERVED"]]
         absent = [fact for fact in bucket["ABSENT"]]
         witnessed = {fact["plane"] for fact in observed}
@@ -536,6 +588,8 @@ def _plane_patterns(
         if not observed or not absent or not (witnessed - missing_planes):
             continue
         witnesses = sorted(witnessed - missing_planes)
+        subjects = _group_subjects(observed + absent, group)
+        asset = _group_asset(group)
         out.append(
             _pattern(
                 "PLANE_CONTRADICTION",
@@ -546,7 +600,7 @@ def _plane_patterns(
                         "run_id": None,
                         "kind": "PLANE_FACT",
                         "severity": "",
-                        "subject": subject,
+                        "subject": ", ".join(subjects),
                         "detail": f"{', '.join(witnesses)} witnessed it; "
                         f"{', '.join(sorted(missing_planes))} recorded it absent",
                         "evidence_ids": sorted(
@@ -574,7 +628,8 @@ def _plane_patterns(
                     "a disagreement is not a compromise: neither plane is accusing the other",
                 ],
                 extra={
-                    "subjects": [subject],
+                    "subjects": subjects,
+                    "asset": asset,
                     "planes": sorted(witnessed | missing_planes),
                     "plane_evidence": {
                         "observed": [_plane_fact_view(fact) for fact in observed],
@@ -585,16 +640,21 @@ def _plane_patterns(
         )
 
     # --- agreement: a change on a subject that several planes describe ------
-    for subject in sorted(changed_subjects):
-        bucket = index.get(subject)
+    for group in sorted(changed_groups):
+        bucket = index.get(group)
         if not bucket:
             continue
         all_witnesses = sorted({fact["plane"] for fact in bucket["OBSERVED"]})
         witnesses = [plane for plane in all_witnesses if plane not in DERIVED_PLANES]
         if len(witnesses) < 2:
             continue
-        changed = [signal for signal in signals if str(signal.get("subject") or "").strip() == subject]
+        changed = [
+            signal for signal in signals
+            if str(signal.get("group") or signal.get("subject") or "").strip() == group
+        ]
         facts_for_subject = [fact for fact in bucket["OBSERVED"]]
+        subjects = _group_subjects(facts_for_subject + changed, group)
+        asset = _group_asset(group)
         out.append(
             _pattern(
                 "MULTI_PLANE_AGREEMENT",
@@ -606,7 +666,7 @@ def _plane_patterns(
                         "run_id": None,
                         "kind": "PLANE_FACT",
                         "severity": "",
-                        "subject": subject,
+                        "subject": ", ".join(subjects),
                         "detail": f"{len(witnesses)} planes describe this subject: {', '.join(witnesses)}",
                         "evidence_ids": sorted(
                             {
@@ -632,7 +692,8 @@ def _plane_patterns(
                     "raises review priority, not suspicion of intent",
                 ],
                 extra={
-                    "subjects": [subject],
+                    "subjects": subjects,
+                    "asset": asset,
                     "planes": all_witnesses,
                     "independent_planes": witnesses,
                     "derived_planes": [
@@ -643,6 +704,48 @@ def _plane_patterns(
             )
         )
     return out
+
+
+def _subject_block(
+    subject_index: Any | None,
+    resolutions: list[Any],
+    ambiguous: list[dict[str, Any]],
+    signals: list[Mapping[str, Any]],
+    facts: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """How the names in this window were joined onto assets, and what was refused."""
+    from .subject_resolution import RESOLVED, UNRESOLVED, summarise
+
+    if subject_index is None:
+        return {
+            "index": None,
+            "state": "NOT_RESOLVED",
+            "reason": (
+                "no subject index was supplied, so facts are grouped by the exact name each "
+                "plane used. Two spellings of one host will not be joined, and nothing is merged"
+            ),
+            "resolved": 0,
+            "unresolved": 0,
+            "ambiguous": [],
+        }
+    summary = summarise(resolutions)
+    by_status = summary["by_status"]
+    return {
+        "index": subject_index.as_dict(),
+        "state": "RESOLVED" if by_status.get(RESOLVED) else "NO_SUBJECT_MATCHED",
+        "resolved": by_status.get(RESOLVED, 0),
+        "unresolved": by_status.get(UNRESOLVED, 0),
+        "ambiguous": ambiguous,
+        "by_status": by_status,
+        "by_scheme": summary["by_scheme"],
+        "merged_subjects": summary["merged_subjects"],
+        "unresolved_subjects": summary["unresolved"],
+        "patterns_with_an_asset": len(
+            [signal for signal in signals if str(signal.get("group") or "").startswith("asset:")]
+        )
+        + len([fact for fact in facts if str(fact.get("group") or "").startswith("asset:")]),
+        "note": summary["note"],
+    }
 
 
 def _collection_patterns(signals: list[Mapping[str, Any]]) -> list[dict[str, Any]]:

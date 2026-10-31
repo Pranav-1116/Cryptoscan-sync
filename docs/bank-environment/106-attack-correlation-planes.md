@@ -40,6 +40,21 @@ slide is not that. Two things are measured per plane, and they fail differently:
 | **Cryptography bill of materials** (`CBOM`) | CONSUMED | SUPPLIED | derived — never a second witness | this cryptographic asset exists with this algorithm, size and primitive |
 | **Temporal behaviour** (`TEMPORAL`) | CONSUMED | SUPPLIED | independent | this subject's rate or pattern moved away from its own baseline |
 
+## Joining on a subject means the subject must be one asset
+
+Four collectors name one host four ways — `alb-payments-01`, `payments-api`,
+`10.0.3.4:443`, `spiffe://bank.example/ns/payments/sa/api`. Grouping by the string
+each collector used would make those four subjects and no correlation would ever
+fire; merging by similarity would join two hosts. `subject_resolution` matches
+**exact keys the asset declares**, and refuses a key two assets claim.
+
+| Probe | Result |
+|---|---|
+| Four spellings joined to one asset | True |
+| Keys used | `HOST`, `IP`, `NAME`, `SPIFFE` |
+| Ambiguous key refused, not resolved | True |
+| State | MERGED |
+
 ## How two planes are joined
 
 `correlate(..., plane_facts=[...])` reads facts shaped as

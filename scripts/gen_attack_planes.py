@@ -19,6 +19,7 @@ TARGET = ROOT / "docs" / "bank-environment" / "106-attack-correlation-planes.md"
 
 def render(document: dict) -> str:
     counts = document["counts"]
+    resolution = document["resolution"]
     lines = [
         "# Attack correlation: the eleven evidence planes",
         "",
@@ -58,6 +59,21 @@ def render(document: dict) -> str:
             f"{row['asserts']} |"
         )
     lines += [
+        "",
+        "## Joining on a subject means the subject must be one asset",
+        "",
+        "Four collectors name one host four ways — `alb-payments-01`, `payments-api`,",
+        "`10.0.3.4:443`, `spiffe://bank.example/ns/payments/sa/api`. Grouping by the string",
+        "each collector used would make those four subjects and no correlation would ever",
+        "fire; merging by similarity would join two hosts. `subject_resolution` matches",
+        "**exact keys the asset declares**, and refuses a key two assets claim.",
+        "",
+        "| Probe | Result |",
+        "|---|---|",
+        f"| Four spellings joined to one asset | {resolution['merges_all_spellings']} |",
+        f"| Keys used | {', '.join(f'`{item}`' for item in resolution['schemes'])} |",
+        f"| Ambiguous key refused, not resolved | {resolution['refuses_ambiguity']} |",
+        f"| State | {resolution['state']} |",
         "",
         "## How two planes are joined",
         "",

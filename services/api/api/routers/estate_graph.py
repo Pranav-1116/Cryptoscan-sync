@@ -2006,6 +2006,13 @@ def estate_twin_graph_load(
     return {"run_id": run.id, **result}
 
 
+def collector_depth_helper(db: Session):
+    """The latest stored graph, or ``(None, None, reason)`` — the same read the matrices use."""
+    from api.routers.collector_depth import _graph
+
+    return _graph(db)
+
+
 # -- attack planes: the eleven evidence planes a correlation may draw on ----- #
 
 
@@ -2056,6 +2063,17 @@ class AttackPlaneCountsOut(BaseModel):
     blind: int
 
 
+class AttackPlaneResolutionOut(BaseModel):
+    state: str
+    spellings: list[str]
+    assets: list[str]
+    schemes: list[str]
+    merges_all_spellings: bool
+    refuses_ambiguity: bool
+    refusal_candidates: list[str]
+    note: str
+
+
 class AttackPlaneRegister(BaseModel):
     schema: str
     planes: list[AttackPlaneOut]
@@ -2068,6 +2086,7 @@ class AttackPlaneRegister(BaseModel):
     corroborating: list[str]
     blind: list[AttackPlaneBlindOut]
     derived_planes: list[str]
+    resolution: AttackPlaneResolutionOut
     claim: str
     note: str
 
@@ -2144,12 +2163,30 @@ def estate_threat_patterns(
     }
     plane_facts = attack_planes.facts_from_records(records, subjects=subjects) if subjects else []
 
+    # Join the names onto assets before joining the planes, or four spellings of one host
+    # are four subjects and the correlation sees no agreement. The identities come from the
+    # stored estate graph; with no discovery run there is no index, and the result says so
+    # rather than merging by name.
+    from shared_models import subject_resolution
+
+    try:
+        _run, graph, _reason = collector_depth_helper(db)
+    except Exception:  # noqa: BLE001 - a missing snapshot is not a correlation failure
+        graph = None
+    identity_assets = [
+        {"asset_id": asset.get("asset_id"), "name": asset.get("name"),
+         "identity": asset.get("identity") or {}, "attributes": asset.get("attributes") or {}}
+        for asset in (graph.assets() if graph is not None else [])
+    ]
+    subject_index = subject_resolution.SubjectIndex.from_assets(identity_assets) if identity_assets else None
+
     result = attack_patterns.correlate(
         events,
         window_seconds=window_seconds,
         collectors_by_evidence=collectors_by_evidence,
         collectors_by_subject=collectors_by_subject,
         plane_facts=plane_facts,
+        subject_index=subject_index,
     )
     result["estate"] = events[0].get("estate") if events else None
     result["source"] = "/api/v1/estate/evidence/changes"
