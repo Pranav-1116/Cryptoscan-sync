@@ -21,7 +21,7 @@ document is the operational path through them, not an aspiration.
 | Egress exceptions | `AIRGAP_ALLOWLIST` — comma-separated internal mirror hosts still permitted | empty |
 | Telemetry | The "telemetry heartbeat" publishes to the **in-process SSE event bus** for local subscribers; there is no external phone-home endpoint in the codebase | internal only |
 | Updates | HMAC-signed offline bundles (§3) | manual |
-| Exports | Signed exports via `/enterprise/airgap/bundle` (§4) | manual |
+| Exports | `cryptoscan bundle export` — stored evidence, the twin snapshot and the BOM projections, each signed by the operator (§4) | manual |
 | Backups | AES-GCM encrypted via `scripts/backup_*.py --encrypt` | plaintext unless flagged |
 
 ## 2. Install (gapped site)
@@ -87,12 +87,50 @@ Properties you can rely on:
 
 ## 4. Move results OUT of the gapped site
 
-`POST /api/v1/enterprise/airgap/bundle` (roles: superadmin / admin /
-ciso / auditor) builds a **signed export** of real platform data — live
-findings, compliance posture, controls — carrying a `content_hash` and
-the exporting principal. The write is audited. The receiving side
-verifies the signature before trusting the document; treat the secret
-as site-specific and rotate it per transfer window.
+Use the operator CLI. It reads the control plane it is already authenticated
+against and writes an evidence bundle:
+
+```bash
+cryptoscan bundle export --out ./bundle --sign-key operator-key.pem   # sign the manifest
+cryptoscan bundle verify ./bundle --public-key trusted.pem            # on the receiving side
+cryptoscan bundle import ./bundle.cse --into ./restored               # decrypt an envelope
+```
+
+What the bundle carries, and what it does not, is written into its own
+`bundle.json`:
+
+* **carries** stored evidence, the twin snapshot and the BOM projections, each
+  with the endpoint that answered it under `sources`;
+* **does not carry** collectors, their raw output, or the database — importing a
+  bundle into another installation does not make its evidence that
+  installation's, because every record keeps the estate it was observed under;
+* `unavailable` lists any projection the control plane could not serve, and the
+  export exits non-zero rather than shipping a bundle that reads as a complete
+  estate;
+* the manifest's hashes prove the files are unmodified relative to the manifest.
+  Who produced them is proven only if the bundle was signed and you check it
+  against a key you already trust; an unsigned bundle says `UNSIGNED`.
+
+### The old transfer endpoints are withdrawn
+
+`/api/v1/enterprise/airgap/{bundle,export,import}` answered 2xx until this
+change. They are gone because they could not be an evidence path:
+
+* the signing secret travelled in the *request body*, so the server never held a
+  key it could trust — "signed" meant "signed by whoever called";
+* `import` verified a signature and answered `{"accepted": true}` without
+  writing anything. A success an operator cannot distinguish from a no-op is
+  worse than an error;
+* nothing in the payload was evidence, so the transfer could not be followed back
+  to a collector.
+
+The paths now answer **410 Gone** with the replacement named in the body
+(`evidence_export`, `evidence_verify`, `feed_updates`, `docs`) rather than 404,
+so an integration still wired to them says what happened. Advisory feeds keep
+their own path: `POST /api/v1/resilience/airgap/build-bundle` on a connected
+host and `POST /api/v1/resilience/airgap/import-feed` inside the gap, signed with
+a **server-held** key (`governance/keys.signing_secret`) and ingested into the
+live vulnerability store — see §3.
 
 ## 5. Prove integrity without network access
 
@@ -113,8 +151,8 @@ as site-specific and rotate it per transfer window.
   for named internal mirrors only — never a wildcard.
 * Move feed bundles on a fixed cadence; log every import's
   entry count and refuse counts.
-* Rotate the bundle/export secrets per transfer window; secrets used
-  for import and export should differ.
+* Rotate the feed-bundle signing secret per transfer window, and keep it out of
+  request payloads: the signing key is the server's, never the caller's.
 * Re-verify the audit attestation after every restore.
 
 ## 7. Known limits (honest)

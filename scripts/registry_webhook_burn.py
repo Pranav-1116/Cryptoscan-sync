@@ -102,11 +102,20 @@ def main() -> int:
         print(f"[{'PASS' if ok else 'FAIL'}] {step}: {detail}")
 
     # 0. liveness + auth
-    status, body = client.request("GET", "/api/v1/health/live")
+    #
+    # The probe used to ask for a "health/live" path and then for a bare
+    # "health" path under /api/v1. Neither exists in this API (the liveness
+    # contract is /api/v1/healthz, aliased at /healthz for the edge), so the burn
+    # always recorded a FAIL on its first step and every later step inherited a
+    # line about a dead server that was in fact answering. Probe what the router
+    # registers; scripts/tests/test_api_route_contract.py holds the line.
+    status, body = client.request("GET", "/api/v1/healthz")
+    probed = "/api/v1/healthz"
     if status == 404:
-        status, body = client.request("GET", "/api/v1/health")
+        status, body = client.request("GET", "/healthz")
+        probed = "/healthz"
     alive = status in (200, 401)  # 401 = alive behind auth
-    record("liveness", alive, f"GET /health -> {status} (server responding)")
+    record("liveness", alive, f"GET {probed} -> {status} (server responding)")
     status, body = client.post_json("/api/v1/auth/login",
                                     {"username": args.username, "password": args.password})
     token = body.get("token") if isinstance(body, dict) else None

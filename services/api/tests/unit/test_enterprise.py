@@ -224,12 +224,22 @@ def test_worker_tick_emergency_stop_blocks(client):
     client.post("/api/v1/control/safe-scan/emergency-stop", headers=h, json={"engaged": False})
 
 
-def test_airgap_bundle_carries_findings(client):
+def test_the_live_airgap_transfer_path_is_withdrawn(client):
+    """It used to export live findings and import them back with a caller's secret.
+
+    Both halves are gone on purpose; the endpoint answers 410 with the path that
+    replaced it, so a caller still wired to it learns what to use instead of
+    reading a 404 as a typo. See docs/airgap-deployment.md.
+    """
     h = _h(client)
-    bundle = client.post("/api/v1/enterprise/airgap/bundle", headers=h, json={
-        "secret": "airgap-bundle-secret", "include_findings": True}).json()
-    assert bundle["package"]["content_hash"]
-    assert "findings" in bundle["document_keys"]
+    response = client.post("/api/v1/enterprise/airgap/bundle", headers=h, json={
+        "secret": "airgap-bundle-secret", "include_findings": True})
+    assert response.status_code == 410
+    detail = response.json()["detail"]
+    assert "withdrawn" in detail
+    assert "bundle export" in detail["evidence_export"]
+    assert "import-feed" in detail["feed_updates"]
+    assert detail["docs"] == "docs/airgap-deployment.md"
 
 
 def test_control_health_includes_components(client):
@@ -240,22 +250,15 @@ def test_control_health_includes_components(client):
 
 
 # ------------------------------------------------------- air-gapped transfer
-def test_signed_export_import_roundtrip_and_tamper(client):
+def test_the_withdrawn_transfer_never_reports_success(client):
+    """The failure this replaces: `import` answered {"accepted": true} and wrote nothing."""
     h = _h(client)
     doc = {"findings": [{"id": "f1", "severity": "high"}], "evidence": ["ev1"]}
-    exp = client.post("/api/v1/enterprise/airgap/export", headers=h,
-                      json={"document": doc, "secret": "airgapped-shared-secret"})
-    pkg = exp.json()["package"]
-    assert pkg["content_hash"]
-    imp = client.post("/api/v1/enterprise/airgap/import", headers=h,
-                      json={"package": pkg, "secret": "airgapped-shared-secret"})
-    assert imp.json()["accepted"] is True
-    # tampered package rejected
-    bad = client.post("/api/v1/enterprise/airgap/import", headers=h,
-                      json={"package": {**pkg, "document": {"findings": []}},
-                            "secret": "airgapped-shared-secret"})
-    assert bad.status_code == 422
-    # wrong secret rejected
-    bad2 = client.post("/api/v1/enterprise/airgap/import", headers=h,
-                       json={"package": pkg, "secret": "wrong-secret-xx"})
-    assert bad2.status_code == 422
+    exported = client.post("/api/v1/enterprise/airgap/export", headers=h,
+                           json={"document": doc, "secret": "airgapped-shared-secret"})
+    assert exported.status_code == 410
+    imported = client.post("/api/v1/enterprise/airgap/import", headers=h,
+                           json={"package": {"document": doc}, "secret": "airgapped-shared-secret"})
+    assert imported.status_code == 410
+    assert "accepted" not in imported.json()
+    assert imported.json()["detail"]["endpoint"].endswith("/airgap/import")

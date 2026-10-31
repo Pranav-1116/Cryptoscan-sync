@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 
 from db.repositories.enterprise_repository import EnterpriseRepository
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -508,71 +508,67 @@ def crypto_kb(algorithm: str | None = None, user: str = Depends(get_current_user
     return {"entries": [e.to_dict() for e in _repo(db).list_kb_entries()]}
 
 
-# --------------------------------------------------- air-gapped signed transfer
-class SignedExportRequest(BaseModel):
-    document: dict | None = None
-    secret: str = Field(..., min_length=8)
-    include_findings: bool = False
-    include_compliance: bool = False
+# ------------------------------------------- withdrawn: live air-gap transfer
+#
+# This used to be a live transfer path: ``/airgap/bundle`` read findings out of
+# the running control plane, ``/airgap/export`` signed a document with a secret
+# the *caller* supplied, and ``/airgap/import`` verified a signature and then
+# answered ``accepted: true`` without writing anything.
+#
+# Three things were wrong with it, and only the last one was visible in a test:
+#
+#   * the signing key crossed the API boundary in the request body, so the server
+#     never held a key it could trust and "signed" meant "signed by whoever
+#     called";
+#   * "import" was a no-op that reported success. An operator cannot tell that
+#     from a working ingestion, which is worse than an error;
+#   * it carried no evidence, so it could not be the air-gap evidence path no
+#     matter how the signature was handled.
+#
+# The path is withdrawn rather than deleted: a caller that still uses it gets a
+# 410 naming what to use instead, not a 404 that reads like a typo in a URL.
+WITHDRAWN_TRANSFER = {
+    "withdrawn": "the live air-gap transfer path /api/v1/enterprise/airgap/{bundle,export,import}",
+    "reason": (
+        "it moved live platform documents signed with a caller-supplied secret into an "
+        "installation, and its import reported success without storing anything. Neither is "
+        "an evidence path: what it transferred could not be audited back to a collector"
+    ),
+    "evidence_export": (
+        "cryptoscan bundle export --out DIR [--sign-key key.pem] — stored evidence, the twin "
+        "snapshot and the BOM projections, each with the endpoint that answered it, and a "
+        "manifest whose `limits` state what the bundle does not carry"
+    ),
+    "evidence_verify": "cryptoscan bundle verify DIR [--public-key trusted.pem]",
+    "feed_updates": (
+        "POST /api/v1/resilience/airgap/build-bundle on a connected host, then "
+        "POST /api/v1/resilience/airgap/import-feed inside the gapped site — signed advisory "
+        "feeds ingested into the live vulnerability store, server-held signing key"
+    ),
+    "docs": "docs/airgap-deployment.md",
+}
 
 
-@router.post("/airgap/bundle")
-def airgap_bundle(body: SignedExportRequest,
-                  user: str = Depends(require_roles("superadmin", "admin", "ciso", "auditor")),
-                  db: Session = Depends(get_db_session)):
-    """Build a signed export carrying real platform data (findings, compliance
-    posture, controls) for controlled transfer out of an air-gapped site."""
-    from control_plane.integrations import build_signed_export
-
-    repo = _repo(db)
-    doc = dict(body.document or {})
-    if body.include_findings:
-        doc["findings"] = repo.live_findings(500)
-    if body.include_compliance:
-        controls = repo.list_controls()
-        doc["controls"] = [{"framework": c.framework, "control_id": c.control_id,
-                            "assets": c.assets} for c in controls]
-    doc["exported_by"] = user
-    pkg = build_signed_export(doc, body.secret)
-    _audit(db, user, "enterprise.airgap_bundle", detail={"content_hash": pkg["content_hash"],
-           "findings": len(doc.get("findings") or [])})
-    db.commit()
-    return {"package": pkg, "document_keys": list(doc.keys()),
-            "findings": len(doc.get("findings") or [])}
+def _withdrawn(endpoint: str) -> None:
+    raise HTTPException(status_code=410, detail={**WITHDRAWN_TRANSFER, "endpoint": endpoint})
 
 
-@router.post("/airgap/export")
-def airgap_export(body: SignedExportRequest,
-                  user: str = Depends(require_roles("superadmin", "admin", "ciso", "auditor")),
-                  db: Session = Depends(get_db_session)):
-    from control_plane.integrations import build_signed_export
-
-    pkg = build_signed_export(body.document, body.secret)
-    _audit(db, user, "enterprise.airgap_exported",
-           detail={"content_hash": pkg["content_hash"]})
-    db.commit()
-    return {"package": {k: v for k, v in pkg.items() if k != "signature"} |
-            {"signature": pkg["signature"]}}
+@router.post("/airgap/bundle", deprecated=True)
+def airgap_bundle(_: dict | None = Body(default=None, description="ignored: the endpoint is withdrawn"),
+                  user: str = Depends(require_roles("superadmin", "admin", "ciso", "auditor"))):
+    """Withdrawn (410). Use `cryptoscan bundle export`; see docs/airgap-deployment.md."""
+    _withdrawn("/api/v1/enterprise/airgap/bundle")
 
 
-class SignedImport(BaseModel):
-    package: dict
-    secret: str = Field(..., min_length=8)
+@router.post("/airgap/export", deprecated=True)
+def airgap_export(_: dict | None = Body(default=None, description="ignored: the endpoint is withdrawn"),
+                  user: str = Depends(require_roles("superadmin", "admin", "ciso", "auditor"))):
+    """Withdrawn (410). A document signed with a caller-supplied secret is not an export."""
+    _withdrawn("/api/v1/enterprise/airgap/export")
 
 
-@router.post("/airgap/import")
-def airgap_import(body: SignedImport,
-                  user: str = Depends(require_roles("superadmin", "admin", "ciso")),
-                  db: Session = Depends(get_db_session)):
-    from control_plane.integrations import load_signed_export
-
-    try:
-        doc = load_signed_export(body.package, body.secret)
-    except ValueError as exc:
-        _audit(db, user, "enterprise.airgap_import_rejected", detail={"reason": str(exc)}, outcome="FAILURE")
-        db.commit()
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    _audit(db, user, "enterprise.airgap_imported",
-           detail={"keys": list(doc.keys()) if isinstance(doc, dict) else "n/a"})
-    db.commit()
-    return {"accepted": True, "document_keys": list(doc.keys()) if isinstance(doc, dict) else []}
+@router.post("/airgap/import", deprecated=True)
+def airgap_import(_: dict | None = Body(default=None, description="ignored: the endpoint is withdrawn"),
+                  user: str = Depends(require_roles("superadmin", "admin", "ciso"))):
+    """Withdrawn (410). The old handler answered `accepted` and stored nothing."""
+    _withdrawn("/api/v1/enterprise/airgap/import")
