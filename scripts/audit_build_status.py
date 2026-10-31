@@ -72,6 +72,9 @@ def _normalise(path: str) -> str:
 
 def api_surface() -> dict:
     from api.main import create_app
+    from api.routers.enterprise import withdrawn_routes
+
+    withdrawn = set(withdrawn_routes())
 
     app = create_app()
     document = app.openapi()
@@ -87,6 +90,10 @@ def api_surface() -> dict:
                     "normalised": _normalise(path),
                     "summary": (operation.get("summary") or "")[:120],
                     "tags": operation.get("tags") or [],
+                    # A withdrawn route is served but answers 410. Counting it as an
+                    # unreachable capability would be wrong in both directions: it is
+                    # not a screen nobody built, and it is not an integration point.
+                    "withdrawn": path in withdrawn,
                 }
             )
     return {"document_version": document.get("info", {}).get("version"), "endpoints": endpoints}
@@ -315,7 +322,10 @@ def build_report() -> dict:
         "stub_files": len({hit["file"] for hit in stubs}),
         "stub_kinds": dict(Counter(hit["kind"] for hit in stubs)),
         "routes": [
-            {key: endpoint[key] for key in ("method", "path", "ui", "tested", "summary")}
+            {
+                key: endpoint[key]
+                for key in ("method", "path", "ui", "tested", "summary", "withdrawn")
+            }
             for endpoint in sorted(endpoints, key=lambda item: item["path"])
         ],
     }
@@ -395,7 +405,15 @@ def render_markdown(report: dict) -> str:
     add("")
     add("## Endpoints with no console caller")
     add("")
-    missing = [route for route in report["routes"] if not route["ui"]]
+    withdrawn = [route for route in report["routes"] if route.get("withdrawn")]
+    if withdrawn:
+        add(
+            f"**{len(withdrawn)} of the endpoints below are withdrawn, not unbuilt.** They answer "
+            f"`410 Gone` and are listed separately at the end of this section — an integrator must be "
+            f"able to discover the refusal, but they are not a console gap."
+        )
+        add("")
+    missing = [route for route in report["routes"] if not route["ui"] and not route.get("withdrawn")]
     if not missing:
         add("None.")
     else:
@@ -404,6 +422,18 @@ def render_markdown(report: dict) -> str:
         for route in missing:
             add(f"| {route['method']} | `{route['path']}` | {route['summary'] or '—'} |")
     add("")
+    if withdrawn:
+        add("### Withdrawn (410) — discoverable, not callable")
+        add("")
+        add("| Method | Path | What it does |")
+        add("|---|---|---|")
+        for route in withdrawn:
+            add(
+                f"| {route['method']} | `{route['path']}` | "
+                f"{route['summary'] or '—'} — **withdrawn: answers `410`**, see "
+                f"[airgap-deployment.md](../airgap-deployment.md) |"
+            )
+        add("")
     add("## Self-declared limits")
     add("")
     if not report["stub_hits"]:

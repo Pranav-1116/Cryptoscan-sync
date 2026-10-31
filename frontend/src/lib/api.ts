@@ -5550,6 +5550,11 @@ export interface NetworkProtocolRow {
   cannot_claim: string;
   gaps: string[];
   targets: string[];
+  /* Engines that accept this protocol's observations without this build
+   * producing them (`JVM_JCE`, `OPENSSL_TRACE`, …). The server has always sent
+   * this for protocols, exactly as it does for runtime paths; the interface
+   * omitted it, so the console could not show it. */
+  ingest_only: string[];
   notes: string[];
 }
 
@@ -5704,6 +5709,9 @@ export interface CapabilityBoundary {
 export interface MaturityRegister {
   schema?: string;
   areas: MaturityArea[];
+  /* Always served: the five capabilities this build does not present as
+   * operational, each with the artefact that is real and the sentence it does
+   * not entitle anyone to. Optional in the type only for older payloads. */
   boundaries?: CapabilityBoundary[];
   claims: { may_claim: string; may_not_claim: string[]; why: string };
   routes?: string[];

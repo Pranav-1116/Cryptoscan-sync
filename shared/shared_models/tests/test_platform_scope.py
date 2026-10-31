@@ -45,10 +45,37 @@ class TestScopeManifest:
     def test_manifest_shape(self):
         manifest = scope_manifest()
         assert manifest["platform"] == "CryptoScan"
-        assert manifest["schema_version"] == 2  # v2: adds capabilities (support status + stated limit)
+        # v2 added capabilities (support status + stated limit); v3 adds the five
+        # capability boundaries and the enterprise-simulation ratio, so the
+        # platform's self-description no longer stops at what is supported.
+        assert manifest["schema_version"] == 3
         for key in ("mission", "covered_areas", "non_goals",
                     "access_model", "invariants"):
             assert key in manifest
+
+    def test_manifest_carries_the_five_capability_boundaries(self):
+        """The scope endpoint must state what is NOT operational, not only what is."""
+        from shared_models.capability_boundaries import statements
+
+        rows = scope_manifest()["limited_capabilities"]
+        assert [r["id"] for r in rows] == [r["id"] for r in statements()]
+        assert len(rows) == 5
+        for row in rows:
+            assert row["status"] != "OPERATIONAL"
+            assert row["not_operational"]
+            assert row["check_at"].startswith("/estate/evidence/")
+
+    def test_manifest_carries_the_simulation_ratio(self):
+        """One of ten scenarios computes; the manifest says so in one sentence."""
+        from shared_models.enterprise_scenarios import SCENARIOS
+
+        cov = scope_manifest()["simulation_coverage"]
+        assert cov["scenarios"] == len(SCENARIOS) == 10
+        assert cov["computing"] + cov["partial"] + cov["absent"] == cov["scenarios"]
+        assert cov["absent"] == 2
+        assert cov["computing"] == 1
+        assert "not a generic enterprise simulation engine" in cov["headline"]
+        assert cov["detail_at"] == "/estate/evidence/twin/simulation-scenarios"
 
     def test_unique_area_ids(self):
         ids = [area["id"] for area in COVERED_AREAS]

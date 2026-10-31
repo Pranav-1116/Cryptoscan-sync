@@ -95,6 +95,10 @@ def test_no_shipped_caller_uses_the_withdrawn_paths():
             # the router that defines the withdrawn handlers is where the names live
             if path.name == "enterprise.py" and "routers" in path.parts:
                 continue
+            # the two generators name the paths in order to MARK them withdrawn in
+            # the generated documents; they never call them
+            if path.name in {"gen_rest_api.py", "audit_build_status.py"}:
+                continue
             text = path.read_text(encoding="utf-8", errors="replace")
             for banned in WITHDRAWN:
                 if banned in text:
@@ -124,3 +128,29 @@ def test_the_cli_bundle_states_what_it_does_not_carry():
     assert "does not make its evidence yours" in body
     for command in ("\"export\"", "\"verify\"", "\"import\""):
         assert command in source
+
+
+def test_the_generated_route_reference_marks_the_withdrawn_rows():
+    """A table that lists a 410 route like any other is a documentation defect.
+
+    Both generated documents (the API reference and the build-status audit) are
+    produced from the schema, which still contains the withdrawn operations. Each
+    generator therefore has to mark them, or a reader integrates with a route
+    that refuses.
+    """
+    reference = (ROOT / "docs" / "api-reference" / "rest-api.md").read_text(encoding="utf-8")
+    audit = (ROOT / "docs" / "bank-environment" / "95-build-status-audit.md").read_text(encoding="utf-8")
+    for path in (
+        "/api/v1/enterprise/airgap/bundle",
+        "/api/v1/enterprise/airgap/export",
+        "/api/v1/enterprise/airgap/import",
+    ):
+        for doc, name in ((reference, "rest-api.md"), (audit, "95-build-status-audit.md")):
+            rows = [line for line in doc.splitlines() if path in line and line.startswith("|")]
+            assert rows, f"{name} does not list {path}"
+            for row in rows:
+                assert "410" in row, f"{name} lists {path} without saying it answers 410: {row}"
+    # the replacement is named per direction, not one command for all three
+    assert "cryptoscan bundle export" in reference
+    assert "cryptoscan bundle verify" in reference
+    assert "## Withdrawn routes" in reference

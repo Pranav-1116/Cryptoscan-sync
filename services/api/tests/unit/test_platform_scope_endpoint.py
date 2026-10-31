@@ -41,12 +41,39 @@ async def test_scope_endpoint_returns_manifest(app_client):
     assert response.status_code == 200
     body = response.json()
     assert body["platform"] == "CryptoScan"
-    assert body["schema_version"] == 2  # v2: adds capabilities (support status + stated limit)
+    assert body["schema_version"] == 3  # v3: adds limited_capabilities + simulation_coverage
     assert body["mission"]
     assert body["covered_areas"]
     assert body["non_goals"]
     assert body["access_model"]["read_only"] is True
     assert body["invariants"]
+
+
+@pytest.mark.asyncio
+async def test_scope_serves_the_capability_boundaries(app_client):
+    """A reader of /platform/scope sees the five non-operational capabilities."""
+    body = (await app_client.get("/api/v1/platform/scope")).json()
+    ids = [row["id"] for row in body["limited_capabilities"]]
+    assert ids == [
+        "WINDOWS_COLLECTOR",
+        "HARDWARE_DISCOVERY",
+        "HSM_OPERATIONS",
+        "RUNTIME_INVOCATION",
+        "SIMULATION_ENGINE",
+    ]
+    for row in body["limited_capabilities"]:
+        assert row["status"] in {"CANDIDATE", "FOUNDATION"}
+        assert row["not_operational"]
+
+
+@pytest.mark.asyncio
+async def test_scope_serves_the_simulation_ratio(app_client):
+    body = (await app_client.get("/api/v1/platform/scope")).json()
+    cov = body["simulation_coverage"]
+    assert cov["scenarios"] == 10
+    assert cov["computing"] == 1
+    assert cov["absent"] == 2
+    assert "not a generic enterprise simulation engine" in cov["headline"]
 
 
 @pytest.mark.asyncio

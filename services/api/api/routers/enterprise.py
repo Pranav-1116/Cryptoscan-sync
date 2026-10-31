@@ -549,6 +549,21 @@ WITHDRAWN_TRANSFER = {
 }
 
 
+#: The three routes that answer 410. Kept as data so the generated API reference
+#: and the build-status audit can mark them withdrawn instead of listing them as
+#: ordinary endpoints (docs/api-reference/rest-api.md used to read as if they worked).
+WITHDRAWN_ROUTES: tuple[str, ...] = (
+    "/api/v1/enterprise/airgap/bundle",
+    "/api/v1/enterprise/airgap/export",
+    "/api/v1/enterprise/airgap/import",
+)
+
+
+def withdrawn_routes() -> tuple[str, ...]:
+    """The withdrawn paths, for generators that render the route surface."""
+    return WITHDRAWN_ROUTES
+
+
 def _withdrawn(endpoint: str) -> None:
     raise HTTPException(status_code=410, detail={**WITHDRAWN_TRANSFER, "endpoint": endpoint})
 
@@ -557,18 +572,18 @@ def _withdrawn(endpoint: str) -> None:
 def airgap_bundle(_: dict | None = Body(default=None, description="ignored: the endpoint is withdrawn"),
                   user: str = Depends(require_roles("superadmin", "admin", "ciso", "auditor"))):
     """Withdrawn (410). Use `cryptoscan bundle export`; see docs/airgap-deployment.md."""
-    _withdrawn("/api/v1/enterprise/airgap/bundle")
+    _withdrawn(WITHDRAWN_ROUTES[0])
 
 
 @router.post("/airgap/export", deprecated=True)
 def airgap_export(_: dict | None = Body(default=None, description="ignored: the endpoint is withdrawn"),
                   user: str = Depends(require_roles("superadmin", "admin", "ciso", "auditor"))):
     """Withdrawn (410). A document signed with a caller-supplied secret is not an export."""
-    _withdrawn("/api/v1/enterprise/airgap/export")
+    _withdrawn(WITHDRAWN_ROUTES[1])
 
 
 @router.post("/airgap/import", deprecated=True)
 def airgap_import(_: dict | None = Body(default=None, description="ignored: the endpoint is withdrawn"),
                   user: str = Depends(require_roles("superadmin", "admin", "ciso"))):
     """Withdrawn (410). The old handler answered `accepted` and stored nothing."""
-    _withdrawn("/api/v1/enterprise/airgap/import")
+    _withdrawn(WITHDRAWN_ROUTES[2])

@@ -4,6 +4,8 @@ Generated in-process from the application OpenAPI schema (`GET /api/openapi.json
 **1134 paths, 1248 operations** across 114 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
+**3 route(s) in this schema are withdrawn and answer `410 Gone`** — see [Withdrawn routes](#withdrawn-routes) before integrating with anything named there.
+
 Current [execution, SSH and replay contracts](execution-and-replay.md) describe
 owner-bound cursors, fresh execution authority, durable receipts and explicit refusals.
 The [controlled-execution contract](controlled-execution.md) documents approvals,
@@ -686,9 +688,9 @@ This schema snapshot does not certify a deployed production topology or route av
 
 | Method | Path | Summary |
 |---|---|---|
-| `POST` | `/api/v1/enterprise/airgap/bundle` | Airgap Bundle |
-| `POST` | `/api/v1/enterprise/airgap/export` | Airgap Export |
-| `POST` | `/api/v1/enterprise/airgap/import` | Airgap Import |
+| `POST` | `/api/v1/enterprise/airgap/bundle` | Airgap Bundle — **withdrawn: answers `410`** |
+| `POST` | `/api/v1/enterprise/airgap/export` | Airgap Export — **withdrawn: answers `410`** |
+| `POST` | `/api/v1/enterprise/airgap/import` | Airgap Import — **withdrawn: answers `410`** |
 | `POST` | `/api/v1/enterprise/compliance/controls` | Add Control |
 | `POST` | `/api/v1/enterprise/compliance/evaluate` | Compliance Evaluate |
 | `GET` | `/api/v1/enterprise/crypto-kb` | Crypto Kb |
@@ -1843,3 +1845,21 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/workload/ca` | Ca Bundle |
 | `POST` | `/api/v1/workload/svid` | Issue Svid |
 | `POST` | `/api/v1/workload/verify` | Verify Svid |
+
+## Withdrawn routes
+
+These paths are still in the schema so an integrator can discover why they are
+gone. Each one answers `410 Gone` with a body naming the replacement, and none of
+them authenticates first — the refusal is unconditional:
+
+_it moved live platform documents signed with a caller-supplied secret into an installation, and its import reported success without storing anything. Neither is an evidence path: what it transferred could not be audited back to a collector._
+
+| Withdrawn path | Use instead |
+|---|---|
+| `/api/v1/enterprise/airgap/bundle` | **`410 Gone`** — `cryptoscan bundle export --out DIR [--sign-key key.pem]` — signed stored evidence + twin snapshot + BOM projections, with `manifest.limits` stating what the bundle does not carry |
+| `/api/v1/enterprise/airgap/export` | **`410 Gone`** — `cryptoscan bundle export --out DIR` — the same evidence bundle; a document signed with a caller-supplied secret is not an export |
+| `/api/v1/enterprise/airgap/import` | **`410 Gone`** — `cryptoscan bundle verify DIR [--public-key trusted.pem]` on the gapped side — the withdrawn handler answered `accepted` and stored nothing |
+
+Evidence verification: `cryptoscan bundle verify DIR [--public-key trusted.pem]`.
+Advisory feeds: POST /api/v1/resilience/airgap/build-bundle on a connected host, then POST /api/v1/resilience/airgap/import-feed inside the gapped site — signed advisory feeds ingested into the live vulnerability store, server-held signing key.
+Full contract: [docs/airgap-deployment.md](../airgap-deployment.md).

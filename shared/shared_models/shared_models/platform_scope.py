@@ -250,8 +250,32 @@ def scope_manifest() -> dict[str, Any]:
         "access_model": ACCESS_MODEL,
         "invariants": INVARIANTS,
         "capabilities": _capabilities(),
-        "schema_version": 2,
+        # v3: the capabilities this build does not present as operational, and
+        # how much of the enterprise simulation engine actually computes.
+        "limited_capabilities": _limited_capabilities(),
+        "simulation_coverage": _simulation_coverage(),
+        "schema_version": 3,
     }
+
+
+def _limited_capabilities() -> list[dict[str, Any]]:
+    """The five capabilities a bank must not be told are operational.
+
+    Read from ``capability_boundaries`` rather than restated here: the API, the
+    console and docs/CAPABILITY-MATURITY.md all render the same objects, and a
+    test fails if this list disagrees with the register that describes them in
+    detail.
+    """
+    from shared_models.capability_boundaries import statements
+
+    return statements()
+
+
+def _simulation_coverage() -> dict[str, Any]:
+    """How many of the ten enterprise scenarios compute today."""
+    from shared_models.enterprise_scenarios import summary
+
+    return summary()
 
 
 def _capabilities() -> dict[str, Any]:

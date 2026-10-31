@@ -115,3 +115,71 @@ def test_the_report_is_json_and_stable():
     assert document["schema"] == "cryptoscan.api-route-contract/1"
     for key in ("frontend_unknown", "script_unknown", "wrong_verbs"):
         assert document[key] == []
+
+
+#: The number of console-called operations that declare no response model when
+#: the ratchet was introduced. It may fall, never rise: an operation that adds
+#: itself to the console without a schema makes the console/API contract
+#: unverifiable for that page, which is the failure this file exists to prevent.
+UNTYPED_OPERATION_CEILING = 565
+
+
+def test_the_untyped_response_ratchet_only_goes_down():
+    """93% of the operations the console calls return an untyped dict.
+
+    That is the structural reason a page can exist and its endpoint still be
+    wrong: the interface in `lib/api.ts` is a hand-written claim about a payload
+    the server never declares. Adding a console call must not make it worse.
+    """
+    document = contract.console_operation_typing()
+    untyped = len(document["untyped"])
+    assert untyped <= UNTYPED_OPERATION_CEILING, (
+        f"{untyped} console-called operations return an undeclared payload, up from "
+        f"{UNTYPED_OPERATION_CEILING}. Declare a response model for the new one "
+        "(services/api/api/routers/...), or lower the ceiling in this file with the "
+        "endpoints you typed."
+    )
+    assert document["operations"] >= 500
+    assert document["untyped_share"] < 0.95
+
+
+def test_the_typed_minority_is_real():
+    """At least some of the console's contract is machine-checked."""
+    document = contract.console_operation_typing()
+    assert len(document["typed"]) >= 30
+    assert "GET /api/v1/findings" in document["typed"]
+
+
+def test_a_comment_is_not_a_field(tmp_path):
+    """`lib/api.ts` is the response contract, so the parser must not invent fields.
+
+    The first version of `ts_interfaces` skipped `/* */` comments but not `//`, so
+    a line reading ``// Always served: the five capabilities …`` became a field
+    named ``served`` and the payload contract demanded a key no server sends. The
+    fix is in the parser; this test is what keeps it fixed.
+    """
+    source = tmp_path / "api.ts"
+    source.write_text(
+        """export interface Sample {
+  // Always served: this comment must not become a field
+  /* block comment, also not a field */
+  id: string;
+  note?: string;
+  nested: { inner: string };
+  // trailing comment with colon: here
+}
+""",
+        encoding="utf-8",
+    )
+    parsed = contract.ts_interfaces(source)
+    assert parsed["Sample"] == {"id": False, "note": True, "nested": False}
+
+
+def test_every_declared_console_field_is_parseable_from_the_real_file():
+    """A field the parser cannot see is a field the contract check silently skips."""
+    interfaces = contract.ts_interfaces(ROOT / "frontend" / "src" / "lib" / "api.ts")
+    assert len(interfaces) > 300
+    for name, fields in interfaces.items():
+        assert fields, f"{name} parsed with no fields"
+        for field in fields:
+            assert field.isidentifier(), (name, field)

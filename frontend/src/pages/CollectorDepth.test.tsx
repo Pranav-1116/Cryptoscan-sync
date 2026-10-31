@@ -81,6 +81,7 @@ const networkDoc = (overrides: Record<string, unknown> = {}) => ({
       cannot_claim: "a negotiated suite is what this connection agreed, not the application's own crypto",
       gaps: [],
       targets: ["NETWORK_ENDPOINT"],
+      ingest_only: ["PASSIVE_PCAP"],
       notes: [],
     },
     {
@@ -96,6 +97,7 @@ const networkDoc = (overrides: Record<string, unknown> = {}) => ({
       cannot_claim: "a proposal set is not a tunnel",
       gaps: [],
       targets: ["NETWORK_ENDPOINT"],
+      ingest_only: [],
       notes: [],
     },
     {
@@ -111,6 +113,7 @@ const networkDoc = (overrides: Record<string, unknown> = {}) => ({
       cannot_claim: "a broker on a TLS port is inferred from port and banner only",
       gaps: ["no Kafka SSL handshake read"],
       targets: ["MESSAGE_BROKER"],
+      ingest_only: [],
       notes: [],
     },
   ],

@@ -299,6 +299,9 @@ function NetworkSection() {
               {protocol.strength !== protocol.declared_strength && (
                 <Badge tone="red">declared {protocol.declared_strength.replace(/_/g, " ")}</Badge>
               )}
+              {protocol.ingest_only.length > 0 && (
+                <Badge tone="slate">engine accepts: {protocol.ingest_only.join(", ")}</Badge>
+              )}
               <span className="faint" style={{ fontSize: 11 }}>{protocol.strength_meaning}</span>
             </div>
             <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{protocol.reads}</p>

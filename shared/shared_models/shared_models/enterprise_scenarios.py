@@ -213,6 +213,32 @@ def catalogue() -> dict:
     }
 
 
+def summary() -> dict:
+    """The counts, and the one sentence they add up to.
+
+    Used by ``GET /api/v1/platform/scope`` so the platform's self-description
+    carries the ratio, not only the per-scenario rows: "one of the ten scenarios
+    an enterprise simulation engine is asked for computes today" is the fact a
+    reader needs before the detail.
+    """
+    counts = {state: 0 for state in STATUS_MEANING}
+    for row in SCENARIOS:
+        counts[row["status"]] += 1
+    total = len(SCENARIOS)
+    return {
+        "scenarios": total,
+        "computing": counts[EXISTS],
+        "partial": counts[PARTIAL],
+        "absent": counts[ABSENT],
+        "headline": (
+            f"{counts[EXISTS]} of {total} scenarios compute today; {counts[PARTIAL]} model part "
+            f"of the mechanism and say what they cannot see; {counts[ABSENT]} have no model at "
+            "all. This is not a generic enterprise simulation engine."
+        ),
+        "detail_at": "/estate/evidence/twin/simulation-scenarios",
+    }
+
+
 __all__ = [
     "ABSENT",
     "AGILITY",
@@ -223,4 +249,5 @@ __all__ = [
     "STATUS_MEANING",
     "TWIN",
     "catalogue",
+    "summary",
 ]

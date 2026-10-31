@@ -136,6 +136,15 @@ exists, and then the sentence the artifact does not entitle anyone to. Where a
 capability is `FOUNDATION`, nothing is collected from a bank's estate at all —
 the model and the seam exist, and that is the whole of it.
 
+### Simulation, counted rather than described
+
+1 of 10 scenarios compute today; 7 model part of the mechanism and say what they cannot see; 2 have no model at all. This is not a generic enterprise simulation engine. The per-scenario statement, including what each one
+cannot see, is served by `/estate/evidence/twin/simulation-scenarios` and pinned by
+`shared/shared_models/tests/test_enterprise_scenarios.py`.
+The same counts are in the platform manifest as `simulation_coverage`
+(`GET /api/v1/platform/scope`), so the platform's own self-description and this
+page cannot diverge without a test failing.
+
 ## Retired sidebar entries
 
 These used to appear in the navigation but had no page behind them (they

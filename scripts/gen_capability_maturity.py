@@ -22,9 +22,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "shared" / "shared_models"))
 
 from shared_models.capability_boundaries import STATEMENTS as BOUNDARY_STATEMENTS  # noqa: E402
+from shared_models.enterprise_scenarios import summary as simulation_summary  # noqa: E402
 from shared_models.capability_maturity import (  # noqa: E402
     CAPABILITIES, RETIRED_NAV_ROUTES, TIERS, counts,
 )
+
+#: counts of the ten enterprise scenarios, so this page states the ratio
+SIMULATION = simulation_summary()
 
 TS_PATH = ROOT / "frontend" / "src" / "lib" / "maturity.ts"
 DOC_PATH = ROOT / "docs" / "CAPABILITY-MATURITY.md"
@@ -134,6 +138,15 @@ def render_doc() -> str:
         "exists, and then the sentence the artifact does not entitle anyone to. Where a",
         "capability is `FOUNDATION`, nothing is collected from a bank's estate at all —",
         "the model and the seam exist, and that is the whole of it.",
+        "",
+        "### Simulation, counted rather than described",
+        "",
+        f"{SIMULATION['headline']} The per-scenario statement, including what each one",
+        f"cannot see, is served by `{SIMULATION['detail_at']}` and pinned by",
+        "`shared/shared_models/tests/test_enterprise_scenarios.py`.",
+        "The same counts are in the platform manifest as `simulation_coverage`",
+        "(`GET /api/v1/platform/scope`), so the platform's own self-description and this",
+        "page cannot diverge without a test failing.",
         "",
         "## Retired sidebar entries",
         "",

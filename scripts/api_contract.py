@@ -506,6 +506,42 @@ def unknown(calls: list[Call]) -> list[Call]:
     return sorted(out, key=lambda call: (call.source, call.line))
 
 
+def console_operation_typing() -> dict:
+    """How many console-called operations declare a response model.
+
+    This is the structural half of "the page exists, so the endpoint must work".
+    An operation that returns ``dict`` gives the console nothing to check
+    against: the TypeScript interface in ``lib/api.ts`` is a hand-written claim,
+    and a field the server stops sending renders as ``undefined``.
+    """
+    spec = openapi_spec()["paths"]
+    resolved: set[str] = set()
+    for call in frontend_calls():
+        for candidate in candidates(call.path):
+            if candidate in spec:
+                resolved.add(candidate)
+                break
+            found = [path for path in spec if _matcher(candidate).match(path)]
+            if found:
+                resolved.update(found)
+                break
+    typed: list[str] = []
+    untyped: list[str] = []
+    for path in sorted(resolved):
+        for method, operation in spec[path].items():
+            if method not in {"get", "post", "put", "patch", "delete"}:
+                continue
+            response = (operation.get("responses") or {}).get("200") or {}
+            schema = (response.get("content", {}).get("application/json", {}) or {}).get("schema")
+            (typed if schema else untyped).append(f"{method.upper()} {path}")
+    return {
+        "operations": len(typed) + len(untyped),
+        "typed": sorted(typed),
+        "untyped": sorted(untyped),
+        "untyped_share": round(len(untyped) / max(1, len(typed) + len(untyped)), 3),
+    }
+
+
 def report() -> dict:
     front = frontend_calls()
     scripts = script_calls()
@@ -521,6 +557,9 @@ def report() -> dict:
             {"path": call.path, "at": call.where()} for call in unknown(scripts)
         ],
         "wrong_verbs": wrong_verbs(),
+        "console_typing": {
+            keys: value for keys, value in console_operation_typing().items() if keys != "untyped"
+        },
     }
 
 
@@ -537,3 +576,68 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# --------------------------------------------------------------------------- #
+# The console's own types
+#
+# The API declares no response model for 93% of the operations the console calls
+# (they return `dict`), so the TypeScript interface in `lib/api.ts` *is* the
+# contract — written by hand, on the other side of the wire, from the same
+# payload. That is where "the page exists, so the endpoint must be fine" breaks:
+# the console renders `data.measured.by_asset_class` and the server stops sending
+# `measured`. Nothing fails until a bank opens the page.
+#
+# These helpers read those interfaces out of the source so a test can compare
+# them with a real response.
+# --------------------------------------------------------------------------- #
+
+_INTERFACE = re.compile(r"(?:export\s+)?interface\s+([A-Za-z_]\w*)\s*(?:extends\s[\w,\s]+)?\{")
+
+#: One top-level member of an interface body. The lookbehind is applied against
+#: the *whole* source (`.match(source, index)`), not a slice — a slice would make
+#: the anchor fail at position 0 and every interface would parse as empty.
+_MEMBER = re.compile(
+    r"(?<=[{\n;])\s*"
+    r"(?:(?:/\*.*?\*/|//[^\n]*(?:\n|$))\s*)*"
+    r"([A-Za-z_]\w*)(\??)\s*:",
+    re.DOTALL,
+)
+
+
+def ts_interfaces(path: Path) -> dict[str, dict[str, bool]]:
+    """``{interface name: {field: is_optional}}`` for the top-level fields only.
+
+    Nested object literals are skipped: the check is about which keys a page can
+    rely on, and a nested mismatch shows up as a missing parent key anyway.
+    """
+    source = path.read_text(encoding="utf-8", errors="replace")
+    out: dict[str, dict[str, bool]] = {}
+    for match in _INTERFACE.finditer(source):
+        name = match.group(1)
+        index = match.end() - 1
+        depth = 0
+        fields: dict[str, bool] = {}
+        # walk the body, tracking braces and comments
+        while index < len(source):
+            char = source[index]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            elif depth == 1:
+                # A member starts a line (or follows ``{`` / ``;``), which is what
+                # keeps prose out of the field set: an unanchored version turned
+                # ``// Always served: …`` into a field named ``served`` and
+                # ``// comment with colon: here`` into one named ``colon``.
+                field = _MEMBER.match(source, index)
+                if field and (index == 0 or source[index - 1] in "{\n;," or source[index - 1].isspace()):
+                    fields[field.group(1)] = field.group(2) == "?"
+                    # absolute, because the regex matched against the whole source
+                    index = field.end()
+                    continue
+            index += 1
+        out[name] = fields
+    return out
