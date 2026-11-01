@@ -222,12 +222,21 @@ def sync(
     tenant_id: str | None,
     run_id: str | None = None,
     observed_at: datetime | None = None,
+    complete: bool = True,
 ) -> dict[str, Any]:
     """Materialise one observation into the catalogue.
 
     Idempotent per call and additive across calls: a row already present keeps its
     ``first_seen_at``, advances ``observation_count``, and is refreshed from the newer
     observation. Rows absent from this observation become ``STALE`` — never deleted.
+
+    ``complete`` says whether this payload **is** the estate or a slice of it. A
+    bank-scale estate arrives in slices because one request carries at most
+    20,000 assets; treating each slice as the whole estate retired every asset
+    the previous slice had just described, which is why guide 114 measured the
+    whole estate unreadable after two slices. With ``complete=False`` only the
+    rows this observation speaks about are refreshed, and nothing outside it is
+    marked stale — absence from a slice is not evidence of absence.
     """
     now = observed_at or datetime.now(timezone.utc)
     if not now.tzinfo:
@@ -262,7 +271,7 @@ def sync(
         row.evidence_count = entry["evidence_count"]
         updated["assets"] += 1
     for asset_id, row in assets.items():
-        if asset_id not in seen_assets and row.lifecycle_state != "STALE":
+        if complete and asset_id not in seen_assets and row.lifecycle_state != "STALE":
             row.lifecycle_state = "STALE"
             staled["assets"] += 1
 
@@ -293,7 +302,7 @@ def sync(
         row.evidence_ids = entry["evidence_ids"]
         updated["relationships"] += 1
     for relationship_id, row in relationships.items():
-        if relationship_id not in seen_relationships and row.lifecycle_state != "STALE":
+        if complete and relationship_id not in seen_relationships and row.lifecycle_state != "STALE":
             row.lifecycle_state = "STALE"
             staled["relationships"] += 1
 
@@ -320,7 +329,7 @@ def sync(
         row.evidence_ids = entry["evidence_ids"]
         updated["crypto"] += 1
     for artifact_id, row in crypto.items():
-        if artifact_id not in seen_crypto and row.lifecycle_state != "STALE":
+        if complete and artifact_id not in seen_crypto and row.lifecycle_state != "STALE":
             row.lifecycle_state = "STALE"
             staled["crypto"] += 1
 
@@ -333,6 +342,7 @@ def sync(
         "created": created,
         "updated": updated,
         "staled": staled,
+        "complete": complete,
         "counts": {
             "assets": len(current["assets"]),
             "relationships": sum(1 for e in current["relationships"] if e["status"] == "ESTABLISHED"),

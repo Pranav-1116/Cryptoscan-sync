@@ -249,8 +249,17 @@ def sync(
     *,
     tenant_id: str | None,
     observed_at: datetime | None = None,
+    complete: bool = True,
 ) -> dict[str, Any]:
-    """Record one observation of every asserted fact, keeping the previous ones."""
+    """Record one observation of every asserted fact, keeping the previous ones.
+
+    ``complete`` distinguishes "this is the estate" from "this is a slice of it".
+    A slice refreshes and adds facts and retires **nothing**: absence from a
+    slice is not evidence of absence. That is not caution for its own sake —
+    a relationship needs both endpoints, so a slice that carries an asset but
+    not the HSM it talks to would otherwise report the relationship gone. Only a
+    payload that declares itself the whole estate reconciles what is missing.
+    """
     now = observed_at or datetime.now(timezone.utc)
     now = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
 
@@ -338,6 +347,10 @@ def sync(
                     old.conflict = False
                     superseded += 1
 
+        if not complete:
+            # A slice speaks only for what it contains. Retiring on silence here
+            # would turn "this batch did not include it" into "it is gone".
+            continue
         # a fact this asset no longer asserts is retired — including one whose asset is
         # still very much present. "the region is known" and "the region is no longer
         # reported" are different observations, and only one of them is silence.
@@ -350,7 +363,7 @@ def sync(
                 retired += 1
 
     for key, rows in current.items():
-        if key[0] in grouped:
+        if key[0] in grouped or not complete:
             continue
         for row in rows:
             row.lifecycle_state = "HISTORICAL"
@@ -375,6 +388,7 @@ def sync(
         "revived": revived,
         "superseded": superseded,
         "retired": retired,
+        "complete": complete,
         "conflicts": conflicts,
         "counts": {
             "assets_with_facts": len(grouped),
@@ -867,8 +881,9 @@ def sync_all(
     *,
     tenant_id: str | None,
     observed_at: datetime | None = None,
+    complete: bool = True,
 ) -> dict[str, Any]:
     """Both sides of the record in one call, for the discovery path to use."""
     evidence = sync_evidence(db, graph, tenant_id=tenant_id, observed_at=observed_at)
-    facts = sync(db, graph, tenant_id=tenant_id, observed_at=observed_at)
+    facts = sync(db, graph, tenant_id=tenant_id, observed_at=observed_at, complete=complete)
     return {"schema": SCHEMA, "evidence": evidence, "observations": facts}

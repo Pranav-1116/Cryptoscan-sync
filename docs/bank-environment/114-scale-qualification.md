@@ -1,6 +1,6 @@
 # Bank-scale qualification — 100k assets, 1M facts, measured
 
-`cryptoscan.scale-qualification/1` · profile `bank` · generated 2026-10-31T18:46:15.915594+00:00 · **2 pass · 3 fail · 1 unproven** · 380 s · peak RSS 1188 MB · largest database 646 MB
+`cryptoscan.scale-qualification/1` · profile `bank` · generated 2026-11-01T08:37:25.919731+00:00 · **4 pass · 1 fail · 1 unproven** · 584 s · peak RSS 1345 MB · largest database 647 MB
 
 The review asked whether this works at bank scale. This drill answers with the first thing that breaks, in the order a deployment would meet it.
 
@@ -9,10 +9,10 @@ The review asked whether this works at bank scale. This drill answers with the f
 | Property | Verdict | Criterion | Measured |
 |---|---|---|---|
 | **does one discovery request carry a 100,000-asset estate?** | **FAIL** | assets list length >= 100,000 in EstateDiscoverRequest | assets: List should have at most 20000 items after validation, not 100000 |
-| **how long does one observation take, and does a 100k-asset estate fit the window?** | **PASS** | >= 200 assets/s and a linear projection of 100k assets <= 900 s | 470.9 assets/s at 20,000 (2.12 ms/asset); 100k projected 3.5 min |
-| **do twin and console reads answer at 100,000 assets / 1,000,000 facts?** | **FAIL** | every read path p95 <= 1000 ms | 100,000 assets / 1,000,000 facts, 645.8 MB; slowest p95 1262.4 ms (observation_summary) |
-| **does observation 4 of a 2,000-asset estate cost what observation 1 did?** | **PASS** | the last round is within 2.0x the first, and a changed fact adds exactly one row (2,000 per round) while the CURRENT set stays flat | growth 1.94x over 4 rounds |
-| **after two 10,000-asset slices, is the whole estate still readable?** | **FAIL** | a sliced observation leaves no asset STALE — one estate, sent in chunks, must read as one estate | 10000 active, 10000 stale after two slices |
+| **how long does one observation take, and does a 100k-asset estate fit the window?** | **PASS** | >= 200 assets/s and a linear projection of 100k assets <= 900 s | 454.1 assets/s at 20,000 (2.2 ms/asset); 100k projected 3.7 min |
+| **do twin and console reads answer at 100,000 assets / 1,000,000 facts?** | **PASS** | every read path p95 <= 1000 ms | 100,000 assets / 1,000,000 facts, 647.3 MB; slowest p95 765.0 ms (observation_summary) |
+| **does observation 4 of a 2,000-asset estate cost what observation 1 did?** | **PASS** | the last round is within 2.0x the first, and a changed fact adds exactly one row (2,000 per round) while the CURRENT set stays flat | growth 1.67x over 4 rounds |
+| **after two 10,000-asset slices, is the whole estate still readable?** | **PASS** | a sliced observation that declares itself a slice leaves no asset STALE and keeps every slice readable; a payload that claims to be the whole estate still retires what it does not carry | None active, None stale after two slices |
 | **does the BOM project a 100,000-asset estate?** | **UNPROVEN** | project_all() over a graph built from a bank-scale observation | — |
 
 ## What each row measured
@@ -48,9 +48,9 @@ The review asked whether this works at bank scale. This drill answers with the f
   "points": [
     {
       "assets": 1000,
-      "seconds": 4.0,
-      "assets_per_second": 250.1,
-      "milliseconds_per_asset": 4.0,
+      "seconds": 4.16,
+      "assets_per_second": 240.2,
+      "milliseconds_per_asset": 4.16,
       "bom_components": {
         "SBOM": 0,
         "CBOM": 1000,
@@ -64,13 +64,13 @@ The review asked whether this works at bank scale. This drill answers with the f
         "current": 9000
       },
       "database_mb": 13.6,
-      "peak_rss_mb": 284.5
+      "peak_rss_mb": 285.4
     },
     {
       "assets": 5000,
-      "seconds": 9.64,
-      "assets_per_second": 518.6,
-      "milliseconds_per_asset": 1.93,
+      "seconds": 10.42,
+      "assets_per_second": 479.7,
+      "milliseconds_per_asset": 2.08,
       "bom_components": {
         "SBOM": 0,
         "CBOM": 5000,
@@ -84,13 +84,13 @@ The review asked whether this works at bank scale. This drill answers with the f
         "current": 45000
       },
       "database_mb": 53.1,
-      "peak_rss_mb": 431.0
+      "peak_rss_mb": 432.4
     },
     {
       "assets": 10000,
-      "seconds": 20.0,
-      "assets_per_second": 500.0,
-      "milliseconds_per_asset": 2.0,
+      "seconds": 20.58,
+      "assets_per_second": 485.8,
+      "milliseconds_per_asset": 2.06,
       "bom_components": {
         "SBOM": 0,
         "CBOM": 10000,
@@ -104,13 +104,13 @@ The review asked whether this works at bank scale. This drill answers with the f
         "current": 90000
       },
       "database_mb": 102.9,
-      "peak_rss_mb": 686.2
+      "peak_rss_mb": 688.3
     },
     {
       "assets": 20000,
-      "seconds": 42.47,
-      "assets_per_second": 470.9,
-      "milliseconds_per_asset": 2.12,
+      "seconds": 44.04,
+      "assets_per_second": 454.1,
+      "milliseconds_per_asset": 2.2,
       "bom_components": {
         "SBOM": 0,
         "CBOM": 20000,
@@ -123,17 +123,17 @@ The review asked whether this works at bank scale. This drill answers with the f
         "assets_with_facts": 20000,
         "current": 180000
       },
-      "database_mb": 202.5,
-      "peak_rss_mb": 1188.5
+      "database_mb": 202.4,
+      "peak_rss_mb": 1191.0
     }
   ],
-  "projected_100k_seconds": 212.3,
-  "projected_100k_minutes": 3.5,
+  "projected_100k_seconds": 220.2,
+  "projected_100k_minutes": 3.7,
   "threshold_assets_per_second": 200.0
 }
 ```
 
-### `read_paths` — FAIL
+### `read_paths` — PASS
 
 *do twin and console reads answer at 100,000 assets / 1,000,000 facts?*
 
@@ -146,60 +146,60 @@ The review asked whether this works at bank scale. This drill answers with the f
   "seed": {
     "assets": 100000,
     "facts": 1000000,
-    "seed_seconds": 30.5,
-    "database_mb": 645.8,
-    "peak_rss_mb": 1188.5
+    "seed_seconds": 32.5,
+    "database_mb": 647.3,
+    "peak_rss_mb": 1191.0
   },
   "reads": {
     "catalog_page": {
-      "p50_ms": 27.5,
-      "p95_ms": 38.8,
-      "max_ms": 41.6
+      "p50_ms": 27.2,
+      "p95_ms": 30.1,
+      "max_ms": 36.7
     },
     "asset_detail": {
-      "p50_ms": 26.2,
-      "p95_ms": 33.7,
-      "max_ms": 44.3
+      "p50_ms": 26.9,
+      "p95_ms": 30.7,
+      "max_ms": 35.5
     },
     "history": {
-      "p50_ms": 2.6,
-      "p95_ms": 3.0,
-      "max_ms": 4.5
+      "p50_ms": 2.7,
+      "p95_ms": 2.9,
+      "max_ms": 3.5
     },
     "why": {
-      "p50_ms": 5.0,
-      "p95_ms": 5.6,
-      "max_ms": 6.5
+      "p50_ms": 5.2,
+      "p95_ms": 5.5,
+      "max_ms": 5.8
     },
     "evidence_for": {
-      "p50_ms": 1.5,
-      "p95_ms": 1.6,
-      "max_ms": 3.1
+      "p50_ms": 1.6,
+      "p95_ms": 1.8,
+      "max_ms": 4.1
     },
     "catalog_summary": {
-      "p50_ms": 26.5,
-      "p95_ms": 28.0,
-      "max_ms": 39.4
+      "p50_ms": 27.0,
+      "p95_ms": 29.2,
+      "max_ms": 41.6
     },
     "observation_summary": {
-      "p50_ms": 1202.3,
-      "p95_ms": 1262.4,
-      "max_ms": 1319.8
+      "p50_ms": 715.9,
+      "p95_ms": 765.0,
+      "max_ms": 983.0
     }
   },
   "slowest": "observation_summary",
   "samples": 40,
   "index_effect": {
     "with_index": {
-      "history_ms_p50": 2.3,
-      "why_ms_p50": 4.9
+      "history_ms_p50": 2.4,
+      "why_ms_p50": 5.2
     },
     "without_index": {
-      "history_ms_p50": 181.9,
-      "why_ms_p50": 178.8
+      "history_ms_p50": 205.7,
+      "why_ms_p50": 3.1
     },
     "faster": "with_index",
-    "history_gap_ms": 179.6
+    "history_gap_ms": 203.3
   }
 }
 ```
@@ -218,7 +218,7 @@ The review asked whether this works at bank scale. This drill answers with the f
     {
       "round": 0,
       "assets": 2000,
-      "seconds": 3.35,
+      "seconds": 4.39,
       "current_facts": {
         "assets_with_facts": 2000,
         "current": 18000
@@ -231,7 +231,7 @@ The review asked whether this works at bank scale. This drill answers with the f
     {
       "round": 1,
       "assets": 2000,
-      "seconds": 6.13,
+      "seconds": 6.81,
       "current_facts": {
         "assets_with_facts": 2000,
         "current": 18000
@@ -246,7 +246,7 @@ The review asked whether this works at bank scale. This drill answers with the f
     {
       "round": 2,
       "assets": 2000,
-      "seconds": 6.36,
+      "seconds": 7.02,
       "current_facts": {
         "assets_with_facts": 2000,
         "current": 18000
@@ -261,7 +261,7 @@ The review asked whether this works at bank scale. This drill answers with the f
     {
       "round": 3,
       "assets": 2000,
-      "seconds": 6.49,
+      "seconds": 7.34,
       "current_facts": {
         "assets_with_facts": 2000,
         "current": 18000
@@ -274,7 +274,7 @@ The review asked whether this works at bank scale. This drill answers with the f
       }
     }
   ],
-  "growth_factor": 1.94,
+  "growth_factor": 1.67,
   "rows_added_per_round": [
     2000,
     2000,
@@ -285,21 +285,28 @@ The review asked whether this works at bank scale. This drill answers with the f
 }
 ```
 
-### `sharding` — FAIL
+### `sharding` — PASS
 
 *after two 10,000-asset slices, is the whole estate still readable?*
 
-- **Criterion:** a sliced observation leaves no asset STALE — one estate, sent in chunks, must read as one estate
-- **Reading:** the second slice's graph does not contain the first slice, so the catalogue retires it: the 20k request cap cannot be worked around by sending the estate in pieces without losing whichever piece came first
-- **Limit:** the drill uses two slices; N slices would stale N-1 of them
+- **Criterion:** a sliced observation that declares itself a slice leaves no asset STALE and keeps every slice readable; a payload that claims to be the whole estate still retires what it does not carry
+- **Reading:** the request cap is a batch size, not a wall: an estate larger than one request is sent as slices with `complete: false`, and only a payload that declares itself the whole estate retires what it does not carry
+- **Limit:** the drill uses two slices of one shape; a real incremental collector also has to decide per slice which facts it is authoritative for, which is the operator's judgement, not the platform's
 
 ```
 {
   "slice_assets": 10000,
-  "active_rows": 10000,
-  "stale_rows": 10000,
-  "listed_on_one_page": 200,
-  "second_run_catalog": {}
+  "after_two_slices": {
+    "active_rows": 20000,
+    "stale_rows": 0,
+    "listed_on_one_page": 200
+  },
+  "control_undeclared_slice": {
+    "stale_rows": 10000
+  },
+  "second_run_catalog": {
+    "complete": false
+  }
 }
 ```
 
@@ -329,13 +336,13 @@ Measured while running the drill. They are reported, not fixed here, and they ar
 
 | Read | p50 | p95 | max |
 |---|---|---|---|
-| `catalog_page` | 27.5 ms | 38.8 ms | 41.6 ms |
-| `asset_detail` | 26.2 ms | 33.7 ms | 44.3 ms |
-| `history` | 2.6 ms | 3.0 ms | 4.5 ms |
-| `why` | 5.0 ms | 5.6 ms | 6.5 ms |
-| `evidence_for` | 1.5 ms | 1.6 ms | 3.1 ms |
-| `catalog_summary` | 26.5 ms | 28.0 ms | 39.4 ms |
-| `observation_summary` | 1202.3 ms | 1262.4 ms | 1319.8 ms |
+| `catalog_page` | 27.2 ms | 30.1 ms | 36.7 ms |
+| `asset_detail` | 26.9 ms | 30.7 ms | 35.5 ms |
+| `history` | 2.7 ms | 2.9 ms | 3.5 ms |
+| `why` | 5.2 ms | 5.5 ms | 5.8 ms |
+| `evidence_for` | 1.6 ms | 1.8 ms | 4.1 ms |
+| `catalog_summary` | 27.0 ms | 29.2 ms | 41.6 ms |
+| `observation_summary` | 715.9 ms | 765.0 ms | 983.0 ms |
 
 ## Thresholds
 

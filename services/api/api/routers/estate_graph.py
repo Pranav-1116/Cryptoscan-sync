@@ -125,19 +125,39 @@ class EstateScanRequest(BaseModel):
     )
 
 
+#: How many assets one discovery request may carry. This is a batch size, not a
+#: scale ceiling: the estate is sent in slices, each declaring itself a slice
+#: (``complete=false``), and the catalogue reconciles them. The limit exists
+#: because the body is parsed whole — 20,000 assets with their evidence is the
+#: point at which a single request stops being a reasonable unit of work.
+ESTATE_BATCH_ASSETS = 20000
+
+
 class EstateDiscoverRequest(BaseModel):
     """One estate discovery payload — the same evidence feeds every BOM."""
 
     estate: str = Field(default="default", max_length=160)
     scope: str | None = Field(default=None, max_length=160)
     inventory_id: str = Field(default="default", max_length=160)
-    assets: list[dict[str, Any]] = Field(default_factory=list, max_length=20000)
+    assets: list[dict[str, Any]] = Field(
+        default_factory=list, max_length=ESTATE_BATCH_ASSETS,
+        description=(
+            f"at most {ESTATE_BATCH_ASSETS} assets per request; a larger estate is sent as "
+            "slices with complete=false, and only the request that declares itself the whole "
+            "estate retires what it does not carry"
+        ),
+    )
     evidence: list[dict[str, Any]] = Field(default_factory=list, max_length=100000)
     relationships: list[dict[str, Any]] = Field(default_factory=list, max_length=100000)
     collectors: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
     coverage: list[dict[str, Any]] = Field(default_factory=list, max_length=500)
     include_boms: bool = True
     persist: bool = True
+    #: Whether this payload **is** the estate or a slice of it. A bank-scale
+    #: estate arrives in slices (one request carries at most 20,000 assets), so
+    #: a slice must not retire the assets another slice just described. Defaults
+    #: to true: an operator sending the whole estate keeps whole-estate semantics.
+    complete: bool = True
 
 
 def _build(body: EstateDiscoverRequest):
@@ -725,7 +745,10 @@ def run_discovery(
     # same way a collected one is, so history does not depend on how the run arrived
     if body.persist:
         try:
-            catalog = estate_catalog.sync(db, graph, tenant_id=current_tenant(), run_id=run_id)
+            catalog = estate_catalog.sync(
+                db, graph, tenant_id=current_tenant(), run_id=run_id,
+                complete=body.complete,
+            )
             response["catalog"] = catalog
         except Exception as exc:  # noqa: BLE001 — the observation already happened
             db.rollback()
@@ -735,7 +758,7 @@ def run_discovery(
         # claim back to the record it rests on
         try:
             response["evidence_store"] = estate_observations.sync_all(
-                db, graph, tenant_id=current_tenant()
+                db, graph, tenant_id=current_tenant(), complete=body.complete
             )
         except Exception as exc:  # noqa: BLE001 — reported, never silently skipped
             db.rollback()

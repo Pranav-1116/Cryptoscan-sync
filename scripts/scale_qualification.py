@@ -211,9 +211,12 @@ def ingest_ceiling() -> Row:
             measured={"requested_assets": wanted, "accepted": False, "validation_errors": errors[:3]},
             note=("the request model caps `assets` at 20,000 and `evidence` at 100,000, so a "
                   "bank-scale estate cannot be ingested in one observation; the route answers "
-                  "422 before any collection runs"),
-            limit="the cap is a pydantic field constraint; a raised limit would not by itself "
-                  "make the rest of the path scale",
+                  "422 before any collection runs. The cap is a batch size, not a wall: the "
+                  "estate is sent as slices that declare themselves slices, which the "
+                  "`sharding` row now measures end to end"),
+            limit="the cap stays: raising it only moves the memory spike into one request. The "
+                  "supported path is slicing, and this row keeps the one-request form as a "
+                  "measured FAIL rather than a re-worded pass",
         )
     return Row(
         id="ingest_ceiling",
@@ -290,47 +293,69 @@ def sharding_hazard(shard: int) -> Row:
     from shared_models.estate_graph import collector_outcome
 
     db, engine, path = _database()
+
+    def send(start: int, *, complete: bool) -> dict[str, Any]:
+        assets, evidence = estate_payload(shard, start=start)
+        body = EstateDiscoverRequest(
+            estate="bank", scope="shard", assets=assets, evidence=evidence,
+            collectors=[collector_outcome("STATIC", "COMPLETE", expected=shard,
+                                          collected=shard)],
+            coverage=[{"plane": "STATIC", "status": "COMPLETE",
+                       "expected": shard, "collected": shard}],
+            include_boms=True, persist=True, complete=complete,
+        )
+        return run_discovery(db, "scale-drill", body)
+
+    def lifecycle() -> dict[str, int]:
+        from sqlalchemy import func, select
+
+        from db.models.estate_catalog import EstateAssetRecord
+
+        return {str(state): int(count) for state, count in db.execute(
+            select(EstateAssetRecord.lifecycle_state, func.count())
+            .group_by(EstateAssetRecord.lifecycle_state)
+        ).all()}
+
     try:
         with _tenant_scope():
-            for index, start in enumerate((0, shard)):
-                assets, evidence = estate_payload(shard, start=start)
-                body = EstateDiscoverRequest(
-                    estate="bank", scope="shard", assets=assets, evidence=evidence,
-                    collectors=[collector_outcome("STATIC", "COMPLETE", expected=shard,
-                                                  collected=shard)],
-                    coverage=[{"plane": "STATIC", "status": "COMPLETE",
-                               "expected": shard, "collected": shard}],
-                    include_boms=True, persist=True,
-                )
-                response = run_discovery(db, "scale-drill", body)
-            catalog = response.get("catalog") or {}
-            from sqlalchemy import func, select
-
-            from db.models.estate_catalog import EstateAssetRecord
-
-            counts = dict(db.execute(
-                select(EstateAssetRecord.lifecycle_state, func.count())
-                .group_by(EstateAssetRecord.lifecycle_state)
-            ).all())
+            for start in (0, shard):
+                response = send(start, complete=False)
+            sliced = lifecycle()
             from api import estate_catalog
 
             listed = estate_catalog.list_assets(db, tenant_id=TENANT, limit=500)
-        stale_count = int(counts.get("STALE", 0))
-        active_count = int(counts.get("ACTIVE", 0))
+
+            # Control: the same sliced estate, sent *without* declaring the slice
+            # semantics, must still retire what it does not carry — otherwise the
+            # flag would be decoration and this row would pass for the wrong reason.
+            send(0, complete=True)
+            undeclared = lifecycle()
+
+        stale = int(sliced.get("STALE", 0))
+        active = int(sliced.get("ACTIVE", 0))
+        control_stale = int(undeclared.get("STALE", 0))
         return Row(
             id="sharding",
             question=f"after two {shard:,}-asset slices, is the whole estate still readable?",
-            verdict=PASS if stale_count <= THRESHOLDS["sharded_estate_stale_assets"] else FAIL,
-            criterion=("a sliced observation leaves no asset STALE — one estate, sent in "
-                       "chunks, must read as one estate"),
-            measured={"slice_assets": shard, "active_rows": active_count,
-                      "stale_rows": stale_count, "listed_on_one_page": len(listed),
-                      "second_run_catalog": {k: v for k, v in catalog.items()
-                                             if k in {"assets", "relationships"}}},
-            note=("the second slice's graph does not contain the first slice, so the catalogue "
-                  "retires it: the 20k request cap cannot be worked around by sending the "
-                  "estate in pieces without losing whichever piece came first"),
-            limit="the drill uses two slices; N slices would stale N-1 of them",
+            verdict=PASS if (stale == 0 and active >= 2 * shard and control_stale > 0
+                             and len(listed) > 0) else FAIL,
+            criterion=("a sliced observation that declares itself a slice leaves no asset "
+                       "STALE and keeps every slice readable; a payload that claims to be the "
+                       "whole estate still retires what it does not carry"),
+            measured={
+                "slice_assets": shard,
+                "after_two_slices": {"active_rows": active, "stale_rows": stale,
+                                     "listed_on_one_page": len(listed)},
+                "control_undeclared_slice": {"stale_rows": control_stale},
+                "second_run_catalog": {k: v for k, v in (response.get("catalog") or {}).items()
+                                       if k in {"assets", "relationships", "complete"}},
+            },
+            note=("the request cap is a batch size, not a wall: an estate larger than one "
+                  "request is sent as slices with `complete: false`, and only a payload that "
+                  "declares itself the whole estate retires what it does not carry"),
+            limit=("the drill uses two slices of one shape; a real incremental collector also "
+                   "has to decide per slice which facts it is authoritative for, which is the "
+                   "operator's judgement, not the platform's"),
         )
     finally:
         db.close()

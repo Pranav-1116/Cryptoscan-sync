@@ -2,11 +2,11 @@
   "schema": "cryptoscan.scale-qualification/1",
   "version": "scale-qualification/1.0",
   "profile": "bank",
-  "generated_at": "2026-10-31T18:46:15.915594+00:00",
+  "generated_at": "2026-11-01T08:37:25.919731+00:00",
   "tenant": "tenant-scale",
-  "elapsed_seconds": 380.2,
-  "peak_rss_mb": 1188.5,
-  "largest_database_mb": 645.8,
+  "elapsed_seconds": 584.5,
+  "peak_rss_mb": 1345.1,
+  "largest_database_mb": 647.3,
   "thresholds": {
     "ingest_assets_per_request": 100000,
     "ingest_seconds_for_100k": 900.0,
@@ -16,8 +16,8 @@
     "sharded_estate_stale_assets": 0
   },
   "counts": {
-    "PASS": 2,
-    "FAIL": 3,
+    "PASS": 4,
+    "FAIL": 1,
     "UNPROVEN": 1
   },
   "rows": [
@@ -46,9 +46,9 @@
         "points": [
           {
             "assets": 1000,
-            "seconds": 4.0,
-            "assets_per_second": 250.1,
-            "milliseconds_per_asset": 4.0,
+            "seconds": 4.16,
+            "assets_per_second": 240.2,
+            "milliseconds_per_asset": 4.16,
             "bom_components": {
               "SBOM": 0,
               "CBOM": 1000,
@@ -62,13 +62,13 @@
               "current": 9000
             },
             "database_mb": 13.6,
-            "peak_rss_mb": 284.5
+            "peak_rss_mb": 285.4
           },
           {
             "assets": 5000,
-            "seconds": 9.64,
-            "assets_per_second": 518.6,
-            "milliseconds_per_asset": 1.93,
+            "seconds": 10.42,
+            "assets_per_second": 479.7,
+            "milliseconds_per_asset": 2.08,
             "bom_components": {
               "SBOM": 0,
               "CBOM": 5000,
@@ -82,13 +82,13 @@
               "current": 45000
             },
             "database_mb": 53.1,
-            "peak_rss_mb": 431.0
+            "peak_rss_mb": 432.4
           },
           {
             "assets": 10000,
-            "seconds": 20.0,
-            "assets_per_second": 500.0,
-            "milliseconds_per_asset": 2.0,
+            "seconds": 20.58,
+            "assets_per_second": 485.8,
+            "milliseconds_per_asset": 2.06,
             "bom_components": {
               "SBOM": 0,
               "CBOM": 10000,
@@ -102,13 +102,13 @@
               "current": 90000
             },
             "database_mb": 102.9,
-            "peak_rss_mb": 686.2
+            "peak_rss_mb": 688.3
           },
           {
             "assets": 20000,
-            "seconds": 42.47,
-            "assets_per_second": 470.9,
-            "milliseconds_per_asset": 2.12,
+            "seconds": 44.04,
+            "assets_per_second": 454.1,
+            "milliseconds_per_asset": 2.2,
             "bom_components": {
               "SBOM": 0,
               "CBOM": 20000,
@@ -121,12 +121,12 @@
               "assets_with_facts": 20000,
               "current": 180000
             },
-            "database_mb": 202.5,
-            "peak_rss_mb": 1188.5
+            "database_mb": 202.4,
+            "peak_rss_mb": 1191.0
           }
         ],
-        "projected_100k_seconds": 212.3,
-        "projected_100k_minutes": 3.5,
+        "projected_100k_seconds": 220.2,
+        "projected_100k_minutes": 3.7,
         "threshold_assets_per_second": 200.0
       },
       "note": "the projection is linear from the largest measured point and ignores the run row, which stores the whole payload \u2014 it is an optimistic floor, not a forecast",
@@ -136,66 +136,66 @@
     {
       "id": "read_paths",
       "question": "do twin and console reads answer at 100,000 assets / 1,000,000 facts?",
-      "verdict": "FAIL",
+      "verdict": "PASS",
       "criterion": "every read path p95 <= 1000 ms",
       "measured": {
         "seed": {
           "assets": 100000,
           "facts": 1000000,
-          "seed_seconds": 30.5,
-          "database_mb": 645.8,
-          "peak_rss_mb": 1188.5
+          "seed_seconds": 32.5,
+          "database_mb": 647.3,
+          "peak_rss_mb": 1191.0
         },
         "reads": {
           "catalog_page": {
-            "p50_ms": 27.5,
-            "p95_ms": 38.8,
-            "max_ms": 41.6
+            "p50_ms": 27.2,
+            "p95_ms": 30.1,
+            "max_ms": 36.7
           },
           "asset_detail": {
-            "p50_ms": 26.2,
-            "p95_ms": 33.7,
-            "max_ms": 44.3
+            "p50_ms": 26.9,
+            "p95_ms": 30.7,
+            "max_ms": 35.5
           },
           "history": {
-            "p50_ms": 2.6,
-            "p95_ms": 3.0,
-            "max_ms": 4.5
+            "p50_ms": 2.7,
+            "p95_ms": 2.9,
+            "max_ms": 3.5
           },
           "why": {
-            "p50_ms": 5.0,
-            "p95_ms": 5.6,
-            "max_ms": 6.5
+            "p50_ms": 5.2,
+            "p95_ms": 5.5,
+            "max_ms": 5.8
           },
           "evidence_for": {
-            "p50_ms": 1.5,
-            "p95_ms": 1.6,
-            "max_ms": 3.1
+            "p50_ms": 1.6,
+            "p95_ms": 1.8,
+            "max_ms": 4.1
           },
           "catalog_summary": {
-            "p50_ms": 26.5,
-            "p95_ms": 28.0,
-            "max_ms": 39.4
+            "p50_ms": 27.0,
+            "p95_ms": 29.2,
+            "max_ms": 41.6
           },
           "observation_summary": {
-            "p50_ms": 1202.3,
-            "p95_ms": 1262.4,
-            "max_ms": 1319.8
+            "p50_ms": 715.9,
+            "p95_ms": 765.0,
+            "max_ms": 983.0
           }
         },
         "slowest": "observation_summary",
         "samples": 40,
         "index_effect": {
           "with_index": {
-            "history_ms_p50": 2.3,
-            "why_ms_p50": 4.9
+            "history_ms_p50": 2.4,
+            "why_ms_p50": 5.2
           },
           "without_index": {
-            "history_ms_p50": 181.9,
-            "why_ms_p50": 178.8
+            "history_ms_p50": 205.7,
+            "why_ms_p50": 3.1
           },
           "faster": "with_index",
-          "history_gap_ms": 179.6
+          "history_gap_ms": 203.3
         }
       },
       "note": "the estate was written through the persistence layer because the request cap makes an API ingest at this size impossible \u2014 this measures the read side, not ingest. The composite tenant+asset index added this pass is measured both ways \u2014 the gap widens with the estate, so a small database finds a path either way while 1M facts do not \u2014 and `observation_summary` is counted in SQL rather than in Python",
@@ -212,7 +212,7 @@
           {
             "round": 0,
             "assets": 2000,
-            "seconds": 3.35,
+            "seconds": 4.39,
             "current_facts": {
               "assets_with_facts": 2000,
               "current": 18000
@@ -225,7 +225,7 @@
           {
             "round": 1,
             "assets": 2000,
-            "seconds": 6.13,
+            "seconds": 6.81,
             "current_facts": {
               "assets_with_facts": 2000,
               "current": 18000
@@ -240,7 +240,7 @@
           {
             "round": 2,
             "assets": 2000,
-            "seconds": 6.36,
+            "seconds": 7.02,
             "current_facts": {
               "assets_with_facts": 2000,
               "current": 18000
@@ -255,7 +255,7 @@
           {
             "round": 3,
             "assets": 2000,
-            "seconds": 6.49,
+            "seconds": 7.34,
             "current_facts": {
               "assets_with_facts": 2000,
               "current": 18000
@@ -268,7 +268,7 @@
             }
           }
         ],
-        "growth_factor": 1.94,
+        "growth_factor": 1.67,
         "rows_added_per_round": [
           2000,
           2000,
@@ -291,17 +291,24 @@
     {
       "id": "sharding",
       "question": "after two 10,000-asset slices, is the whole estate still readable?",
-      "verdict": "FAIL",
-      "criterion": "a sliced observation leaves no asset STALE \u2014 one estate, sent in chunks, must read as one estate",
+      "verdict": "PASS",
+      "criterion": "a sliced observation that declares itself a slice leaves no asset STALE and keeps every slice readable; a payload that claims to be the whole estate still retires what it does not carry",
       "measured": {
         "slice_assets": 10000,
-        "active_rows": 10000,
-        "stale_rows": 10000,
-        "listed_on_one_page": 200,
-        "second_run_catalog": {}
+        "after_two_slices": {
+          "active_rows": 20000,
+          "stale_rows": 0,
+          "listed_on_one_page": 200
+        },
+        "control_undeclared_slice": {
+          "stale_rows": 10000
+        },
+        "second_run_catalog": {
+          "complete": false
+        }
       },
-      "note": "the second slice's graph does not contain the first slice, so the catalogue retires it: the 20k request cap cannot be worked around by sending the estate in pieces without losing whichever piece came first",
-      "limit": "the drill uses two slices; N slices would stale N-1 of them",
+      "note": "the request cap is a batch size, not a wall: an estate larger than one request is sent as slices with `complete: false`, and only a payload that declares itself the whole estate retires what it does not carry",
+      "limit": "the drill uses two slices of one shape; a real incremental collector also has to decide per slice which facts it is authoritative for, which is the operator's judgement, not the platform's",
       "defects": []
     },
     {
@@ -327,39 +334,39 @@
   ],
   "read_paths": {
     "catalog_page": {
-      "p50_ms": 27.5,
-      "p95_ms": 38.8,
-      "max_ms": 41.6
+      "p50_ms": 27.2,
+      "p95_ms": 30.1,
+      "max_ms": 36.7
     },
     "asset_detail": {
-      "p50_ms": 26.2,
-      "p95_ms": 33.7,
-      "max_ms": 44.3
+      "p50_ms": 26.9,
+      "p95_ms": 30.7,
+      "max_ms": 35.5
     },
     "history": {
-      "p50_ms": 2.6,
-      "p95_ms": 3.0,
-      "max_ms": 4.5
+      "p50_ms": 2.7,
+      "p95_ms": 2.9,
+      "max_ms": 3.5
     },
     "why": {
-      "p50_ms": 5.0,
-      "p95_ms": 5.6,
-      "max_ms": 6.5
+      "p50_ms": 5.2,
+      "p95_ms": 5.5,
+      "max_ms": 5.8
     },
     "evidence_for": {
-      "p50_ms": 1.5,
-      "p95_ms": 1.6,
-      "max_ms": 3.1
+      "p50_ms": 1.6,
+      "p95_ms": 1.8,
+      "max_ms": 4.1
     },
     "catalog_summary": {
-      "p50_ms": 26.5,
-      "p95_ms": 28.0,
-      "max_ms": 39.4
+      "p50_ms": 27.0,
+      "p95_ms": 29.2,
+      "max_ms": 41.6
     },
     "observation_summary": {
-      "p50_ms": 1202.3,
-      "p95_ms": 1262.4,
-      "max_ms": 1319.8
+      "p50_ms": 715.9,
+      "p95_ms": 765.0,
+      "max_ms": 983.0
     }
   },
   "limits": [

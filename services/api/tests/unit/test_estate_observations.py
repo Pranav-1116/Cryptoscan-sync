@@ -526,3 +526,39 @@ def test_provenance_annotated_later_does_not_change_the_address(db):
         assert history.verify_record(db, evidence_id, tenant_id=None)["verdict"] == (
             "CONTENT_ADDRESS_INTACT"
         )
+
+
+def test_a_slice_does_not_retire_the_rest_of_the_estate(db):
+    """A payload that says it is a slice must not speak for what it omits.
+
+    A bank-scale estate arrives in slices because one request carries at most
+    20,000 assets. Before `complete` existed, the second slice retired every
+    asset the first had described (guide 114, `sharding`).
+    """
+    history.sync(db, build_graph(_payload(assets=2)), tenant_id=None,
+                 observed_at=_now(), complete=False)
+    first = {(row.asset_id, row.value) for row in _observations(db)
+             if row.lifecycle_state == "CURRENT"}
+    assert first
+
+    # A second slice that knows only the first asset.
+    partial = _payload(assets=1)
+    history.sync(db, build_graph(partial), tenant_id=None, observed_at=_now(1), complete=False)
+
+    still_current = {(row.asset_id, row.value) for row in _observations(db)
+                     if row.lifecycle_state == "CURRENT"}
+    assert first <= still_current, "facts from the first slice stay CURRENT"
+
+
+def test_a_payload_that_claims_the_whole_estate_still_retires_what_it_omits(db):
+    """The flag is load-bearing: without it, absence is still evidence of absence."""
+    history.sync(db, build_graph(_payload(assets=2)), tenant_id=None, observed_at=_now())
+    before = [row for row in _observations(db) if row.lifecycle_state == "CURRENT"]
+    assert before
+
+    history.sync(db, build_graph(_payload(assets=1)), tenant_id=None, observed_at=_now(1))
+
+    retired = [row for row in _observations(db)
+               if row.lifecycle_state == "HISTORICAL" and row.asset_id not in
+               {r.asset_id for r in _observations(db) if r.lifecycle_state == "CURRENT"}]
+    assert retired, "the asset no longer described is history, not silently kept"
