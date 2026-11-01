@@ -42,6 +42,9 @@ class Tenant(BaseModel):
     suspend_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
+# platform-scope: memberships are resolved by username *before* a tenant is
+# known — login enumerates every tenant a user belongs to; the caller then scopes
+# every subsequent read to the tenant it resolved.
 class TenantMembership(BaseModel, TenantOwned):
     __tablename__ = "tenant_memberships"
     __table_args__ = (
@@ -53,6 +56,9 @@ class TenantMembership(BaseModel, TenantOwned):
     tenant_role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
 
 
+# platform-scope: metering is written by the platform control plane on behalf of
+# whichever tenant consumed the unit, and read per tenant with an explicit
+# tenant filter; it is the billing input, not tenant data a request may browse.
 class TenantUsageEvent(BaseModel, TenantOwned):
     """Append-only per-tenant metering trail (plan enforcement + billing input).
 
@@ -69,6 +75,8 @@ class TenantUsageEvent(BaseModel, TenantOwned):
     detail: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 
+# platform-scope: tenant lifecycle (signup, suspend, restore, plan change) is
+# recorded by the platform actor outside any single tenant's request context.
 class TenantProvisionEvent(BaseModel, TenantOwned):
     """Audit trail for tenant lifecycle (signup, suspend, restore, plan change).
 
@@ -84,6 +92,8 @@ class TenantProvisionEvent(BaseModel, TenantOwned):
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
+# platform-scope: an invite is looked up by token hash before the tenant is
+# known — accepting the invite is how the tenant becomes known.
 class TenantInvite(BaseModel, TenantOwned):
     """A pending invitation to join a tenant.
 

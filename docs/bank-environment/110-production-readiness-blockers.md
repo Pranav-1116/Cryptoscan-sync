@@ -26,7 +26,7 @@ rather than an opinion.
 | 4 | Evidence durability | **PARTIAL** | guide 112: 8 of 9 tampering attacks detected on a real stored scan; the Twin now verifies before projecting; export/audit/rescan/host-evidence already enforced | the scan manifest is unsigned — a full rewrite (payload + chain + manifest) verifies PASS; that needs a signing key or an off-site anchor |
 | 5 | Complete authorization model | **PARTIAL** | `116-collector-authority.md`: six questions × eleven collector planes, generated from the code, with two **executed probes** (CIDR and loopback refused 422; a second collection refused `BudgetExhausted`) | the matrix grades **0 planes PROVEN, 1 PARTIAL, 10 GAP**: permission, revision and window are not enforced uniformly per family |
 | 6 | Performance at bank scale | **PARTIAL** (measured this pass) | `114-scale-qualification.md`: 100k assets / 1M facts measured; 479 assets/s to the 20k request cap; five of seven reads under 1 s at 100k/1M | ingest is capped at 20,000 assets per request, slicing an estate retires the earlier slices, and the observation summary still takes 1.2 s at 1M facts |
-| 7 | Observability | **PARTIAL** (drilled this pass) | `117-observability-coverage.md`: **7 pass / 3 partial / 0 fail** over ten surfaces, 45 series from `/metrics`, 2 alert groups / 15 rules (10 firing alerts) | no span export, no worker liveness probe, and **no Alertmanager**: the rules are evaluated-ready but nothing receives them |
+| 7 | Observability | **PASS** (re-drilled this pass) | `117-observability-coverage.md`: **10 pass / 0 partial / 0 fail** over ten surfaces, 46 series from `/metrics`, 2 alert groups / 15 rules, and the three former gaps executed: `/healthz/workers`, an OTLP span export watched against a real sink, and a notification delivered from a rule through Alertmanager's config into a counted series | no Prometheus or Alertmanager process ran here: evaluation, grouping and retries are the bank's, and log shipping to a SIEM stays a deployment question |
 | 8 | Frontend production hardening | **PARTIAL** (audited this pass) | `118-frontend-hardening.md`: **5 pass / 4 partial / 0 fail** across nine behaviours, negative control strips the console and every PASS disappears | 537 of 1,141 endpoints reachable (47.1%), 49 of 100 pages have a rendered test, no dedicated audit page |
 
 Each blocker is taken in turn below: what is proven, what is not, and the one
@@ -376,7 +376,7 @@ others), the same drill with 5M relationships, the summary read brought under
 budget at 1M facts, and one run of this drill against PostgreSQL with a
 concurrent writer.
 
-## 7. Observability — **PARTIAL** (drilled this pass)
+## 7. Observability — **PASS** (re-drilled this pass)
 
 **Proven.** `scripts/observability_coverage.py` regenerates
 `117-observability-coverage.{json,md}`: **7 PASS · 3 PARTIAL · 0 FAIL** over
@@ -399,16 +399,45 @@ registers, so a rule about queue depth or coverage would have been reported as
 "dead" even though `/metrics` emits it. The check now also reads the metric names
 out of `api/routers/metrics.py`, which is where they are written.
 
-**Not proven — the three PARTIALs, named.** `health_surfaces`: there is no worker
-liveness probe, so a wedged worker is visible only through job age. `traces`: no
-span is exported anywhere; the request path is reconstructible from logs and
-metrics, not from a trace. `alert_rules`: the Alertmanager stanza is still
-commented out in `prometheus.yml`, so the rules are evaluated-ready but nothing
-receives them — the rules have never fired.
+**The three PARTIALs, closed and executed.** Each was a control that existed as a
+claim; each is now driven and its answer read back:
 
-**What closes it.** A worker probe on `/readyz`, OpenTelemetry span export on the
-collector → API → evidence path, and an Alertmanager receiver so each rule is
-fired once and the notification recorded.
+- **`health_surfaces`** — `GET /healthz/workers` is the worker probe the console
+  had (`/health/worker-fleet`) behind a session an orchestrator cannot present. It
+  answers the one question liveness and readiness do not: *is anything consuming?*
+  The drill calls it twice: with a job waiting and no drain evidence it answers
+  **503 Degraded** and names the condition; with a completion observed it answers
+  **200 Operational**. `/healthz` and `/readyz` answer 200 throughout, so the three
+  probes are shown to be three different questions.
+- **`traces`** — the OTLP/HTTP exporter that already existed had never been
+  executed. The drill stands up a real socket sink, points a `TraceStore` at it,
+  finishes a span, and reads back **one notification** whose `traceId`/`spanId` are
+  the span's own, with start/end nanos, `http.route` as an attribute and
+  `service.name` in the resource. A second store with no endpoint finishes a span
+  and spawns **no exporter thread**: "export is optional" is only true if the
+  unconfigured path does nothing.
+- **`alert_rules`** — `infra/monitoring/alertmanager/alertmanager.yml` ships a
+  routing tree, two receivers, two inhibit rules and a webhook to
+  `POST /api/v1/ops/alerts/alertmanager`, and `prometheus.yml` now carries the
+  `alerting:` stanza instead of a comment. The drill takes **a rule that exists**
+  (`CryptoscanApiDown`, critical, 2m), builds the webhook-v4 notification, posts it
+  to the URL its own config names, gets **200 with 1 alert accepted**, and finds
+  `cryptoscan_alertmanager_notifications_total{alertname="CryptoscanApiDown",
+  severity="critical",status="firing"} 1` in the next `/metrics` scrape. A
+  malformed notification is refused 422 rather than silently counted.
+
+The receiver is authenticated as an infrastructure principal
+(`ALERTMANAGER_WEBHOOK_TOKEN`, 32+ characters, required at production start),
+because a pager has no cookie jar and a rule that fires must not be refused with
+401. Delivery to a human stays the bank's Alertmanager configuration; what the
+platform now proves is that it was told, and that a receiver which goes quiet is a
+series that stops moving.
+
+**Not proven.** No Prometheus scraped these rules and no Alertmanager process ran
+in this drill: evaluation, grouping, inhibition and retry are their layers, and
+what is proven is the delivery half. The span payload went to a local sink, not an
+APM collector. Log shipping is graded READ: structured logging and redaction
+exist in the checkout, and what leaves the host is a deployment question.
 
 ## 8. Frontend production hardening — **PARTIAL** (audited this pass)
 
@@ -491,9 +520,11 @@ explicit "API-only" register for the 604 uncovered endpoints.
    66 cells** — 11 planes PROVEN, 0 GAP. Remaining in #5: wire
    `api.estate_discovery._collect()` to the gate, and delete the per-plane
    admission paths it duplicates.
-7. ~~**Observability gaps (#7)**~~ — **done this pass** (guide 117): coverage,
-   queue, evidence and agent families exported, 18 alert rules. Remaining in #7:
-   a worker probe, span export, and an Alertmanager receiver.
+7. ~~**Observability gaps (#7)**~~ — **done this pass** (guide 117, second pass
+   on it): coverage, queue, evidence and agent families exported; the worker
+   probe, span export and Alertmanager receiver all built **and executed** —
+   10 of 10 surfaces answer, 0 partial. Remaining in #7: nothing in code; a bank
+   points the bundled Alertmanager at its own pager.
 8. ~~**Frontend audit (#8)**~~ — **done this pass** (guide 118): nine behaviours
    graded, a leaked failure path and 29 uncaptioned tables fixed, a red smoke
    test fixed. Remaining in #8: 51 pages without a rendered test, an audit page,

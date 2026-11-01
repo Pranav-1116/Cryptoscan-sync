@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.engineering-gate/1",
-  "captured_at": "2026-10-31T05:25:45.497035+00:00",
+  "captured_at": "2026-11-01T16:17:55.067223+00:00",
   "checks": [
     {
       "check": "exception inventory",
@@ -17,7 +17,7 @@
     {
       "check": "X-API-Key route coverage",
       "status": "PASS",
-      "detail": "decorated routes=1223; auth-covered-or-exempt=1223; uncovered=0",
+      "detail": "decorated routes=1237; auth-covered-or-exempt=1237; uncovered=0",
       "findings": []
     },
     {
@@ -29,7 +29,7 @@
     {
       "check": "tenant isolation audit",
       "status": "PASS",
-      "detail": "141 scoped tables; 14 justified platform-scope tables; 10 platform_scope() sites; violations=0",
+      "detail": "142 scoped tables; 14 justified platform-scope tables; 20 platform_scope() sites; violations=0",
       "violations": []
     },
     {

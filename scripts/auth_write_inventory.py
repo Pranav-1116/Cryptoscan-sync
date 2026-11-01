@@ -37,6 +37,10 @@ POLICY: dict[str, str] = {
     "/api/v1/auth": "self-service or session lifecycle: the caller acts on their own account",
     "/api/v1/estate": "operator surface: every signed-in operator inspects and curates the estate",
     "/api/v1/collection": "operator surface: collection targets, jobs and handoffs",
+    # Alertmanager posts here; it has no session and no role. The credential is
+    # the shared ALERTMANAGER_WEBHOOK_TOKEN, checked in the handler, because a
+    # rule that fires must not be refused with 401 (guide 117).
+    "/api/v1/ops": "machine-signed: Alertmanager posts notifications with its own token",
     # The authorize route cannot carry one static permission: each collector
     # plane has its own, and the route is the one place they are all asked. The
     # session gate supplies the principal and roles, and

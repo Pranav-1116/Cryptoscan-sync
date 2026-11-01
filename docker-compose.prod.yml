@@ -84,6 +84,7 @@ services:
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to an explicit origin list}
       METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN for Prometheus /metrics scraping}
+      ALERTMANAGER_WEBHOOK_TOKEN: ${ALERTMANAGER_WEBHOOK_TOKEN:?set ALERTMANAGER_WEBHOOK_TOKEN so alerts can page}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:?set TRUSTED_HOSTS as a JSON host list}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}

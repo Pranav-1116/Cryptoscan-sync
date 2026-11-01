@@ -85,7 +85,10 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # exists to ask "may this plane be collected" for whichever one is named. The
     # principal comes from the session gate; the plane's permission is checked in
     # api.security.collector_authority.evaluate() against PERMISSION_MATRIX.
-    assert len(rows) <= 296, (
+    # 297: POST /api/v1/ops/alerts/alertmanager — guide 117. Alertmanager has no
+    # session and no role: the credential is the shared webhook token checked in
+    # the handler, because a rule that fires must not be refused with 401.
+    assert len(rows) <= 297, (
         f"{len(rows)} authenticated-only writes; the recorded inventory holds 347. "
         "This count may only go down (a route gained a role) without a regeneration."
     )

@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 837 |
+| session | 839 |
 | role | 306 |
 | permission | 74 |
 | tenant-role | 12 |
 
-**1229** operations; **296** of them change state with nothing but the session gate — the exact list, with the policy
+**1231** operations; **297** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -71,6 +71,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `governance` | 1 |
 | `jobs` | 1 |
 | `marketplace` | 1 |
+| `ops` | 1 |
 | `quantum` | 1 |
 | `report` | 1 |
 | `repos` | 1 |
@@ -303,6 +304,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/network/scan/drift` | `api.routers.network.scan_drift` |
 | POST | `/api/v1/network/ssh-scan` | `api.routers.network.scan_ssh_hosts` |
 | POST | `/api/v1/network/targets` | `api.routers.network.create_target` |
+| POST | `/api/v1/ops/alerts/alertmanager` | `api.routers.ops_alerts.alertmanager_webhook` |
 | POST | `/api/v1/ot/metrics` | `api.routers.ot.render_ot_metrics` |
 | POST | `/api/v1/ot/safety/authorize` | `api.routers.ot_safety.authorize` |
 | POST | `/api/v1/ot/scan` | `api.routers.ot.scan_ot` |

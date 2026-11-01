@@ -10,12 +10,16 @@ rule_files:
   # Drop the line above and uncomment these to run from a checkout:
   # - alerts.yml
 
-# Uncomment once Alertmanager is running; without it, alerts evaluate and go
-# nowhere, which is its own kind of silent outage.
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ["alertmanager:9093"]
+# Alerts are evaluated here and delivered through Alertmanager, which posts each
+# notification to the API (infra/monitoring/alertmanager/alertmanager.yml ->
+# /api/v1/ops/alerts/alertmanager). Without this stanza the rules evaluate and go
+# nowhere, which is its own kind of silent outage — guide 117 measured that gap.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+      timeout: 10s
+      api_version: v2
 
 scrape_configs:
   - job_name: cryptoscan-api

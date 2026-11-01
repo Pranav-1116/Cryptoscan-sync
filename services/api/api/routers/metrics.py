@@ -6,49 +6,26 @@ infra/monitoring/grafana consumes these metric names.
 
 from __future__ import annotations
 
-import hmac
 import logging
 import os
 import time
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Request, Response
 
 router = APIRouter(tags=["metrics"])
 logger = logging.getLogger(__name__)
 
 
 def _require_metrics_token(request: Request) -> None:
-    """Protect the Prometheus surface without routing it through user auth.
+    """Prometheus's credential, checked by :mod:`api.security.machine_tokens`.
 
-    Prometheus is an infrastructure principal, not a human session. In
-    development and test the endpoint remains convenient and unauthenticated;
-    production startup requires ``METRICS_TOKEN`` and this route accepts it as
-    either ``Authorization: Bearer`` or ``X-Metrics-Token``. Constant-time
-    comparison prevents turning this low-volume endpoint into a token oracle.
+    Kept as a module-level name because the worker probe and the tests import it,
+    but there is one implementation of the comparison now.
     """
-    from api.config.settings import get_settings
+    from api.security.machine_tokens import require_metrics_token
 
-    settings = get_settings()
-    if not settings.is_production:
-        return
-    expected = (settings.METRICS_TOKEN or "").strip()
-    if len(expected) < 32:
-        # Normally caught by validate_runtime_settings during lifespan. Keep a
-        # request-time guard for ASGI probes that do not run lifespan hooks.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="metrics authentication is not configured",
-        )
-    authorization = request.headers.get("authorization", "")
-    presented = request.headers.get("x-metrics-token", "")
-    if authorization.lower().startswith("bearer "):
-        presented = authorization[7:].strip()
-    if not presented or not hmac.compare_digest(presented, expected):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="metrics authentication required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    require_metrics_token(request)
+
 
 _STARTED_AT = time.time()
 
@@ -294,6 +271,13 @@ def _estate_health_lines() -> list[str]:
         logger.warning("estate_metrics_unavailable", extra={"error_type": type(exc).__name__})
     return lines
 
+
+
+def _alertmanager_lines() -> list[str]:
+    """The paging path as series (guide 117): what arrived, and how long ago."""
+    from api.routers import ops_alerts
+
+    return ops_alerts.metric_lines()
 
 
 def _dependency_lines() -> list[str]:
@@ -573,6 +557,7 @@ def metrics(request: Request) -> Response:
     lines.extend(_estate_health_lines())
     lines.extend(_dependency_lines())
     lines.extend(_operational_counter_lines())
+    lines.extend(_alertmanager_lines())
     lines.extend(_telecom_lines())
     lines.append(_gauge("cryptoscan_api_db_reachable", 1, "Database reachable for metrics"))
     return Response(content="".join(lines), media_type="text/plain; version=0.0.4; charset=utf-8")

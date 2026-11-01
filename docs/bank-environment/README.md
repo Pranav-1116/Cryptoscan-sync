@@ -49,8 +49,11 @@
 > (one approved descriptor per plane, an approval route and a revocation) and
 > **probes all 66 cells** of the 11 × 6 matrix: **11 planes proven, 0 gap**, with a
 > negative control that strips the gate and leaves only the session check alive;
-> [guide 117](117-observability-coverage.md) covers eleven observability
-> surfaces with **7 pass · 3 partial · 0 fail**; and
+> [guide 117](117-observability-coverage.md) drives ten observability surfaces
+> to **10 pass · 0 partial · 0 fail** — a worker probe an orchestrator can call
+> without a session, a span export watched against a real HTTP sink, and a
+> notification delivered from a rule through Alertmanager's own config into a
+> counted `/metrics` series; and
 > [guide 118](118-frontend-hardening.md) audits nine console behaviours
 > (**5 pass · 4 partial · 0 fail**) with a negative control that strips the console
 > and makes every pass disappear.

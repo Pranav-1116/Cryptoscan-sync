@@ -3,7 +3,8 @@ import time
 from datetime import datetime
 
 from db.connection.engine import check_db_health
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Response
+from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -275,11 +276,7 @@ def _age_s(value, now) -> int | None:
     return max(0, int((now - stamp).total_seconds()))
 
 
-@router.get("/health/worker-fleet")
-def worker_fleet_health(
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
+def worker_fleet(db: Session) -> dict:
     """Independent queue / worker-pool health (§5, round 78).
 
     The console used to report "Not measured" for the worker fleet because
@@ -434,6 +431,82 @@ def worker_fleet_health(
             "from API liveness. Stuck running jobs and stale leases are "
             "surfaced as such, not as failures; an idle fleet with no live "
             "heartbeat reports Not measured, not Operational."
+        ),
+    }
+
+
+@router.get("/health/worker-fleet")
+def worker_fleet_health(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The console's view of the fleet: the measurement plus its evidence.
+
+    Same function as the probe below, so a console and an orchestrator cannot
+    disagree about whether anything is consuming.
+    """
+    return worker_fleet(db)
+
+
+class WorkerLivenessOut(BaseModel):
+    """The probe's answer: what the fleet is doing, and the evidence for it."""
+
+    schema_: str = Field(default="cryptoscan.worker-liveness/1", alias="schema")
+    status: str
+    detail: str
+    drain_evidence: dict
+    jobs_queued_oldest_s: int | None = None
+    jobs_stuck_running: int
+    event_leases_stale: int
+    worker_heartbeat: dict
+    meaning: str
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/healthz/workers", response_model=WorkerLivenessOut)
+def workers_liveness(
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db_session),
+):
+    """A worker probe an orchestrator can call (guide 117, second pass).
+
+    Liveness of the *API* process is ``/healthz``; readiness of its dependencies
+    is ``/readyz``. Neither of them answers the question a bank actually pages
+    on: **is anything consuming the queue?** The fleet probe existed for the
+    console, behind a session — which a Kubernetes liveness/readiness probe
+    cannot present. This is the same measurement, unauthenticated the way
+    ``/metrics`` is (and gated by the same token in production), with the one
+    status that deserves a non-200 mapped to it:
+
+    * ``Operational`` / ``Not measured`` → 200: the fleet is draining, or there
+      is nothing to drain and no evidence either way (an idle system is not an
+      outage);
+    * ``Degraded`` → 503: work is waiting past the threshold with no drain
+      observed, or jobs/leases are stuck. That is the condition a probe exists
+      to catch.
+    """
+    from api.security.machine_tokens import require_metrics_token
+
+    # The metric scrape's token, not the session: a probe has no cookie jar.
+    require_metrics_token(request)
+    report = worker_fleet(db)
+    # The status is the answer, not an error: 503 says "drain me / page someone".
+    response.status_code = 503 if report["status"] == "Degraded" else 200
+    return {
+        "schema": "cryptoscan.worker-liveness/1",
+        "status": report["status"],
+        "detail": report["detail"],
+        "drain_evidence": report["drain_evidence"],
+        "jobs_queued_oldest_s": report["jobs"]["oldest_queued_s"],
+        "jobs_stuck_running": report["jobs"]["stuck_running"],
+        "event_leases_stale": report["event_queue"]["stale_leases"],
+        "worker_heartbeat": report["worker_heartbeat"],
+        "meaning": (
+            "liveness answers 'is the process up', readiness answers 'can it serve', "
+            "this answers 'is anything consuming' — measured from the durable job and "
+            "lease records, never from API liveness"
         ),
     }
 

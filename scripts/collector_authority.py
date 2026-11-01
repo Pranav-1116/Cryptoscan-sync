@@ -379,14 +379,11 @@ def measure(*, run_control: bool = True) -> dict[str, Any]:
         matrix = client.get("/api/v1/collectors/authority", headers=headers()).json()
         negative_control = control(client) if run_control else None
     finally:
-        try:
-            client.close()
-        except Exception:  # noqa: BLE001 — closing is best effort
-            pass
+        client.close()
         try:
             os.unlink(path)
-        except OSError:
-            pass
+        except OSError as exc:  # best effort: the drill's temp DB may already be gone
+            print(f"note: could not remove {path}: {type(exc).__name__}", file=sys.stderr)
 
     counts = {verdict: sum(1 for row in rows if row["verdict"] == verdict)
               for verdict in (PROVEN, PARTIAL, GAP)}

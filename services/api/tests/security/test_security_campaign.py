@@ -208,6 +208,7 @@ def test_production_boot_gate_fails_closed():
     base = {"ENVIRONMENT": "production", "SECRET_KEY": "a" * 32,
             "ADMIN_PASSWORD_HASH": "x" * 60,
             "METRICS_TOKEN": "m" * 32,
+            "ALERTMANAGER_WEBHOOK_TOKEN": "a" * 32,
             "CORS_ORIGINS": "https://app.example.com",
             "TRUSTED_HOSTS": ["app.example.com"],
             "REDIS_URL": "rediss://ci_acl_user:ci-only-redis-password@redis.example.invalid:6379/0",

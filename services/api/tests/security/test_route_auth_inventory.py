@@ -46,7 +46,13 @@ EXTRA_EXEMPT = (
 )
 
 #: dependency callables that authenticate, by module-qualified name prefix
-AUTH_MODULE_PREFIXES = ("api.security.rbac",)
+AUTH_MODULE_PREFIXES = (
+    "api.security.rbac",
+    # machine principals (Prometheus, Alertmanager, an orchestrator's worker
+    # probe) authenticate with a shared token instead of a session; the module
+    # is the single implementation of that comparison (guide 117)
+    "api.security.machine_tokens",
+)
 AUTH_QUALIFIED_NAMES = (
     "api.dependencies.get_current_user",
     "api.dependencies.get_tenant_context",

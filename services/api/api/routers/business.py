@@ -449,9 +449,14 @@ def link_process(
     from db.models.business_process import BusinessProcess
     from db.models.system import System
 
-    if db.get(System, body.system_id) is None:
+    # filtered_get, not db.get: a primary-key load through the identity map
+    # bypasses the tenant SELECT criteria, so a caller could link a process in
+    # another estate by guessing its id. A row the caller may not see is
+    # indistinguishable from one that does not exist, which is the right answer
+    # for both.
+    if filtered_get(db, System, body.system_id) is None:
         raise HTTPException(status_code=404, detail=f"No such system: {body.system_id}")
-    if db.get(BusinessProcess, process_id) is None:
+    if filtered_get(db, BusinessProcess, process_id) is None:
         raise HTTPException(status_code=404, detail=f"No such business process: {process_id}")
     return IntelligenceRepository(db).link_process(body.system_id, process_id, body.role).to_dict()
 

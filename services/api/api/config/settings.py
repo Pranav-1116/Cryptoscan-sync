@@ -244,6 +244,11 @@ class APISettings(BaseSettings):
     # endpoint open in development/test for local tooling, but require an
     # explicit bearer token in production; metrics are not public health data.
     METRICS_TOKEN: str = ""
+    #: Shared secret Alertmanager presents when it posts a notification. Like
+    #: METRICS_TOKEN it is an infrastructure principal, not a human session: a
+    #: pager has no cookie jar, and requiring one is how "nothing is paging"
+    #: happens. Blank in development/test; production requires 32+ characters.
+    ALERTMANAGER_WEBHOOK_TOKEN: str = ""
     TRUSTED_HOSTS: list[str] = Field(default_factory=lambda: ["*"])
     # serving TLS at the app boundary (round 36, deployment set): when
     # set, both must be valid at boot (reverse-proxy termination stays a
@@ -387,6 +392,12 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
     metrics_token = (settings.METRICS_TOKEN or "").strip()
     if len(metrics_token) < 32:
         errors.append("METRICS_TOKEN must be a unique value of at least 32 characters")
+    alertmanager_token = (settings.ALERTMANAGER_WEBHOOK_TOKEN or "").strip()
+    if len(alertmanager_token) < 32:
+        errors.append(
+            "ALERTMANAGER_WEBHOOK_TOKEN must be a unique value of at least 32 "
+            "characters: alerts that evaluate and reach nothing are a silent outage"
+        )
 
     # On-prem single-organisation auto-membership: safe for one bank's own
     # installation, unsafe the moment the deployment serves several tenants or

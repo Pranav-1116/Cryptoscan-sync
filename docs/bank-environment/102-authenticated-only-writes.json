@@ -1180,6 +1180,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/ops/alerts/alertmanager",
+      "reason": "machine-signed: Alertmanager posts notifications with its own token"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/ot/metrics",
       "reason": "operator surface: OT/ICS capture analysis and ingestion"
     },

@@ -1,0 +1,69 @@
+# Alertmanager for the CryptoScan deployment.
+#
+# Why this file exists: the rules in ../prometheus/alerts.yml were evaluated and
+# went nowhere. Prometheus without an `alerting:` stanza does not fail, does not
+# warn, and does not page — it just evaluates. Guide 117's alert row was a
+# PARTIAL for exactly that reason, and this is the receiver that closes it.
+#
+# The chain, end to end:
+#   alerts.yml (rule) -> Prometheus -> alertmanager:9093 (this file) ->
+#   api:8010/api/v1/ops/alerts/alertmanager (counted, and served from /metrics)
+#
+# A bank replaces `receivers:` with its own pager (PagerDuty, Opsgenie, Slack,
+# SMS gateway, the on-call rota) and keeps the routing tree: the platform's part
+# is receiving the notification and counting it, so "is anything paging, and are
+# we still receiving?" is answerable from a metric rather than a hope.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  # Group by alertname and plane: one page per problem, not one per instance.
+  group_by: ["alertname", "plane"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: cryptoscan-platform
+
+  routes:
+    # Critical first: a bank wants the pager path to be the shortest one.
+    - matchers:
+        - severity = "critical"
+      receiver: cryptoscan-platform
+      group_wait: 10s
+      repeat_interval: 1h
+    # Informational rules resolve in the console; they must not wake anyone.
+    - matchers:
+        - severity = "info"
+      receiver: cryptoscan-null
+      repeat_interval: 24h
+
+receivers:
+  - name: cryptoscan-platform
+    webhook_configs:
+      - url: "http://api:8010/api/v1/ops/alerts/alertmanager"
+        send_resolved: true
+        # The API requires this bearer token in production
+        # (ALERTMANAGER_WEBHOOK_TOKEN, 32+ characters). Mount the secret here.
+        http_config:
+          authorization:
+            type: Bearer
+            credentials_file: /etc/alertmanager/secrets/webhook_token
+        max_alerts: 100
+  - name: cryptoscan-null
+    # Alertmanager has no "drop" receiver; a webhook to /dev/null-equivalent is
+    # the documented way to route informational alerts to nobody.
+
+inhibit_rules:
+  # One page per subsystem: a critical alert silences the warnings it explains.
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity =~ "high|medium|info"
+    equal: ["alertname"]
+  # A scrape that is failing explains every metric-derived alert from that job.
+  - source_matchers:
+      - alertname = "CryptoscanScrapeTargetMissing"
+    target_matchers:
+      - alertname =~ "Cryptoscan.*"
+    equal: ["job"]

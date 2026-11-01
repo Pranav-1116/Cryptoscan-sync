@@ -152,6 +152,7 @@ def _production(**overrides):
         CORS_ORIGINS="https://console.example",
         TRUSTED_HOSTS=["console.example"],
         METRICS_TOKEN="m" * 32,
+        ALERTMANAGER_WEBHOOK_TOKEN="a" * 32,
         REGISTRY_WEBHOOK_SECRET="r" * 32,
         CBOM_SIGNING_SECRET="c" * 32,
         STREAM_SECRET="s" * 32,

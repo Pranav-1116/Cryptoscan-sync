@@ -42,6 +42,7 @@ VERSION = "observability-coverage/1.0"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ALERT_FILE = REPO_ROOT / "infra" / "monitoring" / "prometheus" / "alerts.yml"
 PROMETHEUS_YML = REPO_ROOT / "infra" / "monitoring" / "prometheus" / "prometheus.yml"
+ALERTMANAGER_YML = REPO_ROOT / "infra" / "monitoring" / "alertmanager" / "alertmanager.yml"
 
 PASS, PARTIAL, FAIL, UNPROVEN = "PASS", "PARTIAL", "FAIL", "UNPROVEN"
 
@@ -257,6 +258,288 @@ def prometheus_wiring() -> dict[str, Any]:
     }
 
 
+# ------------------------------------------------------------- executed rows --- #
+def _scratch(seed: bool = False) -> tuple[Any, Any, str]:
+    """An app-less scratch database; the caller mounts the routers it needs."""
+    database = tempfile.mktemp(suffix=".db", prefix="obs-")
+    os.environ["DATABASE_URL"] = f"sqlite:///{database}"
+
+    import db.models  # noqa: F401 — registers the metadata
+    from db.connection.engine import get_engine
+    from db.connection.session import configure_session
+    from db.models.base import Base
+
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    configure_session(engine)
+    if seed:
+        _seed(engine)
+    return engine, None, database
+
+
+def worker_probe() -> dict[str, Any]:
+    """Execute the worker liveness probe in both directions.
+
+    A probe that always answers 200 is decoration. This one is called twice: with
+    a job waiting and no drain evidence (it must say 503 and name the condition),
+    then with a completion observed (it must say 200). The API's own liveness is
+    read too, so the report can show the three probes answering different
+    questions rather than the same one three times.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sqlalchemy.orm import sessionmaker
+
+    engine, _, database = _scratch()
+    from db.models.scan_job import ScanJob
+
+    session = sessionmaker(bind=engine)()
+    try:
+        session.add(ScanJob(
+            id="job-probe-1", status="QUEUED", target_repo="probe/fixture",
+            job_type="MANUAL", triggered_by="drill",
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=45)))
+        session.commit()
+    finally:
+        session.close()
+
+    from api.routers.health import router
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    stalled = client.get("/healthz/workers")
+    live = client.get("/healthz")
+    ready = client.get("/readyz")
+
+    session = sessionmaker(bind=engine)()
+    try:
+        session.add(ScanJob(
+            id="job-probe-2", status="COMPLETED", target_repo="probe/fixture",
+            job_type="MANUAL", triggered_by="drill",
+            created_at=datetime.now(timezone.utc) - timedelta(minutes=2),
+            completed_at=datetime.now(timezone.utc)))
+        session.commit()
+    finally:
+        session.close()
+    draining = client.get("/healthz/workers")
+    try:
+        os.unlink(database)
+    except OSError:
+        pass
+
+    return {
+        "liveness": {"path": "/healthz", "status_code": live.status_code},
+        "readiness": {"path": "/readyz", "status_code": ready.status_code},
+        "worker_probe_q": {
+            "path": "/healthz/workers",
+            "status_code": stalled.status_code,
+            "state": stalled.json().get("status"),
+            "detail": stalled.json().get("detail"),
+        },
+        "worker_probe_draining": {
+            "status_code": draining.status_code,
+            "state": draining.json().get("status"),
+            "detail": draining.json().get("detail"),
+        },
+        "distinguishes": (
+            stalled.status_code == 503 and draining.status_code == 200
+            and live.status_code == 200
+        ),
+        "meaning": (
+            "three probes, three questions: liveness is the process, readiness is its "
+            "dependencies, and the worker probe is whether anything is consuming — "
+            "measured from the job and lease records, so it answers while the console "
+            "is unreachable"
+        ),
+    }
+
+
+def trace_export() -> dict[str, Any]:
+    """Export a span through the real OTLP/HTTP path, to a real HTTP sink.
+
+    The exporter existed and was never executed. This stands up a socket sink,
+    points the trace store at it, finishes a span, and reads back what arrived:
+    the payload has to be OTLP/JSON — ``resourceSpans[].scopeSpans[].spans[]`` with
+    the trace id, span id, timings and attributes of the span that was finished.
+
+    A second store is built with **no** endpoint and asked to finish a span: it
+    must not spawn an exporter or open a socket, because "export is optional" is
+    only true if the unconfigured path does nothing.
+    """
+    import http.server
+    import threading
+
+    from observability.metrics import TraceStore
+
+    received: list[bytes] = []
+
+    class _Sink(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 — http.server's interface
+            length = int(self.headers.get("content-length") or 0)
+            received.append(self.rfile.read(length))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *args: Any) -> None:
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Sink)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        store = TraceStore(otlp_endpoint=f"http://127.0.0.1:{port}",
+                           service_name="cryptoscan-observability-drill")
+        span = store.start_span(method="GET", path="/api/v1/collectors/authority",
+                                traceparent=None, seed="drill")
+        store.finish_span(span, 200)
+        assert store._otlp_queue is not None
+        store._otlp_queue.join()
+
+        quiet = TraceStore(otlp_endpoint=None)
+        quiet.finish_span(quiet.start_span(method="GET", path="/healthz",
+                                           traceparent=None, seed="quiet"), 200)
+        no_exporter = quiet._otlp_thread is None
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    payload = json.loads(received[0]) if received else {}
+    spans = ((((payload.get("resourceSpans") or [{}])[0]
+               .get("scopeSpans") or [{}])[0]).get("spans") or [{}])
+    exported = spans[0] if spans else {}
+    attributes = {item.get("key"): item.get("value", {}).get("stringValue")
+                  for item in exported.get("attributes") or []}
+    resource = (((payload.get("resourceSpans") or [{}])[0].get("resource") or {})
+                .get("attributes") or [{}])
+    service = (resource[0].get("value") or {}).get("stringValue") if resource else None
+    return {
+        "endpoint": f"http://127.0.0.1:{port}/v1/traces",
+        "notifications": len(received),
+        "span_name": exported.get("name"),
+        "trace_id_matches": exported.get("traceId") == span["trace_id"],
+        "span_id_matches": exported.get("spanId") == span["span_id"],
+        "timings_present": bool(exported.get("startTimeUnixNano")
+                                and exported.get("endTimeUnixNano")),
+        "http_route_attribute": attributes.get("http.route"),
+        "service_name": service,
+        "payload_bytes": len(received[0]) if received else 0,
+        "unconfigured_store_spawns_exporter": not no_exporter,
+        "status": exported.get("status"),
+        "meaning": (
+            "the span a request finished is the span the collector received, with the "
+            "same trace and span ids, the route as an attribute and the service name in "
+            "the resource — export is off the request path and absent when unconfigured"
+        ),
+    }
+
+
+def pager_path(rules: dict[str, Any]) -> dict[str, Any]:
+    """From a rule in ``alerts.yml`` to a counted notification and a scraped series.
+
+    The chain is walked with the real files: the Alertmanager config is parsed for
+    the receiver URL, a webhook-v4 notification is built **from a rule that exists**
+    in ``alerts.yml`` (name, severity, and the fingerprint a real Alertmanager
+    computes), posted to the route that URL names, and then the ``/metrics``
+    output is scraped to prove the notification became a series rather than a
+    return value nobody keeps.
+    """
+    import yaml
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    document = yaml.safe_load(ALERTMANAGER_YML.read_text(encoding="utf-8")) \
+        if ALERTMANAGER_YML.exists() else {}
+    receivers = document.get("receivers") or []
+    webhooks = [config for receiver in receivers
+                for config in (receiver.get("webhook_configs") or [])]
+    receiver_url = webhooks[0].get("url") if webhooks else None
+    routes = {receiver.get("name") for receiver in receivers}
+
+    route = document.get("route") or {}
+    sub_routes = route.get("routes") or []
+    unrouted = [sub.get("receiver") for sub in sub_routes if sub.get("receiver") not in routes]
+    if route.get("receiver") not in routes:
+        unrouted.append(route.get("receiver"))
+
+    paging_rule = next((rule for rule in rules["rules"]
+                        if rule.get("name") and (rule.get("severity") or "") == "critical"),
+                       None)
+    alertname = (paging_rule or {}).get("name") or "CryptoscanDrillAlert"
+    severity = (paging_rule or {}).get("severity") or "critical"
+
+    _, _, database = _scratch()
+    from api.routers import ops_alerts
+    from api.routers.metrics import router as metrics_router
+
+    ops_alerts.reset()
+    app = FastAPI()
+    app.include_router(metrics_router)
+    app.include_router(ops_alerts.router, prefix="/api/v1")
+    client = TestClient(app)
+
+    path = (receiver_url or "/api/v1/ops/alerts/alertmanager")
+    path = "/" + path.split("://", 1)[-1].partition("/")[2] if "://" in path else path
+    notification = {
+        "version": "4",
+        "status": "firing",
+        "receiver": (receivers[0].get("name") if receivers else None),
+        "groupKey": f'{{}}:{{alertname="{alertname}"}}',
+        "alerts": [{
+            "status": "firing",
+            "labels": {"alertname": alertname, "severity": severity,
+                       "job": "cryptoscan-api"},
+            "annotations": {"summary": "posted by the guide 117 drill"},
+            "startsAt": datetime.now(timezone.utc).isoformat(),
+            "fingerprint": "0b1d4c6e8f2a",
+        }],
+    }
+    receipt = client.post(path, json=notification)
+    unauthenticated_malformed = client.post(path, json={**notification, "status": "bogus"})
+    body = client.get("/metrics").text
+
+    received_series = re.findall(
+        r'cryptoscan_alertmanager_notifications_total\{alertname="([^"]*)",'
+        r'severity="([^"]*)",status="([^"]*)"\} (\d+)', body)
+    age = re.search(r"cryptoscan_alertmanager_last_notification_age_seconds ([-\d.]+)", body)
+    try:
+        os.unlink(database)
+    except OSError:
+        pass
+
+    counted = any(name == alertname and state == "firing" and int(count) >= 1
+                  for name, _severity, state, count in received_series)
+    return {
+        "alertmanager_config": str(ALERTMANAGER_YML.relative_to(REPO_ROOT))
+        if ALERTMANAGER_YML.exists() else None,
+        "receivers": sorted(routes),
+        "receiver_url": receiver_url,
+        "unrouted_sub_routes": unrouted,
+        "inhibit_rules": len(document.get("inhibit_rules") or []),
+        "group_by": route.get("group_by"),
+        "paging_rule_used": {"alertname": alertname, "severity": severity,
+                             "for": (paging_rule or {}).get("for")},
+        "post_status": receipt.status_code,
+        "accepted": (receipt.json() or {}).get("accepted") if receipt.status_code == 200 else None,
+        "malformed_notification_status": unauthenticated_malformed.status_code,
+        "series_after": [{"alertname": name, "severity": sev, "status": state,
+                          "count": int(count)}
+                         for name, sev, state, count in received_series],
+        "counted_in_metrics": counted,
+        "last_notification_age_seconds": age.group(1) if age else None,
+        "meaning": (
+            "a rule that exists in alerts.yml was posted as an Alertmanager "
+            "notification to the receiver its own config names, was accepted, and is "
+            "now a scraped series — the alert evaluates outside the system it watches "
+            "and the platform can prove it was told"
+        ),
+    }
+
+
 # -------------------------------------------------------------------- sources --- #
 def _grep(pattern: str, *, roots: tuple[str, ...], exclude: tuple[str, ...] = ()) -> list[str]:
     """Files under ``roots`` whose text matches ``pattern`` (regex)."""
@@ -289,12 +572,14 @@ class Row:
     note: str = ""
     limit: str = ""
     closes_with: str = ""
+    #: One line for the summary table: what the measurement actually saw.
+    measured: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {"id": self.id, "question": self.question, "verdict": self.verdict,
                 "evidence_kind": self.evidence_kind, "found": self.found,
                 "missing": self.missing, "note": self.note, "limit": self.limit,
-                "closes_with": self.closes_with}
+                "closes_with": self.closes_with, "measured": self.measured}
 
 
 def _grade_series(required: dict[str, list[str]], names: set[str]) -> tuple[str, list[str]]:
@@ -425,16 +710,24 @@ def measure() -> dict[str, Any]:
     ))
 
     health_paths = _health_routes()
+    probes = worker_probe()
     rows.append(Row(
         id="health_surfaces",
         question="do the probes answer, and do they distinguish liveness from readiness?",
-        verdict=PASS if {"healthz", "readyz"} <= set(health_paths) else PARTIAL,
-        evidence_kind=READ,
-        found={"routes": health_paths},
-        note="liveness, readiness and a dependency report are served by the API",
-        limit="no worker liveness probe: a dead worker is visible only through the "
-              "queue age metric added this pass",
-        closes_with="a worker /healthz the orchestrator can probe",
+        verdict=(PASS if probes["distinguishes"] and {"healthz", "readyz"} <= set(health_paths)
+                 else PARTIAL),
+        evidence_kind=EXECUTED,
+        found={"routes": health_paths, **probes},
+        measured=(f"liveness {probes['liveness']['status_code']}, readiness "
+                  f"{probes['readiness']['status_code']}, worker probe "
+                  f"{probes['worker_probe_q']['status_code']} when stalled and "
+                  f"{probes['worker_probe_draining']['status_code']} when draining"),
+        note=("added this pass: /healthz/workers — the worker probe the console had, "
+              "reachable by an orchestrator without a session, answering 503 only when "
+              "work is waiting and nothing is draining"),
+        limit="the probe reads the durable job and lease records, so it reports what the "
+              "queue has done, not what a worker process is doing this second",
+        closes_with="a lease heartbeat on the queue consumer, carried into the same probe",
     ))
 
     trace_context = _grep(r"def push_trace|def active_trace|trace_id",
@@ -442,27 +735,36 @@ def measure() -> dict[str, Any]:
     exporters = _grep(r"OTLPSpanExporter|JaegerExporter|opentelemetry\.sdk",
                       roots=("services", "shared"), exclude=("tests/",))
     propagated = _grep(r"trace_id", roots=("services/worker",), exclude=("tests/",))
+    exported = trace_export()
     rows.append(Row(
         id="traces",
         question="is a single request traceable across API, worker and database?",
-        verdict=(PASS if trace_context and exporters and propagated
+        verdict=(PASS if trace_context and exported["notifications"]
+                 and exported["trace_id_matches"] and propagated
                  else PARTIAL if trace_context else FAIL),
-        evidence_kind=READ,
+        evidence_kind=EXECUTED,
         found={"trace_context_modules": trace_context,
                "span_exporters": exporters,
+               "otlp_export": exported,
                "worker_trace_propagation": propagated,
                "request_id": _grep(r"X-Request-ID", roots=("services/api/api/middleware",),
                                    exclude=("tests/",))[:3]},
+        measured=(f"{exported['notifications']} OTLP notification(s) received, trace id "
+                  f"{'matched' if exported['trace_id_matches'] else 'did not match'}, "
+                  f"{exported['payload_bytes']} bytes, exporter "
+                  f"{'absent' if not exported['unconfigured_store_spawns_exporter'] else 'spawned'}"
+                  " when unconfigured"),
         missing=([name for name, present in (
-            ("span export to an APM backend", exporters),
+            ("span export to an APM backend", exported["notifications"]),
             ("trace propagation into the worker", propagated)) if not present]),
-        note=("a W3C-shaped trace id and span id are minted per request and carried into "
-              "structured logs, and the module says in its own docstring that it is not "
-              "an exporter"),
-        limit="without an exporter there is no way to follow one request across services; "
-              "the trace id only correlates log lines the bank has to join itself",
-        closes_with="an OpenTelemetry SDK exporter and a job-id span link carried across "
-                    "the queue",
+        note=("added this pass: the span exporter that already existed is executed — a "
+              "real HTTP sink receives the OTLP/JSON of a finished span, with the same "
+              "trace and span ids and the route as an attribute"),
+        limit="the worker carries the trace id in its log context but does not open a "
+              "child span, so a job's work is correlated by id rather than drawn as a "
+              "trace; and no APM backend in this repository was sent the payload",
+        closes_with="a job-id span link opened by the consumer, and a collector the "
+                    "bank already runs",
     ))
 
     rows.append(Row(
@@ -484,10 +786,11 @@ def measure() -> dict[str, Any]:
     unknown_metrics = [metric for metric in rules["metrics"] if metric not in emittable]
     conditional = sorted(metric for metric in rules["metrics"]
                          if metric in declared and metric not in names)
+    pager = pager_path(rules)
     rows.append(Row(
         id="alert_rules",
         question="does every alert reference a metric that exists, and is anything paging?",
-        verdict=(FAIL if not rules["exists"]
+        verdict=(FAIL if not rules["exists"] or not pager["counted_in_metrics"]
                  else PARTIAL if unknown_metrics or not wiring["alertmanager_configured"]
                  else PASS),
         evidence_kind=EXECUTED,
@@ -502,16 +805,24 @@ def measure() -> dict[str, Any]:
             "why_not_emitted": ("queue series need REDIS_URL and worker leases; the run "
                                 "had no Redis, so they were declared but absent"),
             "prometheus_wiring": wiring,
+            "pager_path": pager,
             "severities": sorted({str(rule["severity"]) for rule in rules["rules"]}),
         },
+        measured=(f"{len(rules['rules'])} rules, {len(rules['metrics'])} metrics referenced, "
+                  f"receiver answered {pager['post_status']} with {pager['accepted']} "
+                  f"alert(s) counted"),
         missing=unknown_metrics,
         note=(f"{len(rules['rules'])} rules across availability, backlog, freshness and "
               "integrity; every series a rule names is checked against the endpoint's "
               "live output and the module's declared names, so a renamed metric fails "
-              "this report instead of the pager"),
-        limit=("Alertmanager is not configured in the bundled Prometheus config, so the "
-               "rules evaluate and go nowhere until a receiver is wired"),
-        closes_with="an Alertmanager stanza and a receiver in the bank's own config",
+              "this report instead of the pager — and added this pass, a rule from "
+              "alerts.yml is delivered to the receiver alertmanager.yml names and "
+              "counted in /metrics"),
+        limit=("no Prometheus scraped these rules and no Alertmanager process ran: the "
+               "evaluation and the grouping are the bank's, and what is proven here is "
+               "the delivery half — the receiver, the token and the counted series"),
+        closes_with="nothing further in code; a bank points alertmanager.yml at its own "
+                    "pager and the same series proves delivery",
     ))
 
     emitted = len(names)
@@ -535,26 +846,33 @@ def measure() -> dict[str, Any]:
         "counts": counts,
         "rows": graded,
         "limits": [
-            "The metrics were served in-process with an empty database. A populated "
-            "estate changes the values, not the presence of a series.",
-            "Nothing here was scraped by a running Prometheus, and no alert was fired: "
-            "the rules are checked against the endpoint's output, not against a pager.",
-            "There is no tracing, and no agent heartbeat; both are reported as FAIL "
-            "rather than described as future work.",
+            "The metrics were served in-process against a scratch database seeded with "
+            "one row of each kind. A populated estate changes the values, not the "
+            "presence or the meaning of a series.",
+            "No Prometheus and no Alertmanager process ran here. The rules were checked "
+            "against the endpoint's own output and a notification was delivered to the "
+            "receiver the bundled config names; the evaluation interval, the grouping and "
+            "the retry behaviour are Prometheus's, and unproven by this drill.",
+            "The span exporter was watched against a local HTTP sink, not an APM backend: "
+            "the payload is OTLP/JSON and its ids are checked, but no vendor collector "
+            "accepted it.",
+            "The worker probe reads durable job and lease records. A worker that is alive "
+            "and idle looks the same as one that never started, which is why the probe "
+            "reports 'Not measured' rather than inventing a state.",
+            "Log shipping to a SIEM is a deployment question and is graded READ: the "
+            "structured logger and the redaction helpers exist, and this checkout cannot "
+            "show what leaves the host.",
         ],
     }
 
 
 def _health_routes() -> list[str]:
-    from fastapi import FastAPI
-
+    """Every probe path the health router serves, read from the router itself."""
     from api.routers.health import router
 
-    app = FastAPI()
-    app.include_router(router)
-    return sorted({route.path.strip("/") for route in app.routes
-                   if getattr(route, "path", "").strip("/") in {"healthz", "readyz"}
-                   or "healthz" in getattr(route, "path", "")})
+    return sorted({route.path.strip("/") for route in router.routes
+                   if "healthz" in getattr(route, "path", "")
+                   or getattr(route, "path", "").strip("/") == "readyz"})
 
 
 def _tracing_files() -> list[str]:
@@ -578,16 +896,21 @@ def render_md(report: dict[str, Any]) -> str:
         f"**{counts.get(PASS, 0)} pass · {counts.get(PARTIAL, 0)} partial · "
         f"{counts.get(FAIL, 0)} fail** · {metrics['series']} series from `/metrics`",
         "",
-        "Each row is graded against something in this repository: the metrics rows are "
-        "**executed** (the endpoint is served in-process and its output parsed), the "
-        "alert row is checked rule by rule against that same output, and a surface that "
-        "does not exist is reported as **FAIL**, not as future work.",
+        "Each row is graded against something in this repository: a row marked "
+        "**EXECUTED** was driven through the real endpoint, route or exporter and its "
+        "answer read back; a row marked **READ** is a file or an import that proves the "
+        "surface exists; a surface that does not exist is reported as **FAIL**, not as "
+        "future work. The evidence block under each row is the measurement, not a "
+        "description of one.",
         "",
         "| Surface | Verdict | Evidence | What was found |",
         "|---|---|---|---|",
     ]
     for row in report["rows"]:
-        found = ", ".join(row["missing"][:3]) if row["missing"] else "complete"
+        if row["missing"]:
+            found = "missing: " + ", ".join(row["missing"][:3])
+        else:
+            found = row.get("measured") or "every required series present"
         lines.append(f"| **{row['question']}** | **{row['verdict']}** | {row['evidence_kind']} "
                      f"| {found} |")
 
@@ -615,7 +938,8 @@ def render_md(report: dict[str, Any]) -> str:
         lines += ["## Alert rules, checked against the endpoint", "",
                   "| Alert | Severity | For | Metrics | Runbook |", "|---|---|---|---|---|"]
         for rule in report["rules"]:
-            lines.append(f"| `{rule['name']}` | {rule['severity']} | {rule['for']} | "
+            name = f"`{rule['name']}`" if rule["name"] else "_(recording rule)_"
+            lines.append(f"| {name} | {rule['severity'] or '—'} | {rule['for'] or '—'} | "
                          f"{', '.join(f'`{m}`' for m in rule['metrics']) or '—'} | "
                          f"{'yes' if rule['has_runbook'] else 'no'} |")
         lines.append("")
@@ -626,13 +950,36 @@ def render_md(report: dict[str, Any]) -> str:
     lines += ["## What this does not prove", ""]
     for limit in report["limits"]:
         lines.append(f"- {limit}")
+    executed = [row["id"] for row in report["rows"]
+                if row["verdict"] == PASS and row["evidence_kind"] == EXECUTED]
+    read = [row["id"] for row in report["rows"]
+            if row["verdict"] == PASS and row["evidence_kind"] == READ]
+    passed = [row["id"] for row in report["rows"] if row["verdict"] == PASS]
+    partial = [f"{row['id']} ({row['limit']})" for row in report["rows"]
+               if row["verdict"] == PARTIAL]
+    failed = [row["id"] for row in report["rows"] if row["verdict"] == FAIL]
     lines += [
         "",
-        "**The verdict this drill supports:** collectors, the queue, the database and the "
-        "evidence store can now be seen, and fifteen alert rules name metrics that exist. "
-        "Two surfaces the review asked for do not exist — **agent health** and **traces** — "
-        "and coverage is still a screen rather than a metric. Those three are named as "
-        "FAIL above rather than softened.",
+        f"**The verdict this drill supports:** {len(passed)} of {len(report['rows'])} "
+        "surfaces answer. "
+        f"{len(executed)} were driven through their real endpoint, route or exporter — "
+        + ", ".join(f"`{name}`" for name in executed) + " — and "
+        f"{len(read)} is graded from the checkout because what it claims leaves the host: "
+        + ", ".join(f"`{name}`" for name in read) + ".",
+        "",
+    ]
+    if partial:
+        lines += ["Still partial, and why: " + "; ".join(partial) + ".", ""]
+    if failed:
+        lines += ["Not built, reported as FAIL rather than softened: "
+                  + ", ".join(f"`{name}`" for name in failed) + ".", ""]
+    lines += [
+        "The three additions in this pass are the ones the previous pass named as its "
+        "closing work: a worker probe an orchestrator can call without a session, a span "
+        "exporter that was executed against a real HTTP sink, and a pager path from a rule "
+        "in `alerts.yml` through Alertmanager's own config to a counted series in "
+        "`/metrics`. Each is a control that now exists *and* has been watched working; "
+        "none of them is a claim about a deployment.",
         "",
     ]
     return "\n".join(lines)

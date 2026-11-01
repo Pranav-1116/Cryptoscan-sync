@@ -70,6 +70,7 @@ def test_the_shipped_configmap_satisfies_the_production_gate():
         "ADMIN_PASSWORD_HASH": "pbkdf2_sha256$600000$c2FsdA==$aGFzaA==",
         "GITHUB_WEBHOOK_SECRET": "g" * 32,
         "METRICS_TOKEN": "m" * 32,
+        "ALERTMANAGER_WEBHOOK_TOKEN": "a" * 32,
         "DATABASE_URL": "postgresql+psycopg2://cryptoscan:pw@postgres:5432/cryptoscan",
         "REDIS_URL": "rediss://cryptoscan:pw@redis:6379/0",
         "REGISTRY_WEBHOOK_SECRET": "w" * 32,

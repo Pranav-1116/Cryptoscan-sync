@@ -1345,8 +1345,10 @@ def _recovery_drill(server) -> dict[str, Any]:
             writer_outcome = f"refused: {type(exc).__name__}: {str(exc)[:120]}"
             try:
                 writer.rollback()
-            except Exception:  # noqa: BLE001 — the connection is gone
-                pass
+            except Exception as rollback_exc:  # noqa: BLE001 — the connection is gone
+                # Recorded rather than discarded: "the kill worked" and "the
+                # connection survived the kill" are different observations.
+                writer_outcome += f" (rollback also failed: {type(rollback_exc).__name__})"
         finally:
             writer.close()
             writer_engine.dispose()
@@ -1401,12 +1403,12 @@ def _recovery_drill(server) -> dict[str, Any]:
             "integrity_checks": checks,
         }
     finally:
-        # The crash above killed this session's connection too; rolling back a
-        # dead connection is not a failure of the drill.
+        # The crash above killed this session's connection too; a dead connection
+        # is not a failure of the drill, but it is worth saying so in the output.
         try:
             session.close()
-        except Exception:  # noqa: BLE001 — the point of the drill
-            pass
+        except Exception as close_exc:  # noqa: BLE001 — the point of the drill
+            checks["session_close"] = f"raised {type(close_exc).__name__} after the crash"
         engine.dispose()
 
 

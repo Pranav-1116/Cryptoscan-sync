@@ -1,21 +1,21 @@
 # Observability coverage — what an operator can see
 
-`cryptoscan.observability-coverage/1` · generated 2026-11-01T02:41:07.605094+00:00 · **7 pass · 3 partial · 0 fail** · 45 series from `/metrics`
+`cryptoscan.observability-coverage/1` · generated 2026-11-01T16:08:35.723848+00:00 · **10 pass · 0 partial · 0 fail** · 46 series from `/metrics`
 
-Each row is graded against something in this repository: the metrics rows are **executed** (the endpoint is served in-process and its output parsed), the alert row is checked rule by rule against that same output, and a surface that does not exist is reported as **FAIL**, not as future work.
+Each row is graded against something in this repository: a row marked **EXECUTED** was driven through the real endpoint, route or exporter and its answer read back; a row marked **READ** is a file or an import that proves the surface exists; a surface that does not exist is reported as **FAIL**, not as future work. The evidence block under each row is the measurement, not a description of one.
 
 | Surface | Verdict | Evidence | What was found |
 |---|---|---|---|
-| **can an operator see whether collectors are running and what they return?** | **PASS** | EXECUTED | complete |
-| **can an operator see a queue that is not draining, or work that was given up on?** | **PASS** | EXECUTED | complete |
-| **can an operator see that the database is unhealthy before users report it?** | **PASS** | EXECUTED | complete |
-| **can an operator see the evidence store going stale under a BOM?** | **PASS** | EXECUTED | complete |
-| **can an operator see that an agent on a host stopped reporting?** | **PASS** | EXECUTED | complete |
-| **can an operator see which planes stopped being covered?** | **PASS** | EXECUTED | complete |
-| **do the probes answer, and do they distinguish liveness from readiness?** | **PARTIAL** | READ | complete |
-| **is a single request traceable across API, worker and database?** | **PARTIAL** | READ | span export to an APM backend |
-| **are logs structured, correlated and safe to ship?** | **PASS** | READ | complete |
-| **does every alert reference a metric that exists, and is anything paging?** | **PARTIAL** | EXECUTED | complete |
+| **can an operator see whether collectors are running and what they return?** | **PASS** | EXECUTED | every required series present |
+| **can an operator see a queue that is not draining, or work that was given up on?** | **PASS** | EXECUTED | every required series present |
+| **can an operator see that the database is unhealthy before users report it?** | **PASS** | EXECUTED | every required series present |
+| **can an operator see the evidence store going stale under a BOM?** | **PASS** | EXECUTED | every required series present |
+| **can an operator see that an agent on a host stopped reporting?** | **PASS** | EXECUTED | every required series present |
+| **can an operator see which planes stopped being covered?** | **PASS** | EXECUTED | every required series present |
+| **do the probes answer, and do they distinguish liveness from readiness?** | **PASS** | EXECUTED | liveness 200, readiness 200, worker probe 503 when stalled and 200 when draining |
+| **is a single request traceable across API, worker and database?** | **PASS** | EXECUTED | 1 OTLP notification(s) received, trace id matched, 623 bytes, exporter absent when unconfigured |
+| **are logs structured, correlated and safe to ship?** | **PASS** | READ | every required series present |
+| **does every alert reference a metric that exists, and is anything paging?** | **PASS** | EXECUTED | 15 rules, 3 metrics referenced, receiver answered 200 with 1 alert(s) counted |
 
 ## Row by row
 
@@ -41,7 +41,7 @@ Each row is graded against something in this repository: the metrics rows are **
       "cryptoscan_monitor_targets_total"
     ]
   },
-  "emitted_series": 45
+  "emitted_series": 46
 }
 ```
 
@@ -73,7 +73,7 @@ Each row is graded against something in this repository: the metrics rows are **
       "cryptoscan_workers_alive"
     ]
   },
-  "emitted_series": 45
+  "emitted_series": 46
 }
 ```
 
@@ -99,7 +99,7 @@ Each row is graded against something in this repository: the metrics rows are **
       "cryptoscan_dependencies_degraded"
     ]
   },
-  "emitted_series": 45
+  "emitted_series": 46
 }
 ```
 
@@ -125,7 +125,7 @@ Each row is graded against something in this repository: the metrics rows are **
       "cryptoscan_observations_current"
     ]
   },
-  "emitted_series": 45
+  "emitted_series": 46
 }
 ```
 
@@ -140,9 +140,9 @@ Each row is graded against something in this repository: the metrics rows are **
 ```
 {
   "agent_series": [
-    "cryptoscan_agents_enrolled",
     "cryptoscan_agent_last_seen_seconds",
-    "cryptoscan_agents_reporting"
+    "cryptoscan_agents_reporting",
+    "cryptoscan_agents_enrolled"
   ],
   "heartbeat_endpoints": [
     "services/api/api/routers/control_plane.py",
@@ -163,36 +163,62 @@ Each row is graded against something in this repository: the metrics rows are **
 ```
 {
   "coverage_series": [
-    "cryptoscan_coverage_collected_ratio",
     "cryptoscan_coverage_planes_unknown",
-    "cryptoscan_coverage_plane"
+    "cryptoscan_coverage_plane",
+    "cryptoscan_coverage_collected_ratio"
   ],
   "reported_when": "only after an estate discovery has been stored \u2014 with no run there is no coverage to report, which is correct: 'never observed' is not 'fully covered'"
 }
 ```
 
-### `health_surfaces` — PARTIAL (READ)
+### `health_surfaces` — PASS (EXECUTED)
 
 *do the probes answer, and do they distinguish liveness from readiness?*
 
-- **Reading:** liveness, readiness and a dependency report are served by the API
-- **Limit:** no worker liveness probe: a dead worker is visible only through the queue age metric added this pass
-- **Closes with:** a worker /healthz the orchestrator can probe
+- **Reading:** added this pass: /healthz/workers — the worker probe the console had, reachable by an orchestrator without a session, answering 503 only when work is waiting and nothing is draining
+- **Limit:** the probe reads the durable job and lease records, so it reports what the queue has done, not what a worker process is doing this second
+- **Closes with:** a lease heartbeat on the queue consumer, carried into the same probe
 
 ```
 {
-  "routes": []
+  "routes": [
+    "healthz",
+    "healthz/dependencies",
+    "healthz/schema",
+    "healthz/workers",
+    "readyz"
+  ],
+  "liveness": {
+    "path": "/healthz",
+    "status_code": 200
+  },
+  "readiness": {
+    "path": "/readyz",
+    "status_code": 200
+  },
+  "worker_probe_q": {
+    "path": "/healthz/workers",
+    "status_code": 503,
+    "state": "Degraded",
+    "detail": "work waiting beyond threshold with no drain observed in the last hour"
+  },
+  "worker_probe_draining": {
+    "status_code": 200,
+    "state": "Operational",
+    "detail": "drain observed: 1 completion(s) in the last hour"
+  },
+  "distinguishes": true,
+  "meaning": "three probes, three questions: liveness is the process, readiness is its dependencies, and the worker probe is whether anything is consuming \u2014 measured from the job and lease records, so it answers while the console is unreachable"
 }
 ```
 
-### `traces` — PARTIAL (READ)
+### `traces` — PASS (EXECUTED)
 
 *is a single request traceable across API, worker and database?*
 
-- **Reading:** a W3C-shaped trace id and span id are minted per request and carried into structured logs, and the module says in its own docstring that it is not an exporter
-- **Missing:** `span export to an APM backend`
-- **Limit:** without an exporter there is no way to follow one request across services; the trace id only correlates log lines the bank has to join itself
-- **Closes with:** an OpenTelemetry SDK exporter and a job-id span link carried across the queue
+- **Reading:** added this pass: the span exporter that already existed is executed — a real HTTP sink receives the OTLP/JSON of a finished span, with the same trace and span ids and the route as an attribute
+- **Limit:** the worker carries the trace id in its log context but does not open a child span, so a job's work is correlated by id rather than drawn as a trace; and no APM backend in this repository was sent the payload
+- **Closes with:** a job-id span link opened by the consumer, and a collector the bank already runs
 
 ```
 {
@@ -203,6 +229,22 @@ Each row is graded against something in this repository: the metrics rows are **
     "services/api/api/middleware/trace.py"
   ],
   "span_exporters": [],
+  "otlp_export": {
+    "endpoint": "http://127.0.0.1:46763/v1/traces",
+    "notifications": 1,
+    "span_name": "GET /api/v1/collectors/authority",
+    "trace_id_matches": true,
+    "span_id_matches": true,
+    "timings_present": true,
+    "http_route_attribute": "/api/v1/collectors/authority",
+    "service_name": "cryptoscan-observability-drill",
+    "payload_bytes": 623,
+    "unconfigured_store_spawns_exporter": false,
+    "status": {
+      "code": 1
+    },
+    "meaning": "the span a request finished is the span the collector received, with the same trace and span ids, the route as an attribute and the service name in the resource \u2014 export is off the request path and absent when unconfigured"
+  },
   "worker_trace_propagation": [
     "services/worker/worker/core/job_executor.py",
     "services/worker/worker/pipeline/pipeline_runner.py"
@@ -240,13 +282,13 @@ Each row is graded against something in this repository: the metrics rows are **
 }
 ```
 
-### `alert_rules` — PARTIAL (EXECUTED)
+### `alert_rules` — PASS (EXECUTED)
 
 *does every alert reference a metric that exists, and is anything paging?*
 
-- **Reading:** 15 rules across availability, backlog, freshness and integrity; every series a rule names is checked against the endpoint's live output and the module's declared names, so a renamed metric fails this report instead of the pager
-- **Limit:** Alertmanager is not configured in the bundled Prometheus config, so the rules evaluate and go nowhere until a receiver is wired
-- **Closes with:** an Alertmanager stanza and a receiver in the bank's own config
+- **Reading:** 15 rules across availability, backlog, freshness and integrity; every series a rule names is checked against the endpoint's live output and the module's declared names, so a renamed metric fails this report instead of the pager — and added this pass, a rule from alerts.yml is delivered to the receiver alertmanager.yml names and counted in /metrics
+- **Limit:** no Prometheus scraped these rules and no Alertmanager process ran: the evaluation and the grouping are the bank's, and what is proven here is the delivery half — the receiver, the token and the counted series
+- **Closes with:** nothing further in code; a bank points alertmanager.yml at its own pager and the same series proves delivery
 
 ```
 {
@@ -263,8 +305,41 @@ Each row is graded against something in this repository: the metrics rows are **
     "rule_files": [
       "/etc/prometheus/rules/alerts.yml"
     ],
-    "alertmanager_configured": false,
+    "alertmanager_configured": true,
     "note": "rules are mounted at /etc/prometheus/rules/alerts.yml; without an Alertmanager stanza they evaluate and go nowhere"
+  },
+  "pager_path": {
+    "alertmanager_config": "infra/monitoring/alertmanager/alertmanager.yml",
+    "receivers": [
+      "cryptoscan-null",
+      "cryptoscan-platform"
+    ],
+    "receiver_url": "http://api:8010/api/v1/ops/alerts/alertmanager",
+    "unrouted_sub_routes": [],
+    "inhibit_rules": 2,
+    "group_by": [
+      "alertname",
+      "plane"
+    ],
+    "paging_rule_used": {
+      "alertname": "CryptoscanApiDown",
+      "severity": "critical",
+      "for": "2m"
+    },
+    "post_status": 200,
+    "accepted": 1,
+    "malformed_notification_status": 422,
+    "series_after": [
+      {
+        "alertname": "CryptoscanApiDown",
+        "severity": "critical",
+        "status": "firing",
+        "count": 1
+      }
+    ],
+    "counted_in_metrics": true,
+    "last_notification_age_seconds": "0.0",
+    "meaning": "a rule that exists in alerts.yml was posted as an Alertmanager notification to the receiver its own config names, was accepted, and is now a scraped series \u2014 the alert evaluates outside the system it watches and the platform can prove it was told"
   },
   "severities": [
     "None",
@@ -279,11 +354,11 @@ Each row is graded against something in this repository: the metrics rows are **
 
 | Alert | Severity | For | Metrics | Runbook |
 |---|---|---|---|---|
-| `None` | None | None | — | no |
-| `None` | None | None | — | no |
-| `None` | None | None | — | no |
-| `None` | None | None | — | no |
-| `None` | None | None | — | no |
+| _(recording rule)_ | — | — | — | no |
+| _(recording rule)_ | — | — | — | no |
+| _(recording rule)_ | — | — | — | no |
+| _(recording rule)_ | — | — | — | no |
+| _(recording rule)_ | — | — | — | no |
 | `CryptoscanApiDown` | critical | 2m | — | no |
 | `CryptoscanScrapeTargetMissing` | critical | 10m | — | no |
 | `CryptoscanAvailabilityBudgetBurnHigh` | critical | 5m | — | no |
@@ -297,12 +372,16 @@ Each row is graded against something in this repository: the metrics rows are **
 
 ## The metric families `/metrics` emits
 
-`cryptoscan_agent_last_seen_seconds`, `cryptoscan_agents_enrolled`, `cryptoscan_agents_reporting`, `cryptoscan_api_db_reachable`, `cryptoscan_api_up`, `cryptoscan_api_uptime_seconds`, `cryptoscan_coverage_collected_ratio`, `cryptoscan_coverage_plane`, `cryptoscan_coverage_planes_unknown`, `cryptoscan_dependencies_degraded`, `cryptoscan_dependency_latency_ms`, `cryptoscan_dependency_up`, `cryptoscan_drift_events_open`, `cryptoscan_estate_assets`, `cryptoscan_estate_assets_stale`, `cryptoscan_event_replay_gap_total`, `cryptoscan_evidence_records`, `cryptoscan_evidence_records_stale`, `cryptoscan_findings_by_status`, `cryptoscan_findings_total`, `cryptoscan_jobs_by_status`, `cryptoscan_jobs_dead_letter`, `cryptoscan_jobs_oldest_queued_seconds`, `cryptoscan_jobs_queued`, `cryptoscan_jobs_retry_scheduled`, `cryptoscan_monitor_changes_detected`, `cryptoscan_monitor_events_total`, `cryptoscan_monitor_targets_by_status`, `cryptoscan_monitor_targets_total`, `cryptoscan_monitor_targets_watch_enabled`, `cryptoscan_observations_current`, `cryptoscan_persistence_failure_total`, `cryptoscan_scan_duration_seconds`, `cryptoscan_scan_duration_seconds_bucket`, `cryptoscan_scan_duration_seconds_count`, `cryptoscan_scan_duration_seconds_sum`, `cryptoscan_scanner_family_jobs`, `cryptoscan_scans_by_status`, `cryptoscan_scans_total`, `cryptoscan_telecom_scan_age_seconds`, `cryptoscan_telecom_targets_by_severity`, `cryptoscan_telecom_targets_registered`, `cryptoscan_telecom_targets_unreachable`, `cryptoscan_tenant_isolation_violation_total`, `cryptoscan_workers_alive`
+`cryptoscan_agent_last_seen_seconds`, `cryptoscan_agents_enrolled`, `cryptoscan_agents_reporting`, `cryptoscan_alertmanager_notifications_total`, `cryptoscan_api_db_reachable`, `cryptoscan_api_up`, `cryptoscan_api_uptime_seconds`, `cryptoscan_coverage_collected_ratio`, `cryptoscan_coverage_plane`, `cryptoscan_coverage_planes_unknown`, `cryptoscan_dependencies_degraded`, `cryptoscan_dependency_latency_ms`, `cryptoscan_dependency_up`, `cryptoscan_drift_events_open`, `cryptoscan_estate_assets`, `cryptoscan_estate_assets_stale`, `cryptoscan_event_replay_gap_total`, `cryptoscan_evidence_records`, `cryptoscan_evidence_records_stale`, `cryptoscan_findings_by_status`, `cryptoscan_findings_total`, `cryptoscan_jobs_by_status`, `cryptoscan_jobs_dead_letter`, `cryptoscan_jobs_oldest_queued_seconds`, `cryptoscan_jobs_queued`, `cryptoscan_jobs_retry_scheduled`, `cryptoscan_monitor_changes_detected`, `cryptoscan_monitor_events_total`, `cryptoscan_monitor_targets_by_status`, `cryptoscan_monitor_targets_total`, `cryptoscan_monitor_targets_watch_enabled`, `cryptoscan_observations_current`, `cryptoscan_persistence_failure_total`, `cryptoscan_scan_duration_seconds`, `cryptoscan_scan_duration_seconds_bucket`, `cryptoscan_scan_duration_seconds_count`, `cryptoscan_scan_duration_seconds_sum`, `cryptoscan_scanner_family_jobs`, `cryptoscan_scans_by_status`, `cryptoscan_scans_total`, `cryptoscan_telecom_scan_age_seconds`, `cryptoscan_telecom_targets_by_severity`, `cryptoscan_telecom_targets_registered`, `cryptoscan_telecom_targets_unreachable`, `cryptoscan_tenant_isolation_violation_total`, `cryptoscan_workers_alive`
 
 ## What this does not prove
 
-- The metrics were served in-process with an empty database. A populated estate changes the values, not the presence of a series.
-- Nothing here was scraped by a running Prometheus, and no alert was fired: the rules are checked against the endpoint's output, not against a pager.
-- There is no tracing, and no agent heartbeat; both are reported as FAIL rather than described as future work.
+- The metrics were served in-process against a scratch database seeded with one row of each kind. A populated estate changes the values, not the presence or the meaning of a series.
+- No Prometheus and no Alertmanager process ran here. The rules were checked against the endpoint's own output and a notification was delivered to the receiver the bundled config names; the evaluation interval, the grouping and the retry behaviour are Prometheus's, and unproven by this drill.
+- The span exporter was watched against a local HTTP sink, not an APM backend: the payload is OTLP/JSON and its ids are checked, but no vendor collector accepted it.
+- The worker probe reads durable job and lease records. A worker that is alive and idle looks the same as one that never started, which is why the probe reports 'Not measured' rather than inventing a state.
+- Log shipping to a SIEM is a deployment question and is graded READ: the structured logger and the redaction helpers exist, and this checkout cannot show what leaves the host.
 
-**The verdict this drill supports:** collectors, the queue, the database and the evidence store can now be seen, and fifteen alert rules name metrics that exist. Two surfaces the review asked for do not exist — **agent health** and **traces** — and coverage is still a screen rather than a metric. Those three are named as FAIL above rather than softened.
+**The verdict this drill supports:** 10 of 10 surfaces answer. 9 were driven through their real endpoint, route or exporter — `collector_metrics`, `queue_metrics`, `database_metrics`, `evidence_metrics`, `agent_metrics`, `coverage_metrics`, `health_surfaces`, `traces`, `alert_rules` — and 1 is graded from the checkout because what it claims leaves the host: `logs`.
+
+The three additions in this pass are the ones the previous pass named as its closing work: a worker probe an orchestrator can call without a session, a span exporter that was executed against a real HTTP sink, and a pager path from a rule in `alerts.yml` through Alertmanager's own config to a counted series in `/metrics`. Each is a control that now exists *and* has been watched working; none of them is a claim about a deployment.
