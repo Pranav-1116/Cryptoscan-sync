@@ -35,7 +35,7 @@ import os
 from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -188,6 +188,46 @@ def _authenticity(document: dict[str, Any], signature: dict[str, Any] | None) ->
     return out
 
 
+def _require_bound_identity(request: Request, signature: dict[str, Any] | None) -> None:
+    """Refuse an observation whose signer is not the agent its certificate proved.
+
+    Only active when the deployment requires machine identity
+    (``CRYPTOSCAN_REQUIRE_AGENT_IDENTITY``); the middleware has then already
+    resolved — or refused — the certificate, so an absent identity here means the
+    middleware was bypassed, which is itself a refusal.
+    """
+    from api.security import agent_identity
+
+    if not agent_identity.enforcement_enabled():
+        return
+    state = getattr(request, "state", None)
+    agent = getattr(state, "agent_identity", None) if state is not None else None
+    if agent is None:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "agent_identity_unregistered",
+                "reason": getattr(state, "agent_identity_reason", None)
+                or "no agent identity was established for this request",
+                "stored": False,
+            },
+        )
+    bound, reason = agent_identity.check_signature_binding(agent, signature)
+    if not bound:
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "signature_not_bound_to_agent",
+                "agent_id": agent.agent_id,
+                "reason": reason,
+                "note": ("the certificate proves which machine connected; the signature "
+                         "must be the key registered for that machine, or the two facts "
+                         "are unrelated and neither is evidence"),
+                "stored": False,
+            },
+        )
+
+
 # --------------------------------------------------------------------------- #
 # heartbeat: one row per tenant, so a 24/7 agent does not grow the table
 # --------------------------------------------------------------------------- #
@@ -248,12 +288,14 @@ def _last_observation(db: Session) -> Any:
 @router.post("/observations")
 def push_observation(
     body: LiveObservationRequest,
+    request: Request,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ) -> JSONResponse:
     """Store this observation only if the estate changed, and say which one happened."""
     document = signed_document(body)
     authenticity = _authenticity(document, body.signature)
+    _require_bound_identity(request, body.signature)
     if signatures_required() and authenticity["status"] != release_signature.VALID:
         raise HTTPException(
             status_code=401,

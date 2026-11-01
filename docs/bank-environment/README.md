@@ -52,7 +52,7 @@
 > and makes every pass disappear.
 >
 > **Security, executed rather than asserted** — [guide 119](119-security-blockers.md)
-> grades the eight security blockers a bank asks about. Four are closed:
+> grades the eight security blockers a bank asks about. Five are closed:
 > [authentication](120-authentication-qualification.md) (**3 pass · 5 partial · 0
 > fail**, 55 probes — login, session integrity, MFA, expiry, revocation, password
 > policy, lockout, credential handling) and
@@ -73,8 +73,14 @@
 > the log pipeline scrubs credential shapes inside message text, not only under
 > sensitive keys.
 >
-> Still open: agent machine identity, SSRF and multi-tenant isolation — graded in
-> guide 119 with what exists and what does not. Evidence tampering is covered by
+> [Agent machine identity](124-agent-identity.md) (**7 pass · 0 partial · 0 fail**)
+> closes the gap guide 119 first recorded: the peer certificate is read from a real
+> TLS handshake, its SPKI fingerprint must resolve to a registered agent, and an
+> observation is accepted only when its signature is the key registered for that
+> agent — so a valid certificate carrying another agent's signature is refused.
+>
+> Still open: SSRF and multi-tenant isolation — graded in guide 119 with what exists
+> and what does not. Evidence tampering is covered by
 > [guide 112](112-evidence-integrity.md).
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**

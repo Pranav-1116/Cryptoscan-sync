@@ -402,6 +402,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.add_middleware(LoggingMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024)  # W59-60: compress bulky JSON payloads
     app.add_middleware(RequestIDMiddleware)
+    # Machine identity for the ingest surface. Inert unless
+    # CRYPTOSCAN_REQUIRE_AGENT_IDENTITY is set, and scoped to /api/v1/ingestion.
+    from api.middleware.agent_identity_middleware import AgentIdentityMiddleware
+
+    app.add_middleware(AgentIdentityMiddleware)
     if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
         # Added before AuthMiddleware, so it runs *after* it: Starlette applies
         # middleware outermost-last, and the tenant can only be resolved once

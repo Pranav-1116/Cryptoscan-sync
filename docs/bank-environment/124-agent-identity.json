@@ -1,0 +1,222 @@
+{
+  "schema": "cryptoscan.agent-identity/1",
+  "version": "agent-identity/1.0",
+  "generated_at": "2026-11-01T04:42:28.695279+00:00",
+  "counts": {
+    "PASS": 7,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "certificate_readable",
+      "question": "can the boundary read the identity the TLS handshake proved?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "server-reads-peer-certificate",
+          "ok": true,
+          "observed": "real TLS handshake: the server's getpeercert produced SPKI sha256:95b711837740b5ff81ee02f48c3a5c09e99606e5bad75c4f28702990a540de90"
+        },
+        {
+          "probe": "fingerprint-is-the-key-not-the-certificate",
+          "ok": true,
+          "observed": "the SPKI fingerprint is computed from the public key, so reissuing a certificate for the same key keeps the identity and a new key never inherits an old one"
+        }
+      ],
+      "unproven": [],
+      "limits": [
+        "the drill reads the certificate from a socketpair handshake; whether the deployed server exposes it to the application depends on the terminator (see agent_identity.peer_certificate)"
+      ]
+    },
+    {
+      "id": "registry",
+      "question": "is an unregistered certificate refused?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "registered-fingerprint-resolves",
+          "ok": true,
+          "observed": "lookup returned agent-eu-1"
+        },
+        {
+          "probe": "fingerprint-normalisation",
+          "ok": true,
+          "observed": "an upper-case, colon-separated fingerprint resolves to the same agent as the canonical form"
+        },
+        {
+          "probe": "unregistered-fingerprint-refused",
+          "ok": true,
+          "observed": "a certificate from the same CA that is not in the registry resolves to no agent"
+        },
+        {
+          "probe": "duplicate-fingerprint-refused",
+          "ok": true,
+          "observed": "refused: two agents share the fingerprint sha256:95b711837740b5ff81ee02f48c3a5c09e99606e5bad75c4f28702990a540de90"
+        },
+        {
+          "probe": "malformed-registry-fails-closed",
+          "ok": true,
+          "observed": "refused: agent entry 0 is missing signing_key"
+        },
+        {
+          "probe": "empty-registry-refuses-everything",
+          "ok": true,
+          "observed": "with no agents registered, no certificate resolves \u2014 the default is refusal, not trust"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "signature_binding",
+      "question": "must the signature be the key registered for that agent?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "bound-key-accepted",
+          "ok": true,
+          "observed": "signature key matches the key registered for agent agent-eu-1"
+        },
+        {
+          "probe": "foreign-key-refused",
+          "ok": true,
+          "observed": "signature key 34750f98bd59fcfc\u2026 is not the key registered for agent agent-eu-1"
+        },
+        {
+          "probe": "unsigned-observation-refused",
+          "ok": true,
+          "observed": "agent agent-eu-1 presented the certificate but the observation carries no signature, so nothing binds the payload to that machine"
+        },
+        {
+          "probe": "swapped-embedded-key-refused",
+          "ok": true,
+          "observed": "signature key c62e4615bd39e222\u2026 is not the key registered for agent agent-eu-1"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "http_enforcement",
+      "question": "does the middleware refuse an ingest request with no registered agent?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "registered-certificate-admitted",
+          "ok": true,
+          "observed": "middleware admitted the request with status 200"
+        },
+        {
+          "probe": "unusable-certificate-refused",
+          "ok": true,
+          "observed": "unusable certificate answered 403"
+        },
+        {
+          "probe": "no-certificate-refused",
+          "ok": true,
+          "observed": "a request with no peer certificate answered 403"
+        },
+        {
+          "probe": "non-ingest-surface-unaffected",
+          "ok": true,
+          "observed": "a non-ingest path answered 200 with no certificate"
+        },
+        {
+          "probe": "inert-when-not-required",
+          "ok": true,
+          "observed": "with the requirement off (the default) the middleware changes nothing, so this is an opt-in deployment property"
+        },
+        {
+          "probe": "declared-terminator-fingerprint-refused-when-unregistered",
+          "ok": true,
+          "observed": "a forwarded fingerprint is not trusted by itself: the registry still decides"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "route_binding",
+      "question": "does the ingestion route refuse a signature that is not the agent's?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "route-accepts-bound-signature",
+          "ok": true,
+          "observed": "accepted"
+        },
+        {
+          "probe": "route-refuses-foreign-signature",
+          "ok": true,
+          "observed": "{\"error\": \"signature_not_bound_to_agent\", \"agent_id\": \"agent-eu-1\", \"reason\": \"signature key c5b940ed3f65c391\\u2026 is not the key registered for agent agent-eu"
+        },
+        {
+          "probe": "route-refuses-unsigned",
+          "ok": true,
+          "observed": "{\"error\": \"signature_not_bound_to_agent\", \"agent_id\": \"agent-eu-1\", \"reason\": \"agent agent-eu-1 presented the certificate but the observation carries no signatu"
+        },
+        {
+          "probe": "route-refuses-without-identity",
+          "ok": true,
+          "observed": "{\"error\": \"agent_identity_unregistered\", \"reason\": \"no certificate\", \"stored\": false}"
+        },
+        {
+          "probe": "route-inert-when-not-required",
+          "ok": true,
+          "observed": "with the requirement off the route keeps its previous behaviour, which is why this is a deployment property"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "end_to_end",
+      "question": "does certificate \u2192 agent \u2192 signature hold, and does the replay fail?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "honest-chain",
+          "ok": true,
+          "observed": "certificate\u2192agent agent-eu-1, signature bound, authenticity VALID"
+        },
+        {
+          "probe": "replay-with-another-agents-signature-refused",
+          "ok": true,
+          "observed": "signature key 72456720412037a6\u2026 is not the key registered for agent agent-eu-1"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "controls",
+      "question": "can each instrument fail?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "control-binding-detects-a-mismatch",
+          "ok": true,
+          "observed": "a deliberately wrong key is reported as unbound: signature key 5c29b78f10a35a49\u2026 is not the key registered for agent agent-eu-1"
+        },
+        {
+          "probe": "control-garbage-certificate-rejected",
+          "ok": true,
+          "observed": "refused: not a usable certificate: error parsing asn1 value: ParseError { kind: ShortData { needed: 75 } }"
+        },
+        {
+          "probe": "control-registry-lookup-of-unknown-is-none",
+          "ok": true,
+          "observed": "an unknown fingerprint returns None rather than a default identity"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    }
+  ],
+  "limits": [
+    "The SPKI fingerprint is the identity. A machine that can export its key is that machine to this platform; the private key is the credential and hardware-backed keys are the deployment's choice.",
+    "The registry is a deployment file. Who may write it is a control the platform does not own \u2014 that is the same trust the certificate authority already has.",
+    "Whether the TLS server in front of the API exposes its peer certificate to the application is a terminator property; the drill proves the application half and names the dependency rather than assuming it."
+  ]
+}
