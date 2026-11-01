@@ -68,7 +68,7 @@ describe("Verified container content and runtime metadata", () => {
     mockFetch({ [`${P}/${id}/snapshot`]: detail(), [`${P}/${id}/container/cyclonedx-1.6`]: () => new Promise(resolve => { finish = resolve; }) });
     mount();await screen.findByText(/verified layer bytes/);
     fireEvent.click(screen.getByRole("button", { name: "Download verified layer and package-record SBOM" }));
-    act(() => window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_token", newValue: null })));
+    act(() => window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_signed_in", newValue: null })));
     await act(async () => { finish({ bomFormat: "CycloneDX", specVersion: "1.6" }); });
     expect(click).not.toHaveBeenCalled();click.mockRestore();
   });

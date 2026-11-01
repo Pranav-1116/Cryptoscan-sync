@@ -52,7 +52,7 @@
 > and makes every pass disappear.
 >
 > **Security, executed rather than asserted** — [guide 119](119-security-blockers.md)
-> grades the eight security blockers a bank asks about. Four are measured so far:
+> grades the eight security blockers a bank asks about. Four are closed:
 > [authentication](120-authentication-qualification.md) (**3 pass · 5 partial · 0
 > fail**, 55 probes — login, session integrity, MFA, expiry, revocation, password
 > policy, lockout, credential handling) and
@@ -61,18 +61,21 @@
 > gated write answers without a session, a foreign-signed token gets nowhere, and a
 > collector target is authorized server-side for the most powerful principal too).
 >
-> Two more are now measured. [Command execution](122-command-execution.md)
-> (**3 pass · 1 partial · 0 fail**): no shell sink anywhere in 91 argv-list call
+> The other two closed this pass: [command execution](122-command-execution.md)
+> (**4 pass · 0 partial · 0 fail**): no shell sink anywhere in 91 argv-list call
 > sites — and three real argument-injection defects found by driving them, in
 > `ssh-keyscan` (an `-oProxyCommand` value reached the OpenSSH client), `git clone`
 > and `docker pull`, all three now validated with `--` before the positional.
-> [Secret management](123-secret-management.md) (**3 pass · 2 partial · 1 fail**):
-> canaries through logs, error bodies, access lines and console storage; the FAIL is
-> a real finding — the console keeps the session token in `localStorage`.
+> [Secret management](123-secret-management.md) (**6 pass · 0 partial · 0 fail**):
+> canaries through logs, error bodies, access lines and console storage. It found
+> the console keeping its session token in `localStorage`; that is now fixed —
+> memory only, with the httpOnly cookie carrying the session across a reload — and
+> the log pipeline scrubs credential shapes inside message text, not only under
+> sensitive keys.
 >
-> Still open: agent machine identity, SSRF, multi-tenant isolation, and the
-> `localStorage` token above — graded in guide 119 with what exists and what does
-> not. Evidence tampering is covered by [guide 112](112-evidence-integrity.md).
+> Still open: agent machine identity, SSRF and multi-tenant isolation — graded in
+> guide 119 with what exists and what does not. Evidence tampering is covered by
+> [guide 112](112-evidence-integrity.md).
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

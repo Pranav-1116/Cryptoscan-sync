@@ -1,4 +1,5 @@
 import React from "react";
+import { setToken } from "../lib/api";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import LinuxEvidenceOutputs from "./LinuxEvidenceOutputs";
@@ -37,7 +38,7 @@ it.each(["tenant", "auth", "storage", "resume", "history", "job"])("discards non
   const view = render(<LinuxEvidenceOutputs job={job} envelope={envelope} />); click();
   act(() => {
     if (change === "job") view.rerender(<LinuxEvidenceOutputs job="another" envelope={envelope} />);
-    else if (change === "storage") window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_token" }));
+    else if (change === "storage") window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_signed_in" }));
     else if (change === "resume") document.dispatchEvent(new Event("visibilitychange"));
     else if (change === "history") window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
     else window.dispatchEvent(new Event(`zelinx:${change}`));
@@ -52,7 +53,7 @@ it("bounds stalled graph reads at 20 seconds without retry", async () => {
   expect(screen.getByRole("alert")).toHaveTextContent("timed out"); expect(globalThis.fetch).toHaveBeenCalledTimes(1);
 });
 it("downloads via the existing authenticated export path, never a public anchor", async () => {
-  localStorage.setItem("cryptoscan_tenant", "synthetic-bank"); localStorage.setItem("zelinx_token", "synthetic-token");
+  localStorage.setItem("cryptoscan_tenant", "synthetic-bank"); setToken("synthetic-token");
   const fetch = mockFetch({ [exportPath]: { bomFormat: "CycloneDX", specVersion: "1.6" } });
   const clickAnchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
   const objectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:synthetic-sbom");

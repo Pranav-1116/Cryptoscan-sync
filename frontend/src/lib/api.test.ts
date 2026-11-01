@@ -1,13 +1,17 @@
 /* The API bridge: the contract every page relies on.
  * Offline → { source: "offline", data: null }; never throws; auth headers
  * and tenant header travel on every call; tokens live in localStorage. */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { mockFetch, offlineFetch } from "../test/setup";
 import {
   activeTenantId, apiLogin, apiRegister, apiScope, apiHostOciSbom, apiHostContainerSbom, apiHostTlsSessionBom,
   getRoles, getToken, getUserName,
   isBackendLive, setActiveTenantId, setToken, setUserName, syncSession,
 } from "./api";
+
+/* The session token is held in memory (it used to be a localStorage entry), so
+   clearing storage between tests no longer resets it. */
+beforeEach(() => setToken(null));
 
 describe("api bridge — offline contract", () => {
   it("returns an offline result instead of throwing when the backend is down", async () => {

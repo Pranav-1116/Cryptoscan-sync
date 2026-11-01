@@ -140,3 +140,71 @@ def test_correlation_identifiers_survive_redaction():
     assert out["commit_author"] == "dev"
     assert out["session"] == "[REDACTED]"
     assert out["auth"] == "[REDACTED]"
+
+
+# --------------------------------------------------------------------------- #
+# Text-level redaction: a secret interpolated into the message, not a key
+# --------------------------------------------------------------------------- #
+
+def test_scrub_text_masks_a_password_interpolated_into_a_message():
+    from shared_logging.logger_factory import REDACTED, scrub_text
+
+    scrubbed = scrub_text("login failed for password=hunter2 correct-horse")
+    assert "hunter2" not in scrubbed
+    assert f"password={REDACTED}" in scrubbed
+    # The label survives: an operator still learns which field failed.
+    assert scrubbed.startswith("login failed for password=")
+
+
+def test_scrub_text_masks_bearer_tokens_url_credentials_and_key_material():
+    from shared_logging.logger_factory import REDACTED, scrub_text
+
+    for line, secret in (
+        ("auth header: Bearer abcdef0123456789", "abcdef0123456789"),
+        ("dsn=postgresql://svc:s3cr3t@db:5432/prod", "s3cr3t"),
+        ("token: " + "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+         "eyJhbGciOiJIUzI1NiJ9"),
+        ("key AKIAIOSFODNN7EXAMPLE leaked", "AKIAIOSFODNN7EXAMPLE"),
+    ):
+        scrubbed = scrub_text(line)
+        assert secret not in scrubbed, scrubbed
+        assert REDACTED in scrubbed or "REDACTED" in scrubbed
+
+
+def test_scrub_text_leaves_ordinary_lines_alone():
+    from shared_logging.logger_factory import scrub_text
+
+    line = "scan finished: 42 hops, 0 failures, token budget 5"
+    assert scrub_text(line) == line
+
+
+def test_configured_pipeline_scrubs_a_message_in_both_styles():
+    """structlog *and* stdlib records take the same scrubber."""
+    import contextlib
+    import io
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        configure_logging(level="INFO", json_output=True, force=True)
+        create_logger("api.leak").warning("login failed for password=hunter2")
+        logging.getLogger("api.leak.stdlib").warning("login failed for password=hunter2")
+    out = buffer.getvalue()
+    assert "hunter2" not in out, out
+    # One scrubbed value in the structlog line; two in the stdlib line (the
+    # processor sees both `event` and the record's own `message` copy).
+    assert out.count("REDACTED") >= 2, out
+    assert out.count("login failed for password=[REDACTED]") == 3, out
+
+
+def test_redaction_can_be_switched_off_for_a_negative_control():
+    """The probe must be able to fail: with redact=False the secret appears."""
+    import contextlib
+    import io
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        configure_logging(level="INFO", json_output=True, force=True, redact=False)
+        create_logger("api.leak.control").warning("login failed for password=hunter2")
+    out = buffer.getvalue()
+    configure_logging(level="INFO", json_output=True, force=True)
+    assert "hunter2" in out, out

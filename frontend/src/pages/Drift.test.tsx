@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../test/render";
 import { mockFetch } from "../test/setup";
-import { setActiveTenantId } from "../lib/api";
+import {setToken, setActiveTenantId} from "../lib/api";
 import Drift from "./Drift";
 
 const driftPath = "/api/v1/drift";
@@ -89,7 +89,7 @@ describe("drift feed and disposition truth", () => {
   it("acknowledges only on server response, with audit authorization and no resolution claim", async () => {
     let finish!: (value: unknown) => void;
     const pending = new Promise<unknown>(resolve => { finish = resolve; });
-    localStorage.setItem("zelinx_token", "token-a");
+    setToken("token-a");
     localStorage.setItem("cryptoscan_tenant", "tenant-a");
     const fetchSpy = mockFetch({ [driftPath]: list([event("evt-1")]), [scansPath]: scans("COMPARED"),
       "/api/v1/drift/evt-1/acknowledge": () => pending });

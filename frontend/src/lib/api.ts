@@ -51,10 +51,37 @@ function errorDetail(body: unknown): string | undefined {
   return undefined;
 }
 
-const TOKEN_KEY = "zelinx_token";
+/* The session token is held in memory only.
+ *
+ * It used to sit in `localStorage["zelinx_token"]`, where any script on the page
+ * could read it: one XSS and the bearer token walked out of the console. The
+ * backend already mints an httpOnly `cryptoscan_session` cookie and
+ * `syncSession()` verifies the session through `GET /api/v1/auth/me`, so nothing
+ * needs a readable copy to survive a reload. A non-secret marker records that a
+ * session existed, which lets first paint render optimistically while the
+ * server's answer is in flight — never permissively, because every request is
+ * authorized by the backend regardless.
+ */
+const TOKEN_KEY = "zelinx_token";          // legacy location, purged on load
+const SESSION_MARKER = "zelinx_signed_in"; // "1" — a flag, never a credential
+
+let sessionToken: string | null = null;
+
+/** Remove the pre-hardening token, if a browser still has one. */
+export function purgeLegacyToken(): void {
+  try { localStorage.removeItem(TOKEN_KEY); } catch { /* storage unavailable */ }
+}
+purgeLegacyToken();
 
 export function getToken(): string | null {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+  return sessionToken;
+}
+
+/** True when a session may exist: an in-memory token, or a marker from a
+ *  previous page load whose httpOnly cookie the browser is still holding. */
+export function hasSession(): boolean {
+  if (sessionToken) return true;
+  try { return localStorage.getItem(SESSION_MARKER) === "1"; } catch { return false; }
 }
 
 const ROLES_KEY = "zelinx_roles";
@@ -76,9 +103,11 @@ export function setUserName(name: string | null): void {
 }
 
 export function setToken(token: string | null): void {
+  sessionToken = token;
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
+    if (token) localStorage.setItem(SESSION_MARKER, "1");
     else {
+      localStorage.removeItem(SESSION_MARKER);
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(ROLES_KEY);
       localStorage.removeItem(USER_KEY);
@@ -4363,9 +4392,11 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
   let fleet: any = null;
   try {
     const token = getToken();
-    if (token) {
+    // A session may exist with no in-memory token: the httpOnly cookie carries
+    // it after a reload. Only a browser with no session at all skips the probe.
+    if (hasSession()) {
       const fleetRes = await tenantFetch("/api/v1/health/worker-fleet", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal: AbortSignal.timeout(5000),
       });
       if (fleetRes.ok) fleet = await fleetRes.json();

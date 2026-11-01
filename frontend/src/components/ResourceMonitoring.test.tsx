@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { setToken } from "../lib/api";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import ResourceMonitoring from "./ResourceMonitoring";
 
@@ -11,7 +12,7 @@ const sample = () => ({ subject_id: ID, payload: {
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 let fetcher: ReturnType<typeof vi.fn>;
 beforeEach(() => {
-  localStorage.clear(); localStorage.setItem("cryptoscan_tenant", "a"); localStorage.setItem("zelinx_token", "synthetic-test-token");
+  localStorage.clear(); localStorage.setItem("cryptoscan_tenant", "a"); setToken("synthetic-test-token");
   fetcher = vi.fn(async (path: string) => {
     if (path.endsWith("/plans")) return response({ items: [], next_cursor: null });
     if (path.endsWith("/captures")) return response({ items: [{ capture_id: ID, host_label: "synthetic-linux", finished_at: "recent" }], next_cursor: null });

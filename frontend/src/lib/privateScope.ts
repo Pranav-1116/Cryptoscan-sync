@@ -5,7 +5,7 @@ export function watchPrivateScope(invalidate: () => void): () => void {
   const storage = (event: StorageEvent) => {
     try { if (event.storageArea && event.storageArea !== window.localStorage) return; }
     catch { invalidate(); return; }
-    if (event.key === null || ["cryptoscan_tenant", "zelinx_token", "zelinx_roles", "zelinx_user"].includes(event.key)) invalidate();
+    if (event.key === null || ["cryptoscan_tenant", "zelinx_signed_in", "zelinx_roles", "zelinx_user"].includes(event.key)) invalidate();
   };
   const visible = () => { if (!document.hidden) invalidate(); };
   const restored = (event: PageTransitionEvent) => { if (event.persisted) invalidate(); };

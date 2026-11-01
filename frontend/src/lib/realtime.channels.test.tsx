@@ -19,6 +19,7 @@ vi.mock("./api.js", async (orig) => {
     ...actual,
     tenantFetch: (...args: unknown[]) => bridge.fetch(...args),
     getToken: () => bridge.token(),
+    hasSession: () => !!bridge.token(),
     isBackendLive: () => bridge.live(),
   };
 });

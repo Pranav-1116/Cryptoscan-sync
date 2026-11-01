@@ -1,4 +1,5 @@
 import React from "react";
+import { setToken } from "../lib/api";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import HostQualification from "./HostQualification";
@@ -32,7 +33,7 @@ describe("Assigned-human qualification product controls", () => {
   });
 
   it("sends selected tenant/auth, renders real response names, and does not generate PASS reviews", async () => {
-    localStorage.setItem("cryptoscan_tenant", "bank-a"); localStorage.setItem("zelinx_token", "synthetic-session");
+    localStorage.setItem("cryptoscan_tenant", "bank-a"); setToken("synthetic-session");
     const fetch = mockFetch({ [BASE + "/" + ID]: campaign(), [BASE + "/" + ID + "/assignments"]: campaign() });
     render(<HostQualification />); await open();
     expect(screen.getByText(/Synthetic test operator/, { selector: "li" })).toBeInTheDocument();

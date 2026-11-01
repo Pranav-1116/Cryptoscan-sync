@@ -284,6 +284,18 @@ def probe_access_log() -> list[dict[str, Any]]:
     ]
 
 
+def _strip_comments(text: str) -> str:
+    """Drop comments before scanning.
+
+    A comment is not code. The first version of this probe flagged an invite
+    page that reads its token from the URL *fragment*, because a comment in the
+    same file mentioned `?token=` — a false positive that would have hidden a
+    real one beside it.
+    """
+    without_block = re.sub(r"/\*[\s\S]*?\*/", "", text)
+    return re.sub(r"(?m)^\s*//.*$|\s//\s.*$", "", without_block)
+
+
 def probe_frontend() -> list[dict[str, Any]]:
     """The console must not store a session where script or history can read it."""
     root = REPO_ROOT / "frontend" / "src"
@@ -294,16 +306,38 @@ def probe_frontend() -> list[dict[str, Any]]:
             continue
         if ".test." in path.name:
             continue
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        text = _strip_comments(path.read_text(encoding="utf-8", errors="ignore"))
         relative = str(path.relative_to(REPO_ROOT))
         for match in re.finditer(r"(?:localStorage|sessionStorage)\.\w+\(\s*[\"']([^\"']+)", text):
             key = match.group(1)
             if re.search(r"token|secret|session|auth|key", key, re.IGNORECASE):
                 storage.append(f"{relative}: {key}")
-        for match in re.finditer(r"[?&](token|api_key|access_token)=", text):
-            url_tokens.append(f"{relative}: {match.group(0)}")
+        # A credential in the *query string* reaches servers and Referer headers.
+        # A credential in the *fragment* (`#/invite?token=…`) never leaves the
+        # browser, which is why only `?…=`/`&…=` inside string literals counts.
+        for match in re.finditer(r"[\"'][^\"']*[?&](token|api_key|access_token)=[^\"']*[\"']", text):
+            url_tokens.append(f"{relative}: {match.group(0)[:40]}")
+
+    # Negative control: the same detector over a file that does the wrong thing
+    # must report it, or a clean result above means the regexes never matched
+    # anything at all.
+    planted = _strip_comments(
+        'localStorage.setItem("zelinx_token", token);\n'
+        'const url = "/api/v1/export?token=" + token;\n')
+    control_hits = (
+        bool(re.search(r"(?:localStorage|sessionStorage)\.\w+\(\s*[\"']([^\"']+)", planted))
+        and bool(re.search(r"[\"'][^\"']*[?&](token|api_key|access_token)=[^\"']*[\"']", planted))
+    )
 
     return [
+        {
+            "probe": "control-planted-store-and-url",
+            "expected": "the detector reports a planted localStorage token and a token in a "
+                        "query string",
+            "ok": control_hits,
+            "observed": "both planted patterns detected" if control_hits else
+            "the detector is blind — a clean result above would be meaningless",
+        },
         {
             "probe": "no-token-in-web-storage",
             "expected": "no session token, secret or API key written to localStorage",
@@ -398,12 +432,14 @@ def measure() -> dict[str, Any]:
     storage_probe = next(probe for probe in frontend_probes
                          if probe["probe"] == "no-token-in-web-storage")
     url_probe = next(probe for probe in frontend_probes if probe["probe"] == "no-token-in-url")
+    control_probe = next(probe for probe in frontend_probes
+                         if probe["probe"] == "control-planted-store-and-url")
 
     rows.append({
         "id": "frontend_storage",
         "question": "does the console keep a session where a script on the page can read it?",
-        "verdict": PASS if storage_probe["ok"] else FAIL,
-        "probes": [storage_probe],
+        "verdict": PASS if storage_probe["ok"] and control_probe["ok"] else FAIL,
+        "probes": [storage_probe, control_probe],
         "unproven": ["the built bundle is not scanned: this reads `frontend/src`, and a "
                      "vendored dependency could still write to storage at runtime"],
         "limits": [

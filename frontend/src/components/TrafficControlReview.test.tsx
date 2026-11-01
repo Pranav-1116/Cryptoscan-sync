@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { setToken } from "../lib/api";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import TrafficControlReview from "./TrafficControlReview";
 
 const ID = "11111111-1111-1111-1111-111111111111";
 let fetcher: ReturnType<typeof vi.fn>;
 beforeEach(() => {
-  localStorage.clear(); localStorage.setItem("cryptoscan_tenant", "a"); localStorage.setItem("zelinx_token", "synthetic-test-token");
+  localStorage.clear(); localStorage.setItem("cryptoscan_tenant", "a"); setToken("synthetic-test-token");
   fetcher = vi.fn(async () => new Response('{"recorded_checks_complete":true,"host_enforcement_authorized":false}'));
   vi.stubGlobal("fetch", fetcher);
 });

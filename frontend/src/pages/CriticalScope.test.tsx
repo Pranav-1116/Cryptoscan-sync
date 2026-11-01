@@ -16,7 +16,7 @@ const pages = [
   { name: "Launch readiness", Page: LaunchReadiness, path: "/api/v1/assurance/launch/operations", body: (marker: string) => ({ marker }) },
   { name: "Evidence", Page: Evidence, path: "/api/v1/scans", body: scans },
 ];
-const changes = ["cryptoscan_tenant", "zelinx_token", "zelinx_roles", "zelinx_user", null, "resume", "bfcache"];
+const changes = ["cryptoscan_tenant", "zelinx_signed_in", "zelinx_roles", "zelinx_user", null, "resume", "bfcache"];
 function invalidate(key: string | null) {
   if (key === "bfcache") { window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })); return; }
   if (key === "resume") { document.dispatchEvent(new Event("visibilitychange")); return; }
@@ -46,7 +46,7 @@ for (const page of pages) describe(`${page.name} private scope`, () => {
       "/api/v1/findings": { findings: [], total_count: 0 } });
     render(<MemoryRouter><page.Page /></MemoryRouter>);
     await waitFor(() => expect(reads).toBe(1));
-    await act(async () => { invalidate("cryptoscan_tenant"); localStorage.removeItem("cryptoscan_tenant"); invalidate("zelinx_token"); });
+    await act(async () => { invalidate("cryptoscan_tenant"); localStorage.removeItem("cryptoscan_tenant"); invalidate("zelinx_signed_in"); });
     await screen.findAllByText(/current-marker/);
     await act(async () => old.resolve(page.body("private-old-marker")));
     expect(screen.queryAllByText(/private-old-marker/)).toHaveLength(0);
@@ -88,7 +88,7 @@ for (const name of ["Operator decisions", "Launch readiness"]) describe(`${name}
   it("does not restore a late receipt across a scope reset", async () => {
     const { pending, form } = await setup();
     fireEvent.submit(form);
-    await act(async () => invalidate("zelinx_token"));
+    await act(async () => invalidate("zelinx_signed_in"));
     await act(async () => pending.resolve({ kind: "task", id: "private-old-write", receipt: "private-old-write" }));
     expect(screen.queryByText(/private-old-write/)).toBeNull();
   });
@@ -138,7 +138,7 @@ for (const page of pages.filter(p => p.name !== "Evidence")) it(`${page.name} fe
     fireEvent.change(screen.getByLabelText("Accountable owner reference"), { target: { value: "payments" } });
   }
   const form = document.querySelector("form")!;
-  act(() => { invalidate("zelinx_token"); form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+  act(() => { invalidate("zelinx_signed_in"); form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
   expect(fetch.mock.calls.filter(call => call[1]?.method === "POST")).toHaveLength(0);
 });
 

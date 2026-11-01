@@ -92,7 +92,7 @@ export default function Scanners() {
       }
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === "zelinx_token" || event.key === "cryptoscan_tenant" || event.key === null) invalidate();
+      if (event.key === "zelinx_signed_in" || event.key === "cryptoscan_tenant" || event.key === null) invalidate();
     };
     window.addEventListener("zelinx:tenant", invalidate);
     window.addEventListener("zelinx:auth", invalidate);

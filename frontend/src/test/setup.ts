@@ -82,6 +82,7 @@ if (!("AbortSignal" in globalThis) || typeof AbortSignal.timeout !== "function")
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+
   offlineFetch();
 });
 

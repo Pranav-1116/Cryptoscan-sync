@@ -1,4 +1,5 @@
 import React from "react";
+import { setToken } from "../lib/api";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import LinuxSoftwarePanel from "./LinuxSoftwarePanel";
@@ -9,7 +10,7 @@ function inventory() {
 }
 function click() { fireEvent.click(screen.getByText("Read Linux software evidence")); }
 it("reads explicitly with tenant/session, preserves input failure and never starts collection", async () => {
-  localStorage.setItem("cryptoscan_tenant", "synthetic-bank"); localStorage.setItem("zelinx_token", "synthetic-token");
+  localStorage.setItem("cryptoscan_tenant", "synthetic-bank"); setToken("synthetic-token");
   const fetch = mockFetch({ [path]: inventory() }); render(<LinuxSoftwarePanel job={job} envelope={envelope} />);
   expect(fetch).not.toHaveBeenCalled(); click();
   expect(await screen.findByText(/packages: INVALID/)).toBeInTheDocument();
@@ -32,7 +33,7 @@ it.each(["tenant", "auth", "storage", "resume", "history", "job"])("discards non
   const view = render(<LinuxSoftwarePanel job={job} envelope={envelope} />); click();
   act(() => {
     if (change === "job") view.rerender(<LinuxSoftwarePanel job="another" envelope={envelope} />);
-    else if (change === "storage") window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_token" }));
+    else if (change === "storage") window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_signed_in" }));
     else if (change === "resume") document.dispatchEvent(new Event("visibilitychange"));
     else if (change === "history") window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
     else window.dispatchEvent(new Event(`zelinx:${change}`));

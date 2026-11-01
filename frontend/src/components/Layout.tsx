@@ -15,7 +15,7 @@ import {
 import { BrandMark, ICON_LG, ICON_MD, ICON_SM, IconCaretDown, IconCaretLeft, IconCaretRight, IconClock, IconClose, IconDark, IconKeyboard, IconLight, IconSearch, IconSecurity, IconTenant, IconUser } from "./icons";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search";
-import { getToken, setToken, getUserName, apiMyGrants, apiStatsSummary } from "../lib/api.js";
+import { hasSession, setToken, getUserName, apiMyGrants, apiStatsSummary } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 import { RequireRole } from "../lib/auth.js";
@@ -339,7 +339,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   const st = ((ticker.connected || liveStats.source === "live") ? liveStats.data : null) as Record<string, number> | null;
 
   useEffect(() => {
-    if (!getToken()) { setAbac(null); return; }
+    if (!hasSession()) { setAbac(null); return; }
     let alive = true;
     const load = () => apiMyGrants().then((r) => {
       if (alive && r.source === "live" && r.data) {
@@ -644,7 +644,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             <span>Security Center</span>
           </button>
 
-          {getToken() ? (
+          {hasSession() ? (
             <button
               className="btn sm"
               title="Click to manage profile or sign out"

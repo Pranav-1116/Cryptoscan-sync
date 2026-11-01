@@ -4,6 +4,7 @@
  * monitor lease). Drain evidence is completions or a live lease, never API
  * liveness; the row never claims a synthetic latency. */
 import { render, screen } from "@testing-library/react";
+import { setToken } from "../lib/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
@@ -67,7 +68,7 @@ function mockBackend(fleet: unknown, connectors?: unknown) {
 
 describe("SystemHealth worker-fleet probe", () => {
   it("renders the measured queue & worker pool row — drain evidence, live heartbeat, no synthetic latency", async () => {
-    localStorage.setItem("zelinx_token", "test-token");
+    setToken("test-token");
     localStorage.setItem("cryptoscan_tenant", "test-tenant");
     mockBackend(fleetOperational);
     renderPage();
@@ -92,7 +93,7 @@ describe("SystemHealth worker-fleet probe", () => {
   });
 
   it("attributes the estate asset total to the estate, never to one engine", async () => {
-    localStorage.setItem("zelinx_token", "test-token");
+    setToken("test-token");
     localStorage.setItem("cryptoscan_tenant", "test-tenant");
     mockBackend(fleetOperational);
     renderPage();
@@ -107,7 +108,7 @@ describe("SystemHealth worker-fleet probe", () => {
   });
 
   it("surfaces stuck work as Degraded with the exact measured reason", async () => {
-    localStorage.setItem("zelinx_token", "test-token");
+    setToken("test-token");
     localStorage.setItem("cryptoscan_tenant", "test-tenant");
     mockBackend({
       ...fleetOperational,
@@ -122,7 +123,8 @@ describe("SystemHealth worker-fleet probe", () => {
   });
 
   it("stays honestly Not measured when the probe is unreachable or unauthenticated", async () => {
-    // no token set -> the authenticated fleet probe is never issued
+    // no session -> the authenticated fleet probe is never issued
+    setToken(null);
     mockBackend(fleetOperational);
     renderPage();
 

@@ -20,7 +20,7 @@
 import React, {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from "react";
-import { getToken, isBackendLive, tenantFetch } from "./api.js";
+import { getToken, hasSession, isBackendLive, tenantFetch } from "./api.js";
 
 export interface StreamEvent {
   id: number;
@@ -379,8 +379,11 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
 
   const connect = useCallback(async () => {
     if (stoppedRef.current) return;
+    // The stream is authenticated by the httpOnly cookie that tenantFetch
+    // sends, so a signed-in session with no in-memory token (a fresh page load)
+    // must still connect. Only a browser with no session at all stays offline.
     const token = getToken();
-    if (!token) {
+    if (!hasSession()) {
       setState((s) => ({ ...s, connected: false, conn: "offline", source: "off" }));
       return;
     }

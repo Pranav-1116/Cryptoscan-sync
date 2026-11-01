@@ -1,4 +1,5 @@
 import React from "react";
+import { setToken } from "../lib/api";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
 import CollectionCoveragePanel from "./CollectionCoveragePanel";
@@ -31,7 +32,7 @@ it.each(["tenant", "auth", "storage", "resume", "history"])("discards old eviden
   let resolve!: (r: Response) => void; globalThis.fetch = vi.fn(() => new Promise<Response>(r => { resolve = r; }));
   render(<CollectionCoveragePanel />); read();
   act(() => {
-    if (change === "storage") window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_token" }));
+    if (change === "storage") window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_signed_in" }));
     else if (change === "resume") document.dispatchEvent(new Event("visibilitychange"));
     else if (change === "history") window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
     else window.dispatchEvent(new Event(`zelinx:${change}`));
@@ -46,7 +47,7 @@ it("rejects fabricated completeness flags instead of rendering a green fallback"
   expect(screen.queryByText("IMPORTED evidence")).not.toBeInTheDocument();
 });
 it("clears prior data when a different ID is entered and propagates tenant/auth on GET", async () => {
-  localStorage.setItem("cryptoscan_tenant", "synthetic-bank"); localStorage.setItem("zelinx_token", "synthetic-session");
+  localStorage.setItem("cryptoscan_tenant", "synthetic-bank"); setToken("synthetic-session");
   const fetch = mockFetch({ [PATH]: report() }); render(<CollectionCoveragePanel />); read();
   await screen.findByText("IMPORTED evidence");
   expect(screen.getByText(/^envelope /)).toHaveTextContent(report().envelope_sha256.slice(0,16));

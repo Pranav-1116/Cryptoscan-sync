@@ -197,7 +197,7 @@ describe("Remediation scope and asynchronous outcomes", () => {
     expect(fetch.mock.calls.filter(([url, init]) => String(url).endsWith("/complete") && init?.method === "POST")).toHaveLength(1);
   });
 
-  it.each(["cryptoscan_tenant", "zelinx_token", null])("clears private state on cross-window storage change %s", async key => {
+  it.each(["cryptoscan_tenant", "zelinx_signed_in", null])("clears private state on cross-window storage change %s", async key => {
     let calls = 0;
     mockFetch({ [path]: () => ++calls === 1 ? list("old") : list("new") });
     renderWithProviders(<Remediation />); await screen.findByText("rule-old"); await expand();

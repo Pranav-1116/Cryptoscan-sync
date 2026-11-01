@@ -100,10 +100,22 @@ def test_every_canary_writes_or_executes_nothing() -> None:
 
 def test_end_of_options_is_honest(report: dict) -> None:
     row = _row(report, "end_of_options")
-    # PARTIAL is the expected answer today: most call sites take no untrusted
-    # positional, and the tool's own grammar is the boundary.
-    assert row["verdict"] in {"PASS", "PARTIAL"}
-    assert row["probes"][0]["observed"]
+    assert row["verdict"] == "PASS", row["probes"]
+    probes = {probe["probe"]: probe for probe in row["probes"]}
+    assert probes["every-driven-site-classified"]["ok"] is True, (
+        "a driven site did not map onto a spawn call: the population is incomplete, "
+        "so the pass would overstate")
+    assert "call sites take a caller-supplied positional" in probes[
+        "untrusted-positional-terminated"]["observed"]
+
+
+def test_end_of_options_fails_when_a_site_drops_the_terminator(monkeypatch) -> None:
+    """Negative control: remove `--` from the module text and the row must fail."""
+    original = ce._module_text
+    monkeypatch.setattr(ce, "_module_text",
+                        lambda row: original(row).replace('"--", reference', "reference"))
+    row = _row(ce.measure(), "end_of_options")
+    assert row["verdict"] == "FAIL", row["probes"]
 
 
 def test_privileged_surfaces_measured(report: dict) -> None:

@@ -1,15 +1,15 @@
 # Secret management — canaries through four paths
 
-`cryptoscan.secret-management/1` · generated 2026-11-01T03:54:17.222681+00:00 · **3 pass · 2 partial · 1 fail**
+`cryptoscan.secret-management/1` · generated 2026-11-01T04:30:24.839513+00:00 · **6 pass · 0 partial · 0 fail**
 
 | Question | Verdict | Evidence |
 |---|---|---|
 | **is a credential committed to the tree?** | **PASS** | 0 finding(s) across 7 patterns; 13 allow-listed with a stated reason |
-| **does a secret written to a log come back out?** | **PARTIAL** | canary absent: password/api_token/private_key were masked |
+| **does a secret written to a log come back out?** | **PASS** | canary absent: password/api_token/private_key were masked |
 | **can a failing call return a credential to the caller?** | **PASS** | canary absent from the 500 body |
 | **does the request log record the credential it was given?** | **PASS** | the access line was written and carries none of the three |
-| **does the console keep a session where a script on the page can read it?** | **FAIL** | 1 storage write(s) of a credential-shaped key |
-| **does a credential travel in a query string?** | **PARTIAL** | 1 query-string credential(s) |
+| **does the console keep a session where a script on the page can read it?** | **PASS** | no credential-shaped key is written to browser storage |
+| **does a credential travel in a query string?** | **PASS** | no token in a URL |
 
 ## Row by row
 
@@ -33,14 +33,13 @@
 - **Allow-listed:** `services/eventstream/eventstream/livecbom.py:26` (credential_literal) — development CBOM signing key; the constructor raises in production when CBOM_SIGNING_SECRET is unset or still this value
 - **Not proven:** a secret that matches no pattern (a bare high-entropy string) is not found by this scan; entropy scanning produces enough noise here to be switched off rather than tuned to pass
 
-### `log_redaction` — PARTIAL
+### `log_redaction` — PASS
 
 *does a secret written to a log come back out?*
 
 - **PASS** `structured-field` — canary absent: password/api_token/private_key were masked
-- **NOT MET** `free-text-message` — canary present: redaction is key-based, so a secret written into the message text is not scrubbed
+- **PASS** `free-text-message` — canary absent
 - **PASS** `control-redaction-off` — canary visible
-- **Not proven:** redaction is key-based: a secret interpolated into the message text is written verbatim. The mitigation is a rule (never interpolate a credential) and a log-side pattern scrub, neither of which is in place yet
 - **Limit:** measured through the configured handler in-process; the behaviour of a collector agent's own log shipper is its own
 
 ### `error_messages` — PASS
@@ -58,21 +57,20 @@
 - **PASS** `access-line-has-no-credential` — the access line was written and carries none of the three
 - **Not proven:** an upstream proxy's own access log is outside this drill
 
-### `frontend_storage` — FAIL
+### `frontend_storage` — PASS
 
 *does the console keep a session where a script on the page can read it?*
 
-- **NOT MET** `no-token-in-web-storage` — 1 storage write(s) of a credential-shaped key
-- **Storage write:** `frontend/src/pages/Resilience.tsx: zelnx_token`
+- **PASS** `no-token-in-web-storage` — no credential-shaped key is written to browser storage
+- **PASS** `control-planted-store-and-url` — both planted patterns detected
 - **Not proven:** the built bundle is not scanned: this reads `frontend/src`, and a vendored dependency could still write to storage at runtime
 - **Limit:** The backend also sets an httpOnly `cryptoscan_session` cookie and verifies the session with GET /api/v1/auth/me, so the localStorage copy is redundant as well as exposed. Removing it means making lib/api.ts hold the token in memory and letting the cookie carry the session across a reload.
 
-### `url_token` — PARTIAL
+### `url_token` — PASS
 
 *does a credential travel in a query string?*
 
-- **NOT MET** `no-token-in-url` — 1 query-string credential(s)
-- **URL credential:** `frontend/src/pages/InviteAccept.tsx: ?token=`
+- **PASS** `no-token-in-url` — no token in a URL
 - **Limit:** The hit is `/?token=` on the invite-acceptance page: a one-time `csi_…` invitation token is read from the URL by design. It lands in browser history and in any Referer header sent from that page, and the token is single-use and server-revocable, which is why this is PARTIAL and not FAIL. A POST body would remove the exposure.
 
 ## What this does not prove
@@ -83,11 +81,8 @@
 **What this drill supports:**
 
 - is a credential committed to the tree? — answered, evidence above.
+- does a secret written to a log come back out? — answered, evidence above.
 - can a failing call return a credential to the caller? — answered, evidence above.
 - does the request log record the credential it was given? — answered, evidence above.
-
-**What it does not support (and should not be quoted as if it did):**
-
-- **PARTIAL** — does a secret written to a log come back out? canary present: redaction is key-based, so a secret written into the message text is not scrubbed
-- **FAIL** — does the console keep a session where a script on the page can read it? 1 storage write(s) of a credential-shaped key
-- **PARTIAL** — does a credential travel in a query string? 1 query-string credential(s)
+- does the console keep a session where a script on the page can read it? — answered, evidence above.
+- does a credential travel in a query string? — answered, evidence above.

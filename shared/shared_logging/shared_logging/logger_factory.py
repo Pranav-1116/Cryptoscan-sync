@@ -6,8 +6,10 @@ Guarantees:
   ``ProcessorFormatter`` so *all* log output shares the same JSON/console
   shape — no dual-format logs.
 - **Secret redaction**: a processor scrubs sensitive keys (passwords, tokens,
-  secrets, keys) from every event dict, including nested structures, before
-  rendering. Applies to structlog *and* stdlib log calls.
+  secrets, keys) from every event dict, including nested structures, and a
+  second processor scrubs credential-shaped *text* inside the message itself —
+  so a value interpolated into the line is masked too, not just a value passed
+  under a sensitive key. Applies to structlog *and* stdlib log calls.
 - **Idempotent configuration**: repeated ``configure_logging`` calls
   reconfigure levels in place instead of stacking duplicate handlers.
 - **Correlation**: ``structlog.contextvars`` are merged into every event
@@ -17,6 +19,7 @@ Guarantees:
 from __future__ import annotations
 
 import logging
+import re
 import sys
 import threading
 from typing import Any
@@ -82,6 +85,67 @@ def redact_secrets(logger: Any, method_name: str, event_dict: dict[str, Any]) ->
     return _redact(event_dict)
 
 
+#: Credential shapes that can be *inside* a message string rather than under a
+#: sensitive key. Key-based redaction cannot see these, and the commonest leak is
+#: a developer interpolating a value into the text: ``logger.warning("login
+#: failed for password=%s", secret)``. Each pattern keeps the label and replaces
+#: only the value, so the line stays useful.
+_TEXT_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # password=…  token: …  api_key=…  (quoted or bare, unquoted runs stop at space)
+    (re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key|access[_-]?key|"
+                r"client[_-]?secret|authorization)\b(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|[^\s,;)}\]]+)"),
+     r"\1\2" + REDACTED),
+    # Authorization: Bearer <token> is common enough to name explicitly.
+    (re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}"), r"\1 " + REDACTED),
+    # user:password@host inside a URL
+    (re.compile(r"(\b[a-zA-Z][a-zA-Z0-9+.-]*://[^:/@\s]+:)([^@/\s]+)(@)"),
+     r"\1" + REDACTED + r"\3"),
+    # PEM blocks
+    (re.compile(r"-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z ]+ )?PRIVATE KEY-----"),
+     "[REDACTED PRIVATE KEY]"),
+    # provider token prefixes and JWTs
+    (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), REDACTED),
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{30,}\b"), REDACTED),
+    (re.compile(r"\bsk-[A-Za-z0-9]{32,}\b"), REDACTED),
+    (re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"), REDACTED),
+)
+
+
+def scrub_text(text: str) -> str:
+    """Mask credential-shaped substrings inside free text.
+
+    Deliberately conservative about *labels*: it rewrites only the value, so an
+    operator can still see which field failed.
+    """
+    if not isinstance(text, str) or not text:
+        return text
+    scrubbed = text
+    for pattern, replacement in _TEXT_PATTERNS:
+        scrubbed = pattern.sub(replacement, scrubbed)
+    return scrubbed
+
+
+def _scrub_values(value: Any) -> Any:
+    if isinstance(value, str):
+        return scrub_text(value)
+    if isinstance(value, dict):
+        return {k: _scrub_values(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_scrub_values(item) for item in value]
+    return value
+
+
+def scrub_message(logger: Any, method_name: str, event_dict: dict[str, Any]) -> dict[str, Any]:
+    """structlog processor: scrub credential *shapes* from every string value.
+
+    Runs after :func:`redact_secrets`. Key-based redaction cannot see a secret
+    that a caller interpolated into the message text — and stdlib records add a
+    ``message`` field carrying exactly that text, so scrubbing only ``event``
+    would leave the raw line in place. Every string value is scrubbed.
+    """
+    return _scrub_values(event_dict)
+
+
 def _shared_processors(redact: bool) -> list[Any]:
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
@@ -89,7 +153,7 @@ def _shared_processors(redact: bool) -> list[Any]:
         structlog.processors.TimeStamper(fmt="iso"),
     ]
     if redact:
-        processors.append(redact_secrets)
+        processors.extend([redact_secrets, scrub_message])
     processors.extend(
         [
             structlog.processors.StackInfoRenderer(),

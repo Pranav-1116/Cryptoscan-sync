@@ -1,12 +1,12 @@
 # Command execution — can collector input become a command?
 
-`cryptoscan.command-execution/1` · generated 2026-11-01T03:51:33.365536+00:00 · **3 pass · 1 partial · 0 fail** · 91 process call sites
+`cryptoscan.command-execution/1` · generated 2026-11-01T04:30:22.317182+00:00 · **4 pass · 0 partial · 0 fail** · 91 process call sites
 
 | Question | Verdict | Evidence |
 |---|---|---|
 | **does any collector input reach a shell?** | **PASS** | 0 shell sink(s); 0 string command(s); 91 argv-list call(s) in 50 module(s) |
 | **can a hostile target become an option or a second argument?** | **PASS** | 3 call site(s) driven with 6 hostile inputs each; 0 site(s) failed |
-| **is `--` used before untrusted positionals where the tool supports it?** | **PARTIAL** | 3 of 91 call sites pass `--` before an untrusted positional |
+| **is `--` used before every untrusted positional?** | **PASS** | 2 of 91 call sites take a caller-supplied positional; 2 pass `--` before it |
 | **does the branch touch the docker socket, exec into pods, or run as root?** | **PASS** | docker socket 0 · pod exec 0 · setuid(0) 0 |
 
 ## Row by row
@@ -60,12 +60,14 @@ touch `: refused with ValueError
 - **Limit:** the canary proves an input did not execute through *this* call site; it cannot prove the same input does not reach another sink later in the pipeline
 - **Limit:** the recorder replaces subprocess, so a site that shells out through a library (paramiko, docker-py) would not appear here
 
-### `end_of_options` — PARTIAL
+### `end_of_options` — PASS
 
-*is `--` used before untrusted positionals where the tool supports it?*
+*is `--` used before every untrusted positional?*
 
-- **PASS** `counted` — 3 of 91 call sites pass `--` before an untrusted positional
-- **Not proven:** some tools have no end-of-options support (`openssl s_client` takes its target as the value of `-connect`, which is safe by shape rather than by `--`); the count is therefore evidence of intent, not a complete measure
+- **PASS** `untrusted-positional-terminated` — 2 of 91 call sites take a caller-supplied positional; 2 pass `--` before it
+- **PASS** `every-driven-site-classified` — 2 driven site(s) pass their parameter straight to a spawn call; 1 build the argv one function up (image_reference) and all terminate it
+- **PASS** `control-plan-positional` — 89 call sites pass only fixed flags or validated values and are excluded by construction
+- **Limit:** Some CLIs take their target as an *option's value* (`openssl s_client -connect`, `ssh -o`, `git -C`) rather than a positional: there `--` does nothing and the grammar check is the whole defence. Those sites are covered by the argument-injection row, not by this one.
 
 ### `privileged_surfaces` — PASS
 

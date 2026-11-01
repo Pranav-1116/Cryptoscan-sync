@@ -7,6 +7,7 @@ const bridge = vi.hoisted(() => ({ fetch: vi.fn(), token: vi.fn(), live: vi.fn()
 vi.mock("./api.js", () => ({
   tenantFetch: (...args: unknown[]) => bridge.fetch(...args),
   getToken: () => bridge.token(),
+  hasSession: () => !!bridge.token(),
   isBackendLive: () => bridge.live(),
 }));
 

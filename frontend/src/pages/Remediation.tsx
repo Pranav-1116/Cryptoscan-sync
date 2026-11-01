@@ -57,7 +57,7 @@ export default function Remediation() {
   const [scopeVersion, setScopeVersion] = useState(0);
   useEffect(() => {
     const reset = () => setScopeVersion(version => version + 1);
-    const onStorage = (event: StorageEvent) => { if (event.key === "cryptoscan_tenant" || event.key === "zelinx_token" || event.key === null) reset(); };
+    const onStorage = (event: StorageEvent) => { if (event.key === "cryptoscan_tenant" || event.key === "zelinx_signed_in" || event.key === null) reset(); };
     window.addEventListener("zelinx:tenant", reset); window.addEventListener("zelinx:auth", reset); window.addEventListener("storage", onStorage);
     return () => { window.removeEventListener("zelinx:tenant", reset); window.removeEventListener("zelinx:auth", reset); window.removeEventListener("storage", onStorage); };
   }, []);

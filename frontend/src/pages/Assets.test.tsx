@@ -36,7 +36,7 @@ describe("asset inventory from the live API", () => {
   });
 
   it("renders only returned columns and detail evidence IDs; preserves search, selection, and tenant authentication", async () => {
-    localStorage.setItem("zelinx_token", "test-token");
+    setToken("test-token");
     localStorage.setItem("cryptoscan_tenant", "test-tenant");
     const first = {
       id: "asset-1", algorithm: "ECDSA", key_size: 256, file_path: "src/certs/client.pem",
@@ -160,7 +160,7 @@ describe("asset inventory from the live API", () => {
   });
 
   it("clears visible assets when authentication changes and the new request is denied", async () => {
-    localStorage.setItem("zelinx_token", "test-token");
+    setToken("test-token");
     mockFetch({
       [listPath]: (_url: string, init?: RequestInit) => (init?.headers as Record<string, string>)?.Authorization
         ? { assets: [{ id: "a", algorithm: "Authenticated asset" }], total_count: 1 }

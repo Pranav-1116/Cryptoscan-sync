@@ -81,7 +81,7 @@ describe("Approved offline host workflow", () => {
     mockFetch({ [`${P}/${id}/intake`]: () => new Promise(resolve => { finish = resolve; }) }); mount(); chooseApproval();
     await load("Offline host snapshot JSON", {}); fireEvent.click(screen.getByRole("button", { name: "Import approved metadata" }));
     await waitFor(() => expect(finish).toBeTypeOf("function"));
-    act(() => window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_token", newValue: null })));
+    act(() => window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_signed_in", newValue: null })));
     await act(async () => { finish(receipt); });
     expect(screen.queryByText(/Metadata committed as IMPORTED/)).toBeNull();
   });

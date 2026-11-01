@@ -9,7 +9,7 @@ beforeEach(() => { vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementa
 const click = () => screen.getByRole("button", { name: "Export" }).click();
 
 describe("Authenticated export privacy", () => {
-  it.each(["cryptoscan_tenant", "zelinx_token", "zelinx_roles", "zelinx_user", null, "auth", "tenant", "resume", "bfcache"])("does not release old bytes after %s, even if fetch ignores abort", async key => {
+  it.each(["cryptoscan_tenant", "zelinx_signed_in", "zelinx_roles", "zelinx_user", null, "auth", "tenant", "resume", "bfcache"])("does not release old bytes after %s, even if fetch ignores abort", async key => {
     const bytes = deferred<Blob>();
     const response = new Response("private-old-bytes");
     vi.spyOn(response, "blob").mockImplementation(() => bytes.promise);

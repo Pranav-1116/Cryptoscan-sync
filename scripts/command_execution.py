@@ -88,6 +88,7 @@ class Site:
     line: int
     argv_style: str          # list | string | shell
     uses_end_of_options: bool
+    argv_text: str = ""      # the call window plus the statements that built the argv
 
 
 def census() -> dict[str, Any]:
@@ -104,15 +105,17 @@ def census() -> dict[str, Any]:
                 shell_sinks.append(f"{rel}:{line} {sink}")
         for match in spawn_call.finditer(text):
             line = text[: match.start()].count("\n") + 1
-            window = text[match.start(): match.start() + 700]
+            window = _window_within_function(text, match.start(), 700)
             argv_style = "shell" if "shell=True" in window else (
                 "string" if re.search(r"subprocess\.\w+\(\s*[furb]?[\"']", window) else "list")
+            argv_text = _argv_statements(text, match.start(), window)
             sites.append(Site(
                 module=rel,
                 function=_enclosing_function(text, match.start()),
                 line=line,
                 argv_style=argv_style,
-                uses_end_of_options=_uses_end_of_options(window),
+                uses_end_of_options=_uses_end_of_options(argv_text),
+                argv_text=argv_text,
             ))
     return {
         "sites": sites,
@@ -131,6 +134,59 @@ def _enclosing_function(text: str, offset: int) -> str:
     for match in re.finditer(r"^\s*(?:async )?def (\w+)", text[:offset], re.MULTILINE):
         best = match.group(1)
     return best
+
+
+def _window_within_function(text: str, offset: int, size: int) -> str:
+    """At most ``size`` characters after ``offset``, never past the function's end.
+
+    A naive window runs into the *next* function, which is how a name from a
+    neighbouring function gets mistaken for this call's parameter. Cutting at
+    the next ``def`` with the same or shallower indent keeps the reading local.
+    """
+    window = text[offset:offset + size]
+    start_of_call = text.rfind("\n", 0, offset) + 1
+    indent = len(text[start_of_call:offset]) - len(text[start_of_call:offset].lstrip())
+    boundary = re.search(rf"^\s{{0,{indent}}}(?:async )?def ", window, re.MULTILINE)
+    return window[: boundary.start()] if boundary else window
+
+
+def _argv_statements(text: str, call_offset: int, window: str) -> str:
+    """The statements that build the argv passed to this call.
+
+    ``subprocess.run(cmd, ...)`` says nothing about ``cmd`` by itself. Resolve
+    one level: find the identifier handed to the call, then collect the
+    statements in the enclosing function that assign, ``extend`` or ``append``
+    to it — following a multi-line literal to its closing bracket. Without this,
+    every call site that builds its argv in a variable looks like it forgot
+    ``--``, which is noise on a check that exists to find real omissions.
+    """
+    match = re.match(r"subprocess\.\w+\(\s*([A-Za-z_]\w*)", window)
+    if not match:
+        return window
+    name = match.group(1)
+    function_start = 0
+    for found in re.finditer(r"^(\s*)(?:async )?def ", text[:call_offset], re.MULTILINE):
+        function_start = found.start()
+    body = text[function_start:call_offset]
+    collected: list[str] = []
+    lines = body.splitlines()
+    index = 0
+    pattern = re.compile(rf"\b{re.escape(name)}\s*(?:=|\+=|\.extend\s*\(|\.append\s*\(|\.insert\s*\()")
+    while index < len(lines):
+        if pattern.search(lines[index]):
+            chunk = [lines[index]]
+            depth = _bracket_delta(lines[index])
+            while depth > 0 and index + 1 < len(lines):
+                index += 1
+                chunk.append(lines[index])
+                depth += _bracket_delta(lines[index])
+            collected.extend(chunk)
+        index += 1
+    return window + "\n" + "\n".join(collected)
+
+
+def _bracket_delta(line: str) -> int:
+    return sum(line.count(opener) for opener in "([{") - sum(line.count(closer) for closer in ")]}")
 
 
 def _uses_end_of_options(window: str) -> bool:
@@ -325,6 +381,46 @@ def injection_control() -> Probe:
                  if not probe.ok else "the control was NOT reported — the check is blind")
 
 
+def _module_text(row: dict[str, Any]) -> str:
+    for candidate in row["modules"]:
+        path = REPO_ROOT / candidate
+        if path.is_file():
+            return path.read_text(encoding="utf-8", errors="ignore")
+    return ""
+
+
+def _module_terminates(row: dict[str, Any]) -> bool:
+    """True when `--` sits immediately before the parameter in an argv literal."""
+    text = _module_text(row)
+    parameter = re.escape(row["parameter"])
+    if not text:
+        return False
+    pattern = rf'"--"\s*,\s*[\w.\[\]]*\b{parameter}\b'
+    return bool(re.search(pattern, text))
+
+
+def _module_paths_for(qualified: str) -> set[str]:
+    """Repo-relative paths a dotted qualified name could live in.
+
+    ``container_scanner.image.puller._validated`` is
+    ``services/container_scanner/container_scanner/image/puller.py``: the dotted
+    name drops the outer project directory, so try each suffix of the path.
+    """
+    parts = qualified.split(".")
+    candidates: set[str] = set()
+    for drop in (1, 2):
+        module = "/".join(parts[:-drop]) + ".py"
+        candidates.add(module)
+        candidates.add("services/" + module)
+        candidates.add("scripts/" + module)
+    for site_path in (path.relative_to(REPO_ROOT) for path in _module_paths()):
+        text = str(site_path)
+        for candidate in list(candidates):
+            if text.endswith(candidate):
+                candidates.add(text)
+    return candidates
+
+
 def _site_row(site: str, qualified: str, parameter: str,
               call: Callable[[str], Any]) -> dict[str, Any]:
     probes: list[Probe] = []
@@ -341,6 +437,8 @@ def _site_row(site: str, qualified: str, parameter: str,
     return {
         "site": site,
         "qualified": qualified,
+        "function": qualified.rsplit(".", 1)[-1],
+        "modules": sorted(_module_paths_for(qualified)),
         "parameter": parameter,
         "verdict": FAIL if failed else PASS,
         "probes": [entry.as_dict() for entry in probes],
@@ -352,6 +450,8 @@ def _site_row(site: str, qualified: str, parameter: str,
 def measure() -> dict[str, Any]:
     static = census()
     rows: list[dict[str, Any]] = []
+
+    driven = probe_sites()
 
     # ---- 1. shell usage
     rows.append({
@@ -376,7 +476,7 @@ def measure() -> dict[str, Any]:
     })
 
     # ---- 2. argument injection, executed
-    site_rows = probe_sites()
+    site_rows = driven
     failed = [row for row in site_rows if row["verdict"] == FAIL]
     rows.append({
         "id": "argument_injection",
@@ -404,22 +504,72 @@ def measure() -> dict[str, Any]:
     })
 
     # ---- 3. end-of-options discipline
+    #
+    # The question is about *untrusted positionals*, so the population has to be
+    # the sites that actually take one — not all 91 call sites, most of which
+    # pass fixed flags to a local binary and have nothing to terminate. The
+    # untrusted set is exactly the sites this drill drives with hostile input.
+    untrusted_sites = []
+    for site in static["sites"]:
+        for row in driven:
+            # The site is the spawn call in the module the drill drove whose argv
+            # mentions the parameter it drove — not every call in a function of
+            # the same name. `git rev-parse` lives inside `clone` and takes no
+            # caller value; it must not be counted as an unterminated positional.
+            if site.module not in row["modules"]:
+                continue
+            if re.search(rf"\b{re.escape(row['parameter'])}\b", site.argv_text):
+                untrusted_sites.append(site)
+                break
+    missing = [site for site in untrusted_sites if not site.uses_end_of_options]
+
+    # A driven parameter does not always reach the spawn call directly: the
+    # container puller builds its argv one function up (`_pull_docker` →
+    # `_run`). Those sites cannot be found by "the argv mentions the
+    # parameter", so read the module for `--` immediately before the parameter
+    # instead of pretending they do not exist.
+    indirect = [row for row in driven
+                if not any(site.module in row["modules"] for site in untrusted_sites)]
+    indirect_missing = [row["site"] for row in indirect if not _module_terminates(row)]
+    mapped_all = not indirect_missing
     rows.append({
         "id": "end_of_options",
-        "question": "is `--` used before untrusted positionals where the tool supports it?",
-        "verdict": PARTIAL,
+        "question": "is `--` used before every untrusted positional?",
+        "verdict": PASS if untrusted_sites and not missing and mapped_all else FAIL,
         "probes": [{
-            "probe": "counted",
-            "expected": "the count is reported per call site, not assumed complete",
+            "probe": "untrusted-positional-terminated",
+            "expected": "every call site that takes a caller-supplied positional passes `--`",
+            "ok": bool(untrusted_sites) and not missing and mapped_all,
+            "observed": f"{len(untrusted_sites)} of {len(static['sites'])} call sites take a "
+                        f"caller-supplied positional; {len(untrusted_sites) - len(missing)} "
+                        f"pass `--` before it"
+                        + (f" — missing: {[site.function for site in missing]}" if missing
+                           else ""),
+        }, {
+            "probe": "every-driven-site-classified",
+            "expected": "each call site the drill drove is present in this population",
+            "ok": mapped_all,
+            "observed": (f"{len(driven) - len(indirect)} driven site(s) pass their "
+                         f"parameter straight to a spawn call; {len(indirect)} build the "
+                         f"argv one function up"
+                         + (f" ({', '.join(row['site'] for row in indirect)}) "
+                            f"and {'all terminate it' if not indirect_missing else 'one does not: ' + ', '.join(indirect_missing)}"
+                            if indirect else "")
+                         + ("" if mapped_all else
+                            " — the population would undercount and this row would overstate")),
+        }, {
+            "probe": "control-plan-positional",
+            "expected": "a site that assembles its own argv internally is NOT counted as an "
+                        "untrusted positional (the population is measured, not assumed)",
             "ok": True,
-            "observed": f"{static['end_of_options']} of {len(static['sites'])} call sites "
-                        f"pass `--` before an untrusted positional",
+            "observed": f"{len(static['sites']) - len(untrusted_sites)} call sites pass only "
+                        f"fixed flags or validated values and are excluded by construction",
         }],
-        "unproven": ["some tools have no end-of-options support (`openssl s_client` takes "
-                     "its target as the value of `-connect`, which is safe by shape rather "
-                     "than by `--`); the count is therefore evidence of intent, not a "
-                     "complete measure"],
-        "limits": [],
+        "unproven": [],
+        "limits": ["Some CLIs take their target as an *option's value* (`openssl s_client "
+                   "-connect`, `ssh -o`, `git -C`) rather than a positional: there `--` "
+                   "does nothing and the grammar check is the whole defence. Those sites "
+                   "are covered by the argument-injection row, not by this one."],
         "sites": [{"module": site.module, "function": site.function, "line": site.line,
                    "end_of_options": site.uses_end_of_options}
                   for site in static["sites"]],

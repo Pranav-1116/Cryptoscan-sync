@@ -1,4 +1,5 @@
 import React, { StrictMode } from "react";
+import { setToken } from "../lib/api";
 import { act, renderHook, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { mockFetch } from "../test/setup";
@@ -11,7 +12,7 @@ const settle = async () => { await act(async () => { await Promise.resolve(); })
 const changes: [string, () => void][] = [
   ["current-window estate", () => window.dispatchEvent(new Event("zelinx:tenant"))],
   ["current-window auth", () => window.dispatchEvent(new Event("zelinx:auth"))],
-  ...["cryptoscan_tenant", "zelinx_token", "zelinx_roles", "zelinx_user", null].map(key =>
+  ...["cryptoscan_tenant", "zelinx_signed_in", "zelinx_roles", "zelinx_user", null].map(key =>
     [`storage ${key}`, () => window.dispatchEvent(new StorageEvent("storage", { key, storageArea: localStorage }))] as [string, () => void]),
   ["visible resume", () => { vi.spyOn(document, "hidden", "get").mockReturnValue(false); document.dispatchEvent(new Event("visibilitychange")); }],
   ["persisted pageshow", () => window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }))],
@@ -110,7 +111,7 @@ describe("useLive private read scope", () => {
 
   it("refreshes using the current token and estate rather than cached headers", async () => {
     const fetch = mockFetch({ "/private": [] }); renderHook(() => useLive("/private", empty)); await settle();
-    await act(async () => { localStorage.setItem("zelinx_token", "new-token"); localStorage.setItem("cryptoscan_tenant", "b"); changes[0][1](); });
+    await act(async () => { setToken("new-token"); localStorage.setItem("cryptoscan_tenant", "b"); changes[0][1](); });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(fetch.mock.calls[1][1]?.headers).toMatchObject({ Authorization: "Bearer new-token", "X-Tenant-ID": "b" });
   });
@@ -133,7 +134,7 @@ describe("useLive private read scope", () => {
     const fetch = mockFetch({ "/private": ["current-private"] }); const { result } = renderHook(() => useLive("/private", empty)); await settle();
     await act(async () => {
       if (event === "unrelated storage") window.dispatchEvent(new StorageEvent("storage", { key: "theme", storageArea: localStorage }));
-      if (event === "session storage") window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_token", storageArea: sessionStorage }));
+      if (event === "session storage") window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_signed_in", storageArea: sessionStorage }));
       if (event === "hidden tab") { vi.spyOn(document, "hidden", "get").mockReturnValue(true); document.dispatchEvent(new Event("visibilitychange")); }
       if (event === "ordinary pageshow") window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: false }));
     });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { renderWithProviders } from "../test/render";
 import { mockFetch } from "../test/setup";
-import { setActiveTenantId } from "../lib/api";
+import {setToken, setActiveTenantId} from "../lib/api";
 import Evidence from "./Evidence";
 
 const scanPath = "/api/v1/scans";
@@ -42,7 +42,7 @@ describe("Evidence workflow", () => {
   it("renders server-confirmed scan PASS only after the exact scan verification response", async () => {
     let finish!: (body: unknown) => void;
     const pending = new Promise(resolve => { finish = resolve; });
-    localStorage.setItem("zelinx_token", "bearer-a");
+    setToken("bearer-a");
     setActiveTenantId("tenant-a");
     const fetchSpy = mockFetch({ [scanPath]: scans(["scan-a"]), [findingsPath]: findings([observation("ev-a", "scan-a")]),
       "/api/v1/scans/scan-a/verify": () => pending });

@@ -88,7 +88,7 @@ describe("host six-BOM provenance associations", () => {
     const fetcher = mockFetch({ [`${P}/graph`]: graph, [`${P}/associations/association-a/review`]: () => new Promise(resolve => { finish = resolve; }) }); mount();
     fireEvent.click(screen.getByRole("button", { name: "Load six-BOM graph" })); await screen.findByText(/HBOM: no resolved/); metadata();
     fireEvent.click(screen.getByRole("button", { name: "Review association association-a" })); await waitFor(() => expect(finish).toBeTypeOf("function"));
-    act(() => window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_token", newValue: null })));
+    act(() => window.dispatchEvent(new StorageEvent("storage", { key: "zelinx_signed_in", newValue: null })));
     await act(async () => finish({ subject_id: "association-a", revision: 2 })); expect(screen.queryByText(/Decision recorded/)).toBeNull(); expect(fetcher.mock.calls).toHaveLength(2);
   });
   it("shows 403/409 refusal without replay or sample edges", async () => {

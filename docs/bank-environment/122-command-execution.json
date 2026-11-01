@@ -1,10 +1,10 @@
 {
   "schema": "cryptoscan.command-execution/1",
   "version": "command-execution/1.0",
-  "generated_at": "2026-11-01T03:51:33.365536+00:00",
+  "generated_at": "2026-11-01T04:30:22.317182+00:00",
   "counts": {
-    "PASS": 3,
-    "PARTIAL": 1,
+    "PASS": 4,
+    "PARTIAL": 0,
     "FAIL": 0
   },
   "sites": 91,
@@ -54,6 +54,16 @@
         {
           "site": "ssh_keyscan",
           "qualified": "network_scanner.probing.ssh_keyscan.scan_ssh_host_keys",
+          "function": "scan_ssh_host_keys",
+          "modules": [
+            "network_scanner/probing.py",
+            "network_scanner/probing/ssh_keyscan.py",
+            "scripts/network_scanner/probing.py",
+            "scripts/network_scanner/probing/ssh_keyscan.py",
+            "services/network_scanner/network_scanner/probing/ssh_keyscan.py",
+            "services/network_scanner/probing.py",
+            "services/network_scanner/probing/ssh_keyscan.py"
+          ],
           "parameter": "host",
           "verdict": "PASS",
           "probes": [
@@ -98,6 +108,16 @@
         {
           "site": "git_clone",
           "qualified": "worker.workspace.repo_cloner.RepoCloner.clone",
+          "function": "clone",
+          "modules": [
+            "scripts/worker/workspace/repo_cloner.py",
+            "scripts/worker/workspace/repo_cloner/RepoCloner.py",
+            "services/worker/worker/workspace/repo_cloner.py",
+            "services/worker/workspace/repo_cloner.py",
+            "services/worker/workspace/repo_cloner/RepoCloner.py",
+            "worker/workspace/repo_cloner.py",
+            "worker/workspace/repo_cloner/RepoCloner.py"
+          ],
           "parameter": "repo_url",
           "verdict": "PASS",
           "probes": [
@@ -142,6 +162,16 @@
         {
           "site": "image_reference",
           "qualified": "container_scanner.image.puller._validated",
+          "function": "_validated",
+          "modules": [
+            "container_scanner/image.py",
+            "container_scanner/image/puller.py",
+            "scripts/container_scanner/image.py",
+            "scripts/container_scanner/image/puller.py",
+            "services/container_scanner/container_scanner/image/puller.py",
+            "services/container_scanner/image.py",
+            "services/container_scanner/image/puller.py"
+          ],
           "parameter": "reference",
           "verdict": "PASS",
           "probes": [
@@ -187,20 +217,32 @@
     },
     {
       "id": "end_of_options",
-      "question": "is `--` used before untrusted positionals where the tool supports it?",
-      "verdict": "PARTIAL",
+      "question": "is `--` used before every untrusted positional?",
+      "verdict": "PASS",
       "probes": [
         {
-          "probe": "counted",
-          "expected": "the count is reported per call site, not assumed complete",
+          "probe": "untrusted-positional-terminated",
+          "expected": "every call site that takes a caller-supplied positional passes `--`",
           "ok": true,
-          "observed": "3 of 91 call sites pass `--` before an untrusted positional"
+          "observed": "2 of 91 call sites take a caller-supplied positional; 2 pass `--` before it"
+        },
+        {
+          "probe": "every-driven-site-classified",
+          "expected": "each call site the drill drove is present in this population",
+          "ok": true,
+          "observed": "2 driven site(s) pass their parameter straight to a spawn call; 1 build the argv one function up (image_reference) and all terminate it"
+        },
+        {
+          "probe": "control-plan-positional",
+          "expected": "a site that assembles its own argv internally is NOT counted as an untrusted positional (the population is measured, not assumed)",
+          "ok": true,
+          "observed": "89 call sites pass only fixed flags or validated values and are excluded by construction"
         }
       ],
-      "unproven": [
-        "some tools have no end-of-options support (`openssl s_client` takes its target as the value of `-connect`, which is safe by shape rather than by `--`); the count is therefore evidence of intent, not a complete measure"
+      "unproven": [],
+      "limits": [
+        "Some CLIs take their target as an *option's value* (`openssl s_client -connect`, `ssh -o`, `git -C`) rather than a positional: there `--` does nothing and the grammar check is the whole defence. Those sites are covered by the argument-injection row, not by this one."
       ],
-      "limits": [],
       "sites": [
         {
           "module": "scripts/backup_drill.py",
@@ -601,7 +643,7 @@
         {
           "module": "services/container_scanner/container_scanner/image/puller.py",
           "function": "_run",
-          "line": 120,
+          "line": 123,
           "end_of_options": false
         },
         {
@@ -620,7 +662,7 @@
           "module": "services/inventory/inventory/linux_runtime.py",
           "function": "systemd_output",
           "line": 348,
-          "end_of_options": false
+          "end_of_options": true
         },
         {
           "module": "services/inventory/inventory/linux_traffic_preflight.py",

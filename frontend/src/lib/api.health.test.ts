@@ -3,6 +3,7 @@
  * errors or 100% availability. Measured probes only; everything else is
  * reported "Not measured" / "On demand". */
 import { afterEach, describe, expect, it } from "vitest";
+import { setToken } from "../lib/api";
 import { mockFetch, offlineFetch } from "../test/setup";
 import { apiScannerEnginesHealth, apiSystemHealthStatus } from "./api";
 
@@ -66,7 +67,7 @@ describe("apiSystemHealthStatus — no fabricated green", () => {
   });
 
   it("uses the measured SLO window when present", async () => {
-    localStorage.setItem("zelinx_token", "tok");
+    setToken("tok");
     mockFetch({
       "/healthz": { status: "ok" },
       "/healthz/dependencies": { status: "ok", down: [], checks: [] },
@@ -92,7 +93,7 @@ describe("apiSystemHealthStatus — no fabricated green", () => {
 
 describe("apiScannerEnginesHealth — scanners are on-demand collectors", () => {
   it("never claims Healthy/Active from API liveness", async () => {
-    localStorage.setItem("zelinx_token", "tok");
+    setToken("tok");
     mockFetch({
       "/healthz": { status: "ok" },
       "/api/v1/assets": { total_count: 42 },

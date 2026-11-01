@@ -101,19 +101,22 @@ def _validated(reference: str) -> str:
 def _pull_skopeo(binary: str, reference: str, archive: Path, timeout: int) -> None:
     reference = _validated(reference)
     src = reference if "://" in reference else f"docker://{reference}"
-    _run([binary, "copy", "--quiet", src, f"docker-archive:{archive}"], timeout)
+    # `--` before the positional: `_validated` already refuses a leading "-",
+    # so this is the second lock on the same door.
+    _run([binary, "copy", "--quiet", "--", src, f"docker-archive:{archive}"],
+         timeout)
 
 
 def _pull_docker(binary: str, reference: str, archive: Path, timeout: int) -> None:
     reference = _validated(reference)
     _run([binary, "pull", "--quiet", "--", reference], timeout)
-    _run([binary, "save", "-o", str(archive), reference], timeout)
+    _run([binary, "save", "-o", str(archive), "--", reference], timeout)
 
 
 def _pull_podman(binary: str, reference: str, archive: Path, timeout: int) -> None:
     reference = _validated(reference)
     _run([binary, "pull", "--quiet", "--", reference], timeout)
-    _run([binary, "save", "-o", str(archive), reference], timeout)
+    _run([binary, "save", "-o", str(archive), "--", reference], timeout)
 
 
 def _run(command: list[str], timeout: int) -> None:

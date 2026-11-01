@@ -78,10 +78,12 @@ function ReportPanel() {
     catch (e) { setErr("evidence JSON invalid: " + String(e)); setBusy(false); return; }
     if (download) {
       // PDF download directly from backend
-      const token = localStorage.getItem("zelnx_token");
+      // The session travels as the httpOnly cookie that tenantFetch sends
+      // (credentials: "include"). Reading a token out of localStorage here was
+      // both an XSS surface and broken: the key it read never existed.
       const r = await tenantFetch("/api/v1/resilience/compliance-report", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ framework: fw, org, evidence, format: "pdf" }),
       });
       if (!r.ok) { setErr(`HTTP ${r.status}`); setBusy(false); return; }
