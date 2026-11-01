@@ -175,7 +175,9 @@ export default function DependencyGraph(){
             <IconSearch size={13} style={{color:"var(--faint)"}}/>
             <input type="text" placeholder="Filter nodes — name, kind, id…" value={search} onChange={e=>setSearch(e.target.value)} className="inp" style={{flex:1, fontSize:12, padding:"7px 10px"}}/>
             {search && <button onClick={()=>setSearch("")} style={{fontSize:11, padding:"4px 8px", border:"1px solid var(--line)", background:"var(--panel-2)", borderRadius:"var(--r)", cursor:"pointer"}}>Clear</button>}
-            <span style={{fontSize:11, color:"var(--faint)"}}>{visual.length} shown</span>
+            <span style={{fontSize:11, color:"var(--faint)"}}>
+              {visual.length} shown{edges.length > 80 ? ` · first 80 of ${edges.length} edges drawn` : ""}
+            </span>
           </div>
 
           {/* mini canvas */}

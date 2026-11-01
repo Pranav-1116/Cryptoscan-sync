@@ -60,7 +60,23 @@ def emitted_metric_families() -> set[str]:
         client.get("/api/v1/scans")
         client.get("/api/v1/fail")
     text = registry.render_prometheus()
-    return {line.split("{")[0].split(" ")[0] for line in text.splitlines() if line and not line.startswith("#")}
+    names = {line.split("{")[0].split(" ")[0] for line in text.splitlines()
+             if line and not line.startswith("#")}
+    names |= router_metric_names()
+    return names
+
+
+def router_metric_names() -> set[str]:
+    """Series the API emits itself, read from the router that renders them.
+
+    `api/routers/metrics.py` appends gauges as text lines rather than through the
+    middleware registry, so a rule about queue depth or collection coverage would
+    have looked "dead" to this test even though /metrics emits it. Reading the
+    names from the router keeps the check honest: a rule may only reference a
+    series that some code in this tree actually writes.
+    """
+    source = (ROOT / "services" / "api" / "api" / "routers" / "metrics.py").read_text(encoding="utf-8")
+    return set(re.findall(r'["\'](cryptoscan_[a-z0-9_]+)["\']', source))
 
 
 # PromQL identifiers may contain ':' (recording-rule namespace) — tokenising on

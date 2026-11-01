@@ -122,7 +122,7 @@ export default function CodeCascadePanel() {
           <h4 style={{ margin: "14px 0 6px" }}>Providers by blast radius</h4>
           <Table
             head={["#", "Wave", "File", "Algorithms", "Findings", "Direct dependents", "Transitive", "Origin"]}
-            rows={report.providers.slice(0, 25).map((p) => [
+            total={report.providers.length} rows={report.providers.slice(0, 25).map((p) => [
               p.rank, <Badge key={p.file} tone={p.wave === 1 ? "cyan" : undefined}>wave {p.wave}</Badge>, <code key={p.file + "f"} style={{ fontSize: 11 }}>{p.file}</code>,
               p.algorithms.slice(0, 5).join(", "), p.findings, p.direct_dependents, p.transitive_dependents, p.code_origin || "source",
             ])}
@@ -139,7 +139,7 @@ export default function CodeCascadePanel() {
               <h4 style={{ margin: "0 0 6px" }}>Crypto libraries</h4>
               <Table
                 head={["Library", "Versions", "Files using", "Flags"]}
-                rows={report.libraries.slice(0, 20).map((l) => [
+                total={report.libraries.length} rows={report.libraries.slice(0, 20).map((l) => [
                   l.library, l.versions.join(", ") || "—", l.files_using,
                   <span key={l.library}>{l.declared_but_unused && <Badge tone="warn">declared, unused</Badge>}{l.used_but_undeclared && <Badge tone="warn">used, undeclared</Badge>}</span>,
                 ])}
@@ -149,12 +149,12 @@ export default function CodeCascadePanel() {
               <h4 style={{ margin: "0 0 6px" }}>Shared key material</h4>
               <Table
                 head={["Kind", "Identifier", "Files", "Algorithms"]}
-                rows={report.shared_keys.slice(0, 20).map((k) => [k.kind, <code key={k.identifier} style={{ fontSize: 11 }}>{k.identifier}</code>, k.files.length, k.algorithms.join(", ")])}
+                total={report.shared_keys.length} rows={report.shared_keys.slice(0, 20).map((k) => [k.kind, <code key={k.identifier} style={{ fontSize: 11 }}>{k.identifier}</code>, k.files.length, k.algorithms.join(", ")])}
               />
               <h4 style={{ margin: "14px 0 6px" }}>Key sizes below the floor</h4>
               <Table
                 head={["Algorithm", "Size", "Minimum", "Location"]}
-                rows={report.weak_parameters.slice(0, 20).map((w) => [w.algorithm, w.key_size, w.minimum, <code key={w.file + w.line} style={{ fontSize: 11 }}>{w.file}:{w.line}</code>])}
+                total={report.weak_parameters.length} rows={report.weak_parameters.slice(0, 20).map((w) => [w.algorithm, w.key_size, w.minimum, <code key={w.file + w.line} style={{ fontSize: 11 }}>{w.file}:{w.line}</code>])}
               />
             </div>
           </div>

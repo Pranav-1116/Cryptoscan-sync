@@ -282,7 +282,7 @@ export default function Cmdb() {
             </div>
             <Table
               head={["asset", "type", "score", "level", "top factors", ""]}
-              rows={riskU.data.assets.slice(0, 12).map((a) => {
+              total={riskU.data.assets.length} rows={riskU.data.assets.slice(0, 12).map((a) => {
                 const top = Object.entries(a.factors).filter(([, f]) => f.level > 0).sort((a, b) => b[1].level - a[1].level).slice(0, 3).map(([k, f]) => `${k}:${f.level}`).join(", ");
                 return [
                   <span className="mono">{a.name ?? a.id}</span>,

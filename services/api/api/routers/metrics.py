@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import os
 import time
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -71,6 +72,228 @@ def _histogram(name: str, buckets: dict[float, int], total: int, sum_: float,
     out.append(f"{name}_sum {sum_}")
     out.append(f"{name}_count {total}")
     return "\n".join(out) + "\n"
+
+
+def _job_lifecycle_lines() -> list[str]:
+    """Job lifecycle as metrics: queued age, dead letters, scheduled retries.
+
+    ``cryptoscan_jobs_queued`` alone says a queue has work in it. It cannot
+    answer the three questions an operator asks during an incident: *how long*
+    has the oldest job been waiting, *how many* have already been given up on,
+    and *how many* are waiting for a retry. Without those, a stalled worker and
+    a busy one look identical.
+    """
+    lines: list[str] = []
+    try:
+        from sqlalchemy import func, select
+
+        from db.connection.session import SessionLocal
+        from db.models.scan_job import ScanJob
+        from datetime import datetime, timezone
+
+        with SessionLocal() as session:
+            rows = dict(
+                session.execute(
+                    select(ScanJob.status, func.count()).group_by(ScanJob.status)
+                ).all()
+            )
+            # every known status is emitted even at zero: an alert cannot fire on a
+            # series that only appears once something has already gone wrong
+            for status in ("QUEUED", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"):
+                rows.setdefault(status, 0)
+            for status in sorted(rows):
+                lines.append(_gauge(
+                    "cryptoscan_jobs_by_status", int(rows[status] or 0),
+                    "Scan jobs by terminal or in-flight status",
+                    f'status="{status}"'))
+            oldest = session.execute(
+                select(ScanJob.created_at).where(ScanJob.status == "QUEUED")
+                .order_by(ScanJob.created_at.asc()).limit(1)
+            ).scalar_one_or_none()
+            if oldest is not None:
+                moment = oldest if oldest.tzinfo else oldest.replace(tzinfo=timezone.utc)
+                age = max(0.0, (datetime.now(timezone.utc) - moment).total_seconds())
+                lines.append(_gauge(
+                    "cryptoscan_jobs_oldest_queued_seconds", round(age, 1),
+                    "Age of the oldest job still waiting in the queue"))
+            else:
+                lines.append(_gauge(
+                    "cryptoscan_jobs_oldest_queued_seconds", 0,
+                    "Age of the oldest job still waiting in the queue"))
+    except Exception as exc:  # noqa: BLE001 — a metrics surface must not 500
+        logger.warning("job_metrics_unavailable", extra={"error_type": type(exc).__name__})
+
+    # the delayed-retry set, the dead-letter list and live worker leases live in
+    # Redis; the API reads the counts directly rather than importing the worker,
+    # so the queue's condition is visible even when no worker process is up
+    redis_url = os.environ.get("REDIS_URL", "").strip()
+    if redis_url:
+        try:
+            import redis  # noqa: PLC0415 — optional dependency of the API image
+
+            client = redis.Redis.from_url(
+                redis_url, socket_connect_timeout=0.5, socket_timeout=0.5)
+            queue = os.environ.get("JOB_QUEUE_NAME", "cryptoscan:jobs:queue")
+            lines.append(_gauge(
+                "cryptoscan_jobs_retry_scheduled", int(client.zcard(f"{queue}:retry") or 0),
+                "Jobs waiting in the delayed-retry set"))
+            lines.append(_gauge(
+                "cryptoscan_jobs_dead_letter", int(client.llen(f"{queue}:dead") or 0),
+                "Jobs moved to the dead-letter list"))
+            alive = 0
+            for key in client.scan_iter(match=f"{queue}:worker:*", count=200):
+                alive += 1
+            lines.append(_gauge(
+                "cryptoscan_workers_alive", alive,
+                "Worker leases currently held (0 means nothing is consuming)"))
+        except Exception as exc:  # noqa: BLE001 — a metrics surface must not 500
+            logger.warning("queue_metrics_unavailable",
+                           extra={"error_type": type(exc).__name__})
+    return lines
+
+
+def _coverage_lines() -> list[str]:
+    """Coverage of the last estate discovery, as metrics rather than a screen.
+
+    The review asked for coverage health, and the product already computes it per
+    run: a coverage matrix with one row per plane and a status that is never a
+    percentage of "crypto discovered". Emitting it as labelled gauges is what
+    turns "a plane stopped collecting" into something an alert can see.
+
+    The read is platform-wide on purpose (:func:`platform_scope`), because a
+    metrics endpoint has no tenant context; the limit is stated in guide 117.
+    """
+    lines: list[str] = []
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.scan_run_repository import ScanRunRepository
+        from db.tenancy import platform_scope
+
+        with platform_scope(), SessionLocal() as session:
+            runs = ScanRunRepository(session).list_runs(
+                limit=1, target_kind="estate-discovery")
+            if not runs:
+                return lines
+            payload = runs[0].result or {}
+            rows = ((payload.get("coverage") or {}).get("rows")
+                    or (payload.get("coverage") or {}).get("matrix") or [])
+        unknown = 0
+        for row in rows:
+            plane = str(row.get("target") or row.get("plane") or "UNKNOWN")
+            status = str(row.get("status") or "UNKNOWN").upper()
+            if status in {"UNKNOWN", "NOT_OBSERVED", "NOT_ATTEMPTED", "FAILED", "PARTIAL"}:
+                unknown += 1
+            lines.append(_gauge(
+                "cryptoscan_coverage_plane", 1,
+                "One series per plane in the last estate discovery, labelled by status",
+                f'plane="{plane}",status="{status}"'))
+            expected = row.get("expected")
+            collected = row.get("collected")
+            if isinstance(expected, int) and expected:
+                ratio = round(float(collected or 0) / float(expected), 4)
+                lines.append(_gauge(
+                    "cryptoscan_coverage_collected_ratio", ratio,
+                    "Targets read over targets expected in the last discovery",
+                    f'plane="{plane}"'))
+        lines.append(_gauge(
+            "cryptoscan_coverage_planes_unknown", unknown,
+            "Planes not fully covered in the last estate discovery"))
+    except Exception as exc:  # noqa: BLE001 — a metrics surface must not 500
+        logger.warning("coverage_metrics_unavailable", extra={"error_type": type(exc).__name__})
+    return lines
+
+
+def _agent_health_lines() -> list[str]:
+    """Agent fleet health: reporting count, and how old the freshest check-in is.
+
+    An agent that stops reporting is the quietest failure in the estate: its
+    last observations stay in the catalogue, so every screen keeps answering
+    with data that is silently ageing. ``cryptoscan_agents_reporting`` counts the
+    agents whose last heartbeat is inside the staleness window, and the age gauge
+    is the fleet's *worst* check-in, because the operator needs the outlier.
+    """
+    lines: list[str] = []
+    try:
+        from datetime import datetime, timedelta, timezone
+
+        from sqlalchemy import func, select
+
+        from db.connection.session import SessionLocal
+        from db.models.control_plane import Agent
+
+        window = timedelta(seconds=int(os.environ.get("AGENT_STALE_SECONDS", "600")))
+        now = datetime.now(timezone.utc)
+        with SessionLocal() as session:
+            total = int(session.execute(
+                select(func.count()).select_from(Agent)).scalar_one() or 0)
+            seen = [row for row in session.execute(
+                select(Agent.last_heartbeat_at)).scalars().all()]
+        reporting = 0
+        worst: float | None = None
+        for moment in seen:
+            if moment is None:
+                worst = None if worst is None else max(worst, float("inf"))
+                continue
+            aware = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+            age = (now - aware).total_seconds()
+            if age <= window.total_seconds():
+                reporting += 1
+            worst = age if worst is None else max(worst, age)
+        lines.append(_gauge("cryptoscan_agents_enrolled", total, "Agents enrolled"))
+        lines.append(_gauge("cryptoscan_agents_reporting", reporting,
+                            "Agents whose last heartbeat is inside the staleness window"))
+        lines.append(_gauge(
+            "cryptoscan_agent_last_seen_seconds", 0 if worst is None else round(worst, 1),
+            "Age of the stalest agent check-in (0 when no agent exists)"))
+    except Exception as exc:  # noqa: BLE001 — a metrics surface must not 500
+        logger.warning("agent_metrics_unavailable", extra={"error_type": type(exc).__name__})
+    return lines
+
+
+def _estate_health_lines() -> list[str]:
+    """Evidence and estate freshness: the two numbers a BOM claim rests on.
+
+    A BOM is only as current as the observations behind it, and a stale
+    catalogue is the failure mode where every screen still answers. Both are
+    gauges rather than counters because the question is "how bad is it now".
+    """
+    lines: list[str] = []
+    try:
+        from sqlalchemy import func, select
+
+        from db.connection.session import SessionLocal
+        from db.models.estate_catalog import (
+            EstateAssetRecord, EstateEvidenceRecord, EstateObservationRecord,
+        )
+
+        with SessionLocal() as session:
+            def _count(model, *where):
+                stmt = select(func.count()).select_from(model)
+                for clause in where:
+                    stmt = stmt.where(clause)
+                return int(session.execute(stmt).scalar_one() or 0)
+
+            lines.append(_gauge("cryptoscan_estate_assets", _count(EstateAssetRecord),
+                                "Assets in the estate catalogue"))
+            lines.append(_gauge(
+                "cryptoscan_estate_assets_stale",
+                _count(EstateAssetRecord, EstateAssetRecord.lifecycle_state == "STALE"),
+                "Catalogue assets no longer observed"))
+            lines.append(_gauge("cryptoscan_evidence_records", _count(EstateEvidenceRecord),
+                                "Stored evidence records"))
+            lines.append(_gauge(
+                "cryptoscan_evidence_records_stale",
+                _count(EstateEvidenceRecord, EstateEvidenceRecord.lifecycle_state == "STALE"),
+                "Evidence records no longer produced by any collector"))
+            lines.append(_gauge(
+                "cryptoscan_observations_current",
+                _count(EstateObservationRecord,
+                       EstateObservationRecord.lifecycle_state == "CURRENT"),
+                "Facts currently asserted by the twin"))
+    except Exception as exc:  # noqa: BLE001 — the table may not exist on an old schema
+        logger.warning("estate_metrics_unavailable", extra={"error_type": type(exc).__name__})
+    return lines
+
 
 
 def _dependency_lines() -> list[str]:
@@ -344,6 +567,10 @@ def metrics(request: Request) -> Response:
     except Exception as exc:  # noqa: BLE001 - keep the rest of the surface
         logger.warning("scan_metrics_unavailable", extra={"error_type": type(exc).__name__})
 
+    lines.extend(_job_lifecycle_lines())
+    lines.extend(_agent_health_lines())
+    lines.extend(_coverage_lines())
+    lines.extend(_estate_health_lines())
     lines.extend(_dependency_lines())
     lines.extend(_operational_counter_lines())
     lines.extend(_telecom_lines())

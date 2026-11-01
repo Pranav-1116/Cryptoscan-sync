@@ -59,7 +59,7 @@ export default function PortfolioDependencyPanel() {
       {state === "ready" && rows.length === 0 && <p style={{ color: "var(--dim)", fontSize: 13 }}>No systems registered yet — import <code>cryptoscan-systems.yml</code> or register systems, then scan.</p>}
       {state === "ready" && rows.length > 0 && (
         <Table head={["System", "Criticality", "Business unit", "Coverage", "Crypto assets", "Depends on", "Depended on by"]}
-          rows={rows.slice(0, 200).map((r) => [
+          total={rows.length} rows={rows.slice(0, 200).map((r) => [
             <span key="n" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{r.name}</span>,
             r.criticality ? <Badge key="c" tone={tone(r.criticality)}>{r.criticality}</Badge> : "—",
             r.businessUnit || "—", r.coverage || "—", r.assets,

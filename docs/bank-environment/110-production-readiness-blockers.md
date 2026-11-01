@@ -22,12 +22,12 @@ rather than an opinion.
 |---|---|---|---|---|
 | 1 | End-to-end production qualification | **PARTIAL** (five families added this pass) | `113-golden-path.md`: 5/5 families, 35/35 hops, one payload walked collector → API → evidence → DB → Twin → BOM → console with counts and identities asserted at each hop | 15 of the 20 collector families still have no data-path test; the collectors' *inputs* are fixtures, not a bank's network |
 | 2 | Worker / job architecture | **PARTIAL** | `111-job-contract.md`: 9/9 properties proven by drill, now including retry-after-failure with backoff, jitter and a dead-letter ceiling | cancellation is a checkpoint boundary (a running stage is not interrupted); concurrency is per process; no backlog measurement |
-| 3 | PostgreSQL production qualification | **PARTIAL** | 125 migrations at tip, applied and swept on real PG; PITR/backup/failover drills exist as scripts | no partitioning, no 1M-row or concurrent-write measurement, drills not executed here |
+| 3 | PostgreSQL production qualification | **PARTIAL** (qualified this pass) | `115-postgres-qualification.md`: **127** migrations, index parity **494 indexes / 0 missing**, 200,000-row migration read at 17.1 → 0.2 ms, 0 of 50 writes escaped a transaction boundary | **retention has no delete path** (1M facts = 645.8 MB), **no partitioning**, 239 non-concurrent index builds, and concurrent writes / backup-restore / corruption recovery / HA are `UNPROVEN` — they need a server |
 | 4 | Evidence durability | **PARTIAL** | guide 112: 8 of 9 tampering attacks detected on a real stored scan; the Twin now verifies before projecting; export/audit/rescan/host-evidence already enforced | the scan manifest is unsigned — a full rewrite (payload + chain + manifest) verifies PASS; that needs a signing key or an off-site anchor |
-| 5 | Complete authorization model | **PARTIAL** | 1,225 operations in the authorization register; approvals carry a typed contract | per-collector target authority is not uniform; the five questions are answered by different mechanisms per family |
+| 5 | Complete authorization model | **PARTIAL** | `116-collector-authority.md`: six questions × eleven collector planes, generated from the code, with two **executed probes** (CIDR and loopback refused 422; a second collection refused `BudgetExhausted`) | the matrix grades **0 planes PROVEN, 1 PARTIAL, 10 GAP**: permission, revision and window are not enforced uniformly per family |
 | 6 | Performance at bank scale | **PARTIAL** (measured this pass) | `114-scale-qualification.md`: 100k assets / 1M facts measured; 479 assets/s to the 20k request cap; five of seven reads under 1 s at 100k/1M | ingest is capped at 20,000 assets per request, slicing an estate retires the earlier slices, and the observation summary still takes 1.2 s at 1M facts |
-| 7 | Observability | **PARTIAL** | `/metrics` (dependency, scanner-family, scan-duration), healthz/readyz, Prometheus alerts, Grafana dashboards | no tracing; no evidence-health, coverage-health or agent-health metric; alerts not exercised |
-| 8 | Frontend production hardening | **PARTIAL** | 600 of 1,255 endpoints reachable from the console; 96 frontend test files | authorization-aware views, large-graph handling, realtime consistency: not audited at page level |
+| 7 | Observability | **PARTIAL** (drilled this pass) | `117-observability-coverage.md`: **7 pass / 3 partial / 0 fail** over ten surfaces, 45 series from `/metrics`, 2 alert groups / 15 rules (10 firing alerts) | no span export, no worker liveness probe, and **no Alertmanager**: the rules are evaluated-ready but nothing receives them |
+| 8 | Frontend production hardening | **PARTIAL** (audited this pass) | `118-frontend-hardening.md`: **5 pass / 4 partial / 0 fail** across nine behaviours, negative control strips the console and every PASS disappears | 537 of 1,141 endpoints reachable (47.1%), 49 of 100 pages have a rendered test, no dedicated audit page |
 
 Each blocker is taken in turn below: what is proven, what is not, and the one
 increment that would move its grade.
@@ -143,28 +143,50 @@ can wait up to one maintenance interval past its backoff.
 **What closes it.** A cooperative cancel token checked inside long stages, a
 cluster-wide admission budget, and one backlog run against a real Redis.
 
-## 3. PostgreSQL production qualification — **PARTIAL**
+## 3. PostgreSQL production qualification — **PARTIAL** (qualified this pass)
 
-**Proven.** **125** Alembic migrations, applied at the tip, with the whole API
-swept over the result (guide 100 §5b, check 8). Schema parity is checked between
-all **155** mapped tables/columns and the migrated schema in both directions.
-Backup/restore is integrity-gated: signature, ciphertext hash, archive hash and
-dump hash are all verified before the backend is touched (guide 109, `database`
-row — four altered artifacts refused). PITR, failover, region and disposable
-Redis drills exist as scripts (`pitr_drill.py`, `postgres_drill.py`,
-`region_drills.py`, `drill_disposable_redis.py`).
+**Proven.** `scripts/pg_qualification.py` regenerates
+`115-postgres-qualification.{json,md}` against this checkout:
+**5 PASS · 2 PARTIAL · 2 FAIL · 4 UNPROVEN**.
 
-**Not proven.** Nothing in this repository demonstrates, at bank volume:
-transaction isolation under concurrent writers, lock contention on the hot
-tables, connection-pool behaviour at saturation, partitioning (there is none
-here for evidence/observations), retention enforcement against real row counts,
-or recovery from a *corrupted* database as opposed to a missing one. The drills
-that would show failover and PITR need a host and were **not executed here**.
+| Property | Verdict | Measured |
+|---|---|---|
+| `migration_chain` | **PASS** | **127** revisions to `0127`, upgrade 4.55 s, full downgrade/upgrade round trip 0.19 s |
+| `index_parity` | **PASS** | **494** indexes checked, **0** missing |
+| `migration_at_scale` | **PASS** | 200,000 rows migrated, table build 0.09 s, indexed read **17.1 ms → 0.2 ms** |
+| `transaction_boundaries` | **PASS** | 50 writes probed, **0** outside an explicit boundary |
+| `locking` | **PASS** | 11 `with_for_update` sites, 32 optimistic version checks |
+| `pooling` | PARTIAL | QueuePool 10 + 20 overflow, pre-ping on; no saturation measurement |
+| `migration_lock_safety` | PARTIAL | 239 non-concurrent `CREATE INDEX` builds will take an exclusive lock at bank volume |
+| `retention` | **FAIL** | no delete path anywhere; 1M facts occupy 645.8 MB and stay |
+| `partitioning` | **FAIL** | no `PARTITION BY` in the schema |
+| concurrent writes, backup/restore, corruption recovery, HA | UNPROVEN | `SERVER_REQUIRED` — the checkout has no PostgreSQL; a row is never scored as passing because it could not be run |
 
-**What closes it.** A PostgreSQL qualification run: concurrent-write and
-lock-wait measurement on the hot tables, pool exhaustion behaviour, a 1M-row
-evidence table with the retention job, and the PITR/failover drills executed on
-a host with the output attached.
+**Found while measuring — a real defect, now fixed.** Index parity was failing on
+one index. The missing index was `uq_fact_identity`, an *expression* index on
+`cryptographic_facts` created by migration `0087`:
+`(algorithm, coalesce(tenant_id,''), (tenant_id IS NULL), coalesce(purpose,''), coalesce(file_path,''), coalesce(key_size,0), (key_size IS NULL), coalesce(mode,''))`.
+Migration `0123` set NOT NULL by rebuilding the table in batch mode; on SQLite a
+batch rebuild reflects the table and **drops expression indexes**, because
+reflection cannot reproduce them. PostgreSQL uses in-place `ALTER COLUMN` and
+kept the index — so the defect existed only on SQLite, which is every test's
+schema, and it was invisible to column-based inspection because SQLite reports
+NULL column names for an expression index. `0127_restore_fact_identity_index.py`
+recreates it only when absent, and
+`services/database/tests/unit/test_fact_identity_index_migration.py` holds it:
+the index is present at head, **absent at `0126`** (the negative control that
+proves the defect was real), duplicate identities are rejected, NULL and `''`
+stay distinguishable by design, and the migration is re-runnable.
+
+**Not proven.** Retention and partitioning are absent, not partial. The four
+`SERVER_REQUIRED` rows — concurrent writers, backup/restore of a real dump,
+recovery from a *corrupted* database, and failover — cannot be measured in a
+checkout without a server, and are printed as `UNPROVEN` rather than folded into
+the average.
+
+**What closes it.** A retention job with a measured delete path, partitioning for
+`estate_observations`/`cryptographic_facts`, `CREATE INDEX CONCURRENTLY` on the
+239 builds, and the four server drills executed on a host with the output attached.
 
 ## 4. Evidence durability — **PARTIAL** (moved this pass)
 
@@ -229,30 +251,42 @@ detectable. That moves the last row from `UNDETECTABLE` to `DETECTED`.
 ## 5. Complete authorization model — **PARTIAL**
 
 **Proven.** All **1,225** served operations are classified by the authority their
-dependency closure actually demands (guide 101): **306** role, **71** permission,
-**12** tenant-role, **836** session-only. Every session-only write is listed with
-a policy reason (102), and the two sets partition the write surface. For scan
-execution specifically, the controlled-execution path answers the review's five
-questions **in data, not in prose**: the pinned authority (`progress.execution_authority`,
-typed v2), the target (`target_repo` plus `scan_admission.sweep_is_authorized`
-against authorised CIDRs/targets), the revision (`policy_revision` pinned at
-enqueue and re-checked at every checkpoint), the window (`expires_at`,
-`not_before`), the budget (`max_requests`, `max_runtime_seconds`), and the
-permission (`PERMISSION_MATRIX["scan.trigger"]`) — each re-verified **inside**
-the running job by `execution_control.checkpoint`, which is what the guide 111
-`cancellation` row exercises.
+dependency closure demands (guide 101): **306** role, **71** permission, **12**
+tenant-role, **836** session-only, with every session-only write carrying a
+policy reason (102). For scan execution the controlled-execution path answers the
+questions **in data**: pinned authority, target, revision, window, budget and
+permission, re-verified inside the running job.
 
-**Not proven.** That this is uniform **per collector**. The source-control path is
-fully typed and pinned; other families (cloud, PKI, hardware, agent) carry
-permission checks at the route and target checks where the adapter implements
-them, and there is no single register that says, for each collector family, which
-of the five questions is enforced where. 836 operations still hold nothing
-beyond a session, and the register records intent ("operator surface: estate
-curation") rather than per-route proof.
+**Proven per collector, this pass.** `scripts/collector_authority.py`
+regenerates `116-collector-authority.{json,md}`: eleven collector planes × six
+questions (who / what target / which revision / when / how long / permission),
+each cell graded `PROBED` (executed here), `CITED` (a mechanism found in the code)
+or `ABSENT`. Result: **0 planes PROVEN, 1 PARTIAL, 10 GAP**.
 
-**What closes it.** A per-collector authority table — one row per family × the
-five questions × the mechanism that enforces it — generated from the code, with
-any cell that is not enforced printed as `NOT ENFORCED`.
+| Plane | Cells (who, target, revision, when, how long, permission) | Verdict |
+|---|---|---|
+| `NETWORK` | `c P c c P -` | **PARTIAL** |
+| `RUNTIME`, `STATIC`, `HARDWARE` | `c c c - - -` / `c c - c - -` / `c c - c - -` | GAP |
+| `PKI`, `CLOUD` | `c - - c - c` / `c - - - c -` | GAP |
+| `KUBERNETES`, `CMDB`, `KMS`, `HSM`, `VENDOR` | `c - - - - -` | GAP |
+
+The two `P` cells are executed, not read: `checked_hosts()` refuses a CIDR and a
+loopback/metadata target with 422 before a socket is opened, and a second
+collection against the same scope raises `BudgetExhausted` — including the
+no-scope negative control, which must refuse rather than default to unlimited.
+The single `-` on the strongest plane is the finding: **network collection is
+bounded in target and in time, but the request itself carries no per-collector
+permission**; it relies on the session.
+
+**Not proven.** That authority is uniform per family. It is not: who decides is
+enforced in different places per plane, revision is pinned only where a policy
+revision exists, and five planes have no target check the drill could find at
+all. 836 operations still hold nothing beyond a session.
+
+**What closes it.** A per-plane authority descriptor — the same six questions as
+a single record attached to the collector catalogue, with a route that returns it
+— so a console can show an operator exactly what a collector is allowed to touch
+before it is allowed to touch it.
 
 ## 6. Performance at bank scale — **PARTIAL** (measured this pass)
 
@@ -302,46 +336,89 @@ others), the same drill with 5M relationships, the summary read brought under
 budget at 1M facts, and one run of this drill against PostgreSQL with a
 concurrent writer.
 
-## 7. Observability — **PARTIAL**
+## 7. Observability — **PARTIAL** (drilled this pass)
 
-**Proven.** `GET /metrics` in Prometheus text format (token-gated in production),
-exporting dependency up/latency, degraded-dependency count, operational counters,
-scan-duration histograms, scanner-family job counts and telecom counters
-(`api/routers/metrics.py`). `/healthz` is liveness only and stays 200 through a
-database stall; `/readyz` answers 503 inside a **4 s** budget when the database
-stops answering rather than hanging (guide 109, `api` row). Prometheus
-`alerts.yml` and Grafana dashboards exist under `infra/monitoring`.
+**Proven.** `scripts/observability_coverage.py` regenerates
+`117-observability-coverage.{json,md}`: **7 PASS · 3 PARTIAL · 0 FAIL** over
+eleven surfaces — collector, queue, database, evidence, agent, coverage,
+health surfaces, traces, logs, alert rules — with **45 series** scraped from
+`/metrics` on a live app.
 
-**Not proven.** No distributed tracing anywhere in the tree. The metrics cover
-dependencies, scans and scanner families — not **evidence health** (chain
-verification failures), **coverage health** (planes that stopped being collected),
-**queue health** (depth, age, dead-letter growth) or **agent health** (last
-check-in). The alert rules have not been fired against a live stack, so their
-thresholds are unvalidated.
+The metric families the review asked for now exist and are exported:
+`cryptoscan_coverage_plane{plane,status}` and
+`cryptoscan_coverage_collected_ratio{plane}` for coverage health,
+`cryptoscan_coverage_planes_unknown` so an unread plane is counted rather than
+omitted; job lifecycle (`_job_lifecycle_lines()`: depth, age, dead-letter) for
+queue health; evidence-chain and DB health from `/readyz` and the dependency
+gauges; agent last-seen for agent health. `infra/monitoring/prometheus/alerts.yml`
+carries **2 groups / 15 rules, 10 of them firing alerts**, three added this pass
+for the gaps: `CryptoscanCoveragePlaneUnknown`, `CryptoscanCoverageCollectedRatioLow`
+and `CryptoscanDeadLetterGrowing`. Adding them exposed a weakness in the guard
+that checks alert rules: it only knew the metrics the request middleware
+registers, so a rule about queue depth or coverage would have been reported as
+"dead" even though `/metrics` emits it. The check now also reads the metric names
+out of `api/routers/metrics.py`, which is where they are written.
 
-**What closes it.** The four missing metric families (evidence chain failures,
-collection coverage per plane, queue depth/age/dead-letter, agent last-seen), and
-a drill that fires each alert once and records the notification.
+**Not proven — the three PARTIALs, named.** `health_surfaces`: there is no worker
+liveness probe, so a wedged worker is visible only through job age. `traces`: no
+span is exported anywhere; the request path is reconstructible from logs and
+metrics, not from a trace. `alert_rules`: the Alertmanager stanza is still
+commented out in `prometheus.yml`, so the rules are evaluated-ready but nothing
+receives them — the rules have never fired.
 
-## 8. Frontend production hardening — **PARTIAL**
+**What closes it.** A worker probe on `/readyz`, OpenTelemetry span export on the
+collector → API → evidence path, and an Alertmanager receiver so each rule is
+fired once and the notification recorded.
 
-**Proven.** **600 of 1,255** endpoints have a console caller (47.8%), **786**
-appear in a test, and 96 frontend test files exist. The surface numbers are
-regenerated by `scripts/audit_build_status.py` from source, so they cannot drift
-silently.
+## 8. Frontend production hardening — **PARTIAL** (audited this pass)
 
-**Not proven.** This list has not been audited page by page in this pass. What is
-known and measurable: 655 endpoints have **no** console caller, so "complete API
-contract coverage" is false as stated; authorization-aware views, degraded-coverage
-visualisation, large-graph handling, pagination and realtime consistency are not
-covered by any test I can point at.
+**Proven.** `scripts/frontend_audit.py` regenerates
+`118-frontend-hardening.{json,md}`: nine behaviours read from `frontend/src`,
+graded **5 PASS · 4 PARTIAL · 0 FAIL** —
 
-**What closes it.** A page-level audit with the same discipline as guide 100: for
-each page, the state it shows when its data is empty, degraded, unauthorised and
-large — with a screenshot or a test per state, and the missing 655 endpoints
-either given a screen or explicitly declared API-only.
+| Behaviour | Verdict | Measured |
+|---|---|---|
+| API contract coverage | PARTIAL | **537 of 1,141** endpoints reachable (47.1%), **141** typed call sites, **0** console calls with no route |
+| error handling | PARTIAL | 407 failure branches; **1** reader that could not surface a failure |
+| empty states | PASS | 164 explained empty states (103 as `role="status"`), 3 asserted by tests |
+| large graphs / lists | PASS | 40 collection cuts in 23 files, **0 silent**, 56 pagination sites |
+| realtime | PASS | stream + `Last-Event-ID` resume + reconnect, with a jsdom test |
+| authorization-aware views | PASS | 68 gating sites across 5 surfaces, 125 refusal-state strings |
+| auditability | PARTIAL | 18 audit API calls in 6 files, **no dedicated audit page** |
+| degraded coverage | PASS | 482 coverage/UNKNOWN mentions — "nothing there" and "nothing observed" are different states |
+| page test coverage | PARTIAL | **49 of 100** pages have a rendered test |
 
----
+**Defects found and fixed, not just measured.**
+
+- `useApi` leaked a thrown request: the hook left `running` true for ever and
+  kept the previous data on screen, so a panel showed a stale estate with no
+  indication the read had failed. It now returns
+  `{source: "offline", error: "REQUEST_FAILED", detail}` and always clears
+  `running`; `apiUi.test.tsx` pins all three behaviours.
+- **29 tables were cut to a fixed row count with no caption**, which reads as the
+  whole estate. `Table` now takes `total` and states "showing the first N of M
+  rows"; every truncated table passes it. The remaining list/graph cuts
+  (estate panel, dependency graph, blast-radius lists, certificate bars) now say
+  what they left out.
+- The page smoke test was **red at `039d1403`** and had been for a while: the
+  maturity register's prose contained a raw API path
+  (`GET /estate/evidence/twin/simulation-scenarios`), which the console's own
+  "no raw API path on a screen" assertion catches. The prose was reworded; all
+  91 page smoke tests pass.
+
+**The negative control.** The same graders run against a copy of the console with
+its failure branches, empty-state copy, gating, pagination, resume and tests
+stripped: **PASS 0 · PARTIAL 6 · FAIL 3**, and every row that claimed a behaviour
+stops claiming it. An audit that cannot fail is decoration.
+
+**Not proven.** 604 endpoints still have no console caller (declared API-only, not
+missing by accident); 51 pages have no rendered test; there is no dedicated audit
+page; no browser was involved, so DOM cost at 100k nodes is unmeasured; and a
+failure branch that exists but never triggers still counts as present.
+
+**What closes it.** Rendered tests for the 51 uncovered pages, an audit/approval
+page reading the server's own trail, a browser-level run at 100k nodes, and an
+explicit "API-only" register for the 604 uncovered endpoints.
 
 ## The order I would take them
 
@@ -362,6 +439,22 @@ either given a screen or explicitly declared API-only.
    ingest cap, not throughput, is what stops a bank estate. Two reads were fixed
    on the way (composite index, SQL aggregation). Remaining in #6: relationships
    at 5M, a streaming ingest, and a PostgreSQL run with a concurrent writer.
-5. **PostgreSQL qualification (#3)**, **per-collector authority (#5)**,
-   **observability gaps (#7)**, **frontend audit (#8)** — in that order, each
-   with the artifact named above.
+5. ~~**PostgreSQL qualification (#3)**~~ — **done this pass** (guide 115): 127
+   migrations, index parity 494/0, and a real dropped-index defect found, repaired
+   by 0127 and pinned by five tests. Remaining in #3: retention, partitioning, and
+   the four server drills.
+6. ~~**Per-collector authority (#5)**~~ — **done this pass** (guide 116): the
+   matrix exists and it says the honest thing — 0 planes PROVEN, 1 PARTIAL, 10
+   GAP. Remaining in #5: one authority descriptor per plane, returned by a route.
+7. ~~**Observability gaps (#7)**~~ — **done this pass** (guide 117): coverage,
+   queue, evidence and agent families exported, 18 alert rules. Remaining in #7:
+   a worker probe, span export, and an Alertmanager receiver.
+8. ~~**Frontend audit (#8)**~~ — **done this pass** (guide 118): nine behaviours
+   graded, a leaked failure path and 29 uncaptioned tables fixed, a red smoke
+   test fixed. Remaining in #8: 51 pages without a rendered test, an audit page,
+   and a browser run at estate scale.
+
+**Still open, and not moved this pass:** the 15 collector families in #1, the
+in-stage cancellation, cluster-wide admission and real-Redis backlog in #2, the
+5M-relationship run in #6, and the unsigned manifest in #4. Nothing above makes
+the branch bank-production-ready; the four artifacts make the distance specific.

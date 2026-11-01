@@ -95,7 +95,7 @@ export default function Trust() {
         <Panel title="Rotation forecast" sub={`${forecast.data.upcoming_count ?? upcoming.length} item(s) due in the horizon window`}>
           <Table
             head={["item", "due", "status"]}
-            rows={upcoming.slice(0, 12).map((u: any, i: number) => [
+            total={upcoming.length} rows={upcoming.slice(0, 12).map((u: any, i: number) => [
               <span className="mono" key={i}>{u.key_id ?? u.id ?? u.name ?? `item-${i}`}</span>,
               <span className="mono" key="d">{u.rotation_due ?? u.due_date ?? u.due ?? "—"}</span>,
               <Badge key="st" tone={String(u.status ?? "").toLowerCase() === "overdue" ? "red" : "amber"}>{u.status ?? "due"}</Badge>,
@@ -122,7 +122,7 @@ export default function Trust() {
         <Panel title="API-key rotation" sub="service/API keys due for rotation">
           <Table
             head={["key", "rotated", "action"]}
-            rows={rotationKeys.slice(0, 12).map((k: any, i: number) => [
+            total={rotationKeys.length} rows={rotationKeys.slice(0, 12).map((k: any, i: number) => [
               <span className="mono" key={i}>{k.key_id ?? k.id ?? k.name ?? `key-${i}`}</span>,
               <span className="mono" key="r">{k.last_rotated ?? k.rotated_at ?? "—"}</span>,
               <Badge tone={k.actionable || k.due ? "red" : "green"} key="a">{k.actionable || k.due ? "ROTATE" : "ok"}</Badge>,

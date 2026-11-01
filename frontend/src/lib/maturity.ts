@@ -218,7 +218,7 @@ export const CAPABILITY_LIMITS = {
   },
   "digital-twin": {
     "area": "Intelligence",
-    "limit": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and GET /estate/evidence/twin/simulation-scenarios states which of the ten scenarios compute and what each cannot see."
+    "limit": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and the twin's simulation-scenarios record states which of the ten scenarios compute and what each cannot see."
   },
   "drift": {
     "area": "Intelligence",

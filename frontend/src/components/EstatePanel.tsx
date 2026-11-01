@@ -87,6 +87,11 @@ function BomSwitch({ boms, counts }: { boms: Record<string, EstateBom>; counts: 
             {String(component.name ?? component.bom_ref ?? "component")}
           </Badge>
         ))}
+        {components.length > 10 && (
+          <span className="dim" style={{ fontSize: 11 }} role="status">
+            showing the first 10 of {components.length.toLocaleString()} {selected} components
+          </span>
+        )}
         {!components.length && (
           <span className="dim" style={{ fontSize: 11 }}>
             this projection is empty for the current evidence — an empty BOM is NOT a statement that the estate has no crypto

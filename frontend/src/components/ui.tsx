@@ -168,8 +168,15 @@ export function Ring({ pct, label, sub, tone = "cyan" }: { pct: number; label: R
   );
 }
 
-export function Table({ head, rows, clickable = false, selected = -1, onSelect }: {
-  head: ReactNode[]; rows: ReactNode[][]; clickable?: boolean; selected?: number; onSelect?: (i: number) => void;
+export function Table({ head, rows, total, clickable = false, selected = -1, onSelect }: {
+  head: ReactNode[]; rows: ReactNode[][];
+  /** How many rows exist before the caller capped the list.
+   *
+   * A table cut to twenty rows and shown without saying so reads as the whole
+   * estate. Passing the true total lets the table state what it left out, which
+   * is the difference between a bounded view and a misleading one. */
+  total?: number;
+  clickable?: boolean; selected?: number; onSelect?: (i: number) => void;
 }) {
   const bodyRef = useAutoAnimate<HTMLTableSectionElement>();
   const interactive = clickable && onSelect;
@@ -207,6 +214,12 @@ export function Table({ head, rows, clickable = false, selected = -1, onSelect }
           ))}
         </tbody>
       </table>
+      {typeof total === "number" && total > rows.length && (
+        <div className="dim" role="status" style={{ fontSize: 12, padding: "6px 2px" }}>
+          Showing the first {rows.length.toLocaleString()} of {total.toLocaleString()} rows — the
+          table is capped so the page stays responsive; narrow the filters to see the rest.
+        </div>
+      )}
     </div>
   );
 }

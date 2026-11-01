@@ -148,7 +148,13 @@ export default function SecurityCenter() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, marginTop: 14 }}>
         <Panel title="Live threat feed" sub="anomaly flags · live-scan alerts · runtime findings · failed logins — triage + acknowledge">
           {alertRows.length === 0 && <div style={{ padding: 16, textAlign: "center", color: "var(--faint)", fontSize: 13, background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}><div style={{ fontWeight: 700, color: "var(--text)" }}>No open alerts</div><div style={{ fontSize: 12, marginTop: 4 }}>The platform is quiet — and stays honest about it.</div></div>}
-          {alertRows.length > 0 && <Table head={["severity", "source", "title", "action"]} rows={alertRows.slice(0, 12).map((a) => [<Badge tone={SEV_TONE[String(a.severity).toUpperCase()] ?? ""}>{String(a.severity)}</Badge>, <span className="mono" style={{ fontSize: 11 }}>{String(a.source)}</span>, <span style={{ fontSize: 12 }}>{String(a.title)}</span>, a.ack_href ? <button className="link" onClick={() => void ack(a)} style={{ fontSize: 12, color: "var(--cyan)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>acknowledge</button> : <span className="dim" style={{ fontSize: 11 }}>—</span>])} />}
+          {alertRows.length > 12 && (
+            <div className="dim" style={{ fontSize: 12, marginBottom: 8 }} role="status">
+              Showing the first 12 of {alertRows.length.toLocaleString()} open alerts — the feed
+              is capped, so the count above is the true one.
+            </div>
+          )}
+          {alertRows.length > 0 && <Table head={["severity", "source", "title", "action"]} total={alertRows.length} rows={alertRows.slice(0, 12).map((a) => [<Badge tone={SEV_TONE[String(a.severity).toUpperCase()] ?? ""}>{String(a.severity)}</Badge>, <span className="mono" style={{ fontSize: 11 }}>{String(a.source)}</span>, <span style={{ fontSize: 12 }}>{String(a.title)}</span>, a.ack_href ? <button className="link" onClick={() => void ack(a)} style={{ fontSize: 12, color: "var(--cyan)", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>acknowledge</button> : <span className="dim" style={{ fontSize: 11 }}>—</span>])} />}
         </Panel>
         <Panel title="Live event stream" sub={rt.conn === "live" ? "Live platform events" : `stream ${rt.conn}`}>
           {liveEvents.length === 0 && <div style={{ padding: 16, textAlign: "center", color: "var(--faint)", fontSize: 13, background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}>No platform events yet — they appear as the control plane emits them.</div>}

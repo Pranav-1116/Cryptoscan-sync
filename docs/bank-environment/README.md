@@ -38,6 +38,18 @@
 > (the scan manifest is unsigned, so an attacker who rewrites payload, chain *and*
 > manifest verifies PASS). The Twin now verifies the evidence chain before projecting
 > it — that was the path from evidence corruption to Twin corruption, and it was open.
+>
+> **The other four blockers, measured rather than asserted:**
+> [guide 115](115-postgres-qualification.md) grades twelve PostgreSQL properties
+> (**5 pass · 2 partial · 2 fail · 4 unproven**) and, on the way, found and fixed a
+> real defect — migration 0123 silently dropped the identity index on SQLite;
+> [guide 116](116-collector-authority.md) builds the per-collector authority matrix
+> (11 planes × 6 questions) and reports the honest result, **0 proven · 1 partial ·
+> 10 gap**; [guide 117](117-observability-coverage.md) covers eleven observability
+> surfaces with **7 pass · 3 partial · 0 fail**; and
+> [guide 118](118-frontend-hardening.md) audits nine console behaviours
+> (**5 pass · 4 partial · 0 fail**) with a negative control that strips the console
+> and makes every pass disappear.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

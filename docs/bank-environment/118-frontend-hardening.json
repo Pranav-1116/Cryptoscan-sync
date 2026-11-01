@@ -1,0 +1,222 @@
+{
+  "schema": "cryptoscan.frontend-hardening/1",
+  "negative_control": {
+    "stripped_counts": {
+      "PASS": 0,
+      "PARTIAL": 6,
+      "FAIL": 3
+    },
+    "stripped_verdicts": {
+      "contract_coverage": "PARTIAL",
+      "error_handling": "PARTIAL",
+      "empty_states": "PARTIAL",
+      "large_graphs": "PARTIAL",
+      "realtime": "PARTIAL",
+      "authorization_views": "FAIL",
+      "auditability": "PARTIAL",
+      "degraded_coverage": "FAIL",
+      "page_test_coverage": "FAIL"
+    },
+    "note": "the same graders run against a copy with failure branches, empty-state copy, gating, pagination, resume and tests removed"
+  },
+  "version": "frontend-hardening/1.0",
+  "generated_at": "2026-11-01T02:37:44.149200+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 4,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "contract_coverage",
+      "question": "how much of the API surface does the console reach, and how tightly is it typed?",
+      "verdict": "PARTIAL",
+      "measured": {
+        "served_paths": 1141,
+        "distinct_paths_called": 536,
+        "reachable_from_console": 537,
+        "coverage_percent": 47.1,
+        "calls_with_no_route": 0,
+        "typed_call_sites": 141,
+        "loose_record_types": 328
+      },
+      "gaps": [],
+      "note": "the console covers half the surface, which is expected: it is an operator console, not a complete API client, and the uncovered half is CLI and drill traffic",
+      "limit": "reach is not correctness: a page that calls an endpoint and misreads the payload is counted here"
+    },
+    {
+      "id": "error_handling",
+      "question": "when a read fails, does the console say so rather than render an empty list?",
+      "verdict": "PARTIAL",
+      "measured": {
+        "files_reading_an_api": 15,
+        "error_render_sites": 407,
+        "explicit_not_read_messages": 327,
+        "alert_roles": 48,
+        "files_that_read_without_a_failure_branch": [
+          "frontend/src/lib/apiUi.tsx"
+        ],
+        "silent_count": 1
+      },
+      "gaps": [
+        "1 component(s) read an API with no failure branch"
+      ],
+      "note": "most surfaces distinguish 'not read' from 'nothing there', which is the distinction that matters on a bank screen",
+      "limit": "static: a branch that exists but is unreachable would still be counted"
+    },
+    {
+      "id": "empty_states",
+      "question": "is an empty result explained, or shown as a blank panel?",
+      "verdict": "PASS",
+      "measured": {
+        "empty_state_testids": 1,
+        "status_roles": 103,
+        "explanatory_copy_sites": 60,
+        "explained_states_total": 164,
+        "empty_state_assertions_in_tests": 3
+      },
+      "gaps": [],
+      "note": "empty states carry their own test id so a rendered test can assert the wording",
+      "limit": "a test id is a hook; it does not prove the sentence is accurate"
+    },
+    {
+      "id": "large_graphs",
+      "question": "is a large estate bounded on screen, and does the screen say it was bounded?",
+      "verdict": "PASS",
+      "measured": {
+        "files_truncating_a_collection": 23,
+        "collection_truncations": 40,
+        "files_truncating_without_a_notice": [],
+        "silent_truncation_count": 0,
+        "silent_truncation_percent": 0.0,
+        "scroll_bounds": 81,
+        "pagination_sites": 56,
+        "truncation_notices": 92
+      },
+      "gaps": [],
+      "note": "panels scroll, the busiest pages paginate, and every list that is cut to a fixed length says so \u2014 a partial estate that reads as a complete one is how a screen produces false assurance",
+      "limit": "the collection/identifier distinction is a name heuristic: a list held in a variable called `algs` would be missed. No measurement of DOM cost at 100k nodes either: this proves the guards and their captions exist, not that a browser stays responsive behind them."
+    },
+    {
+      "id": "realtime",
+      "question": "does the live view resume after a disconnect, and say when it cannot?",
+      "verdict": "PASS",
+      "measured": {
+        "stream_files": [
+          "frontend/src/lib/realtime.test.tsx",
+          "frontend/src/lib/realtime.tsx"
+        ],
+        "resume_files": [
+          "frontend/src/lib/maturity.ts",
+          "frontend/src/lib/realtime.tsx"
+        ],
+        "reconnect_files": [
+          "frontend/src/lib/realtime.tsx"
+        ],
+        "gap_handling_files": [
+          "frontend/src/lib/api.ts",
+          "frontend/src/pages/LiveMonitor.viz.test.tsx"
+        ],
+        "realtime_tests": [
+          "frontend/src/lib/realtime.channels.test.tsx",
+          "frontend/src/lib/realtime.test.tsx"
+        ]
+      },
+      "gaps": [],
+      "note": "the stream resumes from the last event id, reconnects with backoff, and the API reports a replay gap rather than silently skipping events (guide 96)",
+      "limit": "the browser path is exercised in a jsdom test, not in a real browser against a real proxy that may buffer the stream"
+    },
+    {
+      "id": "authorization_views",
+      "question": "does the console reflect what the signed-in operator is allowed to do?",
+      "verdict": "PASS",
+      "measured": {
+        "gating_sites": 68,
+        "gated_files": [
+          "frontend/src/components/EnterpriseModals.tsx",
+          "frontend/src/components/EstateSchedulePanel.tsx",
+          "frontend/src/lib/auth.tsx",
+          "frontend/src/pages/InviteAccept.tsx",
+          "frontend/src/pages/Tenancy.tsx"
+        ],
+        "denied_state_copy": 125
+      },
+      "gaps": [],
+      "note": "visibility is derived from the session's roles and a refused request renders as a refusal rather than an empty table",
+      "limit": "the API is the enforcement point; a hidden button is a usability choice, and this row does not prove every mutation is hidden from an unauthorised role"
+    },
+    {
+      "id": "auditability",
+      "question": "can an operator see who did what, and when, from the console?",
+      "verdict": "PARTIAL",
+      "measured": {
+        "audit_surfaces": [],
+        "audit_callers": [
+          "frontend/src/App.navigation.test.tsx",
+          "frontend/src/App.test.tsx",
+          "frontend/src/App.tsx",
+          "frontend/src/pages/Evidence.test.tsx",
+          "frontend/src/pages/Evidence.tsx",
+          "frontend/src/pages/Security.tsx"
+        ],
+        "audit_api_calls": 18,
+        "actor_timestamp_fields": 100
+      },
+      "gaps": [
+        "no dedicated audit page; the trail is read inside the administration and evidence surfaces"
+      ],
+      "note": "audit and approval surfaces read the API's own record rather than a client log",
+      "limit": "the audit rows themselves are produced server-side; this row only checks the console reads them"
+    },
+    {
+      "id": "degraded_coverage",
+      "question": "does a screen distinguish 'nothing there' from 'nothing observed'?",
+      "verdict": "PASS",
+      "measured": {
+        "coverage_mentions": 482,
+        "unknown_copy_sites": 917
+      },
+      "gaps": [],
+      "note": "coverage and UNKNOWN are rendered as their own states across the estate and BOM screens, which is the distinction the review asked for",
+      "limit": "static counts: whether a specific panel labels a dark plane correctly is not verified per panel"
+    },
+    {
+      "id": "page_test_coverage",
+      "question": "how many console pages have a rendered test?",
+      "verdict": "PARTIAL",
+      "measured": {
+        "pages": 100,
+        "test_files": 90,
+        "pages_with_a_test": 49,
+        "coverage_percent": 49.0,
+        "pages_without_a_test": [
+          "Agility",
+          "Alerts",
+          "AssuranceCoverage",
+          "AssuranceQualification",
+          "AssuranceRecords",
+          "AssuranceSampling",
+          "AssuranceTrace",
+          "Automation",
+          "Catalog",
+          "Cloud",
+          "CryptoAssets",
+          "CryptoChanges",
+          "Executive",
+          "Hardware",
+          "Identity"
+        ]
+      },
+      "gaps": [
+        "51 page(s) have no rendered test"
+      ],
+      "note": "",
+      "limit": ""
+    }
+  ],
+  "limits": [
+    "Static analysis of frontend/src. Nothing was rendered, and no browser was involved: a page whose failure branch exists but never triggers still passes.",
+    "Reach is measured against the API's own schema; a console call that names a real path may still send the wrong body.",
+    "Accessibility, internationalisation coverage and bundle size are not measured."
+  ]
+}

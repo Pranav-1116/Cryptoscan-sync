@@ -60,18 +60,18 @@ export default function KeyReconciliationPanel() {
           </div>
           <h4 style={{ margin: "10px 0 6px" }}>Keys with consumers</h4>
           <Table head={["System", "Label", "Algorithm", "Store", "Referenced as", "Files"]}
-            rows={report.consumers.slice(0, 50).map((c) => [c.system, <code key={c.label} style={{ fontSize: 11 }}>{c.label}</code>, `${c.algorithm || ""}${c.key_size ? "-" + c.key_size : ""}`, c.key_store || "—",
+            total={report.consumers.length} rows={report.consumers.slice(0, 50).map((c) => [c.system, <code key={c.label} style={{ fontSize: 11 }}>{c.label}</code>, `${c.algorithm || ""}${c.key_size ? "-" + c.key_size : ""}`, c.key_store || "—",
               c.references.map((r) => `${r.kind}:${r.identifier}`).join(", "), c.references.reduce((n, r) => n + r.files, 0)])} />
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, marginTop: 14 }}>
             <div>
               <h4 style={{ margin: "0 0 6px" }}>Orphans <Badge tone="warn">{report.orphans.length}</Badge></h4>
               <Table head={["System", "Label", "Algorithm", "State", "Expires"]}
-                rows={report.orphans.slice(0, 50).map((o) => [o.system, <code key={o.label} style={{ fontSize: 11 }}>{o.label}</code>, `${o.algorithm || ""}${o.key_size ? "-" + o.key_size : ""}`, o.state || "—", o.not_after || "—"])} />
+                total={report.orphans.length} rows={report.orphans.slice(0, 50).map((o) => [o.system, <code key={o.label} style={{ fontSize: 11 }}>{o.label}</code>, `${o.algorithm || ""}${o.key_size ? "-" + o.key_size : ""}`, o.state || "—", o.not_after || "—"])} />
             </div>
             <div>
               <h4 style={{ margin: "0 0 6px" }}>In code, in no inventory <Badge tone="red">{report.not_in_inventory.length}</Badge></h4>
               <Table head={["Kind", "Identifier", "Files", "Example"]}
-                rows={report.not_in_inventory.slice(0, 50).map((n) => [n.kind, <code key={n.identifier} style={{ fontSize: 11 }}>{n.identifier}</code>, n.files, <code key={n.identifier + "f"} style={{ fontSize: 11 }}>{n.sample_files[0]}</code>])} />
+                total={report.not_in_inventory.length} rows={report.not_in_inventory.slice(0, 50).map((n) => [n.kind, <code key={n.identifier} style={{ fontSize: 11 }}>{n.identifier}</code>, n.files, <code key={n.identifier + "f"} style={{ fontSize: 11 }}>{n.sample_files[0]}</code>])} />
             </div>
           </div>
         </>

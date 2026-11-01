@@ -409,7 +409,7 @@ export default function Graph(){
               {/* minimap */}
               {showMinimap && NODES.length>0 && (
                 <div style={{position:"absolute", right:10, bottom:10, width:148, height:84, background:"var(--panel)", border:"1px solid var(--line)", borderRadius:"var(--r)", overflow:"hidden", boxShadow:"0 6px 20px rgba(0,0,0,0.35)"}}>
-                  <div style={{fontSize:8, letterSpacing:.08, color:"var(--faint)", padding:"4px 6px", borderBottom:"1px solid var(--line)", display:"flex", justifyContent:"space-between"}}><span>MINIMAP</span><span style={{color:"var(--dim)"}}>{Math.round(zoom*100)}%</span></div>
+                  <div style={{fontSize:8, letterSpacing:.08, color:"var(--faint)", padding:"4px 6px", borderBottom:"1px solid var(--line)", display:"flex", justifyContent:"space-between"}}><span>MINIMAP{EDGES.length > 120 ? ` · first 120 of ${EDGES.length} edges` : ""}</span><span style={{color:"var(--dim)"}}>{Math.round(zoom*100)}%</span></div>
                   <svg viewBox="0 0 840 420" width="148" height={64} style={{display:"block", background:"var(--bg-2)"}}>
                     {EDGES.slice(0,120).map((e,i)=>{ const a=byId.get(e.from), b=byId.get(e.to); if(!a||!b) return null; return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="var(--line-strong)" strokeWidth={0.8} opacity={0.5}/>})}
                     {NODES.map(n=> <circle key={n.id} cx={n.x} cy={n.y} r={3} fill={sel===n.id?"var(--red)": blastSet.has(n.id)?"var(--accent)": graphColor(n.kind)} stroke="var(--panel)" strokeWidth={0.6}/>)}
@@ -529,6 +529,7 @@ export default function Graph(){
                   {upstream.size===0 ? <div style={{fontSize:12, color:"var(--dim)", padding:"8px 10px", background:"var(--bg-2)", borderRadius:"var(--r)", border:"1px solid var(--line)"}}>No ancestors — source node.</div> : (
                     <div style={{maxHeight:120, overflow:"auto", display:"flex", flexDirection:"column", gap:4}}>
                       {Array.from(upstream).slice(0,20).map(id=>{ const n=byId.get(id); return <div key={id} onClick={()=>setSel(id)} style={{padding:"6px 8px", background:"var(--panel-2)", border:"1px solid var(--line)", borderRadius:"var(--r)", fontSize:12, cursor:"pointer", display:"flex", justifyContent:"space-between"}}><span style={{fontFamily:"var(--mono)"}}>{n?.label ?? id}</span><Badge tone={KIND_TONE[n?.kind??""]??""}>{n?.kind??"—"}</Badge></div>; })}
+                      {upstream.size>20 && <div style={{fontSize:11, color:"var(--faint)", textAlign:"center", padding:6}}>…and {upstream.size-20} more — export graph JSON for the full list</div>}
                     </div>
                   )}
                 </div>

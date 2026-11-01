@@ -766,7 +766,7 @@ function SbomInventoryTab() {
               {comps?.data?.truncated ? " — truncated, raise the limit or narrow the filter" : ""}
             </div>
             <Table head={["component", "version", "crypto", "artifact", "target"]}
-              rows={compRows.slice(0, 60).map((c: any) => [
+              total={compRows.length} rows={compRows.slice(0, 60).map((c: any) => [
                 c.name, c.version || "-",
                 c.crypto ? <Badge tone="blue">crypto</Badge> : "",
                 String(c.artifact_id || "").slice(0, 8), String(c.target || "").slice(0, 40),

@@ -1,0 +1,716 @@
+{
+  "schema": "cryptoscan.collector-authority/1",
+  "version": "collector-authority/1.0",
+  "generated_at": "2026-11-01T02:37:32.758902+00:00",
+  "planes": 11,
+  "counts": {
+    "PROVEN": 0,
+    "PARTIAL": 1,
+    "GAP": 10
+  },
+  "per_question": {
+    "who": {
+      "probed": 0,
+      "cited": 11,
+      "absent": []
+    },
+    "what_target": {
+      "probed": 1,
+      "cited": 3,
+      "absent": [
+        "CLOUD",
+        "CMDB",
+        "HSM",
+        "KMS",
+        "KUBERNETES",
+        "PKI",
+        "VENDOR"
+      ]
+    },
+    "which_revision": {
+      "probed": 0,
+      "cited": 2,
+      "absent": [
+        "CLOUD",
+        "CMDB",
+        "HARDWARE",
+        "HSM",
+        "KMS",
+        "KUBERNETES",
+        "PKI",
+        "STATIC",
+        "VENDOR"
+      ]
+    },
+    "when": {
+      "probed": 0,
+      "cited": 4,
+      "absent": [
+        "CLOUD",
+        "CMDB",
+        "HSM",
+        "KMS",
+        "KUBERNETES",
+        "RUNTIME",
+        "VENDOR"
+      ]
+    },
+    "how_long": {
+      "probed": 1,
+      "cited": 1,
+      "absent": [
+        "CMDB",
+        "HARDWARE",
+        "HSM",
+        "KMS",
+        "KUBERNETES",
+        "PKI",
+        "RUNTIME",
+        "STATIC",
+        "VENDOR"
+      ]
+    },
+    "permission": {
+      "probed": 0,
+      "cited": 1,
+      "absent": [
+        "CLOUD",
+        "CMDB",
+        "HARDWARE",
+        "HSM",
+        "KMS",
+        "KUBERNETES",
+        "NETWORK",
+        "RUNTIME",
+        "STATIC",
+        "VENDOR"
+      ]
+    }
+  },
+  "questions": {
+    "who": "who is asking (authenticated principal and role)",
+    "what_target": "what may be touched (scope admission, not a free-form string)",
+    "which_revision": "which approved revision of that scope (pinned, not re-read)",
+    "when": "when it is allowed (window start and expiry)",
+    "how_long": "how long and how much (runtime and traffic budget)",
+    "permission": "which permission the route demands"
+  },
+  "probes": {
+    "network_admission": {
+      "id": "network_admission",
+      "proven": true,
+      "findings": {
+        "cidr": {
+          "target": "10.0.0.0/8",
+          "refused": true,
+          "status": 422,
+          "reason": "probe_target[0]: malformed probe hostname: '10.0.0.0/8'"
+        },
+        "loopback": {
+          "target": "127.0.0.1:443",
+          "refused": true,
+          "status": 422,
+          "reason": "probe_target[0]: refusing to probe 127.0.0.1 \u2014 loopback/metadata/multicast/reserved blocked"
+        }
+      },
+      "meaning": "the target is validated before any probe is sent: a subnet sweep and a loopback target are both refused with 422"
+    },
+    "network_budget": {
+      "id": "network_budget",
+      "proven": true,
+      "findings": {
+        "no_scope": {
+          "refused": true,
+          "reason": "no approved scope \u2014 there is no budget to spend"
+        },
+        "first": {
+          "connections_used": 1,
+          "refused": false
+        },
+        "second": {
+          "refused": true,
+          "reason": "traffic budget spent: 1/1 connections used in this window"
+        }
+      },
+      "meaning": "the traffic budget is charged per window and refuses the connection that would exceed it, rather than reporting the overspend afterwards"
+    }
+  },
+  "probe_errors": {},
+  "rows": [
+    {
+      "plane": "NETWORK",
+      "entry": "POST /api/v1/network/crypto-observe",
+      "modules": [
+        "services/api/api/network_collect.py",
+        "services/api/api/security/network_collection.py",
+        "services/api/api/security/network_budget.py",
+        "services/api/api/routers/network.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "get_current_user",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/routers/network.py:13"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "meaning": "what may be touched (scope admission, not a free-form string)",
+          "probe": "network_admission",
+          "evidence": "the target is validated before any probe is sent: a subnet sweep and a loopback target are both refused with 422"
+        },
+        "which_revision": {
+          "state": "CITED",
+          "mechanism": "scope_revision",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": "services/api/api/network_collect.py:161"
+        },
+        "when": {
+          "state": "CITED",
+          "mechanism": "window_started_at",
+          "meaning": "the control carries a time window",
+          "where": "services/api/api/security/network_budget.py:75"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "meaning": "how long and how much (runtime and traffic budget)",
+          "probe": "network_budget",
+          "evidence": "the traffic budget is charged per window and refuses the connection that would exceed it, rather than reporting the overspend afterwards"
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 2,
+      "cited": 3,
+      "absent": [
+        "permission"
+      ],
+      "verdict": "PARTIAL",
+      "note": "the only plane that reaches the network itself, and the only one with admission and a traffic budget as first-class controls"
+    },
+    {
+      "plane": "RUNTIME",
+      "entry": "POST /api/v1/runtime/crypto-events",
+      "modules": [
+        "services/api/api/routers/runtime_crypto.py",
+        "services/api/api/security/runtime_evidence_chain.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "get_current_user",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/routers/runtime_crypto.py:28"
+        },
+        "what_target": {
+          "state": "CITED",
+          "mechanism": "authorized",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": "services/api/api/routers/runtime_crypto.py:227"
+        },
+        "which_revision": {
+          "state": "CITED",
+          "mechanism": "saved_at",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": "services/api/api/routers/runtime_crypto.py:101"
+        },
+        "when": {
+          "state": "ABSENT",
+          "meaning": "the control carries a time window",
+          "where": null
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 3,
+      "absent": [
+        "when",
+        "how_long",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": "ingest of agent-produced events; the target is whatever the agent sends"
+    },
+    {
+      "plane": "STATIC",
+      "entry": "POST /api/v1/scans (source scan)",
+      "modules": [
+        "services/api/api/routers/scans.py",
+        "services/api/api/routers/estate_graph.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "get_current_user",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/routers/scans.py:11"
+        },
+        "what_target": {
+          "state": "CITED",
+          "mechanism": "authorized",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": "services/api/api/routers/estate_graph.py:537"
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "CITED",
+          "mechanism": "window_seconds",
+          "meaning": "the control carries a time window",
+          "where": "services/api/api/routers/estate_graph.py:2214"
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 3,
+      "absent": [
+        "which_revision",
+        "how_long",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": "target is a repository reference; the scan admission path applies"
+    },
+    {
+      "plane": "PKI",
+      "entry": "certificate inventory sync",
+      "modules": [
+        "services/api/api/estate_discovery.py",
+        "services/api/api/routers/certificates.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "session",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/estate_discovery.py:1248"
+        },
+        "what_target": {
+          "state": "ABSENT",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": null
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "CITED",
+          "mechanism": "not_before",
+          "meaning": "the control carries a time window",
+          "where": "services/api/api/routers/certificates.py:52"
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "CITED",
+          "mechanism": "require_permission(",
+          "meaning": "the route names the permission it demands",
+          "where": "services/api/api/routers/certificates.py:135"
+        }
+      },
+      "probed": 0,
+      "cited": 3,
+      "absent": [
+        "what_target",
+        "which_revision",
+        "how_long"
+      ],
+      "verdict": "GAP",
+      "note": "reads certificate rows already in the inventory"
+    },
+    {
+      "plane": "CLOUD",
+      "entry": "POST /api/v1/cloud/... discover",
+      "modules": [
+        "services/api/api/estate_cloud.py",
+        "services/api/api/routers/cloud.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "session",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/estate_cloud.py:106"
+        },
+        "what_target": {
+          "state": "ABSENT",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": null
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "ABSENT",
+          "meaning": "the control carries a time window",
+          "where": null
+        },
+        "how_long": {
+          "state": "CITED",
+          "mechanism": "budget",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": "services/api/api/routers/cloud.py:230"
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 2,
+      "absent": [
+        "what_target",
+        "which_revision",
+        "when",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": "reads provider APIs with a configured credential, not a per-request target"
+    },
+    {
+      "plane": "KUBERNETES",
+      "entry": "cluster adapter",
+      "modules": [
+        "services/api/api/estate_discovery.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "session",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/estate_discovery.py:1248"
+        },
+        "what_target": {
+          "state": "ABSENT",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": null
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "ABSENT",
+          "meaning": "the control carries a time window",
+          "where": null
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 1,
+      "absent": [
+        "what_target",
+        "which_revision",
+        "when",
+        "how_long",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": ""
+    },
+    {
+      "plane": "CMDB",
+      "entry": "CMDB adapter",
+      "modules": [
+        "services/api/api/estate_discovery.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "session",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/estate_discovery.py:1248"
+        },
+        "what_target": {
+          "state": "ABSENT",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": null
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "ABSENT",
+          "meaning": "the control carries a time window",
+          "where": null
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 1,
+      "absent": [
+        "what_target",
+        "which_revision",
+        "when",
+        "how_long",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": ""
+    },
+    {
+      "plane": "KMS",
+      "entry": "KMS adapter",
+      "modules": [
+        "services/api/api/estate_discovery.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "session",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/estate_discovery.py:1248"
+        },
+        "what_target": {
+          "state": "ABSENT",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": null
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "ABSENT",
+          "meaning": "the control carries a time window",
+          "where": null
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 1,
+      "absent": [
+        "what_target",
+        "which_revision",
+        "when",
+        "how_long",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": ""
+    },
+    {
+      "plane": "HSM",
+      "entry": "HSM adapter",
+      "modules": [
+        "services/api/api/estate_discovery.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "session",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/estate_discovery.py:1248"
+        },
+        "what_target": {
+          "state": "ABSENT",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": null
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "ABSENT",
+          "meaning": "the control carries a time window",
+          "where": null
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 1,
+      "absent": [
+        "what_target",
+        "which_revision",
+        "when",
+        "how_long",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": ""
+    },
+    {
+      "plane": "HARDWARE",
+      "entry": "host evidence intake",
+      "modules": [
+        "services/api/api/routers/host_evidence.py",
+        "services/api/api/host_collect.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "get_current_user",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/routers/host_evidence.py:18"
+        },
+        "what_target": {
+          "state": "CITED",
+          "mechanism": "authorised",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": "services/api/api/host_collect.py:80"
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "CITED",
+          "mechanism": "expires_at",
+          "meaning": "the control carries a time window",
+          "where": "services/api/api/routers/host_evidence.py:111"
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 3,
+      "absent": [
+        "which_revision",
+        "how_long",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": ""
+    },
+    {
+      "plane": "VENDOR",
+      "entry": "vendor questionnaire / attestation",
+      "modules": [
+        "services/api/api/routers/vendor.py",
+        "services/api/api/estate_discovery.py"
+      ],
+      "cells": {
+        "who": {
+          "state": "CITED",
+          "mechanism": "session",
+          "meaning": "an authenticated principal is required by the route",
+          "where": "services/api/api/estate_discovery.py:1248"
+        },
+        "what_target": {
+          "state": "ABSENT",
+          "meaning": "the target is admitted by a validator, not accepted verbatim",
+          "where": null
+        },
+        "which_revision": {
+          "state": "ABSENT",
+          "meaning": "the approved scope revision is pinned and re-checked",
+          "where": null
+        },
+        "when": {
+          "state": "ABSENT",
+          "meaning": "the control carries a time window",
+          "where": null
+        },
+        "how_long": {
+          "state": "ABSENT",
+          "meaning": "runtime and/or traffic are bounded by a budget",
+          "where": null
+        },
+        "permission": {
+          "state": "ABSENT",
+          "meaning": "the route names the permission it demands",
+          "where": null
+        }
+      },
+      "probed": 0,
+      "cited": 1,
+      "absent": [
+        "what_target",
+        "which_revision",
+        "when",
+        "how_long",
+        "permission"
+      ],
+      "verdict": "GAP",
+      "note": ""
+    }
+  ],
+  "limits": [
+    "A CITED cell proves the mechanism is present in the plane's code path, not that it refuses the specific request an attacker would send. Only two questions are probed end to end (network target admission, network traffic budget).",
+    "The matrix reads the modules a plane *names*; a mechanism imported from a shared module counts for the plane that imports it, which is right for coverage and wrong for a per-plane guarantee.",
+    "Five planes (KUBERNETES, CMDB, KMS, HSM, VENDOR) are catalogue adapters with no dedicated route in this checkout; their cells are citations against the shared discovery path, which is precisely the uniformity gap the review named."
+  ]
+}

@@ -151,3 +151,53 @@ groups:
             misbehaving integration or real capacity pressure — check per-identity
             limits in api/middleware/rate_limit.py before raising them.
           runbook_url: docs/runbooks/oncall-triage.md
+
+      # ---- collection and durability -------------------------------------
+      #
+      # These three exist because the older rules only watched the API's own
+      # request path. A control plane can be perfectly available while a
+      # collector plane has gone dark, the dead-letter queue is filling, or the
+      # agents have stopped reporting — all three are silent in availability,
+      # error-rate and latency, which have no reason to move.
+
+      - alert: CryptoscanCoveragePlaneUnknown
+        expr: cryptoscan_coverage_planes_unknown > 0
+        for: 30m
+        labels:
+          severity: high
+          service: cryptoscan-api
+        annotations:
+          summary: "A collection plane could not be read"
+          description: >-
+            {{ $value }} plane(s) report UNKNOWN for 30 minutes. That is not the
+            same as "nothing to collect": an unread plane is a coverage gap, and
+            a BOM projected over it is incomplete rather than empty.
+          runbook_url: docs/runbooks/oncall-triage.md
+
+      - alert: CryptoscanCoverageCollectedRatioLow
+        expr: cryptoscan_coverage_collected_ratio < 0.5
+        for: 1h
+        labels:
+          severity: medium
+          service: cryptoscan-api
+        annotations:
+          summary: "A collection plane is collecting less than half of what it declared"
+          description: >-
+            {{ $value | humanizePercentage }} of the declared targets on one plane
+            were collected for an hour. Coverage is measured against the declared
+            register, so this is a specific shortfall, not a general slowdown.
+          runbook_url: docs/runbooks/oncall-triage.md
+
+      - alert: CryptoscanDeadLetterGrowing
+        expr: cryptoscan_jobs_dead_letter > 0
+        for: 15m
+        labels:
+          severity: high
+          service: cryptoscan-worker
+        annotations:
+          summary: "Jobs are in the dead-letter queue"
+          description: >-
+            {{ $value }} job(s) exhausted their retries. A dead letter means work
+            that will never complete without an operator: read the job's last
+            error before re-enqueuing, or the same failure repeats.
+          runbook_url: docs/runbooks/oncall-triage.md

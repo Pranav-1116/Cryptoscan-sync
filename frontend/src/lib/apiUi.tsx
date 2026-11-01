@@ -11,10 +11,27 @@ export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = [])
 
   const run = async () => {
     setRunning(true);
-    const res = await fn();
-    setResult(res);
-    setRunning(false);
-    return res;
+    try {
+      const res = await fn();
+      setResult(res);
+      return res;
+    } catch (err) {
+      // api.ts already turns an HTTP failure into a result, but not every reader
+      // goes through it: a hook given a function that throws would leave `running`
+      // true for ever and keep the previous data on screen, so the panel showed a
+      // stale estate with no indication that the read had failed.
+      const message = err instanceof Error ? err.message : String(err);
+      const res: ApiResult<T> = {
+        source: "offline",
+        data: null,
+        error: "REQUEST_FAILED",
+        detail: `the request did not complete: ${message}`,
+      };
+      setResult(res);
+      return res;
+    } finally {
+      setRunning(false);
+    }
   };
 
   useEffect(() => {

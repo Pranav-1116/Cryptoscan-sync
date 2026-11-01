@@ -191,6 +191,11 @@ export default function Crypto() {
                 ]}
                 note="A certificate can carry more than one flag, so these segments can overlap; they are the scan's own counters."
               />
+              {certDays.length > 10 && (
+                <div className="dim" style={{ fontSize: 11, marginTop: 8 }} role="status">
+                  showing the first 10 of {certDays.length.toLocaleString()} measured certificates
+                </div>
+              )}
               <div style={{ marginTop: 10 }}>
                 <HBars
                   unit="d"

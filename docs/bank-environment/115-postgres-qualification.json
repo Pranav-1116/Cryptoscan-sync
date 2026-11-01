@@ -1,0 +1,334 @@
+{
+  "schema": "cryptoscan.postgres-qualification/1",
+  "version": "postgres-qualification/1.0",
+  "generated_at": "2026-11-01T02:37:28.357302+00:00",
+  "elapsed_seconds": 13.5,
+  "server_available": false,
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 2,
+    "FAIL": 2,
+    "UNPROVEN": 4
+  },
+  "rows": [
+    {
+      "id": "migration_chain",
+      "question": "does the migration chain apply, round-trip and land on one head?",
+      "verdict": "PASS",
+      "evidence": "EXECUTED",
+      "found": {
+        "revisions": 127,
+        "head": [
+          "0127"
+        ],
+        "applied": "0127",
+        "after_downgrade": "0125",
+        "after_upgrade": "0127",
+        "tables_created": 157,
+        "upgrade_seconds": 3.94,
+        "roundtrip_seconds": 0.15
+      },
+      "note": "the chain was applied from empty to head, downgraded two revisions and reapplied \u2014 on SQLite, because this checkout has no server",
+      "limit": "SQLite's DDL is far more permissive than PostgreSQL's; a chain that passes here can still fail on a server (guide 100 \u00a75b runs it there)",
+      "closes_with": "`scripts/run_migrations.sh` against a real PostgreSQL in CI"
+    },
+    {
+      "id": "index_parity",
+      "question": "does a migrated database carry every index the models declare?",
+      "verdict": "PASS",
+      "evidence": "EXECUTED",
+      "found": {
+        "indexes_checked": 494,
+        "missing": [],
+        "missing_count": 0,
+        "expression_indexes_not_compared": [
+          "uq_fact_identity"
+        ],
+        "tables_compared": 156
+      },
+      "note": "a create_all deployment and a migrated one must have the same access paths; drift here is the bug class migration 0078 closed once already",
+      "limit": "compared on SQLite's index catalogue, which is what the chain runs against here; expression-based indexes are skipped because SQLite reports their columns as NULL, and PostgreSQL's catalogue can differ in prefix semantics",
+      "closes_with": ""
+    },
+    {
+      "id": "migration_at_scale",
+      "question": "what does the composite-index migration cost on a populated table?",
+      "verdict": "PASS",
+      "evidence": "EXECUTED",
+      "found": {
+        "rows": 200000,
+        "insert_seconds": 3.0,
+        "index_build_seconds": 0.1,
+        "read_without_index_ms": 18.7,
+        "read_with_index_ms": 0.3,
+        "speedup": 62.3
+      },
+      "note": "migration 0126 adds the index every twin read needs; the drill builds it on a populated table and measures both the build and the read it fixes",
+      "limit": "SQLite builds an index in one pass with no concurrent writers; PostgreSQL will be slower and, without CONCURRENTLY, will block writes while it runs",
+      "closes_with": "the same measurement on PostgreSQL, with a writer running throughout"
+    },
+    {
+      "id": "transaction_boundaries",
+      "question": "does a failure inside a multi-step ingest leave a partial estate?",
+      "verdict": "PASS",
+      "evidence": "EXECUTED",
+      "found": {
+        "assets_offered": 50,
+        "assets_left_after_failure": 0,
+        "catalog_error_reported": "RuntimeError: simulated failure inside the catalogue sync",
+        "run_row_persisted": true,
+        "sync_calls": 1
+      },
+      "note": "every write path is wrapped so a failure rolls the unit back and reports it in the response instead of leaving a half-materialised catalogue",
+      "limit": "measured on SQLite in one session: PostgreSQL adds readers, a pool and lock waits, none of which this proves",
+      "closes_with": "the same injection against a real server, with a second connection reading while the first rolls back"
+    },
+    {
+      "id": "pooling",
+      "question": "is the engine configured for a bank's connection behaviour?",
+      "verdict": "PARTIAL",
+      "evidence": "EXECUTED",
+      "found": {
+        "pool_class": "QueuePool",
+        "pool_size": 10,
+        "max_overflow": 20,
+        "timeout_seconds": 30.0,
+        "pre_ping": true,
+        "recycle_seconds": 3600,
+        "connect_args": {
+          "host": "db.bank.example",
+          "dbname": "cryptoscan",
+          "user": "cryptoscan",
+          "password": "secret",
+          "port": 5432,
+          "sslmode": "verify-full"
+        },
+        "url_is_normalised": "postgresql+psycopg2"
+      },
+      "note": "a bounded pool with overflow, pre-ping on checkout, hourly recycling, a 10 s connect timeout and a 30 s server-side statement timeout are all set on the PostgreSQL engine",
+      "limit": "the engine was built from a URL, never connected \u2014 so this proves the configuration, not that the server honours it, and no metric yet reports pool saturation (see guide 117)",
+      "closes_with": "a load test that saturates the pool and asserts the timeout path"
+    },
+    {
+      "id": "locking",
+      "question": "are the write paths that can race protected by a lock or a version check?",
+      "verdict": "PASS",
+      "evidence": "READ",
+      "found": {
+        "pessimistic_lock_files": [
+          "services/api/api/assurance/collection.py",
+          "services/api/api/assurance/host_associations.py",
+          "services/api/api/assurance/oci_collection.py",
+          "services/api/api/assurance/oci_truth.py",
+          "services/api/api/assurance/qualification.py",
+          "services/api/api/assurance/remediation.py",
+          "services/api/api/assurance/resource_monitoring.py",
+          "services/api/api/routers/cbom.py",
+          "services/api/api/routers/cbom_legacy.py",
+          "services/api/api/routers/cbom_legacy_controlled.py",
+          "services/database/db/repositories/system_repository.py"
+        ],
+        "optimistic_version_files": [
+          "services/api/api/assurance/applicability.py",
+          "services/api/api/assurance/operator.py",
+          "services/api/api/assurance/store.py",
+          "services/api/api/estate_lifecycle.py",
+          "services/api/api/routers/devsecops.py",
+          "services/api/api/routers/digital_twin.py",
+          "services/api/api/routers/execution_controls.py",
+          "services/api/api/routers/export.py",
+          "services/api/api/routers/graph.py",
+          "services/api/api/routers/techbom.py",
+          "services/api/api/security/network_collection.py",
+          "services/api/api/security/scan_admission.py"
+        ],
+        "pessimistic_count": 11,
+        "optimistic_count": 32
+      },
+      "note": "SELECT \u2026 FOR UPDATE guards the approval and remediation paths, and the job row uses a version column so a stale worker cannot overwrite a newer state",
+      "limit": "found by reading the code: whether these locks are taken in the right order under a real workload, and whether any path can deadlock, is not measured",
+      "closes_with": "a concurrent-write drill on two sessions that asserts no deadlock and no lost update"
+    },
+    {
+      "id": "migration_lock_safety",
+      "question": "would applying the migrations to a live bank stop writes?",
+      "verdict": "PARTIAL",
+      "evidence": "READ",
+      "found": {
+        "migrations": 127,
+        "non_concurrent_index_builds": [
+          {
+            "revision": "0002",
+            "index": "idx_evidence_scan_position"
+          },
+          {
+            "revision": "0002",
+            "index": "idx_evidence_algorithm"
+          },
+          {
+            "revision": "0002",
+            "index": "idx_evidence_hardcoded_key"
+          },
+          {
+            "revision": "0002",
+            "index": "idx_evidence_finding_data_gin"
+          },
+          {
+            "revision": "0003",
+            "index": "idx_verification_log_scan_id"
+          },
+          {
+            "revision": "0003",
+            "index": "idx_verification_log_scan_verified_at"
+          },
+          {
+            "revision": "0003",
+            "index": "idx_verification_log_result"
+          },
+          {
+            "revision": "0004",
+            "index": "idx_evidence_normalized_algorithm"
+          },
+          {
+            "revision": "0004",
+            "index": "idx_evidence_nist_designation"
+          },
+          {
+            "revision": "0004",
+            "index": "idx_evidence_normalization_status"
+          },
+          {
+            "revision": "0004",
+            "index": "idx_evidence_requires_review"
+          },
+          {
+            "revision": "0004",
+            "index": "idx_evidence_normalized_crypto_gin"
+          },
+          {
+            "revision": "0005",
+            "index": "idx_evidence_compliance_status"
+          },
+          {
+            "revision": "0005",
+            "index": "idx_evidence_policy_fail"
+          },
+          {
+            "revision": "0005",
+            "index": "idx_evidence_policy_evaluation_gin"
+          }
+        ],
+        "non_concurrent_count": 239
+      },
+      "note": "most indexes are created inside CREATE TABLE, which takes no lock on live rows; the ones added later to populated tables are built non-concurrently, and a plain CREATE INDEX holds a lock that blocks writes until it finishes",
+      "limit": "the lock is only a problem on a populated table \u2014 for a fresh deployment every build is instant",
+      "closes_with": "`postgresql_concurrently=True` on any index added to a table that is already serving traffic (0126 included, once it runs at bank scale)"
+    },
+    {
+      "id": "retention",
+      "question": "is there anything that stops the observation table growing forever?",
+      "verdict": "FAIL",
+      "evidence": "EXECUTED",
+      "found": {
+        "delete_paths": [],
+        "retention_scripts": [],
+        "tables_in_scope": [
+          "estate_observations",
+          "estate_evidence",
+          "estate_assets"
+        ],
+        "measured_growth": {
+          "assets": 100000,
+          "facts": 1000000,
+          "database_mb": 645.8,
+          "source": "guide 114"
+        }
+      },
+      "note": "there is no retention or archival path for the twin's history: every changed fact adds a row and nothing removes one, so a bank's disk requirement is a function of how often its estate changes",
+      "limit": "measured growth is a single-tenant SQLite run (guide 114); PostgreSQL page layout, TOAST and index bloat will differ",
+      "closes_with": "a documented retention policy (per-table window, archive to object storage, verification that history is still answerable after pruning)"
+    },
+    {
+      "id": "partitioning",
+      "question": "is the history table partitioned, or does its size bound every query?",
+      "verdict": "FAIL",
+      "evidence": "READ",
+      "found": {
+        "migrations_with_partitions": [],
+        "tables": [
+          "estate_observations",
+          "estate_evidence",
+          "scan_runs"
+        ]
+      },
+      "note": "125+ migrations create no partitioned table; the twin's history is a single table with a composite tenant+asset index, which is enough for per-asset reads at 1M facts (guide 114) and not enough for pruning by age",
+      "limit": "no measurement of write amplification or vacuum cost at 100M rows",
+      "closes_with": "range partitioning by observed_at month, with the retention policy dropping partitions instead of deleting rows"
+    },
+    {
+      "id": "concurrent_writes",
+      "question": "do two writers on the same asset produce a lost update or a deadlock?",
+      "verdict": "UNPROVEN",
+      "evidence": "SERVER_REQUIRED",
+      "found": {
+        "server_available": false
+      },
+      "note": "SQLite serialises writers, so a concurrency result here would say nothing about PostgreSQL. The drill that would answer it needs two sessions.",
+      "limit": "unmeasured",
+      "closes_with": "`DATABASE_URL=postgresql://\u2026 python scripts/load_test.py --concurrent-writers 8` with a lost-update assertion on the job version column"
+    },
+    {
+      "id": "backup_restore",
+      "question": "can the estate be restored to a point in time, and is it verified?",
+      "verdict": "UNPROVEN",
+      "evidence": "SERVER_REQUIRED",
+      "found": {
+        "scripts_present": [
+          "db_backup.sh",
+          "db_restore.sh",
+          "backup_drill.py",
+          "postgres_parity.sh"
+        ]
+      },
+      "note": "a dump/restore path and a parity check exist as scripts; neither was run here because there is no server to dump",
+      "limit": "the scripts are unexecuted in this checkout",
+      "closes_with": "`scripts/db_backup.sh && scripts/db_restore.sh && scripts/postgres_parity.sh` against the deployment database, with the row counts archived"
+    },
+    {
+      "id": "corruption_recovery",
+      "question": "does the system recover from a corrupted page or a killed writer?",
+      "verdict": "UNPROVEN",
+      "evidence": "SERVER_REQUIRED",
+      "found": {
+        "scripts_present": [
+          "controlled_recovery_drill.py",
+          "drill_worker_recovery.py"
+        ]
+      },
+      "note": "recovery drills exist and require a disposable database to destroy",
+      "limit": "unmeasured",
+      "closes_with": "`scripts/controlled_recovery_drill.py` against a scratch server, asserting the evidence chain still verifies afterwards"
+    },
+    {
+      "id": "ha_failover",
+      "question": "does a standby take over, and what is the measured RPO and RTO?",
+      "verdict": "UNPROVEN",
+      "evidence": "SERVER_REQUIRED",
+      "found": {
+        "scripts_present": [
+          "postgres_drill.py",
+          "postgres_dr_sandbox.sh",
+          "region_drills.py"
+        ]
+      },
+      "note": "the failover drill requires two servers, a replication link and an operator-supplied promotion command; it refuses to run without them",
+      "limit": "RPO and RTO are unmeasured here",
+      "closes_with": "`scripts/postgres_drill.py --execute-promotion --acknowledge-destructive` against the bank's pair"
+    }
+  ],
+  "limits": [
+    "There is no PostgreSQL server in this checkout. Four rows are therefore UNPROVEN by construction, and the executed rows ran on SQLite \u2014 same schema, same migrations, different engine.",
+    "SQLite does not enforce the same DDL, locking or isolation rules; a PASS here is evidence the application asks for the right thing, not that the server agrees.",
+    "No row measures write amplification, vacuum or index bloat, which are what actually decide a bank's database cost."
+  ]
+}

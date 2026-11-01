@@ -213,7 +213,7 @@ function AssuranceTab({ data }: { data: TechBomAssurance | null }) {
             </div>
             <Table
               head={["CVE", "Package", "Severity", "Exploitability", "VEX", "Priority", ""]}
-              rows={vex.findings.slice(0, 30).map((f) => [
+              total={vex.findings.length} rows={vex.findings.slice(0, 30).map((f) => [
                 <code key="c">{f.cve}</code>,
                 f.package || "—",
                 <Badge key="s" tone={f.severity === "CRITICAL" ? "red" : f.severity === "HIGH" ? "amber" : "cyan"}>{f.severity || "UNKNOWN"}</Badge>,
@@ -238,7 +238,7 @@ function AssuranceTab({ data }: { data: TechBomAssurance | null }) {
             </div>
             <Table
               head={["Crypto", "Applications", "Hardware", "Vendor", "Processes"]}
-              rows={xbom.traces.slice(0, 20).map((t) => [
+              total={xbom.traces.length} rows={xbom.traces.slice(0, 20).map((t) => [
                 <span key="c">
                   <Badge tone={t.crypto.blocking ? "red" : t.crypto.weak ? "amber" : "green"}>{t.crypto.algorithm || "—"}</Badge>
                   {t.crypto.asset ? <span style={{ fontSize: 11, marginLeft: 6 }}>{t.crypto.asset}</span> : null}
@@ -266,7 +266,7 @@ function AssuranceTab({ data }: { data: TechBomAssurance | null }) {
             </div>
             <Table
               head={["Host", "Algorithm", "TLS", "Cipher", "Weak", "Drift"]}
-              rows={runtime.drift_rows.slice(0, 30).map((r) => [
+              total={runtime.drift_rows.length} rows={runtime.drift_rows.slice(0, 30).map((r) => [
                 <code key="h">{r.hostname || "—"}</code>,
                 r.algorithm || "—",
                 r.tls_version || "—",

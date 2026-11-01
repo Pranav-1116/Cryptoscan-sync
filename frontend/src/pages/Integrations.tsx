@@ -109,7 +109,7 @@ function VaultPanel() {
           <h3 style={{ margin: "18px 0 8px", fontSize: 14 }}>Leases ({activeLeases.length} active)</h3>
           <Table
             head={["handle", "credential", "component", "scope", "ttl", "status", ""]}
-            rows={leaseList.slice(0, 15).map((l: any) => [
+            total={leaseList.length} rows={leaseList.slice(0, 15).map((l: any) => [
               <span className="mono" key="h" style={{ fontSize: 11.5 }}>{String(l.handle ?? "").slice(0, 20)}…</span>,
               <span key="c">{l.credential_name}</span>,
               <span className="mono" key="p" style={{ fontSize: 12 }}>{l.component}</span>,
@@ -280,7 +280,7 @@ export default function Integrations() {
           </div>
           <Table
             head={["time", "provider", "kind", "event", "status", "HTTP", "attempts"]}
-            rows={deliveries.slice(0, 20).map((d) => [
+            total={deliveries.length} rows={deliveries.slice(0, 20).map((d) => [
               <span className="mono faint" style={{ fontSize: 11.5 }}>{String(d.created_at ?? "").slice(11, 19)}</span>,
               <span style={{ fontWeight: 600 }}>{String(d.provider)}</span>,
               String(d.kind),

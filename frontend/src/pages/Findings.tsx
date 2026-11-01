@@ -632,7 +632,7 @@ function RuntimeFeed({ data, live }: { data: RuntimeFindingsResponse | null; liv
       </div>
       <Table
         head={["algorithm / suite", "host · process", "tls", "status", "quantum", "last seen"]}
-        rows={rows.slice(0, 20).map((r: RuntimeFindingRow) => [
+        total={rows.length} rows={rows.slice(0, 20).map((r: RuntimeFindingRow) => [
           <span className="mono" style={{ fontWeight: 600 }}>{r.algorithm || r.cipher_suite || "—"}</span>,
           <span className="dim" style={{ fontSize: 12 }}>{r.hostname || "—"} · {r.process_name || "—"}</span>,
           <Badge tone={r.weak_tls ? "red" : ""}>{r.tls_version || "—"}</Badge>,
@@ -641,6 +641,12 @@ function RuntimeFeed({ data, live }: { data: RuntimeFindingsResponse | null; liv
           <span className="mono" style={{ fontSize: 11.5 }}>{fmtTs(r.last_seen_at)}</span>,
         ])}
       />
+      {rows.length > 20 && (
+        <div className="dim" style={{ fontSize: 12, marginTop: 8 }} role="status">
+          Showing the first 20 of {rows.length.toLocaleString()} runtime findings — the table is
+          capped so the page stays responsive; narrow the filters to see the rest.
+        </div>
+      )}
       {!rows.length && <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>No runtime observations yet — run Realtime scanners in Operations.</div>}
     </>
   );

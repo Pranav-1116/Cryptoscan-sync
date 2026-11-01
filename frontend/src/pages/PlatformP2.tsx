@@ -163,7 +163,7 @@ export default function PlatformP2() {
         <Panel title="Plugin marketplace" sub="hash-pinned · Ed25519-signed · fail-closed quarantine">
           <Table
             head={["plugin", "version", "type", "state", "trusted", ""]}
-            rows={pluginRows.slice(0, 12).map((p) => [
+            total={pluginRows.length} rows={pluginRows.slice(0, 12).map((p) => [
               <span className="mono" style={{ fontWeight: 600 }}>{String(p.plugin_id)}</span>,
               <span className="num">{String(p.version)}</span>,
               <Badge tone="cyan">{String(p.plugin_type)}</Badge>,
@@ -191,7 +191,7 @@ export default function PlatformP2() {
         <Panel title="Statistical anomaly flags" sub="z-score · EWMA control · rate-of-change · frequency · human triage">
           <Table
             head={["severity", "rule", "metric", "status", ""]}
-            rows={flagRows.slice(0, 12).map((f) => {
+            total={flagRows.length} rows={flagRows.slice(0, 12).map((f) => {
               const open = String(f.status ?? "OPEN") === "OPEN";
               return [
                 <Badge tone={stateTone(String(f.severity))}>{String(f.severity)}</Badge>,
@@ -212,7 +212,7 @@ export default function PlatformP2() {
         <Panel title="Governance approvals" sub="rule-based policy gates · human approval required for changes (SoD enforced)">
           <Table
             head={["type", "risk", "decision", "status", ""]}
-            rows={reqRows.slice(0, 12).map((r) => {
+            total={reqRows.length} rows={reqRows.slice(0, 12).map((r) => {
               const pending = String(r.status) === "PENDING";
               return [
                 <span className="mono">{String(r.request_type)}</span>,
@@ -278,7 +278,7 @@ export default function PlatformP2() {
           </div>
           <Table
             head={["batch", "records", "batch digest", "chain digest", ""]}
-            rows={batchRows.slice(0, 12).map((b) => [
+            total={batchRows.length} rows={batchRows.slice(0, 12).map((b) => [
               <span className="num">#{String(b.batch_id)}</span>,
               <span className="num">{String(b.record_count)}</span>,
               <span className="mono muted">{String(b.batch_digest).slice(0, 12)}…</span>,
@@ -392,7 +392,7 @@ export default function PlatformP2() {
           {runRows.length ? (
             <Table
               head={["event", "asset", "scanners", "auto → gate", "human"]}
-              rows={runRows.slice(0, 12).map((r) => [
+              total={runRows.length} rows={runRows.slice(0, 12).map((r) => [
                 <span className="mono" style={{ fontWeight: 600 }}>{String(r.event_kind)}</span>,
                 <span className="mono muted">{String(r.asset_id ?? "—").slice(0, 16)}</span>,
                 <span className="num">{(r.scanners as string[] || []).length}</span>,
@@ -407,7 +407,7 @@ export default function PlatformP2() {
           {ruleRows.length ? (
             <Table
               head={["rule", "WHEN", "severity", "actions", "enabled"]}
-              rows={ruleRows.slice(0, 12).map((r) => [
+              total={ruleRows.length} rows={ruleRows.slice(0, 12).map((r) => [
                 <span className="mono" style={{ fontWeight: 600 }}>{String(r.rule_id)}</span>,
                 <span className="mono">{String(r.when)}</span>,
                 <Badge tone={stateTone(String(r.severity))}>{String(r.severity)}</Badge>,
@@ -422,7 +422,7 @@ export default function PlatformP2() {
           {cbomRows.length ? (
             <Table
               head={["version", "components", "added", "removed", "fingerprint"]}
-              rows={cbomRows.slice(0, 12).map((v) => [
+              total={cbomRows.length} rows={cbomRows.slice(0, 12).map((v) => [
                 <span className="num" style={{ fontWeight: 600 }}>v{String(v.version)}</span>,
                 <span className="num">{String(v.component_count)}</span>,
                 <span className="num" style={{ color: (v.added as any[] || []).length ? "var(--green)" : undefined }}>
@@ -465,7 +465,7 @@ export default function PlatformP2() {
                 {alerts.length ? (
                   <Table
                     head={["target", "kind", "state", "reason"]}
-                    rows={alerts.slice(0, 12).map((t) => [
+                    total={alerts.length} rows={alerts.slice(0, 12).map((t) => [
                       <span className="mono">{String(t.target_id).slice(0, 18)}</span>,
                       <span className="muted">{t.kind}</span>,
                       <Badge tone={t.state === "OFFLINE" ? "red" : "amber"}>{t.state}</Badge>,
@@ -482,7 +482,7 @@ export default function PlatformP2() {
           {agentRows.length ? (
             <Table
               head={["name", "region", "version", "target", "health", "status", ""]}
-              rows={agentRows.slice(0, 12).map((a) => {
+              total={agentRows.length} rows={agentRows.slice(0, 12).map((a) => {
                 const outdated = a.target_version && a.version !== a.target_version;
                 return [
                   <span className="mono" style={{ fontWeight: 600 }}>{String(a.name ?? a.id).slice(0, 22)}</span>,
