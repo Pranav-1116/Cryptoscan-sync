@@ -1,14 +1,14 @@
 {
   "schema": "cryptoscan.postgres-qualification/1",
   "version": "postgres-qualification/1.0",
-  "generated_at": "2026-11-01T02:37:28.357302+00:00",
-  "elapsed_seconds": 13.5,
-  "server_available": false,
+  "generated_at": "2026-11-01T14:28:05.225085+00:00",
+  "elapsed_seconds": 70.5,
+  "server_available": true,
   "counts": {
-    "PASS": 5,
-    "PARTIAL": 2,
-    "FAIL": 2,
-    "UNPROVEN": 4
+    "PASS": 11,
+    "PARTIAL": 1,
+    "FAIL": 0,
+    "UNPROVEN": 1
   },
   "rows": [
     {
@@ -17,16 +17,16 @@
       "verdict": "PASS",
       "evidence": "EXECUTED",
       "found": {
-        "revisions": 127,
+        "revisions": 130,
         "head": [
-          "0127"
+          "0130"
         ],
-        "applied": "0127",
-        "after_downgrade": "0125",
-        "after_upgrade": "0127",
+        "applied": "0130",
+        "after_downgrade": "0128",
+        "after_upgrade": "0130",
         "tables_created": 157,
-        "upgrade_seconds": 3.94,
-        "roundtrip_seconds": 0.15
+        "upgrade_seconds": 5.52,
+        "roundtrip_seconds": 0.25
       },
       "note": "the chain was applied from empty to head, downgraded two revisions and reapplied \u2014 on SQLite, because this checkout has no server",
       "limit": "SQLite's DDL is far more permissive than PostgreSQL's; a chain that passes here can still fail on a server (guide 100 \u00a75b runs it there)",
@@ -38,7 +38,7 @@
       "verdict": "PASS",
       "evidence": "EXECUTED",
       "found": {
-        "indexes_checked": 494,
+        "indexes_checked": 495,
         "missing": [],
         "missing_count": 0,
         "expression_indexes_not_compared": [
@@ -57,11 +57,11 @@
       "evidence": "EXECUTED",
       "found": {
         "rows": 200000,
-        "insert_seconds": 3.0,
-        "index_build_seconds": 0.1,
-        "read_without_index_ms": 18.7,
+        "insert_seconds": 4.5,
+        "index_build_seconds": 0.13,
+        "read_without_index_ms": 26.9,
         "read_with_index_ms": 0.3,
-        "speedup": 62.3
+        "speedup": 89.7
       },
       "note": "migration 0126 adds the index every twin read needs; the drill builds it on a populated table and measures both the build and the read it fixes",
       "limit": "SQLite builds an index in one pass with no concurrent writers; PostgreSQL will be slower and, without CONCURRENTLY, will block writes while it runs",
@@ -86,7 +86,7 @@
     {
       "id": "pooling",
       "question": "is the engine configured for a bank's connection behaviour?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "evidence": "EXECUTED",
       "found": {
         "pool_class": "QueuePool",
@@ -95,18 +95,16 @@
         "timeout_seconds": 30.0,
         "pre_ping": true,
         "recycle_seconds": 3600,
-        "connect_args": {
-          "host": "db.bank.example",
-          "dbname": "cryptoscan",
-          "user": "cryptoscan",
-          "password": "secret",
-          "port": 5432,
-          "sslmode": "verify-full"
-        },
-        "url_is_normalised": "postgresql+psycopg2"
+        "checkout_timeout_seconds": 30.0,
+        "url_is_normalised": "postgresql+psycopg2",
+        "server_check": {
+          "statement_timeout": "30s",
+          "idle_in_transaction": "0",
+          "long_query": "refused: (psycopg2.errors.QueryCanceled) canceling statement due to statement timeout\n\n[SQL: SELECT pg_sleep(31)]\n(Background on "
+        }
       },
-      "note": "a bounded pool with overflow, pre-ping on checkout, hourly recycling, a 10 s connect timeout and a 30 s server-side statement timeout are all set on the PostgreSQL engine",
-      "limit": "the engine was built from a URL, never connected \u2014 so this proves the configuration, not that the server honours it, and no metric yet reports pool saturation (see guide 117)",
+      "note": "a bounded pool with overflow, pre-ping on checkout, hourly recycling, a 10 s connect timeout and a 30 s server-side statement timeout are set on the PostgreSQL engine, and a connection made through it reports the server enforcing that 30 s limit: a 31 s query is cancelled",
+      "limit": "the pool was never saturated, so exhaustion and the queue timeout are unmeasured, and no metric yet reports pool saturation (see guide 117)",
       "closes_with": "a load test that saturates the pool and asserts the timeout path"
     },
     {
@@ -155,7 +153,7 @@
       "verdict": "PARTIAL",
       "evidence": "READ",
       "found": {
-        "migrations": 127,
+        "migrations": 130,
         "non_concurrent_index_builds": [
           {
             "revision": "0002",
@@ -227,11 +225,13 @@
     {
       "id": "retention",
       "question": "is there anything that stops the observation table growing forever?",
-      "verdict": "FAIL",
+      "verdict": "PASS",
       "evidence": "EXECUTED",
       "found": {
         "delete_paths": [],
-        "retention_scripts": [],
+        "retention_scripts": [
+          "apply_retention.py"
+        ],
         "tables_in_scope": [
           "estate_observations",
           "estate_evidence",
@@ -240,74 +240,226 @@
         "measured_growth": {
           "assets": 100000,
           "facts": 1000000,
-          "database_mb": 645.8,
+          "database_mb": 647.3,
           "source": "guide 114"
+        },
+        "server": "local PostgreSQL 16.2",
+        "drill": {
+          "rows_written": 14,
+          "rows_remaining": {
+            "CURRENT": 2,
+            "HISTORICAL": 1
+          },
+          "rows_remaining_total": 3,
+          "partitions_supported": true,
+          "partitions_note": null,
+          "partitions_created": [],
+          "partitions_dropped": [
+            "estate_observations_y2026m05",
+            "estate_observations_y2026m06",
+            "estate_observations_y2026m07",
+            "estate_observations_y2026m08"
+          ],
+          "partitions_considered": [
+            {
+              "name": "estate_observations_y2026m05",
+              "droppable": true,
+              "rows": 0,
+              "blocked_rows": null
+            },
+            {
+              "name": "estate_observations_y2026m06",
+              "droppable": true,
+              "rows": 0,
+              "blocked_rows": null
+            },
+            {
+              "name": "estate_observations_y2026m07",
+              "droppable": true,
+              "rows": 4,
+              "blocked_rows": null
+            },
+            {
+              "name": "estate_observations_y2026m08",
+              "droppable": true,
+              "rows": 4,
+              "blocked_rows": null
+            }
+          ],
+          "row_deletes": {
+            "estate_observations": 3,
+            "estate_evidence": 0
+          },
+          "archive_files": [
+            "estate-history-20261101T142747Z.ndjson",
+            "estate-partitions-20261101T142747Z.ndjson"
+          ],
+          "archive_rows_on_disk": 11,
+          "archive_manifest": {
+            "rows": 3,
+            "sha256": "a79d08c3f37bd5d4",
+            "partitions": {
+              "estate_observations_y2026m05": 0,
+              "estate_observations_y2026m06": 0,
+              "estate_observations_y2026m07": 4,
+              "estate_observations_y2026m08": 4
+            }
+          },
+          "answerable_after": {
+            "checked": 1,
+            "asset_id": "application:app-00042",
+            "fact_count": 2,
+            "rows_remaining_for_asset": 3,
+            "ok": true
+          },
+          "refused": null,
+          "seconds": 0.05
         }
       },
-      "note": "there is no retention or archival path for the twin's history: every changed fact adds a row and nothing removes one, so a bank's disk requirement is a function of how often its estate changes",
-      "limit": "measured growth is a single-tenant SQLite run (guide 114); PostgreSQL page layout, TOAST and index bloat will differ",
-      "closes_with": "a documented retention policy (per-table window, archive to object storage, verification that history is still answerable after pruning)"
+      "note": "a 60-day window ran against a migrated PostgreSQL 16: two whole months were archived and dropped as partitions, the rows inside the window that were superseded were archived and deleted, the current facts and the recent history survived, and the archive on disk holds exactly what was removed",
+      "limit": "the window is 60 days because the floor refuses anything shorter; the archive is a local file here, not the bank's object store, and the proof that history is still answerable is one asset's history, not a query sample",
+      "closes_with": "`scripts/apply_retention.py` on a schedule, with the archive going to object storage and its manifest checked by the restore drill"
     },
     {
       "id": "partitioning",
       "question": "is the history table partitioned, or does its size bound every query?",
-      "verdict": "FAIL",
-      "evidence": "READ",
+      "verdict": "PASS",
+      "evidence": "EXECUTED",
       "found": {
-        "migrations_with_partitions": [],
-        "tables": [
-          "estate_observations",
-          "estate_evidence",
-          "scan_runs"
-        ]
+        "migrations_with_partitions": [
+          "0130_partition_estate_observations.py"
+        ],
+        "server": "local PostgreSQL 16.2",
+        "drill": {
+          "parent_relkind": "p",
+          "partitions_created_by_drill": [
+            "estate_observations_y2026m05",
+            "estate_observations_y2026m06",
+            "estate_observations_y2026m07",
+            "estate_observations_y2026m08",
+            "estate_observations_y2026m09"
+          ],
+          "partitions_total": 19,
+          "rows_by_partition": {
+            "estate_observations_y2026m07": 4,
+            "estate_observations_y2026m08": 4,
+            "estate_observations_y2026m09": 3,
+            "estate_observations_y2026m10": 1,
+            "estate_observations_y2026m11": 2
+          },
+          "explain_relations_scanned": [
+            "estate_observations_y2026m10"
+          ],
+          "expected_partition": "estate_observations_y2026m10",
+          "partitions_dropped": [
+            "estate_observations_y2026m07"
+          ],
+          "rows_in_dropped_partition": 4,
+          "rows_before": 14,
+          "rows_after": 10,
+          "drop_seconds": 0.003,
+          "rows_written": 14
+        }
       },
-      "note": "125+ migrations create no partitioned table; the twin's history is a single table with a composite tenant+asset index, which is enough for per-asset reads at 1M facts (guide 114) and not enough for pruning by age",
-      "limit": "no measurement of write amplification or vacuum cost at 100M rows",
-      "closes_with": "range partitioning by observed_at month, with the retention policy dropping partitions instead of deleting rows"
+      "note": "``estate_observations`` is a range-partitioned table on PostgreSQL: rows land in the month of their ``last_seen_at``, a month-scoped read is planned against exactly one partition, and dropping that partition removed its rows in a constant-time catalogue operation",
+      "limit": "the drill runs on one server and a few hundred rows: it proves the mechanism, not the cost at a hundred million facts, and it does not rehearse a month boundary with live writers",
+      "closes_with": "a bank-sized table converted once with `db.partitions.ensure` on a schedule and the retention sweep dropping, not deleting, months"
     },
     {
       "id": "concurrent_writes",
-      "question": "do two writers on the same asset produce a lost update or a deadlock?",
-      "verdict": "UNPROVEN",
-      "evidence": "SERVER_REQUIRED",
+      "question": "do two writers on the same row produce a lost update or a deadlock?",
+      "verdict": "PASS",
+      "evidence": "EXECUTED",
       "found": {
-        "server_available": false
+        "server": "local PostgreSQL 16.2",
+        "drill": {
+          "race": {
+            "outcomes": [
+              [
+                "FAILED",
+                1
+              ],
+              [
+                "COMPLETED",
+                0
+              ]
+            ],
+            "errors": [],
+            "final_version": 1,
+            "final_status": "FAILED"
+          },
+          "ordered_locking": [
+            "acquired"
+          ],
+          "unordered_locking": [
+            "OperationalError: deadlock detected",
+            "acquired"
+          ]
+        }
       },
-      "note": "SQLite serialises writers, so a concurrency result here would say nothing about PostgreSQL. The drill that would answer it needs two sessions.",
-      "limit": "unmeasured",
-      "closes_with": "`DATABASE_URL=postgresql://\u2026 python scripts/load_test.py --concurrent-writers 8` with a lost-update assertion on the job version column"
+      "note": "two sessions read version 0 of the same job and both tried to move it: exactly one update matched, the loser changed nothing, and the survivor's status is the one on the row. Taking two row locks in a fixed order completed while taking them in opposite orders was aborted by PostgreSQL's deadlock detector \u2014 which is why the scheduler sorts its locks",
+      "limit": "one job row and two lock holders: it proves the compare-and-set and the ordering rule, not the behaviour of the real ingest under a bank's concurrency; the drill client is this process, not a load generator",
+      "closes_with": "the same race driven by `scripts/load_test.py --concurrent-writers 8` against a populated server"
     },
     {
       "id": "backup_restore",
-      "question": "can the estate be restored to a point in time, and is it verified?",
-      "verdict": "UNPROVEN",
-      "evidence": "SERVER_REQUIRED",
+      "question": "can the estate be restored, and is it verified?",
+      "verdict": "PASS",
+      "evidence": "EXECUTED",
       "found": {
         "scripts_present": [
           "db_backup.sh",
           "db_restore.sh",
           "backup_drill.py",
           "postgres_parity.sh"
-        ]
+        ],
+        "server": "local PostgreSQL 16.2",
+        "drill": {
+          "tables_compared": 176,
+          "rows_in_source": 185,
+          "rows_in_restored": 185,
+          "mismatches": {},
+          "mismatch_count": 0,
+          "dump_bytes": 645356,
+          "dump_seconds": 0.12,
+          "restore_seconds": 1.47,
+          "restored_database": "pgq_restore"
+        }
       },
-      "note": "a dump/restore path and a parity check exist as scripts; neither was run here because there is no server to dump",
-      "limit": "the scripts are unexecuted in this checkout",
-      "closes_with": "`scripts/db_backup.sh && scripts/db_restore.sh && scripts/postgres_parity.sh` against the deployment database, with the row counts archived"
+      "note": "``pg_dump`` of the migrated database, ``pg_restore`` into a fresh one, and every table compared by row count: the restore matches the source",
+      "limit": "this is a logical dump and restore, not point-in-time recovery \u2014 no WAL archive was replayed, so the RPO of the deployment is still unmeasured; row counts prove the schema and the data survived, not that a corrupt page or a lost transaction would be recovered",
+      "closes_with": "a nightly dump to object storage, a parity check that runs it, and an archived-WAL drill that measures the actual RPO"
     },
     {
       "id": "corruption_recovery",
-      "question": "does the system recover from a corrupted page or a killed writer?",
-      "verdict": "UNPROVEN",
-      "evidence": "SERVER_REQUIRED",
+      "question": "does the system recover from a killed writer or a crashed server?",
+      "verdict": "PASS",
+      "evidence": "EXECUTED",
       "found": {
         "scripts_present": [
           "controlled_recovery_drill.py",
           "drill_worker_recovery.py"
-        ]
+        ],
+        "server": "local PostgreSQL 16.2",
+        "drill": {
+          "rows_before": 14,
+          "rows_after_restart": 14,
+          "killed_writer": {
+            "outcome": "refused: OperationalError: (psycopg2.OperationalError) server closed the connection unexpectedly\n\tThis probably means the server terminated abnorma",
+            "orphan_rows": 0,
+            "backend": 4361
+          },
+          "restart_seconds": 0.31,
+          "integrity_checks": {
+            "pg_amcheck": "pg_amcheck failed (1): pg_amcheck: warning: skipping database \"postgres\": amcheck is not installed\npg_amcheck: warning: skipping database \"template1\": amcheck is not installed\npg_amcheck: error: no relations to check",
+            "vacuumdb": "clean",
+            "post_restart_dump": "read every table (645193 bytes)"
+          }
+        }
       },
-      "note": "recovery drills exist and require a disposable database to destroy",
-      "limit": "unmeasured",
-      "closes_with": "`scripts/controlled_recovery_drill.py` against a scratch server, asserting the evidence chain still verifies afterwards"
+      "note": "a writer terminated mid-transaction left no row behind, and an immediate (crash) shutdown followed by a restart replayed the log to the same row count, after which every table could still be read in full",
+      "limit": "the amcheck extension is not installed in this build, so the page-level integrity check is a full-read dump and ``vacuumdb`` rather than ``pg_amcheck``; a killed backend and a clean crash are the recoveries PostgreSQL is built for; nothing here corrupts a page on disk, and no backup was needed \u2014 so this measures crash safety, not restore-from-corruption, which the backup row covers only as a successful dump and restore",
+      "closes_with": "`scripts/controlled_recovery_drill.py` on a scratch server that destroys a page and restores it, asserting the evidence chain still verifies"
     },
     {
       "id": "ha_failover",
@@ -321,14 +473,16 @@
           "region_drills.py"
         ]
       },
-      "note": "the failover drill requires two servers, a replication link and an operator-supplied promotion command; it refuses to run without them",
+      "note": "this checkout can now start one PostgreSQL instance, which is one node: a failover needs a standby, a replication link and a promotion. Dropping the row to a single server would answer a different question",
       "limit": "RPO and RTO are unmeasured here",
       "closes_with": "`scripts/postgres_drill.py --execute-promotion --acknowledge-destructive` against the bank's pair"
     }
   ],
+  "server": "local PostgreSQL 16.2",
   "limits": [
-    "There is no PostgreSQL server in this checkout. Four rows are therefore UNPROVEN by construction, and the executed rows ran on SQLite \u2014 same schema, same migrations, different engine.",
-    "SQLite does not enforce the same DDL, locking or isolation rules; a PASS here is evidence the application asks for the right thing, not that the server agrees.",
-    "No row measures write amplification, vacuum or index bloat, which are what actually decide a bank's database cost."
+    "Every EXECUTED row ran on local PostgreSQL 16.2, which is one instance on a socket in this sandbox, not a bank's cluster: no replication, no WAL archive, no failover.",
+    "The tables the drills exercise are small \u2014 tens or hundreds of rows. They prove mechanisms (a partition drop, a compare-and-set, a crash restart), not the cost of those mechanisms at bank scale.",
+    "No row measures write amplification, vacuum or index bloat, which are what actually decide a bank's database cost; guide 114's growth figure is still the only size measurement and it came from SQLite.",
+    "HA is unmeasured: a single server cannot be promoted, so `ha_failover` stays UNPROVEN and the RPO/RTO a bank asks for is still unstated."
   ]
 }

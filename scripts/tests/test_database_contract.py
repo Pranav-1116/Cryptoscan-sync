@@ -131,6 +131,25 @@ def _models():
     return Base
 
 
+def _live_tables(inspector) -> set[str]:
+    """Tables a model has to map.
+
+    Partition children are relations the *parent* owns — ``estate_observations``
+    is one mapped table whether or not PostgreSQL keeps a month of it in its own
+    relation — so they are not orphans and not separate tables to compare.
+    """
+    tables = set(inspector.get_table_names())
+    if inspector.bind is not None and inspector.bind.dialect.name == "postgresql":
+        from sqlalchemy import text
+
+        with inspector.bind.connect() as connection:
+            children = {row[0] for row in connection.execute(text(
+                "SELECT child.relname FROM pg_inherits i "
+                "JOIN pg_class child ON child.oid = i.inhrelid"))}
+        tables -= children
+    return tables
+
+
 def _live_nullability(engine) -> dict[str, dict[str, bool]]:
     """Column name → whether the *database* requires a value."""
     from sqlalchemy import inspect
@@ -138,7 +157,7 @@ def _live_nullability(engine) -> dict[str, dict[str, bool]]:
     inspector = inspect(engine)
     return {
         table: {c["name"]: bool(c["nullable"]) for c in inspector.get_columns(table)}
-        for table in inspector.get_table_names()
+        for table in _live_tables(inspector)
     }
 
 
@@ -146,7 +165,7 @@ def _live_schema(engine) -> tuple[set[str], dict[str, set[str]]]:
     from sqlalchemy import inspect
 
     inspector = inspect(engine)
-    tables = set(inspector.get_table_names())
+    tables = _live_tables(inspector)
     columns = {table: {c["name"] for c in inspector.get_columns(table)} for table in tables}
     return tables, columns
 

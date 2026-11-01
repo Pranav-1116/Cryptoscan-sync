@@ -32,7 +32,7 @@ from typing import Optional
 from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from db.models.base import BaseModel
+from db.models.base import BaseModel, utcnow
 from db.tenancy import TenantScoped
 
 
@@ -101,7 +101,12 @@ class EstateRelationshipRecord(BaseModel, TenantScoped):
 
     lifecycle_state: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
     first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    #: When this value was last observed. Required: the retention window is
+    #: measured on it, and migration 0130 partitions the table by it, so a row
+    #: without one has no age and no month to live in.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
     observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
@@ -144,7 +149,12 @@ class EstateCryptoRecord(BaseModel, TenantScoped):
 
     lifecycle_state: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
     first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    #: When this value was last observed. Required: the retention window is
+    #: measured on it, and migration 0130 partitions the table by it, so a row
+    #: without one has no age and no month to live in.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
     observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
@@ -184,7 +194,12 @@ class EstateEvidenceRecord(BaseModel, TenantScoped):
     #: ACTIVE while the collector still produces it, STALE once it stops
     lifecycle_state: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
     first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    #: When this value was last observed. Required: the retention window is
+    #: measured on it, and migration 0130 partitions the table by it, so a row
+    #: without one has no age and no month to live in.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
     observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
@@ -235,5 +250,10 @@ class EstateObservationRecord(BaseModel, TenantScoped):
     conflict: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
                                            server_default="0")
     first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
-    last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    #: When this value was last observed. Required: the retention window is
+    #: measured on it, and migration 0130 partitions the table by it, so a row
+    #: without one has no age and no month to live in.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
     observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

@@ -217,6 +217,17 @@ class APISettings(BaseSettings):
     #: absolute expiry has not passed. 0 disables the idle check.
     SESSION_IDLE_MINUTES: int = 30
 
+    #: ── twin history retention ───────────────────────────────────────────────
+    #: How long a *superseded* fact value and *stale, unreferenced* evidence are
+    #: kept. Nothing current is ever pruned. Seven years is the usual bank
+    #: horizon, and the default that prunes nothing in practice while leaving the
+    #: mechanism switched on.
+    ESTATE_HISTORY_RETENTION_DAYS: int = 2555
+    ESTATE_EVIDENCE_RETENTION_DAYS: int = 2555
+    #: Litigation/regulatory hold: refuses every sweep, archiving nothing and
+    #: deleting nothing, until an operator clears it.
+    ESTATE_RETENTION_LEGAL_HOLD: bool = False
+
     DATABASE_URL: str = "sqlite:///./data/cryptoscan.db"
     REDIS_URL: str = ""
     REDIS_CA_CERTS: str = ""

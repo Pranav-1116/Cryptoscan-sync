@@ -143,24 +143,39 @@ can wait up to one maintenance interval past its backoff.
 **What closes it.** A cooperative cancel token checked inside long stages, a
 cluster-wide admission budget, and one backlog run against a real Redis.
 
-## 3. PostgreSQL production qualification — **PARTIAL** (qualified this pass)
+## 3. PostgreSQL production qualification — **PARTIAL** (server drills executed this pass)
 
 **Proven.** `scripts/pg_qualification.py` regenerates
-`115-postgres-qualification.{json,md}` against this checkout:
-**5 PASS · 2 PARTIAL · 2 FAIL · 4 UNPROVEN**.
+`115-postgres-qualification.{json,md}` against this checkout, and this pass it ran
+against a **real PostgreSQL 16.2** rather than SQLite:
+**11 PASS · 1 PARTIAL · 0 FAIL · 1 UNPROVEN**.
 
 | Property | Verdict | Measured |
 |---|---|---|
-| `migration_chain` | **PASS** | **127** revisions to `0127`, upgrade 4.55 s, full downgrade/upgrade round trip 0.19 s |
-| `index_parity` | **PASS** | **494** indexes checked, **0** missing |
-| `migration_at_scale` | **PASS** | 200,000 rows migrated, table build 0.09 s, indexed read **17.1 ms → 0.2 ms** |
+| `migration_chain` | **PASS** | **130** revisions to `0130`, upgrade 5.5 s, full downgrade/upgrade round trip 0.25 s, 157 tables |
+| `index_parity` | **PASS** | **495** indexes checked, **0** missing |
+| `migration_at_scale` | **PASS** | 200,000 rows, index build 0.13 s, indexed read **26.9 ms → 0.3 ms** |
 | `transaction_boundaries` | **PASS** | 50 writes probed, **0** outside an explicit boundary |
-| `locking` | **PASS** | 11 `with_for_update` sites, 32 optimistic version checks |
-| `pooling` | PARTIAL | QueuePool 10 + 20 overflow, pre-ping on; no saturation measurement |
-| `migration_lock_safety` | PARTIAL | 239 non-concurrent `CREATE INDEX` builds will take an exclusive lock at bank volume |
-| `retention` | **FAIL** | no delete path anywhere; 1M facts occupy 645.8 MB and stay |
-| `partitioning` | **FAIL** | no `PARTITION BY` in the schema |
-| concurrent writes, backup/restore, corruption recovery, HA | UNPROVEN | `SERVER_REQUIRED` — the checkout has no PostgreSQL; a row is never scored as passing because it could not be run |
+| `pooling` | **PASS** | QueuePool 10 + 20 overflow, pre-ping on, a live session reports `statement_timeout = 30s` and a **31 s query is cancelled** |
+| `locking` | **PASS** | 11 `with_for_update` sites, 32 optimistic version checks (read, not raced) |
+| `migration_lock_safety` | PARTIAL | 239 non-concurrent `CREATE INDEX` builds still take an exclusive lock at bank volume |
+| `retention` | **PASS (executed)** | a 60-day window archived **11 rows** to NDJSON+sha256, dropped **4 whole months** as partitions, pruned 3 rows individually; 2 current facts and the recent history survived, and the surviving asset's history still answers |
+| `partitioning` | **PASS (executed)** | `estate_observations` is range-partitioned by `last_seen_at` month (migration `0130`); a month-scoped read scans **1** of 19 partitions; dropping a month took **0.003 s** and removed exactly that month's rows |
+| `concurrent_writes` | **PASS (executed)** | two sessions read version 0 and both wrote: **one row count 1, one 0**, final version 1; two row locks taken in a fixed order completed, opposite orders was **aborted by the deadlock detector** |
+| `backup_restore` | **PASS (executed)** | `pg_dump` (645 KB) → `pg_restore` into a fresh database → **176 tables compared, 0 mismatches** |
+| `corruption_recovery` | **PASS (executed)** | a writer killed mid-transaction left **0** rows; `pg_ctl -m immediate` (a crash) → restart replayed the log, **14 rows before and after**, every table still readable |
+| `ha_failover` | UNPROVEN | one server is one node: no standby, no promotion, **RPO/RTO unmeasured** |
+
+**Retention and partitioning existed as findings, not as absences, after this
+pass.** `db/retention.py` prunes only `HISTORICAL` observations and `STALE`
+evidence, refuses under a legal hold, refuses a window under 30 days without
+`force`, holds back evidence a surviving fact still points at, and **archives to
+NDJSON with a sha256 manifest before the first delete**. `db/partitions.py` plus
+migration `0130` convert `estate_observations` into a monthly range-partitioned
+table, so the sweep drops a month instead of deleting it row by row — with the
+costs stated in the migration: the unique index has to carry the partition key,
+`last_seen_at` becomes NOT NULL, and a month with no partition rejects the
+insert rather than silently accumulating in a DEFAULT.
 
 **Found while measuring — a real defect, now fixed.** Index parity was failing on
 one index. The missing index was `uq_fact_identity`, an *expression* index on
@@ -178,15 +193,15 @@ the index is present at head, **absent at `0126`** (the negative control that
 proves the defect was real), duplicate identities are rejected, NULL and `''`
 stay distinguishable by design, and the migration is re-runnable.
 
-**Not proven.** Retention and partitioning are absent, not partial. The four
-`SERVER_REQUIRED` rows — concurrent writers, backup/restore of a real dump,
-recovery from a *corrupted* database, and failover — cannot be measured in a
-checkout without a server, and are printed as `UNPROVEN` rather than folded into
-the average.
+**Not proven.** Failover is unmeasured: the sandbox can now start one PostgreSQL
+16.2 instance, which is one node, and the drill refuses to pretend otherwise.
+Concurrent index builds are still the deployment risk they were. Every drill
+ran at tens or hundreds of rows: mechanisms are proven, bank-scale cost is not.
+This row stays **PARTIAL**, not PASS.
 
-**What closes it.** A retention job with a measured delete path, partitioning for
-`estate_observations`/`cryptographic_facts`, `CREATE INDEX CONCURRENTLY` on the
-239 builds, and the four server drills executed on a host with the output attached.
+**What closes it.** A standby pair with a measured promotion, `CREATE INDEX
+CONCURRENTLY` on the builds that touch a populated table, and one run of these
+drills against the deployment's own cluster with the output attached.
 
 ## 4. Evidence durability — **PARTIAL** (moved this pass)
 
@@ -439,10 +454,12 @@ explicit "API-only" register for the 604 uncovered endpoints.
    ingest cap, not throughput, is what stops a bank estate. Two reads were fixed
    on the way (composite index, SQL aggregation). Remaining in #6: relationships
    at 5M, a streaming ingest, and a PostgreSQL run with a concurrent writer.
-5. ~~**PostgreSQL qualification (#3)**~~ — **done this pass** (guide 115): 127
-   migrations, index parity 494/0, and a real dropped-index defect found, repaired
-   by 0127 and pinned by five tests. Remaining in #3: retention, partitioning, and
-   the four server drills.
+5. ~~**PostgreSQL qualification (#3)**~~ — **done this pass** (guide 115, the
+   second pass on it): the SQLite rows plus **four server drills executed on a real
+   PostgreSQL 16.2**, retention and monthly partitioning built rather than
+   described, and a real dropped-index defect found, repaired by 0127 and pinned
+   by five tests. **11 PASS · 1 PARTIAL · 0 FAIL · 1 UNPROVEN**. Remaining in #3:
+   failover (a standby pair) and `CREATE INDEX CONCURRENTLY`.
 6. ~~**Per-collector authority (#5)**~~ — **done this pass** (guide 116): the
    matrix exists and it says the honest thing — 0 planes PROVEN, 1 PARTIAL, 10
    GAP. Remaining in #5: one authority descriptor per plane, returned by a route.
