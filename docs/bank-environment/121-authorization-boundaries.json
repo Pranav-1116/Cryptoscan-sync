@@ -1,10 +1,10 @@
 {
   "schema": "cryptoscan.authorization-boundaries/1",
   "version": "authorization-boundaries/1.0",
-  "generated_at": "2026-11-01T03:08:21.481861+00:00",
+  "generated_at": "2026-11-01T06:51:32.086811+00:00",
   "counts": {
-    "PASS": 8,
-    "PARTIAL": 1,
+    "PASS": 9,
+    "PARTIAL": 0,
     "FAIL": 0
   },
   "operations": 1225,
@@ -80,7 +80,7 @@
           "probe": "boundary-is-real",
           "expected": "every forbidden operation probed is refused",
           "ok": true,
-          "observed": "188 of 188 forbidden operations refused"
+          "observed": "460 of 460 forbidden operations refused"
         }
       ],
       "unproven": [],
@@ -102,7 +102,7 @@
           "probe": "boundary-is-real",
           "expected": "every forbidden operation probed is refused",
           "ok": true,
-          "observed": "286 of 286 forbidden operations refused"
+          "observed": "474 of 474 forbidden operations refused"
         }
       ],
       "unproven": [],
@@ -118,7 +118,7 @@
           "probe": "matrix-agrees",
           "expected": "every executed decision matches the declared requirement",
           "ok": true,
-          "observed": "1617 decisions, 0 violating, 9 over-tight"
+          "observed": "1617 decisions, 0 violating, 0 over-tight"
         },
         {
           "probe": "comparator-can-fail",
@@ -127,12 +127,11 @@
           "observed": "a viewer allowed on a superadmin-only permission is reported; the superadmin on the same permission is not"
         }
       ],
-      "unproven": [
-        "over-tight guards refuse a role the declaration allows; see over_tight"
-      ],
+      "unproven": [],
       "limits": [],
       "violations": [],
-      "over_tight": [
+      "over_tight": [],
+      "handler_refused": [
         {
           "method": "DELETE",
           "path": "/api/v1/estate/evidence/schedules/{identifier}",
@@ -142,41 +141,9 @@
           "reason": "declared to allow this role, refused"
         },
         {
-          "method": "DELETE",
-          "path": "/api/v1/estate/evidence/schedules/{identifier}",
-          "role": "auditor",
-          "status": 403,
-          "declared": [],
-          "reason": "declared to allow this role, refused"
-        },
-        {
-          "method": "DELETE",
-          "path": "/api/v1/estate/evidence/schedules/{identifier}",
-          "role": "readonly",
-          "status": 403,
-          "declared": [],
-          "reason": "declared to allow this role, refused"
-        },
-        {
           "method": "POST",
           "path": "/api/v1/estate/evidence/tick",
           "role": "superadmin",
-          "status": 403,
-          "declared": [],
-          "reason": "declared to allow this role, refused"
-        },
-        {
-          "method": "POST",
-          "path": "/api/v1/estate/evidence/tick",
-          "role": "auditor",
-          "status": 403,
-          "declared": [],
-          "reason": "declared to allow this role, refused"
-        },
-        {
-          "method": "POST",
-          "path": "/api/v1/estate/evidence/tick",
-          "role": "readonly",
           "status": 403,
           "declared": [],
           "reason": "declared to allow this role, refused"
@@ -259,37 +226,53 @@
     },
     {
       "id": "session_only_writes",
-      "question": "which state-changing operations demand nothing beyond a session?",
-      "verdict": "PARTIAL",
+      "question": "can a read-only principal change state through a session-only write?",
+      "verdict": "PASS",
       "probes": [
         {
-          "probe": "counted",
-          "expected": "the count is reported rather than assumed zero",
+          "probe": "viewer-cannot-write",
+          "expected": "every session-only write refuses a viewer at the gate",
           "ok": true,
-          "observed": "180 of 562 gated writes are session-only"
+          "observed": "40 of 40 sampled writes refused for the viewer (0 judged open by the policy module)"
+        },
+        {
+          "probe": "auditor-cannot-write",
+          "expected": "every session-only write refuses an auditor at the gate",
+          "ok": true,
+          "observed": "40 of 40 sampled writes refused for the auditor"
+        },
+        {
+          "probe": "writes-not-blanket-refused",
+          "expected": "a writable role still gets past the gate (the control)",
+          "ok": true,
+          "observed": "40 of 40 sampled writes reached the handler as superadmin"
+        },
+        {
+          "probe": "self-service-exempt",
+          "expected": "a read-only principal can still change its own password",
+          "ok": true,
+          "observed": "session lifecycle is exempt, every other write is not"
+        },
+        {
+          "probe": "attestation-exempt",
+          "expected": "signing an independent review is not treated as mutating state",
+          "ok": true,
+          "observed": "a signed review is allowed for an auditor; an operational write is not"
+        },
+        {
+          "probe": "comparator-can-fail",
+          "expected": "the policy module reports a viewer write it must refuse",
+          "ok": true,
+          "observed": "a viewer DELETE is refused; a viewer GET is not"
         }
       ],
-      "unproven": [
-        "180 write operation(s) are callable by any authenticated principal, including a viewer; the owner list is docs/bank-environment/102-authenticated-only-writes.json"
-      ],
+      "unproven": [],
       "limits": [
-        "this row is a policy question, not a defect: it is reported so a bank can decide per area, which is the review's own framing",
-        "228 operation(s) are gated by tenant membership (owner/admin within an organisation) rather than a catalog role; those are excluded from the matrix comparison and measured by the tenancy drill"
+        "the rule is enforced for human sessions; an API key's authority is its own policy (allowed_methods, allowed_ips, quota) and is measured by guide 124",
+        "read-only roles: auditor, readonly, supervisor; recording a signed attestation stays open to an auditor on purpose, and those handlers keep their own assignment checks",
+        "228 operation(s) are gated by tenant membership rather than a catalog role; those are measured by the tenancy drill"
       ],
-      "by_area": {
-        "estate": 24,
-        "network": 24,
-        "migrations": 13,
-        "vendors": 10,
-        "graph": 9,
-        "banking": 8,
-        "cbom": 8,
-        "systems": 8,
-        "security": 7,
-        "technology-bom": 7,
-        "auth": 6,
-        "cloud": 6
-      }
+      "viewer_open": []
     },
     {
       "id": "target_authorization",

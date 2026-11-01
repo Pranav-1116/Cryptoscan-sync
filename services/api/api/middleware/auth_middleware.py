@@ -108,6 +108,34 @@ def _store_allows(token: str, username: str) -> bool:
         return not production
 
 
+def _write_denial(username: str, method: str, path: str) -> str | None:
+    """Durable-role lookup for the write gate; never raises into the request."""
+    from api.security.write_authority import refusal
+
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.user_repository import UserRepository
+        from db.tenancy import platform_scope
+
+        with platform_scope(), SessionLocal() as session:
+            user = UserRepository(session).get_by_username(username) if username else None
+            roles = user.role_list if user is not None else []
+        return refusal(roles, method, path)
+    except Exception:  # noqa: BLE001 — storage failure must not become a write
+        logger.exception("write_authority_lookup_failed")
+        from api.config.settings import get_settings
+
+        try:
+            production = get_settings().is_production
+        except Exception:  # noqa: BLE001
+            production = True
+        if production:
+            return "role lookup unavailable"
+        # Development/test has no durable role store in many suites; the write
+        # gate is enforced where roles actually exist.
+        return None
+
+
 class AuthMiddleware:
     def __init__(self, app, settings=None):
         self.app = app
@@ -201,5 +229,21 @@ class AuthMiddleware:
                 await send_json(send, code, {"detail": "Typed authentication provenance unavailable"})
                 return
             principal = None  # Legacy development/test authentication only.
+        # Write authority for human sessions. Resolved from durable roles, not
+        # from token claims, and applied before the route runs so a new router
+        # cannot become writable for a read-only role by forgetting a dependency.
+        if identity.get("key_id") is None:
+            username = identity.get("username")
+            denial = await run_in_threadpool(_write_denial, username, request.method,
+                                             request.url.path)
+            if denial:
+                logger.info("write_denied_without_mutation_role",
+                            extra={"user": username, "method": request.method,
+                                   "path": request.url.path, "reason": denial})
+                await send_json(send, 403,
+                                {"detail": "This account has read-only access; the operation "
+                                           "changes state and requires a role that may write",
+                                 "error_code": "WRITE_FORBIDDEN"})
+                return
         with request_principal(principal):
             await self.app(scope, receive, send)

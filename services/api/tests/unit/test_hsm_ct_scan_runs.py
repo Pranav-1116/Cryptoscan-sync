@@ -129,12 +129,17 @@ def test_hsm_scan_records_are_tenant_bound(client, monkeypatch):
     from api.security.session_manager import SessionManager
     from db.connection.session import SessionLocal
     from db.repositories.tenant_repository import TenantRepository
+    from db.repositories.user_repository import UserRepository
 
     session = SessionLocal()
     try:
         tenants = TenantRepository(session)
         tenants.ensure_user("member-a")
         tenants.ensure_user("member-b")
+        # The subject here is tenant binding, not role policy: the write gate
+        # reads *durable* roles, and ensure_user() creates read-only accounts.
+        UserRepository(session).set_roles("member-a", ["security_analyst"])
+        UserRepository(session).set_roles("member-b", ["security_analyst"])
         tenant_a = tenants.create(name="HSM Alpha", slug="hsm-alpha", created_by="member-a")
         tenant_b = tenants.create(name="HSM Beta", slug="hsm-beta", created_by="member-b")
         tenants.add_member(tenant_a.id, "member-a", "member")
@@ -145,7 +150,9 @@ def test_hsm_scan_records_are_tenant_bound(client, monkeypatch):
         session.close()
 
     def auth(username: str, tenant: str) -> dict[str, str]:
-        token = SessionManager().create_session(username, roles=["readonly"])
+        # The subject here is tenant binding, not role policy, so the caller
+        # holds a role that may write; the read-only refusal is pinned below.
+        token = SessionManager().create_session(username, roles=["security_analyst"])
         return {"Authorization": f"Bearer {token}", "X-Tenant-ID": tenant}
 
     created = client.post("/api/v1/hsm-scans", headers=auth("member-a", tenant_a_id),

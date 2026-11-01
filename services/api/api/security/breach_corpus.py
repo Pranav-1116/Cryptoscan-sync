@@ -102,7 +102,13 @@ def production_gap(settings=None) -> str | None:
             settings = get_settings()
         if not getattr(settings, "is_production", False):
             return None
-    except Exception:  # noqa: BLE001 — an unreadable config is handled by startup itself
+    except Exception as exc:  # noqa: BLE001 — an unreadable config is startup's problem
+        # Recorded rather than discarded: if settings cannot be read here the
+        # startup check itself will fail loudly, but the reason should survive.
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "breach_corpus_settings_unreadable", extra={"error": type(exc).__name__})
         return None
     if describe()["loaded"]:
         return None

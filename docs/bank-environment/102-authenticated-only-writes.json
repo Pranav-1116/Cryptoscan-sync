@@ -1,6 +1,7 @@
 {
   "schema": "cryptoscan.authenticated-only-writes/1",
-  "why": "Every write operation behind the session gate with no role requirement. Regenerate with `python scripts/auth_write_inventory.py --write` after a deliberate decision; the test fails when this list and the application disagree.",
+  "why": "Every write operation with no *route-level* role requirement. Since guide 121's re-measure these are not open to everyone: api/security/write_authority.py refuses any human session whose roles are all read-only on every mutating method, so what this list records is which writable role may call the route plus the reason it needs no finer requirement. Regenerate with `python scripts/auth_write_inventory.py --write` after a deliberate decision; the test fails when this list and the application disagree.",
+  "platform_rule": "read-only roles (readonly, auditor, supervisor) are refused on POST, PUT, PATCH and DELETE before the route runs, except on session lifecycle paths and on paths that record a signed attestation",
   "operations": [
     {
       "method": "POST",

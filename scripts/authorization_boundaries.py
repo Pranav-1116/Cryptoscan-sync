@@ -253,6 +253,14 @@ def build_client():
         db.close()
 
     app = create_app()
+    # `create_app()` skips the session middleware entirely when ENVIRONMENT is
+    # test/testing — an existing test-only shortcut, not something this drill
+    # should inherit. Installing it here means the drill measures the gate the
+    # product actually runs (durable roles, revocation store, write authority)
+    # instead of a per-route approximation of it.
+    from api.middleware.auth_middleware import AuthMiddleware
+
+    app.add_middleware(AuthMiddleware)
     return TestClient(app, raise_server_exceptions=False), engine, path
 
 
@@ -307,7 +315,31 @@ def _probe(client, method: str, path: str, token: str | None) -> int:
 UNKNOWN = {429, 599}
 
 
-def _violation(requirement: Requirement, role: str, status: Any) -> bool:
+def _declared_allows(requirement: Requirement, role: str, method: str = "GET",
+                     path: str = "") -> bool:
+    """What the platform says a role may do, including the platform-wide rule.
+
+    A route guarded only by `get_current_user` is not "anyone may write":
+    `api/security/write_authority.py` refuses a principal whose roles are all
+    read-only on any mutating method, before the route runs. If the expectation
+    ignored that rule, every such write would be reported over-tight — a false
+    alarm in the direction that hides real ones.
+    """
+    if not requirement.allows(role):
+        return False
+    if _public(path):
+        # Anonymous-by-design paths (webhooks, signed feeds, ChatOps) never reach
+        # the session gate: their HMAC or token *is* the credential, verified in
+        # the route. The platform write rule is about sessions, so it does not
+        # apply here — and the row that measures them is `anonymous_refused`.
+        return True
+    from api.security.write_authority import refusal
+
+    return refusal([role], method, path) is None
+
+
+def _violation(requirement: Requirement, role: str, status: Any, method: str = "GET",
+               path: str = "") -> bool:
     """True when the server let a role do something the declaration forbids.
 
     One function, used by the sweep and by the control that proves the sweep can
@@ -316,7 +348,7 @@ def _violation(requirement: Requirement, role: str, status: Any) -> bool:
     """
     if not isinstance(status, bool):  # a raw status code, from the sweep
         status = _permitted(status)
-    return bool(status) and not requirement.allows(role)
+    return bool(status) and not _declared_allows(requirement, role, method, path)
 
 
 def _permitted(status: int) -> bool:
@@ -343,6 +375,7 @@ def measure() -> dict[str, Any]:
         # ---- the matrix, executed
         violations: list[dict[str, Any]] = []
         over_tight: list[dict[str, Any]] = []
+        handler_refused: list[dict[str, Any]] = []
         destructive: list[str] = []
         checked = 0
         skipped: list[str] = []
@@ -367,12 +400,23 @@ def measure() -> dict[str, Any]:
                 status = _probe(client, methods, operation["path"], tokens[role])
                 observed[role] = _permitted(status)
                 checked += 1
-                if _refused(status) and requirement.allows(role):
-                    over_tight.append({"method": methods, "path": operation["path"],
-                                       "role": role, "status": status,
-                                       "declared": operation["declared"],
-                                       "reason": "declared to allow this role, refused"})
-                if _violation(requirement, role, observed[role]):
+                if _refused(status) and _declared_allows(requirement, role, methods,
+                                                          operation["path"]):
+                    entry = {"method": methods, "path": operation["path"],
+                             "role": role, "status": status,
+                             "declared": operation["declared"],
+                             "reason": "declared to allow this role, refused"}
+                    if _public(operation["path"]) or role == "superadmin":
+                        # Not an authorization contradiction this drill can grade:
+                        # a public path verifies its own signature (a 401 is the
+                        # HMAC talking, not the boundary), and the platform write
+                        # rule never refuses superadmin, so a 403 there is a
+                        # handler or tenant guard the tenancy drill measures.
+                        handler_refused.append(entry)
+                    else:
+                        over_tight.append(entry)
+                if _violation(requirement, role, observed[role], methods,
+                              operation["path"]):
                     violations.append({"method": methods, "path": operation["path"],
                                        "role": role, "status": status,
                                        "declared": operation["declared"]})
@@ -404,7 +448,8 @@ def measure() -> dict[str, Any]:
                                        "path": operation["path"], "status": status})
 
         rows = _rows(operations, checked, violations, over_tight, anonymous_allowed,
-                     forged_allowed, writes, gated_writes, client, tokens, destructive)
+                     forged_allowed, writes, gated_writes, client, tokens, destructive,
+                     handler_refused)
     finally:
         try:
             engine.dispose()
@@ -436,7 +481,8 @@ def measure() -> dict[str, Any]:
 
 def _rows(operations, checked, violations, over_tight, anonymous_allowed,
           forged_allowed, writes, gated_writes, client, tokens,
-          destructive: list[str] | None = None) -> list[dict[str, Any]]:
+          destructive: list[str] | None = None,
+          handler_refused: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     from api.security.rbac import ROLE_CATALOG, permissions_for_roles
 
     rows: list[dict[str, Any]] = []
@@ -474,12 +520,14 @@ def _rows(operations, checked, violations, over_tight, anonymous_allowed,
         escaped = [v for v in violations if v["role"] == canonical]
         refused_when_forbidden = [
             op for op in operations
-            if isinstance(op.get("observed"), dict) and not op["requirement"].allows(canonical)
+            if isinstance(op.get("observed"), dict)
+            and not _declared_allows(op["requirement"], canonical, op["method"], op["path"])
             and op["observed"].get(canonical) is False
         ]
         forbidden = [op for op in operations
                      if isinstance(op.get("observed"), dict)
-                     and not op["requirement"].allows(canonical)]
+                     and not _declared_allows(op["requirement"], canonical, op["method"],
+                                              op["path"])]
         probes = [
             {"probe": "no-escape", "expected": "no operation allowed that the declaration forbids",
              "ok": not escaped, "observed": f"{len(escaped)} escape(s)"},
@@ -527,6 +575,7 @@ def _rows(operations, checked, violations, over_tight, anonymous_allowed,
         "limits": [],
         "violations": violations[:10],
         "over_tight": over_tight[:10],
+        "handler_refused": (handler_refused or [])[:10],
         "destructive": (destructive or [])[:12],
     })
 
@@ -565,35 +614,92 @@ def _rows(operations, checked, violations, over_tight, anonymous_allowed,
         "allowed": forged_allowed[:10],
     })
 
-    # ---- 8. the session-only write surface
+    # ---- 8. the read-only ceiling on writes
+    #
+    # Guide 121 originally reported 180 writes reachable by any authenticated
+    # principal and graded the row PARTIAL, because "a viewer can write" was a
+    # policy question left to the bank. It is no longer a question: the role
+    # catalog describes `readonly` as "dashboard view only" and `auditor` as
+    # "read-only access", so api/security/write_authority.py enforces exactly
+    # that for human sessions. This row now measures the enforcement.
+    from api.security.write_authority import (
+        READ_ONLY_ROLES,
+        is_attestation,
+        is_self_service,
+        refusal,
+    )
+
     tenant_routes = [op for op in operations if "tenant-role" in op["kind"]]
-    session_writes = [op for op in gated_writes if op["kind"] == "session"]
-    areas: dict[str, int] = {}
-    for operation in session_writes:
-        parts = [part for part in operation["path"].split("/") if part]
-        area = parts[2] if len(parts) > 2 else operation["path"]
-        areas[area] = areas.get(area, 0) + 1
-    top = sorted(areas.items(), key=lambda item: -item[1])[:12]
+    # Self-service and attestation paths are exempt by design, so "open to a
+    # viewer" means open *and not exempt* — otherwise the row would demand that a
+    # read-only user be unable to change their own password.
+    def _exempt(op) -> bool:
+        return is_self_service(op["path"]) or is_attestation(op["path"])
+
+    all_session_writes = [op for op in gated_writes if op["kind"] == "session"]
+    session_writes = [op for op in all_session_writes if not _exempt(op)]
+    viewer_open = [op for op in session_writes
+                   if refusal(["readonly"], op["method"], op["path"]) is None]
+
+    def _status_for(op, role: str) -> int:
+        return _probe(client, op["method"], op["path"], tokens[role])
+
+    # Execute it rather than trusting the classifier: the same call as the
+    # viewer and as an analyst, on the operations the classifier says are
+    # session-only writes.
+    sample = [op for op in session_writes][:40]
+    viewer_refused = sum(1 for op in sample if _refused(_status_for(op, "readonly")))
+    auditor_refused = sum(1 for op in sample if _refused(_status_for(op, "auditor")))
+    analyst_past_gate = sum(1 for op in sample
+                            if not _refused(_status_for(op, "superadmin")))
+    probes = [
+        {"probe": "viewer-cannot-write",
+         "expected": "every session-only write refuses a viewer at the gate",
+         "ok": viewer_refused == len(sample) and not viewer_open,
+         "observed": f"{viewer_refused} of {len(sample)} sampled writes refused for the "
+                     f"viewer ({len(viewer_open)} judged open by the policy module)"},
+        {"probe": "auditor-cannot-write",
+         "expected": "every session-only write refuses an auditor at the gate",
+         "ok": auditor_refused == len(sample),
+         "observed": f"{auditor_refused} of {len(sample)} sampled writes refused for the "
+                     f"auditor"},
+        {"probe": "writes-not-blanket-refused",
+         "expected": "a writable role still gets past the gate (the control)",
+         "ok": analyst_past_gate > 0,
+         "observed": f"{analyst_past_gate} of {len(sample)} sampled writes reached the "
+                     f"handler as superadmin"},
+        {"probe": "self-service-exempt",
+         "expected": "a read-only principal can still change its own password",
+         "ok": refusal(["readonly"], "POST", "/api/v1/auth/me/password") is None
+               and refusal(["readonly"], "POST", "/api/v1/auth/login") is None,
+         "observed": "session lifecycle is exempt, every other write is not"},
+        {"probe": "attestation-exempt",
+         "expected": "signing an independent review is not treated as mutating state",
+         "ok": refusal(["auditor"], "POST", "/api/v1/assurance/samples/x/reviews") is None
+               and refusal(["auditor"], "POST", "/api/v1/anomaly/analyze") is not None,
+         "observed": "a signed review is allowed for an auditor; an operational write is not"},
+        {"probe": "comparator-can-fail",
+         "expected": "the policy module reports a viewer write it must refuse",
+         "ok": (refusal(["readonly"], "DELETE", "/__drill/anywhere") is not None
+               and refusal(["readonly"], "GET", "/__drill/anywhere") is None),
+         "observed": "a viewer DELETE is refused; a viewer GET is not"},
+    ]
     rows.append({
         "id": "session_only_writes",
-        "question": "which state-changing operations demand nothing beyond a session?",
-        "verdict": PARTIAL,
-        "probes": [{
-            "probe": "counted",
-            "expected": "the count is reported rather than assumed zero",
-            "ok": True,
-            "observed": f"{len(session_writes)} of {len(gated_writes)} gated writes are "
-                        f"session-only",
-        }],
-        "unproven": [f"{len(session_writes)} write operation(s) are callable by any "
-                     "authenticated principal, including a viewer; the owner list is "
-                     "docs/bank-environment/102-authenticated-only-writes.json"],
-        "limits": ["this row is a policy question, not a defect: it is reported so a bank "
-                   "can decide per area, which is the review's own framing",
-                   f"{len(tenant_routes)} operation(s) are gated by tenant membership "
-                   "(owner/admin within an organisation) rather than a catalog role; those "
-                   "are excluded from the matrix comparison and measured by the tenancy drill"],
-        "by_area": dict(top),
+        "question": "can a read-only principal change state through a session-only write?",
+        "verdict": PASS if all(probe["ok"] for probe in probes) else FAIL,
+        "probes": probes,
+        "unproven": [],
+        "limits": [
+            "the rule is enforced for human sessions; an API key's authority is its own "
+            "policy (allowed_methods, allowed_ips, quota) and is measured by guide 124",
+            f"read-only roles: {', '.join(sorted(READ_ONLY_ROLES))}; recording a signed "
+            "attestation stays open to an auditor on purpose, and those handlers keep "
+            "their own assignment checks",
+            f"{len(tenant_routes)} operation(s) are gated by tenant membership rather than a "
+            "catalog role; those are measured by the tenancy drill",
+        ],
+        "viewer_open": viewer_open[:10],
     })
 
     # ---- 9. target authorization, server-side
@@ -735,9 +841,11 @@ def render_md(report: dict[str, Any]) -> str:
         "**The verdict this drill supports:** where a boundary is declared, the server "
         "enforces it — a Viewer cannot write, an Auditor cannot administer, an Admin cannot "
         "aim a collector at a CIDR or at the metadata address, and none of the three can "
-        "reach a write without a session or with a token signed elsewhere. What it also says, "
-        "plainly, is how much of the write surface declares nothing at all; that is a policy "
-        "decision for the bank, not something this drill can grade.",
+        "reach a write without a session or with a token signed elsewhere. The read-only "
+        "ceiling is no longer a matter of taste: the catalog calls those roles read-only, so "
+        "the platform refuses their writes on every mutating method outside session "
+        "lifecycle and signed attestations, and this drill executes that refusal per "
+        "principal rather than counting the gap.",
         "",
     ]
     return "\n".join(lines)

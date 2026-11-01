@@ -308,3 +308,72 @@ def test_breached_password_is_refused_even_when_shape_passes(tmp_path, monkeypat
     assert any("breach" in e for e in errors)
     # Negative control: a same-shaped password that is not listed passes.
     assert password_policy_errors("Unlisted-Passphrase-2049") == []
+
+
+# ------------------------------------------------------------- write authority
+
+
+def test_read_only_roles_cannot_write_anything():
+    from api.security.write_authority import refusal
+
+    for role in ("readonly", "auditor", "supervisor"):
+        for method in ("POST", "PUT", "PATCH", "DELETE"):
+            assert refusal([role], method, "/api/v1/anomaly/analyze") is not None
+        # ...but reading is untouched.
+        assert refusal([role], "GET", "/api/v1/anomaly/analyze") is None
+
+
+def test_writable_roles_are_not_blocked():
+    from api.security.write_authority import refusal
+
+    for role in ("superadmin", "ciso", "security_analyst", "developer",
+                 "business_owner", "scanner"):
+        assert refusal([role], "POST", "/api/v1/anomaly/analyze") is None
+    # A mixed role set that includes one writable role is a writable principal.
+    assert refusal(["readonly", "security_analyst"], "POST", "/api/v1/x") is None
+
+
+def test_unknown_or_empty_roles_fail_closed():
+    from api.security.write_authority import refusal
+
+    assert refusal([], "POST", "/api/v1/x") == "no recognized role"
+    assert refusal(["not-a-role"], "POST", "/api/v1/x") == "no recognized role"
+
+
+def test_self_service_and_attestation_are_exempt():
+    from api.security.write_authority import refusal
+
+    assert refusal(["readonly"], "POST", "/api/v1/auth/me/password") is None
+    assert refusal(["readonly"], "POST", "/api/v1/auth/mfa/enroll") is None
+    assert refusal(["auditor"], "POST", "/api/v1/assurance/samples/abc/reviews") is None
+    assert refusal(["auditor"], "POST", "/api/v1/collection/oci/jobs/x/truth/approve") is None
+    # The exemption is a suffix, not a prefix: nothing else inherits it.
+    assert refusal(["auditor"], "POST", "/api/v1/assurance/samples/abc/reviews/x") is not None
+
+
+def test_viewer_session_is_refused_a_write_by_the_running_app(sqlite_app):
+    client = sqlite_app
+    from api.security.session_manager import SessionManager
+    from db.connection.session import SessionLocal
+    from db.repositories.user_repository import UserRepository
+
+    with SessionLocal() as s:
+        UserRepository(s).set_roles("rotator1", ["readonly"])
+        s.commit()
+    token = _login(client, "rotator1", "Original-Pass-2024").json()["token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    refused = client.post("/api/v1/anomaly/analyze", json={}, headers=headers)
+    assert refused.status_code == 403
+    assert refused.json()["error_code"] == "WRITE_FORBIDDEN"
+    # Reads and self-service still work for the same session.
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    # Control: the same call with a writable role gets past the gate, so the 403
+    # above is the role policy and not a broken route.
+    with SessionLocal() as s:
+        UserRepository(s).set_roles("rotator1", ["security_analyst"])
+        s.commit()
+    assert SessionManager  # the session token is unchanged; only the role moved
+    allowed = client.post("/api/v1/anomaly/analyze", json={}, headers=headers)
+    # Past the write gate. It may still be refused downstream (this account has
+    # no tenant membership), but not by the role rule.
+    assert allowed.json().get("error_code") != "WRITE_FORBIDDEN", allowed.text

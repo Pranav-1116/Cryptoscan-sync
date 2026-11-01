@@ -1,6 +1,6 @@
 # Authorization boundaries — declared versus enforced
 
-`cryptoscan.authorization-boundaries/1` · generated 2026-11-01T03:08:21.481861+00:00 · **8 pass · 1 partial · 0 fail** · 1225 operations, 1617 decisions executed
+`cryptoscan.authorization-boundaries/1` · generated 2026-11-01T06:51:32.086811+00:00 · **9 pass · 0 partial · 0 fail** · 1225 operations, 1617 decisions executed
 
 For every operation that declares a boundary, the drill resolves the roles the declaration allows, then sends the request as Admin, Auditor and Viewer through the real app. A decision that disagrees with the declaration is a violation.
 
@@ -10,10 +10,10 @@ For every operation that declares a boundary, the drill resolves the roles the d
 | **can a admin (superadmin) cross into authority it does not hold?** | **PASS** | 0 escape(s) |
 | **can a auditor (auditor) cross into authority it does not hold?** | **PASS** | 0 escape(s) |
 | **can a viewer (readonly) cross into authority it does not hold?** | **PASS** | 0 escape(s) |
-| **does what the route declares match what the server enforces?** | **PASS** | 1617 decisions, 0 violating, 9 over-tight |
+| **does what the route declares match what the server enforces?** | **PASS** | 1617 decisions, 0 violating, 0 over-tight |
 | **is the boundary enforced without a session, or is it a UI convention?** | **PASS** | 0 of 562 gated writes answered without a token |
 | **does a token claiming superadmin, signed elsewhere, get in?** | **PASS** | 0 write(s) accepted a foreign-signed token |
-| **which state-changing operations demand nothing beyond a session?** | **PARTIAL** | 180 of 562 gated writes are session-only |
+| **can a read-only principal change state through a session-only write?** | **PASS** | 40 of 40 sampled writes refused for the viewer (0 judged open by the policy module) |
 | **is the target of a collection authorized by the server, not by the caller's role?** | **PASS** | 409 {"detail":{"error":"scope_not_configured","reason":"no approved network scope — CryptoScan refuses to probe until a scope names the exact destinations"}} |
 
 ## Row by row
@@ -39,22 +39,21 @@ For every operation that declares a boundary, the drill resolves the roles the d
 *can a auditor (auditor) cross into authority it does not hold?*
 
 - **PASS** `no-escape` — no operation allowed that the declaration forbids: 0 escape(s)
-- **PASS** `boundary-is-real` — every forbidden operation probed is refused: 188 of 188 forbidden operations refused
+- **PASS** `boundary-is-real` — every forbidden operation probed is refused: 460 of 460 forbidden operations refused
 
 ### `boundary_readonly` — PASS
 
 *can a viewer (readonly) cross into authority it does not hold?*
 
 - **PASS** `no-escape` — no operation allowed that the declaration forbids: 0 escape(s)
-- **PASS** `boundary-is-real` — every forbidden operation probed is refused: 286 of 286 forbidden operations refused
+- **PASS** `boundary-is-real` — every forbidden operation probed is refused: 474 of 474 forbidden operations refused
 
 ### `declared_vs_enforced` — PASS
 
 *does what the route declares match what the server enforces?*
 
-- **PASS** `matrix-agrees` — every executed decision matches the declared requirement: 1617 decisions, 0 violating, 9 over-tight
+- **PASS** `matrix-agrees` — every executed decision matches the declared requirement: 1617 decisions, 0 violating, 0 over-tight
 - **PASS** `comparator-can-fail` — the comparison reports a decision the declaration forbids, and only that: a viewer allowed on a superadmin-only permission is reported; the superadmin on the same permission is not
-- **Not proven:** over-tight guards refuse a role the declaration allows; see over_tight
 - **Not provoked:** `POST /api/v1/auth/me/sessions/revoke` — destructive; declaration read, request not sent
 - **Not provoked:** `POST /api/v1/auth/users/{username}/restore` — destructive; declaration read, request not sent
 - **Not provoked:** `POST /api/v1/certificates/{fingerprint}/revoke` — destructive; declaration read, request not sent
@@ -82,29 +81,19 @@ For every operation that declares a boundary, the drill resolves the roles the d
 - **PASS** `foreign-signature` — a token signed by another deployment is refused: 0 write(s) accepted a foreign-signed token
 - **Limit:** forgery with the real signing key is out of reach by definition; the key's custody is not measured here
 
-### `session_only_writes` — PARTIAL
+### `session_only_writes` — PASS
 
-*which state-changing operations demand nothing beyond a session?*
+*can a read-only principal change state through a session-only write?*
 
-- **PASS** `counted` — the count is reported rather than assumed zero: 180 of 562 gated writes are session-only
-- **Not proven:** 180 write operation(s) are callable by any authenticated principal, including a viewer; the owner list is docs/bank-environment/102-authenticated-only-writes.json
-- **Limit:** this row is a policy question, not a defect: it is reported so a bank can decide per area, which is the review's own framing
-- **Limit:** 228 operation(s) are gated by tenant membership (owner/admin within an organisation) rather than a catalog role; those are excluded from the matrix comparison and measured by the tenancy drill
-
-| Area | Session-only writes |
-|---|---|
-| `estate` | 24 |
-| `network` | 24 |
-| `migrations` | 13 |
-| `vendors` | 10 |
-| `graph` | 9 |
-| `banking` | 8 |
-| `cbom` | 8 |
-| `systems` | 8 |
-| `security` | 7 |
-| `technology-bom` | 7 |
-| `auth` | 6 |
-| `cloud` | 6 |
+- **PASS** `viewer-cannot-write` — every session-only write refuses a viewer at the gate: 40 of 40 sampled writes refused for the viewer (0 judged open by the policy module)
+- **PASS** `auditor-cannot-write` — every session-only write refuses an auditor at the gate: 40 of 40 sampled writes refused for the auditor
+- **PASS** `writes-not-blanket-refused` — a writable role still gets past the gate (the control): 40 of 40 sampled writes reached the handler as superadmin
+- **PASS** `self-service-exempt` — a read-only principal can still change its own password: session lifecycle is exempt, every other write is not
+- **PASS** `attestation-exempt` — signing an independent review is not treated as mutating state: a signed review is allowed for an auditor; an operational write is not
+- **PASS** `comparator-can-fail` — the policy module reports a viewer write it must refuse: a viewer DELETE is refused; a viewer GET is not
+- **Limit:** the rule is enforced for human sessions; an API key's authority is its own policy (allowed_methods, allowed_ips, quota) and is measured by guide 124
+- **Limit:** read-only roles: auditor, readonly, supervisor; recording a signed attestation stays open to an auditor on purpose, and those handlers keep their own assignment checks
+- **Limit:** 228 operation(s) are gated by tenant membership rather than a catalog role; those are measured by the tenancy drill
 
 ### `target_authorization` — PASS
 
@@ -128,4 +117,4 @@ For every operation that declares a boundary, the drill resolves the roles the d
 - A permitted request is not a completed one: this drill asks whether the guard let the caller through, not whether the handler then did something useful. A 5xx past the guard still counts as past the boundary.
 - Empty request bodies mean body-level validation is not exercised; tenant isolation is a separate drill (guide 124).
 
-**The verdict this drill supports:** where a boundary is declared, the server enforces it — a Viewer cannot write, an Auditor cannot administer, an Admin cannot aim a collector at a CIDR or at the metadata address, and none of the three can reach a write without a session or with a token signed elsewhere. What it also says, plainly, is how much of the write surface declares nothing at all; that is a policy decision for the bank, not something this drill can grade.
+**The verdict this drill supports:** where a boundary is declared, the server enforces it — a Viewer cannot write, an Auditor cannot administer, an Admin cannot aim a collector at a CIDR or at the metadata address, and none of the three can reach a write without a session or with a token signed elsewhere. The read-only ceiling is no longer a matter of taste: the catalog calls those roles read-only, so the platform refuses their writes on every mutating method outside session lifecycle and signed attestations, and this drill executes that refusal per principal rather than counting the gap.

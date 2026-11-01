@@ -126,7 +126,10 @@ def test_durable_readonly_auditor_can_inspect_not_modify_scan(assured, role):
     assert user.get(P + f"/approvals/{identifier}/cbom").status_code == 200
     assert user.post(P + "/approvals", json=body).status_code == 403
     assert user.post(P + f"/approvals/{identifier}/intake", json={"snapshot": snapshot}).status_code == 403
-    assert user.patch(P + f"/approvals/{identifier}/snapshot", json={}).status_code == 405
+    # A read-only caller is refused before routing, so an unimplemented method
+    # answers 403 rather than 405: "you may not write at all" precedes "that
+    # method does not exist".
+    assert user.patch(P + f"/approvals/{identifier}/snapshot", json={}).status_code in (403, 405)
     assert db.query(Scan).count() == 1
 
 

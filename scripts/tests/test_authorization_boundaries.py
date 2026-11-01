@@ -91,11 +91,21 @@ def test_a_foreign_signed_token_gets_nowhere(report):
     assert row["verdict"] == "PASS", row["allowed"]
 
 
-def test_the_session_only_write_surface_is_reported_not_hidden(report):
+def test_a_read_only_principal_cannot_write(report):
+    """The old row reported the session-only write surface and graded PARTIAL.
+
+    It is now a measured ceiling: read-only roles are refused on every mutating
+    method outside self-service, which the drill executes per principal.
+    """
     row = next(r for r in report["rows"] if r["id"] == "session_only_writes")
-    assert row["verdict"] == "PARTIAL"
-    assert "session-only" in row["probes"][0]["observed"]
-    assert row["by_area"], "the areas are what makes the number actionable"
+    assert row["verdict"] == "PASS", row["probes"]
+    names = {probe["probe"] for probe in row["probes"]}
+    assert {"viewer-cannot-write", "auditor-cannot-write",
+            "writes-not-blanket-refused", "self-service-exempt",
+            "attestation-exempt", "comparator-can-fail"} <= names
+    assert row["viewer_open"] == [], "a write open to a viewer would still be a gap"
+    # Every probe must be able to fail: the observed text is the measurement.
+    assert all(probe["observed"] for probe in row["probes"])
 
 
 def test_target_authorization_is_enforced_server_side(report):
