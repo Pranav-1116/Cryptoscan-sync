@@ -1,6 +1,6 @@
 # Bank-scale qualification — 100k assets, 1M facts, measured
 
-`cryptoscan.scale-qualification/1` · profile `bank` · generated 2026-11-01T08:37:25.919731+00:00 · **4 pass · 1 fail · 1 unproven** · 584 s · peak RSS 1345 MB · largest database 647 MB
+`cryptoscan.scale-qualification/1` · profile `bank` · generated 2026-11-01T08:57:23.154678+00:00 · **4 pass · 1 fail · 1 unproven** · 548 s · peak RSS 1344 MB · largest database 647 MB
 
 The review asked whether this works at bank scale. This drill answers with the first thing that breaks, in the order a deployment would meet it.
 
@@ -9,9 +9,9 @@ The review asked whether this works at bank scale. This drill answers with the f
 | Property | Verdict | Criterion | Measured |
 |---|---|---|---|
 | **does one discovery request carry a 100,000-asset estate?** | **FAIL** | assets list length >= 100,000 in EstateDiscoverRequest | assets: List should have at most 20000 items after validation, not 100000 |
-| **how long does one observation take, and does a 100k-asset estate fit the window?** | **PASS** | >= 200 assets/s and a linear projection of 100k assets <= 900 s | 454.1 assets/s at 20,000 (2.2 ms/asset); 100k projected 3.7 min |
-| **do twin and console reads answer at 100,000 assets / 1,000,000 facts?** | **PASS** | every read path p95 <= 1000 ms | 100,000 assets / 1,000,000 facts, 647.3 MB; slowest p95 765.0 ms (observation_summary) |
-| **does observation 4 of a 2,000-asset estate cost what observation 1 did?** | **PASS** | the last round is within 2.0x the first, and a changed fact adds exactly one row (2,000 per round) while the CURRENT set stays flat | growth 1.67x over 4 rounds |
+| **how long does one observation take, and does a 100k-asset estate fit the window?** | **PASS** | >= 200 assets/s and a linear projection of 100k assets <= 900 s | 459.8 assets/s at 20,000 (2.18 ms/asset); 100k projected 3.6 min |
+| **do twin and console reads answer at 100,000 assets / 1,000,000 facts?** | **PASS** | every read path p95 <= 1000 ms | 100,000 assets / 1,000,000 facts, 647.3 MB; slowest p95 739.0 ms (observation_summary) |
+| **does observation 4 of a 2,000-asset estate cost what observation 1 did?** | **PASS** | the last round is within 2.0x the first, and a changed fact adds exactly one row (2,000 per round) while the CURRENT set stays flat | growth 1.73x over 4 rounds |
 | **after two 10,000-asset slices, is the whole estate still readable?** | **PASS** | a sliced observation that declares itself a slice leaves no asset STALE and keeps every slice readable; a payload that claims to be the whole estate still retires what it does not carry | None active, None stale after two slices |
 | **does the BOM project a 100,000-asset estate?** | **UNPROVEN** | project_all() over a graph built from a bank-scale observation | — |
 
@@ -22,8 +22,8 @@ The review asked whether this works at bank scale. This drill answers with the f
 *does one discovery request carry a 100,000-asset estate?*
 
 - **Criterion:** assets list length >= 100,000 in EstateDiscoverRequest
-- **Reading:** the request model caps `assets` at 20,000 and `evidence` at 100,000, so a bank-scale estate cannot be ingested in one observation; the route answers 422 before any collection runs
-- **Limit:** the cap is a pydantic field constraint; a raised limit would not by itself make the rest of the path scale
+- **Reading:** the request model caps `assets` at 20,000 and `evidence` at 100,000, so a bank-scale estate cannot be ingested in one observation; the route answers 422 before any collection runs. The cap is a batch size, not a wall: the estate is sent as slices that declare themselves slices, which the `sharding` row now measures end to end
+- **Limit:** the cap stays: raising it only moves the memory spike into one request. The supported path is slicing, and this row keeps the one-request form as a measured FAIL rather than a re-worded pass
 
 ```
 {
@@ -48,9 +48,9 @@ The review asked whether this works at bank scale. This drill answers with the f
   "points": [
     {
       "assets": 1000,
-      "seconds": 4.16,
-      "assets_per_second": 240.2,
-      "milliseconds_per_asset": 4.16,
+      "seconds": 4.19,
+      "assets_per_second": 238.6,
+      "milliseconds_per_asset": 4.19,
       "bom_components": {
         "SBOM": 0,
         "CBOM": 1000,
@@ -64,13 +64,13 @@ The review asked whether this works at bank scale. This drill answers with the f
         "current": 9000
       },
       "database_mb": 13.6,
-      "peak_rss_mb": 285.4
+      "peak_rss_mb": 283.3
     },
     {
       "assets": 5000,
-      "seconds": 10.42,
-      "assets_per_second": 479.7,
-      "milliseconds_per_asset": 2.08,
+      "seconds": 10.01,
+      "assets_per_second": 499.4,
+      "milliseconds_per_asset": 2.0,
       "bom_components": {
         "SBOM": 0,
         "CBOM": 5000,
@@ -84,13 +84,13 @@ The review asked whether this works at bank scale. This drill answers with the f
         "current": 45000
       },
       "database_mb": 53.1,
-      "peak_rss_mb": 432.4
+      "peak_rss_mb": 430.9
     },
     {
       "assets": 10000,
-      "seconds": 20.58,
-      "assets_per_second": 485.8,
-      "milliseconds_per_asset": 2.06,
+      "seconds": 20.5,
+      "assets_per_second": 487.9,
+      "milliseconds_per_asset": 2.05,
       "bom_components": {
         "SBOM": 0,
         "CBOM": 10000,
@@ -104,13 +104,13 @@ The review asked whether this works at bank scale. This drill answers with the f
         "current": 90000
       },
       "database_mb": 102.9,
-      "peak_rss_mb": 688.3
+      "peak_rss_mb": 686.6
     },
     {
       "assets": 20000,
-      "seconds": 44.04,
-      "assets_per_second": 454.1,
-      "milliseconds_per_asset": 2.2,
+      "seconds": 43.5,
+      "assets_per_second": 459.8,
+      "milliseconds_per_asset": 2.18,
       "bom_components": {
         "SBOM": 0,
         "CBOM": 20000,
@@ -123,12 +123,12 @@ The review asked whether this works at bank scale. This drill answers with the f
         "assets_with_facts": 20000,
         "current": 180000
       },
-      "database_mb": 202.4,
-      "peak_rss_mb": 1191.0
+      "database_mb": 202.5,
+      "peak_rss_mb": 1190.6
     }
   ],
-  "projected_100k_seconds": 220.2,
-  "projected_100k_minutes": 3.7,
+  "projected_100k_seconds": 217.5,
+  "projected_100k_minutes": 3.6,
   "threshold_assets_per_second": 200.0
 }
 ```
@@ -146,60 +146,60 @@ The review asked whether this works at bank scale. This drill answers with the f
   "seed": {
     "assets": 100000,
     "facts": 1000000,
-    "seed_seconds": 32.5,
+    "seed_seconds": 31.6,
     "database_mb": 647.3,
-    "peak_rss_mb": 1191.0
+    "peak_rss_mb": 1190.6
   },
   "reads": {
     "catalog_page": {
-      "p50_ms": 27.2,
-      "p95_ms": 30.1,
-      "max_ms": 36.7
+      "p50_ms": 27.1,
+      "p95_ms": 28.7,
+      "max_ms": 30.7
     },
     "asset_detail": {
-      "p50_ms": 26.9,
-      "p95_ms": 30.7,
-      "max_ms": 35.5
+      "p50_ms": 27.6,
+      "p95_ms": 30.2,
+      "max_ms": 36.1
     },
     "history": {
       "p50_ms": 2.7,
       "p95_ms": 2.9,
-      "max_ms": 3.5
+      "max_ms": 3.3
     },
     "why": {
       "p50_ms": 5.2,
-      "p95_ms": 5.5,
-      "max_ms": 5.8
+      "p95_ms": 5.7,
+      "max_ms": 6.5
     },
     "evidence_for": {
       "p50_ms": 1.6,
       "p95_ms": 1.8,
-      "max_ms": 4.1
+      "max_ms": 3.2
     },
     "catalog_summary": {
-      "p50_ms": 27.0,
-      "p95_ms": 29.2,
-      "max_ms": 41.6
+      "p50_ms": 26.7,
+      "p95_ms": 27.5,
+      "max_ms": 28.0
     },
     "observation_summary": {
-      "p50_ms": 715.9,
-      "p95_ms": 765.0,
-      "max_ms": 983.0
+      "p50_ms": 709.8,
+      "p95_ms": 739.0,
+      "max_ms": 761.5
     }
   },
   "slowest": "observation_summary",
   "samples": 40,
   "index_effect": {
     "with_index": {
-      "history_ms_p50": 2.4,
+      "history_ms_p50": 2.7,
       "why_ms_p50": 5.2
     },
     "without_index": {
-      "history_ms_p50": 205.7,
-      "why_ms_p50": 3.1
+      "history_ms_p50": 188.1,
+      "why_ms_p50": 1.8
     },
     "faster": "with_index",
-    "history_gap_ms": 203.3
+    "history_gap_ms": 185.4
   }
 }
 ```
@@ -218,7 +218,7 @@ The review asked whether this works at bank scale. This drill answers with the f
     {
       "round": 0,
       "assets": 2000,
-      "seconds": 4.39,
+      "seconds": 3.94,
       "current_facts": {
         "assets_with_facts": 2000,
         "current": 18000
@@ -231,7 +231,7 @@ The review asked whether this works at bank scale. This drill answers with the f
     {
       "round": 1,
       "assets": 2000,
-      "seconds": 6.81,
+      "seconds": 6.47,
       "current_facts": {
         "assets_with_facts": 2000,
         "current": 18000
@@ -246,7 +246,7 @@ The review asked whether this works at bank scale. This drill answers with the f
     {
       "round": 2,
       "assets": 2000,
-      "seconds": 7.02,
+      "seconds": 6.91,
       "current_facts": {
         "assets_with_facts": 2000,
         "current": 18000
@@ -261,7 +261,7 @@ The review asked whether this works at bank scale. This drill answers with the f
     {
       "round": 3,
       "assets": 2000,
-      "seconds": 7.34,
+      "seconds": 6.82,
       "current_facts": {
         "assets_with_facts": 2000,
         "current": 18000
@@ -274,7 +274,7 @@ The review asked whether this works at bank scale. This drill answers with the f
       }
     }
   ],
-  "growth_factor": 1.67,
+  "growth_factor": 1.73,
   "rows_added_per_round": [
     2000,
     2000,
@@ -336,13 +336,13 @@ Measured while running the drill. They are reported, not fixed here, and they ar
 
 | Read | p50 | p95 | max |
 |---|---|---|---|
-| `catalog_page` | 27.2 ms | 30.1 ms | 36.7 ms |
-| `asset_detail` | 26.9 ms | 30.7 ms | 35.5 ms |
-| `history` | 2.7 ms | 2.9 ms | 3.5 ms |
-| `why` | 5.2 ms | 5.5 ms | 5.8 ms |
-| `evidence_for` | 1.6 ms | 1.8 ms | 4.1 ms |
-| `catalog_summary` | 27.0 ms | 29.2 ms | 41.6 ms |
-| `observation_summary` | 715.9 ms | 765.0 ms | 983.0 ms |
+| `catalog_page` | 27.1 ms | 28.7 ms | 30.7 ms |
+| `asset_detail` | 27.6 ms | 30.2 ms | 36.1 ms |
+| `history` | 2.7 ms | 2.9 ms | 3.3 ms |
+| `why` | 5.2 ms | 5.7 ms | 6.5 ms |
+| `evidence_for` | 1.6 ms | 1.8 ms | 3.2 ms |
+| `catalog_summary` | 26.7 ms | 27.5 ms | 28.0 ms |
+| `observation_summary` | 709.8 ms | 739.0 ms | 761.5 ms |
 
 ## Thresholds
 
@@ -364,4 +364,4 @@ Chosen for this drill so a bank's 15-minute observation window is plausible. The
 - The synthetic estate is regular — every asset has the same shape and fact set. A real bank has long tails (one asset with 40k relationships), which this drill does not model.
 - The thresholds are this drill's, chosen so a 15-minute observation window is plausible. They are not vendor benchmarks, and a PASS is not a capacity guarantee.
 
-**The verdict this drill supports:** the estate path does not reach bank scale through its own API. One request carries at most 20,000 assets, sending the estate in slices retires the slices that came before, and the read side is only measurable at 100k/1M because the rows were written around the API. That is a structural finding, not a tuning one.
+**The verdict this drill supports:** the estate path reaches bank scale only when it is used the way it is now built. One request still carries at most 20,000 assets, but slices that declare themselves slices accumulate instead of retiring each other — 20,000 active rows and none stale after two 10,000-asset slices, measured — and the 100k/1M estate is readable in under a second on every console path, with the dispute lookup no longer a function of estate size. What remains structural is the one-request form: 100,000 assets in a single body is refused, and that refusal is a memory guard rather than a limitation to tune away.

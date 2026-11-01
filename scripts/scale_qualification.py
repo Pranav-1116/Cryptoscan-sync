@@ -771,11 +771,14 @@ def render_md(report: dict[str, Any]) -> str:
         lines.append(f"- {limit}")
     lines += [
         "",
-        "**The verdict this drill supports:** the estate path does not reach bank scale through "
-        "its own API. One request carries at most 20,000 assets, sending the estate in slices "
-        "retires the slices that came before, and the read side is only measurable at 100k/1M "
-        "because the rows were written around the API. That is a structural finding, not a "
-        "tuning one.",
+        "**The verdict this drill supports:** the estate path reaches bank scale only when it "
+        "is used the way it is now built. One request still carries at most 20,000 assets, but "
+        "slices that declare themselves slices accumulate instead of retiring each other — "
+        "20,000 active rows and none stale after two 10,000-asset slices, measured — and the "
+        "100k/1M estate is readable in under a second on every console path, with the dispute "
+        "lookup no longer a function of estate size. What remains structural is the "
+        "one-request form: 100,000 assets in a single body is refused, and that refusal is a "
+        "memory guard rather than a limitation to tune away.",
         "",
     ]
     return "\n".join(lines)

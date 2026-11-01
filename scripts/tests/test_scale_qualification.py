@@ -109,11 +109,15 @@ def test_continuous_ingest_proves_one_row_per_changed_fact(report):
 
 
 def test_sharding_reports_the_true_row_counts(report):
+    """Two declared slices accumulate; the undeclared control still retires."""
     row = _row(report, "sharding")
     measured = row["measured"]
-    assert measured["active_rows"] == measured["slice_assets"]
-    assert measured["stale_rows"] == measured["slice_assets"]
-    assert row["verdict"] == scale.FAIL
+    after = measured["after_two_slices"]
+    control = measured["control_undeclared_slice"]
+    assert after["stale_rows"] == 0, after
+    assert after["active_rows"] >= 2 * measured["slice_assets"], after
+    assert control["stale_rows"] > 0, "the flag must be load-bearing, not decoration"
+    assert row["verdict"] == scale.PASS
     assert "STALE" in row["criterion"]
 
 
@@ -166,7 +170,7 @@ def test_markdown_artifact_states_the_limits():
     text = path.read_text(encoding="utf-8")
     assert "What this does not prove" in text
     assert "SQLite" in text
-    assert "structural finding" in text
+    assert "memory guard" in text
 
 
 def test_json_artifact_matches_the_drill():

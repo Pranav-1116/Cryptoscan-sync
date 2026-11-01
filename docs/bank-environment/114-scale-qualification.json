@@ -2,10 +2,10 @@
   "schema": "cryptoscan.scale-qualification/1",
   "version": "scale-qualification/1.0",
   "profile": "bank",
-  "generated_at": "2026-11-01T08:37:25.919731+00:00",
+  "generated_at": "2026-11-01T08:57:23.154678+00:00",
   "tenant": "tenant-scale",
-  "elapsed_seconds": 584.5,
-  "peak_rss_mb": 1345.1,
+  "elapsed_seconds": 548.2,
+  "peak_rss_mb": 1343.8,
   "largest_database_mb": 647.3,
   "thresholds": {
     "ingest_assets_per_request": 100000,
@@ -33,8 +33,8 @@
           "assets: List should have at most 20000 items after validation, not 100000"
         ]
       },
-      "note": "the request model caps `assets` at 20,000 and `evidence` at 100,000, so a bank-scale estate cannot be ingested in one observation; the route answers 422 before any collection runs",
-      "limit": "the cap is a pydantic field constraint; a raised limit would not by itself make the rest of the path scale",
+      "note": "the request model caps `assets` at 20,000 and `evidence` at 100,000, so a bank-scale estate cannot be ingested in one observation; the route answers 422 before any collection runs. The cap is a batch size, not a wall: the estate is sent as slices that declare themselves slices, which the `sharding` row now measures end to end",
+      "limit": "the cap stays: raising it only moves the memory spike into one request. The supported path is slicing, and this row keeps the one-request form as a measured FAIL rather than a re-worded pass",
       "defects": []
     },
     {
@@ -46,9 +46,9 @@
         "points": [
           {
             "assets": 1000,
-            "seconds": 4.16,
-            "assets_per_second": 240.2,
-            "milliseconds_per_asset": 4.16,
+            "seconds": 4.19,
+            "assets_per_second": 238.6,
+            "milliseconds_per_asset": 4.19,
             "bom_components": {
               "SBOM": 0,
               "CBOM": 1000,
@@ -62,13 +62,13 @@
               "current": 9000
             },
             "database_mb": 13.6,
-            "peak_rss_mb": 285.4
+            "peak_rss_mb": 283.3
           },
           {
             "assets": 5000,
-            "seconds": 10.42,
-            "assets_per_second": 479.7,
-            "milliseconds_per_asset": 2.08,
+            "seconds": 10.01,
+            "assets_per_second": 499.4,
+            "milliseconds_per_asset": 2.0,
             "bom_components": {
               "SBOM": 0,
               "CBOM": 5000,
@@ -82,13 +82,13 @@
               "current": 45000
             },
             "database_mb": 53.1,
-            "peak_rss_mb": 432.4
+            "peak_rss_mb": 430.9
           },
           {
             "assets": 10000,
-            "seconds": 20.58,
-            "assets_per_second": 485.8,
-            "milliseconds_per_asset": 2.06,
+            "seconds": 20.5,
+            "assets_per_second": 487.9,
+            "milliseconds_per_asset": 2.05,
             "bom_components": {
               "SBOM": 0,
               "CBOM": 10000,
@@ -102,13 +102,13 @@
               "current": 90000
             },
             "database_mb": 102.9,
-            "peak_rss_mb": 688.3
+            "peak_rss_mb": 686.6
           },
           {
             "assets": 20000,
-            "seconds": 44.04,
-            "assets_per_second": 454.1,
-            "milliseconds_per_asset": 2.2,
+            "seconds": 43.5,
+            "assets_per_second": 459.8,
+            "milliseconds_per_asset": 2.18,
             "bom_components": {
               "SBOM": 0,
               "CBOM": 20000,
@@ -121,12 +121,12 @@
               "assets_with_facts": 20000,
               "current": 180000
             },
-            "database_mb": 202.4,
-            "peak_rss_mb": 1191.0
+            "database_mb": 202.5,
+            "peak_rss_mb": 1190.6
           }
         ],
-        "projected_100k_seconds": 220.2,
-        "projected_100k_minutes": 3.7,
+        "projected_100k_seconds": 217.5,
+        "projected_100k_minutes": 3.6,
         "threshold_assets_per_second": 200.0
       },
       "note": "the projection is linear from the largest measured point and ignores the run row, which stores the whole payload \u2014 it is an optimistic floor, not a forecast",
@@ -142,60 +142,60 @@
         "seed": {
           "assets": 100000,
           "facts": 1000000,
-          "seed_seconds": 32.5,
+          "seed_seconds": 31.6,
           "database_mb": 647.3,
-          "peak_rss_mb": 1191.0
+          "peak_rss_mb": 1190.6
         },
         "reads": {
           "catalog_page": {
-            "p50_ms": 27.2,
-            "p95_ms": 30.1,
-            "max_ms": 36.7
+            "p50_ms": 27.1,
+            "p95_ms": 28.7,
+            "max_ms": 30.7
           },
           "asset_detail": {
-            "p50_ms": 26.9,
-            "p95_ms": 30.7,
-            "max_ms": 35.5
+            "p50_ms": 27.6,
+            "p95_ms": 30.2,
+            "max_ms": 36.1
           },
           "history": {
             "p50_ms": 2.7,
             "p95_ms": 2.9,
-            "max_ms": 3.5
+            "max_ms": 3.3
           },
           "why": {
             "p50_ms": 5.2,
-            "p95_ms": 5.5,
-            "max_ms": 5.8
+            "p95_ms": 5.7,
+            "max_ms": 6.5
           },
           "evidence_for": {
             "p50_ms": 1.6,
             "p95_ms": 1.8,
-            "max_ms": 4.1
+            "max_ms": 3.2
           },
           "catalog_summary": {
-            "p50_ms": 27.0,
-            "p95_ms": 29.2,
-            "max_ms": 41.6
+            "p50_ms": 26.7,
+            "p95_ms": 27.5,
+            "max_ms": 28.0
           },
           "observation_summary": {
-            "p50_ms": 715.9,
-            "p95_ms": 765.0,
-            "max_ms": 983.0
+            "p50_ms": 709.8,
+            "p95_ms": 739.0,
+            "max_ms": 761.5
           }
         },
         "slowest": "observation_summary",
         "samples": 40,
         "index_effect": {
           "with_index": {
-            "history_ms_p50": 2.4,
+            "history_ms_p50": 2.7,
             "why_ms_p50": 5.2
           },
           "without_index": {
-            "history_ms_p50": 205.7,
-            "why_ms_p50": 3.1
+            "history_ms_p50": 188.1,
+            "why_ms_p50": 1.8
           },
           "faster": "with_index",
-          "history_gap_ms": 203.3
+          "history_gap_ms": 185.4
         }
       },
       "note": "the estate was written through the persistence layer because the request cap makes an API ingest at this size impossible \u2014 this measures the read side, not ingest. The composite tenant+asset index added this pass is measured both ways \u2014 the gap widens with the estate, so a small database finds a path either way while 1M facts do not \u2014 and `observation_summary` is counted in SQL rather than in Python",
@@ -212,7 +212,7 @@
           {
             "round": 0,
             "assets": 2000,
-            "seconds": 4.39,
+            "seconds": 3.94,
             "current_facts": {
               "assets_with_facts": 2000,
               "current": 18000
@@ -225,7 +225,7 @@
           {
             "round": 1,
             "assets": 2000,
-            "seconds": 6.81,
+            "seconds": 6.47,
             "current_facts": {
               "assets_with_facts": 2000,
               "current": 18000
@@ -240,7 +240,7 @@
           {
             "round": 2,
             "assets": 2000,
-            "seconds": 7.02,
+            "seconds": 6.91,
             "current_facts": {
               "assets_with_facts": 2000,
               "current": 18000
@@ -255,7 +255,7 @@
           {
             "round": 3,
             "assets": 2000,
-            "seconds": 7.34,
+            "seconds": 6.82,
             "current_facts": {
               "assets_with_facts": 2000,
               "current": 18000
@@ -268,7 +268,7 @@
             }
           }
         ],
-        "growth_factor": 1.67,
+        "growth_factor": 1.73,
         "rows_added_per_round": [
           2000,
           2000,
@@ -334,39 +334,39 @@
   ],
   "read_paths": {
     "catalog_page": {
-      "p50_ms": 27.2,
-      "p95_ms": 30.1,
-      "max_ms": 36.7
+      "p50_ms": 27.1,
+      "p95_ms": 28.7,
+      "max_ms": 30.7
     },
     "asset_detail": {
-      "p50_ms": 26.9,
-      "p95_ms": 30.7,
-      "max_ms": 35.5
+      "p50_ms": 27.6,
+      "p95_ms": 30.2,
+      "max_ms": 36.1
     },
     "history": {
       "p50_ms": 2.7,
       "p95_ms": 2.9,
-      "max_ms": 3.5
+      "max_ms": 3.3
     },
     "why": {
       "p50_ms": 5.2,
-      "p95_ms": 5.5,
-      "max_ms": 5.8
+      "p95_ms": 5.7,
+      "max_ms": 6.5
     },
     "evidence_for": {
       "p50_ms": 1.6,
       "p95_ms": 1.8,
-      "max_ms": 4.1
+      "max_ms": 3.2
     },
     "catalog_summary": {
-      "p50_ms": 27.0,
-      "p95_ms": 29.2,
-      "max_ms": 41.6
+      "p50_ms": 26.7,
+      "p95_ms": 27.5,
+      "max_ms": 28.0
     },
     "observation_summary": {
-      "p50_ms": 715.9,
-      "p95_ms": 765.0,
-      "max_ms": 983.0
+      "p50_ms": 709.8,
+      "p95_ms": 739.0,
+      "max_ms": 761.5
     }
   },
   "limits": [
