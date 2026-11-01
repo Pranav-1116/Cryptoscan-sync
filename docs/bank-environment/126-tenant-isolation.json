@@ -1,0 +1,178 @@
+{
+  "schema": "cryptoscan.tenant-isolation/1",
+  "version": "tenant-isolation/1.0",
+  "generated_at": "2026-11-01T04:59:56.850390+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 1,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "read_filtering",
+      "question": "can tenant A read a row that belongs to tenant B?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "scope-A-sees-only-A",
+          "ok": true,
+          "observed": "inside tenant A, a plain select returned 1 row(s): ['drill-alpha-only']"
+        },
+        {
+          "probe": "control-A-sees-its-own-row",
+          "ok": true,
+          "observed": "A's own row is visible, so the result is not empty-by-accident"
+        },
+        {
+          "probe": "foreign-primary-key-not-readable",
+          "ok": true,
+          "observed": "a primary-key lookup for B's row \u2014 the classic cross-tenant read \u2014 returns None inside A's scope"
+        },
+        {
+          "probe": "own-primary-key-readable",
+          "ok": true,
+          "observed": "the same lookup for A's own row succeeds, so the filter is not rejecting everything"
+        },
+        {
+          "probe": "scope-B-sees-only-B",
+          "ok": true,
+          "observed": "inside tenant B: ['drill-beta-only']"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "write_stamping",
+      "question": "can tenant A write a row into tenant B?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "new-row-stamped-with-the-active-tenant",
+          "ok": true,
+          "observed": "a row created without a tenant_id was stamped 35da616b-e242-432b-98eb-cd265ee4e49d"
+        },
+        {
+          "probe": "explicit-foreign-tenant-id-refused",
+          "ok": true,
+          "observed": "refused: row is attributed to tenant '3512111c-5a24-457f-b3c0-0ae484d0c718', but active scope is '35da616b-e242-432b-98eb-cd265ee4e49d'"
+        },
+        {
+          "probe": "control-forged-row-absent-from-the-store",
+          "ok": true,
+          "observed": "0 forged row(s) persisted"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "cross_tenant_mutation",
+      "question": "can tenant A update or delete a row it cannot see?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "cross-tenant-update-affects-nothing",
+          "ok": true,
+          "observed": "updating B's row from A's scope touched 0 row(s)"
+        },
+        {
+          "probe": "cross-tenant-update-left-B-intact",
+          "ok": true,
+          "observed": "B's row now reads 'drill-beta-only'"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "raw_statements",
+      "question": "does a query that forgets the predicate fail closed?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "raw-text-sql-refused",
+          "ok": true,
+          "observed": "refused: raw or Core SQL touching tenant-scoped table 'tenant_usage_events' inside a tenant scope; use the ORM (auto-filtered) or an explicit db.tenancy.platform_scope() block"
+        },
+        {
+          "probe": "core-select-on-a-tenant-table-refused",
+          "ok": true,
+          "observed": "refused: raw or Core SQL touching tenant-scoped table 'tenant_usage_events' inside a tenant scope; use the ORM (auto-filtered) or an explicit db.tenancy.platform_scope() block"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "membership_resolution",
+      "question": "does a valid session plus a spoofed header buy the other tenant's scope?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "member-resolves-own-tenant",
+          "ok": true,
+          "observed": "A's session resolved to 35da616b-e242-432b-98eb-cd265ee4e49d"
+        },
+        {
+          "probe": "header-for-another-tenant-does-not-scope",
+          "ok": true,
+          "observed": "refused: Unknown tenant"
+        },
+        {
+          "probe": "control-own-header-still-works",
+          "ok": true,
+          "observed": "B's own session with B's header resolved to 3512111c-5a24-457f-b3c0-0ae484d0c718"
+        },
+        {
+          "probe": "no-session-no-scope",
+          "ok": true,
+          "observed": "an unauthenticated request resolves no tenant \u2014 the auth gate refuses it before any query runs"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "controls",
+      "question": "is the isolation the filter's doing, or the data's?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "without-a-scope-both-tenants-are-visible",
+          "ok": true,
+          "observed": "from a platform scope the same query returns ['drill-alpha-only', 'drill-beta-only'] \u2014 so the rows are only separated by the scope, which is exactly what the rows above measure"
+        },
+        {
+          "probe": "guard-reports-active-inside-a-scope",
+          "ok": true,
+          "observed": "inside a tenant scope the guard reports filtering on; in a platform scope it reports off, which is why the rows above are attributed to the scope rather than to luck"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "at_rest",
+      "question": "is the isolation cryptographic, or logical and enforced by code?",
+      "verdict": "PARTIAL",
+      "probes": [
+        {
+          "probe": "stolen-store-reveals-every-tenant",
+          "ok": true,
+          "observed": "reading the database file directly returns both tenants' rows in plaintext: ['drill-alpha-only', 'drill-beta-only'] \u2014 the isolation is logical (a scope applied by code), not cryptographic (a key the tenant holds)"
+        }
+      ],
+      "unproven": [
+        "this is logical isolation, not cryptographic isolation: the store is shared and unencrypted per tenant, so a database dump \u2014 or a backup, or a stolen disk \u2014 contains every tenant's rows in plaintext. Logical isolation stops a *request*; it does not stop a reader of the file",
+        "closing this needs per-tenant keys or a database that enforces row-level security with distinct roles per tenant; neither is in place, and no test can substitute for it"
+      ],
+      "limits": []
+    }
+  ],
+  "tenants": 2,
+  "limits": [
+    "executed against SQLite with the same ORM guard and the same tenancy module the API uses; PostgreSQL row-level security is not exercised here because the deployment does not use it",
+    "the drill covers the data layer and the tenant resolution the middleware calls; guide 121 covers the per-route declarations"
+  ]
+}
