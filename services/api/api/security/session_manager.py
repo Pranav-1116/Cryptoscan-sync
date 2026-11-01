@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 
 from api.config.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class SessionManager:
@@ -105,8 +103,29 @@ class SessionManager:
     def validate_api_token(self, token: str) -> str | None:
         return self.validate_session(token)
 
-    def invalidate_session(self, token: str) -> None:
-        return None
+    def invalidate_session(self, token: str) -> bool:
+        """Revoke a token in the durable store.
+
+        This used to return ``None`` and do nothing, which reads as success at
+        every call site — a logout that only forgets the cookie leaves the
+        token valid for its full lifetime, exactly what an attacker who copied
+        it is counting on. It now reports whether a session row was revoked;
+        callers that must fail closed should check the result.
+        """
+        try:
+            from db.connection.session import SessionLocal
+            from db.repositories.user_repository import UserRepository
+
+            session = SessionLocal()
+            try:
+                revoked = UserRepository(session).revoke_session(token)
+                session.commit()
+                return bool(revoked)
+            finally:
+                session.close()
+        except Exception:  # noqa: BLE001 — no store configured (dev) or DB down
+            logger.warning("session invalidation could not reach the session store")
+            return False
 
     def _decode(self, token: str) -> dict | None:
         try:

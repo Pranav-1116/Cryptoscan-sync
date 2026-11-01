@@ -261,7 +261,7 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
             detail="Public registration grants read-only access only; ask an administrator to assign elevated roles",
         )
     try:
-        validate_password_policy(body.password)
+        validate_password_policy(body.password, username=body.username, email=body.email)
     except PasswordPolicyError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=f"Weak password: {exc}")
@@ -724,13 +724,9 @@ def change_my_password(
         db.commit()
         publish_auth("password_change_failed", {"user": username, "ip": client})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
-    if verify_password(body.new_password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="New password must differ from the current password",
-        )
+    _reject_reused_password(repo, user, body.new_password)
     try:
-        validate_password_policy(body.new_password)
+        validate_password_policy(body.new_password, username=user.username, email=user.email)
     except PasswordPolicyError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=f"Weak password: {exc}")
@@ -838,6 +834,26 @@ def revoke_my_sessions(
 
 # ------------------------------------------------------------------ mfa (totp)
 
+def _reject_reused_password(repo, user, new_password: str) -> None:
+    """Refuse a password the account has used before (current + history).
+
+    Rotation is pointless if the user cycles back: an operator who knows an
+    old password (or a breach dump containing it) regains access after the
+    supposed cleanup. The comparison is against hashes, so the check costs one
+    PBKDF2 run per remembered password and never stores plaintext.
+    """
+    from api.security.passwords import password_reused
+
+    candidates = list(repo.password_history_of(user))
+    if user.password_hash:
+        candidates.insert(0, user.password_hash)
+    if password_reused(new_password, candidates):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="New password was used recently; choose one not used before",
+        )
+
+
 def _recovery_hash(code: str) -> str:
     """Recovery codes are random high-entropy strings — SHA-256 lookup hash."""
     return hashlib.sha256(code.strip().upper().encode("utf-8")).hexdigest()
@@ -909,8 +925,13 @@ def login_mfa(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account temporarily locked. Try again later.")
 
     used_recovery = False
-    if totp.verify(row.mfa_secret, body.code):
-        ok = True
+    replayed = False
+    step = totp.verify_step(row.mfa_secret, body.code)
+    if step is not None:
+        # The code is arithmetically valid; now claim its time-step so the same
+        # code cannot be presented a second time inside its ±window.
+        ok = repo.consume_totp_step(username, step)
+        replayed = not ok
     else:
         ok = repo.consume_recovery_code(row.id, _recovery_hash(body.code))
         used_recovery = ok
@@ -921,9 +942,15 @@ def login_mfa(
             max_failures=get_settings().LOGIN_MAX_FAILURES,
             lockout_seconds=get_settings().LOGIN_LOCKOUT_SECONDS,
         )
-        repo.audit(username, "auth.login_mfa", outcome="FAILURE", ip=client, detail="bad TOTP/recovery code")
+        repo.audit(
+            username, "auth.login_mfa", outcome="FAILURE", ip=client,
+            detail="TOTP code already used" if replayed else "bad TOTP/recovery code",
+        )
         db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="MFA code already used" if replayed else "Invalid MFA code",
+        )
 
     repo.reset_failures(username)
     repo.audit(username, "auth.login_mfa", ip=client, detail="recovery code" if used_recovery else "totp")
@@ -1202,7 +1229,7 @@ def create_user(
 ):
 
     try:
-        validate_password_policy(body.password)
+        validate_password_policy(body.password, username=body.username, email=body.email)
     except PasswordPolicyError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             detail=f"Weak password: {exc}")
@@ -1274,10 +1301,11 @@ def update_user(
             changes["revoked_sessions"] = repo.revoke_all_sessions(username)
     if body.password is not None:
         try:
-            validate_password_policy(body.password)
+            validate_password_policy(body.password, username=username, email=user.email)
         except PasswordPolicyError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                                 detail=f"Weak password: {exc}")
+        _reject_reused_password(repo, user, body.password)
         repo.set_password(username, hash_password(body.password))
         changes["password_rotated"] = True
         changes["revoked_sessions"] = repo.revoke_all_sessions(username)

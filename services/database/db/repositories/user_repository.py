@@ -379,15 +379,35 @@ class UserRepository:
             ).scalars().all()
         )
 
-    def set_password(self, username: str, password_hash: str) -> User | None:
+    def set_password(self, username: str, password_hash: str, *,
+                     keep_history: bool = True) -> User | None:
         user = self.get_by_username(username)
         if user is None:
             return None
+        if keep_history and user.password_hash:
+            # The *replaced* hash goes into history so the old password cannot
+            # be chosen again. Hashes only — never the plaintext.
+            from api.security.passwords import push_history
+
+            history = self.password_history_of(user)
+            user.password_history = json.dumps(push_history(user.password_hash, history))
         user.password_hash = password_hash
         user.failed_attempts = 0
         user.locked_until = None
+        user.last_totp_step = None
         self.session.flush()
         return user
+
+    @staticmethod
+    def password_history_of(user: User) -> list[str]:
+        raw = getattr(user, "password_history", None)
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            return []
+        return [entry for entry in parsed if isinstance(entry, str)] if isinstance(parsed, list) else []
 
     def list_users(self) -> list[User]:
         return list(self.session.execute(select(User).order_by(User.username)).scalars().all())
@@ -422,12 +442,31 @@ class UserRepository:
             token_hash=token_hash(token),
             username=username,
             created_at_ts=datetime.now(timezone.utc),
+            last_seen_at=datetime.now(timezone.utc),
             expires_at=expires_at,
             ip_address=ip,
         )
         self.session.add(row)
         self.session.flush()
         return row
+
+    def count_recent_source_failures(self, client_key: str, *, since: datetime) -> int:
+        """Failed logins from one source since ``since`` — the velocity signal.
+
+        Per-account lockout stops an attacker grinding one user; it does nothing
+        against password spraying, where each account sees a single failure. This
+        counts the source, whoever it is aimed at.
+        """
+        if not client_key:
+            return 0
+        return int(self.session.execute(
+            select(func.count())
+            .select_from(AuditLog)
+            .where(AuditLog.action == "auth.login",
+                   AuditLog.outcome.in_(("FAILURE", "LOCKED")),
+                   AuditLog.ip_address == client_key,
+                   AuditLog.created_at >= since)
+        ).scalar_one() or 0)
 
     def get_session(self, token: str) -> UserSession | None:
         return self.session.execute(
@@ -511,6 +550,28 @@ class UserRepository:
         user.mfa_enabled = bool(enabled and secret_b32)
         self.session.flush()
         return user
+
+    @staticmethod
+    def last_totp_step_of(user: User) -> int | None:
+        step = getattr(user, "last_totp_step", None)
+        return int(step) if step is not None else None
+
+    def consume_totp_step(self, username: str, step: int) -> bool:
+        """Claim ``step`` for this account; False if it is already spent.
+
+        Returns True only for a step strictly greater than the last one used,
+        so a code cannot be presented twice — not by a second request racing
+        the first, and not by replaying a code observed during its window.
+        """
+        user = self.get_by_username(username)
+        if user is None:
+            return False
+        previous = self.last_totp_step_of(user)
+        if previous is not None and step <= previous:
+            return False
+        user.last_totp_step = int(step)
+        self.session.flush()
+        return user.last_totp_step == int(step)
 
     def set_recovery_codes(self, user_id: str, code_hashes: list[str]) -> None:
         from datetime import datetime, timezone

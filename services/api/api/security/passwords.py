@@ -79,12 +79,15 @@ class PasswordPolicyError(ValueError):
     """Raised when a candidate password fails the strength policy."""
 
 
-def password_policy_errors(password: str) -> list[str]:
+def password_policy_errors(password: str, *, username: str | None = None,
+                           email: str | None = None) -> list[str]:
     """Return a list of human-readable policy problems (empty list == OK).
 
     Policy: 12+ chars; not a common/breached-shaped password; must contain
     at least three of {lowercase, uppercase, digit, symbol}; must not repeat
-    a single character more than 3 times in a row.
+    a single character more than 3 times in a row; must not contain the
+    account's own username or email local-part, which is the first thing an
+    attacker who has seen a directory entry tries.
     """
     errors: list[str] = []
     pw = str(password or "")
@@ -92,7 +95,13 @@ def password_policy_errors(password: str) -> list[str]:
         errors.append(f"password must be at least {MIN_PASSWORD_LENGTH} characters")
     if len(pw) > MAX_PASSWORD_LENGTH:
         errors.append(f"password must be at most {MAX_PASSWORD_LENGTH} characters")
-    if pw.lower() in _COMMON_PASSWORDS:
+    from api.security.breach_corpus import is_breached
+
+    if is_breached(pw):
+        # Checked before shape rules: a breached password is refused even when
+        # it is long and mixed-class, which is exactly the case shape rules miss.
+        errors.append("password appears in the configured breach corpus")
+    elif pw.lower() in _COMMON_PASSWORDS:
         errors.append("password is too common")
     else:
         stem = _normalized_stem(pw)
@@ -100,6 +109,15 @@ def password_policy_errors(password: str) -> list[str]:
             len(s) >= 5 and s in stem for s in _COMMON_STEMS
         ):
             errors.append("password is based on a common word and too easy to guess")
+    identity_tokens = [token for token in (
+        (username or "").strip().lower(),
+        (email or "").split("@")[0].strip().lower(),
+    ) if len(token) >= 4]
+    lowered = pw.lower()
+    for token in identity_tokens:
+        if token in lowered:
+            errors.append("password must not contain your username or email address")
+            break
     classes = 0
     if any(c.islower() for c in pw):
         classes += 1
@@ -124,11 +142,36 @@ def password_policy_errors(password: str) -> list[str]:
     return errors
 
 
-def validate_password_policy(password: str) -> None:
+def validate_password_policy(
+    password: str, *, username: str | None = None, email: str | None = None
+) -> None:
     """Raise PasswordPolicyError if the password is unacceptable."""
-    errors = password_policy_errors(password)
+    errors = password_policy_errors(password, username=username, email=email)
     if errors:
         raise PasswordPolicyError("; ".join(errors))
+
+
+#: How many previous passwords are remembered for the re-use check.
+PASSWORD_HISTORY_DEPTH = 5
+
+
+def password_reused(password: str, history: list[str] | None) -> bool:
+    """True when ``password`` still verifies against one of the kept hashes."""
+    for previous in history or []:
+        # ``verify_password`` never raises on a malformed stored value; a
+        # non-string entry is a corrupt row, which is simply not a match.
+        if isinstance(previous, str) and previous and verify_password(password, previous):
+            return True
+    return False
+
+
+def push_history(current_hash: str | None, history: list[str] | None,
+                 *, depth: int = PASSWORD_HISTORY_DEPTH) -> list[str]:
+    """Newest-first history with the just-replaced hash at the front, capped."""
+    kept = [entry for entry in (history or []) if entry]
+    if current_hash:
+        kept.insert(0, current_hash)
+    return kept[:depth]
 
 
 def hash_password(password: str, *, iterations: int | None = None) -> str:

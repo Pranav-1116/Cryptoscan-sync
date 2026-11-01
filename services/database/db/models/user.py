@@ -52,6 +52,14 @@ class User(BaseModel):
     # exclude it. Runtime schema reconciliation / migration 0039 add this
     # column to existing stores.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: Previous password hashes (JSON list, newest first) so a password cannot be
+    #: re-used. Hashes only — a history that stored plaintext would be a second
+    #: credential store to protect.
+    password_history: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The last TOTP time-step accepted for this user. A code is single-use:
+    #: accepting the same step twice would let an observed code be replayed for
+    #: the rest of its 30-second (plus skew) window.
+    last_totp_step: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     @property
     def is_deleted(self) -> bool:
@@ -82,6 +90,11 @@ class UserSession(BaseModel):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: Last time this session was used. An idle window is a different control
+    #: from an absolute expiry: a token that is being carried by a stolen laptop
+    #: but never used still dies at expiry, while one that is used continuously
+    #: keeps working until the absolute limit.
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 # platform-scope: platform-wide audit trail (who did what, when) required

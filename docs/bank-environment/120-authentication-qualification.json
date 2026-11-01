@@ -1,13 +1,13 @@
 {
   "schema": "cryptoscan.authentication-qualification/1",
   "version": "auth-qualification/1.0",
-  "generated_at": "2026-11-01T03:11:43.978270+00:00",
+  "generated_at": "2026-11-01T05:14:46.398234+00:00",
   "counts": {
-    "PASS": 3,
-    "PARTIAL": 5,
+    "PASS": 8,
+    "PARTIAL": 0,
     "FAIL": 0
   },
-  "probes": 55,
+  "probes": 79,
   "rows": [
     {
       "id": "login",
@@ -122,7 +122,7 @@
     {
       "id": "mfa",
       "question": "does the second factor exist, and can the first factor alone bypass it?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "probes": [
         {
           "probe": "enroll",
@@ -179,25 +179,48 @@
           "observed": "observed 200"
         },
         {
+          "probe": "code-single-use-first",
+          "expected": "an unused valid code is accepted",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "code-replay-refused",
+          "expected": "the same code presented twice is refused",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "code-replay-says-why",
+          "expected": "the refusal names reuse rather than a bad code",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "stale-step-refused",
+          "expected": "a code from an already-consumed step is refused",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
           "probe": "recovery-code",
           "expected": "a recovery code is accepted once",
           "ok": true,
           "observed": "observed 200"
         }
       ],
-      "passed": 10,
+      "passed": 14,
       "failed": 0,
-      "unproven": [
-        "no external authenticator (hardware key, IdP push) is exercised: TOTP is the only second factor measured here"
-      ],
+      "unproven": [],
       "limits": [
+        "TOTP is the only second factor the product implements: WebAuthn and IdP push are not features here, so there is nothing to exercise. The row proves the first factor alone cannot pass the gate; it does not claim a phishing-resistant authenticator exists",
         "the challenge is validated by the same session key as the session; an attacker with the signing key can forge both"
       ]
     },
     {
       "id": "expiry",
       "question": "does a session end when it says it will?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "probes": [
         {
           "probe": "expired-session",
@@ -228,14 +251,32 @@
           "expected": "an MFA challenge is not a session",
           "ok": true,
           "observed": "observed None"
+        },
+        {
+          "probe": "idle-session-refused",
+          "expected": "a session unused past the idle window is refused",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "fresh-session-accepted",
+          "expected": "a session used now is still accepted",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "idle-clock-advances",
+          "expected": "a used session's idle clock moves forward",
+          "ok": true,
+          "observed": "observed True"
         }
       ],
-      "passed": 5,
+      "passed": 8,
       "failed": 0,
-      "unproven": [
-        "idle timeout and absolute session lifetime per role are not implemented separately: there is one TTL"
-      ],
-      "limits": []
+      "unproven": [],
+      "limits": [
+        "all roles share one absolute lifetime (SESSION_EXPIRE_HOURS); per-role lifetime is a policy option this product does not implement"
+      ]
     },
     {
       "id": "revocation",
@@ -295,7 +336,7 @@
     {
       "id": "password_policy",
       "question": "is a weak password refused, and is what is stored unusable?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "probes": [
         {
           "probe": "weak-short",
@@ -344,19 +385,85 @@
           "expected": "a plaintext stored secret never verifies in production",
           "ok": true,
           "observed": "observed False"
+        },
+        {
+          "probe": "identity-in-password",
+          "expected": "422 when the password contains the username",
+          "ok": true,
+          "observed": "observed 422"
+        },
+        {
+          "probe": "rotation-accepted",
+          "expected": "a fresh strong password is accepted",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "history-blocks-reuse",
+          "expected": "422 when cycling back to a previous password",
+          "ok": true,
+          "observed": "observed 422"
+        },
+        {
+          "probe": "history-says-why",
+          "expected": "the refusal names reuse",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "history-stores-hashes",
+          "expected": "the remembered entries are hashes, never plaintext",
+          "ok": true,
+          "observed": "observed False"
+        },
+        {
+          "probe": "corpus-loaded",
+          "expected": "a supplied corpus is parsed (digest and digest:count forms)",
+          "ok": true,
+          "observed": "observed (True, 2)"
+        },
+        {
+          "probe": "breached-refused",
+          "expected": "422 for a strong-shaped password in the corpus",
+          "ok": true,
+          "observed": "observed 422"
+        },
+        {
+          "probe": "breached-says-why",
+          "expected": "the refusal names the corpus",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "unlisted-accepted",
+          "expected": "a password absent from the corpus is accepted",
+          "ok": true,
+          "observed": "observed 201"
+        },
+        {
+          "probe": "gap-announced",
+          "expected": "production without a corpus reports a named gap",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "gap-not-dev-only",
+          "expected": "the gap is scoped to production",
+          "ok": true,
+          "observed": "observed None"
         }
       ],
-      "passed": 8,
+      "passed": 19,
       "failed": 0,
-      "unproven": [
-        "no breach-list or history check: a strong-but-breached password is accepted, and password reuse across changes is not compared"
-      ],
-      "limits": []
+      "unproven": [],
+      "limits": [
+        "the corpus is operator-supplied: this drill proves the check works when a corpus is configured, not that any particular list is current \u2014 keeping the feed fresh is an operational obligation"
+      ]
     },
     {
       "id": "lockout",
       "question": "does repeated failure lock the account, and does the lock survive a restart?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "probes": [
         {
           "probe": "failures-refused",
@@ -393,19 +500,31 @@
           "expected": "the failures are in the audit trail",
           "ok": true,
           "observed": "observed True"
+        },
+        {
+          "probe": "spray-refused",
+          "expected": "a correct password from a spraying source is refused",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "other-source-unaffected",
+          "expected": "a different source still logs in",
+          "ok": true,
+          "observed": "observed True"
         }
       ],
-      "passed": 6,
+      "passed": 8,
       "failed": 0,
-      "unproven": [
-        "the harness counts 8 failures from one client; distributed attempts across source addresses are not counted together because the lock is per account and per attempt, not per-source velocity"
-      ],
-      "limits": []
+      "unproven": [],
+      "limits": [
+        "velocity is counted per source address; a botnet spreading one failure per address is not aggregated, which no per-source counter can do"
+      ]
     },
     {
       "id": "credential_handling",
       "question": "does a credential leak into a response, a URL or a log?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "probes": [
         {
           "probe": "password-not-echoed",
@@ -436,13 +555,35 @@
           "expected": "a token in the query string grants nothing",
           "ok": true,
           "observed": "observed 401"
+        },
+        {
+          "probe": "logs-were-captured",
+          "expected": "the capture is live, so absence means redaction",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "log-no-password",
+          "expected": "a failed attempt's password never reaches the log",
+          "ok": true,
+          "observed": "observed False"
+        },
+        {
+          "probe": "log-no-credential",
+          "expected": "the account password never reaches the log",
+          "ok": true,
+          "observed": "observed False"
+        },
+        {
+          "probe": "log-no-token",
+          "expected": "no session token reaches the log",
+          "ok": true,
+          "observed": "observed False"
         }
       ],
-      "passed": 5,
+      "passed": 9,
       "failed": 0,
-      "unproven": [
-        "log redaction is measured by guide 121's log probe, not here; this row only reads HTTP responses"
-      ],
+      "unproven": [],
       "limits": []
     }
   ],

@@ -6,7 +6,7 @@ import hmac
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from api.config.settings import get_settings
 from api.security.passwords import verify_password
@@ -120,6 +120,20 @@ class AuthService:
                        detail="bootstrap credentials rejected")
             self.session.commit()
             raise AuthenticationError("Invalid username or password")
+
+        source_failures = repo.count_recent_source_failures(
+            client_key,
+            since=now - timedelta(seconds=int(getattr(
+                self.settings, "LOGIN_SOURCE_WINDOW_SECONDS", 900))),
+        )
+        if source_failures >= int(getattr(self.settings, "LOGIN_SOURCE_MAX_FAILURES", 20)):
+            # Refused before the password is checked: a sprayer learns nothing
+            # about which of its guesses came close.
+            repo.audit(candidate or "unknown", "auth.login", outcome="LOCKED",
+                       ip=client_key, detail="too many failures from this source")
+            self.session.commit()
+            raise AuthenticationError(
+                "Too many failed login attempts from this location. Try again later.")
 
         user = repo.get_by_username(candidate)
         if user is None:

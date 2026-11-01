@@ -71,6 +71,10 @@ def build_harness() -> Harness:
     os.environ.setdefault("SECRET_KEY", "auth-qualification-secret-key-32-chars-min")
     os.environ.setdefault("ADMIN_USERNAME", "admin")
     os.environ.setdefault("ADMIN_PASSWORD", "cryptoscan")
+    # The velocity control is measured deliberately in one row with its own
+    # threshold; the default is raised so the other rows' failure counts do not
+    # trip it and turn an unrelated probe into a false refusal.
+    os.environ.setdefault("LOGIN_SOURCE_MAX_FAILURES", "1000")
 
     for relative in ("scripts", "services/api", "services/database", "shared/shared_models",
                      "shared/shared_config", "services/runtime", "services/evidence",
@@ -87,6 +91,7 @@ def build_harness() -> Harness:
 
     from db.connection.session import Base, configure_session
     from api.middleware.auth_middleware import AuthMiddleware
+    from api.middleware.logging_middleware import LoggingMiddleware
     from api.routers.auth import router as auth_router
 
     path = tempfile.mktemp(suffix=".db", prefix="auth-qualification-")
@@ -96,6 +101,9 @@ def build_harness() -> Harness:
 
     app = FastAPI()
     app.add_middleware(AuthMiddleware)
+    # The real access-log middleware, so the credential_handling row can read
+    # what the product actually emits per request instead of assuming.
+    app.add_middleware(LoggingMiddleware)
     app.include_router(auth_router, prefix="/api/v1")
 
     client = TestClient(app, raise_server_exceptions=False)
@@ -295,6 +303,32 @@ def row_mfa(h: Harness) -> Row:
     _expect(row, "second-factor-session", "the issued token works at the gate",
             c.get(PROBE_PATH, headers=_bearer(session)).status_code, 200)
 
+    # A TOTP code is single-use even inside its own ±window. The next step's
+    # code is valid now (window is symmetric), so it is accepted once...
+    ahead = totp.current_code(secret, at=time.time() + totp.DEFAULT_PERIOD)
+    first_challenge = c.post("/api/v1/auth/login",
+                             json={"username": "analyst-mfa", "password": STRONG}).json().get("mfa_token", "")
+    first_use = c.post("/api/v1/auth/login/mfa", json={"mfa_token": first_challenge, "code": ahead})
+    _expect(row, "code-single-use-first", "an unused valid code is accepted", first_use.status_code, 200)
+
+    # ...and must be refused the second time it is presented.
+    replay_challenge = c.post("/api/v1/auth/login",
+                              json={"username": "analyst-mfa", "password": STRONG}).json().get("mfa_token", "")
+    replay = c.post("/api/v1/auth/login/mfa", json={"mfa_token": replay_challenge, "code": ahead})
+    _expect(row, "code-replay-refused", "the same code presented twice is refused",
+            replay.status_code, 401)
+    _expect(row, "code-replay-says-why", "the refusal names reuse rather than a bad code",
+            "used" in str(replay.json().get("detail", "")).lower(), True)
+
+    # A code from an earlier step is below the consumed step, so it fails too.
+    stale_challenge = c.post("/api/v1/auth/login",
+                             json={"username": "analyst-mfa", "password": STRONG}).json().get("mfa_token", "")
+    stale = c.post("/api/v1/auth/login/mfa",
+                   json={"mfa_token": stale_challenge,
+                         "code": totp.current_code(secret, at=time.time() - totp.DEFAULT_PERIOD)})
+    _expect(row, "stale-step-refused", "a code from an already-consumed step is refused",
+            stale.status_code, 401)
+
     # A recovery code works exactly once.
     if recovery:
         used = c.post("/api/v1/auth/login/mfa",
@@ -304,8 +338,10 @@ def row_mfa(h: Harness) -> Row:
                             "code": recovery[0]})
         _expect(row, "recovery-code", "a recovery code is accepted once", used.status_code, 200)
 
-    row.unproven.append("no external authenticator (hardware key, IdP push) is exercised: "
-                        "TOTP is the only second factor measured here")
+    row.limits.append("TOTP is the only second factor the product implements: WebAuthn and "
+                      "IdP push are not features here, so there is nothing to exercise. The row "
+                      "proves the first factor alone cannot pass the gate; it does not claim a "
+                      "phishing-resistant authenticator exists")
     row.limits.append("the challenge is validated by the same session key as the session; "
                       "an attacker with the signing key can forge both")
     return row
@@ -339,8 +375,67 @@ def row_expiry(h: Harness) -> Row:
     _expect(row, "mfa-challenge-purpose", "an MFA challenge is not a session",
             SessionManager().validate_session(challenge), None)
 
-    row.unproven.append("idle timeout and absolute session lifetime per role are not "
-                        "implemented separately: there is one TTL")
+    # A second clock: a genuine, unexpired session that has been idle past the
+    # window must be refused. The row is aged directly in the store, which is
+    # what an abandoned laptop looks like from the server's side.
+    from datetime import timedelta
+
+    from api.config.settings import get_settings
+    from db.connection.session import SessionLocal
+    from db.repositories.user_repository import UserRepository
+
+    idle_minutes = int(get_settings().SESSION_IDLE_MINUTES)
+    young = c.post("/api/v1/auth/login", json={"username": "admin", "password": "cryptoscan"}).json()["token"]
+    db = SessionLocal()
+    try:
+        repo = UserRepository(db)
+        session_row = repo.get_session(young)
+        session_row.last_seen_at = datetime.now(timezone.utc) - timedelta(minutes=idle_minutes + 1)
+        session_row.created_at_ts = datetime.now(timezone.utc)
+        db.commit()
+    finally:
+        db.close()
+    idle = c.get(PROBE_PATH, headers=_bearer(young))
+    _expect(row, "idle-session-refused", "a session unused past the idle window is refused",
+            idle.status_code, 401)
+
+    # Negative control: the same token shape, freshly seen, is still accepted —
+    # so the refusal above is the idle clock, not a broken token.
+    fresh = c.post("/api/v1/auth/login", json={"username": "admin", "password": "cryptoscan"}).json()["token"]
+    _expect(row, "fresh-session-accepted", "a session used now is still accepted",
+            c.get(PROBE_PATH, headers=_bearer(fresh)).status_code, 200)
+
+    # And using a session moves the idle clock forward (throttled to a minute).
+    def _aware(value):
+        # SQLite hands back naive datetimes; the store is UTC, the harness says so.
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    db = SessionLocal()
+    try:
+        row_before = _aware(UserRepository(db).get_session(fresh).last_seen_at)
+    finally:
+        db.close()
+    db = SessionLocal()
+    try:
+        repo = UserRepository(db)
+        aged = repo.get_session(fresh)
+        aged.last_seen_at = datetime.now(timezone.utc) - timedelta(seconds=120)
+        db.commit()
+    finally:
+        db.close()
+    c.get(PROBE_PATH, headers=_bearer(fresh))
+    db = SessionLocal()
+    try:
+        after = _aware(UserRepository(db).get_session(fresh).last_seen_at)
+    finally:
+        db.close()
+    _expect(row, "idle-clock-advances", "a used session's idle clock moves forward",
+            after is not None and (row_before is None or after > row_before), True)
+
+    row.limits.append("all roles share one absolute lifetime (SESSION_EXPIRE_HOURS); per-role "
+                      "lifetime is a policy option this product does not implement")
     return row
 
 
@@ -440,8 +535,106 @@ def row_password_policy(h: Harness) -> Row:
     _expect(row, "plaintext-fallback-refused", "a plaintext stored secret never verifies in production",
             refused, False)
 
-    row.unproven.append("no breach-list or history check: a strong-but-breached password is "
-                        "accepted, and password reuse across changes is not compared")
+    # The account's own name is the first guess an attacker makes.
+    identity = c.post("/api/v1/auth/register",
+                      json={"username": "identity-token-user",
+                            "password": "Identity-Token-User-42", "role": "readonly"})
+    _expect(row, "identity-in-password", "422 when the password contains the username",
+            identity.status_code, 422)
+
+    # Rotation must not be reversible: after two changes the original is refused.
+    c.post("/api/v1/auth/register",
+           json={"username": "history-user", "password": STRONG, "role": "readonly"})
+    first_token = c.post("/api/v1/auth/login",
+                         json={"username": "history-user", "password": STRONG}).json()["token"]
+    rotated = c.post("/api/v1/auth/me/password", headers=_bearer(first_token),
+                     json={"current_password": STRONG,
+                           "new_password": "Second-Choice-Passphrase-77"})
+    _expect(row, "rotation-accepted", "a fresh strong password is accepted", rotated.status_code, 200)
+    c.post("/api/v1/auth/logout", headers=_bearer(first_token))
+    second_token = c.post("/api/v1/auth/login",
+                          json={"username": "history-user",
+                                "password": "Second-Choice-Passphrase-77"}).json().get("token", "")
+    back = c.post("/api/v1/auth/me/password", headers=_bearer(second_token),
+                  json={"current_password": "Second-Choice-Passphrase-77",
+                        "new_password": STRONG})
+    _expect(row, "history-blocks-reuse", "422 when cycling back to a previous password",
+            back.status_code, 422)
+    _expect(row, "history-says-why", "the refusal names reuse",
+            "used recently" in str(back.json().get("detail", "")).lower(), True)
+    db = SessionLocal()
+    try:
+        stored_history = UserRepository(db).password_history_of(
+            UserRepository(db).get_by_username("history-user"))
+    finally:
+        db.close()
+    _expect(row, "history-stores-hashes", "the remembered entries are hashes, never plaintext",
+            any(STRONG in entry for entry in stored_history), False)
+
+    # Breach corpus: a strong-shaped password that is known-breached must be
+    # refused when the operator supplies a corpus, and its absence must be an
+    # announced deployment gap rather than a silent pass.
+    from api.security import breach_corpus
+
+    corpus_dir = Path(tempfile.mkdtemp(prefix="auth-corpus-"))
+    corpus_path = corpus_dir / "breached.txt"
+    breached_password = "Tr0ub4dor&3xkcd-Breached-2019"
+    corpus_path.write_text(
+        "# drilled corpus: digests only\n"
+        + "0" * 64 + "\n"
+        f"{breach_corpus.digest(breached_password)}:9412\n",
+        encoding="utf-8",
+    )
+    previous_corpus = os.environ.get(breach_corpus.CORPUS_ENV)
+    os.environ[breach_corpus.CORPUS_ENV] = str(corpus_path)
+    try:
+        loaded = breach_corpus.describe()
+        _expect(row, "corpus-loaded", "a supplied corpus is parsed (digest and digest:count forms)",
+                (loaded["loaded"], loaded["entries"]), (True, 2))
+        rejected = c.post("/api/v1/auth/register",
+                          json={"username": "breached-user", "password": breached_password,
+                                "role": "readonly"})
+        _expect(row, "breached-refused", "422 for a strong-shaped password in the corpus",
+                rejected.status_code, 422)
+        _expect(row, "breached-says-why", "the refusal names the corpus",
+                "breach" in str(rejected.json().get("detail", "")).lower(), True)
+        # Negative control: same shape, not in the corpus, still accepted.
+        clean = c.post("/api/v1/auth/register",
+                       json={"username": "clean-user", "password": "Unlisted-Passphrase-2049",
+                             "role": "readonly"})
+        _expect(row, "unlisted-accepted", "a password absent from the corpus is accepted",
+                clean.status_code, 201)
+    finally:
+        if previous_corpus is None:
+            os.environ.pop(breach_corpus.CORPUS_ENV, None)
+        else:
+            os.environ[breach_corpus.CORPUS_ENV] = previous_corpus
+        breach_corpus._cache = None
+        for leftover in corpus_dir.iterdir():
+            leftover.unlink(missing_ok=True)
+        corpus_dir.rmdir()
+
+    # With no corpus configured the gap is announced, not hidden. Production is
+    # simulated explicitly so this cannot pass by accident in a dev shell.
+    os.environ[breach_corpus.CORPUS_ENV] = ""
+    try:
+        from types import SimpleNamespace
+
+        gap = breach_corpus.production_gap(SimpleNamespace(is_production=True))
+        _expect(row, "gap-announced", "production without a corpus reports a named gap",
+                bool(gap) and "PASSWORD_BREACH_CORPUS" in str(gap), True)
+        dev = breach_corpus.production_gap(SimpleNamespace(is_production=False))
+        _expect(row, "gap-not-dev-only", "the gap is scoped to production", dev, None)
+    finally:
+        if previous_corpus is None:
+            os.environ.pop(breach_corpus.CORPUS_ENV, None)
+        else:
+            os.environ[breach_corpus.CORPUS_ENV] = previous_corpus
+        breach_corpus._cache = None
+
+    row.limits.append("the corpus is operator-supplied: this drill proves the check works "
+                      "when a corpus is configured, not that any particular list is current — "
+                      "keeping the feed fresh is an operational obligation")
     return row
 
 
@@ -500,9 +693,50 @@ def row_lockout(h: Harness) -> Row:
     outcomes = {str(getattr(row, "outcome", "") or "").upper() for row in rows}
     _expect(row, "audited", "the failures are in the audit trail", "FAILURE" in outcomes, True)
 
-    row.unproven.append(f"the harness counts {limit} failures from one client; distributed "
-                        "attempts across source addresses are not counted together because the "
-                        "lock is per account and per attempt, not per-source velocity")
+    # Per-account lockout does nothing against spraying, where every account
+    # sees one failure. The durable control is per-source velocity, driven here
+    # through the service so the request-layer's own minute limiter cannot mask it.
+    from api.security.auth import AuthService, AuthenticationError
+
+    settings.LOGIN_SOURCE_MAX_FAILURES = 3
+    try:
+        for target in ("lockout-target", "lockout-second", "lockout-third", "lockout-target"):
+            try:
+                AuthService(session=SessionLocal()).authenticate(
+                    target, "Spray-Guess-0001", client_key="203.0.113.250")
+            except AuthenticationError:
+                pass
+        db = SessionLocal()
+        try:
+            try:
+                AuthService(session=db).authenticate("admin", "cryptoscan",
+                                                     client_key="203.0.113.250")
+                sprayed = False
+            except AuthenticationError as exc:
+                sprayed = "this location" in str(exc)
+        finally:
+            db.close()
+        _expect(row, "spray-refused", "a correct password from a spraying source is refused", sprayed, True)
+
+        # Negative control: another source is unaffected. Driven through the
+        # service with an explicit source, because the HTTP client is a single
+        # source for every request in this harness.
+        db = SessionLocal()
+        try:
+            try:
+                ok_user = AuthService(session=db).authenticate(
+                    "admin", "cryptoscan", client_key="198.51.100.4")
+                healthy = ok_user is not None and ok_user.username == "admin"
+            except AuthenticationError:
+                healthy = False
+        finally:
+            db.close()
+        _expect(row, "other-source-unaffected", "a different source still logs in", healthy, True)
+    finally:
+        settings.LOGIN_SOURCE_MAX_FAILURES = 1000
+
+    row.limits.append("velocity is counted per source address; a botnet spreading one failure "
+                      "per address is not aggregated, which no per-source counter can do")
     return row
 
 
@@ -536,8 +770,35 @@ def row_secrets(h: Harness) -> Row:
     _expect(row, "token-not-a-query-credential", "a token in the query string grants nothing",
             query.status_code, 401)
 
-    row.unproven.append("log redaction is measured by guide 121's log probe, not here; this row "
-                        "only reads HTTP responses")
+    # Logs: the real access-log middleware is in front of this app. Capture
+    # every record emitted while credentials move, then look for them.
+    import io
+    import logging
+
+    captured = io.StringIO()
+    handler = logging.StreamHandler(captured)
+    handler.setLevel(logging.DEBUG)
+    root = logging.getLogger()
+    previous_level = root.level
+    root.addHandler(handler)
+    if root.level > logging.DEBUG or root.level == logging.NOTSET:
+        root.setLevel(logging.DEBUG)
+    try:
+        c.post("/api/v1/auth/login", json={"username": "admin", "password": "Log-Canary-Secret-3312"})
+        ok_login = c.post("/api/v1/auth/login", json={"username": "admin", "password": "cryptoscan"})
+        c.get("/api/v1/auth/me", headers=_bearer(ok_login.json().get("token", "")))
+    finally:
+        root.removeHandler(handler)
+        root.setLevel(previous_level)
+    emitted = captured.getvalue()
+    _expect(row, "logs-were-captured", "the capture is live, so absence means redaction",
+            "http_request" in emitted, True)
+    _expect(row, "log-no-password", "a failed attempt's password never reaches the log",
+            "Log-Canary-Secret-3312" in emitted, False)
+    _expect(row, "log-no-credential", "the account password never reaches the log",
+            "cryptoscan" in emitted.lower(), False)
+    _expect(row, "log-no-token", "no session token reaches the log",
+            ok_login.json().get("token", "absent-token-marker-xyz") in emitted, False)
     return row
 
 
@@ -629,11 +890,13 @@ def render_md(report: dict[str, Any]) -> str:
         lines.append(f"- {limit}")
     lines += [
         "",
-        "**The verdict this drill supports:** login, session integrity, the second factor, "
-        "expiry, revocation, the password policy and lockout are enforced by the server and "
-        "each has been executed against. What is missing is the deployment half — TLS, an "
-        "external IdP path with a real directory, password breach lists, and per-role session "
-        "lifetimes — and those are named above rather than folded into a pass.",
+        "**The verdict this drill supports:** login, session integrity, the second factor "
+        "(including single-use codes), expiry with a separate idle clock, revocation, the "
+        "password policy with credential history, lockout with per-source velocity, and "
+        "credential redaction in responses and logs are enforced by the server and each has "
+        "been executed against. What is missing is the deployment half — TLS, an external IdP "
+        "path with a real directory, and an external breach corpus — and those are named above "
+        "rather than folded into a pass.",
         "",
     ]
     return "\n".join(lines)

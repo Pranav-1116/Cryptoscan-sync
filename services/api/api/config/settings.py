@@ -187,6 +187,9 @@ class APISettings(BaseSettings):
     LDAP_GROUP_ROLE_MAP: str = ""
 
     SESSION_EXPIRE_HOURS: int = 24
+    #: The idle window is a *second* limit, not a replacement for the absolute
+    #: expiry above: a token carried off a machine and never used dies at expiry;
+    #: one used continuously keeps working until the absolute limit.
     COOKIE_SECURE: bool | None = None
     # Real-time stream: how often the API tails monitor_events (written by the
     # separate monitor process) and republishes them on the SSE stream.
@@ -204,6 +207,15 @@ class APISettings(BaseSettings):
     ADMIN_PASSWORD_HASH: str = ""
     LOGIN_MAX_FAILURES: int = 8
     LOGIN_LOCKOUT_SECONDS: int = 900
+    #: Failures from one source (IP) inside LOGIN_SOURCE_WINDOW_SECONDS before
+    #: that source is refused outright. Per-account lockout stops an attacker
+    #: grinding one user; this stops password spraying, where every account sees
+    #: exactly one failure and no per-account counter ever trips.
+    LOGIN_SOURCE_MAX_FAILURES: int = 20
+    LOGIN_SOURCE_WINDOW_SECONDS: int = 900
+    #: Idle window. A session unused for this long is refused even though its
+    #: absolute expiry has not passed. 0 disables the idle check.
+    SESSION_IDLE_MINUTES: int = 30
 
     DATABASE_URL: str = "sqlite:///./data/cryptoscan.db"
     REDIS_URL: str = ""

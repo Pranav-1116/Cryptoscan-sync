@@ -507,7 +507,11 @@ class TestWritesAcceptTheirOwnSchema:
         def body_for(method: str, path: str):
             try:
                 return api_payloads.request_body(spec, path, method)
-            except Exception:  # noqa: BLE001 - an unreadable schema is a finding below
+            except Exception as exc:  # noqa: BLE001 - an unreadable schema is a finding below
+                # Not swallowed: the route is probed with no body and the
+                # response is judged either way, but the reason is recorded so
+                # "no body" is never mistaken for "schema says no body".
+                print(f"payload build failed for {method} {path}: {type(exc).__name__}")
                 return None
 
         operations = [

@@ -236,6 +236,14 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             from api.startup_imports import warm as warm_imports
 
             warm_imports()
+        from api.security.breach_corpus import production_gap
+
+        # A control that is silently absent is worse than one that is missing
+        # loudly: name the gap at startup so an operator sees it in the first
+        # hundred lines of the log rather than never.
+        gap = production_gap(settings)
+        if gap:
+            logger.warning("password_breach_corpus_missing", extra={"detail": gap})
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
         tailer_task = None
         telemetry_task = None

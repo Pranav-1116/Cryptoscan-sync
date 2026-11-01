@@ -282,13 +282,29 @@ def _session_store_allows(token: str, username: str) -> bool:
             if row is not None:
                 from datetime import datetime, timezone
 
+                from api.security.session_policy import session_refusal, touch_due
+
                 if row.revoked_at is not None:
                     return False
-                expires = row.expires_at
-                if expires is not None and expires.tzinfo is None:
-                    expires = expires.replace(tzinfo=timezone.utc)  # SQLite returns naive
-                if expires and expires < datetime.now(timezone.utc):
+                now = datetime.now(timezone.utc)
+                idle_minutes = int(getattr(settings, "SESSION_IDLE_MINUTES", 0) or 0)
+                refusal = session_refusal(
+                    now=now,
+                    expires_at=row.expires_at,
+                    created_at_ts=getattr(row, "created_at_ts", None),
+                    last_seen_at=getattr(row, "last_seen_at", None),
+                    idle_minutes=idle_minutes,
+                )
+                if refusal == "expired":
                     return False
+                if refusal == "idle":
+                    # Not revoked — the token is genuine but abandoned. Mark the
+                    # row so an operator can tell the two apart.
+                    logger.info("session idle-expired", extra={"user": username})
+                    return False
+                if touch_due(getattr(row, "last_seen_at", None), now=now):
+                    row.last_seen_at = now
+                    session.commit()
             elif strict:
                 # Token never issued through /auth/login — treat as revoked.
                 return False

@@ -79,6 +79,30 @@ def verify(
     return False
 
 
+def verify_step(
+    secret_b32: str, code: str, *, at: float | None = None,
+    digits: int = DEFAULT_DIGITS, period: int = DEFAULT_PERIOD,
+    window: int = VERIFY_WINDOW, algorithm: str = "SHA1",
+) -> int | None:
+    """Which time-step a code belongs to, or ``None``.
+
+    ``verify`` only answers yes/no, which lets the same 6-digit code be
+    replayed for the whole ±window — up to 90 seconds of free reuse for an
+    attacker who shoulder-surfs or reads a notification. The caller persists
+    the returned step and refuses anything at or below it.
+    """
+    if not code or not code.strip().isdigit() or len(code.strip()) != digits:
+        return None
+    now = at if at is not None else time.time()
+    provided = code.strip().encode("ascii")
+    for skew in range(-window, window + 1):
+        step = int((now + skew * period) // period)
+        expected = totp_at(secret_b32, step * period, digits=digits, period=period, algorithm=algorithm)
+        if hmac.compare_digest(expected.encode("ascii"), provided):
+            return step
+    return None
+
+
 def provisioning_uri(secret_b32: str, username: str, issuer: str = "CryptoScan", *, digits: int = DEFAULT_DIGITS, period: int = DEFAULT_PERIOD) -> str:
     """otpauth:// URI understood by every TOTP authenticator app."""
     label = quote(f"{issuer}:{username}", safe=":")
