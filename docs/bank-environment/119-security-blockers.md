@@ -130,6 +130,15 @@ The 295 operations that still declare no *route-level* role are recorded in
 `102-authenticated-only-writes.json` with the reason and the writable roles they
 now require — a policy, not an open door.
 
+**What this changes for the console, stated rather than discovered.** The web
+UI still renders write controls for a read-only user; pressing one now returns
+`403 WRITE_FORBIDDEN` and the message the API sends — "This account has
+read-only access; the operation changes state and requires a role that may
+write" — is surfaced by `frontend/src/lib/api.ts`, which already lifts a JSON
+`detail` into the error it shows. Hiding or disabling those controls per role is
+a UI follow-up, not a security gap: the server refuses the call, which is the
+part that matters.
+
 ---
 
 ## 3. Agent machine identity — **7 PASS · 0 PARTIAL · 0 FAIL**
