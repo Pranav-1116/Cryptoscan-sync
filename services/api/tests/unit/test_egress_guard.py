@@ -77,3 +77,66 @@ def test_install_idempotent_and_uninstall_restores():
         pytest.fail("guard still active after uninstall")
     except OSError:
         pass  # expected: unroutable, but NOT denied by the guard
+
+
+# --------------------------------------------------------------------------- #
+# DNS rebinding and direct sockets — the two ways around a name-keyed allowlist
+# --------------------------------------------------------------------------- #
+
+def test_rebinding_a_pinned_name_is_blocked(monkeypatch):
+    """A name pinned to a public address must not be allowed to move private."""
+    import socket
+
+    from api.security import egress_guard as guard
+
+    real_getaddrinfo = socket.getaddrinfo
+    monkeypatch.setattr(guard, "_resolve", lambda host: {"93.184.216.34"})
+    install_egress_guard(["collector.example:443"])
+    assert guard._PINNED["collector.example"] == {"93.184.216.34"}
+
+    # The attacker re-points the name at loopback after the allowlist was built.
+    monkeypatch.setattr(guard, "_resolve", lambda host: {"127.0.0.1"})
+    with pytest.raises(EgressBlocked) as exc:
+        socket.create_connection(("collector.example", 443), timeout=0.2)
+    assert "DNS rebinding" in str(exc.value)
+    monkeypatch.setattr(socket, "getaddrinfo", real_getaddrinfo)
+    uninstall_egress_guard()
+
+
+def test_name_that_did_not_resolve_at_install_is_refused():
+    import socket
+
+    install_egress_guard(["not-a-real-host.invalid:443"])
+    with pytest.raises(EgressBlocked) as exc:
+        socket.create_connection(("not-a-real-host.invalid", 443), timeout=0.2)
+    assert "pinned address" in str(exc.value)
+    uninstall_egress_guard()
+
+
+def test_direct_socket_connect_is_guarded():
+    """`socket.socket().connect(...)` was a way around a create_connection hook."""
+    import socket
+
+    install_egress_guard(["updates.internal:443"])
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        with pytest.raises(EgressBlocked) as exc:
+            sock.connect(("10.20.10.15", 443))
+        assert "direct socket connect" in str(exc.value)
+    finally:
+        sock.close()
+        uninstall_egress_guard()
+
+
+def test_explicit_address_allowlist_still_allows_that_address():
+    import socket
+
+    install_egress_guard(["127.0.0.1:59999"])
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        with pytest.raises(OSError) as exc:
+            sock.connect(("127.0.0.1", 59999))
+        assert not isinstance(exc.value, EgressBlocked)
+    finally:
+        sock.close()
+        uninstall_egress_guard()

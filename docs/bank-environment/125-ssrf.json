@@ -1,0 +1,177 @@
+{
+  "schema": "cryptoscan.ssrf/1",
+  "version": "ssrf/1.0",
+  "generated_at": "2026-11-01T04:50:57.142931+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "target_policy",
+      "question": "is the target of a collection authorized by the server, not by the caller's role?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-scope-fails-closed",
+          "expected": "refused (409/422) with no approved scope",
+          "ok": true,
+          "observed": "409 {\"detail\":{\"error\":\"scope_not_configured\",\"reason\":\"no approved network scope \u2014 CryptoScan refuses to probe until a scope names the exact destinations\"}}"
+        },
+        {
+          "probe": "scope-rejects-cidr",
+          "expected": "422 when the approved scope names a /8",
+          "ok": true,
+          "observed": "422 {\"detail\":{\"error\":\"invalid_destination\",\"reason\":\"probe_target[0]: malformed probe hostname: '10.0.0.0/8'\"}}"
+        },
+        {
+          "probe": "scope-rejects-metadata",
+          "expected": "422 when the scope names 169.254.169.254",
+          "ok": true,
+          "observed": "422 {\"detail\":{\"error\":\"invalid_destination\",\"reason\":\"probe_target[0]: refusing to probe loopback/cloud-metadata target\"}}"
+        },
+        {
+          "probe": "scope-rejects-loopback",
+          "expected": "422 when the scope names 127.0.0.1",
+          "ok": true,
+          "observed": "422 {\"detail\":{\"error\":\"invalid_destination\",\"reason\":\"probe_target[0]: refusing to probe 127.0.0.1 \u2014 loopback/metadata/multicast/reserved blocked\"}}"
+        },
+        {
+          "probe": "scope-accepted",
+          "expected": "2xx for one exact host:port",
+          "ok": true,
+          "observed": "200 {\"inventory_id\":\"default\",\"scope\":{\"name\":\"drill-scope\",\"type\":\"network\",\"destinations\":[\"10.20.10.15:443\"],\"protocols\":[\"TLS\"],\"allowed_operations\":[\"CONNECT\",\"TLS_HANDSHAKE\",\"CERTIFICATE_READ\"],\"tra"
+        },
+        {
+          "probe": "out-of-scope-host-refused",
+          "expected": "refused for a host outside the approved scope",
+          "ok": true,
+          "observed": "409 {\"detail\":{\"error\":\"destination_outside_scope\",\"reason\":\"1 destination(s) outside the approved scope\",\"outside\":[\"10.20.10.99:443\"],\"approved\":[\"10.20.10.15:443\"]}}"
+        },
+        {
+          "probe": "cidr-in-request-refused",
+          "expected": "refused for a CIDR in the request itself",
+          "ok": true,
+          "observed": "409 {\"detail\":{\"error\":\"destination_outside_scope\",\"reason\":\"1 destination(s) outside the approved scope\",\"outside\":[\"10.20.10.0/24:443\"],\"approved\":[\"10.20.10.15:443\"]}}"
+        },
+        {
+          "probe": "source-root-refused",
+          "expected": "4xx for a target outside CRYPTOSCAN_SOURCE_ROOTS",
+          "ok": true,
+          "observed": "400 {\"detail\":\"repo_url: source path /etc is outside the allowed source roots\"}"
+        }
+      ],
+      "unproven": [
+        "which hosts a bank has *approved* is deployment data; this row proves the refusal paths, not that a given CIDR list is the right one"
+      ],
+      "limits": [
+        "this is guide 121's target row re-executed in this drill so the SSRF report stands on its own; the matrix per collector is guide 116"
+      ]
+    },
+    {
+      "id": "runtime_guard",
+      "question": "does the runtime egress guard refuse an outbound connection?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "empty-allowlist-blocks-everything",
+          "ok": true,
+          "observed": "refused before a socket existed: outbound connection to 169.254.169.254:80 denied: not in egress allowlist (0 rules)"
+        },
+        {
+          "probe": "explicit-allowlist-is-honoured",
+          "ok": true,
+          "observed": "an operator who allowlists an address means it: the rule is applied as written (the drill does not pretend the platform second-guesses them)"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "dns_rebinding",
+      "question": "can an approved name be re-pointed at a private address?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "rebinding-to-loopback-refused",
+          "ok": true,
+          "observed": "outbound connection to collector.example:443 denied: resolved to an address that was not authorised when the allowlist was installed (possible DNS rebinding: 127.0.0.1)"
+        },
+        {
+          "probe": "name-with-no-pinned-address-refused",
+          "ok": true,
+          "observed": "outbound connection to unresolvable.invalid:443 denied: name was not resolvable when the allowlist was installed, so it has no pinned address"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "redirects",
+      "question": "is a redirect to an unapproved destination followed?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "control-redirect-is-followed-without-the-guard",
+          "ok": true,
+          "observed": "urllib followed the redirect to the internal service: 200 ok"
+        },
+        {
+          "probe": "redirect-to-unapproved-host-refused",
+          "ok": true,
+          "observed": "0 EgressBlocked: outbound connection to 127.0.0.1:40459 denied: not in egress allowlist (1 rules)"
+        },
+        {
+          "probe": "redirect-to-metadata-address-refused",
+          "ok": true,
+          "observed": "0 EgressBlocked: outbound connection to 169.254.169.254:80 denied: not in egress allowlist (1 rules)"
+        }
+      ],
+      "unproven": [],
+      "limits": [
+        "the drill's redirect target is a local service standing in for cloud metadata; the address refused in the second probe is the real 169.254.169.254"
+      ]
+    },
+    {
+      "id": "direct_sockets",
+      "question": "does a hand-built socket bypass the guard?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "direct-socket-connect-refused",
+          "ok": true,
+          "observed": "outbound connection to 10.20.10.15:443 denied: direct socket connect to a destination outside the egress allowlist"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "controls",
+      "question": "does the guard still allow what it should?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "allowlisted-destination-still-works",
+          "ok": true,
+          "observed": "200 ok"
+        },
+        {
+          "probe": "control-without-guard-still-works",
+          "ok": true,
+          "observed": "200 ok"
+        }
+      ],
+      "unproven": [],
+      "limits": [
+        "the guard covers socket-level egress in this process. A collector that shells out (git, ssh, docker) makes its own connections and is covered by guide 122's argument analysis and by deployment egress policy, not by this module"
+      ]
+    }
+  ],
+  "requests": 18,
+  "limits": [
+    "UDP (sendto), raw sockets and direct syscalls are outside a Python-level guard; deployment egress policy is the control for those.",
+    "The guard is off unless EGRESS_GUARD=enforce, so the protection described here is a deployment property, proved rather than assumed."
+  ]
+}

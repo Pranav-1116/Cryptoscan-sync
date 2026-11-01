@@ -52,7 +52,7 @@
 > and makes every pass disappear.
 >
 > **Security, executed rather than asserted** — [guide 119](119-security-blockers.md)
-> grades the eight security blockers a bank asks about. Five are closed:
+> grades the eight security blockers a bank asks about. Six are closed:
 > [authentication](120-authentication-qualification.md) (**3 pass · 5 partial · 0
 > fail**, 55 probes — login, session integrity, MFA, expiry, revocation, password
 > policy, lockout, credential handling) and
@@ -79,8 +79,14 @@
 > observation is accepted only when its signature is the key registered for that
 > agent — so a valid certificate carrying another agent's signature is refused.
 >
-> Still open: SSRF and multi-tenant isolation — graded in guide 119 with what exists
-> and what does not. Evidence tampering is covered by
+> [SSRF](125-ssrf.md) (**6 pass · 0 partial · 0 fail**) covers the half a policy
+> cannot: a redirect to an unapproved destination, a name that rebinds to loopback
+> after approval, and a hand-built socket — with the allowlist now pinned at install
+> and `socket.socket.connect` wrapped. Two ways around the guard were found and
+> closed while writing the drill.
+>
+> Still open: multi-tenant isolation — graded in guide 119 with what exists and what
+> does not. Evidence tampering is covered by
 > [guide 112](112-evidence-integrity.md).
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
