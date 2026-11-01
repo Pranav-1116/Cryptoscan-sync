@@ -80,7 +80,12 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     assert len(rows) == len(recorded)
     # 295: the generic simulation engine's run endpoint (POST, computes over stored
     # evidence and writes nothing) joins the operator surface under /api/v1/estate.
-    assert len(rows) <= 295, (
+    # 296: POST /api/v1/collectors/authorize — guide 116. It cannot carry one
+    # require_roles: each collector plane has its own permission, and the route
+    # exists to ask "may this plane be collected" for whichever one is named. The
+    # principal comes from the session gate; the plane's permission is checked in
+    # api.security.collector_authority.evaluate() against PERMISSION_MATRIX.
+    assert len(rows) <= 296, (
         f"{len(rows)} authenticated-only writes; the recorded inventory holds 347. "
         "This count may only go down (a route gained a role) without a regeneration."
     )

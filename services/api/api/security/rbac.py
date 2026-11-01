@@ -242,6 +242,19 @@ def _caller_roles(request: Request) -> tuple[str, list[str]]:
     return username, []
 
 
+def require_principal(request: Request) -> dict:
+    """Dependency: the authenticated principal and the durable roles it holds.
+
+    ``require_permission`` answers "may this caller do this action?" and throws
+    the identity away. A collector authority has to record *who* asked, so the
+    identity has to be an object the handler can use rather than a string the
+    guard consumed. 401 is raised here, exactly as the guards do, so a route that
+    needs an identity cannot be reached without one.
+    """
+    principal, roles = _caller_roles(request)
+    return {"principal": principal, "roles": roles}
+
+
 def require_permission(*actions: str):
     """Dependency factory: allow only callers whose roles cover any action."""
 

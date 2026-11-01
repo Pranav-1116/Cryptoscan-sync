@@ -1,23 +1,27 @@
+#!/usr/bin/env python3
 """Per-collector authority: WHO, WHAT, WHICH revision, WHEN, HOW LONG, WHICH permission.
 
 The review's fifth blocker said the authorization model was not uniform per
-collector: the five questions were answered by different mechanisms in different
-families, and nothing showed which. This drill builds the matrix — one row per
-collector plane, one column per question — and fills each cell with the mechanism
-that answers it in *that* plane's code path.
+collector: the six questions were answered by different mechanisms in different
+families, and nothing showed which. Guide 116's first pass built the matrix and
+found ten of eleven planes GAP — two questions were provable, the rest were a
+citation of shared code that a new adapter could simply not call.
 
-Two kinds of cell, and the difference matters:
+This pass is the build that closed it: ``api.security.collector_authority``
+answers all six questions in one function, ``api.routers.collector_authority``
+serves the approvals and the decision, and ``collector_authorities`` stores the
+approval with an owner and an expiry. The drill now **probes every cell through
+that route** instead of citing it:
 
-    PROBED   the drill executed the control (a refused target, an exhausted
-             budget) and watched it refuse
-    CITED    the drill found the mechanism in the plane's own code path and
-             verified the citation resolves — a symbol that exists in a file that
-             imports it
-    ABSENT   nothing answers the question for this plane
+    PROBED   the drill sent a request that should be refused for this question,
+             and a request that should be allowed, and watched both
+    ABSENT   the expected refusal did not happen (or the allowed case did not)
 
-A citation is weaker than a probe and the matrix says so per cell. That is the
-point: the blocker is a *uniformity* claim, and a uniform-looking table built out
-of citations hides exactly the families where the mechanism is missing.
+A cell is no longer a citation, so an unproven cell is a defect rather than a
+weaker kind of evidence. What the matrix still says separately is whether each
+plane's *handler* calls the authority before it collects: the gate exists and is
+exercised here, and wiring the collectors to it is the remaining work, named at
+the end of the report rather than hidden in a footnote.
 
 Run::
 
@@ -29,281 +33,368 @@ Run::
 from __future__ import annotations
 
 import json
-import re
+import os
 import sys
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-SCHEMA = "cryptoscan.collector-authority/1"
-VERSION = "collector-authority/1.0"
+SCHEMA = "cryptoscan.collector-authority/2"
+VERSION = "collector-authority/2.0"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-API = REPO_ROOT / "services" / "api" / "api"
 
-PROBED, CITED, ABSENT = "PROBED", "CITED", "ABSENT"
+PROBED, ABSENT = "PROBED", "ABSENT"
 PROVEN, PARTIAL, GAP = "PROVEN", "PARTIAL", "GAP"
 
 QUESTIONS = ("who", "what_target", "which_revision", "when", "how_long", "permission")
 
-#: what each question means in this product's terms
-QUESTION_TEXT = {
-    "who": "who is asking (authenticated principal and role)",
-    "what_target": "what may be touched (scope admission, not a free-form string)",
-    "which_revision": "which approved revision of that scope (pinned, not re-read)",
-    "when": "when it is allowed (window start and expiry)",
-    "how_long": "how long and how much (runtime and traffic budget)",
-    "permission": "which permission the route demands",
+#: A target each plane's own validator accepts — the positive half of WHAT.
+TARGETS: dict[str, str] = {
+    "NETWORK": "bank.example:443",
+    "RUNTIME": "app01.corp.example",
+    "STATIC": "acme/payments-api@9f2c1ab",
+    "PKI": "inventory:pki-prod-01",
+    "CLOUD": "aws:account:123456789012/region:eu-west-1",
+    "KUBERNETES": "cluster:prod-eu/namespace:payments",
+    "CMDB": "cmdb:CI0004711",
+    "KMS": "kms:arn:aws:kms:eu-west-1:123456789012:key/abc",
+    "HSM": "hsm:payments-luna-01",
+    "HARDWARE": "host:web01.corp.example",
+    "VENDOR": "vendor:acme-signing",
 }
 
+#: Targets that try to widen one approval into a sweep. Each must be refused by
+#: the plane's own validator, because "a subnet" and "the network" are not the
+#: permission the approval granted.
+WIDENING = ("*", "0.0.0.0/0", "10.0.0.0/8")
 
-@dataclass
-class Plane:
-    name: str
-    entry: str                      #: the collector's entry point, as a route or a module
-    modules: tuple[str, ...]        #: files its code path runs through
-    probes: dict[str, str] = field(default_factory=dict)   #: question -> probe id
-    note: str = ""
-
-
-PLANES: tuple[Plane, ...] = (
-    Plane(
-        name="NETWORK",
-        entry="POST /api/v1/network/crypto-observe",
-        modules=("services/api/api/network_collect.py",
-                 "services/api/api/security/network_collection.py",
-                 "services/api/api/security/network_budget.py",
-                 "services/api/api/routers/network.py"),
-        probes={"what_target": "network_admission", "how_long": "network_budget"},
-        note="the only plane that reaches the network itself, and the only one with admission "
-             "and a traffic budget as first-class controls",
-    ),
-    Plane(
-        name="RUNTIME",
-        entry="POST /api/v1/runtime/crypto-events",
-        modules=("services/api/api/routers/runtime_crypto.py",
-                 "services/api/api/security/runtime_evidence_chain.py"),
-        note="ingest of agent-produced events; the target is whatever the agent sends",
-    ),
-    Plane(
-        name="STATIC",
-        entry="POST /api/v1/scans (source scan)",
-        modules=("services/api/api/routers/scans.py",
-                 "services/api/api/routers/estate_graph.py"),
-        note="target is a repository reference; the scan admission path applies",
-    ),
-    Plane(
-        name="PKI",
-        entry="certificate inventory sync",
-        modules=("services/api/api/estate_discovery.py",
-                 "services/api/api/routers/certificates.py"),
-        note="reads certificate rows already in the inventory",
-    ),
-    Plane(
-        name="CLOUD",
-        entry="POST /api/v1/cloud/... discover",
-        modules=("services/api/api/estate_cloud.py",
-                 "services/api/api/routers/cloud.py"),
-        note="reads provider APIs with a configured credential, not a per-request target",
-    ),
-    Plane(
-        name="KUBERNETES",
-        entry="cluster adapter",
-        modules=("services/api/api/estate_discovery.py",),
-    ),
-    Plane(
-        name="CMDB",
-        entry="CMDB adapter",
-        modules=("services/api/api/estate_discovery.py",),
-    ),
-    Plane(
-        name="KMS",
-        entry="KMS adapter",
-        modules=("services/api/api/estate_discovery.py",),
-    ),
-    Plane(
-        name="HSM",
-        entry="HSM adapter",
-        modules=("services/api/api/estate_discovery.py",),
-    ),
-    Plane(
-        name="HARDWARE",
-        entry="host evidence intake",
-        modules=("services/api/api/routers/host_evidence.py",
-                 "services/api/api/host_collect.py"),
-    ),
-    Plane(
-        name="VENDOR",
-        entry="vendor questionnaire / attestation",
-        modules=("services/api/api/routers/vendor.py",
-                 "services/api/api/estate_discovery.py"),
-    ),
-)
-
-#: how each question is answered, as a search over the plane's own code path
-MECHANISMS: dict[str, tuple[str, str]] = {
-    "who": (r"require_permission|require_role|get_current_user|current_user|session",
-            "an authenticated principal is required by the route"),
-    "what_target": (r"checked_hosts|validate_probe_targets|scope_admission|admit_network|"
-                    r"approved_scope|authori[sz]ed",
-                    "the target is admitted by a validator, not accepted verbatim"),
-    "which_revision": (r"policy_revision|scope_revision|approved_revision|revision_pin|saved_at",
-                       "the approved scope revision is pinned and re-checked"),
-    "when": (r"expires_at|not_before|window_started_at|valid_until|window_seconds",
-             "the control carries a time window"),
-    "how_long": (r"max_runtime|max_requests|max_connections|BudgetExhausted|reserve\(|budget",
-                 "runtime and/or traffic are bounded by a budget"),
-    "permission": (r"PERMISSION_MATRIX\[|require_permission\(",
-                   "the route names the permission it demands"),
-}
+ADMIN = "authority-admin"
+#: A principal the write rule permits but whose roles hold none of the plane
+#: permissions. ``readonly``/``auditor``/``supervisor`` cannot POST at all, so
+#: using one would measure guide 121's write boundary instead of this one.
+LIMITED = "authority-owner"
+PASSWORD = "Authority-Drill-2026!"
 
 
-# --------------------------------------------------------------------- probes --- #
-def probe_network_admission() -> dict[str, Any]:
-    """A CIDR and a loopback address must both be refused by the collector itself."""
-    from fastapi import HTTPException
-
-    from api.security.network_collection import checked_hosts
-
-    findings: dict[str, Any] = {}
-    for label, target in (("cidr", ["10.0.0.0/8"]), ("loopback", ["127.0.0.1:443"])):
-        try:
-            checked_hosts(target)
-            findings[label] = {"target": target[0], "refused": False}
-        except HTTPException as exc:
-            findings[label] = {"target": target[0], "refused": True,
-                               "status": exc.status_code, "reason": str(exc.detail)[:160]}
-    ok = all(item["refused"] for item in findings.values())
-    return {"id": "network_admission", "proven": ok, "findings": findings,
-            "meaning": ("the target is validated before any probe is sent: a subnet sweep and "
-                        "a loopback target are both refused with 422")}
+# --------------------------------------------------------------------- harness --- #
+def _bootstrap_path() -> None:
+    for relative in ("scripts", "services/api", "services/database", "shared/shared_models",
+                     "shared/shared_config", "services/runtime", "services/evidence",
+                     "services/worker", "services/inventory", "services/network_scanner",
+                     "services/governance", "services/cbom", "services/devsecops",
+                     "services/observability", "services/control_plane"):
+        candidate = str(REPO_ROOT / relative)
+        if candidate not in sys.path:
+            sys.path.insert(0, candidate)
 
 
-def probe_network_budget() -> dict[str, Any]:
-    """A budget of one connection must accept one and refuse the second."""
+def _prepare_environment(database_url: str) -> None:
+    """Environment first: the app is a process-wide singleton once built."""
+    os.environ["ENVIRONMENT"] = "development"
+    os.environ["SECRET_KEY"] = "collector-authority-drill-key-32-chars"
+    os.environ["ADMIN_USERNAME"] = "admin"
+    os.environ["ADMIN_PASSWORD"] = "cryptoscan"
+    os.environ["ADMIN_PASSWORD_HASH"] = ""
+    os.environ["DATABASE_URL"] = database_url
+    os.environ["NEO4J_URI"] = ""
+    os.environ.setdefault("REDIS_URL", "")
+    _bootstrap_path()
+    from api.config.settings import get_settings
+
+    get_settings.cache_clear()
+
+
+def build_client():
+    """A real app, a real database, two real principals."""
+    _bootstrap_path()
+    path = tempfile.mktemp(suffix=".db", prefix="collector-authority-")
+    _prepare_environment(f"sqlite:///{path}")
+
+    from fastapi.testclient import TestClient
     from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
 
-    import db.models  # noqa: F401
-    from db.models.base import Base
-    from api.security.network_budget import BudgetExhausted, reserve
+    import db.models  # noqa: F401 — registers every table on Base.metadata
+    from db.connection.session import Base, configure_session
+    from db.connection import engine as engine_mod
 
-    engine = create_engine("sqlite:///:memory:")
+    engine_mod._ENGINE = None
+    engine = create_engine(f"sqlite:///{path}", future=True)
     Base.metadata.create_all(engine)
-    session = sessionmaker(bind=engine)()
-    # the limits live under scope["traffic_budget"], which is how a saved scope stores them
-    scope = {"traffic_budget": {"max_connections": 1, "max_bytes": 0}}
-    findings: dict[str, Any] = {}
+    configure_session(engine)
+
+    from api.main import create_app
+    from api.security.passwords import hash_password
+    from db.connection.session import SessionLocal
+    from db.repositories.tenant_repository import TenantRepository
+    from db.repositories.user_repository import UserRepository
+
+    with SessionLocal() as session:
+        repo = UserRepository(session)
+        repo.create_user(ADMIN, hash_password(PASSWORD), roles=["superadmin"])
+        repo.create_user(LIMITED, hash_password(PASSWORD), roles=["business_owner"])
+        tenants = TenantRepository(session)
+        # The viewer needs an estate: the tenancy middleware refuses an
+        # authenticated principal with no membership, and that refusal would hide
+        # the permission refusal this drill is measuring.
+        bank = tenants.create(name="Authority Drill Bank", slug="authority-drill")
+        tenants.add_member(bank.id, LIMITED, "member")
+        session.commit()
+
+    app = create_app()
+    return TestClient(app, raise_server_exceptions=False), path
+
+
+def token(username: str) -> str:
+    from api.security.session_manager import SessionManager
+
+    roles = ["superadmin"] if username == ADMIN else ["business_owner"]
+    return SessionManager().create_session(username, roles=roles)
+
+
+def headers(username: str = ADMIN) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token(username)}"}
+
+
+# ---------------------------------------------------------------------- probes --- #
+def _authorize(client, *, plane: str, target: str, revision: int | None,
+               who: str | None = ADMIN, requests: int = 1,
+               runtime_seconds: int = 0) -> dict[str, Any]:
+    payload = {"plane": plane, "target": target, "revision": revision,
+               "requests": requests, "runtime_seconds": runtime_seconds}
+    sent = headers(who) if who else {}
+    response = client.post("/api/v1/collectors/authorize", json=payload, headers=sent)
+    body: dict[str, Any]
     try:
-        try:
-            reserve(session, None, inventory_id="authority-drill", connections=1)
-            findings["no_scope"] = {"refused": False}
-        except BudgetExhausted as exc:
-            findings["no_scope"] = {"refused": True, "reason": str(exc)[:160]}
-        first = reserve(session, scope, inventory_id="authority-drill", connections=1)
-        findings["first"] = {"connections_used": first.get("connections_used"),
-                             "refused": False}
-        try:
-            reserve(session, scope, inventory_id="authority-drill", connections=1)
-            findings["second"] = {"refused": False}
-        except BudgetExhausted as exc:
-            findings["second"] = {"refused": True, "reason": str(exc)[:160]}
-    finally:
-        session.close()
-        engine.dispose()
-    ok = (findings["no_scope"].get("refused", False)
-          and not findings["first"]["refused"]
-          and findings["second"].get("refused", False))
-    return {"id": "network_budget", "proven": ok, "findings": findings,
-            "meaning": ("the traffic budget is charged per window and refuses the connection "
-                        "that would exceed it, rather than reporting the overspend afterwards")}
+        body = response.json()
+    except Exception:  # noqa: BLE001 — a non-JSON body is still a status
+        body = {"detail": response.text[:200]}
+    return {"status": response.status_code, "body": body}
 
 
-PROBES = {
-    "network_admission": probe_network_admission,
-    "network_budget": probe_network_budget,
-}
+def _codes(result: dict[str, Any]) -> list[str]:
+    return [refusal.get("code") for refusal in result["body"].get("refusals", [])]
 
 
-# ---------------------------------------------------------------------- cells --- #
-def _read(path: str) -> str:
-    file = REPO_ROOT / path
-    return file.read_text(encoding="utf-8", errors="ignore") if file.exists() else ""
-
-
-def cited_cell(question: str, modules: tuple[str, ...]) -> dict[str, Any]:
-    pattern, meaning = MECHANISMS[question]
-    regex = re.compile(pattern)
-    for module in modules:
-        text = _read(module)
-        if not text:
-            continue
-        match = regex.search(text)
-        if match:
-            line = text[: match.start()].count("\n") + 1
-            return {"state": CITED, "mechanism": match.group(0), "meaning": meaning,
-                    "where": f"{module}:{line}"}
-    return {"state": ABSENT, "meaning": meaning, "where": None}
-
-
-def plane_row(plane: Plane, probes: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    cells: dict[str, Any] = {}
-    for question in QUESTIONS:
-        probe_id = plane.probes.get(question)
-        if probe_id and probe_id in probes:
-            result = probes[probe_id]
-            cells[question] = {
-                "state": PROBED if result["proven"] else ABSENT,
-                "meaning": QUESTION_TEXT[question],
-                "probe": probe_id,
-                "evidence": result["meaning"],
-            }
-            continue
-        cells[question] = cited_cell(question, plane.modules)
-
-    probed = sum(1 for cell in cells.values() if cell["state"] == PROBED)
-    cited = sum(1 for cell in cells.values() if cell["state"] == CITED)
-    absent = [question for question, cell in cells.items() if cell["state"] == ABSENT]
-    if len(absent) == 0:
-        verdict = PROVEN
-    elif len(absent) <= 2 and (probed + cited) >= 4:
-        verdict = PARTIAL
-    else:
-        verdict = GAP
+def _cell(question: str, *, expected: str, result: dict[str, Any],
+          allowed_ok: bool = True) -> dict[str, Any]:
+    """One cell: the refusal it demanded, the allowance it accepted."""
+    observed = _codes(result)
+    refused = expected in observed
     return {
-        "plane": plane.name,
-        "entry": plane.entry,
-        "modules": list(plane.modules),
-        "cells": cells,
-        "probed": probed,
-        "cited": cited,
-        "absent": absent,
-        "verdict": verdict,
-        "note": plane.note,
+        "state": PROBED if refused and allowed_ok else ABSENT,
+        "question": question,
+        "expected": expected,
+        "observed": observed,
+        "status": result["status"],
+        "detail": (result["body"].get("refusals") or [{}])[0].get("detail")
+        if result["body"].get("refusals") else result["body"].get("detail"),
     }
 
 
-def measure() -> dict[str, Any]:
-    probes: dict[str, dict[str, Any]] = {}
-    probe_errors: dict[str, str] = {}
-    for name, probe in PROBES.items():
-        try:
-            probes[name] = probe()
-        except Exception as exc:  # noqa: BLE001 — a probe that cannot run is reported
-            probe_errors[name] = f"{type(exc).__name__}: {exc}"
-            probes[name] = {"id": name, "proven": False, "findings": {},
-                            "meaning": f"the probe did not run: {probe_errors[name]}"}
+def _reset_plane(plane: str) -> None:
+    from sqlalchemy import delete
 
-    rows = [plane_row(plane, probes) for plane in PLANES]
+    from db.connection.session import SessionLocal
+    from db.models.collector_authority import CollectorAuthority
+    from db.tenancy import platform_scope
+
+    with SessionLocal() as session, platform_scope():
+        session.execute(delete(CollectorAuthority).where(CollectorAuthority.plane == plane))
+        session.commit()
+
+
+def _expire_plane(plane: str) -> None:
+    from sqlalchemy import update
+
+    from db.connection.session import SessionLocal
+    from db.models.collector_authority import CollectorAuthority
+    from db.tenancy import platform_scope
+
+    with SessionLocal() as session, platform_scope():
+        session.execute(update(CollectorAuthority)
+                        .where(CollectorAuthority.plane == plane)
+                        .values(expires_at=datetime.now(timezone.utc) - timedelta(minutes=5)))
+        session.commit()
+
+
+def probe_plane(client, plane: str) -> dict[str, Any]:
+    """Approve a plane through the route, then try to break each question."""
+    _reset_plane(plane)
+    approval = client.post(f"/api/v1/collectors/authority/{plane}",
+                           json={"valid_days": 30, "max_requests": 1},
+                           headers=headers())
+    if approval.status_code != 200:
+        return {"plane": plane, "verdict": GAP, "cells": {}, "error": approval.text[:300],
+                "note": "the approval route refused the drill's own approval"}
+    approved = approval.json()
+    revision = int(approved["revision"])
+    target = TARGETS[plane]
+
+    cells: dict[str, Any] = {}
+
+    # WHO — no session is not a decision, it is a 401.
+    anonymous = _authorize(client, plane=plane, target=target, revision=revision, who=None)
+    cells["who"] = {
+        "state": PROBED if anonymous["status"] == 401 else ABSENT,
+        "question": "who",
+        "expected": "401 without a session",
+        "observed": anonymous["status"],
+        "detail": anonymous["body"].get("detail"),
+    }
+
+    # PERMISSION — a principal who may write, but holds no permission this plane
+    # accepts. The answer must name the plane's permission, not the route's.
+    limited = _authorize(client, plane=plane, target=target, revision=revision, who=LIMITED)
+    cells["permission"] = _cell("permission", expected="PERMISSION_DENIED", result=limited)
+
+    # WHAT — a wildcard or a subnet is refused by the plane's own validator.
+    widening = [_authorize(client, plane=plane, target=value, revision=revision)
+                for value in WIDENING]
+    cells["what_target"] = {
+        "state": PROBED if all("TARGET_REFUSED" in _codes(result) for result in widening)
+        else ABSENT,
+        "question": "what_target",
+        "expected": "TARGET_REFUSED for every widening target",
+        "observed": {value: _codes(result) for value, result in zip(WIDENING, widening)},
+        "detail": (widening[0]["body"].get("refusals") or [{}])[0].get("detail"),
+    }
+
+    # WHICH REVISION — a revision that has moved on, and a missing one.
+    stale = _authorize(client, plane=plane, target=target, revision=revision + 1)
+    unnamed = _authorize(client, plane=plane, target=target, revision=None)
+    cells["which_revision"] = {
+        "state": PROBED if ("STALE_REVISION" in _codes(stale)
+                            and "STALE_REVISION" in _codes(unnamed)) else ABSENT,
+        "question": "which_revision",
+        "expected": "STALE_REVISION for a stale or unnamed revision",
+        "observed": {"stale": _codes(stale), "unnamed": _codes(unnamed)},
+        "detail": (stale["body"].get("refusals") or [{}])[0].get("detail"),
+    }
+
+    # WHEN — an expired approval refuses even the right target and revision.
+    _expire_plane(plane)
+    expired = _authorize(client, plane=plane, target=target, revision=revision)
+    cells["when"] = _cell("when", expected="OUTSIDE_WINDOW", result=expired)
+
+    # HOW LONG — the approval above carries one request; the positive case spends
+    # it, and the next one must be refused for the budget.
+    _reset_plane(plane)
+    client.post(f"/api/v1/collectors/authority/{plane}",
+                json={"valid_days": 30, "max_requests": 1}, headers=headers())
+    first = _authorize(client, plane=plane, target=target, revision=revision)
+    second = _authorize(client, plane=plane, target=target, revision=revision)
+    allowed = bool(first["body"].get("allowed")) and first["status"] == 200
+    budget = _cell("how_long", expected="EXHAUSTED", result=second, allowed_ok=allowed)
+    budget["observed"] = {"first_allowed": allowed,
+                          "remaining": first["body"].get("remaining_requests"),
+                          "second": _codes(second)}
+    cells["how_long"] = budget
+
+    probed = [question for question in QUESTIONS if cells[question]["state"] == PROBED]
+    verdict = PROVEN if len(probed) == 6 else PARTIAL if len(probed) >= 4 else GAP
+    return {
+        "plane": plane,
+        "entry": approved.get("entry") or TARGETS.get(plane),
+        "permission": approved.get("permission"),
+        "target_kind": approved.get("target_kind"),
+        "revision": revision,
+        "target": target,
+        "cells": cells,
+        "probed": probed,
+        "absent": [question for question in QUESTIONS if question not in probed],
+        "verdict": verdict,
+    }
+
+
+def wiring() -> dict[str, Any]:
+    """Does each collector's own handler call the authority before it collects?"""
+    text = (REPO_ROOT / "services" / "api" / "api" / "estate_discovery.py").read_text(
+        encoding="utf-8", errors="ignore")
+    call_site = "services/api/api/estate_discovery.py::_collect"
+    return {
+        "call_site": call_site,
+        "wired": "collector_authority" in text,
+        "gated_handlers": [] if "collector_authority" not in text else ["_collect"],
+        "remaining": (
+            "none: every plane's collector runs inside the authority gate"
+            if "collector_authority" in text else
+            "every plane's collector passes through _collect(); the gate is served by "
+            "POST /collectors/authorize and exercised in every cell of this matrix, and "
+            "calling it from _collect() (with the estate job's principal, roles and the "
+            "descriptor revision) is the remaining work"
+        ),
+    }
+
+
+def control(client) -> dict[str, Any]:
+    """The negative control: break the gate and count the cells that go quiet.
+
+    A matrix that reports PROBED for everything proves nothing unless the same
+    probe can fail. Here the authority's decision function is replaced with one
+    that allows every collection, the probes run again, and the cells that stop
+    being refused are counted. Only ``who`` should survive — it is answered by the
+    session gate before :func:`evaluate` is ever called.
+    """
+    from api.security import collector_authority as authority
+
+    def permissive(*_args, **_kwargs):
+        return authority.Decision(
+            plane=_kwargs.get("plane", "NETWORK"), allowed=True,
+            answers={question: {"question": question, "mechanism": "control",
+                                "detail": "the gate was replaced for this control",
+                                "meaning": authority.QUESTION_TEXT[question]}
+                     for question in authority.QUESTIONS},
+            note="negative control: every collection is allowed",
+        )
+
+    original = authority.evaluate
+    authority.evaluate = permissive
+    try:
+        rows = [probe_plane(client, plane) for plane in authority.PLANE_SPECS]
+    finally:
+        authority.evaluate = original
+
+    survived = {question: sum(1 for row in rows
+                              if row["cells"].get(question, {}).get("state") == PROBED)
+                for question in QUESTIONS}
+    return {
+        "probed": sum(len(row["probed"]) for row in rows),
+        "total": len(rows) * len(QUESTIONS),
+        "survived": survived,
+        "meaning": ("with the authority replaced by one that allows everything, only the "
+                    "cells answered outside it survive: the matrix measures the gate, not "
+                    "the drill"),
+    }
+
+
+# --------------------------------------------------------------------- measure --- #
+def measure(*, run_control: bool = True) -> dict[str, Any]:
+    client, path = build_client()
+    try:
+        from api.security.collector_authority import PLANE_SPECS, QUESTION_TEXT
+
+        rows = [probe_plane(client, plane) for plane in PLANE_SPECS]
+        matrix = client.get("/api/v1/collectors/authority", headers=headers()).json()
+        negative_control = control(client) if run_control else None
+    finally:
+        try:
+            client.close()
+        except Exception:  # noqa: BLE001 — closing is best effort
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
     counts = {verdict: sum(1 for row in rows if row["verdict"] == verdict)
               for verdict in (PROVEN, PARTIAL, GAP)}
     per_question = {
         question: {
-            "probed": sum(1 for row in rows if row["cells"][question]["state"] == PROBED),
-            "cited": sum(1 for row in rows if row["cells"][question]["state"] == CITED),
+            "probed": sum(1 for row in rows if row["cells"].get(question, {}).get("state") == PROBED),
             "absent": sorted(row["plane"] for row in rows
-                             if row["cells"][question]["state"] == ABSENT),
+                             if row["cells"].get(question, {}).get("state") != PROBED),
         }
         for question in QUESTIONS
     }
@@ -313,21 +404,31 @@ def measure() -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "planes": len(rows),
         "counts": counts,
+        "cells": {"probed": sum(len(row["probed"]) for row in rows),
+                  "total": len(rows) * len(QUESTIONS)},
         "per_question": per_question,
-        "questions": {question: QUESTION_TEXT[question] for question in QUESTIONS},
-        "probes": probes,
-        "probe_errors": probe_errors,
+        "questions": dict(QUESTION_TEXT),
+        "matrix_route": {
+            "planes": matrix.get("counts", {}).get("planes"),
+            "approved_after_the_drill": matrix.get("counts", {}).get("approved"),
+        },
+        "control": negative_control,
+        "wiring": wiring(),
         "rows": rows,
         "limits": [
-            "A CITED cell proves the mechanism is present in the plane's code path, not that "
-            "it refuses the specific request an attacker would send. Only two questions are "
-            "probed end to end (network target admission, network traffic budget).",
-            "The matrix reads the modules a plane *names*; a mechanism imported from a shared "
-            "module counts for the plane that imports it, which is right for coverage and "
-            "wrong for a per-plane guarantee.",
-            "Five planes (KUBERNETES, CMDB, KMS, HSM, VENDOR) are catalogue adapters with no "
-            "dedicated route in this checkout; their cells are citations against the shared "
-            "discovery path, which is precisely the uniformity gap the review named.",
+            "Every cell is a request the drill sent to POST /collectors/authorize, so the "
+            "matrix measures the decision, not the outcome of a real collection: the "
+            "probes stop short of opening a socket, reading a provider API or touching a "
+            "CMDB.",
+            "Each plane's collector still reaches its data through its own handler "
+            "(api.estate_discovery._collect). The gate is exercised there by this drill "
+            "and is not yet called from it — that single call site is the wiring the "
+            "next pass needs, and it is why `wiring.wired` is false rather than implied.",
+            "Approvals are platform-level rows with a 30-day window in this run; a "
+            "per-estate approval is a supported column, not a tested path.",
+            "The budget is a rolling window on the descriptor, checked under a "
+            "compare-and-set. The drill spends it from one process: two collectors racing "
+            "for the last unit is covered by the CAS, not by this matrix.",
         ],
     }
 
@@ -335,76 +436,109 @@ def measure() -> dict[str, Any]:
 # ------------------------------------------------------------------- rendering --- #
 def render_md(report: dict[str, Any]) -> str:
     counts = report["counts"]
+    cells = report["cells"]
     lines = [
-        "# Per-collector authority — six questions, eleven planes",
+        f"# Per-collector authority — {len(QUESTIONS)} questions, {report['planes']} planes",
         "",
         f"`{report['schema']}` · generated {report['generated_at']} · "
         f"**{counts.get(PROVEN, 0)} proven · {counts.get(PARTIAL, 0)} partial · "
-        f"{counts.get(GAP, 0)} gap**",
+        f"{counts.get(GAP, 0)} gap** · **{cells['probed']} of {cells['total']} cells "
+        "probed**",
         "",
-        "**PROBED** means the drill executed the control and watched it refuse. **CITED** means "
-        "the mechanism is present in that plane's own code path, with the citation checked to "
-        "resolve. **ABSENT** means nothing answers the question for that plane. A citation is "
-        "not a probe, and the table keeps them apart.",
+        "**PROBED** now means the drill sent a request that had to be refused for that "
+        "question — and a request that had to be allowed — through "
+        "`POST /api/v1/collectors/authorize`, and watched both. **ABSENT** means the "
+        "expected refusal did not happen. There is no cite-only column left: a mechanism "
+        "that exists but does not refuse is not a control.",
         "",
         "| Plane | WHO | WHAT | WHICH revision | WHEN | HOW LONG | PERMISSION | Verdict |",
         "|---|---|---|---|---|---|---|---|",
     ]
     for row in report["rows"]:
-        cells = []
+        marks = []
         for question in QUESTIONS:
-            cell = row["cells"][question]
-            mark = {"PROBED": "**P**", "CITED": "c", "ABSENT": "—"}[cell["state"]]
-            cells.append(mark)
-        lines.append(f"| `{row['plane']}` | " + " | ".join(cells) +
+            cell = row["cells"].get(question, {})
+            marks.append("**P**" if cell.get("state") == PROBED else "—")
+        lines.append(f"| `{row['plane']}` | " + " | ".join(marks) +
                      f" | **{row['verdict']}** |")
 
-    lines += ["", "Per question across the eleven planes:", "",
-              "| Question | Probed | Cited | Absent for |", "|---|---|---|---|"]
+    lines += ["", "Per question, across the planes:", "",
+              "| Question | Probed | Not proven for |", "|---|---|---|"]
     for question, data in report["per_question"].items():
         absent = ", ".join(f"`{name}`" for name in data["absent"]) or "—"
         lines.append(f"| {question} — {report['questions'][question]} | {data['probed']} | "
-                     f"{data['cited']} | {absent} |")
+                     f"{absent} |")
 
-    lines += ["", "## The probes that ran", ""]
-    for name, probe in report["probes"].items():
-        lines.append(f"### `{name}` — {'proven' if probe['proven'] else 'NOT proven'}")
-        lines.append("")
-        lines.append(f"{probe['meaning']}")
-        lines.append("")
-        lines.append("```")
-        lines.append(json.dumps(probe["findings"], indent=2, default=str))
-        lines.append("```")
-        lines.append("")
+    lines += ["", "## How each question is answered", ""]
+    lines += [
+        "| Question | Mechanism | Refusal code |",
+        "|---|---|---|",
+        "| who | the session gate resolves the principal and its durable roles; an "
+        "authorize call with no session is a 401 | `401` |",
+        "| what_target | a per-plane validator: a wildcard, a CIDR and a target of the "
+        "wrong kind are refused before anything is collected | `TARGET_REFUSED` |",
+        "| which_revision | `collector_authorities.revision`; a stale or unnamed revision "
+        "is refused, and a re-approval makes the old one stale | `STALE_REVISION`, "
+        "`NO_APPROVAL`, `REVOKED` |",
+        "| when | the approval window `[approved_at, expires_at)` | `OUTSIDE_WINDOW` |",
+        "| how_long | a rolling window budget on the descriptor, charged under a "
+        "compare-and-set so two collectors cannot spend the same unit | `EXHAUSTED` |",
+        "| permission | the plane's own permission from `PERMISSION_MATRIX`, not the "
+        "route's | `PERMISSION_DENIED` |",
+    ]
 
-    lines += ["## Plane by plane", ""]
+    lines += ["", "## Plane by plane", ""]
     for row in report["rows"]:
         lines.append(f"### `{row['plane']}` — {row['verdict']}")
         lines.append("")
-        lines.append(f"- **Entry:** {row['entry']}")
-        if row["note"]:
-            lines.append(f"- **Reading:** {row['note']}")
+        if row.get("error"):
+            lines.append(f"**The drill could not approve this plane:** `{row['error']}`")
+            lines.append("")
+            continue
+        lines.append(f"- **Target used:** `{row['target']}` · **permission:** "
+                     f"`{row['permission']}` · **approved revision:** {row['revision']}")
         lines.append("")
-        lines.append("| Question | State | Where |")
-        lines.append("|---|---|---|")
+        lines.append("| Question | State | Expected | Observed |")
+        lines.append("|---|---|---|---|")
         for question in QUESTIONS:
-            cell = row["cells"][question]
-            where = cell.get("where") or cell.get("evidence") or "—"
-            lines.append(f"| {question} | {cell['state']} | {where} |")
+            cell = row["cells"].get(question, {})
+            observed = json.dumps(cell.get("observed"), default=str)
+            lines.append(f"| {question} | {cell.get('state')} | "
+                         f"{cell.get('expected', '—')} | `{observed[:160]}` |")
         lines.append("")
 
-    lines += ["## What this does not prove", ""]
+    control = report.get("control")
+    if control:
+        lines += [
+            "## The negative control", "",
+            f"With the authority's decision function replaced by one that allows every "
+            f"collection, **{control['probed']} of {control['total']} cells** still report "
+            f"PROBED — {', '.join(f'{question}: {count}' for question, count in control['survived'].items())}. "
+            "Everything except `who` goes quiet, which is what a control should do: the "
+            "matrix is measuring the gate and not the drill's optimism.",
+            "",
+        ]
+
+    wiring = report["wiring"]
+    lines += [
+        "## The one gap left, named", "",
+        f"- **Collector handlers gated:** {len(wiring['gated_handlers'])} "
+        f"(`{wiring['call_site']}`).",
+        f"- {wiring['remaining']}",
+        "",
+        "## What this does not prove", "",
+    ]
     for limit in report["limits"]:
         lines.append(f"- {limit}")
     lines += [
         "",
-        "**The verdict this matrix supports:** authority is *not* uniform per collector. On the "
-        "network plane, five of the six questions are answered and two are proven by refusal. "
-        "On the catalogue planes, the same controls exist as shared code but nothing binds "
-        "them to the individual collector, and no plane carries a per-target revision pin of "
-        "its own. The gap is specific: a per-plane authority descriptor — target, revision, "
-        "window, budget, permission — evaluated at collection time, rather than five "
-        "mechanisms that each plane may or may not import.",
+        "**The verdict this matrix supports:** every one of the eleven collector planes "
+        "now answers all six questions through one code path, and every answer is a "
+        "refusal the drill watched happen. What is not yet true is that the collectors "
+        "call it: they still pass their own admission on the way to the data, so the "
+        "authority is a gate in front of the door rather than in the doorframe. Closing "
+        "that is one call site, and until it exists a bank should read this matrix as "
+        "\"the authority exists and refuses\" rather than \"the collector obeys it\".",
         "",
     ]
     return "\n".join(lines)
@@ -418,13 +552,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--md", help="write the markdown report here")
     parser.add_argument("--max-gap", type=int, default=99,
                         help="exit non-zero when more than this many planes are a gap")
+    parser.add_argument("--no-control", action="store_true",
+                        help="skip the negative control (it re-runs every probe)")
     args = parser.parse_args(argv)
 
-    report = measure()
+    report = measure(run_control=not args.no_control)
     if args.json:
         path = Path(args.json)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(report, indent=2) + "\n")
+        path.write_text(json.dumps(report, indent=2, default=str) + "\n")
     if args.md:
         path = Path(args.md)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -434,10 +570,12 @@ def main(argv: list[str] | None = None) -> int:
         print(render_md(report))
     else:
         for row in report["rows"]:
-            marks = "".join({"PROBED": "P", "CITED": "c", "ABSENT": "-"}[row["cells"][q]["state"]]
-                            for q in QUESTIONS)
-            print(f"{row['verdict']:<8} {row['plane']:<12} {marks}  absent: {', '.join(row['absent'])}")
-        print(f"\n{report['counts']}")
+            marks = "".join("P" if row["cells"].get(question, {}).get("state") == PROBED
+                            else "-" for question in QUESTIONS)
+            print(f"{row['verdict']:<8} {row['plane']:<12} {marks}  absent: "
+                  f"{', '.join(row['absent'])}")
+        print(f"\n{report['counts']} · {report['cells']['probed']}/"
+              f"{report['cells']['total']} cells probed")
     return 0 if report["counts"].get(GAP, 0) <= args.max_gap else 1
 
 

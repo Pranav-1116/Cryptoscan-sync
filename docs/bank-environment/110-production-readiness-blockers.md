@@ -272,36 +272,61 @@ policy reason (102). For scan execution the controlled-execution path answers th
 questions **in data**: pinned authority, target, revision, window, budget and
 permission, re-verified inside the running job.
 
-**Proven per collector, this pass.** `scripts/collector_authority.py`
-regenerates `116-collector-authority.{json,md}`: eleven collector planes × six
-questions (who / what target / which revision / when / how long / permission),
-each cell graded `PROBED` (executed here), `CITED` (a mechanism found in the code)
-or `ABSENT`. Result: **0 planes PROVEN, 1 PARTIAL, 10 GAP**.
+**Built and probed per collector, this pass.** The first pass of
+`scripts/collector_authority.py` graded eleven collector planes × six questions
+and found **0 PROVEN, 1 PARTIAL, 10 GAP**: two questions were executed, the rest
+were a citation of shared code a new adapter could decline to import. That was a
+build item, not a fix, and this pass built it:
 
-| Plane | Cells (who, target, revision, when, how long, permission) | Verdict |
-|---|---|---|
-| `NETWORK` | `c P c c P -` | **PARTIAL** |
-| `RUNTIME`, `STATIC`, `HARDWARE` | `c c c - - -` / `c c - c - -` / `c c - c - -` | GAP |
-| `PKI`, `CLOUD` | `c - - c - c` / `c - - - c -` | GAP |
-| `KUBERNETES`, `CMDB`, `KMS`, `HSM`, `VENDOR` | `c - - - - -` | GAP |
+- **`services/api/api/security/collector_authority.py`** answers all six
+  questions in one function, `evaluate()`. Each plane declares a `PlaneSpec` in
+  code — entry point, the permission it needs, the shape of target it accepts,
+  and the defaults for its window and budget — so a new adapter cannot inherit a
+  different subset of controls.
+- **`collector_authorities`** (migration `0131`) is the approval: one row per
+  plane with an owner, an expiry, a pinned revision and a rolling-window budget.
+  A plane with no row is **refused** (`NO_APPROVAL`), never defaulted — an
+  approval nobody signed is not an approval.
+- **`/api/v1/collectors/authority`** serves the matrix;
+  `POST /collectors/authority/{plane}` approves (bumping the revision, which is
+  what makes an older one stale); `POST .../revoke` withdraws it and keeps the
+  row; `POST /collectors/authorize` returns the decision with all six answers and
+  a named code for the question that failed.
+- **`scripts/authorize_collector_plane.py`** is the operator's deliberate act:
+  approving planes with a named approver and an expiry, dry-run first.
 
-The two `P` cells are executed, not read: `checked_hosts()` refuses a CIDR and a
-loopback/metadata target with 422 before a socket is opened, and a second
-collection against the same scope raises `BudgetExhausted` — including the
-no-scope negative control, which must refuse rather than default to unlimited.
-The single `-` on the strongest plane is the finding: **network collection is
-bounded in target and in time, but the request itself carries no per-collector
-permission**; it relies on the session.
+The drill now **probes every cell through that route** — a request that had to be
+refused for that question, and one that had to be allowed:
 
-**Not proven.** That authority is uniform per family. It is not: who decides is
-enforced in different places per plane, revision is pinned only where a policy
-revision exists, and five planes have no target check the drill could find at
-all. 836 operations still hold nothing beyond a session.
+| Plane | WHO | WHAT | WHICH revision | WHEN | HOW LONG | PERMISSION | Verdict |
+|---|---|---|---|---|---|---|---|
+| all eleven (`NETWORK` … `VENDOR`) | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
 
-**What closes it.** A per-plane authority descriptor — the same six questions as
-a single record attached to the collector catalogue, with a route that returns it
-— so a console can show an operator exactly what a collector is allowed to touch
-before it is allowed to touch it.
+**11 planes PROVEN · 0 PARTIAL · 0 GAP · 66 of 66 cells probed.** The refusals,
+each observed rather than assumed: `401` with no session; `PERMISSION_DENIED` for
+a principal who may write but holds no permission the plane accepts;
+`TARGET_REFUSED` for `*`, `0.0.0.0/0` and `10.0.0.0/8` (the last one parsed as a
+perfectly good `owner/repository` pair until the validator learned that an
+address is never a target); `STALE_REVISION` for a stale or unnamed revision;
+`OUTSIDE_WINDOW` for an expired approval; `EXHAUSTED` when the budget is spent.
+
+**The negative control.** With `evaluate()` replaced by a function that allows
+everything, **11 of 66 cells** still report PROBED and every one of them is
+`who` — it is answered by the session gate before the authority is consulted.
+The matrix is measuring the gate, not the drill's optimism.
+
+**Not proven, and named in the report.** Each plane's *collector* still reaches
+its data through `api.estate_discovery._collect()`, which does not yet call the
+gate: the authority is a checkpoint in front of the door rather than in the
+doorframe. That is one call site, with the estate job's principal, roles and
+descriptor revision to plumb through it — and until it exists a bank should read
+the matrix as "the authority exists and refuses" rather than "the collector obeys
+it". Approvals are also platform-level in this pass; the per-estate column is
+supported and untested. 836 operations still hold nothing beyond a session.
+
+**What closes the rest.** Wire `_collect()` to `evaluate()` and delete the
+per-plane admission paths that duplicate it, then re-run this drill with the
+collector handlers in the loop instead of the route.
 
 ## 6. Performance at bank scale — **PARTIAL** (measured this pass)
 
@@ -460,9 +485,12 @@ explicit "API-only" register for the 604 uncovered endpoints.
    described, and a real dropped-index defect found, repaired by 0127 and pinned
    by five tests. **11 PASS · 1 PARTIAL · 0 FAIL · 1 UNPROVEN**. Remaining in #3:
    failover (a standby pair) and `CREATE INDEX CONCURRENTLY`.
-6. ~~**Per-collector authority (#5)**~~ — **done this pass** (guide 116): the
-   matrix exists and it says the honest thing — 0 planes PROVEN, 1 PARTIAL, 10
-   GAP. Remaining in #5: one authority descriptor per plane, returned by a route.
+6. ~~**Per-collector authority (#5)**~~ — **done this pass** (guide 116, second
+   pass on it): the descriptor per plane exists, the approval is a row with an
+   owner and an expiry, the route serves the matrix, and the drill **probes all
+   66 cells** — 11 planes PROVEN, 0 GAP. Remaining in #5: wire
+   `api.estate_discovery._collect()` to the gate, and delete the per-plane
+   admission paths it duplicates.
 7. ~~**Observability gaps (#7)**~~ — **done this pass** (guide 117): coverage,
    queue, evidence and agent families exported, 18 alert rules. Remaining in #7:
    a worker probe, span export, and an Alertmanager receiver.

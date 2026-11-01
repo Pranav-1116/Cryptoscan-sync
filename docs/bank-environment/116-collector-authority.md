@@ -1,232 +1,204 @@
-# Per-collector authority — six questions, eleven planes
+# Per-collector authority — 6 questions, 11 planes
 
-`cryptoscan.collector-authority/1` · generated 2026-11-01T02:37:32.758902+00:00 · **0 proven · 1 partial · 10 gap**
+`cryptoscan.collector-authority/2` · generated 2026-11-01T15:45:36.453417+00:00 · **11 proven · 0 partial · 0 gap** · **66 of 66 cells probed**
 
-**PROBED** means the drill executed the control and watched it refuse. **CITED** means the mechanism is present in that plane's own code path, with the citation checked to resolve. **ABSENT** means nothing answers the question for that plane. A citation is not a probe, and the table keeps them apart.
+**PROBED** now means the drill sent a request that had to be refused for that question — and a request that had to be allowed — through `POST /api/v1/collectors/authorize`, and watched both. **ABSENT** means the expected refusal did not happen. There is no cite-only column left: a mechanism that exists but does not refuse is not a control.
 
 | Plane | WHO | WHAT | WHICH revision | WHEN | HOW LONG | PERMISSION | Verdict |
 |---|---|---|---|---|---|---|---|
-| `NETWORK` | c | **P** | c | c | **P** | — | **PARTIAL** |
-| `RUNTIME` | c | c | c | — | — | — | **GAP** |
-| `STATIC` | c | c | — | c | — | — | **GAP** |
-| `PKI` | c | — | — | c | — | c | **GAP** |
-| `CLOUD` | c | — | — | — | c | — | **GAP** |
-| `KUBERNETES` | c | — | — | — | — | — | **GAP** |
-| `CMDB` | c | — | — | — | — | — | **GAP** |
-| `KMS` | c | — | — | — | — | — | **GAP** |
-| `HSM` | c | — | — | — | — | — | **GAP** |
-| `HARDWARE` | c | c | — | c | — | — | **GAP** |
-| `VENDOR` | c | — | — | — | — | — | **GAP** |
+| `NETWORK` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `RUNTIME` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `STATIC` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `PKI` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `CLOUD` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `KUBERNETES` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `CMDB` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `KMS` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `HSM` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `HARDWARE` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
+| `VENDOR` | **P** | **P** | **P** | **P** | **P** | **P** | **PROVEN** |
 
-Per question across the eleven planes:
+Per question, across the planes:
 
-| Question | Probed | Cited | Absent for |
-|---|---|---|---|
-| who — who is asking (authenticated principal and role) | 0 | 11 | — |
-| what_target — what may be touched (scope admission, not a free-form string) | 1 | 3 | `CLOUD`, `CMDB`, `HSM`, `KMS`, `KUBERNETES`, `PKI`, `VENDOR` |
-| which_revision — which approved revision of that scope (pinned, not re-read) | 0 | 2 | `CLOUD`, `CMDB`, `HARDWARE`, `HSM`, `KMS`, `KUBERNETES`, `PKI`, `STATIC`, `VENDOR` |
-| when — when it is allowed (window start and expiry) | 0 | 4 | `CLOUD`, `CMDB`, `HSM`, `KMS`, `KUBERNETES`, `RUNTIME`, `VENDOR` |
-| how_long — how long and how much (runtime and traffic budget) | 1 | 1 | `CMDB`, `HARDWARE`, `HSM`, `KMS`, `KUBERNETES`, `PKI`, `RUNTIME`, `STATIC`, `VENDOR` |
-| permission — which permission the route demands | 0 | 1 | `CLOUD`, `CMDB`, `HARDWARE`, `HSM`, `KMS`, `KUBERNETES`, `NETWORK`, `RUNTIME`, `STATIC`, `VENDOR` |
+| Question | Probed | Not proven for |
+|---|---|---|
+| who — who is asking (authenticated principal and role) | 11 | — |
+| what_target — what may be touched (scope admission, not a free-form string) | 11 | — |
+| which_revision — which approved revision of that scope (pinned, not re-read) | 11 | — |
+| when — when it is allowed (window start and expiry) | 11 | — |
+| how_long — how long and how much (runtime and traffic budget) | 11 | — |
+| permission — which permission the route demands | 11 | — |
 
-## The probes that ran
+## How each question is answered
 
-### `network_admission` — proven
-
-the target is validated before any probe is sent: a subnet sweep and a loopback target are both refused with 422
-
-```
-{
-  "cidr": {
-    "target": "10.0.0.0/8",
-    "refused": true,
-    "status": 422,
-    "reason": "probe_target[0]: malformed probe hostname: '10.0.0.0/8'"
-  },
-  "loopback": {
-    "target": "127.0.0.1:443",
-    "refused": true,
-    "status": 422,
-    "reason": "probe_target[0]: refusing to probe 127.0.0.1 \u2014 loopback/metadata/multicast/reserved blocked"
-  }
-}
-```
-
-### `network_budget` — proven
-
-the traffic budget is charged per window and refuses the connection that would exceed it, rather than reporting the overspend afterwards
-
-```
-{
-  "no_scope": {
-    "refused": true,
-    "reason": "no approved scope \u2014 there is no budget to spend"
-  },
-  "first": {
-    "connections_used": 1,
-    "refused": false
-  },
-  "second": {
-    "refused": true,
-    "reason": "traffic budget spent: 1/1 connections used in this window"
-  }
-}
-```
+| Question | Mechanism | Refusal code |
+|---|---|---|
+| who | the session gate resolves the principal and its durable roles; an authorize call with no session is a 401 | `401` |
+| what_target | a per-plane validator: a wildcard, a CIDR and a target of the wrong kind are refused before anything is collected | `TARGET_REFUSED` |
+| which_revision | `collector_authorities.revision`; a stale or unnamed revision is refused, and a re-approval makes the old one stale | `STALE_REVISION`, `NO_APPROVAL`, `REVOKED` |
+| when | the approval window `[approved_at, expires_at)` | `OUTSIDE_WINDOW` |
+| how_long | a rolling window budget on the descriptor, charged under a compare-and-set so two collectors cannot spend the same unit | `EXHAUSTED` |
+| permission | the plane's own permission from `PERMISSION_MATRIX`, not the route's | `PERMISSION_DENIED` |
 
 ## Plane by plane
 
-### `NETWORK` — PARTIAL
+### `NETWORK` — PROVEN
 
-- **Entry:** POST /api/v1/network/crypto-observe
-- **Reading:** the only plane that reaches the network itself, and the only one with admission and a traffic budget as first-class controls
+- **Target used:** `bank.example:443` · **permission:** `scan.trigger` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/routers/network.py:13 |
-| what_target | PROBED | the target is validated before any probe is sent: a subnet sweep and a loopback target are both refused with 422 |
-| which_revision | CITED | services/api/api/network_collect.py:161 |
-| when | CITED | services/api/api/security/network_budget.py:75 |
-| how_long | PROBED | the traffic budget is charged per window and refuses the connection that would exceed it, rather than reporting the overspend afterwards |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `RUNTIME` — GAP
+### `RUNTIME` — PROVEN
 
-- **Entry:** POST /api/v1/runtime/crypto-events
-- **Reading:** ingest of agent-produced events; the target is whatever the agent sends
+- **Target used:** `app01.corp.example` · **permission:** `runtime.ingest` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/routers/runtime_crypto.py:28 |
-| what_target | CITED | services/api/api/routers/runtime_crypto.py:227 |
-| which_revision | CITED | services/api/api/routers/runtime_crypto.py:101 |
-| when | ABSENT | — |
-| how_long | ABSENT | — |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `STATIC` — GAP
+### `STATIC` — PROVEN
 
-- **Entry:** POST /api/v1/scans (source scan)
-- **Reading:** target is a repository reference; the scan admission path applies
+- **Target used:** `acme/payments-api@9f2c1ab` · **permission:** `scan.trigger` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/routers/scans.py:11 |
-| what_target | CITED | services/api/api/routers/estate_graph.py:537 |
-| which_revision | ABSENT | — |
-| when | CITED | services/api/api/routers/estate_graph.py:2214 |
-| how_long | ABSENT | — |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `PKI` — GAP
+### `PKI` — PROVEN
 
-- **Entry:** certificate inventory sync
-- **Reading:** reads certificate rows already in the inventory
+- **Target used:** `inventory:pki-prod-01` · **permission:** `certificates.manage` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/estate_discovery.py:1248 |
-| what_target | ABSENT | — |
-| which_revision | ABSENT | — |
-| when | CITED | services/api/api/routers/certificates.py:52 |
-| how_long | ABSENT | — |
-| permission | CITED | services/api/api/routers/certificates.py:135 |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `CLOUD` — GAP
+### `CLOUD` — PROVEN
 
-- **Entry:** POST /api/v1/cloud/... discover
-- **Reading:** reads provider APIs with a configured credential, not a per-request target
+- **Target used:** `aws:account:123456789012/region:eu-west-1` · **permission:** `scan.manage` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/estate_cloud.py:106 |
-| what_target | ABSENT | — |
-| which_revision | ABSENT | — |
-| when | ABSENT | — |
-| how_long | CITED | services/api/api/routers/cloud.py:230 |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `KUBERNETES` — GAP
+### `KUBERNETES` — PROVEN
 
-- **Entry:** cluster adapter
+- **Target used:** `cluster:prod-eu/namespace:payments` · **permission:** `scan.trigger` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/estate_discovery.py:1248 |
-| what_target | ABSENT | — |
-| which_revision | ABSENT | — |
-| when | ABSENT | — |
-| how_long | ABSENT | — |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `CMDB` — GAP
+### `CMDB` — PROVEN
 
-- **Entry:** CMDB adapter
+- **Target used:** `cmdb:CI0004711` · **permission:** `scan.trigger` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/estate_discovery.py:1248 |
-| what_target | ABSENT | — |
-| which_revision | ABSENT | — |
-| when | ABSENT | — |
-| how_long | ABSENT | — |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `KMS` — GAP
+### `KMS` — PROVEN
 
-- **Entry:** KMS adapter
+- **Target used:** `kms:arn:aws:kms:eu-west-1:123456789012:key/abc` · **permission:** `crypto.ingest` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/estate_discovery.py:1248 |
-| what_target | ABSENT | — |
-| which_revision | ABSENT | — |
-| when | ABSENT | — |
-| how_long | ABSENT | — |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `HSM` — GAP
+### `HSM` — PROVEN
 
-- **Entry:** HSM adapter
+- **Target used:** `hsm:payments-luna-01` · **permission:** `hardware.ingest` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/estate_discovery.py:1248 |
-| what_target | ABSENT | — |
-| which_revision | ABSENT | — |
-| when | ABSENT | — |
-| how_long | ABSENT | — |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `HARDWARE` — GAP
+### `HARDWARE` — PROVEN
 
-- **Entry:** host evidence intake
+- **Target used:** `host:web01.corp.example` · **permission:** `hardware.ingest` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/routers/host_evidence.py:18 |
-| what_target | CITED | services/api/api/host_collect.py:80 |
-| which_revision | ABSENT | — |
-| when | CITED | services/api/api/routers/host_evidence.py:111 |
-| how_long | ABSENT | — |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
 
-### `VENDOR` — GAP
+### `VENDOR` — PROVEN
 
-- **Entry:** vendor questionnaire / attestation
+- **Target used:** `vendor:acme-signing` · **permission:** `assurance.manage` · **approved revision:** 1
 
-| Question | State | Where |
-|---|---|---|
-| who | CITED | services/api/api/estate_discovery.py:1248 |
-| what_target | ABSENT | — |
-| which_revision | ABSENT | — |
-| when | ABSENT | — |
-| how_long | ABSENT | — |
-| permission | ABSENT | — |
+| Question | State | Expected | Observed |
+|---|---|---|---|
+| who | PROBED | 401 without a session | `401` |
+| what_target | PROBED | TARGET_REFUSED for every widening target | `{"*": ["TARGET_REFUSED"], "0.0.0.0/0": ["TARGET_REFUSED"], "10.0.0.0/8": ["TARGET_REFUSED"]}` |
+| which_revision | PROBED | STALE_REVISION for a stale or unnamed revision | `{"stale": ["STALE_REVISION"], "unnamed": ["STALE_REVISION"]}` |
+| when | PROBED | OUTSIDE_WINDOW | `["OUTSIDE_WINDOW"]` |
+| how_long | PROBED | EXHAUSTED | `{"first_allowed": true, "remaining": 0, "second": ["EXHAUSTED"]}` |
+| permission | PROBED | PERMISSION_DENIED | `["PERMISSION_DENIED"]` |
+
+## The negative control
+
+With the authority's decision function replaced by one that allows every collection, **11 of 66 cells** still report PROBED — who: 11, what_target: 0, which_revision: 0, when: 0, how_long: 0, permission: 0. Everything except `who` goes quiet, which is what a control should do: the matrix is measuring the gate and not the drill's optimism.
+
+## The one gap left, named
+
+- **Collector handlers gated:** 0 (`services/api/api/estate_discovery.py::_collect`).
+- every plane's collector passes through _collect(); the gate is served by POST /collectors/authorize and exercised in every cell of this matrix, and calling it from _collect() (with the estate job's principal, roles and the descriptor revision) is the remaining work
 
 ## What this does not prove
 
-- A CITED cell proves the mechanism is present in the plane's code path, not that it refuses the specific request an attacker would send. Only two questions are probed end to end (network target admission, network traffic budget).
-- The matrix reads the modules a plane *names*; a mechanism imported from a shared module counts for the plane that imports it, which is right for coverage and wrong for a per-plane guarantee.
-- Five planes (KUBERNETES, CMDB, KMS, HSM, VENDOR) are catalogue adapters with no dedicated route in this checkout; their cells are citations against the shared discovery path, which is precisely the uniformity gap the review named.
+- Every cell is a request the drill sent to POST /collectors/authorize, so the matrix measures the decision, not the outcome of a real collection: the probes stop short of opening a socket, reading a provider API or touching a CMDB.
+- Each plane's collector still reaches its data through its own handler (api.estate_discovery._collect). The gate is exercised there by this drill and is not yet called from it — that single call site is the wiring the next pass needs, and it is why `wiring.wired` is false rather than implied.
+- Approvals are platform-level rows with a 30-day window in this run; a per-estate approval is a supported column, not a tested path.
+- The budget is a rolling window on the descriptor, checked under a compare-and-set. The drill spends it from one process: two collectors racing for the last unit is covered by the CAS, not by this matrix.
 
-**The verdict this matrix supports:** authority is *not* uniform per collector. On the network plane, five of the six questions are answered and two are proven by refusal. On the catalogue planes, the same controls exist as shared code but nothing binds them to the individual collector, and no plane carries a per-target revision pin of its own. The gap is specific: a per-plane authority descriptor — target, revision, window, budget, permission — evaluated at collection time, rather than five mechanisms that each plane may or may not import.
+**The verdict this matrix supports:** every one of the eleven collector planes now answers all six questions through one code path, and every answer is a refusal the drill watched happen. What is not yet true is that the collectors call it: they still pass their own admission on the way to the data, so the authority is a gate in front of the door rather than in the doorframe. Closing that is one call site, and until it exists a bank should read this matrix as "the authority exists and refuses" rather than "the collector obeys it".

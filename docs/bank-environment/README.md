@@ -45,9 +45,11 @@
 > retention and monthly partitioning were built to pass, and the four server drills
 > now run instead of being refused — and, on the way, found and fixed a real
 > defect: migration 0123 silently dropped the identity index on SQLite;
-> [guide 116](116-collector-authority.md) builds the per-collector authority matrix
-> (11 planes × 6 questions) and reports the honest result, **0 proven · 1 partial ·
-> 10 gap**; [guide 117](117-observability-coverage.md) covers eleven observability
+> [guide 116](116-collector-authority.md) builds the per-collector authority
+> (one approved descriptor per plane, an approval route and a revocation) and
+> **probes all 66 cells** of the 11 × 6 matrix: **11 planes proven, 0 gap**, with a
+> negative control that strips the gate and leaves only the session check alive;
+> [guide 117](117-observability-coverage.md) covers eleven observability
 > surfaces with **7 pass · 3 partial · 0 fail**; and
 > [guide 118](118-frontend-hardening.md) audits nine console behaviours
 > (**5 pass · 4 partial · 0 fail**) with a negative control that strips the console

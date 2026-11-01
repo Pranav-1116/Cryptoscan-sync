@@ -1,90 +1,41 @@
 {
-  "schema": "cryptoscan.collector-authority/1",
-  "version": "collector-authority/1.0",
-  "generated_at": "2026-11-01T02:37:32.758902+00:00",
+  "schema": "cryptoscan.collector-authority/2",
+  "version": "collector-authority/2.0",
+  "generated_at": "2026-11-01T15:45:36.453417+00:00",
   "planes": 11,
   "counts": {
-    "PROVEN": 0,
-    "PARTIAL": 1,
-    "GAP": 10
+    "PROVEN": 11,
+    "PARTIAL": 0,
+    "GAP": 0
+  },
+  "cells": {
+    "probed": 66,
+    "total": 66
   },
   "per_question": {
     "who": {
-      "probed": 0,
-      "cited": 11,
+      "probed": 11,
       "absent": []
     },
     "what_target": {
-      "probed": 1,
-      "cited": 3,
-      "absent": [
-        "CLOUD",
-        "CMDB",
-        "HSM",
-        "KMS",
-        "KUBERNETES",
-        "PKI",
-        "VENDOR"
-      ]
+      "probed": 11,
+      "absent": []
     },
     "which_revision": {
-      "probed": 0,
-      "cited": 2,
-      "absent": [
-        "CLOUD",
-        "CMDB",
-        "HARDWARE",
-        "HSM",
-        "KMS",
-        "KUBERNETES",
-        "PKI",
-        "STATIC",
-        "VENDOR"
-      ]
+      "probed": 11,
+      "absent": []
     },
     "when": {
-      "probed": 0,
-      "cited": 4,
-      "absent": [
-        "CLOUD",
-        "CMDB",
-        "HSM",
-        "KMS",
-        "KUBERNETES",
-        "RUNTIME",
-        "VENDOR"
-      ]
+      "probed": 11,
+      "absent": []
     },
     "how_long": {
-      "probed": 1,
-      "cited": 1,
-      "absent": [
-        "CMDB",
-        "HARDWARE",
-        "HSM",
-        "KMS",
-        "KUBERNETES",
-        "PKI",
-        "RUNTIME",
-        "STATIC",
-        "VENDOR"
-      ]
+      "probed": 11,
+      "absent": []
     },
     "permission": {
-      "probed": 0,
-      "cited": 1,
-      "absent": [
-        "CLOUD",
-        "CMDB",
-        "HARDWARE",
-        "HSM",
-        "KMS",
-        "KUBERNETES",
-        "NETWORK",
-        "RUNTIME",
-        "STATIC",
-        "VENDOR"
-      ]
+      "probed": 11,
+      "absent": []
     }
   },
   "questions": {
@@ -95,622 +46,1047 @@
     "how_long": "how long and how much (runtime and traffic budget)",
     "permission": "which permission the route demands"
   },
-  "probes": {
-    "network_admission": {
-      "id": "network_admission",
-      "proven": true,
-      "findings": {
-        "cidr": {
-          "target": "10.0.0.0/8",
-          "refused": true,
-          "status": 422,
-          "reason": "probe_target[0]: malformed probe hostname: '10.0.0.0/8'"
-        },
-        "loopback": {
-          "target": "127.0.0.1:443",
-          "refused": true,
-          "status": 422,
-          "reason": "probe_target[0]: refusing to probe 127.0.0.1 \u2014 loopback/metadata/multicast/reserved blocked"
-        }
-      },
-      "meaning": "the target is validated before any probe is sent: a subnet sweep and a loopback target are both refused with 422"
-    },
-    "network_budget": {
-      "id": "network_budget",
-      "proven": true,
-      "findings": {
-        "no_scope": {
-          "refused": true,
-          "reason": "no approved scope \u2014 there is no budget to spend"
-        },
-        "first": {
-          "connections_used": 1,
-          "refused": false
-        },
-        "second": {
-          "refused": true,
-          "reason": "traffic budget spent: 1/1 connections used in this window"
-        }
-      },
-      "meaning": "the traffic budget is charged per window and refuses the connection that would exceed it, rather than reporting the overspend afterwards"
-    }
+  "matrix_route": {
+    "planes": 11,
+    "approved_after_the_drill": 11
   },
-  "probe_errors": {},
+  "control": {
+    "probed": 11,
+    "total": 66,
+    "survived": {
+      "who": 11,
+      "what_target": 0,
+      "which_revision": 0,
+      "when": 0,
+      "how_long": 0,
+      "permission": 0
+    },
+    "meaning": "with the authority replaced by one that allows everything, only the cells answered outside it survive: the matrix measures the gate, not the drill"
+  },
+  "wiring": {
+    "call_site": "services/api/api/estate_discovery.py::_collect",
+    "wired": false,
+    "gated_handlers": [],
+    "remaining": "every plane's collector passes through _collect(); the gate is served by POST /collectors/authorize and exercised in every cell of this matrix, and calling it from _collect() (with the estate job's principal, roles and the descriptor revision) is the remaining work"
+  },
   "rows": [
     {
       "plane": "NETWORK",
-      "entry": "POST /api/v1/network/crypto-observe",
-      "modules": [
-        "services/api/api/network_collect.py",
-        "services/api/api/security/network_collection.py",
-        "services/api/api/security/network_budget.py",
-        "services/api/api/routers/network.py"
-      ],
+      "entry": "bank.example:443",
+      "permission": "scan.trigger",
+      "target_kind": null,
+      "revision": 1,
+      "target": "bank.example:443",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "get_current_user",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/routers/network.py:13"
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
+        },
+        "permission": {
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "NETWORK requires scan.trigger; roles ['business_owner'] do not include ['ciso', 'developer', 'scanner', 'security_analyst', 'superadmin']"
         },
         "what_target": {
           "state": "PROBED",
-          "meaning": "what may be touched (scope admission, not a free-form string)",
-          "probe": "network_admission",
-          "evidence": "the target is validated before any probe is sent: a subnet sweep and a loopback target are both refused with 422"
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
         },
         "which_revision": {
-          "state": "CITED",
-          "mechanism": "scope_revision",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": "services/api/api/network_collect.py:161"
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "NETWORK is approved at revision 1, not 2; re-read the approval before collecting"
         },
         "when": {
-          "state": "CITED",
-          "mechanism": "window_started_at",
-          "meaning": "the control carries a time window",
-          "where": "services/api/api/security/network_budget.py:75"
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:31.922009+00:00"
         },
         "how_long": {
           "state": "PROBED",
-          "meaning": "how long and how much (runtime and traffic budget)",
-          "probe": "network_budget",
-          "evidence": "the traffic budget is charged per window and refuses the connection that would exceed it, rather than reporting the overspend afterwards"
-        },
-        "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 2,
-      "cited": 3,
-      "absent": [
+      "probed": [
+        "who",
+        "what_target",
+        "which_revision",
+        "when",
+        "how_long",
         "permission"
       ],
-      "verdict": "PARTIAL",
-      "note": "the only plane that reaches the network itself, and the only one with admission and a traffic budget as first-class controls"
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "RUNTIME",
-      "entry": "POST /api/v1/runtime/crypto-events",
-      "modules": [
-        "services/api/api/routers/runtime_crypto.py",
-        "services/api/api/security/runtime_evidence_chain.py"
-      ],
+      "entry": "app01.corp.example",
+      "permission": "runtime.ingest",
+      "target_kind": null,
+      "revision": 1,
+      "target": "app01.corp.example",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "get_current_user",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/routers/runtime_crypto.py:28"
-        },
-        "what_target": {
-          "state": "CITED",
-          "mechanism": "authorized",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": "services/api/api/routers/runtime_crypto.py:227"
-        },
-        "which_revision": {
-          "state": "CITED",
-          "mechanism": "saved_at",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": "services/api/api/routers/runtime_crypto.py:101"
-        },
-        "when": {
-          "state": "ABSENT",
-          "meaning": "the control carries a time window",
-          "where": null
-        },
-        "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "RUNTIME requires runtime.ingest; roles ['business_owner'] do not include ['scanner', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "RUNTIME is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:32.134344+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 3,
-      "absent": [
+      "probed": [
+        "who",
+        "what_target",
+        "which_revision",
         "when",
         "how_long",
         "permission"
       ],
-      "verdict": "GAP",
-      "note": "ingest of agent-produced events; the target is whatever the agent sends"
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "STATIC",
-      "entry": "POST /api/v1/scans (source scan)",
-      "modules": [
-        "services/api/api/routers/scans.py",
-        "services/api/api/routers/estate_graph.py"
-      ],
+      "entry": "acme/payments-api@9f2c1ab",
+      "permission": "scan.trigger",
+      "target_kind": null,
+      "revision": 1,
+      "target": "acme/payments-api@9f2c1ab",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "get_current_user",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/routers/scans.py:11"
-        },
-        "what_target": {
-          "state": "CITED",
-          "mechanism": "authorized",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": "services/api/api/routers/estate_graph.py:537"
-        },
-        "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
-        },
-        "when": {
-          "state": "CITED",
-          "mechanism": "window_seconds",
-          "meaning": "the control carries a time window",
-          "where": "services/api/api/routers/estate_graph.py:2214"
-        },
-        "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "STATIC requires scan.trigger; roles ['business_owner'] do not include ['ciso', 'developer', 'scanner', 'security_analyst', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "STATIC is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:32.348219+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 3,
-      "absent": [
+      "probed": [
+        "who",
+        "what_target",
         "which_revision",
+        "when",
         "how_long",
         "permission"
       ],
-      "verdict": "GAP",
-      "note": "target is a repository reference; the scan admission path applies"
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "PKI",
-      "entry": "certificate inventory sync",
-      "modules": [
-        "services/api/api/estate_discovery.py",
-        "services/api/api/routers/certificates.py"
-      ],
+      "entry": "inventory:pki-prod-01",
+      "permission": "certificates.manage",
+      "target_kind": null,
+      "revision": 1,
+      "target": "inventory:pki-prod-01",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "session",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/estate_discovery.py:1248"
-        },
-        "what_target": {
-          "state": "ABSENT",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": null
-        },
-        "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
-        },
-        "when": {
-          "state": "CITED",
-          "mechanism": "not_before",
-          "meaning": "the control carries a time window",
-          "where": "services/api/api/routers/certificates.py:52"
-        },
-        "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "CITED",
-          "mechanism": "require_permission(",
-          "meaning": "the route names the permission it demands",
-          "where": "services/api/api/routers/certificates.py:135"
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "PKI requires certificates.manage; roles ['business_owner'] do not include ['ciso', 'security_analyst', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "PKI is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:32.724631+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 3,
-      "absent": [
+      "probed": [
+        "who",
         "what_target",
         "which_revision",
-        "how_long"
+        "when",
+        "how_long",
+        "permission"
       ],
-      "verdict": "GAP",
-      "note": "reads certificate rows already in the inventory"
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "CLOUD",
-      "entry": "POST /api/v1/cloud/... discover",
-      "modules": [
-        "services/api/api/estate_cloud.py",
-        "services/api/api/routers/cloud.py"
-      ],
+      "entry": "aws:account:123456789012/region:eu-west-1",
+      "permission": "scan.manage",
+      "target_kind": null,
+      "revision": 1,
+      "target": "aws:account:123456789012/region:eu-west-1",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "session",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/estate_cloud.py:106"
-        },
-        "what_target": {
-          "state": "ABSENT",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": null
-        },
-        "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
-        },
-        "when": {
-          "state": "ABSENT",
-          "meaning": "the control carries a time window",
-          "where": null
-        },
-        "how_long": {
-          "state": "CITED",
-          "mechanism": "budget",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": "services/api/api/routers/cloud.py:230"
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "CLOUD requires scan.manage; roles ['business_owner'] do not include ['ciso', 'security_analyst', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "CLOUD is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:32.943375+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 2,
-      "absent": [
+      "probed": [
+        "who",
         "what_target",
         "which_revision",
         "when",
+        "how_long",
         "permission"
       ],
-      "verdict": "GAP",
-      "note": "reads provider APIs with a configured credential, not a per-request target"
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "KUBERNETES",
-      "entry": "cluster adapter",
-      "modules": [
-        "services/api/api/estate_discovery.py"
-      ],
+      "entry": "cluster:prod-eu/namespace:payments",
+      "permission": "scan.trigger",
+      "target_kind": null,
+      "revision": 1,
+      "target": "cluster:prod-eu/namespace:payments",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "session",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/estate_discovery.py:1248"
-        },
-        "what_target": {
-          "state": "ABSENT",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": null
-        },
-        "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
-        },
-        "when": {
-          "state": "ABSENT",
-          "meaning": "the control carries a time window",
-          "where": null
-        },
-        "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "KUBERNETES requires scan.trigger; roles ['business_owner'] do not include ['ciso', 'developer', 'scanner', 'security_analyst', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "KUBERNETES is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:33.154870+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 1,
-      "absent": [
+      "probed": [
+        "who",
         "what_target",
         "which_revision",
         "when",
         "how_long",
         "permission"
       ],
-      "verdict": "GAP",
-      "note": ""
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "CMDB",
-      "entry": "CMDB adapter",
-      "modules": [
-        "services/api/api/estate_discovery.py"
-      ],
+      "entry": "cmdb:CI0004711",
+      "permission": "scan.trigger",
+      "target_kind": null,
+      "revision": 1,
+      "target": "cmdb:CI0004711",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "session",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/estate_discovery.py:1248"
-        },
-        "what_target": {
-          "state": "ABSENT",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": null
-        },
-        "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
-        },
-        "when": {
-          "state": "ABSENT",
-          "meaning": "the control carries a time window",
-          "where": null
-        },
-        "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "CMDB requires scan.trigger; roles ['business_owner'] do not include ['ciso', 'developer', 'scanner', 'security_analyst', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "CMDB is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:33.346186+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 1,
-      "absent": [
+      "probed": [
+        "who",
         "what_target",
         "which_revision",
         "when",
         "how_long",
         "permission"
       ],
-      "verdict": "GAP",
-      "note": ""
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "KMS",
-      "entry": "KMS adapter",
-      "modules": [
-        "services/api/api/estate_discovery.py"
-      ],
+      "entry": "kms:arn:aws:kms:eu-west-1:123456789012:key/abc",
+      "permission": "crypto.ingest",
+      "target_kind": null,
+      "revision": 1,
+      "target": "kms:arn:aws:kms:eu-west-1:123456789012:key/abc",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "session",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/estate_discovery.py:1248"
-        },
-        "what_target": {
-          "state": "ABSENT",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": null
-        },
-        "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
-        },
-        "when": {
-          "state": "ABSENT",
-          "meaning": "the control carries a time window",
-          "where": null
-        },
-        "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "KMS requires crypto.ingest; roles ['business_owner'] do not include ['ciso', 'scanner', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "KMS is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:33.528241+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 1,
-      "absent": [
+      "probed": [
+        "who",
         "what_target",
         "which_revision",
         "when",
         "how_long",
         "permission"
       ],
-      "verdict": "GAP",
-      "note": ""
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "HSM",
-      "entry": "HSM adapter",
-      "modules": [
-        "services/api/api/estate_discovery.py"
-      ],
+      "entry": "hsm:payments-luna-01",
+      "permission": "hardware.ingest",
+      "target_kind": null,
+      "revision": 1,
+      "target": "hsm:payments-luna-01",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "session",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/estate_discovery.py:1248"
-        },
-        "what_target": {
-          "state": "ABSENT",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": null
-        },
-        "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
-        },
-        "when": {
-          "state": "ABSENT",
-          "meaning": "the control carries a time window",
-          "where": null
-        },
-        "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "HSM requires hardware.ingest; roles ['business_owner'] do not include ['ciso', 'scanner', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "HSM is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:33.701148+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 1,
-      "absent": [
+      "probed": [
+        "who",
         "what_target",
         "which_revision",
         "when",
         "how_long",
         "permission"
       ],
-      "verdict": "GAP",
-      "note": ""
+      "absent": [],
+      "verdict": "PROVEN"
     },
     {
       "plane": "HARDWARE",
-      "entry": "host evidence intake",
-      "modules": [
-        "services/api/api/routers/host_evidence.py",
-        "services/api/api/host_collect.py"
-      ],
+      "entry": "host:web01.corp.example",
+      "permission": "hardware.ingest",
+      "target_kind": null,
+      "revision": 1,
+      "target": "host:web01.corp.example",
       "cells": {
         "who": {
-          "state": "CITED",
-          "mechanism": "get_current_user",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/routers/host_evidence.py:18"
-        },
-        "what_target": {
-          "state": "CITED",
-          "mechanism": "authorised",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": "services/api/api/host_collect.py:80"
-        },
-        "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
-        },
-        "when": {
-          "state": "CITED",
-          "mechanism": "expires_at",
-          "meaning": "the control carries a time window",
-          "where": "services/api/api/routers/host_evidence.py:111"
-        },
-        "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
         },
         "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
-        }
-      },
-      "probed": 0,
-      "cited": 3,
-      "absent": [
-        "which_revision",
-        "how_long",
-        "permission"
-      ],
-      "verdict": "GAP",
-      "note": ""
-    },
-    {
-      "plane": "VENDOR",
-      "entry": "vendor questionnaire / attestation",
-      "modules": [
-        "services/api/api/routers/vendor.py",
-        "services/api/api/estate_discovery.py"
-      ],
-      "cells": {
-        "who": {
-          "state": "CITED",
-          "mechanism": "session",
-          "meaning": "an authenticated principal is required by the route",
-          "where": "services/api/api/estate_discovery.py:1248"
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "HARDWARE requires hardware.ingest; roles ['business_owner'] do not include ['ciso', 'scanner', 'superadmin']"
         },
         "what_target": {
-          "state": "ABSENT",
-          "meaning": "the target is admitted by a validator, not accepted verbatim",
-          "where": null
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
         },
         "which_revision": {
-          "state": "ABSENT",
-          "meaning": "the approved scope revision is pinned and re-checked",
-          "where": null
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "HARDWARE is approved at revision 1, not 2; re-read the approval before collecting"
         },
         "when": {
-          "state": "ABSENT",
-          "meaning": "the control carries a time window",
-          "where": null
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:33.873793+00:00"
         },
         "how_long": {
-          "state": "ABSENT",
-          "meaning": "runtime and/or traffic are bounded by a budget",
-          "where": null
-        },
-        "permission": {
-          "state": "ABSENT",
-          "meaning": "the route names the permission it demands",
-          "where": null
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
         }
       },
-      "probed": 0,
-      "cited": 1,
-      "absent": [
+      "probed": [
+        "who",
         "what_target",
         "which_revision",
         "when",
         "how_long",
         "permission"
       ],
-      "verdict": "GAP",
-      "note": ""
+      "absent": [],
+      "verdict": "PROVEN"
+    },
+    {
+      "plane": "VENDOR",
+      "entry": "vendor:acme-signing",
+      "permission": "assurance.manage",
+      "target_kind": null,
+      "revision": 1,
+      "target": "vendor:acme-signing",
+      "cells": {
+        "who": {
+          "state": "PROBED",
+          "question": "who",
+          "expected": "401 without a session",
+          "observed": 401,
+          "detail": "Missing Authorization header"
+        },
+        "permission": {
+          "state": "PROBED",
+          "question": "permission",
+          "expected": "PERMISSION_DENIED",
+          "observed": [
+            "PERMISSION_DENIED"
+          ],
+          "status": 200,
+          "detail": "VENDOR requires assurance.manage; roles ['business_owner'] do not include ['ciso', 'security_analyst', 'superadmin']"
+        },
+        "what_target": {
+          "state": "PROBED",
+          "question": "what_target",
+          "expected": "TARGET_REFUSED for every widening target",
+          "observed": {
+            "*": [
+              "TARGET_REFUSED"
+            ],
+            "0.0.0.0/0": [
+              "TARGET_REFUSED"
+            ],
+            "10.0.0.0/8": [
+              "TARGET_REFUSED"
+            ]
+          },
+          "detail": "a wildcard target is not a target; name what may be collected"
+        },
+        "which_revision": {
+          "state": "PROBED",
+          "question": "which_revision",
+          "expected": "STALE_REVISION for a stale or unnamed revision",
+          "observed": {
+            "stale": [
+              "STALE_REVISION"
+            ],
+            "unnamed": [
+              "STALE_REVISION"
+            ]
+          },
+          "detail": "VENDOR is approved at revision 1, not 2; re-read the approval before collecting"
+        },
+        "when": {
+          "state": "PROBED",
+          "question": "when",
+          "expected": "OUTSIDE_WINDOW",
+          "observed": [
+            "OUTSIDE_WINDOW"
+          ],
+          "status": 200,
+          "detail": "the approval expired at 2026-11-01T15:40:34.042682+00:00"
+        },
+        "how_long": {
+          "state": "PROBED",
+          "question": "how_long",
+          "expected": "EXHAUSTED",
+          "observed": {
+            "first_allowed": true,
+            "remaining": 0,
+            "second": [
+              "EXHAUSTED"
+            ]
+          },
+          "status": 200,
+          "detail": "1 of 1 requests already spent in this 3600-second window"
+        }
+      },
+      "probed": [
+        "who",
+        "what_target",
+        "which_revision",
+        "when",
+        "how_long",
+        "permission"
+      ],
+      "absent": [],
+      "verdict": "PROVEN"
     }
   ],
   "limits": [
-    "A CITED cell proves the mechanism is present in the plane's code path, not that it refuses the specific request an attacker would send. Only two questions are probed end to end (network target admission, network traffic budget).",
-    "The matrix reads the modules a plane *names*; a mechanism imported from a shared module counts for the plane that imports it, which is right for coverage and wrong for a per-plane guarantee.",
-    "Five planes (KUBERNETES, CMDB, KMS, HSM, VENDOR) are catalogue adapters with no dedicated route in this checkout; their cells are citations against the shared discovery path, which is precisely the uniformity gap the review named."
+    "Every cell is a request the drill sent to POST /collectors/authorize, so the matrix measures the decision, not the outcome of a real collection: the probes stop short of opening a socket, reading a provider API or touching a CMDB.",
+    "Each plane's collector still reaches its data through its own handler (api.estate_discovery._collect). The gate is exercised there by this drill and is not yet called from it \u2014 that single call site is the wiring the next pass needs, and it is why `wiring.wired` is false rather than implied.",
+    "Approvals are platform-level rows with a 30-day window in this run; a per-estate approval is a supported column, not a tested path.",
+    "The budget is a rolling window on the descriptor, checked under a compare-and-set. The drill spends it from one process: two collectors racing for the last unit is covered by the CAS, not by this matrix."
   ]
 }

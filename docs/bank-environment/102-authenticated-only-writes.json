@@ -595,6 +595,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/collectors/authorize",
+      "reason": "per-collector authority: the plane's own permission is checked against PERMISSION_MATRIX inside the decision"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/connectors/sdk/validate",
       "reason": "operator surface: connector configuration"
     },

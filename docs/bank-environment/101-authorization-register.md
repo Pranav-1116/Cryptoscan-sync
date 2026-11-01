@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 836 |
+| session | 837 |
 | role | 306 |
-| permission | 71 |
+| permission | 74 |
 | tenant-role | 12 |
 
-**1225** operations; **295** of them change state with nothing but the session gate — the exact list, with the policy
+**1229** operations; **296** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -64,6 +64,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `anomaly` | 1 |
 | `certificates` | 1 |
 | `ci` | 1 |
+| `collectors` | 1 |
 | `connectors` | 1 |
 | `datalake` | 1 |
 | `evidence-pack` | 1 |
@@ -185,6 +186,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | PUT | `/api/v1/collection/targets/{identifier}` | `api.routers.collection.update` |
 | POST | `/api/v1/collection/targets/{identifier}/authorize` | `api.routers.collection.authorize` |
 | POST | `/api/v1/collection/targets/{identifier}/revoke` | `api.routers.collection.revoke` |
+| POST | `/api/v1/collectors/authorize` | `api.routers.collector_authority.authorize_collection` |
 | POST | `/api/v1/connectors/sdk/validate` | `api.routers.connectors.validate_connector` |
 | POST | `/api/v1/container-scans` | `api.routers.container_scans.trigger_container_scan` |
 | POST | `/api/v1/container-scans/` | `api.routers.container_scans.trigger_container_scan` |

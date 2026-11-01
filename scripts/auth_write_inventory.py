@@ -37,6 +37,13 @@ POLICY: dict[str, str] = {
     "/api/v1/auth": "self-service or session lifecycle: the caller acts on their own account",
     "/api/v1/estate": "operator surface: every signed-in operator inspects and curates the estate",
     "/api/v1/collection": "operator surface: collection targets, jobs and handoffs",
+    # The authorize route cannot carry one static permission: each collector
+    # plane has its own, and the route is the one place they are all asked. The
+    # session gate supplies the principal and roles, and
+    # api.security.collector_authority.evaluate() checks the plane's permission
+    # from PERMISSION_MATRIX before the collection is answered.
+    "/api/v1/collectors": "per-collector authority: the plane's own permission is "
+                          "checked against PERMISSION_MATRIX inside the decision",
     "/api/v1/assurance": "operator surface: assurance scope, approvals and evidence intake",
     "/api/v1/network": "operator surface: network inventory and discovery runs",
     "/api/v1/cbom": "operator surface: CBOM assembly over estate data",
